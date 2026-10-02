@@ -67,6 +67,10 @@ import {
 /** The subject prefix every session the Zerops door mints carries. */
 export const ZEROPS_SUBJECT_PREFIX = "zerops-user:";
 
+/** The Zerops user id behind a session subject; any other subject is kept whole, and matches no Zerops user. */
+export const zeropsUserIdOf = (subject: string): string =>
+  subject.startsWith(ZEROPS_SUBJECT_PREFIX) ? subject.slice(ZEROPS_SUBJECT_PREFIX.length) : subject;
+
 /** One live session, as much of it as this decision needs. */
 export interface WatchedSession {
   readonly sessionId: string;

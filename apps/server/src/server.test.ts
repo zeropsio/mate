@@ -1197,11 +1197,9 @@ const buildAppUnderTest = (options?: {
               ZeropsLoginSignOutModule.ZeropsLoginSignOut,
               ZeropsLoginSignOutModule.unavailable,
             ),
-            // A test machine has no Mate project to read signer tags off, so
-            // nobody signed anything in and nothing is ever signed out.
+            // A test machine saw nobody sign anything in, and signs nothing out.
             Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
               signers: Effect.succeed({}),
-              fresh: Effect.succeed({}),
               turnRefusal: ({ agent, subject }) =>
                 Effect.succeed(
                   ZeropsProjectSignersModule.turnRefusal({ agent, signer: undefined, subject }),
@@ -6940,133 +6938,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("a browser's stand-up the Mate already has is answered without running it", () =>
-    Effect.gen(function* () {
-      const dispatched: string[] = [];
-      const ended: string[] = [];
-      yield* buildAppUnderTest({
-        layers: {
-          orchestrationEngine: {
-            dispatch: (command) =>
-              Effect.sync(() => dispatched.push(command.commandId)).pipe(
-                Effect.as({ sequence: 7 }),
-              ),
-          },
-          zeropsSetup: {
-            browserStandUp: (command) =>
-              Effect.succeed(command.commandId.endsWith("-1") ? "claimed" : "ignore"),
-            browserStandUpEnded: (command, outcome) =>
-              Effect.sync(() => ended.push(`${command.commandId}:${outcome}`)),
-          },
-        },
-      });
-      const standUp = (attempt: number) => ({
-        type: "thread.turn.start" as const,
-        commandId: CommandId.make(`mate-standup-thread-main-${attempt}`),
-        threadId: ThreadId.make("thread-main"),
-        message: {
-          messageId: MessageId.make(`mate-standup-thread-main-${attempt}`),
-          role: "user" as const,
-          text: "Stand up development of the project.",
-          attachments: [],
-        },
-        modelSelection: defaultModelSelection,
-        runtimeMode: "full-access" as const,
-        interactionMode: "default" as const,
-        createdAt: "2026-01-01T00:00:00.000Z",
-      });
-      yield* Effect.scoped(
-        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
-          Effect.gen(function* () {
-            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](standUp(2));
-            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](standUp(1));
-          }),
-        ),
-      );
-      assert.deepEqual(dispatched, ["mate-standup-thread-main-1"]);
-      assert.deepEqual(ended, ["mate-standup-thread-main-1:through"]);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("a browser's stand-up that surely failed withdraws its claim", () =>
-    Effect.gen(function* () {
-      const ended: string[] = [];
-      yield* buildAppUnderTest({
-        layers: {
-          orchestrationEngine: {
-            dispatch: () =>
-              Effect.fail(
-                new PersistenceSqlError({ operation: "append", detail: "the store refused" }),
-              ),
-          },
-          zeropsSetup: {
-            browserStandUp: () => Effect.succeed("claimed"),
-            browserStandUpEnded: (command, outcome) =>
-              Effect.sync(() => ended.push(`${command.commandId}:${outcome}`)),
-          },
-        },
-      });
-      yield* Effect.scoped(
-        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
-          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
-            type: "thread.turn.start",
-            commandId: CommandId.make("mate-standup-thread-main-4"),
-            threadId: ThreadId.make("thread-main"),
-            message: {
-              messageId: MessageId.make("mate-standup-thread-main-4"),
-              role: "user",
-              text: "Stand up development of the project.",
-              attachments: [],
-            },
-            modelSelection: defaultModelSelection,
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            createdAt: "2026-01-01T00:00:00.000Z",
-          }).pipe(Effect.exit),
-        ),
-      );
-      assert.deepEqual(ended, ["mate-standup-thread-main-4:failed"]);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect(
-    "a browser's stand-up that dies on its way keeps its claim, as it may have gone out",
-    () =>
-      Effect.gen(function* () {
-        const ended: string[] = [];
-        yield* buildAppUnderTest({
-          layers: {
-            orchestrationEngine: { dispatch: () => Effect.die("the engine fell over") },
-            zeropsSetup: {
-              browserStandUp: () => Effect.succeed("claimed"),
-              browserStandUpEnded: (command, outcome) =>
-                Effect.sync(() => ended.push(`${command.commandId}:${outcome}`)),
-            },
-          },
-        });
-        yield* Effect.scoped(
-          withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
-            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
-              type: "thread.turn.start",
-              commandId: CommandId.make("mate-standup-thread-main-3"),
-              threadId: ThreadId.make("thread-main"),
-              message: {
-                messageId: MessageId.make("mate-standup-thread-main-3"),
-                role: "user",
-                text: "Stand up development of the project.",
-                attachments: [],
-              },
-              modelSelection: defaultModelSelection,
-              runtimeMode: "full-access",
-              interactionMode: "default",
-              createdAt: "2026-01-01T00:00:00.000Z",
-            }).pipe(Effect.exit),
-          ),
-        );
-        assert.deepEqual(ended, ["mate-standup-thread-main-3:unknown"]);
-      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("records thread analytics only after a client command succeeds", () =>

@@ -98,6 +98,12 @@ export interface ZeropsEnvironment {
   readonly roleRecheckInterval: Duration.Duration;
   /** See {@link DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS}. */
   readonly sessionMaxAge: Duration.Duration;
+  /**
+   * The file zcp keeps the Mate's HQ enrollment in (`T3CODE_ZEROPS_HQ_ENROLLMENT`): HQ's address
+   * and the Mate credential the link to HQ opens with (`ZeropsHqLink`). Absent on a zcp that does
+   * not enroll: no link.
+   */
+  readonly hqEnrollmentPath?: string | undefined;
 }
 
 /** Raw environment values, before the rule is applied. */
@@ -109,6 +115,7 @@ export interface ZeropsEnvironmentInput {
   readonly apiToken?: string | undefined;
   readonly roleRecheckSeconds?: number | undefined;
   readonly sessionMaxAgeSeconds?: number | undefined;
+  readonly hqEnrollmentPath?: string | undefined;
 }
 
 /**
@@ -142,6 +149,7 @@ export const resolveZeropsEnvironment = (
     value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
   const publicOrigin = input.publicOrigin?.trim();
   const apiToken = input.apiToken?.trim();
+  const hqEnrollmentPath = input.hqEnrollmentPath?.trim();
   return {
     projectId,
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
@@ -157,6 +165,7 @@ export const resolveZeropsEnvironment = (
     sessionMaxAge: Duration.seconds(
       positive(input.sessionMaxAgeSeconds, DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
     ),
+    ...(hqEnrollmentPath && hqEnrollmentPath.length > 0 ? { hqEnrollmentPath } : {}),
   };
 };
 

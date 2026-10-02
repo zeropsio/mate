@@ -12,8 +12,9 @@
  *
  * An API key has no sign-in to end: it is removed, which drops the key with
  * its instance. Removing an account signs it out first. Neither touches the
- * signer tag: this container's key cannot write tags, and a tag for a login
- * that no longer exists speaks for nobody.
+ * record of who signed it in (`zeropsSignIns`): the login walker's credential
+ * watch lets it go with the credential, and a record for a login that no
+ * longer exists speaks for nobody.
  *
  * @module ZeropsLoginSignOut
  */

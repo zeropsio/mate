@@ -18,9 +18,9 @@
  *
  * Such a login has no platform flag — the flag is the agent's, and it stays
  * the default's. Its own CLI check, run with its home in the environment,
- * decides whether it is signed in, and its signer is its own tag
- * `mate:signer:{id}:{userId}`: a second Claude login never inherits the
- * first one's signer (D6 per login).
+ * decides whether it is signed in, and its signer is its own — whoever this
+ * server saw sign it in, kept under its id (`zeropsSignIns`): a second Claude
+ * login never inherits the first one's signer (D6 per login).
  *
  * @module ZeropsLogins
  */
@@ -40,14 +40,9 @@ import {
   type ZeropsLoginKind,
   type ZeropsLoginState,
 } from "@t3tools/contracts";
-import {
-  classifyZeropsAgentAuth,
-  knownSigner,
-  zeropsLoginTitle,
-  type SignerRecord,
-} from "@t3tools/shared/zeropsAgentAuth";
-import * as Context from "effect/Context";
+import { classifyZeropsAgentAuth, zeropsLoginTitle } from "@t3tools/shared/zeropsAgentAuth";
 import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -68,13 +63,10 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { spawnAgentAuthProbe, verifyAgentAuth } from "./ZeropsAgentAuthVerify.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import {
-  SIGNER_RECORD_FRESH_AWAIT,
-  SIGNER_RECORD_FRESH_POLL,
-  ZeropsProjectSigners,
-  type ProjectSigners,
-} from "./ZeropsProjectSigners.ts";
+import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
+import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { extraLoginAgent, LOGIN_DRIVER_KIND, makeExtraLoginId } from "./zeropsLoginIds.ts";
+import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
 
 /** One login beyond the defaults, as the settings hold it. */
 export interface MateLogin {
@@ -211,7 +203,7 @@ export interface MateLoginFacts {
 export function mateLoginRow(
   login: MateLogin,
   facts: MateLoginFacts,
-  signer: SignerRecord | undefined,
+  signer: string | undefined,
 ): ZeropsLogin {
   const held = login.kind === "apiKey" ? login.keyStored : facts.credPresent;
   return {
@@ -222,8 +214,7 @@ export function mateLoginRow(
     default: false,
     state: mateLoginState({ ...facts, kind: login.kind, keyStored: login.keyStored }),
     token: false,
-    ...(held && knownSigner(signer) !== undefined ? { signedInBy: knownSigner(signer) } : {}),
-    ...(held && typeof signer === "object" ? { signerUnknown: true } : {}),
+    ...(held && signer !== undefined && signer.length > 0 ? { signedInBy: signer } : {}),
   };
 }
 
@@ -237,7 +228,6 @@ const defaultLoginRow = (agent: ZeropsAgentAuthSnapshot["agents"][number]): Zero
   state: classifyZeropsAgentAuth(agent).kind,
   token: agent.flagToken,
   ...(agent.authorizedBy === undefined ? {} : { signedInBy: agent.authorizedBy.subject }),
-  ...(agent.signerUnknown === true ? { signerUnknown: true } : {}),
   ...(agent.login === undefined ? {} : { login: agent.login }),
 });
 
@@ -319,13 +309,6 @@ const CHECK_DEBOUNCE = Duration.seconds(1);
 /** How often a credential whose check could not answer is asked again. */
 export const UNKNOWN_LOGIN_RECHECK_INTERVAL = Duration.minutes(1);
 
-/**
- * How often a login that holds a credential but names no signer re-reads the
- * signer tags: the client writes the tag after it sees the sign-in succeed.
- * Past `ZeropsProjectSigners`'s cache lifetime, as the agent feed's is.
- */
-export const LOGIN_SIGNER_RECHECK_INTERVAL = Duration.seconds(35);
-
 type Instances = Readonly<Record<string, ProviderInstanceConfig>>;
 
 const decodeUnknownJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
@@ -354,17 +337,18 @@ export class ZeropsLogins extends Context.Service<
     /** The login beyond the defaults configured under `id`, if there is one. */
     readonly resolve: (id: string) => Effect.Effect<MateLogin | undefined>;
     /**
-     * Asks the login's own CLI again — a sign-in just succeeded, or a sign-out ran. Given who
-     * signed in, the tags are read afresh until the login's record names them
-     * (`SIGNER_RECORD_FRESH_AWAIT`).
+     * Asks the login's own CLI again — a sign-in just succeeded, or a sign-out ran — and
+     * publishes what it says, with the login's signer as it stands then.
      */
-    readonly recheckNow: (id: string, signedInBy?: string) => Effect.Effect<void>;
+    readonly recheckNow: (id: string) => Effect.Effect<void>;
     /**
      * *Add another login*: the instance, its home, and for an API key the key
-     * — stored for that instance alone, never published.
+     * — stored for that instance alone, never published. An API key has no
+     * sign-in to walk: the session that stores it (`subject`) signs it in.
      */
     readonly add: (
       input: ZeropsLoginAddInput,
+      subject: string,
     ) => Effect.Effect<{ readonly id: string }, ZeropsAgentLoginError>;
     /** Drops the login's instance (and with it its key) and its home. Signing it out first is the caller's. */
     readonly forget: (id: string) => Effect.Effect<void, ZeropsAgentLoginError>;
@@ -385,12 +369,10 @@ export interface ZeropsLoginsOptions {
   readonly verify: (login: MateLogin) => Effect.Effect<ServerProviderAuthStatus>;
   /** Told when a login's verified status changes, so the model picker's snapshot catches up. */
   readonly reconcile?: (id: string, verified: ServerProviderAuthStatus) => Effect.Effect<void>;
-  /** The signer tags (`ZeropsProjectSigners.signers`); absent, no login names a signer. */
+  /** Who this server saw sign each login in (`ZeropsProjectSigners.signers`); absent, none names one. */
   readonly readSigners?: Effect.Effect<ProjectSigners>;
-  /** The signer tags read now, past the cache (`ZeropsProjectSigners.fresh`), after a sign-in. */
-  readonly readSignersFresh?: Effect.Effect<ProjectSigners>;
-  /** Defaults to `SIGNER_RECORD_FRESH_POLL`; shortened by tests. */
-  readonly signerRecordPoll?: Duration.Duration;
+  /** Where an API key login's signer is kept (`zeropsSignIns`); absent, nobody signs one in. */
+  readonly signIns?: SignInStore;
   readonly watch: (target: string, fallbackDir: string, onChange: () => void) => WatcherHandle;
   /** Defaults to {@link CHECK_DEBOUNCE}; shortened by tests. */
   readonly checkDebounce?: Duration.Duration;
@@ -409,8 +391,7 @@ const rowsEqual = (a: ReadonlyArray<ZeropsLogin>, b: ReadonlyArray<ZeropsLogin>)
       row.label === other.label &&
       row.kind === other.kind &&
       row.state === other.state &&
-      row.signedInBy === other.signedInBy &&
-      row.signerUnknown === other.signerUnknown
+      row.signedInBy === other.signedInBy
     );
   });
 
@@ -453,8 +434,7 @@ export const make = (options: ZeropsLoginsOptions) =>
       verify,
       reconcile,
       readSigners,
-      readSignersFresh,
-      signerRecordPoll = SIGNER_RECORD_FRESH_POLL,
+      signIns,
       watch,
       checkDebounce = CHECK_DEBOUNCE,
       unknownRecheckInterval = UNKNOWN_LOGIN_RECHECK_INTERVAL,
@@ -475,30 +455,23 @@ export const make = (options: ZeropsLoginsOptions) =>
     // Settings writes are whole-map replacements: one at a time.
     const writeLock = yield* Semaphore.make(1);
 
-    const rows = (read: Effect.Effect<ProjectSigners> | undefined) =>
-      Effect.gen(function* () {
-        const signers = read === undefined ? {} : yield* read;
-        const current = yield* Ref.get(logins);
-        const known = yield* Ref.get(facts);
-        return current.map((login) =>
-          mateLoginRow(login, known[login.id] ?? UNKNOWN_FACTS, signers[login.id]),
-        );
-      });
+    const rows = Effect.gen(function* () {
+      const signers = readSigners === undefined ? {} : yield* readSigners;
+      const current = yield* Ref.get(logins);
+      const known = yield* Ref.get(facts);
+      return current.map((login) =>
+        mateLoginRow(login, known[login.id] ?? UNKNOWN_FACTS, signers[login.id]),
+      );
+    });
 
     // One publish at a time: a read and its publish are never overtaken by a newer read's.
     const publishMutex = yield* Semaphore.make(1);
-    const publishWith = (read: Effect.Effect<ProjectSigners> | undefined) =>
-      Effect.gen(function* () {
-        const next = yield* rows(read);
-        if (rowsEqual(next, yield* Ref.get(published))) return;
-        yield* Ref.set(published, next);
-        yield* PubSub.publish(changes, next);
-      }).pipe(publishMutex.withPermits(1));
-    const publish = publishWith(readSigners);
-    /** A sign-in walked here whose record is on its way: who signed in, and until when. */
-    const recordAwaited = yield* Ref.make<
-      Readonly<Record<string, { readonly by: string; readonly until: number }>>
-    >({});
+    const publish = Effect.gen(function* () {
+      const next = yield* rows;
+      if (rowsEqual(next, yield* Ref.get(published))) return;
+      yield* Ref.set(published, next);
+      yield* PubSub.publish(changes, next);
+    }).pipe(publishMutex.withPermits(1));
 
     const requestCheck = (id: string) =>
       Effect.sync(() => {
@@ -528,7 +501,10 @@ export const make = (options: ZeropsLoginsOptions) =>
           ...current,
           [id]: { credPresent, providerAuth },
         }));
-        yield* PubSub.publish(credentialAnswers, [[id, credPresent]]);
+        // An API key login's credential is its stored key, not a file it never has.
+        yield* PubSub.publish(credentialAnswers, [
+          [id, login.kind === "apiKey" ? login.keyStored : credPresent],
+        ]);
         yield* publish;
         if (reconcile !== undefined && providerAuth !== before.providerAuth) {
           yield* reconcile(id, providerAuth);
@@ -618,9 +594,7 @@ export const make = (options: ZeropsLoginsOptions) =>
       Effect.forkScoped,
     );
 
-    // A credential whose check could not answer is asked again, and a login
-    // that holds one but names no signer re-reads the tags — the client
-    // writes its record only after it sees the sign-in succeed.
+    // A credential whose check could not answer is asked again.
     yield* Effect.gen(function* () {
       const known = yield* Ref.get(facts);
       for (const login of yield* Ref.get(logins)) {
@@ -637,64 +611,7 @@ export const make = (options: ZeropsLoginsOptions) =>
       ),
       Effect.forkScoped,
     );
-    if (readSigners !== undefined) {
-      yield* Effect.gen(function* () {
-        if ((yield* Ref.get(published)).some((row) => row.signedInBy === undefined)) {
-          yield* publish;
-        }
-      }).pipe(
-        Effect.delay(LOGIN_SIGNER_RECHECK_INTERVAL),
-        Effect.forever,
-        Effect.catchCause((cause) =>
-          Effect.logWarning("zerops logins: signer recheck stopped", { cause }),
-        ),
-        Effect.forkScoped,
-      );
-    }
-
-    // A sign-in walked here is read for afresh until its record names who signed in, or the
-    // wait is over — as `ZeropsAgentAuth` does for the agents' own logins.
-    if (readSignersFresh !== undefined) {
-      yield* Effect.gen(function* () {
-        const now = yield* Clock.currentTimeMillis;
-        const awaited = yield* Ref.get(recordAwaited);
-        const due = Object.keys(awaited).filter((id) => awaited[id]!.until > now);
-        if (due.length > 0) yield* publishWith(readSignersFresh);
-        const rowsNow = yield* Ref.get(published);
-        const done = Object.keys(awaited).filter(
-          (id) =>
-            !due.includes(id) ||
-            rowsNow.find((row) => row.id === id)?.signedInBy === awaited[id]!.by,
-        );
-        if (done.length === 0) return;
-        yield* Ref.update(recordAwaited, (current) => {
-          const next = { ...current };
-          // An entry a newer sign-in replaced meanwhile is that sign-in's, and stays.
-          for (const id of done) if (next[id] === awaited[id]) delete next[id];
-          return next;
-        });
-      }).pipe(
-        Effect.delay(signerRecordPoll),
-        Effect.forever,
-        Effect.catchCause((cause) =>
-          Effect.logWarning("zerops logins: signer record wait stopped", { cause }),
-        ),
-        Effect.forkScoped,
-      );
-    }
-
-    const recheckNow = (id: string, signedInBy?: string) =>
-      Effect.gen(function* () {
-        if (signedInBy !== undefined && signedInBy.length > 0) {
-          const until =
-            (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGNER_RECORD_FRESH_AWAIT);
-          yield* Ref.update(recordAwaited, (current) => ({
-            ...current,
-            [id]: { by: signedInBy, until },
-          }));
-        }
-        yield* requestCheck(id);
-      });
+    const recheckNow = (id: string) => requestCheck(id);
 
     const resolve = (id: string) =>
       Ref.get(logins).pipe(Effect.map((current) => current.find((login) => login.id === id)));
@@ -717,7 +634,7 @@ export const make = (options: ZeropsLoginsOptions) =>
         }),
       );
 
-    const add: ZeropsLogins["Service"]["add"] = (input) =>
+    const add: ZeropsLogins["Service"]["add"] = (input, subject) =>
       Effect.gen(function* () {
         const apiKey = input.apiKey;
         const valid =
@@ -757,6 +674,15 @@ export const make = (options: ZeropsLoginsOptions) =>
             const instance = mateLoginInstance({ ...input, id, apiKey }, homeDir);
             return [{ ...current, [id]: instance }, { id }] as const;
           }),
+        ).pipe(
+          Effect.tap(({ id }) =>
+            input.kind !== "apiKey" || signIns === undefined
+              ? Effect.void
+              : Clock.currentTimeMillis.pipe(
+                  Effect.flatMap((at) => signIns.save(id, { by: zeropsUserIdOf(subject), at })),
+                  Effect.andThen(publish),
+                ),
+          ),
         );
       });
 
@@ -805,6 +731,7 @@ export const layer = Layer.effect(
     const settings = yield* ServerSettingsService;
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const projectSigners = yield* ZeropsProjectSigners;
+    const signIns = yield* ZeropsSignIns;
     const providerInstances = yield* ProviderInstances;
     return yield* make({
       isZeropsEnvironment: isZeropsEnvironment(config),
@@ -821,7 +748,7 @@ export const layer = Layer.effect(
         ),
       reconcile: providerInstances.reconcileInstanceAuth,
       readSigners: projectSigners.signers,
-      readSignersFresh: projectSigners.fresh,
+      signIns,
       watch: watchWithFallback,
     });
   }),

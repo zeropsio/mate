@@ -9,7 +9,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
@@ -137,7 +136,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
-import { ZeropsTurnAdmission, principalUserId } from "./zerops/ZeropsTurnAdmission.ts";
+import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import { threadsToStopForAgent, waitUntilNotLive } from "./zerops/ZeropsAgentSignOut.ts";
@@ -147,8 +146,6 @@ import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
-import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
-import { isStandUpCommand } from "./zerops/zeropsSetupSteps.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
@@ -654,7 +651,6 @@ const makeWsRpcLayer = (
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
       const turnAdmission = yield* ZeropsTurnAdmission;
       // A Mate's own server starts its stand-up; absent where no Zerops layer runs.
-      const zeropsSetup = yield* Effect.serviceOption(ZeropsSetup);
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsAgentSignOut = yield* ZeropsAgentSignOutModule.ZeropsAgentSignOut;
       const zeropsLogins = yield* ZeropsLoginsModule.ZeropsLogins;
@@ -1281,7 +1277,7 @@ const makeWsRpcLayer = (
                 ),
               );
 
-        const admitted = turnAdmission
+        return turnAdmission
           .admit({
             command: normalizedCommand,
             principal: { kind: "session", subject: currentSession.subject },
@@ -1295,43 +1291,6 @@ const makeWsRpcLayer = (
                     toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
                   ),
                 ),
-            ),
-          );
-        if (Option.isNone(zeropsSetup) || !isStandUpCommand(normalizedCommand)) return admitted;
-        // A browser's stand-up — an older cached client still sends one — goes
-        // through only while the Mate has none; one more is answered as taken.
-        const setup = zeropsSetup.value;
-        return setup
-          .browserStandUp(
-            normalizedCommand,
-            principalUserId({ kind: "session", subject: currentSession.subject }),
-          )
-          .pipe(
-            Effect.flatMap((verdict) =>
-              verdict === "claimed"
-                ? // A claim that surely did not go out (refused, failed) is withdrawn, so a
-                  // later "Try again" is real; one that may have (interrupted while queued
-                  // for startup, a defect) stands until the server sends it, same ids.
-                  admitted.pipe(
-                    Effect.onExit((exit) =>
-                      setup.browserStandUpEnded(
-                        normalizedCommand,
-                        Exit.isSuccess(exit)
-                          ? "through"
-                          : Cause.hasDies(exit.cause) || Cause.hasInterrupts(exit.cause)
-                            ? "unknown"
-                            : "failed",
-                      ),
-                    ),
-                  )
-                : verdict === "dispatch"
-                  ? admitted
-                  : projectionSnapshotQuery.getSnapshotSequence().pipe(
-                      Effect.map(({ snapshotSequence }) => ({ sequence: snapshotSequence })),
-                      Effect.mapError((cause) =>
-                        toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-                      ),
-                    ),
             ),
           );
       };

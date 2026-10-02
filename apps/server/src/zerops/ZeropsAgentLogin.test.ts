@@ -583,6 +583,7 @@ it.effect("keeps who signed in last, and lets it go with the credential", () =>
         credentialsHeld: Stream.fromQueue(held),
       });
       const settle = TestClock.adjust(Duration.millis(5));
+      const gone = TestClock.adjust(ZeropsAgentLoginModule.CREDENTIAL_GONE_AFTER);
       const succeed = (subject: string) =>
         Effect.gen(function* () {
           yield* feed.start("claude-code", "thread-1", subject);
@@ -593,12 +594,12 @@ it.effect("keeps who signed in last, and lets it go with the credential", () =>
           );
         });
 
-      // A credential gone while the server was down: its kept sign-in goes at the first reading.
+      // A credential gone while the server was down: its kept sign-in goes from the first reading.
       yield* Queue.offer(held, [
         ["claude-code", false],
         ["codex", false],
       ]);
-      yield* settle;
+      yield* gone;
       assert.deepEqual(yield* store.load, {});
 
       // A sign-in's own first moments, the credential not there yet: nothing is let go.
@@ -615,8 +616,74 @@ it.effect("keeps who signed in last, and lets it go with the credential", () =>
 
       // Signed out: the credential goes, and its sign-in with it.
       yield* Queue.offer(held, [["claude-code", false]]);
-      yield* settle;
+      yield* gone;
       assert.deepEqual(yield* store.load, {});
+    }),
+  ),
+);
+
+// A credential's absence lets its kept sign-in go only once it lasts: a CLI that removes its
+// credential before it writes the new one reads absent for a moment, and that moment must not
+// leave the login nobody's.
+for (const [name, readings, kept] of [
+  ["absent for one reading, then there again", [true, false, Duration.seconds(2), true], true],
+  ["absent across two readings", [true, false, Duration.seconds(5), false], false],
+  ["replaced by a rename, as Claude writes it: never absent", [true, true], true],
+] as const) {
+  it.effect(`a credential ${name}: its sign-in is ${kept ? "kept" : "let go"}`, () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const store = yield* memorySignInStore({ "claude-code": { by: "user-eva", at: 1 } });
+        const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
+        yield* ZeropsAgentLoginModule.make({
+          terminalManager: (yield* makeFakeTerminalManager()).service,
+          zeropsAgentAuth: yield* makeFakeAuth(),
+          isZeropsEnvironment: true,
+          signIns: store,
+          credentialsHeld: Stream.fromQueue(held),
+        });
+        for (const reading of readings) {
+          if (typeof reading === "boolean") {
+            yield* Queue.offer(held, [["claude-code", reading]]);
+            yield* TestClock.adjust(Duration.millis(5));
+          } else {
+            yield* TestClock.adjust(reading);
+          }
+        }
+        yield* TestClock.adjust(ZeropsAgentLoginModule.CREDENTIAL_GONE_AFTER);
+
+        assert.strictEqual((yield* store.load)["claude-code"]?.by === "user-eva", kept);
+      }),
+    ),
+  );
+}
+
+// A sign-in kept while the credential still reads absent is a fresh credential's: the wait on
+// the absence before it never lets it go.
+it.effect("a sign-in made while its credential reads absent outlives that absence", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const store = yield* memorySignInStore();
+      const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        signIns: store,
+        credentialsHeld: Stream.fromQueue(held),
+      });
+      yield* Queue.offer(held, [["claude-code", false]]);
+      yield* TestClock.adjust(Duration.seconds(2));
+      yield* feed.start("claude-code", "thread-1", "zerops-user-eva");
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claude-code",
+        "Login successful. Press Enter to continue…\n",
+      );
+      yield* TestClock.adjust(ZeropsAgentLoginModule.CREDENTIAL_GONE_AFTER);
+
+      assert.isDefined((yield* store.load)["claude-code"]);
     }),
   ),
 );

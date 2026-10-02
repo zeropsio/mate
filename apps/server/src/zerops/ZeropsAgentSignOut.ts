@@ -49,10 +49,10 @@
  * stale state standing because one step stumbled. Every failure is logged,
  * never thrown; only step (a)'s refusal fails the RPC itself.
  *
- * Deliberately does NOT touch the D6 signer tag (`mate:signer:*`): the
- * Mate's own key cannot write project tags (`ZeropsProjectSigners.ts`'s own
- * module header), a stale tag is harmless (ownership reads "none" without a
- * credential), and the next sign-in's client replaces it.
+ * Deliberately does NOT touch the record of who signed the agent in
+ * (`zeropsSignIns`): the login walker's credential watch lets it go once the
+ * credential is gone, a record without a credential names nobody (ownership
+ * reads "none" without one), and the next sign-in replaces it.
  *
  * @module ZeropsAgentSignOut
  */

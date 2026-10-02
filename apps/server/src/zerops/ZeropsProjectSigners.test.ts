@@ -1,7 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -25,103 +24,26 @@ import {
   fileSignInStore,
   memorySignInStore,
   signInsPath,
+  ZeropsSignIns,
+  type SignInRecords,
   type SignInStore,
 } from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import {
   isMemberListComplete,
   loginTurnRefusal,
   isTurnStartingCommand,
   make as makeProjectSigners,
-  parseSignerTags,
+  MEMBERS_CACHE_TTL,
   planAgentSignOut,
   readActiveMemberIds,
-  readProjectSigners,
-  SIGNER_RECORD_WAIT,
-  SIGNERS_CACHE_TTL,
-  signerTag,
+  SIGN_IN_CHECK_WAIT,
   turnRefusal,
 } from "./ZeropsProjectSigners.ts";
 
 const JAN = "jan-user-id";
 const EVA = "eva-user-id";
-
-describe("parseSignerTags", () => {
-  it("reads a signer per agent and leaves every other tag alone", () => {
-    assert.deepStrictEqual(
-      parseSignerTags([
-        "mate:g:acme",
-        signerTag("claude-code", JAN),
-        "mate:role:dev",
-        signerTag("codex", EVA),
-      ]),
-      { "claude-code": JAN, codex: EVA },
-    );
-  });
-
-  // A tag list is a shared space — people put their own tags there — and one
-  // this build does not understand must never cost it the ones it does.
-  for (const [name, tag] of [
-    ["an agent this build has never heard of", "mate:signer:cursor:jan"],
-    ["a tag naming nobody", "mate:signer:claude-code:"],
-    ["a tag naming no agent", "mate:signer::jan"],
-    ["a tag with nothing after the prefix", "mate:signer:"],
-    ["something merely named like one", "mate:signers:claude-code:jan"],
-    ["an ordinary group tag", "mate:g:acme"],
-  ] as const) {
-    it(`drops ${name}`, () => {
-      assert.deepStrictEqual(parseSignerTags([tag]), {});
-    });
-  }
-
-  // Two records for one login (two sign-ins racing their tag writes, or a hand edit): whose it is
-  // is not known, and never guessed from the order the platform lists the tags in.
-  for (const [name, tags, expected] of [
-    ["one record", [signerTag("claude-code", JAN)], { "claude-code": JAN }],
-    [
-      "the same person twice",
-      [signerTag("claude-code", JAN), signerTag("claude-code", JAN)],
-      { "claude-code": JAN },
-    ],
-    [
-      "two people",
-      [signerTag("claude-code", JAN), signerTag("claude-code", EVA)],
-      { "claude-code": { among: [EVA, JAN] } },
-    ],
-    [
-      "two people, listed the other way round",
-      [signerTag("claude-code", EVA), signerTag("claude-code", JAN)],
-      { "claude-code": { among: [EVA, JAN] } },
-    ],
-    [
-      "two people on one login, one on another",
-      [signerTag("claude-code", JAN), signerTag("claude-code", EVA), signerTag("codex", EVA)],
-      { "claude-code": { among: [EVA, JAN] }, codex: EVA },
-    ],
-  ] as const) {
-    it(`reads ${name}`, () => {
-      assert.deepStrictEqual(parseSignerTags(tags), expected);
-    });
-  }
-
-  it("reads nothing out of a project with no tags at all", () => {
-    assert.deepStrictEqual(parseSignerTags(undefined), {});
-  });
-
-  // D6 per login: another login's signer is its own, never its agent's.
-  it("reads a signer per login beside the agents' own", () => {
-    assert.deepStrictEqual(
-      parseSignerTags([
-        signerTag("claude-code", JAN),
-        signerTag("claudeAgent-work", EVA),
-        signerTag("codex-home", JAN),
-      ]),
-      { "claude-code": JAN, "claudeAgent-work": EVA, "codex-home": JAN },
-    );
-  });
-});
 
 describe("turnRefusal", () => {
   const signedIn = {
@@ -250,18 +172,6 @@ describe("loginTurnRefusal", () => {
       { state: "not-authorized", token: false, signer: JAN, subject: JAN },
       { kind: "not-signed-in", auth: "not-authorized" },
     ],
-    // Two records for one login: whose credential it is is not known, and a stale signer must
-    // never run turns on another's — refused for everyone until somebody signs it in again.
-    [
-      "a login recorded for two people, one of them me",
-      { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: JAN },
-      { kind: "unsettled" },
-    ],
-    [
-      "a login recorded for two people, neither of them me",
-      { state: "authorized", token: false, signer: { among: [EVA, JAN] }, subject: "ida-user-id" },
-      { kind: "unsettled" },
-    ],
     [
       "a project token somebody else set",
       { state: "authorized", token: true, signer: EVA, subject: JAN },
@@ -349,22 +259,6 @@ describe("planAgentSignOut", () => {
     );
   });
 
-  // A record naming two people, one of whom has left: the credential may be theirs, so it goes.
-  for (const [name, active, out] of [
-    ["one of the two has left", [EVA], ["claude-code"]],
-    ["both are still members", [EVA, JAN], []],
-  ] as const) {
-    it(`a record that names two people: ${name}`, () => {
-      assert.deepStrictEqual(
-        planAgentSignOut({
-          signers: { "claude-code": { among: [EVA, JAN] } },
-          activeMemberIds: new Set(active),
-        }),
-        out,
-      );
-    });
-  }
-
   it("signs nobody out when nothing is recorded", () => {
     assert.deepStrictEqual(planAgentSignOut({ signers: {}, activeMemberIds: new Set() }), []);
   });
@@ -421,97 +315,6 @@ const httpLayer = (
   );
   return { layer, seen } as const;
 };
-
-describe("readProjectSigners", () => {
-  it.effect("reads the tags with the Mate's own key, and nobody else's", () => {
-    const { layer, seen } = httpLayer(() =>
-      json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: [signerTag("claude-code", JAN)] }),
-    );
-    return readProjectSigners({ environment }).pipe(
-      Effect.tap((signers) =>
-        Effect.sync(() => {
-          assert.deepStrictEqual(signers, { "claude-code": JAN });
-          assert.deepStrictEqual(seen, [`Bearer ${MATE_KEY}`]);
-        }),
-      ),
-      Effect.provide(layer),
-    );
-  });
-
-  // "Cannot read" is not "nobody signed in": the gate refuses on unknown, and
-  // the cache keeps whatever was last known so a blip never locks the person
-  // who signed in out of their own agent.
-  for (const [name, route] of [
-    ["the project read fails", () => json({ message: "down" }, 500)],
-    ["the project read is not a project", () => json({ nope: true })],
-  ] as const) {
-    it.effect(`answers nothing when ${name}`, () =>
-      readProjectSigners({ environment }).pipe(
-        Effect.tap((signers) => Effect.sync(() => assert.isUndefined(signers))),
-        Effect.provide(httpLayer(route).layer),
-      ),
-    );
-  }
-
-  it.effect("makes no call at all when this Mate has no key of its own", () => {
-    const { layer, seen } = httpLayer(
-      () => json({}),
-      ZeropsMateKeyModule.snapshotOnlyReader(undefined),
-    );
-    const keyless = resolveZeropsEnvironment({
-      projectId: PROJECT_ID,
-      apiHost: undefined,
-      allowedOrigins: [],
-    })!;
-    return readProjectSigners({ environment: keyless }).pipe(
-      Effect.tap((signers) =>
-        Effect.sync(() => {
-          assert.isUndefined(signers);
-          assert.deepStrictEqual(seen, []);
-        }),
-      ),
-      Effect.provide(layer),
-    );
-  });
-
-  it.effect("a key rotated in the store is retried once, not treated as a failure", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-signers-key-rotate-" });
-      const storePath = path.join(dir, "env.json");
-      yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"old-key"}`);
-      const mateKey = yield* makeMateKey({ fs, snapshot: MATE_KEY, storePath });
-
-      const layer = Layer.succeed(
-        HttpClient.HttpClient,
-        HttpClient.make((request) =>
-          Effect.gen(function* () {
-            const token = request.headers.authorization?.replace("Bearer ", "");
-            if (token === "old-key") {
-              yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"new-key"}`).pipe(Effect.orDie);
-              return HttpClientResponse.fromWeb(request, json({}, 401));
-            }
-            return HttpClientResponse.fromWeb(
-              request,
-              json({
-                id: PROJECT_ID,
-                clientId: CLIENT_ID,
-                tagList: [signerTag("claude-code", JAN)],
-              }),
-            );
-          }),
-        ),
-      );
-
-      const signers = yield* readProjectSigners({ environment }).pipe(
-        Effect.provide(layer),
-        Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-      );
-      assert.deepStrictEqual(signers, { "claude-code": JAN });
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  );
-});
 
 describe("readActiveMemberIds", () => {
   const route =
@@ -601,106 +404,55 @@ describe("the turn gate", () => {
   } as const;
 
   /**
-   * The service over a project whose tags the test changes between calls,
-   * counting every project read the service makes. The member list is
-   * unreadable, so the leave check never signs anybody out.
+   * The service over the sign-ins this server saw. The member list is unreadable, so the leave
+   * check never signs anybody out.
    */
-  const gate = (initialTags: ReadonlyArray<string>) =>
+  const gateOver = (signIns: SignInStore) =>
     Effect.gen(function* () {
-      let tags = initialTags;
-      let projectReads = 0;
-      let answer = 200;
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
           Layer.mergeAll(
-            httpLayer((url) => {
-              if (url.endsWith("/user/list")) return json({ message: "down" }, 500);
-              projectReads += 1;
-              if (answer !== 200) return json({ code: "tooManyRequests" }, answer);
-              return json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: tags });
-            }).layer,
+            httpLayer(() => json({ message: "down" }, 500)).layer,
             ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
             NodeServices.layer,
+            Layer.succeed(ZeropsSignIns, signIns),
           ),
         ),
       );
-      // The leave check's first pass reads the tags at start, and fills the cache.
       yield* TestClock.adjust(Duration.zero);
-      return {
-        signers,
-        setTags: (next: ReadonlyArray<string>) => {
-          tags = next;
-        },
-        reads: () => projectReads,
-        /** What the platform answers every project read from now on. */
-        answerWith: (status: number) => {
-          answer = status;
-        },
-      };
+      return { signers, signIns };
+    });
+  const gate = (kept: SignInRecords = {}) => memorySignInStore(kept).pipe(Effect.flatMap(gateOver));
+  const by = (userId: string) => ({ by: userId, at: 1 });
+  /** A login whose code is being checked, started by `startedBy`. */
+  const checking = (startedBy: string) =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      return yield* Ref.make<ZeropsAgentLoginState>({
+        phase: "verifying-code",
+        terminalId: "t",
+        startedAt: now,
+        startedBy,
+      });
     });
 
-  it.effect(
-    "a refusal on a cached signer read re-reads the tags and admits who just signed in",
-    () =>
-      Effect.gen(function* () {
-        const { signers, setTags, reads } = yield* gate([]);
-        const before = reads();
-        // The person's sign-in lands inside the cache's lifetime.
-        setTags([signerTag("claude-code", JAN)]);
-        yield* TestClock.adjust(Duration.seconds(5));
-
-        const refusal = yield* signers.turnRefusal({
-          agentId: "claude-code",
-          agent: signedIn,
-          subject: JAN,
-        });
-        assert.isUndefined(refusal);
-        assert.strictEqual(reads() - before, 1, "one re-read, no more");
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect("a re-read that still refuses refuses with the fresh answer", () =>
+  it.effect("goes by who this server saw sign the login in, and nobody else", () =>
     Effect.gen(function* () {
-      const { signers, setTags, reads } = yield* gate([signerTag("claude-code", EVA)]);
-      const before = reads();
-      setTags([]);
-      yield* TestClock.adjust(Duration.seconds(5));
+      const { signers } = yield* gate({ "claude-code": by(JAN) });
+      const on = (agentId: "claude-code" | "codex", subject: string) =>
+        signers.turnRefusal({ agentId, agent: signedIn, subject });
 
-      const refusal = yield* signers.turnRefusal({
-        agentId: "claude-code",
-        agent: signedIn,
-        subject: JAN,
-      });
-      assert.deepStrictEqual(refusal, { kind: "unrecorded" });
-      assert.strictEqual(reads() - before, 1);
-      // The fresh read replaced the cached one.
-      assert.deepStrictEqual(yield* signers.signers, {});
-      assert.strictEqual(reads() - before, 1);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("a refusal on a read made for this very call is not read again", () =>
-    Effect.gen(function* () {
-      const { signers, reads } = yield* gate([signerTag("claude-code", EVA)]);
-      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
-      const before = reads();
-
-      const refusal = yield* signers.turnRefusal({
-        agentId: "claude-code",
-        agent: signedIn,
-        subject: JAN,
-      });
-      assert.deepStrictEqual(refusal, { kind: "someone-else" });
-      assert.strictEqual(reads() - before, 1);
+      assert.isUndefined(yield* on("claude-code", JAN));
+      assert.deepStrictEqual(yield* on("claude-code", EVA), { kind: "someone-else" });
+      // D6 keeps no backward compatibility: a login with nothing kept — signed in before this
+      // record existed, from a terminal, or copied in — runs for nobody until signed in here.
+      assert.deepStrictEqual(yield* on("codex", JAN), { kind: "unrecorded" });
     }).pipe(Effect.scoped),
   );
 
   it.effect("another login is gated on its own signer, never its agent's", () =>
     Effect.gen(function* () {
-      const { signers } = yield* gate([
-        signerTag("claude-code", JAN),
-        signerTag("claudeAgent-work", EVA),
-      ]);
+      const { signers } = yield* gate({ "claude-code": by(JAN), "claudeAgent-work": by(EVA) });
       const onWork = (subject: string) =>
         signers.loginRefusal({
           key: "claudeAgent-work",
@@ -714,91 +466,16 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
-  // A new Mate's first turn (its stand-up) leaves the moment its person's sign-in succeeds, and
-  // the app writes that person's record as them in the same moment: the turn waits for the
-  // record on its way instead of being refused ahead of it (a live run, 2026-09-30: refused a
-  // second after the sign-in, the record read ~40 s later).
-  const justSignedIn = (startedBy: string) =>
-    Effect.gen(function* () {
-      const now = yield* DateTime.now;
-      return {
-        agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
-        login: { phase: "succeeded", terminalId: "t", startedAt: now, startedBy },
-      } as const;
-    });
-
-  it.effect("a turn on its own person's sign-in just made waits for the record on its way", () =>
-    Effect.gen(function* () {
-      const { signers, setTags } = yield* gate([]);
-      const { agent, login } = yield* justSignedIn(JAN);
-      const fiber = yield* signers
-        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
-        .pipe(Effect.forkChild);
-      yield* TestClock.adjust(Duration.seconds(2));
-      setTags([signerTag("claude-code", JAN)]);
-      yield* TestClock.adjust(Duration.seconds(2));
-
-      assert.isUndefined(yield* Fiber.join(fiber));
-    }).pipe(Effect.scoped),
-  );
-
-  // A live run (2026-10-01): Claude writes its credential before it prints its success line, so
-  // the agent reads signed in while its login still checks the code — and the stand-up left
-  // then, refused as "not recorded" before this server knew of the sign-in at all. A turn of the
-  // very person whose sign-in is under way waits for it to finish and for its record to land.
-  it.effect("a turn sent while its own person's code is still checked waits for the sign-in", () =>
-    Effect.gen(function* () {
-      // Eva signed in before: until Jan's sign-in settles, the credential reads as hers.
-      const { signers, setTags } = yield* gate([signerTag("claude-code", EVA)]);
-      const now = yield* DateTime.now;
-      const login = yield* Ref.make<ZeropsAgentLoginState>({
-        phase: "verifying-code",
-        terminalId: "t",
-        startedAt: now,
-        startedBy: JAN,
-        lastSucceeded: { startedAt: now, startedBy: EVA },
-      });
-      const fiber = yield* signers
-        .turnRefusal({
-          agentId: "claude-code",
-          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
-          subject: JAN,
-          login: yield* Ref.get(login),
-          currentLogin: Ref.get(login),
-        })
-        .pipe(Effect.forkChild);
-      yield* TestClock.adjust(Duration.seconds(2));
-      yield* Ref.set(login, {
-        phase: "succeeded",
-        terminalId: "t",
-        startedAt: now,
-        startedBy: JAN,
-      });
-      yield* TestClock.adjust(Duration.seconds(18));
-      setTags([signerTag("claude-code", JAN)]);
-      yield* TestClock.adjust(Duration.seconds(2));
-
-      assert.isUndefined(yield* Fiber.join(fiber));
-    }).pipe(Effect.scoped),
-  );
-
   // Eva signed in last; Jan's code is being checked, his credential already written over hers.
   // Her turn would run on his credential: it waits for his sign-in to settle, then goes by it.
-  for (const [name, settled, expected] of [
-    ["his sign-in succeeds: refused", "succeeded", { kind: "someone-else" }],
-    ["his sign-in fails: hers again", "failed", undefined],
+  for (const [name, succeeds, expected] of [
+    ["his sign-in succeeds: refused", true, { kind: "someone-else" }],
+    ["his sign-in fails: hers again", false, undefined],
   ] as const) {
-    it.effect(`another person's turn waits while a sign-in is checked — ${name}`, () =>
+    it.effect(`the signer's turn waits while somebody else's code is checked — ${name}`, () =>
       Effect.gen(function* () {
-        const { signers } = yield* gate([signerTag("claude-code", EVA)]);
-        const now = yield* DateTime.now;
-        const login = yield* Ref.make<ZeropsAgentLoginState>({
-          phase: "verifying-code",
-          terminalId: "t",
-          startedAt: now,
-          startedBy: JAN,
-          lastSucceeded: { startedAt: now, startedBy: EVA },
-        });
+        const { signers, signIns } = yield* gate({ "claude-code": by(EVA) });
+        const login = yield* checking(JAN);
         const fiber = yield* signers
           .turnRefusal({
             agentId: "claude-code",
@@ -810,7 +487,12 @@ describe("the turn gate", () => {
           .pipe(Effect.forkChild);
         yield* TestClock.adjust(Duration.seconds(2));
         assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
-        yield* Ref.update(login, (current) => ({ ...current, phase: settled }));
+        // As the walker settles it: a success is kept before anything else hears of it.
+        if (succeeds) yield* signIns.save("claude-code", by(JAN));
+        yield* Ref.update(login, (current) => ({
+          ...current,
+          phase: succeeds ? ("succeeded" as const) : ("failed" as const),
+        }));
         yield* TestClock.adjust(Duration.seconds(2));
 
         assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
@@ -818,102 +500,13 @@ describe("the turn gate", () => {
     );
   }
 
-  // A login left at its menu, its page or its code prompt has written nothing: no turn waits on
-  // an abandoned sign-in. And a failed one is settled, whoever succeeded before it.
-  for (const [name, login] of [
-    ["at its code prompt", { phase: "awaiting-code" }],
-    ["at its page", { phase: "awaiting-browser" }],
-    ["failed after the same person's success", { phase: "failed", lastSucceededByJan: true }],
-  ] as const) {
-    it.effect(`a sign-in ${name} makes no turn wait`, () =>
-      Effect.gen(function* () {
-        const { signers } = yield* gate([]);
-        const now = yield* DateTime.now;
-        const state: ZeropsAgentLoginState = {
-          phase: login.phase,
-          terminalId: "t",
-          startedAt: now,
-          startedBy: JAN,
-          ...("lastSucceededByJan" in login
-            ? { lastSucceeded: { startedAt: now, startedBy: JAN } }
-            : {}),
-        };
-        const fiber = yield* signers
-          .turnRefusal({
-            agentId: "claude-code",
-            agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
-            subject: JAN,
-            login: state,
-            currentLogin: Effect.succeed(state),
-          })
-          .pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.zero);
-
-        assert.deepStrictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
-        assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "unrecorded" });
-      }).pipe(Effect.scoped),
-    );
-  }
-
-  // Five turns wait for one record: the tags are read once a second between them, and a read the
-  // platform refuses (a 429) backs off instead of asking again every second.
-  it.effect("turns waiting for a record share their reads, and back off a refused one", () =>
+  // A live run (2026-10-01): Claude writes its credential before it prints its success line, so
+  // the agent reads signed in while its login still checks the code — and the stand-up left
+  // then. A turn of the very person whose sign-in is under way waits for it to settle.
+  it.effect("a turn sent while its own person's code is still checked waits for the sign-in", () =>
     Effect.gen(function* () {
-      const { signers, reads, answerWith } = yield* gate([]);
-      const { agent, login } = yield* justSignedIn(JAN);
-      const before = reads();
-      const fibers = yield* Effect.forEach([1, 2, 3, 4, 5], () =>
-        signers
-          .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
-          .pipe(Effect.forkChild),
-      );
-      yield* TestClock.adjust(Duration.seconds(5));
-      assert.isAtMost(reads() - before, 7, "about one read a second, not five");
-
-      answerWith(429);
-      const refused = reads();
-      yield* TestClock.adjust(Duration.seconds(10));
-      assert.isAtMost(reads() - refused, 5, "backed off");
-      yield* Effect.forEach(fibers, (fiber) => Fiber.interrupt(fiber));
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("a sign-in checked past the wait refuses another person's turn", () =>
-    Effect.gen(function* () {
-      const { signers } = yield* gate([]);
-      const now = yield* DateTime.now;
-      const login = {
-        phase: "verifying-code",
-        terminalId: "t",
-        startedAt: now,
-        startedBy: EVA,
-      } as const;
-      const fiber = yield* signers
-        .turnRefusal({
-          agentId: "claude-code",
-          agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
-          subject: JAN,
-          login,
-          currentLogin: Effect.succeed(login),
-        })
-        .pipe(Effect.forkChild);
-      yield* TestClock.adjust(SIGNER_RECORD_WAIT);
-      yield* TestClock.adjust(Duration.seconds(1));
-
-      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("a sign-in under way that fails ends the wait with its refusal", () =>
-    Effect.gen(function* () {
-      const { signers } = yield* gate([]);
-      const now = yield* DateTime.now;
-      const login = yield* Ref.make<ZeropsAgentLoginState>({
-        phase: "verifying-code",
-        terminalId: "t",
-        startedAt: now,
-        startedBy: JAN,
-      });
+      const { signers, signIns } = yield* gate({ "claude-code": by(EVA) });
+      const login = yield* checking(JAN);
       const fiber = yield* signers
         .turnRefusal({
           agentId: "claude-code",
@@ -924,161 +517,109 @@ describe("the turn gate", () => {
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.seconds(2));
-      yield* Ref.update(login, (current) => ({ ...current, phase: "failed" as const }));
+      assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
+      yield* signIns.save("claude-code", by(JAN));
+      yield* Ref.update(login, (current) => ({ ...current, phase: "succeeded" as const }));
       yield* TestClock.adjust(Duration.seconds(2));
 
-      assert.isTrue(fiber.pollUnsafe() !== undefined, "no wait past a failed sign-in");
-      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "unrecorded" });
+      assert.isUndefined(yield* Fiber.join(fiber));
     }).pipe(Effect.scoped),
   );
 
-  it.effect("a record that never lands refuses once the wait is over", () =>
-    Effect.gen(function* () {
-      const { signers } = yield* gate([]);
-      const { agent, login } = yield* justSignedIn(JAN);
-      const fiber = yield* signers
-        .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
-        .pipe(Effect.forkChild);
-      yield* TestClock.adjust(SIGNER_RECORD_WAIT);
-      yield* TestClock.adjust(Duration.seconds(1));
-
-      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "unrecorded" });
-    }).pipe(Effect.scoped),
-  );
-
-  // A sign-in over somebody else's record, or over a record naming two people, ends in this
-  // person's record too: their turn waits for it as for a first one.
-  for (const [name, before] of [
-    ["over another person's record", [signerTag("claude-code", EVA)]],
+  // A check whose outcome cannot change the answer holds nobody.
+  for (const [name, kept, subject, agent, expected] of [
+    ["the signer's own re-sign-in", JAN, JAN, signedIn, undefined],
+    ["a third person's turn", EVA, "ida-user-id", signedIn, { kind: "someone-else" }],
+    ["a turn nobody could be named for", undefined, undefined, signedIn, { kind: "unrecorded" }],
     [
-      "over a record naming two people",
-      [signerTag("claude-code", EVA), signerTag("claude-code", JAN)],
+      "a turn on a project token, nobody's login",
+      EVA,
+      EVA,
+      { ...signedIn, state: "authorized-token", flagToken: true },
+      undefined,
+    ],
+    [
+      "a turn on an agent that is not signed in",
+      EVA,
+      EVA,
+      { ...signedIn, state: "not-authorized", credPresent: false },
+      { kind: "not-signed-in", auth: "not-authorized" },
     ],
   ] as const) {
-    it.effect(`a sign-in just made ${name} waits for its own record`, () =>
+    it.effect(`a code being checked holds no turn it cannot decide — ${name}`, () =>
       Effect.gen(function* () {
-        const { signers, setTags } = yield* gate(before);
-        const { agent, login } = yield* justSignedIn(JAN);
+        const { signers } = yield* gate(kept === undefined ? {} : { "claude-code": by(kept) });
+        const login = yield* Ref.get(yield* checking(JAN));
         const fiber = yield* signers
-          .turnRefusal({ agentId: "claude-code", agent, subject: JAN, login })
+          .turnRefusal({
+            agentId: "claude-code",
+            agent,
+            subject,
+            login,
+            currentLogin: Effect.succeed(login),
+          })
           .pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.seconds(2));
-        setTags([signerTag("claude-code", JAN)]);
-        yield* TestClock.adjust(Duration.seconds(2));
+        yield* TestClock.adjust(Duration.zero);
 
-        assert.isUndefined(yield* Fiber.join(fiber));
+        assert.strictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
+        assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
       }).pipe(Effect.scoped),
     );
   }
 
-  // Until the new record lands, the old one names the person before: the credential is already
-  // the new person's, so the one before runs nothing on it.
-  it.effect("the signer before runs nothing on a credential somebody just signed in", () =>
-    Effect.gen(function* () {
-      const { signers } = yield* gate([signerTag("claude-code", EVA)]);
-      const { agent, login } = yield* justSignedIn(JAN);
-
-      assert.deepStrictEqual(
-        yield* signers.turnRefusal({ agentId: "claude-code", agent, subject: EVA, login }),
-        { kind: "someone-else" },
-      );
-      assert.isUndefined(
-        yield* signers.turnRefusal({
-          agentId: "claude-code",
-          agent: { ...agent, state: "authorized-token", flagToken: true },
-          subject: EVA,
-          login,
-        }),
-        "a project token is nobody's login",
-      );
-    }).pipe(Effect.scoped),
-  );
-
-  // A login beyond the defaults (crew mode's *Runs on*) is its own: the same wait for its own
-  // record, and the signer before runs nothing on it once somebody else signed it in.
-  it.effect(
-    "another login signed in over a colleague's record: theirs waits, the colleague's is refused",
-    () =>
+  // A login left at its menu, its page or its code prompt has written nothing: no turn waits on
+  // an abandoned sign-in.
+  for (const phase of ["menu", "awaiting-browser", "awaiting-code", "failed"] as const) {
+    it.effect(`a sign-in at ${phase} makes no turn wait`, () =>
       Effect.gen(function* () {
-        const { signers, setTags } = yield* gate([signerTag("claudeAgent-work", EVA)]);
-        const { login } = yield* justSignedIn(JAN);
-        const onWork = (subject: string) =>
-          signers.loginRefusal({
-            key: "claudeAgent-work",
-            state: "registering",
-            token: false,
+        const { signers } = yield* gate({ "claude-code": by(EVA) });
+        const login = { ...(yield* Ref.get(yield* checking(JAN))), phase };
+        const fiber = yield* signers
+          .turnRefusal({
+            agentId: "claude-code",
+            agent: signedIn,
+            subject: JAN,
+            login,
+            currentLogin: Effect.succeed(login),
+          })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.zero);
+
+        assert.strictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
+        assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
+      }).pipe(Effect.scoped),
+    );
+  }
+
+  // A check that never settles leaves the credential's owner unknown: once the wait is over,
+  // nobody's turn runs on it.
+  for (const [name, subject] of [
+    ["the signer's", EVA],
+    ["the checked person's", JAN],
+  ] as const) {
+    it.effect(`a check that never settles refuses ${name} turn once the wait is over`, () =>
+      Effect.gen(function* () {
+        const { signers } = yield* gate({ "claude-code": by(EVA) });
+        const login = yield* Ref.get(yield* checking(JAN));
+        const fiber = yield* signers
+          .turnRefusal({
+            agentId: "claude-code",
+            agent: signedIn,
             subject,
             login,
-          });
+            currentLogin: Effect.succeed(login),
+          })
+          .pipe(Effect.forkChild);
+        yield* TestClock.adjust(SIGN_IN_CHECK_WAIT);
+        yield* TestClock.adjust(Duration.seconds(1));
 
-        assert.deepStrictEqual(yield* onWork(EVA), { kind: "someone-else" });
-        const fiber = yield* onWork(JAN).pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.seconds(2));
-        setTags([signerTag("claudeAgent-work", JAN)]);
-        yield* TestClock.adjust(Duration.seconds(2));
-        assert.isUndefined(yield* Fiber.join(fiber));
+        assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
       }).pipe(Effect.scoped),
-  );
+    );
+  }
 
-  // Eva signs in; Jan starts and cancels a sign-in before her record lands. The cancelled
-  // attempt is the settled state: nobody's turn waits on it, Eva's credential runs for nobody but
-  // her, and hers runs once her record lands.
-  it.effect("an attempt cancelled after a sign-in waits for nothing; that sign-in stands", () =>
-    Effect.gen(function* () {
-      const { signers, setTags } = yield* gate([signerTag("claude-code", JAN)]);
-      const { agent, login: evas } = yield* justSignedIn(EVA);
-      const now = yield* DateTime.now;
-      const login = {
-        phase: "cancelled",
-        terminalId: "t",
-        startedAt: now,
-        startedBy: JAN,
-        lastSucceeded: { startedAt: evas.startedAt, startedBy: EVA },
-      } as const;
-      const on = (subject: string) =>
-        signers.turnRefusal({ agentId: "claude-code", agent, subject, login });
-
-      assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
-      assert.deepStrictEqual(yield* on(EVA), { kind: "someone-else" }, "at once, no wait");
-      setTags([signerTag("claude-code", EVA)]);
-      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
-      assert.isUndefined(yield* on(EVA));
-    }).pipe(Effect.scoped),
-  );
-
-  // Eva signs in over Jan's record. Jan's Retry, still showing from a write of his that failed
-  // earlier, writes his tag over Eva's. Half an hour on, the credential is still Eva's: the record
-  // written after her sign-in runs nothing for Jan, however old her sign-in is.
-  it.effect("a record written over a later sign-in admits nobody else, however long ago", () =>
-    Effect.gen(function* () {
-      const { signers } = yield* gate([signerTag("claude-code", JAN)]);
-      const { login } = yield* justSignedIn(EVA);
-      yield* TestClock.adjust(Duration.minutes(31));
-
-      assert.deepStrictEqual(
-        yield* signers.turnRefusal({
-          agentId: "claude-code",
-          agent: signedIn,
-          subject: JAN,
-          login,
-        }),
-        { kind: "someone-else" },
-      );
-      assert.deepStrictEqual(
-        yield* signers.loginRefusal({
-          key: "claude-code",
-          state: "authorized",
-          token: false,
-          subject: JAN,
-          login,
-        }),
-        { kind: "someone-else" },
-      );
-    }).pipe(Effect.scoped),
-  );
-
-  // Eva signs in over Jan's record; Jan writes his tag over hers by API; the server restarts.
-  // The credential is still Eva's — it lives on under the home — and so does who signed it in.
+  // Eva signs in; the server restarts. The credential is still Eva's — it lives on under the
+  // home — and so does who signed it in.
   describe("across a restart", () => {
     const terminal = () => {
       const listeners = new Map<
@@ -1107,17 +648,8 @@ describe("the turn gate", () => {
         }) ?? Effect.void;
       return { manager, succeed };
     };
-    const server = (store: SignInStore) => {
-      const { manager, succeed } = terminal();
-      return makeAgentLogin({
-        terminalManager: manager,
-        zeropsAgentAuth: { recheckNow: () => Effect.void },
-        isZeropsEnvironment: true,
-        signIns: store,
-      }).pipe(Effect.map((logins) => ({ logins, succeed })));
-    };
 
-    it.effect("a tag written over a sign-in admits nobody else after a restart", () =>
+    it.effect("who signed a login in here outlives a restart", () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -1126,148 +658,27 @@ describe("the turn gate", () => {
 
         yield* Effect.scoped(
           Effect.gen(function* () {
-            const { logins, succeed } = yield* server(yield* fileSignInStore(file));
+            const { manager, succeed } = terminal();
+            const logins = yield* makeAgentLogin({
+              terminalManager: manager,
+              zeropsAgentAuth: { recheckNow: () => Effect.void },
+              isZeropsEnvironment: true,
+              signIns: yield* fileSignInStore(file),
+            });
             yield* logins.start("claude-code", "thread-1", `${ZEROPS_SUBJECT_PREFIX}${EVA}`);
             yield* succeed("agent-login-claude-code");
           }),
         );
 
-        const { signers } = yield* gate([signerTag("claude-code", JAN)]);
-        const { logins } = yield* server(yield* fileSignInStore(file));
-        const login = (yield* logins.latest)["claude-code"];
+        const { signers } = yield* gateOver(yield* fileSignInStore(file));
+        const on = (subject: string) =>
+          signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
 
-        assert.deepStrictEqual(
-          yield* signers.turnRefusal({
-            agentId: "claude-code",
-            agent: signedIn,
-            subject: JAN,
-            login,
-          }),
-          { kind: "someone-else" },
-        );
+        assert.isUndefined(yield* on(EVA));
+        assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     );
-
-    it.effect("a credential nobody kept a sign-in for goes by its tag, as before", () =>
-      Effect.gen(function* () {
-        const { signers } = yield* gate([signerTag("claude-code", JAN)]);
-        const { logins } = yield* server(yield* memorySignInStore());
-        const login = (yield* logins.latest)["claude-code"];
-
-        assert.isUndefined(
-          yield* signers.turnRefusal({
-            agentId: "claude-code",
-            agent: signedIn,
-            subject: JAN,
-            login,
-          }),
-        );
-      }).pipe(Effect.scoped),
-    );
   });
-
-  it.effect("somebody else's sign-in is nothing this turn waits for", () =>
-    Effect.gen(function* () {
-      const { signers, reads } = yield* gate([]);
-      const { agent, login } = yield* justSignedIn(EVA);
-      const before = reads();
-
-      const refusal = yield* signers.turnRefusal({
-        agentId: "claude-code",
-        agent,
-        subject: JAN,
-        login,
-      });
-      assert.deepStrictEqual(refusal, { kind: "unrecorded" });
-      // The boot's read is under a second old: it is shared, not read again.
-      assert.isAtMost(reads() - before, 1, "at most one re-read, no wait");
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("an agent that is not signed in is refused without reading the tags again", () =>
-    Effect.gen(function* () {
-      const { signers, reads } = yield* gate([]);
-      const before = reads();
-
-      const refusal = yield* signers.turnRefusal({
-        agentId: "claude-code",
-        agent: { ...signedIn, state: "not-authorized", credPresent: false },
-        subject: JAN,
-      });
-      assert.deepStrictEqual(refusal, { kind: "not-signed-in", auth: "not-authorized" });
-      assert.strictEqual(reads() - before, 0);
-    }).pipe(Effect.scoped),
-  );
-});
-
-// A read that set out before a record landed and came back after a newer read: what it saw is
-// older than what the cache holds, and it never puts the earlier signer back.
-describe("a read that comes back late", () => {
-  const slowProject = () =>
-    Effect.gen(function* () {
-      let tags: ReadonlyArray<string> = [signerTag("claude-code", EVA)];
-      let holdNext = false;
-      const held: Array<Deferred.Deferred<void>> = [];
-      const client = HttpClient.make((request) =>
-        Effect.gen(function* () {
-          if (request.url.endsWith("/user/list")) {
-            return HttpClientResponse.fromWeb(request, json({ message: "down" }, 500));
-          }
-          // What the platform held when the read set out.
-          const response = json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: tags });
-          if (holdNext) {
-            holdNext = false;
-            const gate = yield* Deferred.make<void>();
-            held.push(gate);
-            yield* Deferred.await(gate);
-          }
-          return HttpClientResponse.fromWeb(request, response);
-        }),
-      );
-      const signers = yield* makeProjectSigners.pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            Layer.succeed(HttpClient.HttpClient, client),
-            Layer.succeed(
-              ZeropsMateKeyModule.ZeropsMateKey,
-              ZeropsMateKeyModule.snapshotOnlyReader(MATE_KEY),
-            ),
-            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-            NodeServices.layer,
-          ),
-        ),
-      );
-      yield* TestClock.adjust(Duration.zero);
-      return {
-        signers,
-        holdNextRead: () => {
-          holdNext = true;
-        },
-        setTags: (next: ReadonlyArray<string>) => {
-          tags = next;
-        },
-        releaseAll: () =>
-          Effect.forEach(held.splice(0), (gate) => Deferred.succeed(gate, undefined)),
-      };
-    });
-
-  it.effect("never overwrites a newer read, nor answers with what it saw", () =>
-    Effect.gen(function* () {
-      const { signers, holdNextRead, setTags, releaseAll } = yield* slowProject();
-      yield* TestClock.adjust(Duration.seconds(2));
-      // The leave check's read sets out, and is slow to come back.
-      holdNextRead();
-      const late = yield* signers.checkLeaversNow.pipe(Effect.forkChild);
-      yield* TestClock.adjust(Duration.zero);
-
-      setTags([signerTag("claude-code", JAN)]);
-      assert.deepStrictEqual(yield* signers.fresh, { "claude-code": JAN });
-
-      yield* releaseAll();
-      yield* Fiber.join(late);
-      assert.deepStrictEqual(yield* signers.signers, { "claude-code": JAN });
-    }).pipe(Effect.scoped),
-  );
 });
 
 describe("isActiveMember", () => {
@@ -1281,18 +692,20 @@ describe("isActiveMember", () => {
       let body = initial;
       let status = initialStatus;
       let memberReads = 0;
+      const signIns = yield* memorySignInStore();
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
           Layer.mergeAll(
             httpLayer((url) => {
               if (!url.endsWith("/user/list")) {
-                return json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: [] });
+                return json({ id: PROJECT_ID, clientId: CLIENT_ID });
               }
               memberReads += 1;
               return json(body, status);
             }).layer,
             ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
             NodeServices.layer,
+            Layer.succeed(ZeropsSignIns, signIns),
           ),
         ),
       );
@@ -1332,7 +745,7 @@ describe("isActiveMember", () => {
       yield* TestClock.adjust(Duration.seconds(5));
       yield* signers.isActiveMember(EVA);
       assert.strictEqual(reads(), 1);
-      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
+      yield* TestClock.adjust(MEMBERS_CACHE_TTL);
       yield* signers.isActiveMember(JAN);
       assert.strictEqual(reads(), 2);
     }).pipe(Effect.scoped),
@@ -1343,7 +756,7 @@ describe("isActiveMember", () => {
       const { signers, setMembers, reads } = yield* members(janActive);
       assert.isTrue(yield* signers.isActiveMember(JAN));
       setMembers({ message: "down" }, 500);
-      yield* TestClock.adjust(SIGNERS_CACHE_TTL);
+      yield* TestClock.adjust(MEMBERS_CACHE_TTL);
       assert.isTrue(yield* signers.isActiveMember(JAN));
       assert.strictEqual(reads(), 2);
     }).pipe(Effect.scoped),

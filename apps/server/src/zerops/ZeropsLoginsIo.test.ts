@@ -61,16 +61,14 @@ const makeFakeWatch = () => {
   };
 };
 
+/** The session that adds a login: Eva's, as the door names her. */
+const SESSION = "zerops-user:u-eva";
+
 const makeHarness = (input: {
   readonly initial?: Instances;
   readonly verified?: ServerProviderAuthStatus;
   readonly signers?: Readonly<Record<string, string>>;
   readonly isZeropsEnvironment?: boolean;
-  /**
-   * Reads the tags as `ZeropsProjectSigners` does: `readSigners` answers its cached read, and
-   * `readSignersFresh` reads `answer` now and caches it.
-   */
-  readonly cached?: boolean;
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -79,8 +77,11 @@ const makeHarness = (input: {
     const verifies = yield* Ref.make<ReadonlyArray<string>>([]);
     const reconciled = yield* Ref.make<ReadonlyArray<string>>([]);
     const fakeWatch = makeFakeWatch();
-    const answer = yield* Ref.make<Readonly<Record<string, string>>>(input.signers ?? {});
-    const cache = yield* Ref.make<Readonly<Record<string, string>>>(input.signers ?? {});
+    const signIns = yield* memorySignInStore(
+      Object.fromEntries(
+        Object.entries(input.signers ?? {}).map(([key, by]) => [key, { by, at: 1 }]),
+      ),
+    );
     const logins = yield* ZeropsLogins.make({
       ...settings.options,
       isZeropsEnvironment: input.isZeropsEnvironment ?? true,
@@ -90,17 +91,16 @@ const makeHarness = (input: {
           Effect.as(input.verified ?? "authenticated"),
         ),
       reconcile: (id, verified) => Ref.update(reconciled, (all) => [...all, `${id}:${verified}`]),
-      readSigners: input.cached === true ? Ref.get(cache) : Effect.succeed(input.signers ?? {}),
-      ...(input.cached === true
-        ? {
-            readSignersFresh: Ref.get(answer).pipe(Effect.tap((read) => Ref.set(cache, read))),
-            signerRecordPoll: Duration.millis(10),
-          }
-        : {}),
+      signIns,
+      readSigners: signIns.load.pipe(
+        Effect.map((records) =>
+          Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by])),
+        ),
+      ),
       watch: fakeWatch.watch,
       checkDebounce: Duration.millis(10),
     });
-    return { fs, homeDir, settings, verifies, reconciled, fakeWatch, logins, answer };
+    return { fs, homeDir, settings, verifies, reconciled, fakeWatch, logins, signIns };
   });
 
 /** Blocks this fiber for the next published list matching `predicate` (see `ZeropsAgentAuthIo.test.ts` on why it is not forked). */
@@ -117,11 +117,14 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     Effect.scoped(
       Effect.gen(function* () {
         const { fs, homeDir, settings, logins } = yield* makeHarness({});
-        const { id } = yield* logins.add({
-          agent: "claude-code",
-          kind: "subscription",
-          label: "work",
-        });
+        const { id } = yield* logins.add(
+          {
+            agent: "claude-code",
+            kind: "subscription",
+            label: "work",
+          },
+          SESSION,
+        );
 
         assert.strictEqual(id, "claudeAgent-work");
         const written = (yield* Ref.get(settings.current))[id];
@@ -151,18 +154,27 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           }),
         );
 
-        const account = yield* logins.add({
-          agent: "claude-code",
-          kind: "subscription",
-          label: "work",
-        });
-        const key = yield* logins.add({
-          agent: "claude-code",
-          kind: "apiKey",
-          label: "",
-          apiKey: "sk-ant-1",
-        });
-        const codex = yield* logins.add({ agent: "codex", kind: "subscription", label: "home" });
+        const account = yield* logins.add(
+          {
+            agent: "claude-code",
+            kind: "subscription",
+            label: "work",
+          },
+          SESSION,
+        );
+        const key = yield* logins.add(
+          {
+            agent: "claude-code",
+            kind: "apiKey",
+            label: "",
+            apiKey: "sk-ant-1",
+          },
+          SESSION,
+        );
+        const codex = yield* logins.add(
+          { agent: "codex", kind: "subscription", label: "home" },
+          SESSION,
+        );
 
         for (const { id } of [account, key]) {
           const path = `${homeDir}/.mate/logins/${id}/.claude.json`;
@@ -186,11 +198,14 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           // The default Claude login is Jan's; this one is Eva's.
           signers: { "claude-code": "u-jan", "claudeAgent-work": "u-eva" },
         });
-        const { id } = yield* logins.add({
-          agent: "claude-code",
-          kind: "subscription",
-          label: "work",
-        });
+        const { id } = yield* logins.add(
+          {
+            agent: "claude-code",
+            kind: "subscription",
+            label: "work",
+          },
+          SESSION,
+        );
         const subscription = yield* logins.subscribe;
 
         yield* fs.writeFileString(`${homeDir}/.mate/logins/${id}/.credentials.json`, "{}");
@@ -206,27 +221,29 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     ),
   );
 
-  // Eva signs in over Jan's record: the cached read names Jan after Eva's record landed, and
-  // nothing else would republish. The sign-in made here reads afresh until it names Eva.
-  it.effect("publishes the record of a sign-in made here as soon as it lands", () =>
+  // Eva signs in over Jan: the walker keeps her sign-in, then asks for the re-check whose
+  // publish names her.
+  it.effect("names who signed in here with the re-check that follows the sign-in", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { fs, homeDir, fakeWatch, logins, answer } = yield* makeHarness({
+        const { fs, homeDir, fakeWatch, logins, signIns } = yield* makeHarness({
           signers: { "claudeAgent-work": "u-jan" },
-          cached: true,
         });
-        const { id } = yield* logins.add({
-          agent: "claude-code",
-          kind: "subscription",
-          label: "work",
-        });
+        const { id } = yield* logins.add(
+          {
+            agent: "claude-code",
+            kind: "subscription",
+            label: "work",
+          },
+          SESSION,
+        );
         const subscription = yield* logins.subscribe;
         yield* fs.writeFileString(`${homeDir}/.mate/logins/${id}/.credentials.json`, "{}");
         fakeWatch.trigger(`${homeDir}/.mate/logins/${id}/.credentials.json`);
         yield* listWhere(subscription, (rows) => rows[0]?.signedInBy === "u-jan");
 
-        yield* logins.recheckNow(id, "u-eva");
-        yield* Ref.set(answer, { [id]: "u-eva" });
+        yield* signIns.save(id, { by: "u-eva", at: 2 });
+        yield* logins.recheckNow(id);
         const landed = yield* listWhere(subscription, (rows) => rows[0]?.signedInBy === "u-eva");
 
         assert.strictEqual(landed[0]?.signedInBy, "u-eva");
@@ -240,11 +257,14 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     Effect.scoped(
       Effect.gen(function* () {
         const before = yield* makeHarness({});
-        const { id } = yield* before.logins.add({
-          agent: "claude-code",
-          kind: "subscription",
-          label: "work",
-        });
+        const { id } = yield* before.logins.add(
+          {
+            agent: "claude-code",
+            kind: "subscription",
+            label: "work",
+          },
+          SESSION,
+        );
         yield* before.fs.writeFileString(
           `${before.homeDir}/.mate/logins/${id}/.credentials.json`,
           "{}",
@@ -285,11 +305,14 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     Effect.scoped(
       Effect.gen(function* () {
         const { logins } = yield* makeHarness({});
-        const { id } = yield* logins.add({
-          agent: "claude-code",
-          kind: "subscription",
-          label: "x",
-        });
+        const { id } = yield* logins.add(
+          {
+            agent: "claude-code",
+            kind: "subscription",
+            label: "x",
+          },
+          SESSION,
+        );
         const store = yield* memorySignInStore({ [id]: { by: "u-eva", at: 1 } });
         yield* ZeropsAgentLoginModule.make({
           terminalManager: {} as Parameters<
@@ -302,6 +325,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
             { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
             logins,
           ),
+          credentialGoneAfter: Duration.millis(10),
         });
         yield* logins.recheckNow(id);
         yield* Effect.sleep(Duration.millis(50));
@@ -310,18 +334,16 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     ),
   );
 
-  it.effect("lists an API key signed in the moment it is stored, and asks no CLI", () =>
+  // An API key has no sign-in to walk: whoever stores it signs it in, as the server saw them.
+  it.effect("lists an API key signed in by whoever stored it, and asks no CLI", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { settings, verifies, logins } = yield* makeHarness({
-          signers: { "claudeAgent-api-key": "u-eva" },
-        });
-        const { id } = yield* logins.add({
-          agent: "claude-code",
-          kind: "apiKey",
-          label: "",
-          apiKey: "sk-ant-1",
-        });
+        const { settings, verifies, logins, signIns } = yield* makeHarness({});
+        const { id } = yield* logins.add(
+          { agent: "claude-code", kind: "apiKey", label: "", apiKey: "sk-ant-1" },
+          SESSION,
+        );
+        assert.strictEqual((yield* signIns.load)[id]?.by, "u-eva");
 
         assert.deepStrictEqual((yield* Ref.get(settings.current))[id]?.environment, [
           { name: "ANTHROPIC_API_KEY", value: "sk-ant-1", sensitive: true },
@@ -339,6 +361,37 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     ),
   );
 
+  // Its stored key is an API key login's credential: the credential watch never lets its signer
+  // go for want of a credential file it never has.
+  it.effect("keeps an API key login's signer while its key is stored", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { logins, signIns } = yield* makeHarness({});
+        yield* ZeropsAgentLoginModule.make({
+          terminalManager: {} as Parameters<
+            typeof ZeropsAgentLoginModule.make
+          >[0]["terminalManager"],
+          zeropsAgentAuth: { recheckNow: () => Effect.void },
+          isZeropsEnvironment: true,
+          signIns,
+          credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
+            { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
+            logins,
+          ),
+          credentialGoneAfter: Duration.millis(10),
+        });
+        const { id } = yield* logins.add(
+          { agent: "claude-code", kind: "apiKey", label: "", apiKey: "sk-ant-1" },
+          SESSION,
+        );
+        yield* logins.recheckNow(id);
+        yield* Effect.sleep(Duration.millis(60));
+
+        assert.strictEqual((yield* signIns.load)[id]?.by, "u-eva");
+      }),
+    ),
+  );
+
   it.effect("refuses a key for Codex and a key-less API key login", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -348,7 +401,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           { agent: "claude-code", kind: "apiKey", label: "" },
           { agent: "codex", kind: "subscription", label: "", apiKey: "k" },
         ] as const) {
-          const refused = yield* Effect.flip(logins.add(input));
+          const refused = yield* Effect.flip(logins.add(input, SESSION));
           assert.strictEqual(refused.reason, "invalid-login");
         }
         assert.deepStrictEqual(yield* logins.latest, []);
@@ -360,7 +413,10 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     Effect.scoped(
       Effect.gen(function* () {
         const { fs, homeDir, settings, fakeWatch, logins } = yield* makeHarness({});
-        const { id } = yield* logins.add({ agent: "codex", kind: "subscription", label: "home" });
+        const { id } = yield* logins.add(
+          { agent: "codex", kind: "subscription", label: "home" },
+          SESSION,
+        );
         assert.lengthOf(fakeWatch.watching(), 1);
 
         yield* logins.forget(id);
@@ -378,7 +434,10 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     Effect.scoped(
       Effect.gen(function* () {
         const { settings, logins } = yield* makeHarness({});
-        const { id } = yield* logins.add({ agent: "codex", kind: "subscription", label: "home" });
+        const { id } = yield* logins.add(
+          { agent: "codex", kind: "subscription", label: "home" },
+          SESSION,
+        );
         const subscription = yield* logins.subscribe;
 
         yield* settings.replace({});
@@ -395,7 +454,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
         const { logins } = yield* makeHarness({ isZeropsEnvironment: false });
         assert.deepStrictEqual(yield* logins.latest, []);
         const refused = yield* Effect.flip(
-          logins.add({ agent: "codex", kind: "subscription", label: "home" }),
+          logins.add({ agent: "codex", kind: "subscription", label: "home" }, SESSION),
         );
         assert.strictEqual(refused.reason, "unavailable");
       }),

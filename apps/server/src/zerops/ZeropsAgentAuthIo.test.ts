@@ -308,6 +308,56 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         ),
     );
 
+    // Claude stages its credential and renames it over the old one: the reading after the rename
+    // finds it there, never the absence a removal reads (`ZeropsAgentLogin`'s credential watch).
+    it.effect("a credential replaced by a rename reads present", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({ key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", changed: true, migrated: false }),
+          );
+          // The rename's own check answers otherwise only so that its reading is published.
+          const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
+            "authenticated",
+            "unauthenticated",
+          ]);
+          const refreshProviderAuth = () =>
+            Effect.gen(function* () {
+              const [next, ...rest] = yield* Ref.get(answers);
+              yield* Ref.set(answers, rest);
+              return next ?? "unauthenticated";
+            });
+          const fakeWatch = makeFakeWatch();
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+          const subscription = yield* feed.subscribe;
+          const target = credWatchTarget(homeDir, "claude-code");
+          const credentialPath = path.join(homeDir, ".claude", ".credentials.json");
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          fakeWatch.trigger(target);
+          yield* changeWhere(subscription, claudeAuthResolved);
+
+          const staged = `${credentialPath}.staged`;
+          yield* fs.writeFileString(staged, '{"fresh":true}');
+          yield* fs.rename(staged, credentialPath);
+          fakeWatch.trigger(target);
+          const afterRename = yield* changeWhere(
+            subscription,
+            (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
+          );
+
+          assert.equal(agentState(afterRename, "claude-code")?.credPresent, true);
+        }),
+      ),
+    );
+
     it.effect(
       "does not write the sign-in flag when the credential appears but the provider is not authenticated",
       () =>
