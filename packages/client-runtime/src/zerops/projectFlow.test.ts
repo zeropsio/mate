@@ -168,7 +168,9 @@ describe("whose pull request it is", () => {
   });
 
   it.each([
-    { name: "zcp's branch", ref: `mate/mate-${VERA}`, expected: VERA },
+    { name: "main's zcp's branch", ref: `mate/mate-${VERA}`, expected: VERA },
+    { name: "HQ's branch of a Mate", ref: `mate/${VERA}`, expected: VERA },
+    { name: "a change's branch in HQ", ref: `mate/${VERA}/3`, expected: VERA },
     { name: "a person's branch", ref: "feature/invoices", expected: undefined },
     { name: "a branch named like a Mate's but not one", ref: "mate/feature", expected: undefined },
     { name: "no branch", ref: undefined, expected: undefined },
