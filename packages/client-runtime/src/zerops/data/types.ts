@@ -2020,7 +2020,7 @@ export type PlatformCommandResult =
   | { readonly kind: "create-project"; readonly value: ZeropsProject }
   | {
       readonly kind: "create-project-with-mate";
-      readonly value: { readonly project: ZeropsProject; readonly serviceName: string };
+      readonly value: { readonly project: ZeropsProject; readonly serviceName: string | null };
     }
   | { readonly kind: "import-project"; readonly value: { readonly projectId: string } }
   | { readonly kind: "import-services"; readonly value: void }
@@ -2258,7 +2258,7 @@ export interface ZeropsDataCommands {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<
-    CommandExecution<{ readonly project: ZeropsProject; readonly serviceName: string }>,
+    CommandExecution<{ readonly project: ZeropsProject; readonly serviceName: string | null }>,
     CommandAdmissionError | AdapterError
   >;
   readonly importProject: (

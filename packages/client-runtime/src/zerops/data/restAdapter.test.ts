@@ -1085,6 +1085,48 @@ describe("ZeropsDataAdapter receiver", () => {
       }),
   );
 
+  // Several requests in one command — its services, the org's keys, a key, the import — have a
+  // minute between them, not one request's 15 s (`commandDeadlineMs`).
+  it.effect("gives a Mate's container import a minute, and a project's creation its 15 s", () =>
+    Effect.gen(function* () {
+      const stageTimers = new ManualTimers();
+      const adapter = makeZeropsDataAdapter({
+        client: clientFor((_url, init) => pendingUntilAbort(init?.signal)),
+        makeSocket: () => new FakeSocket(),
+        timers: stageTimers,
+      });
+      const importing = yield* adapter
+        .execute(
+          {
+            kind: "import-development-container",
+            project,
+            projectName: "Acme Docs - Ada",
+            ...commandBase,
+          },
+          context(),
+        )
+        .pipe(Effect.result, Effect.forkChild);
+      yield* waitForTimer(stageTimers, 60_000);
+      expect(stageTimers.delays()).toEqual([60_000]);
+      stageTimers.fire(60_000);
+      expect(yield* Fiber.join(importing)).toMatchObject({
+        _tag: "Failure",
+        failure: { message: "Zerops command exceeded its deadline." },
+      });
+
+      const creating = yield* adapter
+        .execute(
+          { kind: "create-project", organization, name: "Acme", tagList: [], ...commandBase },
+          context(),
+        )
+        .pipe(Effect.result, Effect.forkChild);
+      yield* waitForTimer(stageTimers, 15_000);
+      expect(stageTimers.delays()).toEqual([15_000]);
+      stageTimers.fire(15_000);
+      yield* Fiber.join(creating);
+    }),
+  );
+
   it.effect(
     "reports an accepted malformed start-project response as non-retryable uncertainty",
     () =>

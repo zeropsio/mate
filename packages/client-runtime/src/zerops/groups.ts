@@ -344,6 +344,12 @@ export interface DeriveZeropsGroupsOptions {
   readonly customOrder?: ReadonlyArray<string>;
   /** The account's creations under way that know their group. */
   readonly births?: ReadonlyArray<ZeropsPlacedBirth>;
+  /**
+   * HQ's applications, by id and name: one no project of the listing places is a group all the
+   * same, empty — what a New project that stopped before its Mate leaves, for a Mate to be added
+   * to it (2026-10-03).
+   */
+  readonly apps?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
 }
 
 function roleRank(role: ZeropsEnvironmentRole | undefined): number {
@@ -460,6 +466,11 @@ export function deriveZeropsGroups(
     if (bucket) bucket.push(birth);
     else pending.set(groupId, [birth]);
     if (!members.has(groupId)) members.set(groupId, []);
+  }
+
+  for (const app of options.apps ?? []) {
+    if (!members.has(app.id)) members.set(app.id, []);
+    if (!labels.has(app.id) && app.name.trim() !== "") labels.set(app.id, app.name);
   }
 
   const groups = [...members.entries()].map(([groupId, environments]) => {

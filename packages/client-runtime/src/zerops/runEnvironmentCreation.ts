@@ -373,14 +373,17 @@ export async function runEnvironmentCreation(
           break;
         }
         case "import-container": {
-          const imported = await input.platform.importDevelopmentContainer({
-            projectId: requireProject(projectId),
-            projectName: projectName ?? "",
-            agents: step.agents,
-            ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
+          // Safe to ask again (`importDevelopmentContainer`): a try that stopped is tried again.
+          await withTries(async () => {
+            const imported = await input.platform.importDevelopmentContainer({
+              projectId: requireProject(projectId),
+              projectName: projectName ?? "",
+              agents: step.agents,
+              ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
+            });
+            serviceName = imported.serviceName;
+            if (imported.imported) containerImported = true;
           });
-          serviceName = imported.serviceName;
-          if (imported.imported) containerImported = true;
           break;
         }
         case "close-off": {

@@ -1904,6 +1904,13 @@ export class ZeropsApiClient {
     return { serviceName, imported: true };
   }
 
+  /**
+   * A new Mate's project, then its container (`importDevelopmentContainer`): the container's
+   * service name, or null where it could not be imported or confirmed. The project is the
+   * creation: once the platform made it, its container is no failure of it but a step the press
+   * resumes (`import-container`), which says why if it stops again — a project that exists is
+   * never one nobody can finish (`mate-rig-e2e-a - Ada`, 2026-10-02).
+   */
   async createProjectWithZeropsMate(
     input: {
       readonly clientId: string;
@@ -1914,7 +1921,7 @@ export class ZeropsApiClient {
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
+  ): Promise<{ readonly project: ZeropsProject; readonly serviceName: string | null }> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
     const projectResponse = await this.#request<unknown>(
@@ -1947,7 +1954,6 @@ export class ZeropsApiClient {
     }
     const project = projectResponse;
 
-    let serviceName: string;
     try {
       this.#assertGeneration(generation);
       // **Deliberately not the caller's signal.** What that signal cancels is
@@ -1960,7 +1966,7 @@ export class ZeropsApiClient {
       //
       // The session generation is the one check that still stops it, and it
       // should: a signed-out client must send nothing.
-      ({ serviceName } = await this.importDevelopmentContainer(
+      const { serviceName } = await this.importDevelopmentContainer(
         {
           clientId: input.clientId,
           projectId: project.id,
@@ -1970,18 +1976,11 @@ export class ZeropsApiClient {
         },
         undefined,
         beforeWrite,
-      ));
-    } catch (cause) {
-      // The guidance is the person's; the platform's own status, code and
-      // detail ride along, because a swallowed cause is why the half-made Mate
-      // went undiagnosed for a day.
-      const guidance = `Project "${project.name}" was created, but its container setup could not be confirmed. Open that project and check its services before continuing.`;
-      throw cause instanceof ZeropsApiError
-        ? new ZeropsApiError(guidance, "uncertain", cause.status, cause.code, cause.detail)
-        : new ZeropsApiError(guidance, "uncertain");
+      );
+      return { project, serviceName };
+    } catch {
+      return { project, serviceName: null };
     }
-
-    return { project, serviceName };
   }
 
   /**

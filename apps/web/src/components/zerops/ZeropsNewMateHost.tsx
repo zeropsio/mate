@@ -26,9 +26,11 @@ import {
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
+import { hqStructureAtom } from "~/state/zerops";
 import { newMateView, useNewMate } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import {
@@ -55,6 +57,7 @@ import {
   recipeChangeView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
+import { emptyApplications } from "./projects/emptyApps.logic";
 
 export function ZeropsNewMateHost() {
   const asked = useNewMate((state) => state.asked);
@@ -111,14 +114,17 @@ function NewMateDialog({
   // calls the row, and two Adas is two of nothing.
   const taken = useTakenBotNames();
   const presses = useMatePresses();
-  // The project as the menu draws it: a project being created counts, members listed or not.
+  const hqStructure = useAtomValue(hqStructureAtom);
+  // The project as the menu draws it: a project being created counts, members listed or not, and
+  // one HQ holds with nothing in it is the one its first Mate is added to.
   const entry = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
         order: "name",
         births: placedPressesIn(presses, activeOrganization?.id),
+        apps: emptyApplications(hqStructure, activeOrganization?.id),
       }).groups.find((candidate) => candidate.group.groupId === groupId),
-    [activeOrganization?.id, presses, candidates, groupId],
+    [activeOrganization?.id, presses, candidates, groupId, hqStructure],
   );
   // The account's flow: the application's changes, open and landed, as HQ's stream last said them.
   const flow = useZeropsProjectFlowOptional();

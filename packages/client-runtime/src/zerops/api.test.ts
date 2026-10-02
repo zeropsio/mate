@@ -1752,7 +1752,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     );
   });
 
-  it("classifies a denied second write in create-with-Mate as partial-write uncertainty", async () => {
+  it("hands the press a project whose container write the account no longer admits", async () => {
     const stub = recordingFetch(() =>
       jsonResponse(200, {
         id: "project-1",
@@ -1769,6 +1769,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     };
     let checks = 0;
 
+    // The project is made: its container is the press's to import (`import-container`).
     await expect(
       client.createProjectWithZeropsMate(
         { clientId: "org-1", name: "Mate" },
@@ -1778,7 +1779,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
           if (checks === 2) throw denied;
         },
       ),
-    ).rejects.toMatchObject({ kind: "uncertain" });
+    ).resolves.toMatchObject({ project: { id: "project-1" }, serviceName: null });
 
     expect(checks).toBe(2);
     // The project, then the reads the key's mint is planned from: the mint itself never left.
@@ -1856,12 +1857,17 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     );
 
     expect(created.project.id).toBe("project-1");
+    expect(created.serviceName).toMatch(/^zcp/u);
     expect(seen.some((call) => call.includes("/first-class-recipe/development-container"))).toBe(
       true,
     );
   });
 
-  it("stops before the container when the key cannot be read, saying the project exists", async () => {
+  // `mate-rig-e2e-a - Ada`, 2026-10-02: KRLS's key list did not answer in time, the container was
+  // never asked for, and the press said only that a command exceeded its deadline — the project it
+  // had made was nobody's to finish. The project is the creation: its container is a step the
+  // press resumes.
+  it("hands the press a project whose key cannot be read, its container not confirmed", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.includes("/integration-token/list")) {
         return jsonResponse(503, { error: { message: "Service unavailable." } });
@@ -1874,13 +1880,17 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
 
     await expect(
       client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
-    ).rejects.toMatchObject({ kind: "uncertain" });
+    ).resolves.toEqual({
+      project: expect.objectContaining({ id: "project-1" }),
+      serviceName: null,
+    });
     expect(stub.requests.some((request) => request.url.includes("/first-class-recipe/"))).toBe(
       false,
     );
   });
 
-  it("keeps what the platform said when it is the platform that refused the container", async () => {
+  // The press asks again, and says what the platform said if it refuses again.
+  it("hands the press a project whose container the platform refused", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.includes("/first-class-recipe/development-container")) {
         return jsonResponse(400, { error: { code: "invalidYaml", message: "Bad recipe." } });
@@ -1896,7 +1906,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
 
     await expect(
       client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
-    ).rejects.toMatchObject({ kind: "uncertain", status: 400, code: "invalidYaml" });
+    ).resolves.toMatchObject({ project: { id: "project-1" }, serviceName: null });
   });
 });
 
@@ -2218,7 +2228,7 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
     client.restoreSession(SESSION);
     await expect(
       client.createProjectWithZeropsMate({ clientId: "org", name: "Project" }),
-    ).rejects.toMatchObject({ kind: "uncertain" });
+    ).resolves.toMatchObject({ project: { id: "created" }, serviceName: null });
     expect(stub.requests).toHaveLength(2);
   });
 });

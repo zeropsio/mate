@@ -28,7 +28,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { hqEnvironmentsAtom } from "~/state/zerops";
+import { hqEnvironmentsAtom, hqStructureAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -200,6 +200,7 @@ import {
   withoutOfficialHq,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
+import { emptyApplications, groupIsEmpty } from "./projects/emptyApps.logic";
 import { lastGroupPlacement } from "./projects/groupPlacementMemory";
 import {
   type ZeropsRowAction,
@@ -940,10 +941,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // A creation the platform accepted is drawn in its group before the
   // listing holds its project, and a New project this tab is making from the
   // press — the same placing the left menu reads.
+  // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
+  const hqStructure = useAtomValue(hqStructureAtom);
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
     births: placedPressesIn(presses, activeOrganization?.id, Object.values(made)),
+    apps: emptyApplications(hqStructure, activeOrganization?.id),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
@@ -2332,6 +2336,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             setRowDialog({ kind: "rename-group", group });
           },
         },
+        // A project with nothing in it is offered its first Mate, and nothing more.
+        ...(groupIsEmpty(group)
+          ? [
+              {
+                id: "add-mate",
+                label: "Add Mate",
+                disabled: creationRunning,
+                onSelect: () => {
+                  requestEnvironment(group.groupId, "dev");
+                },
+              },
+            ]
+          : []),
         ...(addsOfferedFor(group)
           ? [
               {
@@ -2352,7 +2369,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               },
             ]
           : []),
-        ...(mayCreate && creatableRoles(group).includes("prod")
+        ...(mayCreate && !groupIsEmpty(group) && creatableRoles(group).includes("prod")
           ? [
               {
                 id: "add-production",
@@ -2642,8 +2659,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ))}
       <ZeropsProjectsFlow
         // A group is offered more once its first Mate is up — connected, or
-        // its container answering ready — and not a minute before.
-        addsOffered={addsOfferedFor}
+        // its container answering ready — and not a minute before; one with
+        // nothing in it, its first Mate.
+        addsOffered={(group) => groupIsEmpty(group) || addsOfferedFor(group)}
         creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}

@@ -286,6 +286,34 @@ describe("deriveZeropsGroups", () => {
     expect(result.groups[0]).toMatchObject({ name: "Beviro CRM", nameSource: "hq" });
   });
 
+  // `mate-rig-e2e-a`, 2026-10-02: a New project that stopped before its Mate left an application
+  // with no project, drawn nowhere — nobody could add the Mate it was made for.
+  it("draws an application HQ holds with no project as its group, empty, as HQ names it", () => {
+    const result = deriveZeropsGroups(
+      [project("crm-dev", { hq: placed("aaa", "mate", { appName: "Beviro CRM" }) })],
+      {
+        order: "name",
+        apps: [
+          { id: "aaa", name: "Beviro CRM" },
+          { id: "eee", name: "mate-rig-e2e-a" },
+        ],
+      },
+    );
+
+    expect(
+      result.groups.map((group) => [
+        group.groupId,
+        group.name,
+        group.nameSource,
+        group.environments.length,
+        group.pending.length,
+      ]),
+    ).toEqual([
+      ["aaa", "Beviro CRM", "hq", 1, 0],
+      ["eee", "mate-rig-e2e-a", "hq", 0, 0],
+    ]);
+  });
+
   it("falls back to the group id when its application has no name, and says so", () => {
     const result = deriveZeropsGroups([project("crm-dev", { hq: placed("aaa", "mate") })], {
       order: "name",

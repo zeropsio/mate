@@ -2131,6 +2131,8 @@ describe("makeZeropsDataRuntime", () => {
       Effect.gen(function* () {
         const registry = AtomRegistry.make();
         const executed: string[] = [];
+        /** Each command's deadline, as the runtime hands it to the adapter (the clock is at 0). */
+        const deadlines = new Map<string, number>();
         const created = {
           id: "created-project",
           clientId: "org-a",
@@ -2140,8 +2142,9 @@ describe("makeZeropsDataRuntime", () => {
         const base = makeAdapterHarness();
         const adapter: ZeropsDataAdapter = {
           ...base.adapter,
-          execute: (command) => {
+          execute: (command, context) => {
             executed.push(command.kind);
+            deadlines.set(command.kind, context.deadlineMs);
             switch (command.kind) {
               case "create-project":
                 return Effect.succeed({
@@ -2239,6 +2242,13 @@ describe("makeZeropsDataRuntime", () => {
           "import-services",
           "import-project",
         ]);
+        // A command of several requests has a minute, one request its own deadline.
+        expect(Object.fromEntries(deadlines)).toEqual({
+          "create-project": 15_000,
+          "import-development-container": 60_000,
+          "import-services": 15_000,
+          "import-project": 15_000,
+        });
         const access = (yield* runtime.state).access;
         expect(
           access.status === "verified" &&

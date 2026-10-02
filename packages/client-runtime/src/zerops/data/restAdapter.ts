@@ -4,7 +4,7 @@ import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 
-import { DEFAULT_ZEROPS_DATA_POLICY, type ZeropsDataPolicy } from "./policy.ts";
+import { commandDeadlineMs, DEFAULT_ZEROPS_DATA_POLICY, type ZeropsDataPolicy } from "./policy.ts";
 import {
   decodeProjectCommandResponse,
   decodeEntityDirectResponse,
@@ -1094,11 +1094,12 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   const executeApi = <Value>(
     context: RequestContext,
     use: (signal: AbortSignal) => Promise<Value>,
+    deadlineMs: number = policy.httpDeadlineMs,
   ): Effect.Effect<Value, AdapterError> =>
     Effect.gen(function* () {
       const stage = stageSignal(
         context,
-        policy.httpDeadlineMs,
+        deadlineMs,
         options.timers,
         yield* Clock.currentTimeMillis,
       );
@@ -1275,21 +1276,24 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           Effect.mapError(uncertainCommandError),
         );
       case "import-development-container":
-        return executeApi(context, (signal) =>
-          options.client.importDevelopmentContainer(
-            {
-              clientId: command.project.organization.organizationId,
-              projectId: command.project.projectId,
-              projectName: command.projectName,
-              ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
-              ...(command.agents === undefined ? {} : { agents: command.agents }),
-              ...(command.setupRuntimesYaml === undefined
-                ? {}
-                : { setupRuntimesYaml: command.setupRuntimesYaml }),
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
+        return executeApi(
+          context,
+          (signal) =>
+            options.client.importDevelopmentContainer(
+              {
+                clientId: command.project.organization.organizationId,
+                projectId: command.project.projectId,
+                projectName: command.projectName,
+                ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
+                ...(command.agents === undefined ? {} : { agents: command.agents }),
+                ...(command.setupRuntimesYaml === undefined
+                  ? {}
+                  : { setupRuntimesYaml: command.setupRuntimesYaml }),
+              },
+              signal,
+              context.beforeProjectWrite,
+            ),
+          commandDeadlineMs(command.kind, policy),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
             processRefs: [],
@@ -1347,18 +1351,21 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           Effect.mapError(uncertainCommandError),
         );
       case "create-project-with-mate":
-        return executeApi(context, (signal) =>
-          options.client.createProjectWithZeropsMate(
-            {
-              clientId: command.organization.organizationId,
-              name: command.name,
-              ...(command.location === undefined ? {} : { location: command.location }),
-              ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
-              ...(command.agents === undefined ? {} : { agents: command.agents }),
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
+        return executeApi(
+          context,
+          (signal) =>
+            options.client.createProjectWithZeropsMate(
+              {
+                clientId: command.organization.organizationId,
+                name: command.name,
+                ...(command.location === undefined ? {} : { location: command.location }),
+                ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
+                ...(command.agents === undefined ? {} : { agents: command.agents }),
+              },
+              signal,
+              context.beforeProjectWrite,
+            ),
+          commandDeadlineMs(command.kind, policy),
         ).pipe(
           Effect.flatMap((value) =>
             projectCommandReceipt(command, value.project, { kind: command.kind, value }),

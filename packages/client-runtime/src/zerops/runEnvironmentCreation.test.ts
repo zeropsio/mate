@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
+  PRESS_STEP_ATTEMPTS,
+  PRESS_STEP_RETRY_MS,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
@@ -453,6 +455,41 @@ describe("runEnvironmentCreation — the platform's verdict on the project", () 
       error: "Zerops did not confirm the project was created.",
     });
     expect(slept).toEqual([2]);
+  });
+});
+
+describe("runEnvironmentCreation — a Mate's container", () => {
+  // Its import is safe to ask again — a project with its container makes no write, an earlier key
+  // is reused — so a try that stopped (a slow key list, 2026-10-02) is tried again, as the other
+  // idempotent steps are.
+  it.each([
+    { name: "a try that failed is tried again, a little apart", fails: 1, ok: true, tries: 2 },
+    {
+      name: "past the press's tries the step stops",
+      fails: PRESS_STEP_ATTEMPTS,
+      ok: false,
+      tries: PRESS_STEP_ATTEMPTS,
+    },
+  ])("$name", async ({ fails, ok, tries }) => {
+    let failed = 0;
+    const { platform, calls } = fakePlatform({
+      importDevelopmentContainer: async (input) => {
+        calls.push(`container:${input.projectId}`);
+        if (failed < fails) {
+          failed += 1;
+          throw new Error("Zerops command exceeded its deadline.");
+        }
+        return { serviceName: "zcp", imported: true };
+      },
+    });
+    const { outcome, slept } = await run(plan("dev"), platform);
+    expect(outcome.ok).toBe(ok);
+    if (!ok) expect(outcome).toMatchObject({ failedStep: { kind: "import-container" } });
+    expect(calls.filter((call) => call.startsWith("container:"))).toHaveLength(tries);
+    // Nothing before the container waits: its tries' waits come first, the close-off's after.
+    expect(slept.slice(0, tries - 1)).toEqual(
+      Array.from({ length: tries - 1 }, () => PRESS_STEP_RETRY_MS),
+    );
   });
 });
 
