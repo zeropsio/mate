@@ -6,7 +6,8 @@
  * - **The verbs** are the places that decide today: reading a project or an application, writing an
  *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment,
  *   following a Mate's live summary (who may operate it: open it, as its door does), and reading and
- *   commenting on an application's changes (`hqChanges.ts`), as main's Gitea read them.
+ *   commenting on an application's changes (`hqChanges.ts`), as main's Gitea read them, and
+ *   merging or closing one, as its write team did.
  * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
  *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
  *   other verb.
@@ -108,6 +109,10 @@ export interface Targets {
   readonly read_change: { readonly projectIds: ReadonlyArray<string> };
   /** A comment on one of an application's changes: whoever reads the change. */
   readonly comment_change: { readonly projectIds: ReadonlyArray<string> };
+  /** A merge of one of an application's changes into its `main`: whoever develops it. */
+  readonly merge_change: { readonly projectIds: ReadonlyArray<string> };
+  /** A change of an application closed without merging: whoever may merge it. */
+  readonly close_change: { readonly projectIds: ReadonlyArray<string> };
   readonly create_app: null;
   readonly rename_app: null;
   readonly attach: AttachTarget;
@@ -274,6 +279,11 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "comment_change":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return seesChanges(request.target.projectIds) ? ALLOW : deny("changes_not_seen");
+    // Main's Gitea write team: who may merge, and close without merging.
+    case "merge_change":
+    case "close_change":
+      if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
+      return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
     case "observe_mate":
       // Who may operate a Mate is who its door opens for: Basic user or above there. No kind check:
       // HQ has a live summary only for a project it holds as a Mate.
