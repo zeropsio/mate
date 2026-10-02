@@ -812,6 +812,48 @@ describe("HQ API", () => {
         }),
     );
 
+    it.effect("a Mate's link follows it into an application, between two and out", () =>
+      Effect.gen(function* () {
+        const { call, fake, socket } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* setUpMate(call, "P_MATE");
+        const credential = yield* enrollMate(call, fake, "P_MATE");
+        const ticket = (yield* call("POST", "/api/mate/link-ticket", {
+          headers: { authorization: `Mate ${credential}` },
+        })).body as { readonly ticket: string };
+        const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
+        const appIdOf = Effect.map(
+          link.next("state"),
+          (state) => (state as { readonly mate: { readonly appId: string | null } }).mate.appId,
+        );
+        assert.strictEqual(yield* appIdOf, null);
+        const appOf = (name: string) =>
+          Effect.map(
+            call("POST", "/api/apps", { session: owner, body: { name } }),
+            (answer) => (answer.body as { readonly id: string }).id,
+          );
+        const [a, b] = [yield* appOf("A"), yield* appOf("B")];
+        const attached = yield* call("POST", `/api/apps/${a}/projects`, {
+          session: owner,
+          body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-1" } },
+        });
+        assert.strictEqual(attached.status, 201);
+        assert.strictEqual(yield* appIdOf, a);
+        const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
+          session: owner,
+          body: { appId: b, kind: "mate" },
+        });
+        assert.strictEqual(moved.status, 200);
+        assert.strictEqual(yield* appIdOf, b);
+        const detached = yield* call("PUT", "/api/projects/P_MATE/app", {
+          session: owner,
+          body: { appId: null, kind: "mate" },
+        });
+        assert.strictEqual(detached.status, 200);
+        assert.strictEqual(yield* appIdOf, null);
+      }),
+    );
+
     it.effect("a Mate's push is refused another application's repository: not_your_app", () =>
       Effect.gen(function* () {
         const { call, fake } = yield* startCore(true);

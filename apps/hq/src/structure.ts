@@ -473,6 +473,7 @@ export const structureLayer = (options: {
               "placed_or_production_taken",
             );
             yield* changed;
+            yield* PubSub.publish(mateChanged, input.projectId);
           }),
 
         moveProject: (userId, projectId, { appId, kind }) =>
@@ -495,7 +496,10 @@ export const structureLayer = (options: {
                     RETURNING 1`;
                 }),
               );
-              if (removed.length > 0) yield* changed;
+              if (removed.length > 0) {
+                yield* changed;
+                yield* PubSub.publish(mateChanged, projectId);
+              }
               return { projectId, appId, kind: null };
             }
             const target = yield* sql<{ readonly project_id: string }>`
@@ -544,6 +548,7 @@ export const structureLayer = (options: {
               "production_taken",
             );
             yield* changed;
+            yield* PubSub.publish(mateChanged, projectId);
             return { projectId, appId, kind };
           }),
 
