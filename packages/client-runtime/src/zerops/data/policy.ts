@@ -1,5 +1,7 @@
 export interface ZeropsDataPolicy {
   readonly httpDeadlineMs: number;
+  /** A command of several requests, between them all (`commandDeadlineMs`). */
+  readonly commandDeadlineMs: number;
   readonly socketTokenDeadlineMs: number;
   readonly socketOpenDeadlineMs: number;
   readonly socketGreetingDeadlineMs: number;
@@ -70,6 +72,7 @@ export interface ZeropsDataPolicy {
  */
 export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   httpDeadlineMs: 15_000,
+  commandDeadlineMs: 60_000,
   socketTokenDeadlineMs: 15_000,
   socketOpenDeadlineMs: 10_000,
   socketGreetingDeadlineMs: 10_000,
@@ -123,6 +126,21 @@ function assertPositiveInteger(name: keyof ZeropsDataPolicy, value: number): voi
     throw new RangeError(`${name} must be a positive safe integer.`);
   }
 }
+
+/**
+ * The commands that make several requests: a project with its first Mate's container, and a
+ * container into a project — its services, the org's keys (17 s measured on a 193-key org, cold),
+ * a key, the import (`api.ts`). One request's 15 s cannot hold them; main gave its commands a
+ * minute.
+ */
+const SEVERAL_REQUESTS: ReadonlySet<string> = new Set([
+  "create-project-with-mate",
+  "import-development-container",
+]);
+
+/** How long a command of `kind` is given: a minute for one of several requests, else one's. */
+export const commandDeadlineMs = (kind: string, policy: ZeropsDataPolicy): number =>
+  SEVERAL_REQUESTS.has(kind) ? policy.commandDeadlineMs : policy.httpDeadlineMs;
 
 export function makeZeropsDataPolicy(overrides: Partial<ZeropsDataPolicy> = {}): ZeropsDataPolicy {
   const policy = { ...DEFAULT_ZEROPS_DATA_POLICY, ...overrides };

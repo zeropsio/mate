@@ -23,6 +23,7 @@ import { commandAdmissionError, commandTarget } from "./commands.ts";
 import { BuildLogTransportError, type BuildLogTransport } from "./logTransport.ts";
 import { makeBuildLogRegistry, type BuildLogRegistry } from "./logs.ts";
 import {
+  commandDeadlineMs,
   DEFAULT_ZEROPS_DATA_POLICY,
   DEFAULT_ZEROPS_GRANT_POLICY,
   type ZeropsDataPolicy,
@@ -3626,20 +3627,22 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // with the admission's reason — "not verified yet" is a wait, not an
           // answer (`commands.ts`).
           let midWriteAdmission: CommandAdmissionError | null = null;
-          const outcome = yield* context(policy.httpDeadlineMs, (requestContext) =>
-            options.adapter.execute(command, {
-              ...requestContext,
-              beforeProjectWrite: () =>
-                Effect.runPromiseWith(runtimeContext)(
-                  checkCommandAdmission(command).pipe(
-                    Effect.tapError((admission) =>
-                      Effect.sync(() => {
-                        midWriteAdmission = admission;
-                      }),
+          const outcome = yield* context(
+            commandDeadlineMs(command.kind, policy),
+            (requestContext) =>
+              options.adapter.execute(command, {
+                ...requestContext,
+                beforeProjectWrite: () =>
+                  Effect.runPromiseWith(runtimeContext)(
+                    checkCommandAdmission(command).pipe(
+                      Effect.tapError((admission) =>
+                        Effect.sync(() => {
+                          midWriteAdmission = admission;
+                        }),
+                      ),
                     ),
                   ),
-                ),
-            }),
+              }),
           ).pipe(Effect.result);
           if (Result.isFailure(outcome) && midWriteAdmission !== null) {
             const admission: CommandAdmissionError = midWriteAdmission;

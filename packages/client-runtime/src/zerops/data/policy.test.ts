@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  commandDeadlineMs,
   DEFAULT_ZEROPS_DATA_POLICY,
   DEFAULT_ZEROPS_GRANT_POLICY,
   makeZeropsDataPolicy,
@@ -28,6 +29,18 @@ describe("Zerops data runtime policy", () => {
     expect(DEFAULT_ZEROPS_DATA_POLICY.httpDeadlineMs).toBe(15_000);
     expect(DEFAULT_ZEROPS_DATA_POLICY.heartbeatIntervalMs).toBe(15_000);
     expect(DEFAULT_ZEROPS_DATA_POLICY.pongDeadlineMs).toBe(8_000);
+  });
+
+  // A Mate's container takes several requests — its project's services, the org's keys (17 s
+  // measured on a 193-key org, cold), a key, the import — and shared one request's 15 s, so every
+  // Set up Mate on KRLS stopped at its deadline (2026-10-02). Main gave its commands a minute.
+  it.each([
+    ["create-project-with-mate", 60_000],
+    ["import-development-container", 60_000],
+    ["create-project", 15_000],
+    ["restart-service", 15_000],
+  ] as const)("gives %s %i ms", (kind, deadline) => {
+    expect(commandDeadlineMs(kind, DEFAULT_ZEROPS_DATA_POLICY)).toBe(deadline);
   });
 
   it("bounds establishment and background receiver lifetime", () => {
