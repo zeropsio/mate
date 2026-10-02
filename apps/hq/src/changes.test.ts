@@ -474,6 +474,7 @@ describe("a Mate's changes in HQ", () => {
           const change = (number: number, state: string, head: string | null = null) => ({
             repo: "appdev",
             number,
+            title: "Mate: appdev",
             state,
             head,
             mergedSha: null,
@@ -882,9 +883,10 @@ describe("a Mate's changes in HQ", () => {
             ((yield* devSocket.next("snapshot")) as { readonly changes: object }).changes,
             {},
           );
-          const own = (head: string | null) => ({
+          const own = (head: string | null, title = "Mate: appdev") => ({
             repo: "appdev",
             number: 1,
+            title,
             state: "open",
             head,
             mergedSha: null,
@@ -916,7 +918,7 @@ describe("a Mate's changes in HQ", () => {
             [own(head)],
           );
 
-          // Retitled: the socket shows it; the link, whose state it does not touch, stays quiet.
+          // Retitled: the socket shows it, and the link, whose state names each change's title.
           yield* call("PATCH", "/api/mate/changes/appdev/1", {
             headers: auth,
             body: { title: "Add a login page" },
@@ -925,7 +927,11 @@ describe("a Mate's changes in HQ", () => {
             readonly changes: ReadonlyArray<Change>;
           };
           assert.strictEqual(retitled.changes[0]?.["title"], "Add a login page");
-          assert.deepStrictEqual(yield* link.quiet("300 millis"), []);
+          assert.deepStrictEqual(
+            ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
+              .changes,
+            [own(head, "Add a login page")],
+          );
           assert.deepStrictEqual(yield* devSocket.quiet("1 millis"), []);
         }),
     );

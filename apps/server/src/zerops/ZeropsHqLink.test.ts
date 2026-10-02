@@ -174,6 +174,7 @@ describe("ZeropsHqLink", () => {
             {
               repo: "shop",
               number: 3,
+              title: "Mate: shop",
               state: "open",
               head: "a".repeat(40),
               mergedSha: null,
