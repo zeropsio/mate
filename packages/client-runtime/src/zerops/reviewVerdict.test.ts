@@ -33,6 +33,7 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
     readout: "read",
     commits: 1,
     downstream: { production: true, stage: true },
+    offered: { merge: true, close: true },
     now: NOW,
     ...over,
   };
@@ -197,6 +198,12 @@ describe("changeReview: the button says what will happen (R5)", () => {
       "a conflict",
       { pull: pull({ mergeability: "conflicting" }) },
       "Merging waits until the conflict is resolved.",
+      { enabled: false, safe: false },
+    ],
+    [
+      "HQ not having said yet whether it merges",
+      { pull: pull({ mergeability: "checking" }) },
+      "Merging waits until HQ knows it merges cleanly.",
       { enabled: false, safe: false },
     ],
     [
@@ -879,6 +886,110 @@ describe("crewTaskReview: only work that went in is in (the press's answer is no
   });
 });
 
+describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
+  // A verb this person cannot finish is not offered (guide 0.8); the foot says what it takes, in
+  // HQ's own refusal words.
+  it("offers no Merge where merge_change is not offered, and says what it takes", () => {
+    const review = changeReview(change({ offered: { merge: false, close: false } }));
+    expect(review.verdict.state).toBe("ready");
+    expect(review.primary).toBeUndefined();
+    expect(review.consequence).toBe(
+      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+    );
+  });
+
+  // Its facts not held yet — HQ has not placed the projects: Merge stands where it will, unpressed.
+  it("holds Merge back while HQ's rule has not been asked", () => {
+    const review = changeReview(change({ offered: undefined }));
+    expect(review.primary).toMatchObject({ label: "Merge", enabled: false, safe: false });
+    expect(review.consequence).toBe(
+      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+    );
+  });
+});
+
+describe("changeReview: Close without merging, the review its one confirmation (T8a)", () => {
+  const ASKED = { kind: "asked" } as const;
+
+  it.each<[string, Partial<ChangeReviewInput>, { label: string; enabled: boolean } | undefined]>([
+    [
+      "beside Merge, where close_change is offered",
+      {},
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["nowhere close_change is not offered", { offered: { merge: true, close: false } }, undefined],
+    // An owner or admin closes what they may not merge (an application with no project left).
+    [
+      "to a person who may close and not merge",
+      { offered: { merge: false, close: true } },
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["while Merge runs", { press: { kind: "running" } }, undefined],
+    [
+      "after a refused Merge",
+      { press: { kind: "refused", reason: "No." } },
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["on a merged change", { pull: pull({ merged: true, mergedAt: minutesAgo(1) }) }, undefined],
+    ["on a closed one", { pull: pull({ state: "closed" }) }, undefined],
+  ])("is offered %s", (_name, over, secondary) => {
+    expect(changeReview(change(over)).secondary).toEqual(secondary);
+  });
+
+  it("asks before it closes, in the review's own words, never for ⌘↵", () => {
+    const review = changeReview(change({ close: ASKED }));
+    expect(review.verdict).toMatchObject({
+      state: "close-confirm",
+      tone: "attention",
+      title: "Close #2 without merging?",
+      why: "Nothing of it reaches main",
+    });
+    expect(review.consequence).toBe("Closes #2 for good. Nova's branch stays as it is.");
+    expect(review.primary).toEqual({ label: "Close without merging", enabled: true, safe: false });
+    expect(review.secondary).toEqual({ label: "Keep it open", enabled: true });
+  });
+
+  it.each<[string, ChangeReviewInput["close"], Record<string, unknown>, boolean, boolean]>([
+    [
+      "closing",
+      { kind: "running" },
+      { state: "closing", tone: "busy", title: "Closing #2", why: "Without merging" },
+      false,
+      false,
+    ],
+    [
+      "refused: a deliberate press tries again",
+      { kind: "refused", reason: "This change is merged or closed already." },
+      {
+        state: "close-refused",
+        tone: "attention",
+        title: "Not closed",
+        why: "This change is merged or closed already.",
+      },
+      true,
+      true,
+    ],
+  ])("while pressed: %s", (_name, close, verdict, enabled, keepOpen) => {
+    const review = changeReview(change({ close }));
+    expect(review.verdict).toMatchObject(verdict);
+    expect(review.primary).toEqual({ label: "Close without merging", enabled, safe: false });
+    expect(review.secondary !== undefined).toBe(keepOpen);
+  });
+
+  it("says it was closed once its close is done, before HQ's stream has it", () => {
+    const review = changeReview(change({ close: { kind: "done" } }));
+    expect(review.verdict).toMatchObject({
+      state: "closed",
+      tone: "done",
+      title: "Closed without merging",
+      why: "You closed it; its branch is still there",
+    });
+    expect(review.consequence).toBe("It never reached main; nothing merges from here.");
+    expect(review.primary).toBeUndefined();
+    expect(review.secondary).toBeUndefined();
+  });
+});
+
 describe("changeReview: a change closed without merging", () => {
   it("says so, and offers no Merge", () => {
     const review = changeReview(change({ pull: pull({ state: "closed", merged: false }) }));
@@ -886,6 +997,7 @@ describe("changeReview: a change closed without merging", () => {
       state: "closed",
       tone: "done",
       title: "Closed without merging",
+      why: "Somebody closed it; its branch is still there",
     });
     expect(review.primary).toBeUndefined();
     expect(review.consequence).toBe("It never reached main; nothing merges from here.");

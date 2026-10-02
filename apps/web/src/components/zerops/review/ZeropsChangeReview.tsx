@@ -427,6 +427,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             environments: props.environments,
           })
         : undefined,
+    offered: undefined,
     now: props.now,
   });
   const size = sizeWords({
