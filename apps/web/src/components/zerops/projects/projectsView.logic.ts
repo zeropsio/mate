@@ -316,6 +316,18 @@ export function flowStepsAwaiting(input: {
   return { steps: readOut && !read, changes: readOut && !answered };
 }
 
+/**
+ * Whether the "Next steps" strip holds its place: a group's next step may be one its changes say
+ * (a pull request to merge), so the strip waits until every group's changes answered too — not
+ * only either half of its flow. A group whose read is not out (`flowStepsAwaiting`) waits on
+ * nothing.
+ */
+export function nextStepsPending(
+  groups: ReadonlyArray<{ readonly awaiting: boolean; readonly changesAwaiting: boolean }>,
+): boolean {
+  return groups.some((group) => group.awaiting || group.changesAwaiting);
+}
+
 /** What the changes' steps say where Gitea never answered for the project. */
 export const CHANGES_UNREAD_LINE = "Gitea didn’t answer";
 
