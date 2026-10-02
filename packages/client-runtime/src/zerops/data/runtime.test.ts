@@ -4,6 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
@@ -178,6 +179,37 @@ describe("makeZeropsBoundedIngress", () => {
       expect(yield* Fiber.join(marker)).toBe(true);
       expect(yield* Fiber.join(admitted)).toBe(true);
       expect((yield* ingress.snapshot).events).toBe(0);
+    }),
+  );
+});
+
+describe("makeZeropsBoundedIngress — interrupted producers", () => {
+  // Found in review (pass 31): a producer interrupted between reserving its budget and queueing
+  // its input kept the reservation for good; enough of them and every later offer overflowed.
+  it.live("gives back every reservation of a producer interrupted at any point", () =>
+    Effect.gen(function* () {
+      for (let ops = 2; ops < 40; ops += 1) {
+        const ingress = yield* makeZeropsBoundedIngress<number>({
+          maxEvents: 1_000,
+          maxBytes: 1_000_000,
+          maxFrameBytes: 100,
+          onOverflow: () => Effect.void,
+        });
+        const producer = yield* Effect.forkChild(
+          Effect.forEach(
+            Array.from({ length: 20 }, (_, index) => index),
+            (index) => ingress.offer(index, 7),
+            { discard: true },
+          ).pipe(Effect.provideService(Scheduler.MaxOpsBeforeYield, ops)),
+          { startImmediately: true },
+        );
+        yield* Fiber.interrupt(producer);
+        while (Option.isSome(yield* Effect.timeoutOption(ingress.take, "1 millis"))) {
+          // Drain what was queued: the budget must come back to nothing.
+        }
+        const { events, bytes } = yield* ingress.snapshot;
+        expect({ ops, events, bytes }).toEqual({ ops, events: 0, bytes: 0 });
+      }
     }),
   );
 });

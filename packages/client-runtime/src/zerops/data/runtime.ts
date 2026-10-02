@@ -253,62 +253,71 @@ export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBounded
 
     const offer = (input: Input, bytes: number): Effect.Effect<boolean> =>
       Effect.gen(function* () {
-        const admitted = yield* Ref.modify(counters, (state) => {
-          const admissible =
-            Number.isSafeInteger(bytes) &&
-            bytes >= 0 &&
-            bytes <= options.maxFrameBytes &&
-            state.events < options.maxEvents &&
-            state.bytes + bytes <= options.maxBytes;
-          if (!admissible) return [false, state] as const;
-          const events = state.events + 1;
-          const nextBytes = state.bytes + bytes;
-          return [
-            true,
-            {
-              ...state,
-              events,
-              bytes: nextBytes,
-              peakEvents: Math.max(state.peakEvents, events),
-              peakBytes: Math.max(state.peakBytes, nextBytes),
-            },
-          ] as const;
-        });
-        if (!admitted) {
-          yield* overflow.withPermit(
-            options.onOverflow(input).pipe(
-              Effect.andThen(
-                Ref.update(counters, (state) => ({
+        // Reserving the budget and queueing the input are one step: an interrupt between them
+        // kept the reservation for good, and enough of them overflowed every later offer.
+        const admitted = yield* Effect.uninterruptible(
+          Effect.gen(function* () {
+            const reserved = yield* Ref.modify(counters, (state) => {
+              const admissible =
+                Number.isSafeInteger(bytes) &&
+                bytes >= 0 &&
+                bytes <= options.maxFrameBytes &&
+                state.events < options.maxEvents &&
+                state.bytes + bytes <= options.maxBytes;
+              if (!admissible) return [false, state] as const;
+              const events = state.events + 1;
+              const nextBytes = state.bytes + bytes;
+              return [
+                true,
+                {
                   ...state,
-                  discardedEvents: state.discardedEvents + 1,
-                })),
-              ),
-            ),
-          );
-          return false;
-        }
-        const queued = yield* Queue.offer(queue, { input, bytes, budgeted: true });
-        // A shut-down queue keeps nothing: the reserved budget goes back.
-        if (!queued)
-          yield* Ref.update(counters, (state) => ({
-            ...state,
-            events: state.events - 1,
-            bytes: state.bytes - bytes,
-          }));
-        return queued;
-      });
-
-    const take = Queue.take(queue).pipe(
-      Effect.tap((entry) =>
-        entry.budgeted
-          ? Ref.update(counters, (state) => ({
+                  events,
+                  bytes: nextBytes,
+                  peakEvents: Math.max(state.peakEvents, events),
+                  peakBytes: Math.max(state.peakBytes, nextBytes),
+                },
+              ] as const;
+            });
+            if (!reserved) return "refused" as const;
+            if (yield* Queue.offer(queue, { input, bytes, budgeted: true }))
+              return "queued" as const;
+            // A shut-down queue keeps nothing: the reservation goes back.
+            yield* Ref.update(counters, (state) => ({
               ...state,
               events: state.events - 1,
-              bytes: state.bytes - entry.bytes,
-            }))
-          : Effect.void,
+              bytes: state.bytes - bytes,
+            }));
+            return "closed" as const;
+          }),
+        );
+        if (admitted !== "refused") return admitted === "queued";
+        yield* overflow.withPermit(
+          options.onOverflow(input).pipe(
+            Effect.andThen(
+              Ref.update(counters, (state) => ({
+                ...state,
+                discardedEvents: state.discardedEvents + 1,
+              })),
+            ),
+          ),
+        );
+        return false;
+      });
+
+    // Waiting for an input can be interrupted; taking it and giving its budget back cannot.
+    const take = Effect.uninterruptibleMask((restore) =>
+      restore(Queue.take(queue)).pipe(
+        Effect.tap((entry) =>
+          entry.budgeted
+            ? Ref.update(counters, (state) => ({
+                ...state,
+                events: state.events - 1,
+                bytes: state.bytes - entry.bytes,
+              }))
+            : Effect.void,
+        ),
+        Effect.map((entry) => entry.input),
       ),
-      Effect.map((entry) => entry.input),
     );
 
     return {
