@@ -43,7 +43,6 @@ const PULL: FlowPullRequest = {
   title: "Add a /status page",
   kind: "code",
   mateProjectId: "nova",
-  author: "nova-bot",
   url: "https://git.example/app/pulls/14",
   mergeability: "mergeable",
   behind: false,
@@ -151,7 +150,7 @@ describe("a remembered row", () => {
 });
 
 describe("a remembered change", () => {
-  it("is its title where it hung, with no verdict until Gitea says one again", () => {
+  it("is its title where it hung, with no verdict until HQ says one again", () => {
     expect(changeFromMemory(rememberedChangeOf(PULL))).toEqual({
       ...PULL,
       mergeability: "checking",
@@ -432,6 +431,21 @@ describe("the memory in this browser", () => {
     openAccountLifetime("user-ada");
     expect(menuMemory().crews).toEqual({});
     expect(menuMemory().rows.nova?.subject).toBe("Add a /status page");
+  });
+
+  // Only Mates open changes (SPEC §5.4): the author a change was once remembered with is not
+  // kept, and the change is.
+  it("reads a change remembered with its author, keeping the change and not the author", () => {
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    stored.set(
+      key,
+      JSON.stringify({
+        ...EMPTY_MENU_MEMORY,
+        changes: { g1: [{ ...rememberedChangeOf(PULL), author: "nova-bot" }] },
+      }),
+    );
+    openAccountLifetime("user-ales");
+    expect(menuMemory().changes.g1).toEqual([rememberedChangeOf(PULL)]);
   });
 
   it("reads nothing another account remembered", () => {

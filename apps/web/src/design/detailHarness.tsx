@@ -178,7 +178,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Cache the link previews so the list stops flickering",
     kind: "code",
     mateProjectId: "p-theo",
-    author: "mate-p-theo",
     url: undefined,
     mergeability: "mergeable",
     behind: false,

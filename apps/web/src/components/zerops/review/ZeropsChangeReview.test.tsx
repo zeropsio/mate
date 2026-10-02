@@ -88,8 +88,7 @@ function merged(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     number: 7,
     title: "Add a mail service",
     kind: "code",
-    mateProjectId: undefined,
-    author: "ada",
+    mateProjectId: "p-wren",
     url: undefined,
     mergeability: "mergeable",
     behind: false,
@@ -97,13 +96,13 @@ function merged(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mergedAt: new Date(NOW).toISOString(),
     headSha: "c".repeat(40),
     baseBranch: "main",
-    line: "appdev #7 · ada",
+    line: "appdev #7",
     updatedAt: undefined,
     ...over,
   };
 }
 
-const recipe = merged({ repository: "group", kind: "recipe", line: "#7 · ada" });
+const recipe = merged({ repository: "group", kind: "recipe", line: "#7" });
 
 const MAIN = "a".repeat(40);
 const changed = (path: string): ChangeFile => ({

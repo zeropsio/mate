@@ -88,9 +88,9 @@ const INDEX: SidebarJumpIndex = {
       repository: "appdev",
       number: 6,
       projectName: "Shop",
-      label: "#6 Bump the linter · ada",
-      mateProjectId: undefined,
-      whose: "ada",
+      label: "#6 Bump the linter",
+      mateProjectId: "shop-nova",
+      whose: "Nova",
     },
   ],
   stops: [

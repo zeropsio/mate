@@ -46,7 +46,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Greet with a fuller line",
     kind: "code",
     mateProjectId: "p-wren",
-    author: "mate-p-wren",
     url: undefined,
     mergeability: "mergeable",
     behind: false,

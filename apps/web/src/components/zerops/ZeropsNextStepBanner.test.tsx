@@ -31,7 +31,6 @@ const PULL: FlowPullRequest = {
   title: "Add a status page",
   kind: "code",
   mateProjectId: "p-nova",
-  author: "mate-p-nova",
   url: undefined,
   mergeability: "mergeable",
   behind: false,

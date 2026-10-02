@@ -481,7 +481,6 @@ export {
   RECIPE_PROPOSAL_TITLE,
   pullRequestLineWith,
   pullRequestsByMate,
-  changeAuthorName,
   agentTurnNotes,
   changeLandedEvents,
   type ChangeLandedEvent,

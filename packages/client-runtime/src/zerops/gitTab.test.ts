@@ -61,7 +61,6 @@ function change(
     title: "Invoices",
     kind: "code",
     mateProjectId: "p1",
-    author: undefined,
     url: "https://hq.example/changes/g1/api/12",
     mergeability,
     behind: false,

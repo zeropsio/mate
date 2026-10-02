@@ -658,12 +658,11 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
   - _Anatomy (fixed part):_ one of a Mate's open pull requests, 2 px under its row (M8): 28 px tall,
     radius 10, 13/18 — the pull-request mark (14 px) in the faces' column, muted, red where its
     checks fail and amber where it fell behind `main` (S3); `#N title` on the words' edge, the way
-    to the change's page (a person's own pull request names them after the title); _Review_ as a
-    blue word on the right edge, the one door to merging it (R1, D8). No _Merge_, no _Ask_ and no
-    check dot on the row: the verdict is the review's. Past three, a Mate's changes fold behind "N
-    pull requests"
+    to the change's page; _Review_ as a blue word on the right edge, the one door to merging it
+    (R1, D8). No _Merge_, no _Ask_ and no check dot on the row: the verdict is the review's. Past
+    three, a Mate's changes fold behind "N pull requests"
   - _States:_ open · checks failing (red mark) · behind main (amber mark) · remembered (a reload,
-    until Gitea answers: its title untinted, _Review_ already there)
+    until HQ answers: its title untinted, _Review_ already there)
   - _Phrase source:_ `SidebarMateRow.logic.ts` (`changeMarkTone`); client-runtime
     `sidebarChangeLabel`, `pullRequestsFolded`
   - _Lands:_ landed 2026-09-29 (pass 16)

@@ -630,7 +630,6 @@ function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Mate: the group's import files",
     kind: "recipe",
     mateProjectId: "cleo-project",
-    author: "mate-cleo-project",
     url: "https://gitea.example.test/beviro/group/pulls/11",
     mergeability: "mergeable",
     behind: false,
@@ -669,11 +668,8 @@ describe("newMateRecipeChange — the change the recipe waits in", () => {
       found: { number: 11, mate: undefined },
     },
     {
-      case: "no proposal in a person's own change to the recipe",
-      flow: {
-        changesKnown: true,
-        pullRequests: [change({ title: "Add a stage tier", mateProjectId: undefined })],
-      },
+      case: "no proposal in another change to the recipe",
+      flow: { changesKnown: true, pullRequests: [change({ title: "Add a stage tier" })] },
       found: undefined,
     },
     {

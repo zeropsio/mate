@@ -588,7 +588,6 @@ const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPul
   title: `Change ${number}`,
   kind: "code",
   mateProjectId: "crm-dev",
-  author: "mate-crm-dev",
   url: `https://gitea.example/crm/appdev/pulls/${number}`,
   mergeability: "mergeable",
   behind: false,
@@ -1285,18 +1284,14 @@ describe("the project's flow under it", () => {
     expect(three.match(/data-zerops-surface="sidebar-pull-request"/gu)).toHaveLength(3);
   });
 
-  it("lists a person's own pull request after the Mates, never under one", () => {
+  // Only Mates open changes (SPEC §5.4): one whose Mate the menu does not hold is drawn nowhere.
+  it("draws no row for a change of a Mate the menu does not hold", () => {
     const html = withFlow(
       [CRM_DEV, CRM_STAGE],
-      flow({
-        pullRequests: [
-          pull(7, { mateProjectId: undefined, author: "ada", line: "appdev #7 · ada" }),
-        ],
-      }),
+      flow({ pullRequests: [pull(7, { mateProjectId: "gone-dev" })] }),
     );
-    expect(html).toContain('data-zerops-surface="sidebar-other-pull-requests"');
-    expect(html).toContain("#7 Change 7 · ada");
-    expect(html).not.toContain('data-zerops-surface="sidebar-pull-requests"');
+    expect(html).not.toContain("#7 Change 7");
+    expect(html).not.toContain("sidebar-pull-request");
   });
 
   // Production and stage leave the list (M1): the chip on the heading
@@ -3561,13 +3556,13 @@ describe("what the jump box finds in the menu", () => {
     onOpenStop: () => {},
   });
   const OWN = pull(4, { mateProjectId: "links-dev", title: "Add a search box" });
-  const ADAS = pull(6, { mateProjectId: undefined, author: "ada", title: "Bump the linter" });
+  const GONE = pull(6, { mateProjectId: "gone-dev", title: "Bump the linter" });
   // Its stops' services read, so the heading draws its chip.
   const tree = (props: Record<string, unknown> = {}) => (
     <SidebarZeropsTree
       candidates={[LINKS_MATE, up(LINKS_STAGE), up(LINKS_PROD)]}
       complete
-      getFlow={() => linksFlow([OWN, ADAS])}
+      getFlow={() => linksFlow([OWN, GONE])}
       onBrowseProjects={() => {}}
       onOpenGroup={() => {}}
       onSelect={() => {}}
@@ -3595,10 +3590,7 @@ describe("what the jump box finds in the menu", () => {
         change.mateProjectId,
         change.whose,
       ]),
-    ).toEqual([
-      ["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name],
-      ["appdev#6", "#6 Bump the linter · ada", undefined, "ada"],
-    ]);
+    ).toEqual([["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name]]);
     expect(index()?.stops.map((stop) => [stop.projectId, stop.title])).toEqual([
       ["links-stage", "Links stage"],
       ["links-prod", "Links production"],
@@ -3614,7 +3606,7 @@ describe("what the jump box finds in the menu", () => {
     stored.collapsed = new Set(["links"]);
     mount(tree());
     expect(index()?.mates).toHaveLength(1);
-    expect(index()?.changes).toHaveLength(2);
+    expect(index()?.changes).toHaveLength(1);
     expect(index()?.stops).toHaveLength(2);
   });
 

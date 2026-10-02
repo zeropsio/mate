@@ -122,7 +122,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Add a /status page with the uptime and the last deploy",
     kind: "code",
     mateProjectId: "p-nova",
-    author: "mate-p-nova",
     url: `${HARNESS_HQ}/changes/g-snap/appdev/2`,
     mergeability: "mergeable",
     behind: false,
@@ -714,19 +713,6 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "wide",
     label: "A diff with lines wider than the review",
     node: <Change open={["server/index.ts"]} readout={WIDE} />,
-  },
-  {
-    id: "person",
-    label: "Ready, a person's own branch",
-    node: (
-      <Change
-        over={{
-          mateProjectId: undefined,
-          author: "ada",
-          headBranch: "ada/status-page",
-        }}
-      />
-    ),
   },
   {
     id: "behind-clean",

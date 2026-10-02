@@ -16,7 +16,6 @@
  */
 import {
   changeAskPrompt,
-  changeAuthorName,
   changeRemarks,
   changeReview,
   historyAge,
@@ -479,7 +478,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           faceShape={mate?.shape}
           number={pull.number}
           repository={pull.repository}
-          who={changeAuthorName(pull, mate?.name)}
+          who={mate?.name}
         />
       }
       onOpenPage={props.onOpenPage}

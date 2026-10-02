@@ -13,7 +13,7 @@
  * ## Whose change it is
  *
  * HQ records the Mate that opened each change (SPEC §3.2a), and a change sits
- * under that Mate. A recipe change (kind `recipe`) changes what the
+ * under that Mate: only Mates open changes, as people do not push (SPEC §5.4). A recipe change (kind `recipe`) changes what the
  * environments are made of, not what runs in them (`docs/group-repo.md`).
  *
  * Pure: no network, no clock, no platform globals (rule R1).
@@ -36,9 +36,8 @@ export interface FlowPullRequest {
   readonly number: number;
   readonly title: string;
   readonly kind: FlowPullRequestKind;
-  /** The Mate it belongs to; `undefined` for a person's own branch. */
+  /** The Mate that opened it. */
   readonly mateProjectId: string | undefined;
-  readonly author: string | undefined;
   readonly url: string | undefined;
   /** HQ's word on whether it merges (`changeMergeability.ts`), never the app's. */
   readonly mergeability: MergeabilityKind;
@@ -68,7 +67,7 @@ export interface FlowPullRequest {
   readonly state?: string | undefined;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
-  /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
+  /** `appdev #4`; `recipe #6` on the group repo. */
   readonly line: string;
   readonly updatedAt: string | undefined;
   /** The branch it comes from — `mate/{projectId}/{n}` for a Mate's change in HQ. */
@@ -106,7 +105,6 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     // A recipe lives in HQ from T10 on; every change in HQ until then is code.
     kind: "code",
     mateProjectId: change.mateProjectId,
-    author: undefined,
     url: changeUrl(hqAddress, change.appId, change.repo, change.number),
     mergeability: mergeabilityKindOf(change.mergeability),
     behind: change.behind,
@@ -173,8 +171,7 @@ export interface ChangeLandedEvent {
  * The landings that belong on one Mate's timeline, oldest first.
  *
  * A change with no `mergedAt` has no moment to be placed at and is left out
- * rather than guessed at. A person's own branch belongs to no conversation, and
- * another Mate's change belongs to that Mate's.
+ * rather than guessed at. Another Mate's change belongs to that Mate's.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  */
@@ -233,32 +230,24 @@ export function agentTurnNotes(
   });
 }
 
-type ChangeLabelOf = Pick<
-  FlowPullRequest,
-  "repository" | "number" | "title" | "mateProjectId" | "author"
->;
+type ChangeLabelOf = Pick<FlowPullRequest, "repository" | "number" | "title" | "mateProjectId">;
 
 /**
- * Whether a change is named with its repository: when the changes of whoever opened it — its
- * Mate's, or a person's own — stand open in more than one repository, `#1` alone is two rows
- * that read the same (`appdev #1`, `apidev #1`).
+ * Whether a change is named with its repository: when its Mate's changes stand open in more than
+ * one repository, `#1` alone is two rows that read the same (`appdev #1`, `apidev #1`).
  */
 export function changeNamesRepository(
   pull: ChangeLabelOf,
   among?: ReadonlyArray<ChangeLabelOf>,
 ): boolean {
   if (among === undefined) return false;
-  const whose = (entry: ChangeLabelOf) =>
-    entry.mateProjectId === undefined
-      ? `person:${entry.author ?? ""}`
-      : `mate:${entry.mateProjectId}`;
-  const owner = whose(pull);
-  return among.some((entry) => whose(entry) === owner && entry.repository !== pull.repository);
+  return among.some(
+    (entry) => entry.mateProjectId === pull.mateProjectId && entry.repository !== pull.repository,
+  );
 }
 
 /**
- * What a change is called on the menu: `#4 Add a due date to each todo`, and
- * `· ada` after it where no Mate's row stands above to say whose it is.
+ * What a change is called on the menu: `#4 Add a due date to each todo`.
  *
  * The number alone was tried and taken away again: a Mate's pull request is
  * titled with its commit message, so the row does echo the task on the row
@@ -267,31 +256,26 @@ export function changeNamesRepository(
  * distinction instead: a change is drawn branching off the line rather than
  * standing on it, so it reads as subordinate without having to go mute.
  *
- * `among` is what is drawn with it: where its opener's changes span repositories, each row
- * leads with its own — `apidev #1 Rebuild the API`.
+ * `among` is what is drawn with it: where its Mate's changes span repositories, each row leads
+ * with its own — `apidev #1 Rebuild the API`.
  */
 export function sidebarChangeLabel(
   pull: ChangeLabelOf,
   among?: ReadonlyArray<ChangeLabelOf>,
 ): string {
   const number = `#${pull.number} ${pull.title}`;
-  const title = changeNamesRepository(pull, among) ? `${pull.repository} ${number}` : number;
-  return pull.mateProjectId === undefined && pull.author !== undefined
-    ? `${title} · ${pull.author}`
-    : title;
+  return changeNamesRepository(pull, among) ? `${pull.repository} ${number}` : number;
 }
 
 /**
  * The line with the Mate's name on it — `appdev #4 · Vera` — for a row that
- * does not sit under its Mate. A person's line already names them.
+ * does not sit under its Mate.
  */
 export function pullRequestLineWith(
-  pull: Pick<FlowPullRequest, "line" | "mateProjectId">,
+  pull: Pick<FlowPullRequest, "line">,
   mateName: string | undefined,
 ): string {
-  return pull.mateProjectId !== undefined && mateName !== undefined
-    ? `${pull.line} · ${mateName}`
-    : pull.line;
+  return mateName === undefined ? pull.line : `${pull.line} · ${mateName}`;
 }
 
 /** Newest first — the one a person is most likely waiting on. */
@@ -300,29 +284,20 @@ export function byNewest(left: FlowPullRequest, right: FlowPullRequest): number 
 }
 
 /**
- * Each Mate's open pull requests, newest first, and the ones that are
- * nobody's Mate's — a person's own branch, or a Mate the caller does not list
- * (one the person may not open, say). Nothing is dropped: a change waiting to
- * land is waiting whoever wrote it.
+ * Each listed Mate's open pull requests, newest first. Only Mates open changes (SPEC §5.4), so
+ * every change is one's; a Mate the caller does not list has none here.
  */
 export function pullRequestsByMate(
   pulls: ReadonlyArray<FlowPullRequest>,
   mateProjectIds: ReadonlyArray<string>,
-): {
-  readonly byMate: ReadonlyMap<string, ReadonlyArray<FlowPullRequest>>;
-  readonly others: ReadonlyArray<FlowPullRequest>;
-} {
-  const known = new Set(mateProjectIds);
+): ReadonlyMap<string, ReadonlyArray<FlowPullRequest>> {
   const byMate = new Map<string, Array<FlowPullRequest>>(
     mateProjectIds.map((projectId) => [projectId, []]),
   );
-  const others: Array<FlowPullRequest> = [];
   for (const pull of [...pulls].sort(byNewest)) {
-    const mate = pull.mateProjectId;
-    if (mate !== undefined && known.has(mate)) byMate.get(mate)?.push(pull);
-    else others.push(pull);
+    if (pull.mateProjectId !== undefined) byMate.get(pull.mateProjectId)?.push(pull);
   }
-  return { byMate, others };
+  return byMate;
 }
 
 /** How many pull requests a Mate shows before its list folds. */
@@ -335,25 +310,6 @@ const PULL_REQUESTS_SHOWN = 3;
  */
 export function pullRequestsFolded(count: number): boolean {
   return count > PULL_REQUESTS_SHOWN;
-}
-
-/**
- * Who wrote a change, as a person reads it.
- *
- * `author` is the Gitea login, and a Mate's login is `mate-{projectId}` — so
- * showing it raw puts `mate-0bPLTRRSSTuV54WMpcLoww` on a page where a name
- * belongs (the owner, 2026-09-19). A Mate's change names its Mate, or says
- * nothing at all rather than saying that; a person's names the person, whose
- * login is their name here.
- *
- * Two surfaces had reached this conclusion separately and one of them had
- * already drifted, which is why it is decided here and nowhere else.
- */
-export function changeAuthorName(
-  pull: Pick<FlowPullRequest, "author" | "mateProjectId">,
-  mateName: string | undefined,
-): string | undefined {
-  return pull.mateProjectId === undefined ? pull.author : mateName;
 }
 
 /** Where a change stands, as one word and the tone that means it. */
