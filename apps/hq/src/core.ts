@@ -26,6 +26,7 @@ import { deploysLayer } from "./deploys.ts";
 import { doorLayer } from "./door.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { healthRoute } from "./health.ts";
+import { importsLayer } from "./importJob.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
 import { mateLiveLayer } from "./mateLive.ts";
@@ -48,6 +49,8 @@ export interface CoreOptions {
   readonly databaseUrl: Redacted.Redacted;
   /** Where the bare repositories live: the volume's `/mnt/vol/git` in the container. */
   readonly gitRoot: string;
+  /** Where the migration's bundles lie: the volume's `/mnt/vol/import`; none takes no import. */
+  readonly importRoot?: string;
   readonly migrations: ReadonlyArray<Migration>;
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */
@@ -63,6 +66,7 @@ export interface CoreOptions {
   readonly reconcileEvery?: Duration.Duration;
   readonly streamRecheck?: Duration.Duration;
   readonly pingEvery?: Duration.Duration;
+  readonly importPoll?: Duration.Duration;
 }
 
 const routes = (options: CoreOptions) =>
@@ -105,11 +109,25 @@ const services = (options: CoreOptions) => {
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
-    deploysLayer().pipe(
-      Layer.provideMerge(releasesLayer),
-      Layer.provide(recipeTiersLayer),
-      Layer.provideMerge(changesLayer),
-      Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
+    Layer.mergeAll(
+      deploysLayer().pipe(
+        Layer.provideMerge(releasesLayer),
+        Layer.provide(recipeTiersLayer),
+        Layer.provideMerge(changesLayer),
+      ),
+      importsLayer({
+        importRoot: options.importRoot,
+        hqProjectId: options.hqProjectId,
+        credential: options.credential,
+        ...(options.importPoll === undefined ? {} : { poll: options.importPoll }),
+      }),
+    ).pipe(
+      Layer.provideMerge(
+        gitHostLayer({
+          rootDir: options.gitRoot,
+          ...(options.importRoot === undefined ? {} : { importRoots: [options.importRoot] }),
+        }),
+      ),
     ),
   ).pipe(
     Layer.provideMerge(mateLiveLayer),
