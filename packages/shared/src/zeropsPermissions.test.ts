@@ -156,6 +156,62 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_project_reader",
     ],
   ],
+  observe_mate: [
+    [
+      "org Basic user operates every Mate",
+      { orgRole: "BASIC_USER" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "allow",
+    ],
+    [
+      "org none, a Basic user grant on it",
+      { override: "BASIC_USER" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "allow",
+    ],
+    [
+      "org Read only sees it, does not operate it",
+      { orgRole: "READ_ONLY" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "not_mate_operator",
+    ],
+    [
+      "an owner lowered to Read only on it",
+      { orgRole: "OWNER", override: "READ_ONLY" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "not_mate_operator",
+    ],
+    [
+      "its project gone",
+      { orgRole: "OWNER", present: false },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "not_mate_operator",
+    ],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "not_active_member",
+    ],
+    [
+      "org Read only, a Basic user grant on it: the grant opens it, as the door does",
+      { orgRole: "READ_ONLY", override: "BASIC_USER" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "allow",
+    ],
+    [
+      "org Basic user lowered to Read only on it",
+      { orgRole: "BASIC_USER", override: "READ_ONLY" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "not_mate_operator",
+    ],
+    [
+      "org owner",
+      { orgRole: "OWNER" },
+      { verb: "observe_mate", target: { projectId: "P" } },
+      "allow",
+    ],
+  ],
   read_app: [
     [
       "org Read only sees an empty application",
@@ -562,6 +618,7 @@ const POINTS: ReadonlyArray<Point> = ROLES.flatMap((orgRole) =>
 
 const REQUESTS: ReadonlyArray<Request> = [
   { verb: "read_project", target: { projectId: "P" } },
+  { verb: "observe_mate", target: { projectId: "P" } },
   ...APPS.map((projectIds): Request => ({ verb: "read_app", target: { projectIds } })),
   { verb: "create_app", target: null },
   { verb: "rename_app", target: null },
@@ -649,6 +706,47 @@ describe("can — over the whole input space", () => {
       if (point.orgRole === "ADMIN" || point.orgRole === "OWNER") return;
       expect(outcome(decide(principal, request, point))).not.toBe("allow");
     });
+  });
+
+  it("refuses a Mate every verb but its own enrollment", () => {
+    everywhere((principal, request, point) => {
+      if (principal.kind === "mate" && request.verb !== "enroll_mate") {
+        expect(outcome(decide(principal, request, point))).toBe("wrong_principal");
+      }
+    });
+  });
+
+  it("never tells a member who cannot read a project what HQ holds it as", () => {
+    const known = HELD.filter((held) => held !== "FUTURE");
+    const readsP = (point: Point) => {
+      const role = point.override ?? point.orgRole;
+      return point.present && RANKED.indexOf(role as (typeof RANKED)[number]) >= 1;
+    };
+    const asked = (verb: Request["verb"], held: string, to: string, app: ReadonlyArray<string>) =>
+      verb === "attach" || verb === "move"
+        ? place(verb, held, to, app)
+        : onP(verb as "detach" | "create_mate_record" | "edit_mate_record", held);
+    for (const point of POINTS) {
+      if (point.status !== "ACTIVE" || point.orgRole === "ADMIN" || point.orgRole === "OWNER")
+        continue;
+      if (readsP(point)) continue;
+      for (const verb of [
+        "attach",
+        "move",
+        "detach",
+        "create_mate_record",
+        "edit_mate_record",
+      ] as const) {
+        for (const to of TO) {
+          for (const app of APPS) {
+            const reasons = new Set(
+              known.map((held) => outcome(decide(PERSON, asked(verb, held, to, app), point))),
+            );
+            expect([...reasons], `${verb} to ${to} at ${JSON.stringify(point)}`).toHaveLength(1);
+          }
+        }
+      }
+    }
   });
 
   it("never allows more after a lowering: a role, a grant, the flag, the membership, the project", () => {
