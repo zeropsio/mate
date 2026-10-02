@@ -345,19 +345,39 @@ describe("git operations", () => {
     }),
   );
   it.live("answers busy when a held ref lock stops the write and the ref has not moved", () =>
+    fixture(
+      async (git, dir) => {
+        const main = await write(git, { base: "base" }, null);
+        await branch(git, dir, main, { "new.txt": "new" });
+        const lock = NodePath.join(dir, "refs/heads/main.lock");
+        await NodeFSP.writeFile(lock, "");
+        try {
+          await expect(write(git, { more: "more" }, main)).rejects.toHaveProperty("reason", "busy");
+          await expect(merge(git, main)).rejects.toHaveProperty("reason", "busy");
+        } finally {
+          await NodeFSP.rm(lock);
+        }
+        expect(await native(dir, ["rev-parse", "main"])).toBe(main);
+        await write(git, { more: "more" }, main);
+      },
+      { refLockTimeoutMs: 100 },
+    ),
+  );
+  it.live("waits for a ref lock another writer holds a while, then writes", () =>
     fixture(async (git, dir) => {
       const main = await write(git, { base: "base" }, null);
-      await branch(git, dir, main, { "new.txt": "new" });
       const lock = NodePath.join(dir, "refs/heads/main.lock");
       await NodeFSP.writeFile(lock, "");
-      try {
-        await expect(write(git, { more: "more" }, main)).rejects.toHaveProperty("reason", "busy");
-        await expect(merge(git, main)).rejects.toHaveProperty("reason", "busy");
-      } finally {
-        await NodeFSP.rm(lock);
-      }
-      expect(await native(dir, ["rev-parse", "main"])).toBe(main);
-      await write(git, { more: "more" }, main);
+      // Held past git's own 100 ms retry, as a writer slowed by IO holds it.
+      const released = value(
+        Effect.andThen(
+          Effect.sleep("500 millis"),
+          Effect.promise(() => NodeFSP.rm(lock)),
+        ),
+      );
+      const written = await write(git, { more: "more" }, main);
+      await released;
+      expect(await native(dir, ["rev-parse", "main"])).toBe(written);
     }),
   );
   it.live("uses CAS for simultaneous merges", () =>
@@ -817,11 +837,15 @@ describe("reads, tags, archive and ports", () => {
       expect(await value(git.createTag(repo, "v1", other, "Replace"))).toEqual({
         kind: "conflict",
       });
-      await vi.waitFor(() =>
-        expect(events).toEqual([
-          { kind: "main_moved", repo, old: null, new: head, by: "commit" },
-          { kind: "tagged", repo, name: "v1", sha: head },
-        ]),
+      // Delivered after the writes, on their own chain: a loaded CI worker may take more than
+      // waitFor's default second to get there.
+      await vi.waitFor(
+        () =>
+          expect(events).toEqual([
+            { kind: "main_moved", repo, old: null, new: head, by: "commit" },
+            { kind: "tagged", repo, name: "v1", sha: head },
+          ]),
+        { timeout: 15_000 },
       );
       expect(
         (
