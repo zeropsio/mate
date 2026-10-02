@@ -13,6 +13,7 @@ import {
   ticketFor,
   untilHealth,
 } from "../test/harness/runningCore.ts";
+import { rowsWhere } from "../test/harness/mates.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { failure } from "./api.ts";
@@ -286,6 +287,61 @@ describe("HQ API", () => {
             ],
           ]);
         }),
+    );
+
+    // "Run again" (main B36): whoever develops the application asks a failed deploy again; one who
+    // sees it through a Read only grant may not (Fable round 9).
+    it.effect("asks a failed deploy again for a developer, never for a Read only grant", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const created = yield* call("POST", "/api/apps", {
+          session: owner,
+          body: { name: "Shop" },
+        });
+        const appId = (created.body as { readonly id: string }).id;
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session: owner,
+          body: { projectId: "P_MATE", kind: "stage", environment: { name: "stage" } },
+        });
+        const sha = "a".repeat(40);
+        yield* rowsWhere(
+          url,
+          `INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message)
+           VALUES ('P_MATE', 'web', '${sha}', 'web', 'failed', 'job', 'failed: Build failed')
+           RETURNING 1`,
+          (rows) => rows.length === 1,
+        );
+        const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+        Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode: "READ_ONLY" }] });
+        const dev = yield* sessionFor(call, "door-dev");
+        const ask = (session: string, body: unknown) =>
+          Effect.map(
+            call("POST", `/api/apps/${appId}/environments/stage/redeploy`, { session, body }),
+            (response) => [response.status, response.body],
+          );
+        assert.deepStrictEqual(
+          [
+            yield* ask(dev, { service: "web", sha }),
+            yield* ask(owner, { service: "web", sha: "not-a-sha" }),
+            yield* ask(owner, { service: "web", sha }),
+            yield* ask(owner, { service: "web", sha }),
+          ],
+          [
+            [403, { code: "forbidden", reason: "not_app_developer" }],
+            [400, { code: "invalid" }],
+            [202, null],
+            [409, { code: "conflict", reason: "deploy_not_failed" }],
+          ],
+        );
+        yield* rowsWhere(
+          url,
+          `SELECT 1 FROM hq_deploy
+           WHERE sha = '${sha}' AND state = 'pending' AND requested_by = 'owner'`,
+          (rows) => rows.length === 1,
+        );
+      }),
     );
 
     it.effect(

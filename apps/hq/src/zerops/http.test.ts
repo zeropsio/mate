@@ -211,6 +211,38 @@ describe("makeZeropsDeployHttp", () => {
     }),
   );
 
+  // A recipe delta (main D15): services added to the environment's project.
+  it.live("imports services into a project as the probe lib does", () =>
+    Effect.gen(function* () {
+      const api = yield* recording(() => [
+        200,
+        { projectId: "P1", serviceStacks: [{ id: "S1", name: "api", processes: [] }] },
+      ]);
+      const deploy = yield* deployOver(api.url);
+      const imported = yield* deploy.importServices(
+        "P1",
+        "services:\n  - hostname: api\n",
+      )(Redacted.make("env-key"));
+      assert.deepStrictEqual(imported, { services: ["api"] });
+      assert.deepStrictEqual(
+        api.heard.map(({ method, path, contentType, body }) => ({
+          method,
+          path,
+          contentType,
+          body,
+        })),
+        [
+          {
+            method: "POST",
+            path: "/project/P1/service-stack/import",
+            contentType: "application/json",
+            body: '{"yaml":"services:\\n  - hostname: api\\n"}',
+          },
+        ],
+      );
+    }),
+  );
+
   it.live("asks a write once: a 503 is unavailable, never a second version", () =>
     Effect.gen(function* () {
       const api = yield* recording(() => [503, { error: { code: "" } }]);

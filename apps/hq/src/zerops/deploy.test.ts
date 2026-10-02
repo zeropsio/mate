@@ -129,4 +129,23 @@ describe("fakeZeropsDeploy", () => {
         assert.isTrue((yield* api.service("S-app")(key)).subdomainAccess);
       }),
   );
+
+  // Measured 2026-10-02: an environment's Basic user token imports services into its project.
+  it.effect("imports services for the environment's token, never for an org Read only one", () =>
+    Effect.gen(function* () {
+      const { world, api, deploy, key, orgRead } = rig();
+      const yaml = "services:\n  - hostname: cache\n    type: valkey@7.2\n";
+      const refused = yield* Effect.flip(deploy.importServices("P", yaml)(orgRead));
+      assert.strictEqual(
+        refused._tag === "ZeropsRefused" ? refused.code : refused._tag,
+        "insufficientPermissions",
+      );
+      assert.deepStrictEqual(yield* deploy.importServices("P", yaml)(key), { services: ["cache"] });
+      assert.deepStrictEqual(
+        (yield* api.services("P")(key)).map((service) => service.name),
+        ["app", "cache"],
+      );
+      assert.deepStrictEqual(world.imports, [{ projectId: "P", yaml }]);
+    }),
+  );
 });

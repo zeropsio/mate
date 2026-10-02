@@ -28,7 +28,7 @@ import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Roles } from "./roles.ts";
-import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
+import { ZeropsApi, ZeropsDeploy, type ZeropsMember } from "./zerops/api.ts";
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
 const ZEROPS_YAML = "zerops:\n  - setup: web\n    run:\n      start: node index.js\n";
@@ -38,6 +38,44 @@ const FAST: DeploysOptions = {
   catchUpEvery: Duration.hours(1),
 };
 const ABSENT: RecipeTierResponse = { state: "absent" };
+
+const member = (userId: string, roleCode: string): ZeropsMember => ({
+  name: userId,
+  kind: "person",
+  roleCode,
+  status: "ACTIVE",
+  userId,
+  clientUserId: `C-${userId}`,
+  canCreateProjects: false,
+});
+
+/**
+ * The org as HQ reads it: its owner; dev, who develops Shop (Basic user on its stage's project);
+ * viewer, who sees it through a Read only grant; stranger, who has nothing there.
+ */
+const ORG_VIEW = {
+  orgId: "ORG",
+  members: [
+    member("owner", "OWNER"),
+    member("dev", "NO_ACCESS"),
+    member("viewer", "NO_ACCESS"),
+    member("stranger", "NO_ACCESS"),
+  ],
+  projects: [
+    {
+      id: "P_STAGE",
+      orgId: "ORG",
+      name: "Shop - stage",
+      status: "ACTIVE",
+      tags: [],
+      userRoles: [
+        { clientUserId: "C-dev", roleCode: "BASIC_USER" },
+        { clientUserId: "C-viewer", roleCode: "READ_ONLY" },
+      ],
+      publicZone: "pstage.prg1-zerops.zone",
+    },
+  ],
+};
 
 /** A stage tier whose runtimes are `services`, each built from the application's repository of its name. */
 const stageTier = (
@@ -58,6 +96,22 @@ const stageTier = (
     "",
   ].join("\n"),
 });
+
+/** A stage tier written out, its services' lines as given. */
+const tierOf = (...lines: ReadonlyArray<string>): RecipeTierResponse => ({
+  state: "present",
+  mainHead: "0".repeat(40),
+  importYaml: ["services:", ...lines, ""].join("\n"),
+});
+
+/** A runtime of the application `appId`, built from its repository of the same name. */
+const runtime = (appId: string, hostname: string, ...extra: ReadonlyArray<string>) => [
+  `  - hostname: ${hostname}`,
+  "    type: nodejs@22",
+  `    buildFromGit: https://hq.example.test/git/${appId}/${hostname}.git`,
+  `    zeropsSetup: ${hostname}`,
+  ...extra,
+];
 
 const fakeService = (name: string, over: Partial<FakeService> = {}): FakeService => ({
   id: `S-${name}`,
@@ -123,18 +177,8 @@ const withDeploys = <A, E>(
         Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(world))),
         Layer.provide(
           Layer.succeed(Roles, {
-            view: Effect.succeed({
-              orgId: "ORG",
-              members: [],
-              projects: [],
-              freshness: "cached" as const,
-            }),
-            fresh: Effect.succeed({
-              orgId: "ORG",
-              members: [],
-              projects: [],
-              freshness: "fresh" as const,
-            }),
+            view: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
+            fresh: Effect.succeed({ ...ORG_VIEW, freshness: "fresh" as const }),
             exists: () => Effect.succeed(true),
           }),
         ),
@@ -514,6 +558,179 @@ describe("deploys", () => {
           }),
         // The first deploy is still running when the later commits come, however slow they are.
         { ...FAST, patience: Duration.seconds(30) },
+      ),
+    );
+
+    // Main B36/B37: a build's own failure is final, but a person who develops the application asks
+    // for it again ("Run again"): that commit is deployed once more, and the record says who asked.
+    it.effect("deploys again a commit whose build failed, once a developer asks", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          const sql = yield* SqlClient.SqlClient;
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.outcome = () => "BUILD_FAILED";
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("failed"));
+          world.outcome = () => "ACTIVE";
+          const ask = (
+            userId: string,
+            over: { readonly name?: string; readonly sha?: string } = {},
+          ) =>
+            deploysService
+              .redeploy(userId, appId, over.name ?? "shop-stage", "web", over.sha ?? sha)
+              .pipe(
+                Effect.match({
+                  onSuccess: () => "ok",
+                  onFailure: (error) => ("reason" in error ? String(error.reason) : error._tag),
+                }),
+              );
+          assert.deepStrictEqual(
+            [
+              yield* ask("stranger"),
+              yield* ask("viewer"),
+              yield* ask("dev", { name: "production" }),
+              yield* ask("dev", { sha: "f".repeat(40) }),
+            ],
+            ["app_not_seen", "not_app_developer", "environment_not_found", "deploy_not_found"],
+          );
+          assert.strictEqual(yield* ask("dev"), "ok");
+          yield* until(settled("live"));
+          assert.lengthOf(versions(world), 2);
+          const [asked] = yield* sql<{ readonly requested_by: string | null }>`
+            SELECT requested_by FROM hq_deploy`;
+          assert.strictEqual(asked?.requested_by, "dev");
+          // Only a failed deploy is asked for again.
+          assert.strictEqual(yield* ask("dev"), "deploy_not_failed");
+          assert.lengthOf(yield* deploys, 1);
+        }),
+      ),
+    );
+
+    // A newer commit's deploy stands for its service: an older one is not asked for again.
+    it.effect("refuses to ask again for a deploy a newer one superseded", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.outcome = () => "BUILD_FAILED";
+          const first = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("failed"));
+          const second = yield* commit("web", { "index.js": "two\n" });
+          yield* until((rows) => rows.some((row) => row.sha === second && row.state === "failed"));
+          const deploysService = yield* Deploys;
+          const reasonOf = (sha: string) =>
+            deploysService.redeploy("dev", appId, "shop-stage", "web", sha).pipe(
+              Effect.match({
+                onSuccess: () => "ok",
+                onFailure: (error) => ("reason" in error ? String(error.reason) : error._tag),
+              }),
+            );
+          assert.strictEqual(yield* reasonOf(first), "deploy_superseded");
+        }),
+      ),
+    );
+
+    // Main D15, with what HQ saw of a tier kept in its database: a tier first seen is the one its
+    // environments were made from, and imports nothing; a later change imports into every
+    // environment of the tier the services it lacks — a runtime created empty, for HQ deploys it,
+    // a managed one as declared. After a restart the first pass is a pass like any other (D16).
+    it.effect("imports what a changed tier adds into its environments, created empty", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          const sql = yield* SqlClient.SqlClient;
+          const digest = Effect.map(
+            sql<{ readonly digest: string }>`SELECT digest FROM hq_recipe_seen`,
+            (rows) => rows.map((row) => row.digest),
+          );
+          tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web"), ...runtime(appId, "api")));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
+          yield* deploysService.catchUp;
+          // First seen: api is reported, not imported.
+          assert.deepStrictEqual(world.imports, []);
+          const first = yield* digest;
+          assert.lengthOf(first, 1);
+
+          tiers.set(
+            `${appId}/stage`,
+            tierOf(
+              ...runtime(appId, "web"),
+              ...runtime(appId, "api"),
+              "  - hostname: cache",
+              "    type: valkey@7.2",
+              "    mode: NON_HA",
+            ),
+          );
+          yield* deploysService.catchUp;
+          assert.lengthOf(world.imports, 1);
+          const [delta] = world.imports;
+          assert.strictEqual(delta?.projectId, "P_STAGE");
+          assert.include(delta?.yaml ?? "", "hostname: api");
+          assert.include(delta?.yaml ?? "", "startWithoutCode: true");
+          assert.notInclude(delta?.yaml ?? "", "buildFromGit");
+          assert.include(delta?.yaml ?? "", "hostname: cache");
+          assert.notInclude(delta?.yaml ?? "", "hostname: web");
+          assert.deepStrictEqual(
+            world.services.map((service) => service.name),
+            ["web", "api", "cache"],
+          );
+          assert.notDeepEqual(yield* digest, first);
+          // Seen: no second import.
+          yield* deploysService.catchUp;
+          assert.lengthOf(world.imports, 1);
+        }),
+      ),
+    );
+
+    // Main D15: a changed declaration of a service the project has is reported, never applied, and
+    // a service the tier no longer declares is reported, never deleted.
+    it.effect("never applies a changed declaration, nor deletes a service the tier drops", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          world.services.push(fakeService("worker", { http: false }));
+          tiers.set(
+            `${appId}/stage`,
+            tierOf(...runtime(appId, "web"), ...runtime(appId, "worker")),
+          );
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.state === "live"));
+          yield* deploysService.catchUp;
+          tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web", "    minContainers: 2")));
+          yield* deploysService.catchUp;
+          assert.deepStrictEqual(world.imports, []);
+          assert.deepStrictEqual(
+            world.services.map((service) => service.name),
+            ["web", "worker"],
+          );
+        }),
+      ),
+    );
+
+    // A delta not imported everywhere is asked again: what HQ saw stays the tier before it.
+    it.effect("asks a delta again until every environment of the tier has it", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          const sql = yield* SqlClient.SqlClient;
+          tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web")));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
+          yield* deploysService.catchUp;
+          const kept = world.tokens.get("key-stage")!;
+          world.tokens.delete("key-stage");
+          tiers.set(
+            `${appId}/stage`,
+            tierOf(...runtime(appId, "web"), "  - hostname: cache", "    type: valkey@7.2"),
+          );
+          yield* deploysService.catchUp;
+          assert.deepStrictEqual(world.imports, []);
+          world.tokens.set("key-stage", kept);
+          yield* sql`UPDATE hq_deploy_token SET invalid_since = NULL`;
+          yield* deploysService.catchUp;
+          assert.lengthOf(world.imports, 1);
+        }),
       ),
     );
 

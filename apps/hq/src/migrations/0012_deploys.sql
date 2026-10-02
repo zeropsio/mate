@@ -13,6 +13,8 @@ CREATE TABLE hq_deploy (
   app_version_id text,
   process_id text,
   started_at timestamptz,
+  -- Who last asked for this deploy again ("Run again", main B36); none while only HQ asked.
+  requested_by text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (project_id, service, sha),

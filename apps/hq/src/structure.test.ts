@@ -1267,13 +1267,14 @@ describe("structure", () => {
           const [one, two, three] = ["1".repeat(40), "2".repeat(40), "3".repeat(40)] as const;
           yield* sql`
             INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message,
-              app_version_id, process_id, created_at, updated_at)
+              app_version_id, process_id, requested_by, created_at, updated_at)
             VALUES
-              ('P_STAGE', 'web', ${one}, 'web', 'live', NULL, NULL, 'V1', 'J1',
+              ('P_STAGE', 'web', ${one}, 'web', 'live', NULL, NULL, 'V1', 'J1', NULL,
                 now() - interval '3 minutes', now() - interval '2 minutes'),
               ('P_STAGE', 'web', ${two}, 'web', 'failed', 'job', 'failed: Build failed', 'V2',
-                'J2', now() - interval '1 minute', now()),
-              ('P_STAGE', 'api', ${three}, 'api', 'pending', NULL, NULL, NULL, NULL, now(), now())`;
+                'J2', 'dev', now() - interval '1 minute', now()),
+              ('P_STAGE', 'api', ${three}, 'api', 'pending', NULL, NULL, NULL, NULL, NULL, now(),
+                now())`;
           const read = (userId: string) =>
             Effect.map(structure.read(userId), (structureRead) =>
               structureRead.apps.map((app) => ({
@@ -1288,6 +1289,7 @@ describe("structure", () => {
                       latest.failure,
                       latest.message,
                       latest.processId,
+                      latest.requestedBy,
                     ],
                     live: live === null ? null : [live.sha, live.appVersionId, typeof live.at],
                   })),
@@ -1301,10 +1303,14 @@ describe("structure", () => {
                 {
                   projectId: "P_STAGE",
                   deploys: [
-                    { service: "api", latest: [three, "pending", null, null, null], live: null },
+                    {
+                      service: "api",
+                      latest: [three, "pending", null, null, null, null],
+                      live: null,
+                    },
                     {
                       service: "web",
-                      latest: [two, "failed", "job", "failed: Build failed", "J2"],
+                      latest: [two, "failed", "job", "failed: Build failed", "J2", "dev"],
                       live: [one, "V1", "string"],
                     },
                   ],

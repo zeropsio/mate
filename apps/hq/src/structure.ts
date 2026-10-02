@@ -102,6 +102,8 @@ export interface DeployView {
   /** The platform's version and job it is read by: its log. */
   readonly appVersionId: string | null;
   readonly processId: string | null;
+  /** Who last asked for it again ("Run again"); none while only HQ asked. */
+  readonly requestedBy: string | null;
   /** When it last changed, ISO 8601. */
   readonly at: string;
 }
@@ -907,18 +909,19 @@ export const structureLayer = (options: {
               readonly message: string | null;
               readonly app_version_id: string | null;
               readonly process_id: string | null;
+              readonly requested_by: string | null;
               readonly at: string;
             }>`
               SELECT * FROM (
                 SELECT DISTINCT ON (project_id, service) project_id, service, false AS live, sha,
-                       state, failure, message, app_version_id, process_id,
+                       state, failure, message, app_version_id, process_id, requested_by,
                        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
                 FROM hq_deploy ORDER BY project_id, service, created_at DESC
               ) newest
               UNION ALL
               SELECT * FROM (
                 SELECT DISTINCT ON (project_id, service) project_id, service, true AS live, sha,
-                       state, failure, message, app_version_id, process_id,
+                       state, failure, message, app_version_id, process_id, requested_by,
                        to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
                 FROM hq_deploy WHERE state = 'live' ORDER BY project_id, service, updated_at DESC
               ) live
@@ -930,6 +933,7 @@ export const structureLayer = (options: {
               message: row.message,
               appVersionId: row.app_version_id,
               processId: row.process_id,
+              requestedBy: row.requested_by,
               at: row.at,
             });
             const environmentView = (row: (typeof environments)[number]): EnvironmentView => {
