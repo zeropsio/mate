@@ -2,8 +2,11 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Redacted from "effect/Redacted";
 
 import { type GitRun, gitClient } from "../test/harness/gitClient.ts";
 import { addProject, mateWithChange, remoteOf, rowsWhere } from "../test/harness/mates.ts";
@@ -252,6 +255,54 @@ describe("a change merged into main, or closed", () => {
             refused(yield* merge(call, owner, appId, next.change.number, main)),
             [409, { code: "conflict", reason: "already_merged" }],
           );
+        }),
+    );
+
+    it.effect(
+      "a squash whose record failed to land is recorded merged when the merge is asked again",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, credential } = yield* mateWithChange(call, fake, owner);
+          const git = yield* gitClient;
+          const ada = yield* checkout(git, origin, credential, appId, "ada");
+          const before = yield* ada.main;
+          yield* ada.commit("a.txt", "ada\n", "Ada's a");
+          const { head } = yield* ada.push("P_MATE", 1);
+          yield* recorded(url, 1, head);
+
+          // The merge's record write dies after git has squashed: its event waits on a lock, and
+          // its connection is cut.
+          const db = yield* PgConnection.make({ url: Redacted.make(url) });
+          yield* db.query("BEGIN");
+          yield* db.query("LOCK TABLE hq_git_event IN SHARE MODE");
+          const merging = yield* Effect.forkChild(merge(call, owner, appId, 1, head));
+          yield* rowsWhere(
+            url,
+            `SELECT pg_terminate_backend(pid) AS cut FROM pg_stat_activity
+               WHERE wait_event_type = 'Lock' AND query LIKE '%INSERT INTO hq_git_event%'`,
+            (rows) => rows.length > 0,
+          );
+          yield* db.query("ROLLBACK");
+          assert.strictEqual((yield* Fiber.join(merging)).status, 503);
+          const squashed = yield* ada.main;
+          assert.notStrictEqual(squashed, before);
+          const detail = (yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, {
+            session: owner,
+          })).body as { readonly change: { readonly state: string } };
+          assert.strictEqual(detail.change.state, "open");
+
+          // Asked again: the squash on main is found by its Mate-Change, and recorded.
+          const again = yield* merge(call, owner, appId, 1, head);
+          assert.strictEqual(again.status, 200);
+          const change = again.body as Record<string, unknown>;
+          assert.deepStrictEqual(
+            [change["state"], change["mergedSha"], change["landedHead"]],
+            ["merged", squashed, head],
+          );
+          assert.strictEqual(yield* ada.main, squashed);
         }),
     );
 

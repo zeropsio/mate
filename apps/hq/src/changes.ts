@@ -10,7 +10,7 @@
  *
  * @module changes
  */
-import type { CommitSummary, GitError } from "@t3tools/hq-git";
+import type { CommitSummary, GitError, HqGit, Repo } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   type ChangeDetailResponse,
@@ -213,6 +213,26 @@ const crewTrailers = (commits: ReadonlyArray<CommitSummary>) => {
   }
   return Object.fromEntries(Object.entries(found).filter(([, values]) => values.length > 0));
 };
+
+/**
+ * The squash of a Mate's change among `main`'s latest commits, by the `Mate-Change` trailer the git
+ * layer gives every squash; none past them.
+ */
+const squashOnMain = (git: HqGit, repo: Repo, mateId: string, number: number) =>
+  Effect.map(
+    git.log(repo, "refs/heads/main", { limit: 100 }),
+    (log) =>
+      log.items.find((commit) =>
+        (
+          commit.message
+            .trimEnd()
+            .split(/\n[ \t]*\n/u)
+            .at(-1) ?? ""
+        )
+          .split("\n")
+          .some((line) => line.trim() === `Mate-Change: ${mateId}/${String(number)}`),
+      )?.sha ?? null,
+  );
 
 /** The bytes every PNG begins with. */
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -759,10 +779,19 @@ export const changesLayer: Layer.Layer<
                 ) {
                   landed = yield* squash((yield* mainOf(git, at)) ?? "");
                 }
-                if ("kind" in landed) return yield* refuse("conflict", landed.kind);
+                // On main already, yet open here: this change's squash whose record never landed
+                // (its write failed after git moved main) is recorded now.
+                const found =
+                  "kind" in landed && landed.kind === "already_merged"
+                    ? yield* squashOnMain(git, at, mate, number)
+                    : null;
+                if ("kind" in landed && found === null) {
+                  return yield* refuse("conflict", landed.kind);
+                }
+                const mergedSha = "merged" in landed ? landed.merged : found!;
                 const [row] = yield* sql<ChangeRow>`
                   UPDATE hq_change
-                  SET state = 'merged', merged_sha = ${landed.merged}, landed_head = ${expectedHead},
+                  SET state = 'merged', merged_sha = ${mergedSha}, landed_head = ${expectedHead},
                       head = ${expectedHead}, merged_at = now(), updated_at = now(),
                       mergeability = 'already_merged', behind = false
                   WHERE app_id = ${at.appId}::uuid AND repo = ${at.id} AND number = ${number}
@@ -772,7 +801,12 @@ export const changesLayer: Layer.Layer<
                   appId: at.appId,
                   repo: at.id,
                   number,
-                  data: { mergedSha: landed.merged, landedHead: expectedHead, userId },
+                  data: {
+                    mergedSha,
+                    landedHead: expectedHead,
+                    userId,
+                    ...(found === null ? {} : { recovered: true }),
+                  },
                 });
                 return changeOf(row!);
               }),
