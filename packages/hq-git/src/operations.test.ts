@@ -373,6 +373,35 @@ describe("git operations", () => {
 });
 
 describe("a change's own history", () => {
+  it.live("names each file the change touches against its base, with how", () =>
+    fixture(async (git, dir) => {
+      expect(await value(git.changeNames(repo, "alice", 1))).toEqual({
+        items: [],
+        truncated: false,
+      });
+      const main = await write(
+        git,
+        { "kept.txt": "kept\n", "edited.txt": "one\n", "gone.txt": "x\n" },
+        null,
+      );
+      await branch(git, dir, main, {
+        "added.txt": "new\n",
+        "edited.txt": "two\n",
+        "gone.txt": null,
+      });
+      // main moving on is no part of the change.
+      await write(git, { "later.txt": "later\n" }, main);
+      expect(await value(git.changeNames(repo, "alice", 1))).toEqual({
+        items: [
+          { path: "added.txt", status: "A" },
+          { path: "edited.txt", status: "M" },
+          { path: "gone.txt", status: "D" },
+        ],
+        truncated: false,
+      });
+    }),
+  );
+
   it.live(
     "reads every trailer of the change's commits as git parses them, oldest first, however many",
     () =>

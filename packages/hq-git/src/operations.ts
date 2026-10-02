@@ -593,6 +593,30 @@ export const makeOperations = (
       const { items, cut } = await summaries(dir, shas.slice(0, limit), signal);
       return { items, truncated: shas.length > limit || cut };
     });
+  const changeNames: HqGit["changeNames"] = (repo, mateId, number) =>
+    inRepo("changeNames", repo, async (dir, signal) => {
+      const head = await refHead(dir, changeRef(mateId, number), signal);
+      const main = await refHead(dir, "refs/heads/main", signal);
+      if (!head || !main) return { items: [], truncated: false };
+      const base = await text(dir, ["merge-base", main, head], signal);
+      // `-z` alternates the letter and the path, each ended by NUL: never a cut pair.
+      const read = await prefix(
+        dir,
+        ["diff", "--no-renames", "--name-status", "-z", base, head, "--"],
+        signal,
+        readLimits.bytes,
+      );
+      const fields = read.bytes.toString().split("\0");
+      const items: Array<{ path: string; status: string }> = [];
+      for (let i = 0; i + 1 < fields.length && fields[i]; i += 2) {
+        items.push({ status: fields[i]!, path: fields[i + 1]! });
+      }
+      if (read.truncated) items.pop();
+      return {
+        items: items.slice(0, readLimits.entries),
+        truncated: read.truncated || items.length > readLimits.entries,
+      };
+    });
   const changeTrailers: HqGit["changeTrailers"] = (repo, mateId, number, keys) =>
     inRepo("changeTrailers", repo, async (dir, signal) => {
       if (keys.length === 0 || keys.some((key) => !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(key)))
@@ -805,6 +829,7 @@ export const makeOperations = (
     changeHead,
     mergeBase,
     changeLog,
+    changeNames,
     changeTrailers,
     mergeability,
     squashMerge,
