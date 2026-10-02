@@ -7,6 +7,7 @@ import {
   MARKER_RETRY_MS,
   markerRetryDelay,
   selectAutoConnectTargets,
+  ZEROPS_AUTO_CONNECT_LIMIT,
   type AutoConnectCandidate,
 } from "./autoConnect.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
@@ -103,6 +104,19 @@ describe("selectAutoConnectTargets: auto-connect's WANT (DESIGN §4.4)", () => {
     };
     expect(selectAutoConnectTargets(input)).toEqual(["fresh:zcp"]);
     expect(selectAutoConnectTargets(input)).toEqual(["fresh:zcp"]);
+  });
+
+  // Every row in the menu says what its Mate is doing without a click (the owner, 2026-10-02: a new
+  // Mate past the twelfth sat asleep and empty until clicked — "that's stupid"). A kept session
+  // makes a reconnect cost no mint, so the ceiling is only a bound no account comes near.
+  it("connects every ready Mate the roster lists, far past a dozen", () => {
+    const ids = Array.from({ length: 30 }, (_, index) => `m${index}`);
+    const targets = selectAutoConnectTargets({
+      candidates: ids.map((id) => candidate(id)),
+      health: health(ids.map((id) => [id, "ready"] as const)),
+    });
+    expect(targets).toHaveLength(30);
+    expect(ZEROPS_AUTO_CONNECT_LIMIT).toBeGreaterThanOrEqual(48);
   });
 
   it("stops at the ceiling, counting what is registered already", () => {

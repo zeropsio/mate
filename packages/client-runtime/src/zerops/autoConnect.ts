@@ -23,12 +23,13 @@ import type { ZeropsCandidate } from "./candidates.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
 
 /**
- * Every registration is a live socket and a credential to renew, so an
- * account with many environments is registered up to here on its own and by
- * hand beyond it — the roster still lists the rest, it just cannot say what
- * they are doing until someone connects them.
+ * A bound, not a budget: every ready Mate the roster lists connects on its own, so each row says
+ * what its Mate is doing without a click (the owner, 2026-10-02). A connect costs a throwaway only
+ * the first time in a day — a kept session (`keptSessions.ts`) reconnects with none — and the door's
+ * mint pace spreads those, so what is left to bound is a live socket per Mate. The largest account
+ * measured holds 27 Mates; one past this connects the rest by hand.
  */
-export const ZEROPS_AUTO_CONNECT_LIMIT = 12;
+export const ZEROPS_AUTO_CONNECT_LIMIT = 48;
 
 export interface AutoConnectCandidate extends ZeropsCandidate {
   /** Present once the environment is registered, whatever its socket is doing. */
