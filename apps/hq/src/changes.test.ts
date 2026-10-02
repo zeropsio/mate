@@ -307,7 +307,7 @@ describe("a Mate's changes in HQ", () => {
           assert.isFalse(NodeFS.existsSync(debris), "taking the lead, git swept nothing");
           const events = yield* rowsWhere(
             first.url,
-            "SELECT kind, number, data FROM hq_git_event ORDER BY seq",
+            "SELECT kind, number, data FROM hq_git_event WHERE repo = 'appdev' ORDER BY seq",
             (rows) => rows.length >= 5,
           );
           assert.deepStrictEqual(
@@ -471,6 +471,7 @@ describe("a Mate's changes in HQ", () => {
           assert.deepStrictEqual(yield* self, {
             ...record,
             appId,
+            appName: "Shop",
             changes: [change(1, "open")],
           });
 
@@ -520,7 +521,12 @@ describe("a Mate's changes in HQ", () => {
             session: owner,
             body: { appId: null, kind: "mate" },
           });
-          assert.deepStrictEqual(yield* self, { ...record, appId: null, changes: [] });
+          assert.deepStrictEqual(yield* self, {
+            ...record,
+            appId: null,
+            appName: null,
+            changes: [],
+          });
         }),
     );
 

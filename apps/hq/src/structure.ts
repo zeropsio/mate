@@ -389,6 +389,14 @@ export const structureLayer = (options: {
             );
             if (rows[0] === undefined) return yield* refuse("app_not_found", "app_not_found");
             yield* changed;
+            // Its Mates' states name it.
+            const mates = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_app_project
+              WHERE app_id::text = ${appId} AND kind IN ('mate', 'devstage')`;
+            yield* PubSub.publishAll(
+              mateChanged,
+              mates.map((row) => row.project_id),
+            );
             return rows[0];
           }),
 
@@ -473,6 +481,7 @@ export const structureLayer = (options: {
               "placed_or_production_taken",
             );
             yield* changed;
+            yield* PubSub.publish(mateChanged, input.projectId);
           }),
 
         moveProject: (userId, projectId, { appId, kind }) =>
@@ -495,7 +504,10 @@ export const structureLayer = (options: {
                     RETURNING 1`;
                 }),
               );
-              if (removed.length > 0) yield* changed;
+              if (removed.length > 0) {
+                yield* changed;
+                yield* PubSub.publish(mateChanged, projectId);
+              }
               return { projectId, appId, kind: null };
             }
             const target = yield* sql<{ readonly project_id: string }>`
@@ -544,6 +556,7 @@ export const structureLayer = (options: {
               "production_taken",
             );
             yield* changed;
+            yield* PubSub.publish(mateChanged, projectId);
             return { projectId, appId, kind };
           }),
 

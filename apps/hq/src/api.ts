@@ -29,7 +29,9 @@
  * - A person's side of the changes: `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
  *   …/attachments/:id` → a picture; `POST …/merge` `{ expectedHead }` and `POST …/close` → the
- *   change, merged or closed. And `GET /changes/:appId/:repo/:n`, a change's address at HQ,
+ *   change, merged or closed. A tier of the application's recipe (`@t3tools/shared/hqRecipe`):
+ *   `GET /api/apps/:appId/recipe/:tier`, and a Mate's own, `GET /api/mate/recipe/:tier`. And `GET
+ *   /changes/:appId/:repo/:n`, a change's address at HQ,
  *   redirects to the change in the first client origin.
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
@@ -71,6 +73,8 @@ import {
 } from "@t3tools/shared/hqChanges";
 
 import { ChangeRefused, Changes } from "./changes.ts";
+import { RecipeTier } from "@t3tools/shared/hqRecipe";
+
 import { Door } from "./door.ts";
 import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
@@ -154,6 +158,7 @@ const CHANGE_STATUS = {
   attachment_not_found: 404,
   conflict: 409,
   invalid: 400,
+  too_large: 413,
 } as const;
 
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
@@ -282,6 +287,12 @@ const mateHolding = (presented: string | undefined) =>
 /** The Mate presenting `Authorization: Mate <credential>`. */
 const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
+);
+
+/** A recipe's tier as a path names it, `:tier`: `mate`, `stage` or `production`. */
+const decodeRecipeTier = Schema.decodeUnknownEffect(RecipeTier);
+const recipeTierOf = Effect.flatMap(HttpRouter.params, (params) =>
+  decodeRecipeTier(params["tier"]),
 );
 
 /** A change as a path names it, `:repo/:n`: a repository's name and a change's number. */
@@ -578,6 +589,29 @@ const routes = (
     ),
     HttpRouter.add(
       "GET",
+      "/api/mate/recipe/:tier",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const tier = yield* recipeTierOf;
+          return json(yield* (yield* Changes).mateRecipe(projectId, tier), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/recipe/:tier",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const appId = (yield* HttpRouter.params)["appId"] ?? "";
+          const tier = yield* recipeTierOf;
+          return json(yield* (yield* Changes).readRecipe(userId, appId, tier), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
       "/api/mate/whoami",
       handle(Effect.map(mate, ({ projectId }) => json({ projectId }, 200))),
     ),
@@ -656,7 +690,12 @@ const routes = (
         Effect.gen(function* () {
           const { userId } = yield* principal;
           const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
-          return json(yield* (yield* Structure).createApp(userId, name), 201);
+          const app = yield* (yield* Structure).createApp(userId, name);
+          // Its recipe repository comes with it; should it not now, it is made on first need.
+          yield* (yield* Changes)
+            .ensureGroupRepo(app.id)
+            .pipe(Effect.catch((error) => Effect.logWarning("recipe repository not made", error)));
+          return json(app, 201);
         }),
       ),
     ),

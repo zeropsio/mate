@@ -693,7 +693,7 @@ describe("HQ API", () => {
           );
           const born = { projectId: "P_MATE", name: "Ada", face: "face-1" };
           // A Mate in no application: no changes beside its record.
-          const none = { appId: null, changes: [] };
+          const none = { appId: null, appName: null, changes: [] };
           assert.deepStrictEqual(yield* self, [
             200,
             { ...born, standupRequestedBy: null, closedOff: false, ...none },
@@ -746,6 +746,7 @@ describe("HQ API", () => {
             name: "Ada",
             face: "face-1",
             appId: null,
+            appName: null,
             changes: [],
           };
           assert.deepStrictEqual(yield* link.next("state"), {
@@ -809,6 +810,59 @@ describe("HQ API", () => {
           );
           const reused = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
           assert.isFalse(reused.opened);
+        }),
+    );
+
+    it.effect(
+      "a Mate's link follows it into an application, between two, its renaming and out",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* setUpMate(call, "P_MATE");
+          const credential = yield* enrollMate(call, fake, "P_MATE");
+          const ticket = (yield* call("POST", "/api/mate/link-ticket", {
+            headers: { authorization: `Mate ${credential}` },
+          })).body as { readonly ticket: string };
+          const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
+          // The application it is in, by id and by its name now.
+          const appOf = Effect.map(link.next("state"), (state) => {
+            const { mate } = state as {
+              readonly mate: { readonly appId: string | null; readonly appName: string | null };
+            };
+            return [mate.appId, mate.appName];
+          });
+          assert.deepStrictEqual(yield* appOf, [null, null]);
+          const made = (name: string) =>
+            Effect.map(
+              call("POST", "/api/apps", { session: owner, body: { name } }),
+              (answer) => (answer.body as { readonly id: string }).id,
+            );
+          const [a, b] = [yield* made("A"), yield* made("B")];
+          const attached = yield* call("POST", `/api/apps/${a}/projects`, {
+            session: owner,
+            body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-1" } },
+          });
+          assert.strictEqual(attached.status, 201);
+          assert.deepStrictEqual(yield* appOf, [a, "A"]);
+          const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
+            session: owner,
+            body: { appId: b, kind: "mate" },
+          });
+          assert.strictEqual(moved.status, 200);
+          assert.deepStrictEqual(yield* appOf, [b, "B"]);
+          const renamed = yield* call("PATCH", `/api/apps/${b}`, {
+            session: owner,
+            body: { name: "Bakery" },
+          });
+          assert.strictEqual(renamed.status, 200);
+          assert.deepStrictEqual(yield* appOf, [b, "Bakery"]);
+          const detached = yield* call("PUT", "/api/projects/P_MATE/app", {
+            session: owner,
+            body: { appId: null, kind: "mate" },
+          });
+          assert.strictEqual(detached.status, 200);
+          assert.deepStrictEqual(yield* appOf, [null, null]);
         }),
     );
 

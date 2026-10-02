@@ -34,6 +34,7 @@ import * as Duration from "effect/Duration";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
@@ -47,6 +48,13 @@ import { JUDGED_PER_MAIN_MOVE, type MergeabilityKind } from "@t3tools/shared/hqC
 
 import { type GitEventKind, appendEvent } from "./gitEvents.ts";
 import { Leader, NotLeader } from "./leader.ts";
+
+/** A change whose branch moved: its repository, its Mate, its number. */
+export interface PushedChange {
+  readonly repo: Repo;
+  readonly mateId: string;
+  readonly number: number;
+}
 
 /** A Mate as git serves it, decided by Core before the layer sees the request. */
 export type MatePrincipal = Extract<Principal, { readonly kind: "mate" }>;
@@ -76,6 +84,12 @@ export class GitHost extends Context.Service<
     readonly close: Effect.Effect<void>;
     /** Ticks after the log has followed a ref that moved, starting with the current tick. */
     readonly recorded: Stream.Stream<number>;
+    /**
+     * Each change whose branch moved, after the log followed it — and, on taking the lead, every
+     * open change with a head — kept until taken, for the one reader that judges a change by its
+     * content (`changes.ts`).
+     */
+    readonly pushes: Queue.Dequeue<PushedChange>;
   }
 >()("@t3tools/hq/gitHost") {}
 
@@ -205,6 +219,7 @@ export const gitHostLayer = (options: {
 
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
+      const pushes = yield* Queue.unbounded<PushedChange>();
 
       /** A ref the layer wrote: the change it is the branch of judged, or the repository's main. */
       const record = (git: HqGit, event: GitEvent) =>
@@ -217,6 +232,7 @@ export const gitHostLayer = (options: {
               yield* leader.write(
                 pushed(event.repo, change, update.oldSha, update.newSha, verdict, {}),
               );
+              yield* Queue.offer(pushes, { repo: event.repo, ...change });
             }
           } else if (event.kind === "main_moved") {
             yield* leader.write(mainMoved(event.repo, event.old, event.new, event.by));
@@ -225,9 +241,13 @@ export const gitHostLayer = (options: {
           yield* tick;
         });
 
-      /** On taking the lead: every repository converged, and what the refs show the log missed. */
+      /**
+       * On taking the lead: every repository converged, and what the refs show the log missed;
+       * answers the open changes with a head, for their content to be judged again.
+       */
       const takeover = (git: HqGit) =>
         Effect.gen(function* () {
+          const found: Array<PushedChange> = [];
           for (const repo of yield* git.list()) {
             yield* git
               .convergeRepo(repo)
@@ -259,17 +279,20 @@ export const gitHostLayer = (options: {
             const head = yield* git
               .changeHead(repo, row.mate_project_id, row.number)
               .pipe(Effect.option);
-            if (Option.isSome(head) && head.value !== null && head.value !== row.head) {
-              const change = { mateId: row.mate_project_id, number: row.number };
+            if (Option.isNone(head) || head.value === null) continue;
+            const change = { mateId: row.mate_project_id, number: row.number };
+            if (head.value !== row.head) {
               const verdict = yield* judge(git, repo, change.mateId, change.number);
               yield* leader.write(
                 pushed(repo, change, row.head, head.value, verdict, { reconciled: true }),
               );
             }
+            found.push({ repo, ...change });
           }
           // What was judged before this lead may be stale: main may have moved since.
           for (const row of repos) yield* rejudge(git, { appId: row.app_id, id: row.name });
           yield* tick;
+          return found;
         });
 
       const current = yield* Ref.make<
@@ -322,11 +345,15 @@ export const gitHostLayer = (options: {
             Effect.tapError(() => Scope.close(scope, Exit.void)),
           );
           opened.git = git;
-          yield* takeover(git).pipe(
-            Effect.catch((error) => Effect.logWarning("git takeover reconcile failed", error)),
+          const open = yield* takeover(git).pipe(
+            Effect.catch((error) =>
+              Effect.as(Effect.logWarning("git takeover reconcile failed", error), []),
+            ),
           );
           yield* Ref.set(current, Option.some({ git, scope }));
           yield* Effect.logInfo("git open");
+          // Judged once the layer serves: what the last lead left open is judged again.
+          yield* Queue.offerAll(pushes, open);
         }),
       );
 
@@ -389,6 +416,7 @@ export const gitHostLayer = (options: {
           }),
         close: Effect.andThen(Ref.set(stopped, true), shut),
         recorded: SubscriptionRef.changes(ticks),
+        pushes,
       });
     }),
   );
