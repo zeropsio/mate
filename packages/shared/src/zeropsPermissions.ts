@@ -4,10 +4,11 @@
  * HQ holds it now. HQ enforces it; the client asks it what to offer.
  *
  * - **The verbs** are the places that decide today: reading a project or an application, writing an
- *   application, attaching, moving or detaching a project, a Mate's record, a Mate's enrollment,
- *   following a Mate's live summary (who may operate it: open it, as its door does), and reading and
- *   commenting on an application's changes (`hqChanges.ts`), as main's Gitea read them, and
- *   merging or closing one, as its write team did — closing also the structure's writer.
+ *   application, attaching, moving or detaching a project, an environment's deploy token, a Mate's
+ *   record, a Mate's enrollment, following a Mate's live summary (who may operate it: open it, as
+ *   its door does), and reading and commenting on an application's changes (`hqChanges.ts`), as
+ *   main's Gitea read them, and merging or closing one, as its write team did — closing also the
+ *   structure's writer.
  * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
  *   application HQ holds it in — are a Mate's alone, for its own project only; it is refused every
  *   other verb.
@@ -115,6 +116,8 @@ export interface Targets {
   readonly close_change: { readonly projectIds: ReadonlyArray<string> };
   readonly create_app: null;
   readonly rename_app: null;
+  /** An environment's deploy token handed to HQ (SPEC §3.2b): by who may attach the project. */
+  readonly keep_deploy_token: { readonly projectId: string };
   readonly attach: AttachTarget;
   readonly move: PlacementTarget;
   readonly detach: ProjectTarget;
@@ -296,6 +299,13 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "create_app":
     case "rename_app":
       return writer ? ALLOW : deny("not_structure_writer");
+    // The token is minted by the person who attaches the environment, on their own client (main
+    // E03): whoever has Full access on its project, or the structure's writer.
+    case "keep_deploy_token": {
+      const { projectId } = request.target;
+      if (writer) return exists(projectId);
+      return roleAtLeast(roleOn(projectId), "ADMIN") ? ALLOW : deny("not_project_admin");
+    }
     // Who a person is on the project comes before what HQ holds it as, so a refusal never tells
     // someone without that role the project's kind; the kind asked for is their own input.
     case "attach": {

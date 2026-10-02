@@ -114,9 +114,67 @@ describe("HQ API", () => {
             name: "P_MATE",
             kind: "production",
             mate: null,
-            environment: { name: "live", sources: ["release"], order: 1 },
+            environment: { name: "live", sources: ["release"], order: 1, keyHeld: false },
           },
         ]);
+      }),
+    );
+
+    it.effect("keeps an environment's deploy token, answering only that it holds one", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const created = yield* call("POST", "/api/apps", { session, body: { name: "Shop" } });
+        const appId = (created.body as { readonly id: string }).id;
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session,
+          body: { projectId: "P_MATE", kind: "stage", environment: { name: "stage" } },
+        });
+        fake.tokens.set("key-stage", {
+          id: "T_STAGE",
+          name: "deploy-stage",
+          orgId: "ORG",
+          roleCode: "NO_ACCESS",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: [{ projectId: "P_MATE", roleCode: "BASIC_USER" }],
+          createdMs: 0,
+          createdByUser: "owner",
+        });
+        const put = (name: string, token: string) =>
+          Effect.map(
+            call("PUT", `/api/apps/${appId}/environments/${name}/deploy-token`, {
+              session,
+              body: { token },
+            }),
+            (response) => [response.status, response.body],
+          );
+        assert.deepStrictEqual(
+          [
+            yield* put("production", "key-stage"),
+            yield* put("stage", "key-bogus"),
+            yield* put("stage", "key-stage"),
+          ],
+          [
+            [404, { code: "environment_not_found", reason: "environment_not_found" }],
+            [400, { code: "invalid", reason: "deploy_token_refused" }],
+            [204, null],
+          ],
+        );
+        const read = yield* call("GET", "/api/structure", { session });
+        assert.deepStrictEqual(
+          (
+            read.body as {
+              readonly apps: ReadonlyArray<{
+                readonly projects: ReadonlyArray<{ readonly environment?: unknown }>;
+              }>;
+            }
+          ).apps[0]?.projects[0]?.environment,
+          { name: "stage", sources: ["main"], order: 1, keyHeld: true },
+        );
+        assert.notInclude(new TextDecoder().decode(read.bytes), "key-stage");
       }),
     );
 
@@ -478,7 +536,7 @@ describe("HQ API", () => {
                 name: "P_MATE",
                 kind: "stage",
                 mate: null,
-                environment: { name: "p-mate", sources: ["main"], order: 1 },
+                environment: { name: "p-mate", sources: ["main"], order: 1, keyHeld: false },
               },
             ],
           },

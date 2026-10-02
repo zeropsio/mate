@@ -141,7 +141,33 @@ const MAKER = { orgRole: "NO_ACCESS", canCreate: true, override: "OWNER" } as co
 /** U with org NO_ACCESS and ADMIN on P alone: P's admin, nobody else's. */
 const P_ADMIN = { orgRole: "NO_ACCESS", override: "ADMIN" } as const;
 
+/** A deploy token handed to HQ for P, an environment's project. */
+const KEEP_TOKEN: Request = { verb: "keep_deploy_token", target: { projectId: "P" } };
+
 const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
+  // Who may hand HQ an environment's deploy token: who may attach it (Full access on its project),
+  // or the structure's writer (SPEC §3.2b, main E03).
+  keep_deploy_token: [
+    ["an org owner, a structure writer", WRITER, KEEP_TOKEN, "allow"],
+    ["an org admin", { orgRole: "ADMIN" }, KEEP_TOKEN, "allow"],
+    [
+      "a writer, a project the org no longer has",
+      { ...WRITER, present: false },
+      KEEP_TOKEN,
+      "project_gone",
+    ],
+    ["P's admin", P_ADMIN, KEEP_TOKEN, "allow"],
+    ["P's owner, who made it", MAKER, KEEP_TOKEN, "allow"],
+    ["a Basic user there", { override: "BASIC_USER" }, KEEP_TOKEN, "not_project_admin"],
+    ["org Read only", { orgRole: "READ_ONLY" }, KEEP_TOKEN, "not_project_admin"],
+    [
+      "P's admin, a project the org no longer has",
+      { ...P_ADMIN, present: false },
+      KEEP_TOKEN,
+      "not_project_admin",
+    ],
+    ["an invited owner", { orgRole: "OWNER", status: "INVITED" }, KEEP_TOKEN, "not_active_member"],
+  ],
   read_project: [
     [
       "org Read only reads",
@@ -1025,6 +1051,7 @@ const REQUESTS: ReadonlyArray<Request> = [
   ...APPS.map((projectIds): Request => ({ verb: "read_app", target: { projectIds } })),
   { verb: "create_app", target: null },
   { verb: "rename_app", target: null },
+  KEEP_TOKEN,
   ...HELD.flatMap((held) =>
     TO.flatMap((to) =>
       APPS.flatMap((app) => [false, true].map((taken) => place("attach", held, to, app, taken))),

@@ -29,6 +29,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -45,7 +46,7 @@ import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateLive, type MateLiveEntry } from "./mateLive.ts";
 import { Roles } from "./roles.ts";
-import type { ZeropsError } from "./zerops/api.ts";
+import { ZeropsApi, type ZeropsError, type ZeropsOwnToken } from "./zerops/api.ts";
 
 export class StructureRefused extends Schema.TaggedError<StructureRefused>()("StructureRefused", {
   code: Schema.Literals([
@@ -53,6 +54,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "app_not_found",
     "project_not_found",
     "mate_not_found",
+    "environment_not_found",
     "invalid",
     "conflict",
   ]),
@@ -75,6 +77,9 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "environment_name_missing",
     "environment_name_invalid",
     "environment_name_taken",
+    "environment_not_found",
+    "deploy_token_refused",
+    "deploy_token_scope",
   ]),
 }) {}
 
@@ -93,6 +98,8 @@ export interface EnvironmentView {
   readonly sources: ReadonlyArray<string>;
   /** Its place among the application's environments, in the order they were declared: from 1. */
   readonly order: number;
+  /** Whether HQ holds its deploy token (main E05); the token itself is never answered. */
+  readonly keyHeld: boolean;
 }
 
 /** A Mate's state as the structure holds it: its record and its birth; its changes are `changes.ts`'. */
@@ -204,6 +211,17 @@ export class Structure extends Context.Service<
       projectId: string,
       mark: "standup" | "closed_off",
     ) => Effect.Effect<MateRecordState, WriteError>;
+    /**
+     * Keeps the deploy token of the application's environment `name` (SPEC §3.2b): handed over
+     * by whoever may attach its project (`keep_deploy_token`), and kept only once Zerops says it
+     * reaches exactly that project, as a Basic user in HQ's org (main E02) — never answered back.
+     */
+    readonly keepDeployToken: (
+      userId: string,
+      appId: string,
+      name: string,
+      token: Redacted.Redacted,
+    ) => Effect.Effect<void, WriteError>;
     /** A Mate's record and birth, when HQ has its record. */
     readonly mateState: (
       projectId: string,
@@ -233,6 +251,20 @@ const tierOf = (kind: string): EnvironmentTier | undefined =>
 
 /** An environment's sources as the JSON its insert spreads into a text array. */
 const encodeSources = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
+
+/**
+ * Whether a token reaches exactly one project, `projectId`, as a Basic user, in the org `orgId`
+ * and nothing more: no org role, no project making, no finances (main E02).
+ */
+const reachesOnly = (token: ZeropsOwnToken, orgId: string, projectId: string) =>
+  token.orgId === orgId &&
+  token.roleCode === "NO_ACCESS" &&
+  !token.canCreateProjects &&
+  !token.canViewFinances &&
+  !token.canEditFinances &&
+  token.projects.length === 1 &&
+  token.projects[0]?.projectId === projectId &&
+  token.projects[0].roleCode === "BASIC_USER";
 
 /** An environment's row, as a takeover keeps it (main D13). */
 interface EnvironmentRow {
@@ -284,13 +316,14 @@ export const structureLayer = (options: {
   readonly hqProjectId: string;
   /** How often the leader reconciles with Zerops (SPEC §4); 60 s. */
   readonly reconcileEvery?: Duration.Duration;
-}): Layer.Layer<Structure, never, Leader | MateLive | Roles | SqlClient.SqlClient> =>
+}): Layer.Layer<Structure, never, Leader | MateLive | Roles | SqlClient.SqlClient | ZeropsApi> =>
   Layer.effect(
     Structure,
     Effect.gen(function* () {
       const leader = yield* Leader;
       const roles = yield* Roles;
       const live = yield* MateLive;
+      const zerops = yield* ZeropsApi;
       const sql = yield* SqlClient.SqlClient;
       const version = yield* SubscriptionRef.make(0);
       const changed = SubscriptionRef.update(version, (tick) => tick + 1);
@@ -426,6 +459,42 @@ export const structureLayer = (options: {
         changes: Stream.merge(SubscriptionRef.changes(version), live.changes),
         mateChanges: Stream.fromPubSub(mateChanged),
         mateState: stateOf,
+        keepDeployToken: (userId, appId, name, token) =>
+          Effect.gen(function* () {
+            const named = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_environment
+              WHERE app_id::text = ${appId} AND name = ${name}`;
+            const projectId = named[0]?.project_id;
+            if (projectId === undefined) {
+              return yield* refuse("environment_not_found", "environment_not_found");
+            }
+            const view = yield* roles.fresh;
+            yield* allowed(userId, "keep_deploy_token", { projectId }, view);
+            const own = yield* zerops
+              .ownToken(token)
+              .pipe(
+                Effect.catchTag("ZeropsRefused", () => refuse("invalid", "deploy_token_refused")),
+              );
+            if (!reachesOnly(own, view.orgId, projectId)) {
+              return yield* refuse("invalid", "deploy_token_scope");
+            }
+            const kept = yield* leader.write(
+              Effect.gen(function* () {
+                yield* lockProject(sql, projectId);
+                return yield* sql`
+                  INSERT INTO hq_deploy_token (project_id, token, kept_by)
+                  SELECT project_id, ${Redacted.value(token)}, ${userId} FROM hq_environment
+                  WHERE project_id = ${projectId} AND app_id::text = ${appId} AND name = ${name}
+                  ON CONFLICT (project_id)
+                  DO UPDATE SET token = EXCLUDED.token, kept_by = EXCLUDED.kept_by, kept_at = now()
+                  RETURNING 1`;
+              }),
+            );
+            if (kept.length === 0) {
+              return yield* refuse("environment_not_found", "environment_not_found");
+            }
+            yield* changed;
+          }),
         markBirth: (userId, projectId, mark) =>
           Effect.gen(function* () {
             const view = yield* roles.fresh;
@@ -774,13 +843,17 @@ export const structureLayer = (options: {
                 readonly name: string;
                 readonly sources: ReadonlyArray<string>;
                 readonly order: number;
+                readonly key_held: boolean;
               }>`
-                SELECT project_id, name, sources,
-                       (rank() OVER (PARTITION BY app_id ORDER BY declared_seq))::int AS "order"
-                FROM hq_environment`).map((row): [string, EnvironmentView] => [
-                row.project_id,
-                { name: row.name, sources: row.sources, order: row.order },
-              ]),
+                SELECT e.project_id, e.name, e.sources,
+                       (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
+                       t.project_id IS NOT NULL AS key_held
+                FROM hq_environment e LEFT JOIN hq_deploy_token t USING (project_id)`).map(
+                (row): [string, EnvironmentView] => [
+                  row.project_id,
+                  { name: row.name, sources: row.sources, order: row.order, keyHeld: row.key_held },
+                ],
+              ),
             );
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
             const person = { kind: "person", userId } as const;

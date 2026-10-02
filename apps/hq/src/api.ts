@@ -13,6 +13,8 @@
  * - `PATCH /api/apps/:id` `{ name }` → the application.
  * - `PUT /api/projects/:projectId/app` `{ appId | null, kind }` → `{ projectId, appId, kind }`:
  *   moves a project into an application, or out of any.
+ * - `PUT /api/apps/:appId/environments/:name/deploy-token` `{ token }` → `204`: the environment's
+ *   deploy token, minted by the client of whoever attaches it; the structure says only `keyHeld`.
  * - `POST /api/mates` `{ projectId, name, face }`, `PATCH /api/mates/:projectId` `{ name?, face? }`
  *   → `{ projectId, name, face }`: a Mate's record, in an application or not.
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
@@ -129,12 +131,14 @@ const AttachBody = Schema.Struct({
   mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
 });
+const DeployTokenBody = Schema.Struct({ token: Schema.String });
 
 const STRUCTURE_STATUS = {
   forbidden: 403,
   app_not_found: 404,
   project_not_found: 404,
   mate_not_found: 404,
+  environment_not_found: 404,
   invalid: 400,
   conflict: 409,
 } as const;
@@ -723,6 +727,24 @@ const routes = (
           const appId = (yield* HttpRouter.params)["id"] ?? "";
           const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
           return json(yield* (yield* Structure).renameApp(userId, appId, name), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "PUT",
+      "/api/apps/:appId/environments/:name/deploy-token",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const params = yield* HttpRouter.params;
+          const { token } = yield* jsonBody(DeployTokenBody, BODY_LIMIT);
+          yield* (yield* Structure).keepDeployToken(
+            userId,
+            params["appId"] ?? "",
+            params["name"] ?? "",
+            Redacted.make(token),
+          );
+          return HttpServerResponse.empty({ status: 204 });
         }),
       ),
     ),

@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -19,7 +20,14 @@ import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, structureLayer } from "./structure.ts";
-import { type ZeropsMember, type ZeropsProject, ZeropsUnavailable } from "./zerops/api.ts";
+import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
+import {
+  ZeropsApi,
+  type ZeropsMember,
+  type ZeropsOwnToken,
+  type ZeropsProject,
+  ZeropsUnavailable,
+} from "./zerops/api.ts";
 
 const member = (userId: string, roleCode: string, canCreateProjects = false): ZeropsMember => ({
   name: userId,
@@ -83,13 +91,14 @@ const VIEW: Org = {
 
 /**
  * Structure over a fresh database and a Zerops whose view is `view`; a project exists while the
- * view has it, and `down` makes asking for one unanswerable. `before` writes the database over
- * its own pool before the core migrates it.
+ * view has it, and `down` makes asking for one unanswerable. `zerops` answers what a credential
+ * handed to HQ is. `before` writes the database over its own pool before the core migrates it.
  */
 const withStructure = <A, E, B = never>(
   use: (
     view: Ref.Ref<Org>,
     down: Ref.Ref<boolean>,
+    zerops: FakeWorld,
   ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
   before?: Effect.Effect<void, B, SqlClient.SqlClient>,
 ) =>
@@ -100,6 +109,7 @@ const withStructure = <A, E, B = never>(
     }
     const view = yield* Ref.make(VIEW);
     const down = yield* Ref.make(false);
+    const zerops = emptyWorld();
     const roles = Layer.succeed(Roles, {
       view: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
       fresh: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "fresh" as const })),
@@ -117,9 +127,12 @@ const withStructure = <A, E, B = never>(
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(roles),
         Layer.provide(mateLiveLayer),
+        Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(zerops))),
       ),
     );
-    return yield* Effect.andThen(untilActive, use(view, down)).pipe(Effect.provide(context));
+    return yield* Effect.andThen(untilActive, use(view, down, zerops)).pipe(
+      Effect.provide(context),
+    );
   });
 
 /** The refusal's reason, or the success. */
@@ -130,6 +143,8 @@ const reasonOf = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<
       onFailure: (error) => ("reason" in error ? String(error.reason) : error._tag),
     }),
   );
+
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 /** Each project of the application named `appName` by id, and its environment, as owner reads it. */
 const environmentsOf = (structure: Structure["Service"], appName: string) =>
@@ -552,7 +567,12 @@ describe("structure", () => {
                     name: "name of P_PROD",
                     kind: "production",
                     mate: null,
-                    environment: { name: "name-of-p-prod", sources: ["release"], order: 1 },
+                    environment: {
+                      name: "name-of-p-prod",
+                      sources: ["release"],
+                      order: 1,
+                      keyHeld: false,
+                    },
                   },
                   {
                     projectId: "P_MATE",
@@ -565,7 +585,12 @@ describe("structure", () => {
                     name: "name of P_STAGE",
                     kind: "stage",
                     mate: null,
-                    environment: { name: "name-of-p-stage", sources: ["main"], order: 2 },
+                    environment: {
+                      name: "name-of-p-stage",
+                      sources: ["main"],
+                      order: 2,
+                      keyHeld: false,
+                    },
                   },
                 ],
               },
@@ -578,7 +603,12 @@ describe("structure", () => {
                     name: "name of P_TEAM",
                     kind: "stage",
                     mate: null,
-                    environment: { name: "name-of-p-team", sources: ["main"], order: 1 },
+                    environment: {
+                      name: "name-of-p-team",
+                      sources: ["main"],
+                      order: 1,
+                      keyHeld: false,
+                    },
                   },
                   {
                     projectId: "P_OWNED",
@@ -932,9 +962,9 @@ describe("structure", () => {
               kind: "production",
             });
             assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
-              P_STAGE: { name: "name-of-p-stage", sources: ["main"], order: 1 },
+              P_STAGE: { name: "name-of-p-stage", sources: ["main"], order: 1, keyHeld: false },
               P_MATE: undefined,
-              P_PROD: { name: "name-of-p-prod", sources: ["release"], order: 2 },
+              P_PROD: { name: "name-of-p-prod", sources: ["release"], order: 2, keyHeld: false },
             });
           }),
         ),
@@ -974,8 +1004,8 @@ describe("structure", () => {
             ],
           );
           assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
-            P_STAGE: { name: "name-of-p-team", sources: ["main"], order: 1 },
-            P_TEAM: { name: "name-of-p-team-2", sources: ["main"], order: 2 },
+            P_STAGE: { name: "name-of-p-team", sources: ["main"], order: 1, keyHeld: false },
+            P_TEAM: { name: "name-of-p-team-2", sources: ["main"], order: 2, keyHeld: false },
           });
         }),
       ),
@@ -1003,8 +1033,8 @@ describe("structure", () => {
             kind: "production",
           });
           assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
-            P_STAGE: { name: "name-of-p-stage", sources: ["main"], order: 2 },
-            P_PROD2: { name: "live", sources: ["release"], order: 1 },
+            P_STAGE: { name: "name-of-p-stage", sources: ["main"], order: 2, keyHeld: false },
+            P_PROD2: { name: "live", sources: ["release"], order: 1, keyHeld: false },
           });
         }),
       ),
@@ -1034,8 +1064,8 @@ describe("structure", () => {
           yield* structure.moveProject("owner", "P_STAGE", { appId: team.id, kind: "production" });
           yield* structure.moveProject("owner", "P_PROD", { appId: null, kind: "production" });
           assert.deepStrictEqual(yield* environmentsOf(structure, "Team"), {
-            P_OTHER: { name: "name-of-p-stage", sources: ["main"], order: 1 },
-            P_STAGE: { name: "name-of-p-stage-2", sources: ["release"], order: 2 },
+            P_OTHER: { name: "name-of-p-stage", sources: ["main"], order: 1, keyHeld: false },
+            P_STAGE: { name: "name-of-p-stage-2", sources: ["release"], order: 2, keyHeld: false },
           });
 
           yield* Ref.update(view, (org) => ({
@@ -1061,9 +1091,9 @@ describe("structure", () => {
           Effect.gen(function* () {
             const structure = yield* Structure;
             assert.deepStrictEqual(yield* environmentsOf(structure, "Shop"), {
-              P_STAGE: { name: "stage", sources: ["main"], order: 1 },
-              P_PROD: { name: "production", sources: ["release"], order: 2 },
-              P_TEAM: { name: "stage-2", sources: ["main"], order: 3 },
+              P_STAGE: { name: "stage", sources: ["main"], order: 1, keyHeld: false },
+              P_PROD: { name: "production", sources: ["release"], order: 2, keyHeld: false },
+              P_TEAM: { name: "stage-2", sources: ["main"], order: 3, keyHeld: false },
               P_MATE: undefined,
             });
           }),
@@ -1082,6 +1112,106 @@ describe("structure", () => {
                    ('P_MATE', '00000000-0000-0000-0000-00000000000a', 'mate', 'owner')`;
         }),
       ),
+    );
+
+    // An environment's deploy token (SPEC §3.2b, main E02/E05): handed over by whoever may attach
+    // its project, checked to reach exactly that project as a Basic user, and never answered back —
+    // a reader learns that one is held.
+    it.effect(
+      "keeps an environment's deploy token that reaches exactly its project, and says only that it holds one",
+      () =>
+        withStructure((_view, _down, zerops) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_OWNED",
+              kind: "stage",
+              environment: { name: "stage" },
+            });
+            const token = (
+              name: string,
+              over: Partial<Omit<ZeropsOwnToken, "readAtMs">> = {},
+            ): Omit<ZeropsOwnToken, "readAtMs"> => ({
+              id: name,
+              name,
+              orgId: "ORG",
+              roleCode: "NO_ACCESS",
+              canCreateProjects: false,
+              canViewFinances: false,
+              canEditFinances: false,
+              projects: [{ projectId: "P_OWNED", roleCode: "BASIC_USER" }],
+              createdMs: 0,
+              createdByUser: "maker",
+              ...over,
+            });
+            for (const [value, record] of [
+              ["key-stage", token("deploy-stage")],
+              [
+                "key-wide",
+                token("wide", {
+                  projects: [
+                    { projectId: "P_OWNED", roleCode: "BASIC_USER" },
+                    { projectId: "P_PROD", roleCode: "BASIC_USER" },
+                  ],
+                }),
+              ],
+              [
+                "key-other",
+                token("other", { projects: [{ projectId: "P_PROD", roleCode: "BASIC_USER" }] }),
+              ],
+              [
+                "key-admin",
+                token("admin", { projects: [{ projectId: "P_OWNED", roleCode: "ADMIN" }] }),
+              ],
+              ["key-org", token("org", { roleCode: "READ_ONLY" })],
+              ["key-maker", token("maker", { canCreateProjects: true })],
+              ["key-elsewhere", token("elsewhere", { orgId: "OTHER" })],
+            ] as const) {
+              zerops.tokens.set(value, record);
+            }
+            const keep = (userId: string, name: string, value: string) =>
+              reasonOf(structure.keepDeployToken(userId, shop.id, name, Redacted.make(value)));
+            const keyHeld = Effect.map(
+              environmentsOf(structure, "Shop"),
+              (environments) => environments["P_OWNED"]?.keyHeld,
+            );
+            assert.strictEqual(yield* keyHeld, false);
+            assert.deepStrictEqual(
+              [
+                yield* keep("owner", "production", "key-stage"),
+                yield* keep("dev", "stage", "key-stage"),
+                yield* keep("owner", "stage", "key-bogus"),
+                yield* keep("owner", "stage", "key-wide"),
+                yield* keep("owner", "stage", "key-other"),
+                yield* keep("owner", "stage", "key-admin"),
+                yield* keep("owner", "stage", "key-org"),
+                yield* keep("owner", "stage", "key-maker"),
+                yield* keep("owner", "stage", "key-elsewhere"),
+              ],
+              [
+                "environment_not_found",
+                "not_project_admin",
+                "deploy_token_refused",
+                "deploy_token_scope",
+                "deploy_token_scope",
+                "deploy_token_scope",
+                "deploy_token_scope",
+                "deploy_token_scope",
+                "deploy_token_scope",
+              ],
+            );
+            assert.strictEqual(yield* keyHeld, false);
+            // maker owns P_OWNED: Full access there is enough.
+            assert.strictEqual(yield* keep("maker", "stage", "key-stage"), "ok");
+            assert.strictEqual(yield* keyHeld, true);
+            const [kept] = yield* sql<{ readonly token: string }>`
+              SELECT token FROM hq_deploy_token WHERE project_id = 'P_OWNED'`;
+            assert.strictEqual(kept?.token, "key-stage");
+            assert.notInclude(encodeJson(yield* structure.read("owner")), "key-stage");
+          }),
+        ),
     );
 
     it.effect("a project gone from Zerops loses its Mate credential and its challenges", () =>
