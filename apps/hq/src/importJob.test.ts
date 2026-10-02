@@ -729,6 +729,84 @@ describe("the migration's import", () => {
     );
 
     it.effect(
+      "a done import run again after main moved leaves a recipe change as brought, and stays done",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+          for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+          yield* untilHealth(call, "active");
+          const written = yield* syntheticBundle(importRoot, undefined, undefined, undefined, [
+            { number: 1, state: "open", stage: underBuild },
+          ]);
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          const [app] = yield* rowsWhere(
+            url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          const appId = String(app?.["id"]);
+          const healedHead = changeHeadAt(gitRoot, appId, "group", "P_MATE", 1);
+          gitAt(
+            gitRoot,
+            appId,
+            "group",
+            "update-ref",
+            "refs/heads/mate/P_MATE/1",
+            written.groupHeads[1]!,
+            healedHead,
+          );
+          yield* rowsWhere(
+            url,
+            `WITH gone AS (DELETE FROM hq_import_item WHERE key = 'heal:g1/group#1' RETURNING 1)
+             UPDATE hq_change SET head = '${written.groupHeads[1]}'
+             WHERE repo = 'group' AND number = 1 RETURNING (SELECT count(*) FROM gone)::int AS n`,
+            (rows) => rows[0]?.["n"] === 1,
+          );
+          // Main moved on since: a merge landed after the import.
+          const main = gitAt(gitRoot, appId, "group", "rev-parse", "main");
+          const tree = gitAt(gitRoot, appId, "group", "rev-parse", `${main}^{tree}`);
+          const moved = NodeChildProcess.execFileSync(
+            "git",
+            [
+              "-C",
+              NodePath.join(gitRoot, appId, "group.git"),
+              "commit-tree",
+              tree,
+              "-p",
+              main,
+              "-m",
+              "Later work",
+            ],
+            {
+              encoding: "utf8",
+              env: {
+                ...process.env,
+                GIT_AUTHOR_NAME: "Ada",
+                GIT_AUTHOR_EMAIL: "ada@mate.test",
+                GIT_COMMITTER_NAME: "Ada",
+                GIT_COMMITTER_EMAIL: "ada@mate.test",
+              },
+            },
+          ).trim();
+          gitAt(gitRoot, appId, "group", "update-ref", "refs/heads/main", moved, main);
+
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          assert.strictEqual(
+            changeHeadAt(gitRoot, appId, "group", "P_MATE", 1),
+            written.groupHeads[1],
+          );
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect(
       "imports a second application's bundle beside the first, each verified on its own",
       () =>
         Effect.gen(function* () {

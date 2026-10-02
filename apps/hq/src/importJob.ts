@@ -523,9 +523,10 @@ export const importsLayer = (
       /**
        * An open change of `app`'s recipe, as main's rewrite left it: where the rewrite alone makes it
        * conflict, main merged in by Core, the merge's tree the change's with its tiers rewritten as
-       * main's were, so it merges as it did on main's Gitea. Only a change built on the bundle's main:
-       * one behind it, or one the rewrite leaves mergeable, stays as brought. A branch already at that
-       * merge, an earlier run's whose item did not land, is it. The change's head after.
+       * main's were, so it merges as it did on main's Gitea. Only while main is the rewrite and the
+       * change is built on the bundle's main: one behind it, one the rewrite leaves mergeable, or one
+       * of a main that moved on since (a run again after the application lived) stays as brought. A
+       * branch already at that merge, an earlier run's whose item did not land, is it. The head after.
        */
       const healed = (
         git: HqGit,
@@ -551,6 +552,7 @@ export const importsLayer = (
               return found.sha;
             return yield* failed(`#${String(change.number)}'s branch is not the bundle's`);
           }
+          if ((yield* mainOf(git, at)) !== main) return head;
           const verdict = yield* git.mergeability(at, change.mateProjectId, change.number);
           if (verdict.kind !== "conflict") return head;
           if ((yield* git.mergeBase(at, change.mateProjectId, change.number)) !== bundleMainOf(app))
