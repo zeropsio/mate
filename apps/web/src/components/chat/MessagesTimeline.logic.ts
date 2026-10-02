@@ -390,8 +390,11 @@ export type TurnHeaderActivity =
     }
   /** It writes words that cannot be placed yet: a note or its answer. */
   | { readonly kind: "writing" }
-  /** It asked the person something — a question, an approval — and waits. */
-  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
+  /**
+   * It asked the person something — a question, an approval — and waits; a
+   * question it asked in its own words is the record's item `key` too.
+   */
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval"; readonly key?: string }
   /**
    * A call it is making, as the step it is — the newest, and any others it
    * runs at the same time, oldest first.
@@ -1097,7 +1100,8 @@ function liveActivity(
   writing: MessageEntry | null,
   tracked: TrackedCommands,
 ): TurnHeaderActivity {
-  if (pendingQuestion(stretch) !== null) return { kind: "waiting", on: "answer" };
+  const asked = pendingQuestion(stretch);
+  if (asked !== null) return { kind: "waiting", on: "answer", key: `question:${asked.id}` };
   if (approvalPending(stretch)) return { kind: "waiting", on: "approval" };
   if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   const open = new Set<TimelineEntry>(stretchBatch(stretch).open);

@@ -189,6 +189,40 @@ export function settledOperationBar(
 }
 
 /**
+ * A running operation's bar in the live slot: a segment per step in its
+ * state's tone, one running segment while it names none, and the step it is
+ * on in words — "Building", as the Zerops GUI says it.
+ */
+export function liveOperationBar(operation: ZeropsOperation): {
+  readonly segments: ReadonlyArray<{ readonly key: string; readonly tone: BarTone }>;
+  readonly word: string | null;
+} {
+  const steps =
+    operation.kind === "standup"
+      ? operation.steps.filter((step) => standupStepRole(step) === "own")
+      : operation.steps;
+  if (steps.length === 0) return { segments: [{ key: "whole", tone: "running" }], word: null };
+  const now =
+    steps.find((step) => step.state === "running") ??
+    steps.find((step) => step.state === "failed") ??
+    null;
+  return {
+    segments: steps.map((step) => ({
+      key: step.id,
+      tone:
+        step.state === "done"
+          ? "done"
+          : step.state === "running"
+            ? "running"
+            : step.state === "failed"
+              ? "failed"
+              : "waiting",
+    })),
+    word: now === null ? null : now.stateLabel || now.label,
+  };
+}
+
+/**
  * How much an operation opens to (`opensOnto`, the owner's colleague, 2026-10-01:
  * "you don't need an arrow if it doesn't show anything"): a stand-up's
  * services, an import's, else the parts its own card draws — its steps, a
