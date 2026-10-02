@@ -1970,8 +1970,9 @@ function answeredStatus(step: ZeropsOperation["steps"][number]): number | null {
  * A failed check that says nothing against a dev server the run found
  * running: each failure went unanswered, or is the internal address answering
  * short of an error while the public one passed — a dev server's host check
- * turning the project's own hostname away (Pax, 2026-10-02: Vite's allowed
- * hosts answered the internal check 403, its public address served). An
+ * turning the project's own hostname away (measured 2026-10-02: a Vite dev
+ * server's allowed hosts answered the internal check 403 while its public
+ * address served). An
  * address that answers an error, refuses, or a public check that failed, does.
  */
 function saysNothingAgainstDevServer(operation: ZeropsOperation): boolean {
@@ -2284,6 +2285,8 @@ export function deriveOutcome(input: {
       if (devServerRunning(operation) === true) devServerRuns.add(host);
       else devServerRuns.delete(host);
     }
+    // A deploy replaces what ran: the dev server found before it is not what runs now.
+    if (operation.kind === "deploy" && operation.phase === "done") devServerRuns.delete(host);
     const phase = standingPhase(operation);
     if (phase === "failed" && devServerRuns.has(host) && saysNothingAgainstDevServer(operation))
       continue;
