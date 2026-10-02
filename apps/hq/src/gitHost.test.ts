@@ -10,7 +10,9 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { JUDGED_PER_MAIN_MOVE } from "@t3tools/shared/hqChanges";
@@ -40,7 +42,8 @@ const bare = (dir: string, args: ReadonlyArray<string>, input = "") =>
 /**
  * A leading git host over a fresh database and git root, with the application `Shop`, its
  * repository `appdev` whose main holds `a.txt`, and open changes for `mates` (numbers from 1), each
- * Mate's branch on main writing one file.
+ * Mate's branch on main writing one file. Each write of HQ's git is waited on until the host has
+ * recorded it — its events come in turn, each ending in a tick of `recorded` — never on a clock.
  */
 const hostWithChanges = (
   mates: ReadonlyArray<{ readonly file: string; readonly content: string }>,
@@ -56,22 +59,33 @@ const hostWithChanges = (
     );
     const sql = Context.get(context, SqlClient.SqlClient);
     yield* untilActive.pipe(Effect.provide(context));
-    const git = yield* Context.get(context, GitHost).git.pipe(
+    const host = Context.get(context, GitHost);
+    const git = yield* host.git.pipe(
       Effect.retry(Schedule.spaced(Duration.millis(50))),
       Effect.timeout(Duration.seconds(10)),
     );
+    /** `write`, once the host has recorded it: main's move judged its open changes again. */
+    const recorded = <A, E>(write: Effect.Effect<A, E>) =>
+      Effect.gen(function* () {
+        const before = Option.getOrElse(yield* Stream.runHead(host.recorded), () => 0);
+        const written = yield* write;
+        yield* Stream.runHead(Stream.filter(host.recorded, (tick) => tick > before));
+        return written;
+      });
     const [app] = yield* sql<{ readonly id: string }>`
       INSERT INTO hq_app (name, created_by) VALUES ('Shop', 'owner') RETURNING id::text AS id`;
     const repo = { appId: app!.id, id: "appdev" };
     yield* sql`
       INSERT INTO hq_repo (app_id, name, created_by) VALUES (${repo.appId}::uuid, 'appdev', 'M1')`;
     yield* git.create(repo);
-    const base = yield* git.commitFiles(repo, "refs/heads/main", {
-      files: { "a.txt": "1\n" },
-      expectedHead: null,
-      message: "Initial commit",
-      author: AUTHOR,
-    });
+    const base = yield* recorded(
+      git.commitFiles(repo, "refs/heads/main", {
+        files: { "a.txt": "1\n" },
+        expectedHead: null,
+        message: "Initial commit",
+        author: AUTHOR,
+      }),
+    );
     const main = "sha" in base ? base.sha : "";
     const dir = NodePath.join(root, repo.appId, "appdev.git");
     for (const [i, { file, content }] of mates.entries()) {
@@ -89,25 +103,20 @@ const hostWithChanges = (
       bare(dir, ["update-ref", `refs/heads/mate/${mate}/${String(number)}`, commit]);
     }
     /** main moves: `a.txt` changes. */
-    const moveMain = git.commitFiles(repo, "refs/heads/main", {
-      files: { "a.txt": "3\n" },
-      expectedHead: main,
-      message: "Move main",
-      author: AUTHOR,
-    });
-    /** The changes as their records keep them, once none is `unknown` in `judged`'s numbers. */
-    const judged = (numbers: ReadonlyArray<number>) =>
-      sql<{
-        readonly number: number;
-        readonly mergeability: string;
-        readonly behind: boolean;
-      }>`SELECT number, mergeability, behind FROM hq_change ORDER BY number`.pipe(
-        Effect.filterOrFail((rows) =>
-          rows.every((row) => !numbers.includes(row.number) || row.mergeability !== "unknown"),
-        ),
-        Effect.retry(Schedule.spaced(Duration.millis(50))),
-        Effect.timeout(Duration.seconds(10)),
-      );
+    const moveMain = recorded(
+      git.commitFiles(repo, "refs/heads/main", {
+        files: { "a.txt": "3\n" },
+        expectedHead: main,
+        message: "Move main",
+        author: AUTHOR,
+      }),
+    );
+    /** The changes as their records keep them. */
+    const judged = sql<{
+      readonly number: number;
+      readonly mergeability: string;
+      readonly behind: boolean;
+    }>`SELECT number, mergeability, behind FROM hq_change ORDER BY number`;
     return { moveMain, judged };
   });
 
@@ -150,7 +159,7 @@ describe("gitHost", () => {
         ]);
         yield* moveMain;
         assert.deepStrictEqual(
-          (yield* judged([1, 2])).map((row) => [row.number, row.mergeability, row.behind]),
+          (yield* judged).map((row) => [row.number, row.mergeability, row.behind]),
           [
             [1, "conflict", true],
             [2, "clean", true],
@@ -171,8 +180,7 @@ describe("gitHost", () => {
             })),
           );
           yield* moveMain;
-          const newest = Array.from({ length: JUDGED_PER_MAIN_MOVE }, (_, i) => count - i);
-          const rows = yield* judged(newest);
+          const rows = yield* judged;
           assert.deepStrictEqual(rows[0], { number: 1, mergeability: "unknown", behind: false });
           assert.isTrue(rows.slice(1).every((row) => row.mergeability === "clean" && row.behind));
         }),

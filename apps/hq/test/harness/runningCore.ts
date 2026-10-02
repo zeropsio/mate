@@ -28,6 +28,7 @@ import * as Scope from "effect/Scope";
 import * as HttpServer from "effect/unstable/http/HttpServer";
 
 import { coreApp } from "../../src/core.ts";
+import { GitHost } from "../../src/gitHost.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
 import {
   ZeropsApi,
@@ -130,7 +131,8 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
 /**
  * Core on a fresh database and git root (or the given ones), served over a real Node server on a
  * free port, as the container serves it; requests as `{ status, body, headers }`. `stop` ends it —
- * drain included — before the test does.
+ * drain included — before the test does. `gitHost` is its git host, for what only it shows: whether
+ * it holds git open, and its record of git's events (`recorded`).
  */
 export const startCore = (
   anchored: boolean,
@@ -272,7 +274,16 @@ export const startCore = (
           send: (message: unknown) => Effect.sync(() => ws.send(encodeJson(message))),
         };
       });
-    return { call, fake, url, gitRoot, origin: `http://${base}`, stop, socket };
+    return {
+      call,
+      fake,
+      url,
+      gitRoot,
+      origin: `http://${base}`,
+      stop,
+      socket,
+      gitHost: Context.get(context, GitHost),
+    };
   });
 
 export type Call = Effect.Success<ReturnType<typeof startCore>>["call"];
