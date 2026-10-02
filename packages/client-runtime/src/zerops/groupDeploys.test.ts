@@ -7,6 +7,7 @@ import {
   groupStopsOf,
   releaseDeploys,
   statedVersionNames,
+  versionsStated,
 } from "./groupDeploys.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
 import type { Shown } from "./knowledge/known.ts";
@@ -246,6 +247,19 @@ describe("the version names the account's store states", () => {
         ]),
       ),
     ).toEqual(new Map([["s1", `main ${API.slice(0, 7)}`]]));
+  });
+
+  // What a release puts live is measured from what production runs: a service whose version is
+  // not read yet would read as running nothing, and its whole history as going live.
+  it("says whether the store has stated what each of the services runs, a name or none", () => {
+    const stated = new Map<string, Shown<ZeropsServiceDeployedVersion>>([
+      ["s1", known(`v0.1.0 ${API.slice(0, 7)}`)],
+      ["s2", known(null)],
+      ["s3", { state: "unread", waitingFor: null }],
+    ]);
+    expect(versionsStated(stated, ["s1", "s2"])).toBe(true);
+    expect(versionsStated(stated, ["s1", "s3"])).toBe(false);
+    expect(versionsStated(stated, ["s1", "s4"])).toBe(false);
   });
 });
 

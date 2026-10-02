@@ -3,6 +3,7 @@ import {
   type AppRecipe,
   type GroupEnvironmentRowInput,
   type GroupStops,
+  type MovedCommits,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
@@ -62,6 +63,7 @@ function join(input: {
   readonly repos?: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
   readonly recipes?: ReadonlyMap<string, AppRecipe>;
   readonly permissions?: ReadonlyMap<string, ReleaseGate | undefined>;
+  readonly live?: ReadonlyMap<string, MovedCommits>;
   readonly withheld?: ReadonlyMap<string, string>;
 }) {
   return joinProjectFlows({
@@ -71,6 +73,7 @@ function join(input: {
     repos: input.repos ?? new Map(),
     recipes: input.recipes ?? new Map(),
     permissions: input.permissions ?? new Map(),
+    live: input.live ?? new Map(),
     changes: null,
     changesFailure: undefined,
     nowMs: NOW,
@@ -137,9 +140,31 @@ describe("joinProjectFlows", () => {
       repositories: new Map([["app", "appdev"]]),
       productionRepositories: new Map([["app", "appdev"]]),
     };
+    /** What HQ compared a release would put live: the one change on appdev. */
+    const COMPARED: MovedCommits = {
+      state: "known",
+      moved: [
+        {
+          repository: "appdev",
+          services: ["app"],
+          commits: [
+            {
+              sha: MERGED,
+              subject: "Quicker gallery",
+              authorName: "Juno",
+              at: "2026-09-24T09:30:00Z",
+              change: null,
+            },
+          ],
+          total: 1,
+          truncated: false,
+        },
+      ],
+    };
     const offered = (over: {
       readonly permission?: ReleaseGate | undefined;
       readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
+      readonly live?: MovedCommits;
       readonly withheld?: ReadonlyMap<string, string>;
     }) =>
       join({
@@ -148,6 +173,7 @@ describe("joinProjectFlows", () => {
         repos: over.repos === undefined ? new Map() : new Map([["g1", over.repos]]),
         recipes: new Map([["g1", recipe]]),
         permissions: new Map([["g1", over.permission]]),
+        live: new Map([["g1", over.live ?? COMPARED]]),
         withheld: over.withheld ?? NOTHING_WITHHELD,
       }).get("g1")?.release;
 
@@ -157,6 +183,7 @@ describe("joinProjectFlows", () => {
       expect(release?.entries).toEqual([{ service: "app", commit: MERGED }]);
       expect(release?.groupHead).toBe(GROUP_MAIN);
       expect(release?.suggestion).toBe("v0.1.1");
+      expect(release?.contents).toEqual(COMPARED.moved);
     });
 
     it("says HQ's rule in its words to one it does not let release", () => {
@@ -172,8 +199,25 @@ describe("joinProjectFlows", () => {
     it.each([
       ["HQ's rule cannot be asked yet", { permission: undefined, repos }],
       ["HQ's repositories are not read yet", { permission: { allowed: true }, repos: undefined }],
+      [
+        "HQ has not compared what goes live yet",
+        { permission: { allowed: true }, repos, live: { state: "reading" } },
+      ],
     ] as const)("is checking while %s", (_case, over) => {
       expect(offered(over)?.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+    });
+
+    it("says why where HQ could not compare what goes live", () => {
+      const release = offered({
+        permission: { allowed: true },
+        repos,
+        live: { state: "failed", reason: "HQ has no such commit." },
+      });
+      expect(release?.gate).toEqual({
+        allowed: false,
+        reason: "Can't check what can be released: HQ has no such commit.",
+      });
+      expect(release?.contents).toEqual([]);
     });
 
     it("offers nothing against a production the grant withholds, and says why", () => {

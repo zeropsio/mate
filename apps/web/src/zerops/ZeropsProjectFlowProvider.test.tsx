@@ -1,4 +1,10 @@
-import { flowVerbKey, type AppRecipe, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import {
+  flowVerbKey,
+  RELEASE_CHECKING,
+  type AppRecipe,
+  type CompareRead,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,
@@ -170,6 +176,41 @@ const permission = vi.hoisted(() => ({
 vi.mock("./useChangeOffers", () => ({
   useReleasePermission: () => () => permission.gate,
 }));
+/** What HQ compares for each read a release asks: the commits listed here, every time. */
+const compares = vi.hoisted(() => ({
+  commits: [] as ReadonlyArray<{ readonly sha: string; readonly subject: string }>,
+}));
+vi.mock("./useZeropsCompares", async () => {
+  const { compareReadKey } = await import("@t3tools/client-runtime/zerops");
+  return {
+    useZeropsCompares: (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) =>
+      new Map(
+        [...asks].map(([appId, reads]) => [
+          appId,
+          {
+            answers: new Map(
+              reads.map((read) => [
+                compareReadKey(read),
+                {
+                  base: read.query.base ?? null,
+                  head: read.query.head,
+                  commits: compares.commits.map((commit) => ({
+                    ...commit,
+                    authorName: "Juno",
+                    at: "2026-10-02T09:00:00.000Z",
+                    change: null,
+                  })),
+                  truncated: false,
+                  total: compares.commits.length,
+                },
+              ]),
+            ),
+            failures: new Map(),
+          },
+        ]),
+      ),
+  };
+});
 vi.mock("./useZeropsAppReleases", () => ({
   useZeropsAppReleases: () => ({
     releases: new Map([["g1", released.releases]]),
@@ -301,6 +342,7 @@ describe("ZeropsProjectFlowProvider", () => {
     released.failures = new Map();
     released.refreshed = [];
     permission.gate = { allowed: true };
+    compares.commits = [];
     hq.asked = [];
     hq.answer = () => Promise.resolve({});
     vi.unstubAllGlobals();
@@ -608,8 +650,12 @@ describe("ZeropsProjectFlowProvider", () => {
       rollbackOf: null,
     };
 
-    /** A group whose production builds `app` from appdev, merged at MERGED, the recipe at GROUP_MAIN. */
-    async function mountRelease() {
+    /**
+     * A group whose production builds `app` from appdev, merged at MERGED and run nowhere yet, the
+     * recipe at GROUP_MAIN; HQ compares one change to put live.
+     */
+    async function mountRelease(services: ReadonlyArray<unknown> = []) {
+      compares.commits = [{ sha: MERGED, subject: "Quicker gallery" }];
       recipes.read = new Map([
         [
           "g1",
@@ -632,14 +678,66 @@ describe("ZeropsProjectFlowProvider", () => {
         seen.push(useZeropsProjectFlow());
         return null;
       }
+      // Its production is the Zerops project prod-1, whose services are listed: none runs yet.
+      const held = {
+        projects: [
+          {
+            id: "prod-1",
+            clientId: "org-1",
+            name: "harbor-prod",
+            status: "ACTIVE",
+            hq: { appId: "g1", appName: "Harbor", kind: "production", mate: null },
+          } as ZeropsProject,
+        ],
+        services: new Map([["prod-1", { status: "resolved", services }]]),
+      };
+      const atoms = signedInAtoms();
+      atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));
       const root = createRoot(document.createElement("div") as unknown as Element);
       const render = () =>
         act(async () => {
-          root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+          root.render(
+            createElement(
+              RegistryContext.Provider,
+              { value: atoms },
+              createElement(
+                HeldInventoryContext,
+                { value: held as never },
+                createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+              ),
+            ),
+          );
         });
       await render();
       return { seen, render, root };
     }
+
+    it("offers what HQ compared it would put live", async () => {
+      const { seen, root } = await mountRelease();
+      expect(
+        seen
+          .at(-1)
+          ?.flows.get("g1")
+          ?.release.contents.flatMap(({ commits }) => commits.map(({ subject }) => subject)),
+      ).toEqual(["Quicker gallery"]);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    // A production service whose version the store has not stated yet would read as running
+    // nothing, and its repository's whole history as going live.
+    it("compares nothing while what a production service runs is not stated", async () => {
+      const { seen, root } = await mountRelease([
+        { id: "s-app", name: "app", status: "ACTIVE", isSystem: false, activeAppVersion: null },
+      ]);
+      const release = seen.at(-1)?.flows.get("g1")?.release;
+      expect(release?.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+      expect(release?.contents).toEqual([]);
+      await act(async () => {
+        root.unmount();
+      });
+    });
 
     it("releases what its offer shows, held until the releases list what HQ made", async () => {
       const { seen, render, root } = await mountRelease();

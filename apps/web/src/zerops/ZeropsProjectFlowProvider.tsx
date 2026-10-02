@@ -35,8 +35,12 @@ import {
   releaseInFlight,
   releaseCandidate,
   releaseOffer,
+  releaseReads,
   releaseRow,
   statedVersionNames,
+  movedCommits,
+  versionsStated,
+  wholeProduction,
   summarizeEnvironmentServices,
   type AppRecipe,
   type EnvironmentRow,
@@ -46,11 +50,13 @@ import {
   type GroupStopProject,
   type GroupStops,
   type FlowVerb,
+  type CompareReads,
+  type MovedCommits,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { flowVerbInvalidations, type Deployment } from "@t3tools/client-runtime/zerops/flow";
-import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
+import { ZeropsProjectId, ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -83,6 +89,7 @@ import { useNowMs } from "./useNowMs";
 import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
 import { useZeropsAppReleases } from "./useZeropsAppReleases";
+import { useZeropsCompares } from "./useZeropsCompares";
 import { useReleasePermission } from "./useChangeOffers";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import {
@@ -225,6 +232,20 @@ function groupStopsFor(groupId: string, input: Parameters<typeof groupStopsOf>[0
 /** What a release lists while HQ's repositories or the recipe are not read. */
 const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
 
+/** What goes live while nothing has been asked of HQ: what production runs is not known yet. */
+const NOT_COMPARED: MovedCommits = { state: "reading" };
+
+/** What a flow's key says of what goes live: the commits each comparison moves, or its state. */
+function liveKey(live: MovedCommits): unknown {
+  if (live.state !== "known") return live;
+  return live.moved.map(({ repository, services, commits, total }) => [
+    repository,
+    services,
+    total,
+    commits.map(({ sha }) => sha),
+  ]);
+}
+
 /** Stands for a part a group has no answer for, as a key of {@link joinedFlows}. */
 const UNREAD_HALF = {};
 
@@ -253,6 +274,8 @@ export function joinProjectFlows(input: {
   readonly recipes: ReadonlyMap<string, AppRecipe>;
   /** HQ's rule for this person releasing each group, in its words; absent while it cannot be asked. */
   readonly permissions: ReadonlyMap<string, ReleaseGate | undefined>;
+  /** What a release of each group would put live, as HQ compared it; absent while not asked. */
+  readonly live: ReadonlyMap<string, MovedCommits>;
   /** Each group's changes, by its id; `null` while HQ has told nothing of them. */
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
@@ -300,6 +323,7 @@ export function joinProjectFlows(input: {
     const repos = input.repos.get(group.groupId);
     const recipe = input.recipes.get(group.groupId);
     const permission = input.permissions.get(group.groupId);
+    const live = input.live.get(group.groupId) ?? NOT_COMPARED;
     const key = JSON.stringify([
       group.groupId,
       group.slug,
@@ -309,13 +333,14 @@ export function joinProjectFlows(input: {
       repos ?? null,
       recipe === undefined ? null : [...recipe.productionRepositories],
       permission ?? null,
+      liveKey(live),
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
       flow = projectFlow(
         group,
         { stops, records, changes, changesFailure: input.changesFailure },
-        { repos, recipe, permission },
+        { repos, recipe, permission, live },
         inFlight,
         withheld,
       );
@@ -359,6 +384,7 @@ function projectFlow(
     readonly repos: ReadonlyArray<RepoListEntry> | undefined;
     readonly recipe: AppRecipe | undefined;
     readonly permission: ReleaseGate | undefined;
+    readonly live: MovedCommits;
   },
   inFlight: string | undefined,
   /** Why the grant withholds each of the group's projects it withholds alone. */
@@ -375,17 +401,17 @@ function projectFlow(
     withheldProduction === undefined ? undefined : withheld.get(withheldProduction.projectId);
   const sides = releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.projectId)));
   const releaseList = (records ?? []).map(flowReleaseOf);
-  const live = releaseRunBy(releaseList, sides.production);
+  const liveTag = releaseRunBy(releaseList, sides.production);
   const releaseRows = releaseList.map((entry, index) =>
     releaseRow(entry, index, {
       production: sides.production,
       failed: sides.failed,
-      live: entry.tag === live,
+      live: entry.tag === liveTag,
     }),
   );
   // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:
   // the gate says it is checking.
-  const { repos, recipe, permission } = offered;
+  const { repos, recipe, permission, live } = offered;
   const read =
     records === undefined || repos === undefined || recipe === undefined
       ? undefined
@@ -396,6 +422,7 @@ function projectFlow(
     production: sides.production,
     inFlight,
     tags: releaseList.map(({ tag }) => tag),
+    live,
   });
   return {
     groupId: group.groupId,
@@ -413,7 +440,7 @@ function projectFlow(
     // A production the grant withholds is measured against nothing, and offers nothing.
     release:
       productionWithheld === undefined
-        ? { ...offer, permission, groupHead: read?.groupHead, inFlight, contents: [] }
+        ? { ...offer, permission, groupHead: read?.groupHead, inFlight }
         : {
             ...offer,
             gate: { allowed: false, reason: productionWithheld },
@@ -657,6 +684,79 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     () => new Map(flowGroups.map(({ groupId }) => [groupId, releasePermissionOf(groupId)])),
     [flowGroups, releasePermissionOf],
   );
+  // What a release of each group would put live: what HQ compares from what production runs to each
+  // runtime's `main` (`releaseReads`) — asked only once the store has stated what each production
+  // service runs, as a version not read yet would read as running nothing.
+  const releasePlans = useMemo(() => {
+    const plans = new Map<string, CompareReads>();
+    for (const { groupId } of flowGroups) {
+      const recipe = recipes.get(groupId);
+      const repos = appRepos.get(groupId);
+      const records = releaseRecords.get(groupId);
+      const production = groupStops
+        .get(groupId)
+        ?.environments.find((entry) => entry.tier === "production");
+      if (recipe === undefined || repos === undefined || records === undefined) continue;
+      if (production === undefined) continue;
+      const productionId = ZeropsProjectId.make(production.projectId);
+      if (withheld.has(productionId)) continue;
+      const services = groupProjects
+        .get(groupId)
+        ?.find((project) => project.projectId === production.projectId)?.services;
+      const listed = held?.services.get(productionId)?.status === "resolved";
+      if (!listed || services === undefined) continue;
+      if (
+        !versionsStated(
+          stated,
+          services.map(({ serviceId }) => serviceId),
+        )
+      )
+        continue;
+      const { productionRepositories } = recipe;
+      plans.set(
+        groupId,
+        releaseReads({
+          productionRepositories,
+          candidate: releaseCandidate({ productionRepositories, repos }).candidate,
+          production: wholeProduction(
+            releaseDeploys([production]).production,
+            records.map(flowReleaseOf),
+          ),
+        }),
+      );
+    }
+    return plans;
+  }, [
+    appRepos,
+    flowGroups,
+    groupProjects,
+    groupStops,
+    held,
+    recipes,
+    releaseRecords,
+    stated,
+    withheld,
+  ]);
+  const compareAsks = useMemo(
+    () => new Map([...releasePlans].map(([groupId, plan]) => [groupId, plan.reads])),
+    [releasePlans],
+  );
+  const compares = useZeropsCompares(compareAsks);
+  const live = useMemo(
+    () =>
+      new Map(
+        [...releasePlans].map(([groupId, plan]) => {
+          const answered = compares.get(groupId);
+          return [
+            groupId,
+            answered === undefined
+              ? NOT_COMPARED
+              : movedCommits({ reads: plan.reads, ...answered }),
+          ];
+        }),
+      ),
+    [compares, releasePlans],
+  );
   const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
     () =>
       signedInToMate
@@ -667,6 +767,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             repos: appRepos,
             recipes,
             permissions,
+            live,
             changes,
             changesFailure,
             nowMs,
@@ -679,6 +780,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       changesFailure,
       flowGroups,
       groupStops,
+      live,
       nowMs,
       permissions,
       recipes,

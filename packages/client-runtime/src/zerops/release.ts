@@ -55,6 +55,7 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { nextPatch, type Release } from "@t3tools/shared/hqRelease";
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
+import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
 import { sameCommit } from "./versionName.ts";
 
@@ -266,6 +267,10 @@ export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
 export const RELEASE_NOTHING_NEW_ON_MAIN = "Production already runs what is merged.";
 /** Who may release is not known yet: HQ's rule has nothing to be asked over. */
 export const RELEASE_CHECKING = "Checking what can be released…";
+/** What goes live could not be compared: no release is offered over a list nobody could read. */
+export function releaseUncheckedReason(why: string): string {
+  return `Can't check what can be released: ${why.replace(/\.$/u, "")}.`;
+}
 /** A release tagged and not yet running: another tag now would be a second release of it. */
 export function releaseInFlightReason(tag: string): string {
   return `Releasing ${tag}…`;
@@ -275,7 +280,8 @@ export function releaseInFlightReason(tag: string): string {
  * Whether to offer *Release* at all.
  *
  * Who may is HQ's rule (`releasePermission`), in its words; HQ asks it again at the press. Then a
- * release in flight, nothing merged, and nothing that would move hold it, in that order.
+ * release in flight, nothing merged, and nothing that would move hold it, in that order; and last
+ * what goes live while it is read, or could not be (main C05).
  */
 export function releaseGate(input: {
   /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
@@ -288,6 +294,8 @@ export function releaseGate(input: {
   readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight?: string | undefined;
+  /** What it would put live (`movedCommits`); omitted where nobody asks. */
+  readonly live?: MovedCommits | undefined;
 }): ReleaseGate {
   if (input.permission === undefined) return { allowed: false, reason: RELEASE_CHECKING };
   if (!input.permission.allowed) return input.permission;
@@ -298,6 +306,9 @@ export function releaseGate(input: {
   if (comparison !== undefined && comparison.length > 0 && !comparison.some((row) => row.changed)) {
     return { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN };
   }
+  if (input.live?.state === "reading") return { allowed: false, reason: RELEASE_CHECKING };
+  if (input.live?.state === "failed")
+    return { allowed: false, reason: releaseUncheckedReason(input.live.reason) };
   return { allowed: true };
 }
 
@@ -321,11 +332,15 @@ export function releaseOffer(input: {
   readonly inFlight?: string | undefined;
   /** Every release's name, so the next one is suggested over the newest (`nextPatch`). */
   readonly tags: ReadonlyArray<string>;
+  /** What it would put live, as HQ compared it (`movedCommits`). */
+  readonly live: MovedCommits;
 }): {
   readonly gate: ReleaseGate;
   readonly suggestion: string;
   readonly comparison: ReadonlyArray<ReleaseComparison>;
   readonly entries: ReadonlyArray<ReleaseEntry>;
+  /** What it would put live, per comparison read; nothing until all of it is known. */
+  readonly contents: ReadonlyArray<Moved>;
 } {
   const entries = releaseEntries(input.candidate);
   const comparison = compareForRelease({
@@ -338,10 +353,12 @@ export function releaseOffer(input: {
       entries,
       comparison,
       inFlight: input.inFlight,
+      live: input.live,
     }),
     suggestion: nextPatch(input.tags),
     comparison,
     entries,
+    contents: input.live.state === "known" ? input.live.moved : [],
   };
 }
 

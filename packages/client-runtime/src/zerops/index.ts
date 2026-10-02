@@ -339,6 +339,7 @@ export {
   groupStopsOf,
   releaseDeploys,
   statedVersionNames,
+  versionsStated,
   type AppRecipe,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentService,
@@ -363,6 +364,16 @@ export {
   type ReleaseDescription,
   type ReleaseServiceChange,
 } from "./releaseCarried.ts";
+export {
+  compareReadKey,
+  movedCommits,
+  releaseReads,
+  wholeProduction,
+  type CompareRead,
+  type CompareReads,
+  type Moved,
+  type MovedCommits,
+} from "./releaseCompare.ts";
 export {
   ADD_PRODUCTION_LABEL,
   groupFlow,

@@ -13,6 +13,7 @@ import {
   movedCount,
   releaseReads,
   rollbackReads,
+  wholeProduction,
   type CompareRead,
   type Moved,
 } from "./releaseCompare.ts";
@@ -355,5 +356,30 @@ describe("what each release carried: the comparisons to ask HQ for", () => {
       ]),
     });
     expect(carried.get(releases[0]!.tag)).toEqual(reads);
+  });
+});
+
+describe("production's commits, whole for a comparison", () => {
+  it("takes a commit known only short whole from a release that lists it for the service", () => {
+    const releases = [
+      { entries: [{ service: "api", commit: API }] },
+      { entries: [{ service: "web", commit: OLD }] },
+    ];
+    expect(
+      wholeProduction(
+        new Map([
+          ["api", API.slice(0, 7)],
+          ["web", WEB.slice(0, 7)],
+          ["docs", OLD],
+        ]),
+        releases,
+      ),
+    ).toEqual(
+      new Map([
+        ["api", API],
+        ["web", WEB.slice(0, 7)],
+        ["docs", OLD],
+      ]),
+    );
   });
 });

@@ -28,6 +28,7 @@ import {
   REVIEW_LABEL,
   type EnvironmentRow,
   type FlowPullRequest,
+  type Moved,
   type GroupEnvironmentTier,
   type GroupFlow,
   type GroupFlowComing,
@@ -667,9 +668,8 @@ export interface GroupFlowReads {
     readonly suggestion: string;
     /** The release on its way; the menu, which is told only whether Release is offered, has none. */
     readonly inFlight?: string | undefined;
-    readonly contents: ReadonlyArray<{
-      readonly commits: ReadonlyArray<{ sha: string; subject: string }>;
-    }>;
+    /** What it would put live, per comparison HQ answered (`Moved`). */
+    readonly contents: ReadonlyArray<Moved>;
   };
 }
 

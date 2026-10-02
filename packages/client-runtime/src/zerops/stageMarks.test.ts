@@ -39,7 +39,7 @@ const change = (commit: string, subject = `Change ${commit.slice(0, 1)}`) => ({
 
 describe("stageMarks", () => {
   const contents: ReadonlyArray<ServiceChanges> = [
-    { service: "app", commits: [change(D), change(C), change(B)] },
+    { services: ["app"], commits: [change(D), change(C), change(B)] },
   ];
   const standing = (over: Partial<StageStandings> = {}): StageStandings => ({
     runs: new Map([["app", C]]),
@@ -89,7 +89,7 @@ describe("stageMarks", () => {
       name: "a short sha two listed commits begin places nothing",
       contents: [
         {
-          service: "app",
+          services: ["app"],
           commits: [change(D), change(C), change(`${"c".repeat(7)}${"1".repeat(33)}`)],
         },
       ],
@@ -109,8 +109,8 @@ describe("stageMarks", () => {
     {
       name: "a shared commit is on stage only where every service runs it",
       contents: [
-        { service: "app", commits: [change(D), change(C)] },
-        { service: "api", commits: [change(D), change(C)] },
+        { services: ["app"], commits: [change(D), change(C)] },
+        { services: ["api"], commits: [change(D), change(C)] },
       ],
       stage: standing({
         runs: new Map([
@@ -123,8 +123,8 @@ describe("stageMarks", () => {
     {
       name: "a failure on one service of a shared commit is the commit's",
       contents: [
-        { service: "app", commits: [change(D), change(C)] },
-        { service: "api", commits: [change(D), change(C)] },
+        { services: ["app"], commits: [change(D), change(C)] },
+        { services: ["api"], commits: [change(D), change(C)] },
       ],
       stage: standing({
         runs: new Map([
@@ -136,10 +136,21 @@ describe("stageMarks", () => {
       expected: { [D]: "failed-on-stage", [C]: "none" },
     },
     {
+      name: "one comparison several services take is on stage only where every one runs it",
+      contents: [{ services: ["app", "api"], commits: [change(D), change(C)] }],
+      stage: standing({
+        runs: new Map([
+          ["app", D],
+          ["api", C],
+        ]),
+      }),
+      expected: { [D]: "none", [C]: "none" },
+    },
+    {
       name: "a failure marks only what the failed service runs",
       contents: [
-        { service: "app", commits: [change(D), change(C)] },
-        { service: "api", commits: [change(D), change(C)] },
+        { services: ["app"], commits: [change(D), change(C)] },
+        { services: ["api"], commits: [change(D), change(C)] },
       ],
       stage: standing({
         runs: new Map([

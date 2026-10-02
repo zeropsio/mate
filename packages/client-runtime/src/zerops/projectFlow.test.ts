@@ -1,4 +1,4 @@
-import type { HqChange } from "@t3tools/shared/hqChanges";
+import { COMPARE_COUNT_MAX, type HqChange } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
 import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
@@ -346,6 +346,25 @@ describe("pullRequestBlockedReason", () => {
   });
 });
 
+/** One comparison HQ answered for the `app` repository: `commits` listed, `total` counted. */
+function compared(
+  commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>,
+  total = commits.length,
+) {
+  return {
+    repository: "app",
+    services: ["app"],
+    commits: commits.map((commit) => ({
+      ...commit,
+      authorName: "Ada",
+      at: "2026-10-02T10:00:00.000Z",
+      change: null,
+    })),
+    total,
+    truncated: total > commits.length,
+  };
+}
+
 describe("releaseContentsCommits", () => {
   it("lists each change once, in order, however many services take it", () => {
     const a = { sha: "a", subject: "Add a search box" };
@@ -359,7 +378,7 @@ describe("releaseContentsSummary", () => {
 
   it("says what is going live in the words the person asked for it in", () => {
     const summary = releaseContentsSummary([
-      { commits: [commit("a", "Add a search box above the list"), commit("b", "Rename the app")] },
+      compared([commit("a", "Add a search box above the list"), commit("b", "Rename the app")]),
     ]);
     expect(summary.subjects).toEqual(["Add a search box above the list", "Rename the app"]);
     expect(summary.more).toBe(0);
@@ -368,8 +387,8 @@ describe("releaseContentsSummary", () => {
 
   it("counts one change once, however many services take it", () => {
     const summary = releaseContentsSummary([
-      { commits: [commit("a", "Add a search box")] },
-      { commits: [commit("a", "Add a search box"), commit("b", "Fix the footer")] },
+      compared([commit("a", "Add a search box")]),
+      compared([commit("a", "Add a search box"), commit("b", "Fix the footer")]),
     ]);
     expect(summary.subjects).toEqual(["Add a search box", "Fix the footer"]);
     expect(summary.total).toBe(2);
@@ -377,7 +396,7 @@ describe("releaseContentsSummary", () => {
 
   it("lists as many as a hover has room for and counts the rest", () => {
     const summary = releaseContentsSummary(
-      [{ commits: [1, 2, 3, 4, 5, 6].map((n) => commit(`s${n}`, `Change ${n}`)) }],
+      [compared([1, 2, 3, 4, 5, 6].map((n) => commit(`s${n}`, `Change ${n}`)))],
       4,
     );
     expect(summary.subjects).toHaveLength(4);
@@ -385,28 +404,52 @@ describe("releaseContentsSummary", () => {
     expect(summary.total).toBe(6);
   });
 
+  it("counts what HQ listed only in part by HQ's own count", () => {
+    const summary = releaseContentsSummary(
+      [compared([commit("a", "Add a search box"), commit("b", "Fix the footer")], 347)],
+      4,
+    );
+    expect(summary).toEqual({
+      subjects: ["Add a search box", "Fix the footer"],
+      more: 345,
+      total: 347,
+      atLeast: false,
+    });
+  });
+
+  it("says at least as many where HQ stopped counting", () => {
+    const summary = releaseContentsSummary([
+      compared([commit("a", "Add a search box")], COMPARE_COUNT_MAX),
+    ]);
+    expect(summary.atLeast).toBe(true);
+    expect(summary.total).toBe(COMPARE_COUNT_MAX);
+  });
+
   it("drops a commit whose message is only whitespace rather than showing a blank line", () => {
     const summary = releaseContentsSummary([
-      { commits: [commit("a", "   "), commit("b", "Fix the footer")] },
+      compared([commit("a", "   "), commit("b", "Fix the footer")]),
     ]);
     expect(summary.subjects).toEqual(["Fix the footer"]);
   });
 
   it("says nothing about a release that carries nothing", () => {
-    expect(releaseContentsSummary([])).toEqual({ subjects: [], more: 0, total: 0 });
-    expect(releaseContentsSummary([{ commits: [] }]).total).toBe(0);
+    expect(releaseContentsSummary([])).toEqual({
+      subjects: [],
+      more: 0,
+      total: 0,
+      atLeast: false,
+    });
+    expect(releaseContentsSummary([compared([])]).total).toBe(0);
   });
 });
 
 describe("releaseContentsSentence", () => {
   it("says the count and the tasks in one line, for the places a hover cannot reach", () => {
     const summary = releaseContentsSummary([
-      {
-        commits: [
-          { sha: "a", subject: "Add a search box" },
-          { sha: "b", subject: "Fix the footer" },
-        ],
-      },
+      compared([
+        { sha: "a", subject: "Add a search box" },
+        { sha: "b", subject: "Fix the footer" },
+      ]),
     ]);
     expect(releaseContentsSentence(summary)).toBe(
       "puts 2 changes live — Add a search box; Fix the footer",
@@ -414,15 +457,20 @@ describe("releaseContentsSentence", () => {
   });
 
   it("counts one change as one", () => {
-    const summary = releaseContentsSummary([
-      { commits: [{ sha: "a", subject: "Fix the footer" }] },
-    ]);
+    const summary = releaseContentsSummary([compared([{ sha: "a", subject: "Fix the footer" }])]);
     expect(releaseContentsSentence(summary)).toBe("puts 1 change live — Fix the footer");
   });
 
   it("still says how many where every message was blank", () => {
-    const summary = releaseContentsSummary([{ commits: [{ sha: "a", subject: "  " }] }]);
+    const summary = releaseContentsSummary([compared([{ sha: "a", subject: "  " }])]);
     expect(releaseContentsSentence(summary)).toBe("puts 1 change live");
+  });
+
+  it("says at least as many where HQ stopped counting", () => {
+    const summary = releaseContentsSummary([
+      compared([{ sha: "a", subject: "Fix the footer" }], COMPARE_COUNT_MAX),
+    ]);
+    expect(releaseContentsSentence(summary)).toBe("puts 10000+ changes live — Fix the footer");
   });
 
   it("says nothing about a release that carries nothing", () => {
@@ -432,22 +480,28 @@ describe("releaseContentsSentence", () => {
 
 describe("releaseWaitingLabel", () => {
   it("is short enough for a 256px row and still names what is waiting", () => {
-    expect(releaseWaitingLabel(releaseContentsSummary([{ commits: [] }]))).toBeUndefined();
+    expect(releaseWaitingLabel(releaseContentsSummary([compared([])]))).toBeUndefined();
     expect(
-      releaseWaitingLabel(releaseContentsSummary([{ commits: [{ sha: "a", subject: "One" }] }])),
+      releaseWaitingLabel(releaseContentsSummary([compared([{ sha: "a", subject: "One" }])])),
     ).toBe("1 waiting");
     expect(
       releaseWaitingLabel(
         releaseContentsSummary([
-          {
-            commits: [
-              { sha: "a", subject: "One" },
-              { sha: "b", subject: "Two" },
-            ],
-          },
+          compared([
+            { sha: "a", subject: "One" },
+            { sha: "b", subject: "Two" },
+          ]),
         ]),
       ),
     ).toBe("2 waiting");
+  });
+
+  it("says at least as many where HQ stopped counting", () => {
+    expect(
+      releaseWaitingLabel(
+        releaseContentsSummary([compared([{ sha: "a", subject: "One" }], COMPARE_COUNT_MAX)]),
+      ),
+    ).toBe("10000+ waiting");
   });
 });
 

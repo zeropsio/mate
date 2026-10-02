@@ -14,11 +14,12 @@ import type {
   GroupEnvironment,
   GroupEnvironmentRowInput,
   MissingEnvironmentRow,
+  Moved,
   ReleaseComparison,
   ReleaseEntry,
   ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
-import type { Deployment, ReleaseContent } from "@t3tools/client-runtime/zerops/flow";
+import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { createContext, useContext } from "react";
 
@@ -40,10 +41,11 @@ export interface ZeropsReleaseOffer {
   /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
   readonly inFlight: string | undefined;
   /**
-   * What pressing it would carry: per service, the commits `main` has that the
-   * service is not running. With squash merges each is one task delivered.
+   * What pressing it would put live, per repository HQ compared (`movedCommits`): the commits
+   * `main` has that its services do not run. With squash merges each is one task delivered.
+   * Nothing until all of it is known — the gate holds Release until then.
    */
-  readonly contents: ReadonlyArray<ReleaseContent>;
+  readonly contents: ReadonlyArray<Moved>;
 }
 
 /** One project's flow: its environments, what is waiting, what was released. */

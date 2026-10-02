@@ -1,24 +1,14 @@
 /**
- * What a stop runs, from its services (`stopDeploymentOf`), which every surface reads; and the
- * release offer's and contents' shapes, which the flow carries (DESIGN §4.7).
+ * What a stop runs, from its services (`stopDeploymentOf`), which every surface reads (DESIGN
+ * §4.7).
  *
  * Pure (§7.2 rule 3): no network, no clock, no platform globals.
  *
  * @module flow/groupFlow
  */
-import type { GiteaCommit } from "../giteaClient.ts";
 import type { Freshness, Shown, Stamp } from "../knowledge/known.ts";
 import type { KnowledgeSource } from "../knowledge/presentation.ts";
-import type { releaseOffer } from "../release.ts";
 import type { Deployment, StopService } from "./deployment.ts";
-
-export type ReleaseOffer = ReturnType<typeof releaseOffer>;
-
-/** One production service's share of what a release would carry. */
-export interface ReleaseContent {
-  readonly service: string;
-  readonly commits: ReadonlyArray<GiteaCommit>;
-}
 
 /** An input and who answers for it, as a combination names the cause of one that failed. */
 interface Part {

@@ -22,7 +22,7 @@ import {
 import * as Schema from "effect/Schema";
 
 import type { FlowRelease, ReleaseEntry } from "./release.ts";
-import { sameCommit } from "./versionName.ts";
+import { resolveCommit, sameCommit } from "./versionName.ts";
 
 /** One comparison to ask HQ for, and the production services it answers for. */
 export interface CompareRead {
@@ -40,6 +40,27 @@ export interface CompareReads {
 }
 
 const isSha = Schema.is(Sha);
+
+/**
+ * What production runs, whole where a release lists the commit a version's name spells short for
+ * that service: HQ names a version `{tag} {7 hex}`, and the record of its deploy may be gone where
+ * the release it deployed is not — an environment the migration brought, say. One no release
+ * lists stays short, and is not compared (`untold`).
+ */
+export function wholeProduction(
+  /** `{service: sha}` production runs, whole where HQ recorded it (`releaseDeploys`). */
+  production: ReadonlyMap<string, string>,
+  releases: ReadonlyArray<Pick<FlowRelease, "entries">>,
+): ReadonlyMap<string, string> {
+  return new Map(
+    [...production].map(([service, sha]) => {
+      const listed = releases.flatMap(({ entries }) =>
+        entries.filter((entry) => entry.service === service).map((entry) => entry.commit),
+      );
+      return [service, resolveCommit(sha, listed) ?? sha];
+    }),
+  );
+}
 
 /** `read` among `reads`: one per repository and pair of commits, however many services take it. */
 function ask(reads: Array<CompareRead>, read: CompareRead): void {

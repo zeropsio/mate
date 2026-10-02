@@ -195,11 +195,21 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
 const WAITING = releaseContentsSummary(
   [
     {
+      repository: "appdev",
+      services: ["app"],
       commits: [
-        { sha: "a", subject: "Two-step checkout: the basket step" },
-        { sha: "b", subject: "Fix the VAT rate table for Ireland" },
-        { sha: "c", subject: "Retry the payment webhook three times" },
-      ],
+        "Two-step checkout: the basket step",
+        "Fix the VAT rate table for Ireland",
+        "Retry the payment webhook three times",
+      ].map((subject, index) => ({
+        sha: `c${String(index)}`,
+        subject,
+        authorName: "Juno",
+        at: "2026-10-02T10:00:00.000Z",
+        change: null,
+      })),
+      total: 3,
+      truncated: false,
     },
   ],
   20,

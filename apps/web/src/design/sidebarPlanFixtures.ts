@@ -451,8 +451,21 @@ function change(number: number, title: string, mateProjectId: string): FlowPullR
   };
 }
 
+/** What a release would put live: one comparison of `appdev`. */
 const waiting = (...subjects: ReadonlyArray<string>) => [
-  { commits: subjects.map((subject, index) => ({ sha: `c${String(index)}`, subject })) },
+  {
+    repository: "appdev",
+    services: ["app"],
+    commits: subjects.map((subject, index) => ({
+      sha: `c${String(index)}`,
+      subject,
+      authorName: "Juno",
+      at: "2026-10-02T10:00:00.000Z",
+      change: null,
+    })),
+    total: subjects.length,
+    truncated: false,
+  },
 ];
 
 const flow = (input: Partial<SidebarProjectFlow>): SidebarProjectFlow => ({

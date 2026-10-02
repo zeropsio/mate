@@ -84,6 +84,17 @@ export function statedVersionNames(
   return names;
 }
 
+/**
+ * Whether the account's store has stated what every one of `serviceIds` runs — a name, or none:
+ * until then what a service runs is not known, and nothing is measured from it.
+ */
+export function versionsStated(
+  stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>,
+  serviceIds: ReadonlyArray<string>,
+): boolean {
+  return serviceIds.every((serviceId) => stated.get(serviceId)?.state === "known");
+}
+
 /** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
 export interface AppRecipe {
   readonly tiers: ReadonlyArray<GroupEnvironmentTier>;

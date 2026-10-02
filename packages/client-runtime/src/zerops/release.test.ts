@@ -30,8 +30,11 @@ import {
   type FlowRelease,
   type FlowReleaseRow,
 } from "./release.ts";
+import type { MovedCommits } from "./releaseCompare.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
+/** What goes live, compared: nothing beyond what each case's own entries say. */
+const COMPARED: MovedCommits = { state: "known", moved: [] };
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
 
@@ -187,6 +190,22 @@ describe("the gate HQ's rule decides", () => {
     expect(gate.allowed).toBe(allowed);
     if (!gate.allowed) expect(gate.reason).toBe(reason);
   });
+
+  // What goes live is what the review shows before the press (main C05): a release is not offered
+  // over a list still being read, nor over one HQ could not compare.
+  it.each([
+    { name: "still being read", live: { state: "reading" } as const, reason: RELEASE_CHECKING },
+    {
+      name: "not compared, in HQ's words",
+      live: { state: "failed", reason: "HQ has no such commit." } as const,
+      reason: "Can't check what can be released: HQ has no such commit.",
+    },
+  ])("holds a releaser back while what goes live is $name", ({ live, reason }) => {
+    expect(releaseGate({ permission: RELEASER, entries, live })).toEqual({
+      allowed: false,
+      reason,
+    });
+  });
 });
 
 describe("what Release offers, from what the environments run", () => {
@@ -197,6 +216,7 @@ describe("what Release offers, from what the environments run", () => {
 
   it("compares the stage against production, per service, and offers the next patch", () => {
     const offer = releaseOffer({
+      live: COMPARED,
       permission: RELEASER,
       candidate: stage,
       production: new Map([
@@ -211,6 +231,40 @@ describe("what Release offers, from what the environments run", () => {
       { service: "api", candidate: "3f9c1b2", production: "1111111", changed: true },
       { service: "web", candidate: "77ab0e1", production: "77ab0e1", changed: false },
     ]);
+  });
+
+  it("carries what HQ compared it would put live once known, and holds Release until then", () => {
+    const moved = {
+      repository: "apidev",
+      services: ["api"],
+      commits: [
+        {
+          sha: API,
+          subject: "Quicker gallery",
+          authorName: "Ada",
+          at: "2026-10-02T10:00:00.000Z",
+          change: null,
+        },
+      ],
+      total: 1,
+      truncated: false,
+    };
+    const offer = (live: MovedCommits) =>
+      releaseOffer({
+        permission: RELEASER,
+        candidate: stage,
+        production: new Map([["api", OLD]]),
+        tags: ["v1.2.0"],
+        live,
+      });
+    expect(offer({ state: "known", moved: [moved] })).toMatchObject({
+      gate: { allowed: true },
+      contents: [moved],
+    });
+    expect(offer({ state: "reading" })).toMatchObject({
+      gate: { allowed: false, reason: RELEASE_CHECKING },
+      contents: [],
+    });
   });
 
   it.each([
@@ -247,6 +301,7 @@ describe("what Release offers, from what the environments run", () => {
     },
   ])("answers, for $name", ({ permission, stage: stageCommits, production, allowed, reason }) => {
     const gate = releaseOffer({
+      live: COMPARED,
       permission,
       candidate: stageCommits,
       production,
@@ -258,6 +313,7 @@ describe("what Release offers, from what the environments run", () => {
 
   it("carries the entries the tag would list, so the verb tags what the offer showed", () => {
     const offer = releaseOffer({
+      live: COMPARED,
       permission: RELEASER,
       candidate: new Map([
         ["api", API.toUpperCase()],
@@ -307,6 +363,7 @@ describe("a release lists what is merged", () => {
     },
   ])("answers, for $name", ({ candidate, production, allowed, reason }) => {
     const offer = releaseOffer({
+      live: COMPARED,
       permission: RELEASER,
       candidate,
       production,
@@ -862,6 +919,7 @@ describe("a release in flight", () => {
 
   it("keeps Release from being offered, and says which tag is on its way", () => {
     const gate = releaseOffer({
+      live: COMPARED,
       permission: RELEASER,
       candidate: new Map([["api", API]]),
       production: new Map([["api", OLD]]),

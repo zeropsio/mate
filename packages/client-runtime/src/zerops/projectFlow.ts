@@ -29,6 +29,7 @@ import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 import { pullRequestBlocked } from "./gitTab.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
+import { movedCount, type Moved } from "./releaseCompare.ts";
 
 export type FlowPullRequestKind = "code" | "recipe";
 
@@ -362,12 +363,9 @@ export interface ReleaseContentsSummary {
   readonly more: number;
   /** Every commit the release carries, listed or not. */
   readonly total: number;
+  /** Whether `total` is only how many at least: HQ stopped counting (`movedCount`). */
+  readonly atLeast: boolean;
 }
-
-/** What a release would carry, service by service. */
-type ReleaseContents = ReadonlyArray<{
-  readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
-}>;
 
 /**
  * Every commit a release would carry, once each and in order: one commit reaches several services
@@ -401,18 +399,21 @@ export function releaseContentsCommits<Commit extends { readonly sha: string }>(
  * once: the person is being told what changes, not how many services take it.
  */
 export function releaseContentsSummary(
-  contents: ReleaseContents,
+  contents: ReadonlyArray<Moved>,
   limit = 4,
 ): ReleaseContentsSummary {
   const commits = releaseContentsCommits(contents);
   const subjects = commits
     .map((commit) => commit.subject.trim())
     .filter((subject) => subject.length > 0);
-  const total = commits.length;
+  // HQ lists at most a hundred commits of a comparison and counts the rest: those it did not list
+  // are more, as much as the ones a hover has no room for.
+  const { count, atLeast } = movedCount(contents);
   return {
     subjects: subjects.slice(0, limit),
-    more: Math.max(0, subjects.length - limit),
-    total,
+    more: Math.max(0, subjects.length - limit) + Math.max(0, count - commits.length),
+    total: count,
+    atLeast,
   };
 }
 
@@ -424,8 +425,12 @@ export function releaseContentsSummary(
  * number with no noun, and the thing waiting is a change somebody made.
  */
 export function releaseWaitingLabel(summary: ReleaseContentsSummary): string | undefined {
-  return summary.total === 0 ? undefined : `${summary.total} waiting`;
+  return summary.total === 0 ? undefined : `${countOf(summary)} waiting`;
 }
+
+/** How many, and `+` where it is only how many at least. */
+const countOf = (summary: ReleaseContentsSummary): string =>
+  `${String(summary.total)}${summary.atLeast ? "+" : ""}`;
 
 /**
  * The same answer as one sentence, for the places a hover cannot reach — a
@@ -434,7 +439,8 @@ export function releaseWaitingLabel(summary: ReleaseContentsSummary): string | u
 export function releaseContentsSentence(summary: ReleaseContentsSummary): string | undefined {
   if (summary.total === 0) return undefined;
   const listed = summary.subjects.join("; ");
-  const change = summary.total === 1 ? "1 change" : `${summary.total} changes`;
+  const change =
+    summary.total === 1 && !summary.atLeast ? "1 change" : `${countOf(summary)} changes`;
   return listed.length === 0 ? `puts ${change} live` : `puts ${change} live — ${listed}`;
 }
 
