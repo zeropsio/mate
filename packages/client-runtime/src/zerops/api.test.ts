@@ -707,6 +707,35 @@ describe("ZeropsApiClient project reads", () => {
     });
   });
 
+  // A 403 there is the platform's final answer for the person (E2E 2026-10-03: asked again, it
+  // answered 403 about 8 times a minute); a new account epoch may be somebody else.
+  it("asks a restricted membership's direct list once, then only the search, until another account", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/client/org-dev/project")
+        ? jsonResponse(403, {
+            error: { code: "insufficientPermissions", message: "Insufficient permissions" },
+          })
+        : jsonResponse(200, { items: [], totalHits: 0 }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.listAccessibleClientProjects("org-dev");
+    await client.listAccessibleClientProjects("org-dev");
+    client.restoreSession(SESSION);
+    await client.listAccessibleClientProjects("org-dev");
+
+    const direct = `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-dev/project?limit=500`;
+    const search = `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/search`;
+    expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+      direct,
+      search,
+      search,
+      direct,
+      search,
+    ]);
+  });
+
   it("scopes the project-variable read to the organization, which the platform requires", async () => {
     const stub = recordingFetch(() =>
       jsonResponse(200, { items: [{ envList: [{ id: "e1", key: "K", content: "v" }] }] }),

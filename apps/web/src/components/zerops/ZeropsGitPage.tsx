@@ -17,7 +17,7 @@
  * `gitOverview`'s (R5). `ZeropsGitPage` composes the account around the view; `ZeropsGitOverview`
  * is the view alone.
  */
-import { changeState, gitRepositoryLine } from "@t3tools/client-runtime/zerops";
+import { changeKindTag, changeState, gitRepositoryLine } from "@t3tools/client-runtime/zerops";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 
@@ -99,7 +99,7 @@ export function ZeropsGitOverview({
                                 <StatusDot label={state.word} sentence tone={state.tone} />
                               )
                             }
-                            tag={pull.kind === "recipe" ? "recipe" : "pr"}
+                            tag={changeKindTag(pull)}
                             title={pull.title}
                             {...(onOpenChange === undefined
                               ? {}

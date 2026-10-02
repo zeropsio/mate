@@ -398,6 +398,11 @@ describe("the Overview", () => {
     const html = render({ groups: [MERGING, FRESH] });
     const tiles = html.slice(html.indexOf('data-zerops-surface="only-a-mate"'));
     expect(tiles).toContain("Only a Mate so far");
+    // HQ's word for a Mate's work is a change (design-system glossary): never a pull request.
+    expect(tiles).toContain(
+      "Give it a first task. Changes, main and production appear as the work gets there.",
+    );
+    expect(tiles).not.toMatch(/pull request/iu);
     expect(tiles).toContain('data-zerops-group="bbb"');
     expect(tiles).toContain('id="project-bbb"');
     expect(tiles).toContain("Uma · no task yet");

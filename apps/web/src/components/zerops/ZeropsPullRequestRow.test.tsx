@@ -34,8 +34,8 @@ describe("ZeropsPullRequestRow", () => {
   });
 
   it("is a code change when the caller says so, its title the way to its page", () => {
-    const html = row({ tag: "pr", onOpen: () => {} });
-    expect(html).toContain(">pr<");
+    const html = row({ tag: "change", onOpen: () => {} });
+    expect(html).toContain(">change<");
     expect(html).not.toContain(">recipe<");
     // The change's own page, never a forge: that page holds its conversation,
     // its commits and its Merge (the owner, 2026-09-19).

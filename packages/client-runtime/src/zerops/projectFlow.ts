@@ -270,6 +270,11 @@ export function sidebarChangeLabel(
   return changeNamesRepository(pull, among) ? `${pull.repository} ${number}` : number;
 }
 
+/** The tag a change's row wears: `change` for a Mate's code, `recipe` for an environment's shape. */
+export function changeKindTag(pull: Pick<FlowPullRequest, "kind">): string {
+  return pull.kind === "recipe" ? "recipe" : "change";
+}
+
 /**
  * The line with the Mate's name on it — `appdev #4 · Vera` — for a row that
  * does not sit under its Mate.

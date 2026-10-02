@@ -25,7 +25,7 @@ export interface ZeropsPullRequestRowProps {
   readonly title: string;
   /** Opens the change's own page; with it the title is a control. */
   readonly onOpen?: (() => void) | undefined;
-  /** What kind of change it is — `recipe` by default, `pr` for a code change. */
+  /** What kind of change it is — `recipe` by default, `change` for a code change (`changeKindTag`). */
   readonly tag?: string;
   /** `appdev #4 · Vera` — where and whose, phrased by `projectFlow.ts`. */
   readonly line: ReactNode;

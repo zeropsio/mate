@@ -57,6 +57,13 @@ describe("ZeropsGitOverview", () => {
     expect(html).toContain("#4 · Vera");
   });
 
+  // HQ's word for a Mate's work is a change (design-system glossary): never a PR.
+  it("tags a Mate's code change as a change", () => {
+    const html = render({ kind: "read", apps: APPS, failure: null });
+    expect(html).toContain(">change<");
+    expect(html).not.toMatch(/>pr<|\bPR\b|pull request/iu);
+  });
+
   // SPEC §5.3: no web git browser until zitweb, so a repository's name goes nowhere.
   it("names a repository without a link out", () => {
     expect(render({ kind: "read", apps: APPS, failure: null })).not.toContain("<a ");

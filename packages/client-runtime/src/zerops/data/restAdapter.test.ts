@@ -1636,6 +1636,38 @@ describe("ZeropsDataAdapter receiver", () => {
       }),
   );
 
+  // A 403 there is the platform's final answer for the person (E2E 2026-10-03: asked on every
+  // read, it answered 403 about 8 times a minute), whichever read heard it first.
+  it.effect(
+    "asks a forbidden direct project list once: later reads, and the client's own, go to the search",
+    () =>
+      Effect.gen(function* () {
+        const requests: string[] = [];
+        const client = clientFor((url) => {
+          requests.push(new URL(url).pathname);
+          if (url.includes("/client/"))
+            return new Response(JSON.stringify({ message: "forbidden" }), { status: 403 });
+          return new Response(JSON.stringify({ items: [], totalHits: 0 }), { status: 200 });
+        });
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: () => new FakeSocket(),
+          timers,
+        });
+
+        yield* adapter.read(projectsTicket(), context());
+        yield* adapter.read(projectsTicket(), context());
+        yield* Effect.promise(() => client.listAccessibleClientProjects("org"));
+
+        expect(requests).toEqual([
+          "/api/rest/public/client/org/project",
+          "/api/rest/public/project/search",
+          "/api/rest/public/project/search",
+          "/api/rest/public/project/search",
+        ]);
+      }),
+  );
+
   it.effect(
     "a forbidden read of the organization's services fails at once, never tried again",
     () =>

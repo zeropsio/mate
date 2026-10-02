@@ -6,6 +6,7 @@ import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIde
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import {
+  changeKindTag,
   changeState,
   pullRequestMergeLine,
   releaseContentsSentence,
@@ -191,6 +192,14 @@ describe("naming a change", () => {
   it("names the Mate on a row that does not sit under it", () => {
     expect(pullRequestLineWith(row(), "Vera")).toBe("appdev #4 · Vera");
     expect(pullRequestLineWith(row(), undefined)).toBe("appdev #4");
+  });
+
+  // HQ's word for a Mate's work is a change (design-system glossary): never a PR.
+  it.each([
+    { kind: "code", tag: "change" },
+    { kind: "recipe", tag: "recipe" },
+  ] as const)("tags a $kind change as $tag", ({ kind, tag }) => {
+    expect(changeKindTag({ kind })).toBe(tag);
   });
 
   it("reads as its number and title in a menu row", () => {

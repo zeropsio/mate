@@ -104,6 +104,7 @@ import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  changeKindTag,
   changeState,
   environmentNameUnderGroup,
   halfMadeGroupEnvironments,
@@ -1795,7 +1796,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         line={line}
         onOpen={open}
         status={status}
-        tag={pull.kind === "recipe" ? "recipe" : "pr"}
+        tag={changeKindTag(pull)}
         title={pull.title}
       />
     );
