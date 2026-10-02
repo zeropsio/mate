@@ -54,6 +54,7 @@ import {
 import type { DeployScope, GroupUpdate } from "@t3tools/client-runtime/zerops/flow";
 import {
   createCommitStatusMemo,
+  DEPLOY_STATUS_MAX_AGE_MS,
   type CommitStatusMemo,
 } from "@t3tools/client-runtime/zerops/forge";
 import { useState } from "react";
@@ -289,7 +290,9 @@ export async function readGroupDeploys(input: {
     // A refusal is not an answer: the row says nothing about a deploy
     // it could not be told about, rather than calling it neutral.
     const answered = await memo
-      .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha))
+      .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha), {
+        maxAgeMs: DEPLOY_STATUS_MAX_AGE_MS,
+      })
       .catch(() => null);
     if (answered !== null) statuses.set(deployStatusKey(read), answered);
   }
