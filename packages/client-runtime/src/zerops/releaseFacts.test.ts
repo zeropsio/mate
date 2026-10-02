@@ -350,7 +350,7 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
     expect(last?.model.verdict.fix).toEqual({
       verb: "find out why",
       problem: {
-        what: "Production doesn't run release v0.1.1, tagged 31 minutes ago",
+        what: "Production doesn't run release v0.1.1",
         at: new Date(NOW - 40_000).toISOString(),
         ask: "Find out why production hasn't deployed it, and fix what holds it.",
       },

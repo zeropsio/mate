@@ -921,7 +921,7 @@ function stalledModel(input: {
       fix: {
         verb: "find out why",
         problem: {
-          what: `Production doesn't run ${input.what} ${input.tag}${age === undefined ? "" : `, tagged ${age}`}`,
+          what: `Production doesn't run ${input.what} ${input.tag}`,
           ...(input.at === undefined ? {} : { at: input.at }),
           ask: "Find out why production hasn't deployed it, and fix what holds it.",
         },
