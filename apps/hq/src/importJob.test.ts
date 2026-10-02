@@ -89,17 +89,65 @@ const fileAt = (gitRoot: string, appId: string, repo: string, path: string) =>
     { encoding: "utf8" },
   );
 
-/** `git log -1` of a repository's `main` in Core's git root: its message and its parents. */
-const mainCommit = (gitRoot: string, appId: string, repo: string) => {
-  const [parents = "", ...message] = NodeChildProcess.execFileSync(
+/** `git` on a repository in Core's git root, its output trimmed. */
+const gitAt = (gitRoot: string, appId: string, repo: string, ...args: ReadonlyArray<string>) =>
+  NodeChildProcess.execFileSync(
     "git",
-    ["-C", NodePath.join(gitRoot, appId, `${repo}.git`), "log", "-1", "--format=%P%n%B", "main"],
+    ["-C", NodePath.join(gitRoot, appId, `${repo}.git`), ...args],
     { encoding: "utf8" },
-  )
-    .trim()
-    .split("\n");
+  ).trim();
+
+/** `git log -1` of a revision of a repository in Core's git root: its message and its parents. */
+const commitAt = (gitRoot: string, appId: string, repo: string, rev: string) => {
+  const [parents = "", ...message] = gitAt(
+    gitRoot,
+    appId,
+    repo,
+    "log",
+    "-1",
+    "--format=%P%n%B",
+    rev,
+  ).split("\n");
   return { parents: parents.split(" "), message: message.join("\n") };
 };
+
+/** `git log -1` of a repository's `main` in Core's git root: its message and its parents. */
+const mainCommit = (gitRoot: string, appId: string, repo: string) =>
+  commitAt(gitRoot, appId, repo, "main");
+
+/** Whether two revisions of a repository merge: git's exit, 0 clean, 1 a conflict. */
+const mergeExit = (gitRoot: string, appId: string, repo: string, ours: string, theirs: string) =>
+  NodeChildProcess.spawnSync(
+    "git",
+    [
+      "-C",
+      NodePath.join(gitRoot, appId, `${repo}.git`),
+      "merge-tree",
+      "--write-tree",
+      ours,
+      theirs,
+    ],
+    { encoding: "utf8" },
+  ).status;
+
+/** As Snap's recipe change did: a line inserted right under a build the import's rewrite moves. */
+const underBuild = (tier: string) =>
+  tier.replace(
+    "    buildFromGit: https://gitea.example/shop/appdev.git\n",
+    "    buildFromGit: https://gitea.example/shop/appdev.git\n    enableSubdomainAccess: true\n",
+  );
+
+/** A tier as the import rewrites it: each build from Shop's appdev on Gitea from HQ's. */
+const fromHq = (tier: string, appId: string) => {
+  const hq = `https://hqzone.prg1-zerops.zone/git/${appId}/appdev.git`;
+  return tier
+    .replace("https://gitea.example/shop/appdev.git", hq)
+    .replace("https://gitea.example/shop/appdev\n", `${hq}\n`);
+};
+
+/** A change's branch head in Core's git root. */
+const changeHeadAt = (gitRoot: string, appId: string, repo: string, mate: string, number: number) =>
+  gitAt(gitRoot, appId, repo, "rev-parse", `refs/heads/mate/${mate}/${String(number)}`);
 
 /** A service of an imported environment's project, running the version named `name`. */
 const serviceIn = (world: FakeWorld, projectId: string, service: string, name: string) =>
@@ -441,6 +489,175 @@ describe("the migration's import", () => {
         const stage = fileAt(gitRoot, String(app?.["id"]), "group", "3 — Stage/import.yaml");
         assert.include(stage, "    buildFromGit: https://gitea.example/heron/appdev.git\n");
         assert.notInclude(stage, "https://gitea.example/shop/");
+      }).pipe(Effect.scoped),
+    );
+
+    it.effect(
+      "an open recipe change the rewrite alone made conflict takes main in by Core, and merges cleanly",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+          for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+          yield* untilHealth(call, "active");
+          const written = yield* syntheticBundle(importRoot, undefined, undefined, undefined, [
+            { number: 1, state: "open", stage: underBuild },
+          ]);
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          const [app] = yield* rowsWhere(
+            url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          const appId = String(app?.["id"]);
+          const proposed = written.groupHeads[1]!;
+          const main = gitAt(gitRoot, appId, "group", "rev-parse", "main");
+          // As the bundle brought it, the change conflicts with main: main is the rewrite's.
+          assert.strictEqual(mergeExit(gitRoot, appId, "group", main, proposed), 1);
+
+          const head = changeHeadAt(gitRoot, appId, "group", "P_MATE", 1);
+          assert.deepStrictEqual(commitAt(gitRoot, appId, "group", head), {
+            parents: [proposed, main],
+            message: `Core: the change builds from HQ, as main does\n\nHQ-Import: ${written.digest}`,
+          });
+          assert.strictEqual(mergeExit(gitRoot, appId, "group", main, head), 0);
+          assert.strictEqual(
+            gitAt(gitRoot, appId, "group", "show", `${head}:3 — Stage/import.yaml`),
+            fromHq(underBuild(STAGE_TIER), appId).trim(),
+          );
+          const [record] = yield* rowsWhere(
+            url,
+            "SELECT head, mergeability FROM hq_change WHERE repo = 'group' AND number = 1",
+            (rows) => rows.length === 1,
+          );
+          assert.deepStrictEqual(record, { head, mergeability: "clean" });
+          // An application repository's change is never merged up: appdev's open #3 is as brought.
+          assert.strictEqual(
+            changeHeadAt(gitRoot, appId, "appdev", "P_MATE", 3),
+            written.shas.open,
+          );
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect(
+      "a recipe change that rewrote a build itself keeps its build, and every other moves to HQ",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+          for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+          yield* untilHealth(call, "active");
+          // The worker builds from elsewhere now: the line main's rewrite moves, moved otherwise.
+          const elsewhere = (tier: string) =>
+            tier.replace(
+              "buildFromGit: https://gitea.example/shop/appdev\n",
+              "buildFromGit: https://github.com/shop/worker\n",
+            );
+          const written = yield* syntheticBundle(importRoot, undefined, undefined, undefined, [
+            { number: 1, state: "open", stage: elsewhere },
+          ]);
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          const [app] = yield* rowsWhere(
+            url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          const appId = String(app?.["id"]);
+          const main = gitAt(gitRoot, appId, "group", "rev-parse", "main");
+          assert.strictEqual(mergeExit(gitRoot, appId, "group", main, written.groupHeads[1]!), 1);
+          const head = changeHeadAt(gitRoot, appId, "group", "P_MATE", 1);
+          assert.deepStrictEqual(commitAt(gitRoot, appId, "group", head).parents, [
+            written.groupHeads[1],
+            main,
+          ]);
+          assert.strictEqual(mergeExit(gitRoot, appId, "group", main, head), 0);
+          assert.strictEqual(
+            gitAt(gitRoot, appId, "group", "show", `${head}:3 — Stage/import.yaml`),
+            fromHq(elsewhere(STAGE_TIER), appId).trim(),
+          );
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect(
+      "a recipe change merged up once is not merged again: an earlier run's merge is found, a done one only verified",
+      () =>
+        Effect.gen(function* () {
+          const importRoot = yield* tempDir("hq-import-");
+          const gitRoot = yield* tempDir("hq-git-");
+          const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+          for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+          yield* untilHealth(call, "active");
+          const written = yield* syntheticBundle(importRoot, undefined, undefined, undefined, [
+            { number: 1, state: "open", stage: underBuild },
+          ]);
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          const [app] = yield* rowsWhere(
+            url,
+            "SELECT id::text AS id FROM hq_app",
+            (rows) => rows.length === 1,
+          );
+          const appId = String(app?.["id"]);
+          const head = changeHeadAt(gitRoot, appId, "group", "P_MATE", 1);
+          // A run that merged the change up and died before its item landed: the merge is found.
+          yield* rowsWhere(
+            url,
+            `WITH gone AS (DELETE FROM hq_import_item WHERE key = 'heal:g1/group#1' RETURNING 1)
+             UPDATE hq_import SET state = 'failed' RETURNING (SELECT count(*) FROM gone)::int AS n`,
+            (rows) => rows[0]?.["n"] === 1,
+          );
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          assert.strictEqual(changeHeadAt(gitRoot, appId, "group", "P_MATE", 1), head);
+          // A done one again only verifies.
+          assert.strictEqual(
+            (yield* importAs(url, written.dir)).lines[1],
+            `import ${written.digest} done and verified`,
+          );
+          assert.strictEqual(changeHeadAt(gitRoot, appId, "group", "P_MATE", 1), head);
+          assert.strictEqual(
+            gitAt(gitRoot, appId, "group", "rev-list", "--count", `${head}^1..${head}`),
+            "2",
+          );
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect("a closed recipe change is never merged up, whatever the rewrite makes of it", () =>
+      Effect.gen(function* () {
+        const importRoot = yield* tempDir("hq-import-");
+        const gitRoot = yield* tempDir("hq-git-");
+        const { call, fake, url } = yield* startCore(true, { importRoot, gitRoot });
+        for (const id of ["P_BEA", "P_STAGE", "P_PROD"]) addProject(fake, id);
+        yield* untilHealth(call, "active");
+        const written = yield* syntheticBundle(importRoot, undefined, undefined, undefined, [
+          { number: 1, state: "closed", stage: underBuild },
+        ]);
+        assert.strictEqual(
+          (yield* importAs(url, written.dir)).lines[1],
+          `import ${written.digest} done and verified`,
+        );
+        const [app] = yield* rowsWhere(
+          url,
+          "SELECT id::text AS id FROM hq_app",
+          (rows) => rows.length === 1,
+        );
+        const appId = String(app?.["id"]);
+        assert.strictEqual(
+          changeHeadAt(gitRoot, appId, "group", "P_MATE", 1),
+          written.groupHeads[1],
+        );
       }).pipe(Effect.scoped),
     );
 

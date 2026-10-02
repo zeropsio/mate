@@ -398,6 +398,72 @@ export const makeOperations = (
       emit({ kind: "main_moved", repo, old: main, new: sha, by: "merge" });
       return { merged: sha };
     });
+  /** `from`'s tree (empty for null) with `files` over it, written; the path rules of every Core write. */
+  const treeWith = async (
+    dir: string,
+    from: string | null,
+    files: Readonly<Record<string, string | Uint8Array | null>>,
+    env: Record<string, string>,
+    signal: AbortSignal,
+  ) => {
+    const temp = await NodeFSP.mkdtemp(NodePath.join(dir, ".index-"));
+    try {
+      const indexed = { ...env, GIT_INDEX_FILE: NodePath.join(temp, "index") };
+      await run(
+        dir,
+        from ? ["read-tree", from] : ["read-tree", "--empty"],
+        signal,
+        undefined,
+        indexed,
+      );
+      const entries = Object.entries(files);
+      if (entries.length > readLimits.entries) throw error("Too many files");
+      for (const [path, content] of entries) {
+        pathName(path);
+        // A Windows checkout reads a backslash as a directory separator.
+        if (path.includes("\\")) throw pathError("Invalid git path");
+        if (content !== null && Buffer.byteLength(content) > readLimits.bytes)
+          throw error("File exceeds write limit");
+        // A literal pathspec names exactly this entry: a directory lists as a tree, never its files.
+        const [mode = "", type] = from
+          ? (await text(dir, ["ls-tree", "-z", from, "--", path], signal)).split(" ")
+          : [];
+        if (content === null) {
+          if (type !== "blob") throw pathError("Only an existing file can be deleted");
+          await run(
+            dir,
+            ["update-index", "-z", "--index-info"],
+            signal,
+            `0 ${"0".repeat(from?.length ?? 40)}\t${path}\0`,
+            indexed,
+          );
+          continue;
+        }
+        if (mode && !["100644", "100755"].includes(mode))
+          throw pathError("Only regular files may be replaced");
+        const sha = (await run(dir, ["hash-object", "-w", "--stdin"], signal, content, indexed))
+          .toString()
+          .trim();
+        // Past hash-object, git refuses only the path: protectHFS/NTFS or a file/directory clash.
+        await run(
+          dir,
+          ["update-index", "--add", "--cacheinfo", mode || "100644", sha, path],
+          signal,
+          undefined,
+          indexed,
+        ).catch(() => {
+          throw pathError("Git refuses this path");
+        });
+      }
+      const tree = (await run(dir, ["write-tree"], signal, undefined, indexed)).toString().trim();
+      const written = entries.flatMap(([path, content]) => (content === null ? [] : [path]));
+      if (await collides(dir, tree, written, signal))
+        throw pathError("Names collide by case or Unicode form");
+      return tree;
+    } finally {
+      await NodeFSP.rm(temp, { recursive: true, force: true });
+    }
+  };
   const commitFiles: HqGit["commitFiles"] = (repo, ref, opts) =>
     inRepo("commitFiles", repo, async (dir, signal) => {
       if (
@@ -411,74 +477,76 @@ export const makeOperations = (
       const old = await refHead(dir, ref, signal);
       if (old !== opts.expectedHead) return { kind: "head_moved" } as const;
       const env = identity(opts.author);
-      const temp = await NodeFSP.mkdtemp(NodePath.join(dir, ".index-"));
-      try {
-        env.GIT_INDEX_FILE = NodePath.join(temp, "index");
-        await run(dir, old ? ["read-tree", old] : ["read-tree", "--empty"], signal, undefined, env);
-        const entries = Object.entries(opts.files);
-        if (entries.length > readLimits.entries) throw error("Too many files");
-        for (const [path, content] of entries) {
-          pathName(path);
-          // A Windows checkout reads a backslash as a directory separator.
-          if (path.includes("\\")) throw pathError("Invalid git path");
-          if (content !== null && Buffer.byteLength(content) > readLimits.bytes)
-            throw error("File exceeds write limit");
-          // A literal pathspec names exactly this entry: a directory lists as a tree, never its files.
-          const [mode = "", type] = old
-            ? (await text(dir, ["ls-tree", "-z", old, "--", path], signal)).split(" ")
-            : [];
-          if (content === null) {
-            if (type !== "blob") throw pathError("Only an existing file can be deleted");
-            await run(
-              dir,
-              ["update-index", "-z", "--index-info"],
-              signal,
-              `0 ${"0".repeat(old?.length ?? 40)}\t${path}\0`,
-              env,
-            );
-            continue;
-          }
-          if (mode && !["100644", "100755"].includes(mode))
-            throw pathError("Only regular files may be replaced");
-          const sha = (await run(dir, ["hash-object", "-w", "--stdin"], signal, content, env))
-            .toString()
-            .trim();
-          // Past hash-object, git refuses only the path: protectHFS/NTFS or a file/directory clash.
-          await run(
-            dir,
-            ["update-index", "--add", "--cacheinfo", mode || "100644", sha, path],
-            signal,
-            undefined,
-            env,
-          ).catch(() => {
-            throw pathError("Git refuses this path");
-          });
-        }
-        const tree = (await run(dir, ["write-tree"], signal, undefined, env)).toString().trim();
-        const written = entries.flatMap(([path, content]) => (content === null ? [] : [path]));
-        if (await collides(dir, tree, written, signal))
-          throw pathError("Names collide by case or Unicode form");
-        const sha = (
-          await run(
-            dir,
-            ["commit-tree", tree, ...(old ? ["-p", old] : [])],
-            signal,
-            opts.message,
-            env,
-          )
+      const tree = await treeWith(dir, old, opts.files, env, signal);
+      const sha = (
+        await run(
+          dir,
+          ["commit-tree", tree, ...(old ? ["-p", old] : [])],
+          signal,
+          opts.message,
+          env,
         )
-          .toString()
-          .trim();
-        // A Core commit carrying the trailer would mark a change merged once it reaches main.
-        if (await changeTrailer(dir, sha, signal))
-          throw error("Core commits cannot carry a Mate-Change trailer");
-        if (!(await cas(dir, ref, sha, old, signal))) return { kind: "head_moved" } as const;
-        if (ref === "refs/heads/main")
-          emit({ kind: "main_moved", repo, old, new: sha, by: "commit" });
-        return { sha };
-      } finally {
-        await NodeFSP.rm(temp, { recursive: true, force: true });
+      )
+        .toString()
+        .trim();
+      // A Core commit carrying the trailer would mark a change merged once it reaches main.
+      if (await changeTrailer(dir, sha, signal))
+        throw error("Core commits cannot carry a Mate-Change trailer");
+      if (!(await cas(dir, ref, sha, old, signal))) return { kind: "head_moved" } as const;
+      if (ref === "refs/heads/main")
+        emit({ kind: "main_moved", repo, old, new: sha, by: "commit" });
+      return { sha };
+    });
+  const mergeIntoChange: HqGit["mergeIntoChange"] = (repo, mateId, number, opts) =>
+    inRepo("mergeIntoChange", repo, async (dir, signal) => {
+      if (!validSha(opts.expectedHead) || !validSha(opts.expectedMain))
+        throw error("Invalid expected head or main");
+      const ref = changeRef(mateId, number);
+      const head = await refHead(dir, ref, signal);
+      if (!head) return { kind: "no_change" } as const;
+      if (head !== opts.expectedHead) return { kind: "head_moved" } as const;
+      if ((await refHead(dir, "refs/heads/main", signal)) !== opts.expectedMain)
+        return { kind: "main_moved" } as const;
+      if (!validSha(opts.from)) throw error("Invalid tree");
+      const from = await text(
+        dir,
+        ["rev-parse", "--verify", "--end-of-options", `${opts.from}^{tree}`],
+        signal,
+      );
+      const env = identity(opts.author);
+      const tree = await treeWith(dir, from, opts.files, env, signal);
+      const sha = (
+        await run(
+          dir,
+          ["commit-tree", tree, "-p", head, "-p", opts.expectedMain],
+          signal,
+          opts.message,
+          env,
+        )
+      )
+        .toString()
+        .trim();
+      // On a change's branch the trailer would mark the change merged the moment it reached main.
+      if (await changeTrailer(dir, sha, signal))
+        throw error("Core commits cannot carry a Mate-Change trailer");
+      if (!(await cas(dir, ref, sha, head, signal))) return { kind: "head_moved" } as const;
+      return { sha };
+    });
+  const mergeTree: HqGit["mergeTree"] = (repo, ours, theirs) =>
+    inRepo("mergeTree", repo, async (dir, signal) => {
+      if (!validSha(ours) || !validSha(theirs)) throw error("Invalid commit");
+      const merged = await git.exec(
+        ["-C", dir, "merge-tree", "--write-tree", "--name-only", "-z", ours, theirs],
+        { signal, acceptExitCodes: [1] },
+      );
+      const fields = merged.stdout.toString().split("\0");
+      const tree = fields.shift()!;
+      const conflicts: string[] = [];
+      for (const field of fields) {
+        if (!field) break;
+        conflicts.push(field);
       }
+      return merged.code === 1 ? { conflicts } : { tree };
     });
   const createTag: HqGit["createTag"] = (repo, name, sha, message) =>
     inRepo("createTag", repo, async (dir, signal) => {
@@ -1003,6 +1071,8 @@ export const makeOperations = (
     mergeability,
     squashMerge,
     commitFiles,
+    mergeIntoChange,
+    mergeTree,
     createTag,
     branches,
     tree,

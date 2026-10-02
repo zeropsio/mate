@@ -7,6 +7,8 @@
  * Its recipe's stage tier builds two runtimes, `appstage` and `workerstage`, and its production
  * tier `app`, all from `appdev` on main's Gitea (`gitea.example`, the org `shop`).
  * `tweak` changes the files' contents, and `picture` the picture's bytes, before they are frozen.
+ * `groupChanges` adds changes to the `group` repository, each one commit on the recipe editing the
+ * stage tier, as a Mate's recipe proposal does.
  *
  * @module test/harness/bundle
  */
@@ -59,6 +61,13 @@ export const PRODUCTION_TIER = [
 /** Where main's Gitea served the picture: as the description spells it. */
 export const PICTURE_URL = "https://gitea.example/attachments/5f1c2b9a-0d3e-4c55-9b8f-2a7e6d1c0b3a";
 
+/** A change of the `group` repository: one commit on the recipe, its stage tier as `stage` makes it. */
+export interface GroupChange {
+  readonly number: number;
+  readonly state: "open" | "closed";
+  readonly stage: (tier: string) => string;
+}
+
 export interface BundleParts {
   readonly mapping: Record<string, unknown>;
   readonly changes: Record<string, unknown>;
@@ -73,6 +82,7 @@ export const syntheticBundle = (
   tweak: (parts: BundleParts) => BundleParts = (parts) => parts,
   picture: Uint8Array = PICTURE,
   stageTier: string = STAGE_TIER,
+  groupChanges: ReadonlyArray<GroupChange> = [],
 ) =>
   Effect.gen(function* () {
     const git = yield* gitClient;
@@ -119,6 +129,18 @@ export const syntheticBundle = (
     const recipe = yield* git.checked(["rev-parse", "HEAD"], group.path);
     const message = `app ${squash}`;
     yield* git.checked(["tag", "-a", "v0.1.0", "-m", message, recipe], group.path);
+    const groupHeads: Record<number, string> = {};
+    for (const proposal of groupChanges) {
+      yield* git.checked(["checkout", "-q", "--detach", recipe], group.path);
+      NodeFS.writeFileSync(NodePath.join(group.path, tiers[0]!.path), proposal.stage(stageTier));
+      yield* git.checked(
+        ["commit", "-q", "-am", `Recipe change ${String(proposal.number)}`],
+        group.path,
+      );
+      groupHeads[proposal.number] = yield* git.checked(["rev-parse", "HEAD"], group.path);
+      yield* group.ref(`refs/hq-import/${String(proposal.number)}`, groupHeads[proposal.number]!);
+    }
+    yield* git.checked(["checkout", "-q", "main"], group.path);
 
     const dir = NodePath.join(root, "bundle");
     NodeFS.mkdirSync(NodePath.join(dir, "repos", "g1"), { recursive: true });
@@ -194,6 +216,17 @@ export const syntheticBundle = (
       },
       changes: {
         changes: [
+          ...groupChanges.map((proposal) =>
+            change({
+              repo: "group",
+              number: proposal.number,
+              title: `Recipe change ${String(proposal.number)}`,
+              state: proposal.state,
+              head: groupHeads[proposal.number],
+              headRef: `refs/hq-import/${String(proposal.number)}`,
+              closedAt: proposal.state === "closed" ? at(12) : null,
+            }),
+          ),
           change({
             number: 1,
             title: "Add a page",
@@ -272,5 +305,6 @@ export const syntheticBundle = (
       dir,
       digest: sha256(NodePath.join(dir, "manifest.json")),
       shas: { start, merged, squash, closed, open, recipe },
+      groupHeads,
     };
   });
