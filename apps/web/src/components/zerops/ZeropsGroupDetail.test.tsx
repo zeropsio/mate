@@ -6,7 +6,8 @@ import {
   type EnvironmentRow,
   type EnvironmentServiceState,
   type FlowReleaseRow,
-  type GiteaCommit,
+  type Moved,
+  type MovedCommits,
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
@@ -18,12 +19,13 @@ import {
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
-import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
+import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 
 import { ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -97,8 +99,8 @@ function render(
   return renderToStaticMarkup(
     <ZeropsGroupPane
       attention={[]}
-      commits={{ kind: "no-gitea" }}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
+      history={{ kind: "reading" }}
       groupId="shop"
       {...who}
       {...stops}
@@ -109,7 +111,6 @@ function render(
       onOpenMate={() => {}}
       onSetUp={() => {}}
       pullRequests={[]}
-      readDetail={undefined}
       release={{
         offered: false,
         releasing: false,
@@ -118,6 +119,7 @@ function render(
         onReview: () => {},
       }}
       repo={undefined}
+      tags={new Map()}
       waiting={releaseContentsSummary([], 20)}
     />,
   );
@@ -299,41 +301,36 @@ const releases = (
 
 const FOUR_HOURS_AGO = new Date(NOW - 4 * 3_600_000).toISOString();
 
-const gitCommit = (seed: string, subject: string, author?: string): GiteaCommit => ({
+/** A commit as HQ compares it; none of HQ's changes landed it. */
+const hqCommit = (seed: string, subject: string, author = "ales"): CompareCommit => ({
   sha: fullSha(seed),
   subject,
-  ...(author === undefined ? {} : { author, at: FOUR_HOURS_AGO }),
+  authorName: author,
+  at: FOUR_HOURS_AGO,
+  change: null,
 });
 
-/** apidev's default branch, newest first: what api runs, down through every earlier release's. */
-const API_BRANCH: ReadonlyArray<GiteaCommit> = [
-  gitCommit("a1", "Fix the cart total", "ales"),
-  gitCommit("d1", "Tidy the cart"),
-  gitCommit("e1", "Two-step checkout"),
-  gitCommit("e2", "Retry the webhook"),
-  gitCommit("e3", "Fix the VAT table"),
-  gitCommit("e4", "Key the cache on locale", "wren"),
-  gitCommit("d4", "Warm the cache"),
-  gitCommit("e5", "Add the cache"),
-  gitCommit("e6", "Open the shop"),
-];
-
-/** webdev's, the same way for web. */
-const WEB_BRANCH: ReadonlyArray<GiteaCommit> = [
-  gitCommit("b2", "Restyle the basket"),
-  gitCommit("w1", "Add a footer"),
-  gitCommit("w2", "Open the storefront"),
-];
-
-const read = (commits: ReadonlyArray<GiteaCommit>): ZeropsCommitsState => ({
-  kind: "read",
-  commits,
-  releases: new Map(),
+/** What one release carried of apidev, as HQ compared it: `subjects`, newest first. */
+const apidev = (...subjects: ReadonlyArray<string>): Moved => ({
+  repository: "apidev",
+  services: ["api"],
+  commits: subjects.map((subject, index) => hqCommit(`a${String(index)}`, subject)),
+  total: subjects.length,
+  truncated: false,
 });
+const webdev = (...subjects: ReadonlyArray<string>): Moved => ({
+  repository: "webdev",
+  services: ["web"],
+  commits: subjects.map((subject, index) => hqCommit(`w${String(index)}`, subject)),
+  total: subjects.length,
+  truncated: false,
+});
+const known = (...moved: ReadonlyArray<Moved>): MovedCommits => ({ state: "known", moved });
 
-const READ_BRANCHES: ReadonlyMap<string, ZeropsCommitsState> = new Map([
-  ["apidev", read(API_BRANCH)],
-  ["webdev", read(WEB_BRANCH)],
+/** What v0.1.13 and v0.1.12 carried. */
+const CARRIED: ReadonlyMap<string, MovedCommits> = new Map([
+  ["v0.1.13", known(apidev("Fix the cart total", "Tidy the cart"))],
+  ["v0.1.12", known(apidev("Two-step checkout"))],
 ]);
 
 interface StopCase {
@@ -355,11 +352,13 @@ interface StopCase {
   readonly mayKeep?: boolean;
   readonly releases?: number;
   readonly atMainHead?: boolean;
-  readonly commits?: ZeropsCommitsState;
+  readonly history?: ZeropsHistoryState;
   /** The services, besides api, whose commit each earlier release moves. */
   readonly moving?: ReadonlyArray<string>;
-  /** `repository → its read`, as the page reads a production's code repositories; none unless given. */
-  readonly reads?: ReadonlyMap<string, ZeropsCommitsState> | undefined;
+  /** What each release carried, as HQ compared it; none unless given. */
+  readonly carried?: ReadonlyMap<string, MovedCommits> | undefined;
+  /** Production's services whose commit cannot be told. */
+  readonly untold?: ReadonlyArray<string>;
 }
 
 /** A stop's page with every read already done — the producers' words, the pane's drawing. */
@@ -397,6 +396,7 @@ function renderStop(input: StopCase): string {
     releasing: undefined,
     failed: input.failed,
     waiting: waiting.length,
+    untold: input.untold ?? [],
     release: {
       offered: input.offered !== undefined,
       tag: input.offered,
@@ -409,33 +409,20 @@ function renderStop(input: StopCase): string {
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
-      commits={input.commits ?? { kind: "reading" }}
+      carried={input.carried}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
       deployed={new Map(view.version?.sha === undefined ? [] : [[name, view.version.sha]])}
-      forge={{ giteaOrigin: "https://gitea.example", owner: "shop" }}
+      history={input.history ?? { kind: "reading" }}
       groupId="shop"
       groupName="Shop"
       names={{ mateNames: new Map(), groupName: "Shop" }}
       onOpenProject={() => {}}
       onRollBack={() => {}}
       pending={new Set()}
-      readDetail={undefined}
       release={
         input.offered === undefined
           ? RELEASE_OFF
           : { ...RELEASE_OFF, offered: true, tag: input.offered }
-      }
-      releaseReads={
-        input.reads === undefined
-          ? undefined
-          : {
-              reads: input.reads,
-              repositoryOf: new Map(
-                input.services.flatMap((entry) =>
-                  entry.repository === undefined ? [] : [[entry.hostname, entry.repository]],
-                ),
-              ),
-            }
       }
       releases={
         input.tier === "production" ? releases(input.releases ?? 0, running, input.moving) : []
@@ -444,8 +431,10 @@ function renderStop(input: StopCase): string {
       routes={[]}
       services={rows}
       stop={stop}
+      tags={new Map()}
       trouble={null}
       verdict={verdict}
+      untold={input.untold ?? []}
       view={view}
       waiting={waiting}
     />,
@@ -474,6 +463,30 @@ describe("ZeropsStopPane", () => {
         "Live",
       ],
       lacks: ["Nothing needs you here.", "Tagged by"],
+    },
+    {
+      name: "a production with a service nobody can tell the commit of says so beside what waits",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "v0.1.13"), service("web", "b2", "hotfix")],
+        releases: 1,
+        waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
+        untold: ["web"],
+        offered: "v0.1.14",
+      },
+      contains: ["1 change not live.", "Two-step checkout", "Can&#x27;t tell what web runs."],
+    },
+    {
+      name: "a production none of whose services can be told offers its release, never all clear",
+      input: {
+        tier: "production",
+        services: [service("api", "a1", "hotfix")],
+        releases: 1,
+        untold: ["api"],
+        offered: "v0.1.14",
+      },
+      contains: ["Can&#x27;t tell what api runs.", ">Review release</button>"],
+      lacks: ["Production already runs what is merged."],
     },
     {
       name: "a production three changes behind, with a release offered",
@@ -588,13 +601,7 @@ describe("ZeropsStopPane", () => {
         tier: "stage",
         services: [service("api", "a1", undefined)],
         atMainHead: true,
-        commits: {
-          kind: "read",
-          commits: [
-            { sha: fullSha("a1"), subject: "Key the cache", author: "theo", at: undefined },
-          ],
-          releases: new Map(),
-        },
+        history: { kind: "read", commits: [hqCommit("a1", "Key the cache", "theo")], total: 1 },
       },
       contains: [
         "Stage runs the head of main.",
@@ -610,7 +617,7 @@ describe("ZeropsStopPane", () => {
         tier: "stage",
         services: [],
         deployment: NONE,
-        commits: { kind: "read", commits: [], releases: new Map() },
+        history: { kind: "read", commits: [], total: 0 },
       },
       contains: [
         "Nothing deployed yet.",
@@ -769,48 +776,35 @@ describe("ZeropsStopPane", () => {
       readonly lacks?: ReadonlyArray<string>;
     }>([
       {
-        name: "a single repository: its newest commit's subject, over who, when and the sha",
+        name: "one repository: its newest commit's subject, over who, when and the sha",
         input: {
           tier: "production",
           services: [service("api", "a1", "v0.1.13")],
           releases: 2,
-          reads: READ_BRANCHES,
+          carried: CARRIED,
         },
         tag: "v0.1.13",
         contains: ["Fix the cart total, +1 more", "ales · 4h · api 0"],
       },
       {
-        name: "a split group where one service moved: no service named",
-        input: { tier: "production", services: TWO_LIVE, releases: 2, reads: READ_BRANCHES },
+        name: "one repository moved of two: no service named",
+        input: { tier: "production", services: TWO_LIVE, releases: 2, carried: CARRIED },
         tag: "v0.1.13",
         contains: [">Fix the cart total, +1 more<"],
-        lacks: ["api: ", "Restyle the basket"],
+        lacks: ["api: "],
       },
       {
-        name: "a split group where two moved: the first service named, and the rest counted",
+        name: "two repositories moved: the first service named, and the rest counted",
         input: {
           tier: "production",
           services: TWO_LIVE,
           releases: 2,
-          moving: ["web"],
-          reads: READ_BRANCHES,
+          carried: new Map([
+            ["v0.1.13", known(apidev("Fix the cart total", "Tidy the cart"), webdev("Restyle"))],
+          ]),
         },
         tag: "v0.1.13",
         contains: [">api: Fix the cart total, +2 more<"],
-      },
-      {
-        // The fifth row shown is measured against the sixth release, which is not shown: read
-        // over the shown rows alone it would be the oldest and carry the rest of the branch.
-        name: "the last row shown: what came after the first release not shown",
-        input: {
-          tier: "production",
-          services: [service("api", "a1", "v0.1.13")],
-          releases: 6,
-          reads: READ_BRANCHES,
-        },
-        tag: "v0.1.9",
-        contains: [">Key the cache on locale, +1 more<", "wren · 4h · api 4"],
-        lacks: ["+3 more"],
       },
     ])("$name", ({ input, tag, contains, lacks = [] }) => {
       const row = releaseRowOf(renderStop(input), tag);
@@ -818,17 +812,25 @@ describe("ZeropsStopPane", () => {
       for (const text of lacks) expect(row).not.toContain(text);
     });
 
-    it.each<{ readonly name: string; readonly reads: ZeropsCommitsState }>([
-      { name: "while its commits are read", reads: { kind: "reading" } },
-      { name: "where the forge would not read them", reads: { kind: "failed", reason: "Gone." } },
-    ])("keeps each row's shas, with a closed chevron, $name", ({ reads }) => {
+    it.each<{ readonly name: string; readonly carried: MovedCommits; readonly chevron: boolean }>([
+      {
+        name: "while HQ compares it, with no chevron",
+        carried: { state: "reading" },
+        chevron: false,
+      },
+      {
+        name: "where HQ would not compare it, with a closed chevron to say why",
+        carried: { state: "failed", reason: "HQ has no such commit." },
+        chevron: true,
+      },
+    ])("keeps each row's shas $name", ({ carried, chevron }) => {
       const markup = renderStop({
         tier: "production",
         services: TWO_LIVE,
         releases: 2,
-        reads: new Map([
-          ["apidev", reads],
-          ["webdev", reads],
+        carried: new Map([
+          ["v0.1.13", carried],
+          ["v0.1.12", carried],
         ]),
       });
       for (const [tag, line] of [
@@ -837,7 +839,7 @@ describe("ZeropsStopPane", () => {
       ] as const) {
         const row = releaseRowOf(markup, tag);
         expect(row).toContain(`data-zerops-surface="environment-summary">${line}</span>`);
-        expect(row).toContain('aria-expanded="false"');
+        expect(row.includes('aria-expanded="false"')).toBe(chevron);
       }
       expect(count(markup, 'aria-expanded="true"')).toBe(0);
     });
@@ -860,17 +862,17 @@ describe("ZeropsStopPane", () => {
       expect(markup).not.toContain("release-carried");
     });
 
-    it.each<{ readonly name: string; readonly reads?: ReadonlyMap<string, ZeropsCommitsState> }>([
-      { name: "read", reads: READ_BRANCHES },
+    it.each<{ readonly name: string; readonly carried?: ReadonlyMap<string, MovedCommits> }>([
+      { name: "read", carried: CARRIED },
       { name: "unread" },
-    ])("keeps the list's own pins with its commits $name", ({ reads }) => {
-      const two = renderStop({ tier: "production", services: TWO_LIVE, releases: 2, reads });
+    ])("keeps the list's own pins with its commits $name", ({ carried }) => {
+      const two = renderStop({ tier: "production", services: TWO_LIVE, releases: 2, carried });
       expect(count(two, ">Roll back to this</button>")).toBe(1);
       const seven = renderStop({
         tier: "production",
         services: TWO_LIVE,
         releases: 7,
-        reads,
+        carried,
       });
       expect(count(seven, "data-zerops-environment-row")).toBe(5);
       expect(seven).toContain("Show 2 earlier releases");

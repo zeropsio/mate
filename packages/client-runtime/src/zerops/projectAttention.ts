@@ -144,6 +144,19 @@ export function changesNotLive(count: number): string {
 }
 
 /**
+ * What production runs on services no comparison could start from (`productionRuns`' `untold`):
+ * a version named by hand, or a service the account does not list. Said, never read as nothing
+ * waiting.
+ */
+export function cannotTellWhatRuns(services: ReadonlyArray<string>): string {
+  const names =
+    services.length < 2
+      ? services.join("")
+      : `${services.slice(0, -1).join(", ")} and ${services.at(-1) ?? ""}`;
+  return `Can't tell what ${names} ${services.length === 1 ? "runs" : "run"}`;
+}
+
+/**
  * The line a project wears when nothing is waiting.
  *
  * Said rather than left blank: a panel that disappears when all is well is a

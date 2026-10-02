@@ -4,8 +4,8 @@
  * (`GET /api/apps/:appId/repos/:repo/compare`, git's `base..head`): which to ask for, and how
  * their answers read.
  *
- * HQ compares whole shas only, so production's side is its commit as HQ recorded the deploy
- * (`releaseDeploys`); one known only by a version name's seven hex cannot be asked about.
+ * HQ compares whole shas only, so production's side is the commit each service runs, whole
+ * (`productionRuns`); one that cannot be told whole is never asked about from a guess.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -14,13 +14,14 @@
 
 import {
   COMPARE_COUNT_MAX,
-  Sha,
   type CompareCommit,
   type CompareQuery,
   type CompareResponse,
 } from "@t3tools/shared/hqChanges";
-import * as Schema from "effect/Schema";
 
+import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
+import { deployedCommit, type ServiceDeploys } from "./groupRows.ts";
+import type { Shown } from "./knowledge/known.ts";
 import type { FlowRelease, ReleaseEntry } from "./release.ts";
 import { resolveCommit, sameCommit } from "./versionName.ts";
 
@@ -39,27 +40,65 @@ export interface CompareReads {
   readonly untold: ReadonlyArray<string>;
 }
 
-const isSha = Schema.is(Sha);
+/** What nothing is said of: no comparison starts from it. */
+const UNTOLD: ProductionRun = { kind: "untold" };
+
+/** What a production service runs, as a comparison starts from it. */
+export type ProductionRun =
+  /** A commit, whole. */
+  | { readonly kind: "commit"; readonly sha: string }
+  /** Listed, and runs no version: a first release puts its repository's whole `main` live. */
+  | { readonly kind: "nothing" }
+  /**
+   * It runs something no comparison can start from: a version named by hand, or by seven hex no
+   * record or release lists — or a service the account does not list at all.
+   */
+  | { readonly kind: "untold" };
 
 /**
- * What production runs, whole where a release lists the commit a version's name spells short for
- * that service: HQ names a version `{tag} {7 hex}`, and the record of its deploy may be gone where
- * the release it deployed is not — an environment the migration brought, say. One no release
- * lists stays short, and is not compared (`untold`).
+ * What each of production's services runs, by hostname — the ones the account lists, and the ones
+ * the production tier or HQ's deploys name that it does not — or `undefined` while that is not
+ * known: production is not listed yet, or a listed service's version is not read. A version's
+ * name spells a commit whole, or seven hex made whole from HQ's record of the deploy or from a
+ * release that lists it for the service; none of those is `untold`, never "runs nothing".
  */
-export function wholeProduction(
-  /** `{service: sha}` production runs, whole where HQ recorded it (`releaseDeploys`). */
-  production: ReadonlyMap<string, string>,
-  releases: ReadonlyArray<Pick<FlowRelease, "entries">>,
-): ReadonlyMap<string, string> {
-  return new Map(
-    [...production].map(([service, sha]) => {
-      const listed = releases.flatMap(({ entries }) =>
-        entries.filter((entry) => entry.service === service).map((entry) => entry.commit),
-      );
-      return [service, resolveCommit(sha, listed) ?? sha];
-    }),
-  );
+export function productionRuns(input: {
+  /** Production's services as the account lists them; `undefined` while it is not listed. */
+  readonly services:
+    | ReadonlyArray<{ readonly hostname: string; readonly serviceId: string }>
+    | undefined;
+  /** What each listed service runs, as the store states it, by service id. */
+  readonly stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>;
+  /** The services the production tier builds and HQ records deploys of, by hostname. */
+  readonly named: ReadonlyArray<string>;
+  /** HQ's deploys of production's services, by hostname (`HqEnvironment.deploys`). */
+  readonly deploys: ReadonlyMap<string, ServiceDeploys>;
+  readonly releases: ReadonlyArray<Pick<FlowRelease, "entries">>;
+}): ReadonlyMap<string, ProductionRun> | undefined {
+  if (input.services === undefined) return undefined;
+  const runs = new Map<string, ProductionRun>();
+  for (const { hostname, serviceId } of input.services) {
+    const version = input.stated.get(serviceId);
+    if (version?.state !== "known") return undefined;
+    if (version.value.activeId === null) {
+      runs.set(hostname, { kind: "nothing" });
+      continue;
+    }
+    const deploy = input.deploys.get(hostname);
+    const listed = input.releases.flatMap(({ entries }) =>
+      entries.filter((entry) => entry.service === hostname).map((entry) => entry.commit),
+    );
+    const sha = resolveCommit(deployedCommit(version.value.name ?? undefined), [
+      deploy?.live?.sha,
+      deploy?.latest.sha,
+      ...listed,
+    ]);
+    runs.set(hostname, sha === undefined ? { kind: "untold" } : { kind: "commit", sha });
+  }
+  for (const hostname of input.named) {
+    if (!runs.has(hostname)) runs.set(hostname, { kind: "untold" });
+  }
+  return runs;
 }
 
 /** `read` among `reads`: one per repository and pair of commits, however many services take it. */
@@ -77,28 +116,30 @@ function ask(reads: Array<CompareRead>, read: CompareRead): void {
 
 /**
  * What to ask so a release can say what it puts live: per production service, its repository's
- * commits from what production runs to `main`'s head — and from the first commit where production
- * runs nothing yet, which is a first release. A service already at `main` moves nothing and is not
- * asked about.
+ * commits from what production runs to `main`'s head — and from the first commit where it is
+ * listed and runs nothing, which is a first release. A service already at `main` moves nothing
+ * and is not asked about; one whose commit cannot be told (`untold`) is named, never asked from
+ * a guess.
  */
 export function releaseReads(input: {
   /** The repository each production runtime builds from, by hostname (`AppRecipe`). */
   readonly productionRepositories: ReadonlyMap<string, string>;
   /** `{service: whole sha}` its repository's `main` holds (`releaseCandidate`). */
   readonly candidate: ReadonlyMap<string, string>;
-  /** `{service: sha}` production runs, whole where HQ recorded it (`releaseDeploys`). */
-  readonly production: ReadonlyMap<string, string>;
+  /** What each production service runs (`productionRuns`). */
+  readonly running: ReadonlyMap<string, ProductionRun>;
 }): CompareReads {
   const reads: Array<CompareRead> = [];
   const untold: Array<string> = [];
   for (const [service, head] of input.candidate) {
     const repository = input.productionRepositories.get(service);
-    const running = input.production.get(service);
-    if (repository === undefined || sameCommit(running, head)) continue;
-    if (running === undefined) ask(reads, { repository, query: { head }, services: [service] });
-    else if (isSha(running))
-      ask(reads, { repository, query: { base: running, head }, services: [service] });
-    else untold.push(service);
+    if (repository === undefined) continue;
+    const run = input.running.get(service) ?? UNTOLD;
+    if (run.kind === "untold") untold.push(service);
+    else if (run.kind === "nothing")
+      ask(reads, { repository, query: { head }, services: [service] });
+    else if (!sameCommit(run.sha, head))
+      ask(reads, { repository, query: { base: run.sha, head }, services: [service] });
   }
   return { reads, untold };
 }
@@ -114,8 +155,8 @@ export function rollbackReads(input: {
   readonly productionRepositories: ReadonlyMap<string, string>;
   /** What the release gone back to lists. */
   readonly entries: ReadonlyArray<ReleaseEntry>;
-  /** `{service: sha}` production runs, whole where HQ recorded it (`releaseDeploys`). */
-  readonly production: ReadonlyMap<string, string>;
+  /** What each production service runs (`productionRuns`). */
+  readonly running: ReadonlyMap<string, ProductionRun>;
 }): {
   readonly leaving: ReadonlyArray<CompareRead>;
   readonly comingBack: ReadonlyArray<CompareRead>;
@@ -126,14 +167,15 @@ export function rollbackReads(input: {
   const untold: Array<string> = [];
   for (const { service, commit } of input.entries) {
     const repository = input.productionRepositories.get(service);
-    const running = input.production.get(service);
-    if (repository === undefined || sameCommit(running, commit)) continue;
-    if (running === undefined) {
+    if (repository === undefined) continue;
+    const run = input.running.get(service) ?? UNTOLD;
+    if (run.kind === "untold") untold.push(service);
+    else if (run.kind === "nothing")
       ask(comingBack, { repository, query: { head: commit }, services: [service] });
-    } else if (isSha(running)) {
-      ask(leaving, { repository, query: { base: commit, head: running }, services: [service] });
-      ask(comingBack, { repository, query: { base: running, head: commit }, services: [service] });
-    } else untold.push(service);
+    else if (!sameCommit(run.sha, commit)) {
+      ask(leaving, { repository, query: { base: commit, head: run.sha }, services: [service] });
+      ask(comingBack, { repository, query: { base: run.sha, head: commit }, services: [service] });
+    }
   }
   return { leaving, comingBack, untold };
 }

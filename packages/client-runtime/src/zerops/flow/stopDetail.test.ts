@@ -86,6 +86,7 @@ const BASE: VerdictInput = {
   releasing: undefined,
   failed: undefined,
   waiting: 0,
+  untold: [],
   release: { offered: false, tag: undefined, reason: undefined },
   releasedAge: undefined,
   since: undefined,
@@ -237,6 +238,45 @@ describe("stopVerdict", () => {
     {
       name: "production behind with the release offered",
       input: { waiting: 3, release: { offered: true, tag: "v0.1.14", reason: undefined } },
+      expected: {
+        tone: "busy",
+        text: "3 changes not live.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      // What production runs on a service cannot be told: nothing is known to be live, and the
+      // release is offered — never "already runs what is merged".
+      name: "production none of whose services can be told, nothing counted",
+      input: { untold: ["api"], release: { offered: true, tag: "v0.1.14", reason: undefined } },
+      expected: {
+        tone: "busy",
+        text: "Can't tell what api runs.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      name: "production with two services that cannot be told",
+      input: {
+        untold: ["api", "web"],
+        release: { offered: true, tag: "v0.1.14", reason: undefined },
+      },
+      expected: {
+        tone: "busy",
+        text: "Can't tell what api and web run.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      name: "production behind, one of its services untold beside the count",
+      input: {
+        waiting: 3,
+        untold: ["web"],
+        release: { offered: true, tag: "v0.1.14", reason: undefined },
+      },
       expected: {
         tone: "busy",
         text: "3 changes not live.",

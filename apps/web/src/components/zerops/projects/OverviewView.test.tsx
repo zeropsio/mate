@@ -203,7 +203,7 @@ describe("the Overview", () => {
         pullRequests: [pull(), pull({ number: 2 }), pull({ number: 3 })],
         merged: [pull({ number: 4, merged: true })],
         stops: [PRODUCTION_STOP],
-        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 2 },
+        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 2, untold: [] },
       }),
     ],
   ])("never holds more than two lines in a cell: %s", (_name, group) => {
@@ -650,6 +650,7 @@ describe("production and stages in flight on the Overview", () => {
         gate: { allowed: false, reason: "Releasing v0.1.0…" },
         suggestion: "v0.1.1",
         waiting: 1,
+        untold: [],
         inFlight: "v0.1.0",
       },
     });

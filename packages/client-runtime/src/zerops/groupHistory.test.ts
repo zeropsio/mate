@@ -4,6 +4,7 @@ import {
   groupHistory,
   historyAge,
   historyLine,
+  historyEarlier,
   historyNote,
   releaseTagsByCommit,
 } from "./groupHistory.ts";
@@ -12,10 +13,13 @@ const SHA_A = "3f9c1b2a4d5e6f70819293a4b5c6d7e8f9012345";
 const SHA_B = "aa11bb22cc33dd44ee55ff6677889900aabbccdd";
 const SHA_C = "ffeeddccbbaa99887766554433221100ffeeddcc";
 
-const commit = (sha: string, subject: string, extra: Record<string, unknown> = {}) => ({
+/** A commit as HQ's comparison lists it: none of HQ's changes landed it. */
+const commit = (sha: string, subject: string) => ({
   sha,
   subject,
-  ...extra,
+  authorName: "ada",
+  at: "2026-09-19T08:00:00Z",
+  change: null,
 });
 
 describe("a group's history", () => {
@@ -98,6 +102,17 @@ describe("a group's history", () => {
     expect(entry?.shortSha).toBe(SHA_A.slice(0, 7));
   });
 
+  it("carries the change HQ landed it with, and none for a commit no change landed", () => {
+    const landed = { number: 7, title: "Add a footer", mateProjectId: "p-wren" };
+    const [first, second] = groupHistory({
+      commits: [{ ...commit(SHA_A, "Add a footer"), change: landed }, commit(SHA_B, "Rename")],
+      deployed: new Map(),
+      tags: new Map(),
+    });
+    expect(first?.change).toEqual(landed);
+    expect(second?.change).toBeNull();
+  });
+
   describe("the line under the subject", () => {
     const base = {
       sha: SHA_A,
@@ -105,19 +120,12 @@ describe("a group's history", () => {
       subject: "Add a footer",
       at: undefined,
       tags: [],
+      change: null,
     };
 
     it("says who wrote it and where it is running", () => {
       expect(historyLine({ ...base, author: "ada", deployedTo: ["production"] })).toBe(
         "ada · production",
-      );
-    });
-
-    it("never writes a bot login out: this test used to assert that it did", () => {
-      // `mate-links-dev` is a Gitea login, not a who — a line naming it was
-      // the bug, and asserting it was how the bug survived a rewrite.
-      expect(historyLine({ ...base, author: "mate-links-dev", deployedTo: ["production"] })).toBe(
-        "production",
       );
     });
 
@@ -128,13 +136,21 @@ describe("a group's history", () => {
 });
 
 describe("the release a commit shipped in", () => {
-  const tag = (name: string, message: string | undefined) => ({ name, message });
+  /** A release HQ records, listing `entries` (`{service: sha}`). */
+  const release = (
+    tag: string,
+    entries: Record<string, string>,
+    verdict: "approved" | "refused" = "approved",
+  ) => ({
+    tag,
+    verdict,
+    entries: Object.entries(entries).map(([service, commit]) => ({ service, commit })),
+  });
 
-  it("matches on the sha in the message, not on what the tag points at", () => {
-    // The tag lives on the group repository; the shas in it are the services'.
+  it("matches on the commits a release lists, whatever repository each is", () => {
     const byCommit = releaseTagsByCommit([
-      tag("v1.2.0", `app ${SHA_A}\nweb ${SHA_B}`),
-      tag("v1.1.0", `app ${SHA_C}`),
+      release("v1.2.0", { app: SHA_A, web: SHA_B }),
+      release("v1.1.0", { app: SHA_C }),
     ]);
     expect(byCommit.get(SHA_A)).toBe("v1.2.0");
     expect(byCommit.get(SHA_B)).toBe("v1.2.0");
@@ -144,29 +160,21 @@ describe("the release a commit shipped in", () => {
   it("names the release that first shipped a commit, not the last that still ran it", () => {
     // A commit stays listed by every release made while it is still deployed.
     const byCommit = releaseTagsByCommit([
-      tag("v1.3.0", `app ${SHA_A}`),
-      tag("v1.1.0", `app ${SHA_A}`),
-      tag("v1.2.0", `app ${SHA_A}`),
+      release("v1.3.0", { app: SHA_A }),
+      release("v1.1.0", { app: SHA_A }),
+      release("v1.2.0", { app: SHA_A }),
     ]);
     expect(byCommit.get(SHA_A)).toBe("v1.1.0");
   });
 
-  it("ignores a tag that is not one of ours, and a message it cannot read", () => {
-    const byCommit = releaseTagsByCommit([
-      tag("nightly", `app ${SHA_A}`),
-      tag("v2.0.0", "deployed everything, finally"),
-      tag("v2.0.1", `app ${SHA_B.slice(0, 7)}`),
-    ]);
-    expect(byCommit.size).toBe(0);
+  it("names no commit by a release HQ refused: it never went live", () => {
+    expect(releaseTagsByCommit([release("v1.1.0", { app: SHA_A }, "refused")]).size).toBe(0);
   });
 
   it("folds onto the history as the name a commit went live under", () => {
-    const tags = releaseTagsByCommit([tag("v1.2.0", `app ${SHA_A}`)]);
+    const tags = releaseTagsByCommit([release("v1.2.0", { app: SHA_A })]);
     const [first, second] = groupHistory({
-      commits: [
-        { sha: SHA_A, subject: "Add a footer" },
-        { sha: SHA_B, subject: "Rename the heading" },
-      ],
+      commits: [commit(SHA_A, "Add a footer"), commit(SHA_B, "Rename the heading")],
       deployed: new Map(),
       tags,
     });
@@ -189,7 +197,7 @@ describe("historyAge", () => {
     expect(historyAge(at, now)).toBe(expected);
   });
 
-  it("says nothing where Gitea sent no date, rather than an epoch", () => {
+  it("says nothing where no date is known, rather than an epoch", () => {
     expect(historyAge(undefined, now)).toBeUndefined();
     expect(historyAge("not a date", now)).toBeUndefined();
   });
@@ -208,6 +216,7 @@ describe("historyLine with a clock", () => {
     at: "2026-09-19T08:00:00Z",
     deployedTo: ["production"],
     tags: [],
+    change: null,
   };
   const now = Date.parse("2026-09-19T12:00:00Z");
 
@@ -225,14 +234,16 @@ describe("historyLine with a clock", () => {
 });
 
 describe("historyLine naming", () => {
+  // A Mate's change, landed by HQ: whoever git says wrote the commit, it is the Mate's.
   const entry = {
     sha: "a".repeat(40),
     shortSha: "aaaaaaa",
     subject: "Deploy the link keeper",
-    author: "mate-PXGYIVK9RLWlE3eTL3QwoW",
+    author: "Mate HQ",
     at: "2026-09-19T08:00:00Z",
     deployedTo: ["Links - production"],
     tags: [],
+    change: { number: 4, title: "Deploy the link keeper", mateProjectId: "PXGYIVK9RLWlE3eTL3QwoW" },
   };
   const now = Date.parse("2026-09-19T12:00:00Z");
   const names = {
@@ -240,16 +251,18 @@ describe("historyLine naming", () => {
     groupName: "Links",
   };
 
-  it("names the Mate rather than writing its bot login into the line", () => {
+  it("names the Mate whose change landed it, not the commit's author", () => {
     expect(historyLine(entry, now, names)).toBe("Theo · production · 4h");
   });
 
-  it("drops a Mate it cannot name instead of falling back to the login", () => {
+  it("drops a Mate it cannot name instead of falling back to the author", () => {
     expect(historyLine(entry, now, { groupName: "Links" })).toBe("production · 4h");
   });
 
-  it("leaves a person's login alone: it is their name here", () => {
-    expect(historyLine({ ...entry, author: "ales" }, now, names)).toBe("ales · production · 4h");
+  it("names a person's commit by its author", () => {
+    expect(historyLine({ ...entry, author: "ales", change: null }, now, names)).toBe(
+      "ales · production · 4h",
+    );
   });
 
   it("stops a project repeating itself on every stop it names", () => {
@@ -259,10 +272,24 @@ describe("historyLine naming", () => {
 
 describe("historyNote", () => {
   it.each([
-    ["no-gitea", "Sign in to Gitea to read this repository’s history."],
     ["reading", "Reading the history…"],
     ["empty", "Nothing has landed on this repository yet."],
   ] as const)("says %s as %s", (kind, expected) => {
     expect(historyNote(kind)).toBe(expected);
+  });
+});
+
+describe("historyEarlier", () => {
+  // HQ lists the newest hundred commits of a history and counts the rest.
+  it.each([
+    [{ shown: 100, total: 347 }, "247 earlier commits"],
+    [{ shown: 100, total: 101 }, "1 earlier commit"],
+    [{ shown: 100, total: 10000 }, "9900+ earlier commits"],
+  ])("says %o as %s", ({ shown, total }, expected) => {
+    expect(historyEarlier(shown, total)).toBe(expected);
+  });
+
+  it("says nothing where every commit is shown", () => {
+    expect(historyEarlier(12, 12)).toBeUndefined();
   });
 });

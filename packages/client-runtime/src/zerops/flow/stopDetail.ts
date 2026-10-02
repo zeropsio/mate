@@ -19,7 +19,7 @@ import {
 } from "../groupRows.ts";
 import type { HqDeploy } from "../hq/environments.ts";
 import type { Shown } from "../knowledge/known.ts";
-import { changesNotLive } from "../projectAttention.ts";
+import { cannotTellWhatRuns, changesNotLive } from "../projectAttention.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
 import { sameCommit } from "../versionName.ts";
 import {
@@ -109,6 +109,8 @@ export function stopVerdict(input: {
   readonly failed: StopFailure | undefined;
   /** Changes merged to main that production does not run. */
   readonly waiting: number;
+  /** Production's services whose commit cannot be told (`releaseReads`' `untold`). */
+  readonly untold: ReadonlyArray<string>;
   readonly release: {
     readonly offered: boolean;
     readonly tag: string | undefined;
@@ -160,7 +162,7 @@ export function stopVerdict(input: {
   }
   const releaseVerb =
     tier === "production" &&
-    input.waiting > 0 &&
+    (input.waiting > 0 || input.untold.length > 0) &&
     input.release.offered &&
     input.release.tag !== undefined
       ? ({ kind: "release", tag: input.release.tag } as const)
@@ -192,6 +194,14 @@ export function stopVerdict(input: {
     return {
       tone: "busy",
       text: `${changesNotLive(input.waiting)}.`,
+      detail: `Production runs ${label}`,
+      verb: releaseVerb,
+    };
+  // Nothing counted, and what some service runs cannot be told: never "already runs it".
+  if (input.untold.length > 0)
+    return {
+      tone: "busy",
+      text: `${cannotTellWhatRuns(input.untold)}.`,
       detail: `Production runs ${label}`,
       verb: releaseVerb,
     };

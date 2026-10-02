@@ -2445,6 +2445,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
       gate: { allowed: false, reason: "Nothing to release." },
       suggestion: "",
       contents: [],
+      untold: [],
     },
     ...over,
   });
@@ -2507,6 +2508,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           gate: { allowed: true },
           suggestion: "v0.2.0",
           contents: [compared([{ sha: "a".repeat(40), subject: "Add a field" }])],
+          untold: [],
         },
       }),
       health: UP,

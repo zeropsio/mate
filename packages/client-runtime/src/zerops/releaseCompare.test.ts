@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
+import type { HqDeploy } from "./hq/environments.ts";
+import type { Shown } from "./knowledge/known.ts";
+
 import {
   COMPARE_COUNT_MAX,
   type CompareCommit,
@@ -12,15 +16,21 @@ import {
   movedCommits,
   movedCount,
   releaseReads,
+  productionRuns,
   rollbackReads,
-  wholeProduction,
   type CompareRead,
   type Moved,
+  type ProductionRun,
 } from "./releaseCompare.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
+
+/** A service running `sha`, whole. */
+const runs = (sha: string): ProductionRun => ({ kind: "commit", sha });
+const NOTHING: ProductionRun = { kind: "nothing" };
+const UNTOLD: ProductionRun = { kind: "untold" };
 
 describe("what a release would put live: the comparisons to ask HQ for", () => {
   it("asks a repository for what its main has that production does not run", () => {
@@ -28,7 +38,7 @@ describe("what a release would put live: the comparisons to ask HQ for", () => {
       releaseReads({
         productionRepositories: new Map([["api", "apidev"]]),
         candidate: new Map([["api", API]]),
-        production: new Map([["api", OLD]]),
+        running: new Map([["api", runs(OLD)]]),
       }),
     ).toEqual({
       reads: [{ repository: "apidev", query: { base: OLD, head: API }, services: ["api"] }],
@@ -36,41 +46,35 @@ describe("what a release would put live: the comparisons to ask HQ for", () => {
     });
   });
 
-  it("asks from the first commit where production runs nothing yet: a first release", () => {
+  it("asks from the first commit only where production is listed and runs nothing", () => {
     expect(
       releaseReads({
         productionRepositories: new Map([["api", "apidev"]]),
         candidate: new Map([["api", API]]),
-        production: new Map(),
+        running: new Map([["api", NOTHING]]),
       }).reads,
     ).toEqual([{ repository: "apidev", query: { head: API }, services: ["api"] }]);
   });
 
-  it("asks nothing for a service production already runs main's head on, by either spelling", () => {
-    expect(
-      releaseReads({
-        productionRepositories: new Map([
-          ["api", "apidev"],
-          ["web", "webdev"],
-        ]),
-        candidate: new Map([
-          ["api", API],
-          ["web", WEB],
-        ]),
-        production: new Map([
-          ["api", API],
-          ["web", WEB.slice(0, 7)],
-        ]),
-      }),
-    ).toEqual({ reads: [], untold: [] });
-  });
-
-  it("cannot ask for a service whose commit is known only by its version name's seven hex", () => {
+  it("asks nothing for a service production already runs main's head on", () => {
     expect(
       releaseReads({
         productionRepositories: new Map([["api", "apidev"]]),
         candidate: new Map([["api", API]]),
-        production: new Map([["api", OLD.slice(0, 7)]]),
+        running: new Map([["api", runs(API)]]),
+      }),
+    ).toEqual({ reads: [], untold: [] });
+  });
+
+  it.each([
+    { name: "one whose commit cannot be told", running: new Map([["api", UNTOLD]]) },
+    { name: "one nothing is said of", running: new Map<string, ProductionRun>() },
+  ])("asks nothing for $name, and names it untold", ({ running }) => {
+    expect(
+      releaseReads({
+        productionRepositories: new Map([["api", "apidev"]]),
+        candidate: new Map([["api", API]]),
+        running,
       }),
     ).toEqual({ reads: [], untold: ["api"] });
   });
@@ -88,10 +92,10 @@ describe("what a release would put live: the comparisons to ask HQ for", () => {
           ["web", API],
           ["worker", API],
         ]),
-        production: new Map([
-          ["api", OLD],
-          ["web", OLD],
-          ["worker", WEB],
+        running: new Map([
+          ["api", runs(OLD)],
+          ["web", runs(OLD)],
+          ["worker", runs(WEB)],
         ]),
       }).reads,
     ).toEqual([
@@ -107,7 +111,7 @@ describe("what a rollback takes off production and brings back: the comparisons 
       rollbackReads({
         productionRepositories: new Map([["api", "apidev"]]),
         entries: [{ service: "api", commit: OLD }],
-        production: new Map([["api", API]]),
+        running: new Map([["api", runs(API)]]),
       }),
     ).toEqual({
       leaving: [{ repository: "apidev", query: { base: OLD, head: API }, services: ["api"] }],
@@ -121,7 +125,7 @@ describe("what a rollback takes off production and brings back: the comparisons 
       rollbackReads({
         productionRepositories: new Map([["api", "apidev"]]),
         entries: [{ service: "api", commit: OLD }],
-        production: new Map(),
+        running: new Map([["api", NOTHING]]),
       }),
     ).toEqual({
       leaving: [],
@@ -130,7 +134,7 @@ describe("what a rollback takes off production and brings back: the comparisons 
     });
   });
 
-  it("asks nothing for a service already on the release's commit, and cannot for one known short", () => {
+  it("asks nothing for a service already on the release's commit, and cannot for one untold", () => {
     expect(
       rollbackReads({
         productionRepositories: new Map([
@@ -141,9 +145,9 @@ describe("what a rollback takes off production and brings back: the comparisons 
           { service: "api", commit: OLD },
           { service: "web", commit: OLD },
         ],
-        production: new Map([
-          ["api", OLD.slice(0, 7)],
-          ["web", WEB.slice(0, 7)],
+        running: new Map([
+          ["api", runs(OLD)],
+          ["web", UNTOLD],
         ]),
       }),
     ).toEqual({ leaving: [], comingBack: [], untold: ["web"] });
@@ -359,27 +363,103 @@ describe("what each release carried: the comparisons to ask HQ for", () => {
   });
 });
 
-describe("production's commits, whole for a comparison", () => {
-  it("takes a commit known only short whole from a release that lists it for the service", () => {
-    const releases = [
-      { entries: [{ service: "api", commit: API }] },
-      { entries: [{ service: "web", commit: OLD }] },
-    ];
+describe("what each production service runs, as a comparison starts from it", () => {
+  const known = (value: ZeropsServiceDeployedVersion): Shown<ZeropsServiceDeployedVersion> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const named = (name: string | null) => known({ activeId: "v1", source: null, name });
+  const live = (sha: string): HqDeploy => ({
+    sha,
+    state: "live",
+    failure: null,
+    message: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: "2026-10-02T10:00:00.000Z",
+  });
+
+  it.each([
+    {
+      name: "a listed service with no active version runs nothing",
+      stated: known({ activeId: null, source: null, name: null }),
+      run: { kind: "nothing" },
+    },
+    {
+      name: "a version HQ named runs the commit it spells, whole from HQ's record of the deploy",
+      stated: named(`v0.1.0 ${API.slice(0, 7)}`),
+      deploys: new Map([["api", { latest: live(API), live: live(API) }]]),
+      run: { kind: "commit", sha: API },
+    },
+    {
+      name: "a short sha a release lists for it is taken whole from the release",
+      stated: named(`v0.1.0 ${API.slice(0, 7)}`),
+      releases: [{ entries: [{ service: "api", commit: API }] }],
+      run: { kind: "commit", sha: API },
+    },
+    {
+      name: "a version named whole runs that commit",
+      stated: named(`${API} v0.1.0 ada`),
+      run: { kind: "commit", sha: API },
+    },
+    {
+      name: "a short sha no record or release lists is untold",
+      stated: named(`v0.1.0 ${API.slice(0, 7)}`),
+      run: { kind: "untold" },
+    },
+    {
+      name: "a version named by hand is untold",
+      stated: named("hotfix"),
+      run: { kind: "untold" },
+    },
+    {
+      name: "a running version nobody named is untold",
+      stated: named(null),
+      run: { kind: "untold" },
+    },
+  ])("$name", ({ stated, deploys, releases, run }) => {
     expect(
-      wholeProduction(
-        new Map([
-          ["api", API.slice(0, 7)],
-          ["web", WEB.slice(0, 7)],
-          ["docs", OLD],
-        ]),
-        releases,
-      ),
-    ).toEqual(
-      new Map([
-        ["api", API],
-        ["web", WEB.slice(0, 7)],
-        ["docs", OLD],
-      ]),
-    );
+      productionRuns({
+        services: [{ hostname: "api", serviceId: "s-api" }],
+        stated: new Map([["s-api", stated]]),
+        named: ["api"],
+        deploys: deploys ?? new Map(),
+        releases: releases ?? [],
+      })?.get("api"),
+    ).toEqual(run);
+  });
+
+  it("cannot tell what a service runs that the tier or HQ names and the account does not list", () => {
+    expect(
+      productionRuns({
+        services: [],
+        stated: new Map(),
+        named: ["api"],
+        deploys: new Map(),
+        releases: [],
+      })?.get("api"),
+    ).toEqual({ kind: "untold" });
+  });
+
+  it.each([
+    { name: "production is not listed yet", services: undefined },
+    {
+      name: "a listed service's version is not read yet",
+      services: [{ hostname: "api", serviceId: "s-api" }],
+    },
+  ])("knows nothing while $name", ({ services }) => {
+    expect(
+      productionRuns({
+        services,
+        stated: new Map([["s-api", { state: "unread", waitingFor: null }]]),
+        named: ["api"],
+        deploys: new Map(),
+        releases: [],
+      }),
+    ).toBeUndefined();
   });
 });

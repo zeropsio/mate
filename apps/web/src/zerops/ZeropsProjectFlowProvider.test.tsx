@@ -176,6 +176,13 @@ const permission = vi.hoisted(() => ({
 vi.mock("./useChangeOffers", () => ({
   useReleasePermission: () => () => permission.gate,
 }));
+/** What the account's store states each service runs, by service id, as the provider selects it. */
+const versions = vi.hoisted(() => ({ stated: new Map<string, unknown>() }));
+vi.mock("./zeropsDataContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./zeropsDataContext")>()),
+  useZeropsAtomSelections: () => versions.stated,
+}));
+
 /** What HQ compares for each read a release asks: the commits listed here, every time. */
 const compares = vi.hoisted(() => ({
   commits: [] as ReadonlyArray<{ readonly sha: string; readonly subject: string }>,
@@ -343,6 +350,7 @@ describe("ZeropsProjectFlowProvider", () => {
     released.refreshed = [];
     permission.gate = { allowed: true };
     compares.commits = [];
+    versions.stated = new Map();
     hq.asked = [];
     hq.answer = () => Promise.resolve({});
     vi.unstubAllGlobals();
@@ -654,7 +662,22 @@ describe("ZeropsProjectFlowProvider", () => {
      * A group whose production builds `app` from appdev, merged at MERGED and run nowhere yet, the
      * recipe at GROUP_MAIN; HQ compares one change to put live.
      */
-    async function mountRelease(services: ReadonlyArray<unknown> = []) {
+    /** Production's one runtime, `app`, as the platform lists it. */
+    const APP = { id: "s-app", name: "app", status: "ACTIVE", isSystem: false };
+    /** What the store states `app` runs: no version at all. */
+    const RUNS_NOTHING = {
+      state: "known",
+      value: { activeId: null, source: null, name: null },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+
+    async function mountRelease(
+      services: ReadonlyArray<unknown> = [APP],
+      stated: ReadonlyMap<string, unknown> = new Map([["s-app", RUNS_NOTHING]]),
+    ) {
+      versions.stated = new Map(stated);
       compares.commits = [{ sha: MERGED, subject: "Quicker gallery" }];
       recipes.read = new Map([
         [
@@ -678,7 +701,7 @@ describe("ZeropsProjectFlowProvider", () => {
         seen.push(useZeropsProjectFlow());
         return null;
       }
-      // Its production is the Zerops project prod-1, whose services are listed: none runs yet.
+      // Its production is the Zerops project prod-1, whose services are listed.
       const held = {
         projects: [
           {
@@ -728,11 +751,21 @@ describe("ZeropsProjectFlowProvider", () => {
     // A production service whose version the store has not stated yet would read as running
     // nothing, and its repository's whole history as going live.
     it("compares nothing while what a production service runs is not stated", async () => {
-      const { seen, root } = await mountRelease([
-        { id: "s-app", name: "app", status: "ACTIVE", isSystem: false, activeAppVersion: null },
-      ]);
+      const { seen, root } = await mountRelease([APP], new Map());
       const release = seen.at(-1)?.flows.get("g1")?.release;
       expect(release?.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+      expect(release?.contents).toEqual([]);
+      await act(async () => {
+        root.unmount();
+      });
+    });
+
+    // The tier names `app`, and the account does not list it in production: what it runs cannot
+    // be told — never that it runs nothing, which would put its whole history live.
+    it("names a runtime the account does not list as untold, and compares nothing for it", async () => {
+      const { seen, root } = await mountRelease([]);
+      const release = seen.at(-1)?.flows.get("g1")?.release;
+      expect(release?.untold).toEqual(["app"]);
       expect(release?.contents).toEqual([]);
       await act(async () => {
         root.unmount();

@@ -96,14 +96,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsRepositoryCommits.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.listTags(owner, GROUP_REPOSITORY).catch(() => [])",
-    "owner": "state-model 4.1",
-    "reason": "a failed tag read shows the history without release names; the forge store holds tags as Known",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/agentLogin.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "result._tag === \"Success\" ? result.value.terminalId : undefined",

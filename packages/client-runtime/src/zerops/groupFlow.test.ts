@@ -95,7 +95,7 @@ function group(over: Partial<GroupFlowInput>): GroupFlowInput {
     merged: [],
     stops: [],
     missing: [],
-    release: { gate: CLOSED, suggestion: "v0.1.0", waiting: 0 },
+    release: { gate: CLOSED, suggestion: "v0.1.0", waiting: 0, untold: [] },
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: true,
@@ -135,7 +135,7 @@ const FSADFDASFSA = group({
       route: undefined,
     },
   ],
-  release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+  release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
   mainHasCode: true,
   mainHead: MAIN_SHA,
 });
@@ -460,7 +460,12 @@ describe("groupFlow", () => {
 
   const productionOf = (
     over: Partial<GroupFlowStopInput>,
-    release: GroupFlowInput["release"] = { gate: CLOSED, suggestion: "v0.1.1", waiting: 0 },
+    release: GroupFlowInput["release"] = {
+      gate: CLOSED,
+      suggestion: "v0.1.1",
+      waiting: 0,
+      untold: [],
+    },
   ) => {
     const [stop] = FSADFDASFSA.stops;
     return groupFlow({
@@ -542,7 +547,7 @@ describe("groupFlow", () => {
           }),
           deployment: runs(MAIN_SHA),
         },
-        { gate: { allowed: true }, suggestion: "v0.1.1", waiting: 2 },
+        { gate: { allowed: true }, suggestion: "v0.1.1", waiting: 2, untold: [] },
       ),
       // The failure does not swallow the release that might clear it (D28):
       // a broken production still carries the candidate a new tag would cut.
@@ -607,6 +612,19 @@ describe("groupFlow", () => {
     expect(production).toMatchObject(expected);
   });
 
+  // A production service whose commit cannot be told counts nothing, and is no proof that nothing
+  // waits: the release stays offered.
+  it("offers the release where what production runs cannot be told, though nothing is counted", () => {
+    const flow = groupFlow({
+      ...FSADFDASFSA,
+      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 0, untold: ["app"] },
+    });
+    expect(flow.production).toMatchObject({
+      kind: "ready-to-release",
+      candidate: { tag: "v0.1.0", waiting: 0 },
+    });
+  });
+
   it("says a release is on its way and offers no Release while one is in flight", () => {
     const flow = groupFlow({
       ...FSADFDASFSA,
@@ -614,6 +632,7 @@ describe("groupFlow", () => {
         gate: { allowed: false, reason: "Releasing v0.1.0…" },
         suggestion: "v0.1.1",
         waiting: 1,
+        untold: [],
         inFlight: "v0.1.0",
       },
     });
@@ -813,7 +832,7 @@ describe("groupFlow — creations under way", () => {
     const flow = groupFlow({
       ...LANDED,
       merged: [pull({ merged: true })],
-      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1, untold: [] },
       pending: [creating({ kind: "production" })],
     });
     expect(flow.production.kind).toBe("creating");

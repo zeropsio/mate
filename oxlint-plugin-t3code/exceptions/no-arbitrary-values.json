@@ -970,14 +970,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"truncate font-mono text-[11px] leading-4 text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"text-[13px] leading-5 text-foreground tabular-nums\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",

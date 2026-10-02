@@ -4,32 +4,30 @@ import {
   releaseCarriedToggleLabel,
   releaseDescription,
   type FlowReleaseRow,
-  type ReleaseServiceChange,
+  type Moved,
+  type MovedCommits,
 } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
-import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow, ZeropsRoleTag } from "./ZeropsEnvironmentRow";
-import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
+import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { releaseRowTone } from "./ZeropsProjectRow.logic";
 
-/** What the rows need to say what each release carried — the caller's reads, folded. */
+/** What the rows need to say what each release carried — HQ's comparisons, folded. */
 export interface ZeropsReleasesCarried {
-  /** `tag → what it carried`, from `releasesCarried` over the whole release list. */
-  readonly changes: ReadonlyMap<string, ReadonlyArray<ReleaseServiceChange>>;
-  /** `repository → its read`. */
-  readonly reads: ReadonlyMap<string, ZeropsCommitsState>;
-  /** `hostname → repository`. */
-  readonly repositoryOf: ReadonlyMap<string, string>;
-  readonly forge: { readonly giteaOrigin: string | undefined; readonly owner: string | undefined };
+  /** `tag → what it carried`, as HQ compared it (`movedCommits` over `carriedReads`). */
+  readonly carried: ReadonlyMap<string, MovedCommits>;
   readonly names: HistoryNames;
+  /** Opens the review of the change that landed a carried commit, in its repository. */
+  readonly onOpenChange?:
+    | ((repository: string, change: HistoryChange, from: HTMLElement) => void)
+    | undefined;
 }
 
 interface ReleaseRowsProps {
@@ -143,51 +141,46 @@ function CarriedReleaseRow({
   readonly now: number;
 }) {
   const [open, setOpen] = useState(false);
-  const changes = carried.changes.get(release.tag) ?? [];
-  // This release's repositories whose commits are not read, each named by its
-  // first service: their notes stand beside the commits that were.
-  const serviceOf = new Map<string, string>();
-  for (const entry of release.entries) {
-    const repository = carried.repositoryOf.get(entry.service);
-    if (repository !== undefined && !serviceOf.has(repository)) {
-      serviceOf.set(repository, entry.service);
-    }
-  }
-  const waiting = [...serviceOf].flatMap(([repository, service]) => {
-    const state = carried.reads.get(repository);
-    return state === undefined || state.kind === "read" ? [] : [{ service, repository, state }];
-  });
-  const named = changes.length + waiting.length > 1;
-  // A refused release's line is the broker's reason, and the reason stays.
+  const what = carried.carried.get(release.tag);
+  const moved: ReadonlyArray<Moved> = what?.state === "known" ? what.moved : [];
+  const named = moved.length > 1;
+  // A refused release's line is HQ's reason, and the reason stays.
   const description =
-    changes.length === 0 || (release.verdict === "refused" && release.detail !== undefined)
+    release.verdict === "refused" && release.detail !== undefined
       ? undefined
-      : releaseDescription(changes, release.line, now, carried.names);
+      : releaseDescription(moved, release.line, now, carried.names);
   const parts = releaseRowParts(release, groupId, pending, onRollBack);
   const expansion = open ? (
     <div className="flex flex-col gap-1 pl-7.5" data-zerops-surface="release-carried">
-      {changes.map((change) => (
-        <ReleaseServiceCommits
-          change={change}
-          forge={carried.forge}
-          key={change.repository}
-          named={named}
-          names={carried.names}
-        />
-      ))}
-      {waiting.map((unread) => (
-        <ReleaseService key={unread.repository} named={named} service={unread.service}>
-          <ZeropsHistoryView
-            commits={unread.state}
-            names={carried.names}
-            request={{ repo: unread.repository, deployed: EMPTY_DEPLOYED }}
-          />
-        </ReleaseService>
-      ))}
+      {what?.state === "failed" ? (
+        <p className="text-xs text-muted-foreground">{what.reason}</p>
+      ) : (
+        moved.map((read) => (
+          <ReleaseService
+            key={read.repository}
+            named={named}
+            service={read.services[0] ?? read.repository}
+          >
+            <ZeropsHistoryView
+              history={{ kind: "read", commits: read.commits, total: read.total }}
+              names={carried.names}
+              onOpenChange={
+                carried.onOpenChange === undefined
+                  ? undefined
+                  : (change, from) => {
+                      carried.onOpenChange?.(read.repository, change, from);
+                    }
+              }
+              request={{ repo: read.repository, deployed: EMPTY_DEPLOYED }}
+              tags={EMPTY_RELEASES}
+            />
+          </ReleaseService>
+        ))
+      )}
     </div>
   ) : undefined;
   const leading =
-    changes.length > 0 || waiting.length > 0 ? (
+    moved.length > 0 || what?.state === "failed" ? (
       <button
         aria-expanded={open}
         aria-label={releaseCarriedToggleLabel(release.tag, open)}
@@ -286,31 +279,5 @@ function ReleaseService({
       {named ? <span className="text-xs text-muted-foreground">{service}</span> : null}
       {children}
     </div>
-  );
-}
-
-/** One repository's commits in a release, each opening onto what it changed. */
-function ReleaseServiceCommits({
-  change,
-  forge,
-  named,
-  names,
-}: {
-  readonly change: ReleaseServiceChange;
-  readonly forge: ZeropsReleasesCarried["forge"];
-  /** Whether the expansion holds more than this one, so its hostname is said. */
-  readonly named: boolean;
-  readonly names: HistoryNames;
-}) {
-  const readDetail = useZeropsCommitDetailReader({ ...forge, repo: change.repository });
-  return (
-    <ReleaseService named={named} service={change.service}>
-      <ZeropsHistoryView
-        commits={{ kind: "read", commits: change.commits, releases: EMPTY_RELEASES }}
-        names={names}
-        readDetail={readDetail}
-        request={{ repo: change.repository, deployed: EMPTY_DEPLOYED }}
-      />
-    </ReleaseService>
   );
 }

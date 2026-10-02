@@ -14,6 +14,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
+  carriedReads,
   deployedCommit,
   deployedVersion,
   environmentRow,
@@ -26,6 +27,7 @@ import {
   type EnvironmentServiceState,
   type FlowPullRequest,
   type FlowRelease,
+  type MovedCommits,
   type ZeropsPublicRoute,
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
@@ -53,7 +55,8 @@ import {
   ZeropsStopPane,
   type ReleaseOffer,
 } from "~/components/zerops/ZeropsGroupDetail";
-import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
+import type { CompareCommit } from "@t3tools/shared/hqChanges";
+import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
 import "../index.css";
@@ -132,17 +135,21 @@ const CRUMBS = crumbs("Shop");
 
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
 
-function commit(subject: string, seed: string, hoursAgo: number, author = "Theo") {
+/** A commit as HQ compares it: a Mate's (`mate-{projectId}`) is its change, landed by HQ. */
+function commit(subject: string, seed: string, hoursAgo: number, author = "Theo"): CompareCommit {
+  const mate = author.startsWith("mate-") ? author.slice("mate-".length) : undefined;
   return {
     sha: sha(seed),
     subject,
-    author,
+    authorName: mate === undefined ? author : "Mate HQ",
     at: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(),
+    change: mate === undefined ? null : { number: 4, title: subject, mateProjectId: mate },
   };
 }
 
-const COMMITS: ZeropsCommitsState = {
+const HISTORY: ZeropsHistoryState = {
   kind: "read",
+  total: 5,
   commits: [
     commit("Key the preview cache on locale", "b21d904c", 1),
     commit("Cache the link previews", "5c3ea18b", 3),
@@ -150,8 +157,9 @@ const COMMITS: ZeropsCommitsState = {
     commit("Add an index on orders.created_at", "9a7d2f10", 30),
     commit("Stop logging the full card token", "c41b8e55", 48, "Wren"),
   ],
-  releases: new Map([[sha("3f9c1b2e"), "v1.4.0"]]),
 };
+/** What v1.4.0 shipped, as HQ's release records name it. */
+const TAGS: ReadonlyMap<string, string> = new Map([[sha("3f9c1b2e"), "v1.4.0"]]);
 
 function environment(over: Partial<EnvironmentRow> = {}): EnvironmentRow {
   return {
@@ -234,20 +242,6 @@ const RELEASE_NONE: ReleaseOffer = {
 };
 
 /** Opening a commit is what grew the row and dragged the node down the rail. */
-const READ_DETAIL = async (sha: string) => ({
-  kind: "read" as const,
-  detail: {
-    sha,
-    subject: "Key the preview cache on locale",
-    files: [
-      { filename: "src/server.js", status: "modified" },
-      { filename: "src/cache.js", status: "added" },
-    ],
-    additions: 41,
-    deletions: 7,
-  },
-});
-
 const NOW = Date.now();
 
 /** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
@@ -436,18 +430,46 @@ const MEDUSA_BRANCH = [
   commit("Initial commit", "0a1b2c3d", 130, "ales"),
 ];
 
-/** Both of Beviro's repositories read, as the stop page reads them when it opens. */
-const BEVIRO_READS: ReadonlyMap<string, ZeropsCommitsState> = new Map([
-  ["medusadev", { kind: "read", commits: MEDUSA_BRANCH, releases: new Map() }],
-  ["nextstoredev", { kind: "read", commits: NEXTSTORE_BRANCH, releases: new Map() }],
+/** Beviro's repositories, newest first, as HQ holds them. */
+const BEVIRO_BRANCHES: ReadonlyMap<string, ReadonlyArray<CompareCommit>> = new Map([
+  ["medusadev", MEDUSA_BRANCH],
+  ["nextstoredev", NEXTSTORE_BRANCH],
+]);
+const BEVIRO_REPOSITORY_OF = new Map([
+  ["medusa", "medusadev"],
+  ["nextstore", "nextstoredev"],
 ]);
 
-/** Each of Beviro's repositories answering the same, for the rows that say nothing more yet. */
-const beviroReads = (state: ZeropsCommitsState): ReadonlyMap<string, ZeropsCommitsState> =>
-  new Map([
-    ["medusadev", state],
-    ["nextstoredev", state],
-  ]);
+/**
+ * What each release carried, as HQ would compare it (`carriedReads`): a repository's commits from
+ * the release before's down to its own, sliced off its branch.
+ */
+function carriedOf(releases: ReadonlyArray<FlowRelease>): ReadonlyMap<string, MovedCommits> {
+  return new Map(
+    [...carriedReads({ releases, repositoryOf: BEVIRO_REPOSITORY_OF })].map(([tag, reads]) => {
+      const moved = reads.map((read) => {
+        const branch = BEVIRO_BRANCHES.get(read.repository) ?? [];
+        const head = branch.findIndex((entry) => entry.sha === read.query.head);
+        const base = branch.findIndex((entry) => entry.sha === read.query.base);
+        const commits = branch.slice(head, base === -1 ? branch.length : base);
+        return {
+          repository: read.repository,
+          services: read.services,
+          commits,
+          total: commits.length,
+          truncated: false,
+        };
+      });
+      return [tag, { state: "known", moved }];
+    }),
+  );
+}
+
+/** Every release answering the same, for the rows that say nothing more yet. */
+const carriedAs = (
+  releases: ReadonlyArray<FlowRelease>,
+  state: MovedCommits,
+): ReadonlyMap<string, MovedCommits> => new Map(releases.map(({ tag }) => [tag, state]));
 
 /** A stage the platform lists, each service running what its deploy named. */
 const STAGE_RUNNING: Deployment = {
@@ -486,11 +508,11 @@ interface StopFixture {
   readonly keyHeld?: boolean;
   /** Whether the person may keep the stop's deploy key. */
   readonly mayKeep?: boolean;
-  readonly commits?: ZeropsCommitsState;
+  readonly history?: ZeropsHistoryState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
-  /** `repository → its read`: what a production's releases carried; the rows are shas without it. */
-  readonly reads?: ReadonlyMap<string, ZeropsCommitsState>;
+  /** What each of a production's releases carried; the rows are shas without it. */
+  readonly carried?: ReadonlyMap<string, MovedCommits>;
   /** `{service}@{full sha}` → when its production deploy failed. */
   readonly failedDeploys?: ReadonlyMap<string, string>;
   readonly releasedAge?: string;
@@ -596,12 +618,13 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const routes = fixture.routes ?? [];
   const release = fixture.release ?? RELEASE_NONE;
   const waiting = production ? (fixture.waiting ?? []).flatMap((entry) => entry.commits) : [];
-  const commits = fixture.commits ?? COMMITS;
+  const history = fixture.history ?? HISTORY;
+  const mainHead = !production && history.kind === "read" ? history.commits[0]?.sha : undefined;
   const services = serviceRows({
     environment: name,
     services: fixture.services,
     platform: platformListing(fixture),
-    mainHead: !production && commits.kind === "read" ? commits.commits[0]?.sha : undefined,
+    mainHead,
     routes,
     offers: fixture.offers ?? [],
     nowMs: NOW,
@@ -612,33 +635,21 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     failedDeploy === undefined
       ? undefined
       : { ...failedDeploy, mayRunAgain: fixture.mayRunAgain ?? false };
-  // The code services' repositories, as the page maps them.
-  const repositoryOf = new Map(
-    fixture.services.flatMap((entry) =>
-      entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
-    ),
-  );
   return (
     <ZeropsStopPane
-      commits={commits}
+      carried={production ? fixture.carried : undefined}
       crumbs={crumbs(group)}
       deployed={new Map(stop.version.sha === undefined ? [] : [[name, stop.version.sha]])}
       enablingServiceId={null}
-      forge={{ giteaOrigin: undefined, owner: group.toLowerCase() }}
       groupId={group.toLowerCase()}
+      history={history}
       groupName={group}
       names={NAMES}
       onEnableRoute={() => {}}
       onOpenProject={() => {}}
       onRollBack={() => {}}
       pending={new Set()}
-      readDetail={READ_DETAIL}
       release={release}
-      releaseReads={
-        production && fixture.reads !== undefined
-          ? { reads: fixture.reads, repositoryOf }
-          : undefined
-      }
       releases={releases}
       repo={production ? undefined : "appdev"}
       routeTrouble={null}
@@ -650,6 +661,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       }
       services={services}
       stop={stop}
+      tags={TAGS}
       trouble={null}
       verdict={stopVerdict({
         tier: fixture.tier,
@@ -657,13 +669,11 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         releasing: fixture.releasing,
         failed,
         waiting: waiting.length,
+        untold: [],
         release,
         releasedAge: fixture.releasedAge,
         since: view.activatedAt === null ? undefined : "2h ago",
-        atMainHead:
-          !production &&
-          commits.kind === "read" &&
-          sameCommit(view.version?.sha, commits.commits[0]?.sha),
+        atMainHead: !production && sameCommit(view.version?.sha, mainHead),
         keyGap: stopKeyGap({
           keyHeld: fixture.keyHeld ?? true,
           keyInvalid: fixture.keyInvalid ?? false,
@@ -672,6 +682,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         }),
       })}
       view={view}
+      untold={[]}
       waiting={waiting}
     />
   );
@@ -711,7 +722,8 @@ function Harness() {
           onAct={() => {}}
           onAddMate={() => {}}
           onOpenMate={() => {}}
-          commits={COMMITS}
+          history={HISTORY}
+          tags={TAGS}
           environments={[
             environment(),
             environment({
@@ -738,7 +750,6 @@ function Harness() {
             pull({ number: 6, title: "Bump the linter", mergeability: "conflicting" }),
           ]}
           release={RELEASE_WAITING}
-          readDetail={undefined}
           repo="appdev"
           waiting={WAITING}
         />
@@ -754,7 +765,8 @@ function Harness() {
           onAct={() => {}}
           onAddMate={() => {}}
           onOpenMate={() => {}}
-          commits={{ kind: "no-gitea" }}
+          history={{ kind: "read", commits: [], total: 0 }}
+          tags={new Map()}
           environments={[]}
           groupId="fresh"
           name="Design tokens"
@@ -763,7 +775,6 @@ function Harness() {
           onSetUp={() => {}}
           pullRequests={[]}
           release={RELEASE_NONE}
-          readDetail={undefined}
           repo={undefined}
           waiting={NOTHING_WAITING}
         />
@@ -782,7 +793,7 @@ function Harness() {
               service("nextstore", undefined, undefined, "live", "nextstoredev"),
             ],
             releases: BEVIRO_RELEASES,
-            reads: BEVIRO_READS,
+            carried: carriedOf(BEVIRO_RELEASES),
           }}
         />
       </State>
@@ -810,7 +821,7 @@ function Harness() {
             services: [service("api", undefined, undefined), service("app", undefined, undefined)],
             offers: [{ service: "api", serviceId: "svc-api", port: 8080 }],
             deployment: NOTHING_RUNS,
-            commits: { kind: "read", commits: [], releases: new Map() },
+            history: { kind: "read", commits: [], total: 0 },
           }}
         />
       </State>
@@ -861,7 +872,7 @@ function Harness() {
             waiting: BEVIRO_WAITING,
             releasing: "v0.1.14",
             releases: BEVIRO_RELEASES,
-            reads: BEVIRO_READS,
+            carried: carriedOf(BEVIRO_RELEASES),
           }}
         />
       </State>
@@ -951,7 +962,7 @@ function Harness() {
             deployment: BEVIRO_RUNNING,
             routes: BEVIRO_ROUTES,
             releases: BEVIRO_FAILED_RELEASES,
-            reads: BEVIRO_READS,
+            carried: carriedOf(BEVIRO_FAILED_RELEASES),
             failedDeploys: new Map([
               [`nextstore@${sha(NEXTSTORE_FAILED)}`, new Date(NOW - 360_000).toISOString()],
             ]),
@@ -972,7 +983,7 @@ function Harness() {
             release: BEVIRO_BEHIND,
             waiting: BEVIRO_WAITING,
             releases: BEVIRO_RELEASES,
-            reads: BEVIRO_READS,
+            carried: carriedOf(BEVIRO_RELEASES),
           }}
         />
       </State>
@@ -990,14 +1001,14 @@ function Harness() {
             deployment: BEVIRO_RUNNING,
             releases: BEVIRO_RELEASES,
             releasedAge: "1h ago",
-            reads: BEVIRO_READS,
+            carried: carriedOf(BEVIRO_RELEASES),
           }}
         />
       </State>
 
       <State
-        label="A production, its repositories being read"
-        note="The releases' commits are not read yet: each row is its shas, and its chevron opens onto the history's reading note."
+        label="A production, its releases being compared"
+        note="HQ has not compared what the releases carried yet: each row is its shas."
       >
         <StopState
           fixture={{
@@ -1008,14 +1019,14 @@ function Harness() {
             deployment: BEVIRO_RUNNING,
             releases: BEVIRO_RELEASES,
             releasedAge: "1h ago",
-            reads: beviroReads({ kind: "reading" }),
+            carried: carriedAs(BEVIRO_RELEASES, { state: "reading" }),
           }}
         />
       </State>
 
       <State
-        label="A production whose repositories Gitea would not read"
-        note="The read failed: each row is its shas, and its chevron opens onto why."
+        label="A production whose releases HQ would not compare"
+        note="The comparison failed: each row is its shas, and its chevron opens onto why."
       >
         <StopState
           fixture={{
@@ -1026,7 +1037,10 @@ function Harness() {
             deployment: BEVIRO_RUNNING,
             releases: BEVIRO_RELEASES,
             releasedAge: "1h ago",
-            reads: beviroReads({ kind: "failed", reason: "Gitea did not answer." }),
+            carried: carriedAs(BEVIRO_RELEASES, {
+              state: "failed",
+              reason: "HQ is not answering right now.",
+            }),
           }}
         />
       </State>

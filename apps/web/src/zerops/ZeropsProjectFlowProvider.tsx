@@ -39,8 +39,7 @@ import {
   releaseRow,
   statedVersionNames,
   movedCommits,
-  versionsStated,
-  wholeProduction,
+  productionRuns,
   summarizeEnvironmentServices,
   type AppRecipe,
   type EnvironmentRow,
@@ -232,8 +231,15 @@ function groupStopsFor(groupId: string, input: Parameters<typeof groupStopsOf>[0
 /** What a release lists while HQ's repositories or the recipe are not read. */
 const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
 
+/** What a release of a group would put live, and the production services nothing is told of. */
+interface ReleaseLive {
+  readonly moved: MovedCommits;
+  readonly untold: ReadonlyArray<string>;
+}
+
 /** What goes live while nothing has been asked of HQ: what production runs is not known yet. */
 const NOT_COMPARED: MovedCommits = { state: "reading" };
+const NOT_ASKED: ReleaseLive = { moved: NOT_COMPARED, untold: [] };
 
 /** What a flow's key says of what goes live: the commits each comparison moves, or its state. */
 function liveKey(live: MovedCommits): unknown {
@@ -274,8 +280,11 @@ export function joinProjectFlows(input: {
   readonly recipes: ReadonlyMap<string, AppRecipe>;
   /** HQ's rule for this person releasing each group, in its words; absent while it cannot be asked. */
   readonly permissions: ReadonlyMap<string, ReleaseGate | undefined>;
-  /** What a release of each group would put live, as HQ compared it; absent while not asked. */
-  readonly live: ReadonlyMap<string, MovedCommits>;
+  /**
+   * What a release of each group would put live, as HQ compared it, and the production services
+   * whose commit cannot be told; absent while not asked.
+   */
+  readonly live: ReadonlyMap<string, ReleaseLive>;
   /** Each group's changes, by its id; `null` while HQ has told nothing of them. */
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
@@ -323,7 +332,7 @@ export function joinProjectFlows(input: {
     const repos = input.repos.get(group.groupId);
     const recipe = input.recipes.get(group.groupId);
     const permission = input.permissions.get(group.groupId);
-    const live = input.live.get(group.groupId) ?? NOT_COMPARED;
+    const live = input.live.get(group.groupId) ?? NOT_ASKED;
     const key = JSON.stringify([
       group.groupId,
       group.slug,
@@ -333,7 +342,8 @@ export function joinProjectFlows(input: {
       repos ?? null,
       recipe === undefined ? null : [...recipe.productionRepositories],
       permission ?? null,
-      liveKey(live),
+      liveKey(live.moved),
+      live.untold,
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
@@ -384,7 +394,7 @@ function projectFlow(
     readonly repos: ReadonlyArray<RepoListEntry> | undefined;
     readonly recipe: AppRecipe | undefined;
     readonly permission: ReleaseGate | undefined;
-    readonly live: MovedCommits;
+    readonly live: ReleaseLive;
   },
   inFlight: string | undefined,
   /** Why the grant withholds each of the group's projects it withholds alone. */
@@ -423,7 +433,7 @@ function projectFlow(
     production: sides.production,
     inFlight,
     tags: releaseList.map(({ tag }) => tag),
-    live,
+    live: live.moved,
   });
   return {
     groupId: group.groupId,
@@ -438,10 +448,11 @@ function projectFlow(
     changesFailure: changes === undefined ? halves.changesFailure : undefined,
     merged: changes?.merged ?? [],
     releases: releaseRows,
+    repos,
     // A production the grant withholds is measured against nothing, and offers nothing.
     release:
       productionWithheld === undefined
-        ? { ...offer, permission, groupHead: read?.groupHead, inFlight }
+        ? { ...offer, permission, groupHead: read?.groupHead, inFlight, untold: live.untold }
         : {
             ...offer,
             gate: { allowed: false, reason: productionWithheld },
@@ -451,6 +462,7 @@ function projectFlow(
             entries: [],
             inFlight,
             contents: [],
+            untold: [],
           },
   };
 }
@@ -701,28 +713,32 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (production === undefined) continue;
       const productionId = ZeropsProjectId.make(production.projectId);
       if (withheld.has(productionId)) continue;
-      const services = groupProjects
-        .get(groupId)
-        ?.find((project) => project.projectId === production.projectId)?.services;
       const listed = held?.services.get(productionId)?.status === "resolved";
-      if (!listed || services === undefined) continue;
-      if (
-        !versionsStated(
-          stated,
-          services.map(({ serviceId }) => serviceId),
-        )
-      )
-        continue;
+      const running = productionRuns({
+        services: listed
+          ? groupProjects.get(groupId)?.find(({ projectId }) => projectId === production.projectId)
+              ?.services
+          : undefined,
+        stated,
+        named: [
+          ...recipe.productionRepositories.keys(),
+          ...production.services.map(({ hostname }) => hostname),
+        ],
+        deploys: new Map(
+          production.services.flatMap(({ hostname, deploy }) =>
+            deploy === undefined ? [] : [[hostname, deploy] as const],
+          ),
+        ),
+        releases: records.map(flowReleaseOf),
+      });
+      if (running === undefined) continue;
       const { productionRepositories } = recipe;
       plans.set(
         groupId,
         releaseReads({
           productionRepositories,
           candidate: releaseCandidate({ productionRepositories, repos }).candidate,
-          production: wholeProduction(
-            releaseDeploys([production]).production,
-            records.map(flowReleaseOf),
-          ),
+          running,
         }),
       );
     }
@@ -750,9 +766,13 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           const answered = compares.get(groupId);
           return [
             groupId,
-            answered === undefined
-              ? NOT_COMPARED
-              : movedCommits({ reads: plan.reads, ...answered }),
+            {
+              moved:
+                answered === undefined
+                  ? NOT_COMPARED
+                  : movedCommits({ reads: plan.reads, ...answered }),
+              untold: plan.untold,
+            },
           ];
         }),
       ),
