@@ -19,6 +19,7 @@ import {
   OpenChangeRequest,
   OpenChangeResponse,
   PostCommentRequest,
+  RepoListResponse,
   attachmentPath,
   changeRoutePath,
   changeUrl,
@@ -167,6 +168,24 @@ describe("hqChanges — the wire", () => {
   });
 
   it.each([
+    [
+      "an application's repositories",
+      RepoListResponse,
+      {
+        repos: [
+          { name: "appdev", mainHead: SHA, updatedAt: "2026-10-02T10:00:00.000Z" },
+          { name: "group", mainHead: null, updatedAt: "2026-10-02T09:00:00.000Z" },
+        ],
+      },
+      "Success",
+    ],
+    ["an application with none", RepoListResponse, { repos: [] }, "Success"],
+    [
+      "a repository with a short head",
+      RepoListResponse,
+      { repos: [{ name: "appdev", mainHead: "abc1234", updatedAt: "2026-10-02T10:00:00.000Z" }] },
+      "Failure",
+    ],
     [
       "a picture kept",
       AttachmentResponse,

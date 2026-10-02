@@ -20,6 +20,7 @@
  *
  * **A person's side**, `Authorization: Bearer <session>`, wherever they may read the application:
  *
+ * - `GET /api/apps/:appId/repos` → {@link RepoListResponse};
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
  * - `GET /api/apps/:appId/changes/:repo/:n` → {@link ChangeDetailResponse};
  * - `GET`, `POST /api/apps/:appId/changes/:repo/:n/comments` → {@link CommentListResponse},
@@ -146,6 +147,21 @@ export type HqChange = typeof HqChange.Type;
 /** A repository HQ keeps for an application, served at `/git/<appId>/<name>.git`. */
 export const HqRepo = Schema.Struct({ appId: Schema.String, name: RepoName });
 export type HqRepo = typeof HqRepo.Type;
+
+/**
+ * One of an application's repositories as a person reads it: `main`'s head as HQ last recorded it
+ * (none before HQ has), and when `main` last moved — the repository's making, before it ever has.
+ */
+export const RepoListEntry = Schema.Struct({
+  name: RepoName,
+  mainHead: Schema.NullOr(Sha),
+  updatedAt: Instant,
+});
+export type RepoListEntry = typeof RepoListEntry.Type;
+
+/** `GET /api/apps/:appId/repos`: the application's repositories, its recipe's too, by name. */
+export const RepoListResponse = Schema.Struct({ repos: Schema.Array(RepoListEntry) });
+export type RepoListResponse = typeof RepoListResponse.Type;
 
 /** `POST /api/mate/repos`: the repository of this name in the Mate's application, made if new. */
 export const EnsureRepoRequest = Schema.Struct({ name: RepoName });
