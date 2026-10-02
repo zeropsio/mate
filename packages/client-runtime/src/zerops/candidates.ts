@@ -371,7 +371,7 @@ export function deriveZeropsCandidates(
             key,
             project,
             group: "provisioning",
-            reason: `its address is on its way (${origin.reason})`,
+            reason: "its address is on its way",
             service: candidateService,
             addressAwaited: { since, until },
           };
