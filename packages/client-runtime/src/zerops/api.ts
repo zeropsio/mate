@@ -20,7 +20,7 @@ import {
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
-import { parseZeropsRegistry, projectTagWriteBody, type ZeropsRegistry } from "./groupRegistry.ts";
+import { projectTagWriteBody } from "./groupRegistry.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import {
   pickProjectCreation,
@@ -1211,18 +1211,6 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
-  }
-
-  /**
-   * The account's registry, read off the Gitea project's tags (guide 4.1, D3).
-   *
-   * One project read. The registry is the whole account's membership map, and
-   * it lives where its subjects cannot write it — a Mate has no grant on the
-   * Gitea project at all (`groupRegistry.ts`).
-   */
-  async readGroupRegistry(giteaProjectId: string, signal?: AbortSignal): Promise<ZeropsRegistry> {
-    const project = await this.fetchProject(giteaProjectId, signal);
-    return parseZeropsRegistry(project.tagList);
   }
 
   /**

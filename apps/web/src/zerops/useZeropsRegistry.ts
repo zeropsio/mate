@@ -1,125 +1,75 @@
 /**
- * The account's registry, read on the projects screen and shared from there.
+ * The account's registry, as the store holds it.
  *
- * One project read — the tags on the account's Gitea project — answering which
- * groups exist, what each one's Gitea org is called, and which projects belong
- * to them (`groupRegistry.ts`, D3). It lives here because this is the one
- * screen that can see the whole account, and because every verb that writes it
- * needs to have read it first.
+ * The registry is the tags on the account's Gitea project (`groupRegistry.ts`, D3): which groups
+ * exist, what each one's Gitea org is called, and which projects belong to them. That project is
+ * in the inventory like any other, and the org's socket keeps its tags live — so the registry is
+ * derived from it, never read: a group another tab or another person names is here within the
+ * push, and a write's own read-back enters the store before its command settles
+ * (`data/restAdapter.ts`), so a writer sees what it wrote at once.
  *
- * An account with no Gitea has no registry: that is the empty one, not a
- * failure. A read that fails is no answer: the registry last read from the same
- * Gitea project stands, or, before any, the read stays loading — never the
- * empty registry settled, which would drop every group from the tree, and
- * never another project's registry, which a switch of organization leaves
- * behind. The rows fall back to the per-project `mate:g:` hints they already
- * render from, and the next read tries again.
+ * An account with no Gitea has no registry: that is the empty one, not a failure. Not knowing yet
+ * — no Gitea project while the inventory is still being read — is loading, never the empty
+ * registry settled, which would drop every group from the tree. The inventory loses a project for
+ * a moment whenever its socket is replaced: the registry last derived stands through that blink
+ * (`heldThroughBlink.ts`), and never in another organization, which a switch leaves behind.
  */
 
-import type { ZeropsRegistry } from "@t3tools/client-runtime/zerops";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  parseZeropsRegistry,
+  readZeropsToolKind,
+  type ZeropsProject,
+  type ZeropsRegistry,
+} from "@t3tools/client-runtime/zerops";
+import { useContext, useMemo } from "react";
 
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useHeldThroughBlink } from "./heldThroughBlink";
+import { HeldInventoryContext, InventoryContext } from "./inventoryContext";
 
 const EMPTY: ZeropsRegistry = { groups: [], leaving: [], other: [] };
 
-/** How long a re-read for an owner waits after the last one. */
-export const REGISTRY_OWNER_REREAD_MS = 30_000;
-/** How many re-reads an owner the registry does not name is given before it stands unknown. */
-export const REGISTRY_OWNER_REREADS = 3;
-
 export interface ZeropsRegistryState {
   readonly registry: ZeropsRegistry;
-  /** True until this project's registry has been read once. */
+  /** True while there is no Gitea project to read it from and the inventory is still read. */
   readonly loading: boolean;
-  /** Re-reads it — after a write, so the tree is not left one version behind. */
-  readonly refresh: () => void;
-  /**
-   * A link names this Gitea org and the registry does not: it was made since the last read, or
-   * that read failed. Re-reads the registry — shared by every link that asks, at most once per
-   * {@link REGISTRY_OWNER_REREAD_MS}, and {@link REGISTRY_OWNER_REREADS} times per owner.
-   */
-  readonly askForOwner: (owner: string) => void;
 }
 
-export function useZeropsRegistry(input: {
-  /** The account's Gitea project, where the registry lives. */
-  readonly giteaProjectId: string | undefined;
-  readonly enabled: boolean;
-}): ZeropsRegistryState {
-  const { client } = useZeropsSession();
-  const { enabled, giteaProjectId } = input;
-  const [generation, setGeneration] = useState(0);
-  const [answer, setAnswer] = useState<{
-    readonly key: string;
-    /** The Gitea project this registry was read from. */
-    readonly giteaProjectId: string;
-    readonly registry: ZeropsRegistry;
-  } | null>(null);
-  const key = enabled && giteaProjectId !== undefined ? `${giteaProjectId}:${generation}` : "";
+/** The account's Gitea project in the organization, as held — withheld or not, services or not. */
+export function findRegistryProject(
+  projects: ReadonlyArray<ZeropsProject>,
+  clientId: string | undefined,
+): ZeropsProject | undefined {
+  return projects.find(
+    (project) =>
+      readZeropsToolKind(project.tagList) === "gitea" &&
+      (clientId === undefined || project.clientId === clientId),
+  );
+}
 
-  useEffect(() => {
-    if (key === "" || giteaProjectId === undefined) return;
-    const controller = new AbortController();
-    void client
-      .readGroupRegistry(giteaProjectId, controller.signal)
-      .then((registry) => {
-        if (!controller.signal.aborted) setAnswer({ key, giteaProjectId, registry });
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setAnswer((last) => (last?.giteaProjectId === giteaProjectId ? { ...last, key } : last));
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [client, giteaProjectId, key]);
-
-  const refresh = useCallback(() => {
-    setGeneration((current) => current + 1);
-  }, []);
-
-  /** Each owner asked for, with the re-reads already made for it. */
-  const [owners, setOwners] = useState<ReadonlyMap<string, number>>(() => new Map());
-  const lastRereadAt = useRef<number | null>(null);
-  const askForOwner = useCallback((owner: string) => {
-    setOwners((current) => (current.has(owner) ? current : new Map(current).set(owner, 0)));
-  }, []);
-
-  const loading = key !== "" && answer?.key !== key;
-  const registry =
-    key === ""
-      ? EMPTY
-      : answer !== null && answer.giteaProjectId === giteaProjectId
-        ? answer.registry
-        : EMPTY;
-
-  useEffect(() => {
-    if (key === "" || loading) return;
-    const due = [...owners].filter(
-      ([owner, rereads]) =>
-        rereads < REGISTRY_OWNER_REREADS && !registry.groups.some((group) => group.slug === owner),
-    );
-    if (due.length === 0) return;
-    const waitMs =
-      lastRereadAt.current === null
-        ? 0
-        : Math.max(0, lastRereadAt.current + REGISTRY_OWNER_REREAD_MS - Date.now());
-    const timer = setTimeout(() => {
-      lastRereadAt.current = Date.now();
-      setOwners((current) => {
-        const next = new Map(current);
-        for (const [owner, rereads] of due) next.set(owner, rereads + 1);
-        return next;
-      });
-      refresh();
-    }, waitMs);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [key, loading, owners, refresh, registry]);
-
-  return { registry, loading, refresh, askForOwner };
+/** The registry of the organization `clientId`, from the inventory as held. */
+export function useZeropsRegistry(clientId: string | undefined): ZeropsRegistryState {
+  const held = useContext(HeldInventoryContext);
+  const loadingInventory = useContext(InventoryContext)?.isLoading ?? false;
+  const tags = useMemo(() => {
+    const project = held === null ? undefined : findRegistryProject(held.projects, clientId);
+    // A slug is `[a-z][a-z0-9-]*` and no tag holds a line break, so the key is unambiguous; it
+    // keeps the registry the same object across every push that did not touch these tags.
+    return project === undefined ? undefined : (project.tagList ?? []).join("\n");
+  }, [clientId, held]);
+  const found = useMemo(
+    () =>
+      tags === undefined ? undefined : parseZeropsRegistry(tags === "" ? [] : tags.split("\n")),
+    [tags],
+  );
+  // No inventory at all is no scope — signed out — and holds nothing.
+  const registry = useHeldThroughBlink(found, held === null ? undefined : (clientId ?? ""));
+  return useMemo(
+    () =>
+      registry === undefined
+        ? { registry: EMPTY, loading: held !== null && loadingInventory }
+        : { registry, loading: false },
+    [held, loadingInventory, registry],
+  );
 }
 
 /** The Gitea org a group is registered under, or `undefined` while it is not. */

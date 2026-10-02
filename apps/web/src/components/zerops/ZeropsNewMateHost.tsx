@@ -106,7 +106,7 @@ function NewMateDialog({
   readonly groupId: string;
   readonly create: ReturnType<typeof useEnvironmentCreation>;
 }) {
-  const { activeOrganization, status } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   // A Mate's name must be new on the account, not just in the project: it is what the left menu
@@ -124,10 +124,7 @@ function NewMateDialog({
   );
   const accountGitea = useAccountGitea(activeOrganization?.id);
   const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
-  const registry = useZeropsRegistry({
-    giteaProjectId: accountGitea?.projectId,
-    enabled: status === "signed-in",
-  });
+  const registry = useZeropsRegistry(activeOrganization?.id);
   // The account's flow: the group's org, known from its registry long before this opened, and
   // the group's changes, open and landed, as the forge last read them.
   const flow = useZeropsProjectFlowOptional();

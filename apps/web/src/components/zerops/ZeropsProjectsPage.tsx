@@ -1604,22 +1604,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // devel region or behind a custom domain is read, never guessed.
   const giteaOrigin = accountGitea?.state.url;
   // The registry — which groups exist, and what each one's Gitea org is called
-  // (guide 4.1). One project read, on the one screen that sees the account.
-  const registryState = useZeropsRegistry({
-    giteaProjectId: giteaProjectId,
-    enabled: status === "signed-in",
-  });
-
-  // A press's group writes change the registry: it is read again as each
-  // press settles, so the tree is not left one version behind.
-  const birthSteps = presses.map((press) => `${press.projectId}:${press.state.kind}`).join(",");
-  const readBirthStepsRef = useRef(birthSteps);
-  const refreshRegistry = registryState.refresh;
-  useEffect(() => {
-    if (readBirthStepsRef.current === birthSteps) return;
-    readBirthStepsRef.current = birthSteps;
-    refreshRegistry();
-  }, [birthSteps, refreshRegistry]);
+  // (guide 4.1) — as the store holds the account's Gitea project's tags.
+  const registryState = useZeropsRegistry(activeOrganization?.id);
 
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
@@ -2069,7 +2055,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     clientId: activeOrganization?.id,
     giteaOrigin,
     giteaProjectId,
-    refreshRegistry: registryState.refresh,
     halfMade,
     // Not a failed creation: the project runs, and what is outstanding is
     // said on its group's row (`projectsGroupLine`), not under the page.

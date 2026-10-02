@@ -39,19 +39,15 @@ export function useZeropsGroupEnvironmentReconcile(input: {
   readonly clientId: string | undefined;
   readonly giteaOrigin: string | undefined;
   readonly giteaProjectId: string | undefined;
-  readonly refreshRegistry: () => void;
   readonly halfMade: ReadonlyArray<HalfMadeGroupEnvironment>;
   /** What each repair came to — the caller says what is still outstanding. */
   readonly onOutcome?:
     | ((entry: HalfMadeGroupEnvironment, outcome: AddGroupEnvironmentOutcome) => void)
     | undefined;
 }): void {
-  const { client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade, refreshRegistry } =
-    input;
+  const { client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade } = input;
   const data = useRef(input.data);
   data.current = input.data;
-  const refresh = useRef(refreshRegistry);
-  refresh.current = refreshRegistry;
   const onOutcome = useRef(input.onOutcome);
   onOutcome.current = input.onOutcome;
   // The list through a ref: its identity changes on every inventory push,
@@ -173,14 +169,13 @@ export function useZeropsGroupEnvironmentReconcile(input: {
           }
           if (outcome !== undefined) onOutcome.current?.(entry, outcome);
         }
-        if (!controller.signal.aborted) refresh.current();
       } finally {
         running.current.delete(controller);
       }
     })();
     // No cleanup: the gate closing (a loading flip) does not abort a repair in flight; the
-    // page going does (above). `key` is the half-made list; the list, the runtime and the
-    // refresh are read through refs so a re-render does not abort a repair in flight either.
+    // page going does (above). `key` is the half-made list; the list and the runtime are read
+    // through refs so a re-render does not abort a repair in flight either.
   }, [client, clientId, due, enabled, giteaOrigin, giteaProjectId, key]);
 }
 

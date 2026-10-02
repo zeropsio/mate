@@ -44,7 +44,6 @@ const GITEA = "https://forge-7c1d-3000.prg1.zerops.app";
 const FLOW = {
   giteaOrigin: GITEA,
   slugs: new Map([["group-1", "orchard"]]),
-  askForOwner: () => {},
   flows: new Map([
     [
       "group-1",
