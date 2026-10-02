@@ -16,6 +16,8 @@
  *   moves a project into an application, or out of any.
  * - `PUT /api/apps/:appId/environments/:name/deploy-token` `{ token }` → `204`: the environment's
  *   deploy token, minted by the client of whoever attaches it; the structure says only `keyHeld`.
+ * - `POST /api/apps/:appId/environments/:name/redeploy` `{ service, sha }` → `202`: a person's "Run
+ *   again" of the environment's newest deploy of that service, failed (`deploys.ts`).
  * - `POST /api/mates` `{ projectId, name, face }`, `PATCH /api/mates/:projectId` `{ name?, face? }`
  *   → `{ projectId, name, face }`: a Mate's record, in an application or not.
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
@@ -74,12 +76,14 @@ import {
   OpenChangeRequest,
   PostCommentRequest,
   RepoName,
+  Sha,
   changeRoutePath,
 } from "@t3tools/shared/hqChanges";
 
 import { ChangeRefused, Changes } from "./changes.ts";
 import { RecipeTier } from "@t3tools/shared/hqRecipe";
 
+import { DeployRefused, Deploys } from "./deploys.ts";
 import { Door } from "./door.ts";
 import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
@@ -140,6 +144,7 @@ const AttachBody = Schema.Struct({
  * A Zerops token as the platform spells one, at most 512 characters: one HQ sends on as a bearer
  * header, so a character no header may carry is refused here, never by the HTTP client later.
  */
+const RedeployBody = Schema.Struct({ service: Schema.String, sha: Sha });
 const DeployTokenBody = Schema.Struct({
   token: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._~+/=-]{1,512}$/u)),
 });
@@ -181,7 +186,15 @@ const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(bo
 const unavailable = (code: string) =>
   HttpServerResponse.jsonUnsafe({ code }, { status: 503, headers: RETRY_AFTER });
 
+const DEPLOY_STATUS = {
+  forbidden: 403,
+  environment_not_found: 404,
+  deploy_not_found: 404,
+  conflict: 409,
+} as const;
+
 const isStructureRefused = Schema.is(StructureRefused);
+const isDeployRefused = Schema.is(DeployRefused);
 const isChangeRefused = Schema.is(ChangeRefused);
 const isMateRefused = Schema.is(MateRefused);
 
@@ -205,6 +218,11 @@ const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: number) =>
 export const failure = (error: {
   readonly _tag: string;
 }): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
+  if (isDeployRefused(error)) {
+    return Effect.succeed(
+      json({ code: error.code, reason: error.reason }, DEPLOY_STATUS[error.code]),
+    );
+  }
   if (isStructureRefused(error)) {
     return Effect.succeed(
       json({ code: error.code, reason: error.reason }, STRUCTURE_STATUS[error.code]),
@@ -773,6 +791,25 @@ const routes = (
           const appId = (yield* HttpRouter.params)["id"] ?? "";
           const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
           return json(yield* (yield* Structure).renameApp(userId, appId, name), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/environments/:name/redeploy",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const params = yield* HttpRouter.params;
+          const { service, sha } = yield* jsonBody(RedeployBody, BODY_LIMIT);
+          yield* (yield* Deploys).redeploy(
+            userId,
+            params["appId"] ?? "",
+            params["name"] ?? "",
+            service,
+            sha,
+          );
+          return HttpServerResponse.empty({ status: 202 });
         }),
       ),
     ),

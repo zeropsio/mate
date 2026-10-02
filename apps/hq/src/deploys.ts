@@ -29,16 +29,19 @@
 import type * as NodeStream from "node:stream";
 
 import type { HqGit } from "@t3tools/hq-git";
+import { REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { deadDeployToken, noDeployToken, reachesOnly, widenedDeployToken } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
@@ -58,11 +61,36 @@ export interface DeploysOptions {
   readonly patience?: Duration.Duration;
 }
 
+/** A person's ask HQ refused: a code, and the reason (a permission's, or the deploy's own). */
+export class DeployRefused extends Schema.TaggedError<DeployRefused>()("DeployRefused", {
+  code: Schema.Literals(["forbidden", "environment_not_found", "deploy_not_found", "conflict"]),
+  reason: Schema.Literals([
+    ...REASONS,
+    "environment_not_found",
+    "deploy_not_found",
+    "deploy_not_failed",
+    "deploy_superseded",
+  ]),
+}) {}
+
 export class Deploys extends Context.Service<
   Deploys,
   {
     /** Every stage environment's wanted commits against what its services run (B22). */
     readonly catchUp: Effect.Effect<void, NotLeader>;
+    /**
+     * A person's "Run again" (main B36) of the newest deploy of `service` in the application's
+     * environment `name`, failed — its build's own failure included, which only a person may ask
+     * for again (B37): by whoever develops the application (`redeploy`). The deploy waits again,
+     * says who asked, and its environment's queue takes it now.
+     */
+    readonly redeploy: (
+      userId: string,
+      appId: string,
+      name: string,
+      service: string,
+      sha: string,
+    ) => Effect.Effect<void, DeployRefused | NotLeader | SqlError | ZeropsError>;
     /** Ticks after every change of a deploy's record, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
   }
@@ -491,9 +519,9 @@ export const deploysLayer = (
        * recorded pending, then queued (B20): `all` queues every environment (a catch-up), else only
        * those with a commit new to them (main moved).
        */
-      const leading = yield* Ref.make<Option.Option<(all: boolean) => Effect.Effect<void>>>(
-        Option.none(),
-      );
+      const leading = yield* Ref.make<
+        Option.Option<(all: boolean, only?: string) => Effect.Effect<void>>
+      >(Option.none());
 
       /** What leads now: each environment's queue, one worker each while it has work. */
       const lead = Effect.gen(function* () {
@@ -544,9 +572,10 @@ export const deploysLayer = (
               yield* Effect.forkIn(work(projectId), scope);
             }
           });
-        const pass = (all: boolean) =>
+        const pass = (all: boolean, only?: string) =>
           Effect.gen(function* () {
             for (const { projectId, targets } of yield* wanted) {
+              if (only !== undefined && projectId !== only) continue;
               let fresh = false;
               for (const target of targets) {
                 if ((yield* recordOf(target)) === undefined) {
@@ -564,7 +593,7 @@ export const deploysLayer = (
         yield* Stream.merge(
           Stream.tick(catchUpEvery).pipe(Stream.map(() => true)),
           gitHost.recorded.pipe(Stream.map(() => false)),
-        ).pipe(Stream.runForEach(pass));
+        ).pipe(Stream.runForEach((all) => pass(all)));
       });
 
       yield* Effect.forkScoped(
@@ -583,6 +612,54 @@ export const deploysLayer = (
             : Effect.fail(new NotLeader({ reason: "standby" })),
         ),
         changes: SubscriptionRef.changes(ticks),
+        redeploy: (userId, appId, name, service, sha) =>
+          Effect.gen(function* () {
+            const view = yield* roles.fresh;
+            const person = { kind: "person", userId } as const;
+            const projectIds = (yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`).map(
+              (row) => row.project_id,
+            );
+            const refuse = (code: DeployRefused["code"], reason: DeployRefused["reason"]) =>
+              Effect.andThen(
+                Effect.logInfo("redeploy refused", { userId, appId, name, service, reason }),
+                Effect.fail(new DeployRefused({ code, reason })),
+              );
+            // Whether the application has an environment of that name is told only to whoever
+            // sees it.
+            const seen = can(person, "read_app", { projectIds }, view);
+            if (!seen.allow) return yield* refuse("forbidden", seen.reason);
+            const [environment] = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_environment
+              WHERE app_id::text = ${appId} AND name = ${name}`;
+            if (environment === undefined) {
+              return yield* refuse("environment_not_found", "environment_not_found");
+            }
+            const may = can(person, "redeploy", { projectIds }, view);
+            if (!may.allow) return yield* refuse("forbidden", may.reason);
+            const [deployed] = yield* sql<{ readonly state: string; readonly newest: boolean }>`
+              SELECT state, created_at = (
+                SELECT max(created_at) FROM hq_deploy
+                WHERE project_id = ${environment.project_id} AND service = ${service}
+              ) AS newest
+              FROM hq_deploy
+              WHERE project_id = ${environment.project_id} AND service = ${service}
+                AND sha = ${sha}`;
+            if (deployed === undefined)
+              return yield* refuse("deploy_not_found", "deploy_not_found");
+            if (!deployed.newest) return yield* refuse("conflict", "deploy_superseded");
+            const asked = yield* leader.write(sql`
+              UPDATE hq_deploy
+              SET state = 'pending', failure = NULL, message = NULL, requested_by = ${userId},
+                  updated_at = now()
+              WHERE project_id = ${environment.project_id} AND service = ${service}
+                AND sha = ${sha} AND state = 'failed'
+              RETURNING 1`);
+            if (asked.length === 0) return yield* refuse("conflict", "deploy_not_failed");
+            yield* tick;
+            const pass = yield* Ref.get(leading);
+            if (Option.isSome(pass)) yield* pass.value(true, environment.project_id);
+          }),
       });
     }),
   );

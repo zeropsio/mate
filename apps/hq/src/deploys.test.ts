@@ -28,7 +28,7 @@ import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Roles } from "./roles.ts";
-import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
+import { ZeropsApi, ZeropsDeploy, type ZeropsMember } from "./zerops/api.ts";
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
 const ZEROPS_YAML = "zerops:\n  - setup: web\n    run:\n      start: node index.js\n";
@@ -38,6 +38,44 @@ const FAST: DeploysOptions = {
   catchUpEvery: Duration.hours(1),
 };
 const ABSENT: RecipeTierResponse = { state: "absent" };
+
+const member = (userId: string, roleCode: string): ZeropsMember => ({
+  name: userId,
+  kind: "person",
+  roleCode,
+  status: "ACTIVE",
+  userId,
+  clientUserId: `C-${userId}`,
+  canCreateProjects: false,
+});
+
+/**
+ * The org as HQ reads it: its owner; dev, who develops Shop (Basic user on its stage's project);
+ * viewer, who sees it through a Read only grant; stranger, who has nothing there.
+ */
+const ORG_VIEW = {
+  orgId: "ORG",
+  members: [
+    member("owner", "OWNER"),
+    member("dev", "NO_ACCESS"),
+    member("viewer", "NO_ACCESS"),
+    member("stranger", "NO_ACCESS"),
+  ],
+  projects: [
+    {
+      id: "P_STAGE",
+      orgId: "ORG",
+      name: "Shop - stage",
+      status: "ACTIVE",
+      tags: [],
+      userRoles: [
+        { clientUserId: "C-dev", roleCode: "BASIC_USER" },
+        { clientUserId: "C-viewer", roleCode: "READ_ONLY" },
+      ],
+      publicZone: "pstage.prg1-zerops.zone",
+    },
+  ],
+};
 
 /** A stage tier whose runtimes are `services`, each built from the application's repository of its name. */
 const stageTier = (
@@ -123,18 +161,8 @@ const withDeploys = <A, E>(
         Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(world))),
         Layer.provide(
           Layer.succeed(Roles, {
-            view: Effect.succeed({
-              orgId: "ORG",
-              members: [],
-              projects: [],
-              freshness: "cached" as const,
-            }),
-            fresh: Effect.succeed({
-              orgId: "ORG",
-              members: [],
-              projects: [],
-              freshness: "fresh" as const,
-            }),
+            view: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
+            fresh: Effect.succeed({ ...ORG_VIEW, freshness: "fresh" as const }),
             exists: () => Effect.succeed(true),
           }),
         ),
@@ -514,6 +542,75 @@ describe("deploys", () => {
           }),
         // The first deploy is still running when the later commits come, however slow they are.
         { ...FAST, patience: Duration.seconds(30) },
+      ),
+    );
+
+    // Main B36/B37: a build's own failure is final, but a person who develops the application asks
+    // for it again ("Run again"): that commit is deployed once more, and the record says who asked.
+    it.effect("deploys again a commit whose build failed, once a developer asks", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          const deploysService = yield* Deploys;
+          const sql = yield* SqlClient.SqlClient;
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.outcome = () => "BUILD_FAILED";
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("failed"));
+          world.outcome = () => "ACTIVE";
+          const ask = (
+            userId: string,
+            over: { readonly name?: string; readonly sha?: string } = {},
+          ) =>
+            deploysService
+              .redeploy(userId, appId, over.name ?? "shop-stage", "web", over.sha ?? sha)
+              .pipe(
+                Effect.match({
+                  onSuccess: () => "ok",
+                  onFailure: (error) => ("reason" in error ? String(error.reason) : error._tag),
+                }),
+              );
+          assert.deepStrictEqual(
+            [
+              yield* ask("stranger"),
+              yield* ask("viewer"),
+              yield* ask("dev", { name: "production" }),
+              yield* ask("dev", { sha: "f".repeat(40) }),
+            ],
+            ["app_not_seen", "not_app_developer", "environment_not_found", "deploy_not_found"],
+          );
+          assert.strictEqual(yield* ask("dev"), "ok");
+          yield* until(settled("live"));
+          assert.lengthOf(versions(world), 2);
+          const [asked] = yield* sql<{ readonly requested_by: string | null }>`
+            SELECT requested_by FROM hq_deploy`;
+          assert.strictEqual(asked?.requested_by, "dev");
+          // Only a failed deploy is asked for again.
+          assert.strictEqual(yield* ask("dev"), "deploy_not_failed");
+          assert.lengthOf(yield* deploys, 1);
+        }),
+      ),
+    );
+
+    // A newer commit's deploy stands for its service: an older one is not asked for again.
+    it.effect("refuses to ask again for a deploy a newer one superseded", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.outcome = () => "BUILD_FAILED";
+          const first = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("failed"));
+          const second = yield* commit("web", { "index.js": "two\n" });
+          yield* until((rows) => rows.some((row) => row.sha === second && row.state === "failed"));
+          const deploysService = yield* Deploys;
+          const reasonOf = (sha: string) =>
+            deploysService.redeploy("dev", appId, "shop-stage", "web", sha).pipe(
+              Effect.match({
+                onSuccess: () => "ok",
+                onFailure: (error) => ("reason" in error ? String(error.reason) : error._tag),
+              }),
+            );
+          assert.strictEqual(yield* reasonOf(first), "deploy_superseded");
+        }),
       ),
     );
 
