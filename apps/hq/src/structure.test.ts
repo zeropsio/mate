@@ -271,6 +271,93 @@ describe("structure", () => {
     );
 
     it.effect(
+      "a devstage project is a Mate by its record and its rules, and a stage beside its application's production",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+            });
+            const team = yield* structure.createApp("owner", "Team");
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            const mate = { name: "Ada", face: "face-3" };
+            assert.deepStrictEqual(
+              yield* Effect.all([
+                outcome(
+                  structure.attachProject("owner", shop.id, {
+                    projectId: "P_MATE",
+                    kind: "devstage",
+                  }),
+                ),
+                outcome(
+                  structure.attachProject("owner", shop.id, {
+                    projectId: "P_MATE",
+                    kind: "devstage",
+                    mate,
+                  }),
+                ),
+                outcome(
+                  structure.attachProject("owner", shop.id, {
+                    projectId: "P_STAGE",
+                    kind: "stage",
+                  }),
+                ),
+                // A Mate's own rules, not a writer's: maker attaches, takes out and moves back
+                // the Mate they own.
+                outcome(
+                  structure.attachProject("maker", team.id, {
+                    projectId: "P_OWNED",
+                    kind: "devstage",
+                    mate: { name: "Bo", face: "face-1" },
+                  }),
+                ),
+                outcome(
+                  structure.moveProject("maker", "P_OWNED", { appId: null, kind: "devstage" }),
+                ),
+                outcome(
+                  structure.moveProject("maker", "P_OWNED", { appId: team.id, kind: "devstage" }),
+                ),
+                outcome(
+                  structure.moveProject("owner", "P_STAGE", { appId: team.id, kind: "devstage" }),
+                ),
+              ]),
+              ["invalid", "ok", "ok", "ok", "ok", "ok", "invalid"],
+            );
+            assert.deepStrictEqual((yield* structure.read("owner")).apps, [
+              {
+                id: shop.id,
+                name: "Shop",
+                projects: [
+                  { projectId: "P_PROD", name: "name of P_PROD", kind: "production", mate: null },
+                  { projectId: "P_MATE", name: "name of P_MATE", kind: "devstage", mate },
+                  { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
+                ],
+              },
+              {
+                id: team.id,
+                name: "Team",
+                projects: [
+                  { projectId: "P_TEAM", name: "name of P_TEAM", kind: "stage", mate: null },
+                  {
+                    projectId: "P_OWNED",
+                    name: "name of P_OWNED",
+                    kind: "devstage",
+                    mate: { name: "Bo", face: "face-1" },
+                  },
+                ],
+              },
+            ]);
+          }),
+        ),
+    );
+
+    it.effect(
       "a project Zerops no longer has stops counting: the next production takes its place",
       () =>
         withStructure((view, down) =>

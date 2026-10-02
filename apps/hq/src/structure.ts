@@ -1,6 +1,8 @@
 /**
  * The structure of applications (ADR 0002): applications, the Zerops projects each holds with
- * their kind (`mate`, `stage`, `production`), and the Mate record of a `mate` project. HQ is its
+ * their kind (`mate`, `devstage`, `stage`, `production`), and the Mate record of a Mate's project.
+ * A `devstage` project is a Mate that also serves as its application's stage (main's "Dev /
+ * Stage"): a Mate by its record and its rules, a stage by the one-production rule. HQ is its
  * only writer; every write is fenced by the leader and checks the writer against Zerops read fresh.
  *
  * Who may: an active org owner or admin writes, as main's `canWriteRegistry` (parity B #41, #73,
@@ -10,6 +12,7 @@
  *
  * @module structure
  */
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -38,7 +41,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
 
 export interface AttachInput {
   readonly projectId: string;
-  readonly kind: "mate" | "stage" | "production";
+  readonly kind: RoleProjectKind;
   readonly mate?: { readonly name: string; readonly face: string };
 }
 
@@ -129,6 +132,9 @@ const refuse = (code: StructureRefused["code"], message: string) =>
   Effect.fail(new StructureRefused({ code, message }));
 
 const fitsName = (name: string) => name.length >= 1 && name.length <= 100;
+
+/** A kind whose project is a Mate: it carries a Mate record and follows a Mate's rules. */
+const isMate = (kind: string) => kind === "mate" || kind === "devstage";
 
 const WRITERS_ONLY = "Only an org owner or admin changes the structure.";
 const MATE_MOVERS_ONLY =
@@ -255,10 +261,10 @@ export const structureLayer = (options: {
 
         attachProject: (userId, appId, input) =>
           Effect.gen(function* () {
-            if ((input.kind === "mate") !== (input.mate !== undefined)) {
+            if (isMate(input.kind) !== (input.mate !== undefined)) {
               return yield* refuse(
                 "invalid",
-                "A Mate record goes with kind mate, and only with it.",
+                "A Mate record goes with a Mate's kind (mate, devstage), and only with it.",
               );
             }
             if (input.mate !== undefined && !fitsName(input.mate.name)) {
@@ -270,19 +276,18 @@ export const structureLayer = (options: {
             const view = yield* roles.fresh;
             const appProjects = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-            const may =
-              input.kind === "mate"
-                ? canAttachMate(
-                    view,
-                    userId,
-                    input.projectId,
-                    appProjects.map((row) => row.project_id),
-                  )
-                : canWriteStructure(view, userId);
+            const may = isMate(input.kind)
+              ? canAttachMate(
+                  view,
+                  userId,
+                  input.projectId,
+                  appProjects.map((row) => row.project_id),
+                )
+              : canWriteStructure(view, userId);
             if (!may) {
               return yield* refuse(
                 "forbidden",
-                input.kind === "mate" ? MATE_ATTACHERS_ONLY : WRITERS_ONLY,
+                isMate(input.kind) ? MATE_ATTACHERS_ONLY : WRITERS_ONLY,
               );
             }
             if (!view.projects.some((project) => project.id === input.projectId)) {
@@ -332,21 +337,20 @@ export const structureLayer = (options: {
               SELECT kind FROM hq_app_project WHERE project_id = ${projectId}`;
             if (appId === null) {
               if (current === undefined) return { projectId, appId, kind: null };
-              const may =
-                current.kind === "mate"
-                  ? canEditMate(view, userId, projectId)
-                  : canWriteStructure(view, userId);
+              const may = isMate(current.kind)
+                ? canEditMate(view, userId, projectId)
+                : canWriteStructure(view, userId);
               if (!may) {
                 return yield* refuse(
                   "forbidden",
-                  current.kind === "mate" ? MATE_MOVERS_ONLY : WRITERS_ONLY,
+                  isMate(current.kind) ? MATE_MOVERS_ONLY : WRITERS_ONLY,
                 );
               }
               yield* leader.write(sql`DELETE FROM hq_app_project WHERE project_id = ${projectId}`);
               yield* changed;
               return { projectId, appId, kind: null };
             }
-            if (kind === "mate") {
+            if (isMate(kind)) {
               const mates = yield* sql`SELECT 1 FROM hq_mate WHERE project_id = ${projectId}`;
               if (mates.length === 0) {
                 return yield* refuse("invalid", "A Mate is set up before it joins an application.");

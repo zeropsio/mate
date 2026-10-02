@@ -68,7 +68,7 @@ const CredentialBody = Schema.Struct({ projectId: Schema.String, nonce: Schema.S
 const AppBody = Schema.Struct({ name: Schema.String });
 const MoveBody = Schema.Struct({
   appId: Schema.NullOr(Schema.String),
-  kind: Schema.Literals(["mate", "stage", "production"]),
+  kind: Schema.Literals(["mate", "devstage", "stage", "production"]),
 });
 const NewMateBody = Schema.Struct({
   projectId: Schema.String,
@@ -81,7 +81,7 @@ const MateBody = Schema.Struct({
 });
 const AttachBody = Schema.Struct({
   projectId: Schema.String,
-  kind: Schema.Literals(["mate", "stage", "production"]),
+  kind: Schema.Literals(["mate", "devstage", "stage", "production"]),
   mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
 });
 

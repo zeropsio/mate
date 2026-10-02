@@ -57,8 +57,11 @@ export const ZEROPS_ACTIVE_MEMBER_STATUS = "ACTIVE";
  */
 export type ZeropsMemberStatus = string;
 
-/** What a project is to its group. One `production` per group (`docs/vocabulary.md`). */
-export type RoleProjectKind = "mate" | "stage" | "production";
+/**
+ * What a project is to its group. One `production` per group. A `devstage` project is a Mate that also
+ * serves as its group's stage.
+ */
+export type RoleProjectKind = "mate" | "devstage" | "stage" | "production";
 
 export interface RoleRegistryProject {
   readonly id: string;
