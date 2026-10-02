@@ -489,10 +489,11 @@ describe("the fact that has to be proved", () => {
       evidence: { remoteReachable: undefined },
       expected: "",
     },
+    // A Mate's checkout's origin is its application's repository in HQ.
     {
       name: "a remote that did not answer",
       evidence: { remoteReachable: false },
-      expected: "Its remote did not answer.",
+      expected: "HQ did not answer for this repository.",
     },
     {
       name: "a remote proved fine, which is still not a claim",
