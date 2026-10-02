@@ -94,6 +94,13 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     expect(hqRefusalWords({ code, reason })).toBe(words);
   });
 
+  // A comparison of two commits (`CompareResponse`), one of which its repository does not have.
+  it("says a commit the repository does not have as it stands", () => {
+    expect(hqRefusalWords({ code: "commit_not_found", reason: "commit_not_found" })).toBe(
+      "HQ has no such commit.",
+    );
+  });
+
   it("names a refusal this build has no words for by its code", () => {
     expect(hqRefusalWords({ code: "conflict", reason: "newer_rule" })).toBe(
       "HQ refused this (newer_rule).",
