@@ -89,7 +89,8 @@ export interface BackupStore {
   readonly remove: (key: string) => Effect.Effect<void, BackupError>;
 }
 
-const io = <A>(what: string, run: () => Promise<A>) =>
+/** A promise run for a store or the staging: its failure a store's. */
+export const io = <A>(what: string, run: () => Promise<A>) =>
   Effect.tryPromise({
     try: run,
     catch: (error) =>
