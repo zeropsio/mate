@@ -880,7 +880,9 @@ stage…`; a new project's group is placed by the birth's start — and the list
     was happening; `projectOrderPreference.ts`, `projectsView.logic.ts`, `groups.ts` (`pending`),
     `groupFlow.ts` (`creating`, `deploying`), `ZeropsProjectFlowProvider.tsx`
 - **2026-09-25** — **Superseded 2026-10-02 in part by the HQ row below: Core tags and records
-  releases (T9a), and the client reads them from HQ and rolls back there (T9b).**
+  releases (T9a), and the client reads them from HQ and rolls back there (T9b); what each release
+  carried and a repository's history are HQ's comparisons (`carriedReads`, `useZeropsHistory`),
+  where `useZeropsRepositoriesCommits` and its 30-commit read of Gitea are gone.**
   **A stop's page says what the stop runs in one sentence, in the words the left
   menu and the projects page use, and lists everything else in one card.** The detail pages
   (project, stop, change) stand in `ZeropsHostedFrame` `expanded` with the /zerops bar: the
