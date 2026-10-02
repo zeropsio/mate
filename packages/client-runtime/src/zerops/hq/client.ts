@@ -13,7 +13,17 @@
  *
  * @module hq/client
  */
+import {
+  attachmentPath,
+  ChangeDetailResponse,
+  CommentListResponse,
+  HqChangeComment,
+  type AttachmentLink,
+  type ChangeLink,
+} from "@t3tools/shared/hqChanges";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import type { FetchImplementation } from "../api.ts";
 import { hqRefusalWords } from "./refusals.ts";
@@ -111,6 +121,17 @@ export interface HqApi {
   readonly createMate: (mate: { readonly projectId: string } & HqMate) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
+  /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
+  readonly change: (link: ChangeLink, signal?: AbortSignal) => Promise<ChangeDetailResponse>;
+  /** What was said on a change, oldest first. */
+  readonly changeComments: (
+    link: ChangeLink,
+    signal?: AbortSignal,
+  ) => Promise<ReadonlyArray<HqChangeComment>>;
+  /** Says `body` on a change, as the person. */
+  readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
+  /** A picture of a change, read as the person (`attachmentPath`). */
+  readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
 }
 
 /** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
@@ -204,6 +225,37 @@ async function send(fetch: FetchImplementation, url: string, init: RequestInit):
 }
 
 const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;
+
+/**
+ * An answer read through the contract's schema (`@t3tools/shared/hqChanges`): one this version of
+ * Mate cannot read is refused, never drawn in part.
+ */
+const decoded =
+  <S extends Schema.Decoder<unknown>>(schema: S) =>
+  async (response: Response): Promise<S["Type"]> => {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw unreadable();
+    }
+    return Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(body), unreadable);
+  };
+
+const unreadable = () =>
+  new HqError({
+    kind: "refused",
+    code: "unreadable",
+    message: "HQ answered in a form this version of Mate does not read.",
+  });
+
+const readChangeDetail = decoded(ChangeDetailResponse);
+const readComments = decoded(CommentListResponse);
+const readComment = decoded(HqChangeComment);
+
+/** A change's own path at HQ's API. */
+const changePath = ({ appId, repo, number }: ChangeLink): string =>
+  `/api/apps/${encodeURIComponent(appId)}/changes/${encodeURIComponent(repo)}/${String(number)}`;
 
 /**
  * What HQ's `/health` says (`apps/hq/src/health.ts`): `healthy` while it leads as the official
@@ -369,6 +421,28 @@ export function makeHqApi(input: {
     createMate: async (mate) => {
       await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) });
     },
+    change: async (link, signal) =>
+      readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal })),
+    changeComments: async (link, signal) =>
+      (
+        await readComments(
+          await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
+        )
+      ).comments,
+    commentOnChange: async (link, body) =>
+      readComment(
+        await authorized(`${changePath(link)}/comments`, {
+          method: "POST",
+          body: JSON.stringify({ body }),
+        }),
+      ),
+    changeAttachment: async (link, signal) =>
+      (
+        await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {
+          headers: { Accept: "image/png" },
+          ...(signal === undefined ? {} : { signal }),
+        })
+      ).blob(),
   };
 }
 
@@ -377,7 +451,11 @@ export function makeHqApi(input: {
  * one attached there as asked is the same write run twice — a press tried again — and stands;
  * any other conflict is the refusal it is.
  */
-export async function attachToApp(api: HqApi, appId: string, attach: HqAttach): Promise<void> {
+export async function attachToApp(
+  api: Pick<HqApi, "attachProject" | "structure">,
+  appId: string,
+  attach: HqAttach,
+): Promise<void> {
   try {
     await api.attachProject(appId, attach);
   } catch (cause) {

@@ -5,17 +5,14 @@ import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 
 import { addGroupEnvironment } from "./addGroupEnvironment";
 
+/** As much of HQ as adding an environment calls. */
+type HqFake = Pick<HqApi, "attachProject" | "structure">;
+
 /** HQ, taking every attachment unless told otherwise. */
-function hqFake(attachProject: HqApi["attachProject"] = vi.fn(async () => undefined)) {
-  const api: HqApi = {
+function hqFake(attachProject: HqApi["attachProject"] = vi.fn(async () => undefined)): HqFake {
+  const api: HqFake = {
     structure: vi.fn(async () => ({ ungrouped: [], apps: [] })),
-    streamStructure: vi.fn(async () => undefined),
-    createApp: vi.fn(async () => ({ id: "g-1", name: "Acme" })),
     attachProject: vi.fn(attachProject),
-    updateMate: vi.fn(async () => undefined),
-    renameApp: vi.fn(async () => undefined),
-    moveProject: vi.fn(async () => undefined),
-    createMate: vi.fn(async () => undefined),
   };
   return api;
 }
@@ -67,7 +64,7 @@ function apiFake(overrides: Record<string, unknown> = {}) {
 const base = (
   api: ReturnType<typeof apiFake>,
   gitea: GiteaClient | null,
-  hq: HqApi = hqFake(),
+  hq: HqFake = hqFake(),
 ) => ({
   client: api as never,
   tokens: api as never,

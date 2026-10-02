@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 
 import type { HqStructure } from "./client.ts";
-import { applyStructureEvent, structureEventOf } from "./stream.ts";
+import { applyChangesEvent, applyStructureEvent, structureEventOf } from "./stream.ts";
 
 const ACME: HqStructure["apps"][number] = {
   id: "app-1",
@@ -22,17 +23,63 @@ const LONE: HqStructure["ungrouped"][number] = {
   mate: { name: "Ada", face: "sky:flower" },
 };
 
+/** Vera's change #3 in Acme's `app`, open and pushed to. */
+const CHANGE: HqChange = {
+  appId: "app-1",
+  repo: "app",
+  number: 3,
+  mateProjectId: "p1",
+  title: "Add a /status page",
+  body: "",
+  state: "open",
+  head: "a".repeat(40),
+  mergedSha: null,
+  landedHead: null,
+  openedAt: "2026-10-02T09:00:00.000Z",
+  mergedAt: null,
+  closedAt: null,
+};
+
 describe("structureEventOf", () => {
   it.each<[string, unknown, ReturnType<typeof structureEventOf>]>([
     [
       "a snapshot is the whole structure, the Mates in no application with it",
       { type: "snapshot", ungrouped: [LONE], apps: [ACME] },
-      { kind: "snapshot", structure: { ungrouped: [LONE], apps: [ACME] } },
+      { kind: "snapshot", structure: { ungrouped: [LONE], apps: [ACME] }, changes: null },
     ],
     [
       "a snapshot that names no Mate in no application holds none",
       { type: "snapshot", apps: [ACME] },
-      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] } },
+      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] }, changes: null },
+    ],
+    [
+      "a snapshot carries each application's changes beside its structure",
+      { type: "snapshot", apps: [ACME], changes: { "app-1": [CHANGE] } },
+      {
+        kind: "snapshot",
+        structure: { ungrouped: [], apps: [ACME] },
+        changes: new Map([["app-1", [CHANGE]]]),
+      },
+    ],
+    [
+      "a snapshot whose changes this build cannot read still carries its structure",
+      { type: "snapshot", apps: [ACME], changes: { "app-1": [{ ...CHANGE, number: 0 }] } },
+      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] }, changes: null },
+    ],
+    [
+      "an application's changes, whole",
+      { type: "changes", appId: "app-1", changes: [CHANGE] },
+      { kind: "changes", appId: "app-1", changes: [CHANGE] },
+    ],
+    [
+      "an application's changes the reader may no longer read",
+      { type: "changes", appId: "app-1", changes: null },
+      { kind: "changes", appId: "app-1", changes: null },
+    ],
+    [
+      "an application's changes this build cannot read are none",
+      { type: "changes", appId: "app-1", changes: [{ ...CHANGE, head: "not-a-sha" }] },
+      undefined,
     ],
     [
       "a change carries its application",
@@ -63,6 +110,7 @@ describe("applyStructureEvent", () => {
     let structure = applyStructureEvent(null, {
       kind: "snapshot",
       structure: { ungrouped: [LONE], apps: [ACME] },
+      changes: null,
     });
     structure = applyStructureEvent(structure, { kind: "change", appId: "app-2", app: BETA });
     expect(structure).toEqual({ ungrouped: [LONE], apps: [ACME, BETA] });
@@ -82,5 +130,41 @@ describe("applyStructureEvent", () => {
 
   it("knows nothing from a change before its snapshot", () => {
     expect(applyStructureEvent(null, { kind: "change", appId: "app-2", app: BETA })).toBeNull();
+  });
+});
+
+describe("applyChangesEvent", () => {
+  const merged: HqChange = {
+    ...CHANGE,
+    state: "merged",
+    mergedSha: "b".repeat(40),
+    landedHead: CHANGE.head,
+    mergedAt: "2026-10-02T10:00:00.000Z",
+  };
+
+  it("replaces on a snapshot, and replaces or drops one application's on its message", () => {
+    let changes = applyChangesEvent(null, {
+      kind: "snapshot",
+      structure: { ungrouped: [], apps: [ACME, BETA] },
+      changes: new Map([["app-1", [CHANGE]]]),
+    });
+    changes = applyChangesEvent(changes, { kind: "changes", appId: "app-1", changes: [merged] });
+    changes = applyChangesEvent(changes, { kind: "changes", appId: "app-2", changes: [] });
+    expect(changes).toEqual(
+      new Map([
+        ["app-1", [merged]],
+        ["app-2", []],
+      ]),
+    );
+    changes = applyChangesEvent(changes, { kind: "changes", appId: "app-1", changes: null });
+    expect(changes).toEqual(new Map([["app-2", []]]));
+  });
+
+  it("knows nothing before a snapshot that carried them, and leaves them on a structure change", () => {
+    expect(
+      applyChangesEvent(null, { kind: "changes", appId: "app-1", changes: [CHANGE] }),
+    ).toBeNull();
+    const held = new Map([["app-1", [CHANGE]]]);
+    expect(applyChangesEvent(held, { kind: "change", appId: "app-1", app: null })).toBe(held);
   });
 });

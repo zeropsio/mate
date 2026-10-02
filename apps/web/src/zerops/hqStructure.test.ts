@@ -67,7 +67,7 @@ describe("driveHqStructure", () => {
     const api = streamingApi([
       {
         events: [
-          { kind: "snapshot", structure: ACME },
+          { kind: "snapshot", structure: ACME, changes: null },
           { kind: "change", appId: "app-2", app: BETA },
         ],
         end: "hang",
@@ -99,9 +99,12 @@ describe("driveHqStructure", () => {
 
   it("says since when HQ is unavailable, keeps the last structure, and starts over from a fresh snapshot", async () => {
     const api = streamingApi([
-      { events: [{ kind: "snapshot", structure: ACME }], end: "fail" },
+      { events: [{ kind: "snapshot", structure: ACME, changes: null }], end: "fail" },
       { events: [], end: "fail" },
-      { events: [{ kind: "snapshot", structure: { ungrouped: [], apps: [BETA] } }], end: "hang" },
+      {
+        events: [{ kind: "snapshot", structure: { ungrouped: [], apps: [BETA] }, changes: null }],
+        end: "hang",
+      },
     ]);
     const h = harness();
     const stop = new AbortController();
@@ -127,7 +130,7 @@ describe("driveHqStructure", () => {
     const api = streamingApi([
       {
         events: [
-          { kind: "snapshot", structure: ACME },
+          { kind: "snapshot", structure: ACME, changes: null },
           { pingAfterMs: 20_000, tick: h.tick },
         ],
         end: "fail",
@@ -152,8 +155,8 @@ describe("driveHqStructure", () => {
     vi.useFakeTimers();
     try {
       const api = streamingApi([
-        { events: [{ kind: "snapshot", structure: ACME }], end: "hang" },
-        { events: [{ kind: "snapshot", structure: ACME }], end: "hang" },
+        { events: [{ kind: "snapshot", structure: ACME, changes: null }], end: "hang" },
+        { events: [{ kind: "snapshot", structure: ACME, changes: null }], end: "hang" },
       ]);
       const h = harness();
       const stop = new AbortController();
