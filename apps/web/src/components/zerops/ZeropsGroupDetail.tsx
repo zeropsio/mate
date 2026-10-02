@@ -622,6 +622,9 @@ function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDepl
     if (flow === undefined) return undefined;
     const project = inventory.projects.find((entry) => entry.id === projectId);
     const services = inventory.services.get(projectId);
+    const row = flow.environments.find(
+      (entry) => entry.projectId === projectId && entry.tier === "stage",
+    );
     return stageFirstDeploy({
       projectStatus: project?.status,
       services:
@@ -629,9 +632,8 @@ function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDepl
           ? summarizeEnvironmentServices(services.services).statuses
           : undefined,
       deployment: flowValue?.deployments.get(projectId),
-      declared: flow.environments.some(
-        (entry) => entry.projectId === projectId && entry.tier === "stage",
-      ),
+      headFailure: row?.firstDeployFailure,
+      declared: row !== undefined,
       mainHasCode: undefined,
       merged: flow.merged,
       runner: flowValue?.runners?.get(groupId),
