@@ -7,6 +7,7 @@ import {
 } from "@t3tools/shared/hqChanges";
 
 import {
+  carriedReads,
   compareReadKey,
   movedCommits,
   movedCount,
@@ -282,5 +283,77 @@ describe("how many commits move", () => {
       count: 120,
       atLeast: true,
     });
+  });
+});
+
+describe("what each release carried: the comparisons to ask HQ for", () => {
+  type Listed = {
+    readonly tag: string;
+    readonly verdict: "approved" | "refused";
+    readonly at: Record<string, string>;
+  };
+  const release = ({ tag, verdict, at }: Listed) => ({
+    tag,
+    verdict,
+    entries: Object.entries(at).map(([service, commit]) => ({ service, commit })),
+  });
+
+  it.each<[string, ReadonlyArray<Listed>, ReadonlyArray<CompareRead>]>([
+    [
+      "a release, from the commit the release before it lists",
+      [
+        { tag: "v0.1.1", verdict: "approved", at: { api: API } },
+        { tag: "v0.1.0", verdict: "approved", at: { api: OLD } },
+      ],
+      [{ repository: "apidev", query: { base: OLD, head: API }, services: ["api"] }],
+    ],
+    [
+      "nothing for a service at the commit the release before it lists",
+      [
+        { tag: "v0.1.1", verdict: "approved", at: { api: API, web: WEB } },
+        { tag: "v0.1.0", verdict: "approved", at: { api: API, web: OLD } },
+      ],
+      [{ repository: "mono", query: { base: OLD, head: WEB }, services: ["web"] }],
+    ],
+    [
+      "one read for a repository's services, named by the first that moved",
+      [
+        { tag: "v0.1.1", verdict: "approved", at: { web: WEB, worker: WEB } },
+        { tag: "v0.1.0", verdict: "approved", at: { web: OLD, worker: API } },
+      ],
+      [{ repository: "mono", query: { base: OLD, head: WEB }, services: ["web"] }],
+    ],
+    [
+      "a service no older release lists, from the commit another of its repository's had",
+      [
+        { tag: "v0.1.1", verdict: "approved", at: { worker: WEB, web: WEB } },
+        { tag: "v0.1.0", verdict: "approved", at: { web: OLD } },
+      ],
+      [{ repository: "mono", query: { base: OLD, head: WEB }, services: ["worker"] }],
+    ],
+    [
+      "a release, from the nearest older one that was not refused: a refused one never deployed",
+      [
+        { tag: "v0.1.2", verdict: "approved", at: { api: API } },
+        { tag: "v0.1.1", verdict: "refused", at: { api: WEB } },
+        { tag: "v0.1.0", verdict: "approved", at: { api: OLD } },
+      ],
+      [{ repository: "apidev", query: { base: OLD, head: API }, services: ["api"] }],
+    ],
+    [
+      "the first release, from its repository's first commit",
+      [{ tag: "v0.1.0", verdict: "approved", at: { api: OLD } }],
+      [{ repository: "apidev", query: { head: OLD }, services: ["api"] }],
+    ],
+  ])("%s", (_, releases, reads) => {
+    const carried = carriedReads({
+      releases: releases.map(release),
+      repositoryOf: new Map([
+        ["api", "apidev"],
+        ["web", "mono"],
+        ["worker", "mono"],
+      ]),
+    });
+    expect(carried.get(releases[0]!.tag)).toEqual(reads);
   });
 });

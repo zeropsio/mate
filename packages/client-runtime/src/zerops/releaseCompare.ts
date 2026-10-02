@@ -21,7 +21,7 @@ import {
 } from "@t3tools/shared/hqChanges";
 import * as Schema from "effect/Schema";
 
-import type { ReleaseEntry } from "./release.ts";
+import type { FlowRelease, ReleaseEntry } from "./release.ts";
 import { sameCommit } from "./versionName.ts";
 
 /** One comparison to ask HQ for, and the production services it answers for. */
@@ -115,6 +115,46 @@ export function rollbackReads(input: {
     } else untold.push(service);
   }
   return { leaving, comingBack, untold };
+}
+
+/**
+ * What to ask so each release can say what it carried (main C25): per repository it moved, named
+ * by its first service that moved, the commits from the one the nearest older release lists — for
+ * that service, else for another of its repository — to its own; with none older, from the
+ * repository's first commit. A refused release never deployed, so it is no release's baseline; a
+ * rollback to an older commit carries nothing new, which git's `base..head` answers by itself.
+ */
+export function carriedReads(input: {
+  /** Newest first, the whole list. */
+  readonly releases: ReadonlyArray<Pick<FlowRelease, "tag" | "entries" | "verdict">>;
+  /** `hostname → repository`. */
+  readonly repositoryOf: ReadonlyMap<string, string>;
+}): ReadonlyMap<string, ReadonlyArray<CompareRead>> {
+  return new Map(
+    input.releases.map((release, index) => {
+      const older = input.releases
+        .slice(index + 1)
+        .filter((earlier) => earlier.verdict !== "refused")
+        .flatMap((earlier) => earlier.entries);
+      const reads: Array<CompareRead> = [];
+      for (const { service, commit } of release.entries) {
+        const repository = input.repositoryOf.get(service);
+        if (repository === undefined) continue;
+        const base = (
+          older.find((entry) => entry.service === service) ??
+          older.find((entry) => input.repositoryOf.get(entry.service) === repository)
+        )?.commit;
+        if (sameCommit(base, commit) || reads.some((read) => read.repository === repository))
+          continue;
+        reads.push({
+          repository,
+          query: base === undefined ? { head: commit } : { base, head: commit },
+          services: [service],
+        });
+      }
+      return [release.tag, reads];
+    }),
+  );
 }
 
 /** What a read is held under: its repository and pair of commits. */
