@@ -24,7 +24,7 @@ const NAME = /^[a-z][a-z0-9-]*$/u;
  * The longest name, a DNS label's length: a deploy key is named `mate-hq-deploy:<env>:<projectId>`,
  * and Zerops caps a token's name at 255 characters.
  */
-const NAME_MAX = 63;
+export const ENVIRONMENT_NAME_MAX = 63;
 
 /** The highest number a taken name is given before there is none (main D10). */
 const LAST_SUFFIX = 999;
@@ -32,8 +32,8 @@ const LAST_SUFFIX = 999;
 /**
  * What an environment is called, from the name a person gave its project (main D10): diacritics
  * dropped, lower-case, every run of anything else a dash, leading non-letters and trailing dashes
- * cut; the tier when nothing is left; numbered from `-2` when taken. At most `NAME_MAX` characters,
- * a number included. None past `-999`.
+ * cut; the tier when nothing is left; numbered from `-2` when taken. At most `ENVIRONMENT_NAME_MAX`
+ * characters, a number included. None past `-999`.
  */
 export function deriveEnvironmentName(
   projectName: string,
@@ -49,7 +49,7 @@ export function deriveEnvironmentName(
   const base = cleaned.length === 0 ? tier : cleaned;
   /** `base` cut so `rest` still fits, with no dash left at the cut. */
   const within = (rest: string) =>
-    `${base.slice(0, NAME_MAX - rest.length).replace(/-+$/u, "")}${rest}`;
+    `${base.slice(0, ENVIRONMENT_NAME_MAX - rest.length).replace(/-+$/u, "")}${rest}`;
   const used = new Set(taken);
   if (!used.has(within(""))) return within("");
   for (let suffix = 2; suffix <= LAST_SUFFIX; suffix += 1) {
@@ -59,11 +59,14 @@ export function deriveEnvironmentName(
   return undefined;
 }
 
-/** Why a name a person gave an environment is refused (main D11; longer than `NAME_MAX`), or nothing. */
+/**
+ * Why a name a person gave an environment is refused (main D11; longer than
+ * `ENVIRONMENT_NAME_MAX`), or nothing.
+ */
 export function environmentNameProblem(
   name: string,
 ): "environment_name_missing" | "environment_name_long" | "environment_name_invalid" | undefined {
   if (name.trim().length === 0) return "environment_name_missing";
-  if (name.length > NAME_MAX) return "environment_name_long";
+  if (name.length > ENVIRONMENT_NAME_MAX) return "environment_name_long";
   return NAME.test(name) ? undefined : "environment_name_invalid";
 }
