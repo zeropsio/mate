@@ -549,18 +549,34 @@ describe("a Finish setup that stopped", () => {
       finishing: true,
     });
 
+  const atImport: MatePressState = { ...STOPPED, step: "import-container" };
+
   it.each([
-    { case: "on a Mate with its container: said, then gone", container: false, after: undefined },
     {
-      case: "bringing its container: kept, for its own view's Try again",
+      case: "on a Mate with its container: said, then gone",
+      container: false,
+      stopped: STOPPED,
+      after: undefined,
+    },
+    {
+      // Pass 32 review: its container came, then its close-off stopped — the Mate has its
+      // container, and its row must not say it stopped for good.
+      case: "after bringing its container: said, then gone",
       container: true,
+      stopped: STOPPED,
+      after: undefined,
+    },
+    {
+      case: "at bringing its container: kept, for its own view's Try again",
+      container: true,
+      stopped: atImport,
       after: "failed",
     },
-  ])("$case", ({ container, after }) => {
+  ])("$case", ({ container, stopped, after }) => {
     vi.useFakeTimers();
     try {
       begin(container);
-      settlePress("p-stop", STOPPED);
+      settlePress("p-stop", stopped);
       expect(finishSetupRowLine(readMatePress("p-stop"))).toBe("Setup stopped");
       vi.advanceTimersByTime(STOPPED_SHOWN_MS);
       expect(readMatePress("p-stop")?.state.kind).toBe(after);
@@ -572,19 +588,27 @@ describe("a Finish setup that stopped", () => {
 
   it.each([
     {
-      case: "on a Mate with its container: it was not set up already",
+      case: "on a Mate with its container: it was set up already",
       container: false,
+      stopped: STOPPED,
       why: undefined,
     },
     {
-      case: "bringing its container: its container never came",
+      case: "after bringing its container: it has its container",
       container: true,
+      stopped: STOPPED,
+      why: undefined,
+    },
+    {
+      case: "at bringing its container: its container never came",
+      container: true,
+      stopped: atImport,
       why: "Zerops refused the change",
     },
-  ])("$case", ({ container, why }) => {
+  ])("$case", ({ container, stopped, why }) => {
     try {
       begin(container);
-      settlePress("p-stop", STOPPED);
+      settlePress("p-stop", stopped);
       expect(pressComingInput([readMatePress("p-stop")!], "p-stop").setUpFailed).toBe(why);
     } finally {
       forgetPress("p-stop");
