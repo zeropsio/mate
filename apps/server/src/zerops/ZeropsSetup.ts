@@ -442,9 +442,14 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* recordOf;
       const ran = record !== undefined && RAN.has(record.source);
-      // Only a marked Mate whose stand-up is still pending reads the tags: a Mate made
-      // before has its browser's stand-up, and a settled one has its record.
-      const tagList = marked && record === undefined ? yield* tags : undefined;
+      const signedInAt = yield* Ref.get(signinAt);
+      // Only a marked Mate reads the tags, and only for what its record cannot say: a stand-up
+      // still pending, or — settled as never due — a sign-in not seen yet. A Mate made before
+      // has its browser's stand-up, and one that ran has its sign-in in its record.
+      const tagList =
+        marked && (record === undefined || (!ran && signedInAt === undefined))
+          ? yield* tags
+          : undefined;
       const requestedBy = tagList === undefined ? undefined : standUpRequestedBy(tagList);
       const signedIn =
         ran ||
@@ -452,8 +457,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           (requestedBy === undefined
             ? Object.keys(parseSignerTags(tagList)).length > 0
             : standUpSigners(tagList, requestedBy).length > 0));
-      // The sign-in is known from a stand-up that ran, or from the tags read for one pending.
-      const signinKnown = ran || (marked && record === undefined);
+      // The sign-in is known from a stand-up that ran, from the tags read, or once seen: a step
+      // once done stays done.
+      const signinKnown = ran || marked || signedInAt !== undefined;
       return setupDocument({
         now: yield* nowIso,
         startedAt,
