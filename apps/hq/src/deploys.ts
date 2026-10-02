@@ -77,6 +77,20 @@ export interface DeploysOptions {
   readonly patience?: Duration.Duration;
 }
 
+/** An environment the migration brought, as `Deploys.hold` left each of its services. */
+export interface HeldEnvironment {
+  readonly projectId: string;
+  readonly name: string;
+  readonly services: ReadonlyArray<{
+    readonly service: string;
+    /** The commit it is wanted at. */
+    readonly sha: string;
+    readonly state: "live" | "held";
+    /** What it runs: the commit its version's name spells, else that name. */
+    readonly runs: string;
+  }>;
+}
+
 /** A person's ask HQ refused: a code, and the reason (a permission's, or the deploy's own). */
 export class DeployRefused extends Schema.TaggedError<DeployRefused>()("DeployRefused", {
   code: Schema.Literals(["forbidden", "environment_not_found", "deploy_not_found", "conflict"]),
@@ -109,6 +123,23 @@ export class Deploys extends Context.Service<
     ) => Effect.Effect<void, DeployRefused | NotLeader | SqlError | ZeropsError>;
     /** Ticks after every change of a deploy's record, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
+    /**
+     * Migration only (T13; it goes with T14): the environments of `projectIds` as the import
+     * brought them — no key yet, so read with HQ's own `credential`. A service that runs the
+     * commit it is wanted at is live; any other is held: its deploy's record is the build's own
+     * failure, final until a person's Run (B37), in HQ's words for why. Whatever a keyless pass
+     * recorded before is overridden, so a first key deploys nothing nobody asked for.
+     */
+    readonly hold: (
+      projectIds: ReadonlyArray<string>,
+      credential: Redacted.Redacted,
+    ) => Effect.Effect<ReadonlyArray<HeldEnvironment>, NotLeader | SqlError | ZeropsError>;
+    /**
+     * Migration only (T13; it goes with T14): every tier of the applications `appIds`' environments
+     * seen as it is now, as a tier first seen would be — so the recipe the import rewrote is the
+     * baseline, and no pass takes the rewrite for a change to import.
+     */
+    readonly baseline: (appIds: ReadonlyArray<string>) => Effect.Effect<void, NotLeader | SqlError>;
   }
 >()("@t3tools/hq/deploys") {}
 
@@ -154,6 +185,14 @@ const runs = (service: ZeropsService, sha: string) =>
   service.named !== null &&
   service.activeVersionId === service.named.id &&
   sameCommit(versionSha(service.named.name), sha);
+
+/** What a service runs, in a person's words: the commit its version's name spells, else that name. */
+const runningOf = (service: ZeropsService | undefined) => {
+  if (service === undefined) return "nothing";
+  if (service.named === null) return "a version with no name";
+  const spelled = versionSha(service.named.name);
+  return spelled === "" ? service.named.name : short(spelled);
+};
 
 /** What a Zerops failure means for a deploy: a verdict on the commit, or HQ's own refusal. */
 const zeropsEnded = (target: Target, error: ZeropsError): Ended => {
@@ -579,9 +618,7 @@ export const deploysLayer = (
             yield* Effect.logWarning("tier refused", { appId, tier, problem: declared.problem });
             continue;
           }
-          const digest = NodeCrypto.createHash("sha256")
-            .update(read.value.importYaml)
-            .digest("hex");
+          const digest = digestOf(read.value.importYaml);
           const [seen] = yield* sql<{
             readonly digest: string;
             readonly blocks: Readonly<Record<string, string>>;
@@ -600,18 +637,27 @@ export const deploysLayer = (
             if (!done) everywhere = false;
           }
           if (!everywhere) continue;
-          const blocks = encodeBlocks(
-            Object.fromEntries(
-              declared.services.map((service) => [service.hostname, service.block]),
-            ),
-          );
-          yield* leader.write(sql`
-            INSERT INTO hq_recipe_seen (app_id, tier, digest, blocks)
-            VALUES (${appId}::uuid, ${tier}, ${digest}, ${blocks}::jsonb)
-            ON CONFLICT (app_id, tier) DO UPDATE SET
-              digest = EXCLUDED.digest, blocks = EXCLUDED.blocks, seen_at = now()`);
+          yield* see(appId, tier, digest, declared.services);
         }
       });
+
+      /** A tier's import file as HQ compares it with what it last saw. */
+      const digestOf = (importYaml: string) =>
+        NodeCrypto.createHash("sha256").update(importYaml).digest("hex");
+
+      /** What HQ saw of a tier now `digest`, declaring `services`. */
+      const see = (
+        appId: string,
+        tier: "stage" | "production",
+        digest: string,
+        services: ReadonlyArray<TierService>,
+      ) =>
+        leader.write(sql`
+          INSERT INTO hq_recipe_seen (app_id, tier, digest, blocks)
+          VALUES (${appId}::uuid, ${tier}, ${digest},
+            ${encodeBlocks(Object.fromEntries(services.map((service) => [service.hostname, service.block])))}::jsonb)
+          ON CONFLICT (app_id, tier) DO UPDATE SET
+            digest = EXCLUDED.digest, blocks = EXCLUDED.blocks, seen_at = now()`);
 
       /**
        * One environment against its tier: the services it lacks imported — none where HQ sees the
@@ -845,7 +891,57 @@ export const deploysLayer = (
         ),
       );
 
+      const baseline: Deploys["Service"]["baseline"] = (appIds) =>
+        Effect.gen(function* () {
+          const tiers = yield* sql<{
+            readonly app_id: string;
+            readonly tier: "stage" | "production";
+          }>`
+            SELECT DISTINCT app_id::text AS app_id, tier FROM hq_environment
+            WHERE ${sql.in("app_id", appIds)}`;
+          for (const { app_id: appId, tier } of tiers) {
+            const read = yield* recipes.read(appId, tier).pipe(Effect.option);
+            if (Option.isNone(read) || read.value.state === "absent") continue;
+            const declared = tierServices(read.value.importYaml);
+            if (!declared.ok) continue;
+            yield* see(appId, tier, digestOf(read.value.importYaml), declared.services);
+          }
+        });
+
+      const hold: Deploys["Service"]["hold"] = (projectIds, credential) =>
+        Effect.gen(function* () {
+          const held: Array<HeldEnvironment> = [];
+          for (const { projectId, targets } of yield* wanted) {
+            if (!projectIds.includes(projectId)) continue;
+            const services = yield* zerops.services(projectId)(credential);
+            const states: Array<HeldEnvironment["services"][number]> = [];
+            for (const target of targets) {
+              const service = services.find((candidate) => candidate.name === target.service);
+              const now = runningOf(service);
+              const live = service !== undefined && runs(service, target.sha);
+              yield* record(
+                target,
+                live
+                  ? { state: "live" }
+                  : job(
+                      `Held at migration: ${target.service} runs ${now}; Run brings it to ${short(target.sha)}.`,
+                    ),
+              );
+              states.push({
+                service: target.service,
+                sha: target.sha,
+                state: live ? "live" : "held",
+                runs: now,
+              });
+            }
+            held.push({ projectId, name: targets[0]?.envName ?? "", services: states });
+          }
+          return held;
+        });
+
       return Deploys.of({
+        baseline,
+        hold,
         catchUp: Effect.flatMap(Ref.get(leading), (pass) =>
           Option.isSome(pass)
             ? pass.value(true)

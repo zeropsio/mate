@@ -14,6 +14,11 @@
  *
  * The run writes what the records say and no more: no deploy token (an admin mints each anew), no
  * event beyond `main` as the repository brought it, and the people it names are the bundle's.
+ * Main's tiers build from Gitea, which HQ does not deploy from: one commit of Core's on each
+ * `group`'s `main` makes them build from HQ (`importTiers.ts`), what they now say is the
+ * baseline every later change of the recipe is weighed against (`Deploys.baseline`), and the last
+ * item holds every environment brought where a service does not run what it is wanted at
+ * (`Deploys.hold`): an admin's first key then deploys and imports nothing nobody asked for.
  *
  * @module importJob
  */
@@ -35,9 +40,12 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { TIER_SOURCES } from "./environments.ts";
 import { appendEvent } from "./gitEvents.ts";
+import { Deploys, type HeldEnvironment } from "./deploys.ts";
+import { rewriteTier } from "./importTiers.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import {
   type Bundle,
+  type BundleApp,
   type BundleChange,
   bundleProblems,
   listedFile,
@@ -53,6 +61,21 @@ export const ImportReport = Schema.Struct({
   mergedOtherwise: Schema.Array(Schema.String),
   /** The Mates whose container has not enrolled with this HQ yet. */
   notEnrolled: Schema.Array(Schema.String),
+  /** What the recipes' tiers name of Gitea that the rewrite left as it is, by application and tier. */
+  recipeNotes: Schema.Array(Schema.String),
+  /**
+   * Each environment brought, in the bundle's order: at its target (every service runs what it is
+   * wanted at), held (with each service's gap), or with nothing wanted yet.
+   */
+  environments: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      state: Schema.Literals(["at_target", "held", "nothing_wanted"]),
+      gaps: Schema.Array(
+        Schema.Struct({ service: Schema.String, runs: Schema.String, wanted: Schema.String }),
+      ),
+    }),
+  ),
 });
 export type ImportReport = typeof ImportReport.Type;
 
@@ -83,6 +106,45 @@ const encodeTarget = Schema.encodeSync(
 );
 const encodeReport = Schema.encodeSync(Schema.fromJsonString(ImportReport));
 const decodeTarget = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String));
+const HeldEnvironments = Schema.Array(
+  Schema.Struct({
+    projectId: Schema.String,
+    name: Schema.String,
+    services: Schema.Array(
+      Schema.Struct({
+        service: Schema.String,
+        sha: Schema.String,
+        state: Schema.Literals(["live", "held"]),
+        runs: Schema.String,
+      }),
+    ),
+  }),
+);
+const encodeHeld = Schema.encodeSync(Schema.fromJsonString(HeldEnvironments));
+const decodeHeld = Schema.decodeUnknownSync(Schema.fromJsonString(HeldEnvironments));
+
+/** Who Core's own commits are by. */
+const HQ_AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
+/** The largest tier the import reads. */
+const TIER_MAX = 1024 * 1024;
+
+/** The `group` repository's `main` as the bundle brings it. */
+const bundleMainOf = (app: BundleApp) =>
+  app.repos
+    .find((repo) => repo.name === RECIPE_REPO)
+    ?.refs.find((ref) => ref.ref === "refs/heads/main")?.sha;
+
+/** Each tier of `app` as it builds from HQ at `hq`, the application being `appId`. */
+const plannedTiers = (app: BundleApp, hq: string, appId: string) =>
+  app.tiers.map((tier) => ({
+    tier,
+    rewrite: rewriteTier(tier.content, {
+      host: app.gitea.host,
+      owner: app.gitea.owner,
+      repos: app.repos.map((repo) => repo.name),
+      to: (repo) => `${hq}/git/${appId}/${repo}.git`,
+    }),
+  }));
 
 const changeKey = (change: Pick<BundleChange, "app" | "repo" | "number">) =>
   `${change.app}/${change.repo}#${String(change.number)}`;
@@ -102,13 +164,14 @@ export interface ImportsOptions {
 
 export const importsLayer = (
   options: ImportsOptions,
-): Layer.Layer<never, never, Leader | SqlClient.SqlClient | GitHost | ZeropsApi> =>
+): Layer.Layer<never, never, Leader | SqlClient.SqlClient | GitHost | ZeropsApi | Deploys> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const leader = yield* Leader;
       const sql = yield* SqlClient.SqlClient;
       const gitHost = yield* GitHost;
       const api = yield* ZeropsApi;
+      const deploys = yield* Deploys;
 
       const address = Effect.gen(function* () {
         if (Option.isNone(options.credential)) return yield* failed("HQ has no credential");
@@ -199,6 +262,19 @@ export const importsLayer = (
               );
             }
           }
+          // Each recipe builds from HQ: one commit of Core's on its group's main, once.
+          for (const app of bundle.mapping.apps) {
+            if (app.tiers.length === 0) continue;
+            const appId = appIdOf(app.key);
+            let made = "";
+            yield* item(
+              `recipe:${app.key}`,
+              Effect.sync(() => ({ commit: made })),
+              Effect.gen(function* () {
+                made = yield* rewritten(git, bundle.digest, app, hq, appId);
+              }),
+            );
+          }
           for (const change of bundle.changes) {
             for (const attachment of change.attachments) {
               yield* item(
@@ -213,7 +289,34 @@ export const importsLayer = (
               released(git, appIdOf(release.app), release),
             );
           }
-          return yield* verify(git, bundle, appIdOf).pipe(
+          // What the recipes say now is what every later change of them is weighed against.
+          yield* item(
+            "baseline",
+            Effect.sync(() => ({})),
+            deploys.baseline(bundle.mapping.apps.map((app) => appIdOf(app.key))),
+          );
+          // Held before the run is done: no environment it brought deploys what nobody asked for.
+          let held: ReadonlyArray<HeldEnvironment> = [];
+          yield* item(
+            "hold",
+            Effect.sync(() => ({ held: encodeHeld(held) })),
+            Effect.gen(function* () {
+              if (Option.isNone(options.credential)) return yield* failed("HQ has no credential");
+              held = yield* deploys.hold(
+                bundle.mapping.apps.flatMap((app) => app.environments.map((env) => env.projectId)),
+                options.credential.value,
+              );
+            }),
+          );
+          const kept = decodeHeld(done.get("hold")?.["held"] ?? "[]");
+          return yield* verify(
+            git,
+            bundle,
+            appIdOf,
+            kept,
+            hq,
+            (key) => done.get(`recipe:${key}`)?.["commit"] ?? "",
+          ).pipe(
             Effect.mapError((error) =>
               error._tag === "ImportFailed" ? error : failed(`verification: ${wordsOf(error)}`),
             ),
@@ -337,6 +440,45 @@ export const importsLayer = (
           return { main };
         });
 
+      /**
+       * The recipe of `app` building from HQ: its tiers, as the bundle froze them, rewritten in one
+       * commit of Core's on its group's `main`, its trailer naming the bundle; none where nothing
+       * moves. A main already at that commit — an earlier run's, whose item did not land — is it.
+       */
+      const rewritten = (git: HqGit, digest: string, app: BundleApp, hq: string, appId: string) =>
+        Effect.gen(function* () {
+          const at = { appId, id: RECIPE_REPO };
+          const base = bundleMainOf(app);
+          const main = yield* mainOf(git, at);
+          const message = `Core: the recipe builds from HQ\n\nHQ-Import: ${digest}`;
+          if (main !== base) {
+            if (main === null) return yield* failed("the group's main is not the bundle's");
+            const head = yield* git.commit(at, main);
+            if (head.parents[0] === base && head.message === message) return main;
+            return yield* failed("the group's main is not the bundle's");
+          }
+          const planned = plannedTiers(app, hq, appId);
+          for (const { tier } of planned) {
+            const read = yield* git.file(at, main, tier.path, TIER_MAX);
+            if (read.truncated || read.content.toString("utf8") !== tier.content)
+              return yield* failed(`${tier.path} is not the bundle's`);
+          }
+          const files = Object.fromEntries(
+            planned
+              .filter(({ rewrite }) => rewrite.rewritten.length > 0)
+              .map(({ tier, rewrite }) => [tier.path, rewrite.content]),
+          );
+          if (Object.keys(files).length === 0) return "";
+          const made = yield* git.commitFiles(at, "refs/heads/main", {
+            files,
+            message,
+            author: HQ_AUTHOR,
+            expectedHead: main,
+          });
+          if (!("sha" in made)) return yield* failed("the group's main moved");
+          return made.sha;
+        });
+
       /** A picture its change's description links: HQ's now, and the description links it at HQ. */
       const picture = (
         bundle: Bundle,
@@ -385,7 +527,14 @@ export const importsLayer = (
         });
 
       /** The bundle's counts, numbers, refs and verdicts as HQ now holds them; a difference fails. */
-      const verify = (git: HqGit, bundle: Bundle, appIdOf: (key: string) => string) =>
+      const verify = (
+        git: HqGit,
+        bundle: Bundle,
+        appIdOf: (key: string) => string,
+        held: ReadonlyArray<HeldEnvironment>,
+        hq: string,
+        recipeOf: (key: string) => string,
+      ) =>
         Effect.gen(function* () {
           const differences: Array<string> = [];
           const appIds = bundle.mapping.apps.map((app) => appIdOf(app.key));
@@ -458,10 +607,16 @@ export const importsLayer = (
               const changesHere = changes.filter(
                 (change) => change.app === app.key && change.repo === repo.name,
               );
+              // The recipe's main is the bundle's, or Core's one commit on it.
+              const recipe = repo.name === RECIPE_REPO ? recipeOf(app.key) : "";
               const wanted = [
                 ...repo.refs
                   .filter((ref) => ref.ref.startsWith("refs/heads/"))
-                  .map((ref) => `${ref.ref} ${ref.sha}`),
+                  .map((ref) =>
+                    ref.ref === "refs/heads/main" && recipe !== ""
+                      ? `${ref.ref} ${recipe}`
+                      : `${ref.ref} ${ref.sha}`,
+                  ),
                 ...changesHere.map(
                   (change) =>
                     `refs/heads/mate/${change.mateProjectId}/${String(change.number)} ${change.head}`,
@@ -506,6 +661,36 @@ export const importsLayer = (
                 `release ${release.app} ${release.tag}: its tag is not at its commit`,
               );
           }
+          // Core's commit on each recipe: on the bundle's main, touching only the builds it moved.
+          for (const app of bundle.mapping.apps) {
+            const recipe = recipeOf(app.key);
+            const planned = plannedTiers(app, hq, appIdOf(app.key));
+            const moved = planned.filter(({ rewrite }) => rewrite.rewritten.length > 0);
+            if (recipe === "") {
+              if (moved.length > 0)
+                differences.push(`app ${app.key}: its recipe was not rewritten`);
+              continue;
+            }
+            const at = { appId: appIdOf(app.key), id: RECIPE_REPO };
+            const commit = yield* git.commit(at, recipe);
+            if (
+              commit.parents.join(" ") !== (bundleMainOf(app) ?? "") ||
+              commit.files
+                .map((file) => file.path)
+                .sort()
+                .join("\n") !==
+                moved
+                  .map(({ tier }) => tier.path)
+                  .sort()
+                  .join("\n")
+            )
+              differences.push(`app ${app.key}: its recipe's commit is not the rewrite alone`);
+            for (const { tier, rewrite } of planned) {
+              const read = yield* git.file(at, recipe, tier.path, TIER_MAX);
+              if (read.content.toString("utf8") !== rewrite.content)
+                differences.push(`app ${app.key}: ${tier.path} is not the rewrite of the bundle's`);
+            }
+          }
           if (differences.length > 0)
             return yield* failed(`verification: ${differences.join("; ")}`);
           const enrolled = new Set(
@@ -519,6 +704,33 @@ export const importsLayer = (
             notEnrolled: mates
               .map((mate) => mate.projectId)
               .filter((projectId) => !enrolled.has(projectId)),
+            recipeNotes: bundle.mapping.apps.flatMap((app) =>
+              plannedTiers(app, hq, appIdOf(app.key)).flatMap(({ tier, rewrite }) =>
+                rewrite.notes.map((note) => `${app.key} ${tier.path}: ${note}`),
+              ),
+            ),
+            environments: bundle.mapping.apps.flatMap((app) =>
+              app.environments.map((env) => {
+                const found = held.find((entry) => entry.projectId === env.projectId);
+                const gaps = (found?.services ?? [])
+                  .filter((service) => service.state === "held")
+                  .map((service) => ({
+                    service: service.service,
+                    runs: service.runs,
+                    wanted: service.sha.slice(0, 7),
+                  }));
+                return {
+                  name: env.name,
+                  state:
+                    found === undefined || found.services.length === 0
+                      ? ("nothing_wanted" as const)
+                      : gaps.length > 0
+                        ? ("held" as const)
+                        : ("at_target" as const),
+                  gaps,
+                };
+              }),
+            ),
           } satisfies ImportReport;
         });
 
