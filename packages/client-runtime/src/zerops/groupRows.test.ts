@@ -198,6 +198,23 @@ describe("environmentRow", () => {
     environment: "acme-stage",
   };
 
+  it("names the service the platform names a split stop by — the first by hostname that runs", () => {
+    // The platform's stop is its first running service by hostname (`stopDeploymentOf`); the row
+    // compares its version with that one, so it names the same service whatever the order read.
+    const web = "e1e2e3e4e5e6e7e8e9e0e1e2e3e4e5e6e7e8e9e0";
+    const api = "a1a2a3a4a5a6a7a8a9a0a1a2a3a4a5a6a7a8a9a0";
+    const row = environmentRow({
+      ...base,
+      sources: ["main"],
+      services: [
+        service("web", "success", { environment: base.environment, version: web }),
+        service("cache", undefined),
+        service("api", "success", { environment: base.environment, version: api }),
+      ],
+    });
+    expect(row.version.sha).toBe(api);
+  });
+
   it("names its source and nothing else before the first deploy", () => {
     const row = environmentRow({
       ...base,

@@ -9,6 +9,7 @@ import type {
 } from "../data/types.ts";
 import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
+import { deployWord } from "../groupDeploys.ts";
 import { groupFlow } from "../groupFlow.ts";
 import { deployedVersion, environmentRow, type EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
@@ -20,6 +21,7 @@ import {
   deployBuilding,
   NOTHING_DEPLOYED,
   stopServices,
+  stopTone,
   stopView,
   type Deployment,
   type StopReads,
@@ -143,6 +145,24 @@ const ROWS: ReadonlyArray<{ readonly name: string; readonly row: EnvironmentRow 
 ];
 
 describe("stopView", () => {
+  it("colours a stop as stopTone does, in every state and with every row", () => {
+    const toned = ROWS.flatMap((entry) =>
+      entry.row === undefined
+        ? [entry]
+        : (["neutral", "pending", "good", "bad"] as const).map((tone) => ({
+            name: `${entry.name}, ${tone}`,
+            row: { ...entry.row!, tone },
+          })),
+    );
+    for (const { name, shown } of STATES) {
+      for (const entry of toned) {
+        expect(stopTone(shown, entry.row), `${name}, ${entry.name}`).toBe(
+          stopView({ deployment: shown, row: entry.row, nowMs: NOW }).tone,
+        );
+      }
+    }
+  });
+
   it("unknown never reads Nothing deployed yet", () => {
     for (const { name, shown } of STATES) {
       for (const entry of ROWS) {
@@ -247,7 +267,8 @@ describe("stopView", () => {
         },
         "good",
       ),
-      expected: { tone: "neutral", word: "Deployed", line: "v1.4.0" },
+      // Named by the platform; Gitea was read, and the platform says it runs.
+      expected: { tone: "good", word: "Deployed", line: "v1.4.0" },
     },
   ])("$name", ({ row: read, expected }) => {
     const view = stopView({ deployment: known(RUNNING), row: read, nowMs: NOW });
@@ -255,7 +276,7 @@ describe("stopView", () => {
     expect(view.version?.label).toBe(expected.line);
   });
 
-  it("never names or colours a stop by a version the deploy half read that does not run there", () => {
+  it("never names or fails a stop by a version the deploy half read that does not run there", () => {
     // userData moved to a build that then failed; the service still runs RUNNING (A11, A14).
     const failedBuild = "9d8e7f6000000000000000000000000000000000";
     const read = row(
@@ -269,7 +290,7 @@ describe("stopView", () => {
       "bad",
     );
     expect(stopView({ deployment: known(RUNNING), row: read, nowMs: NOW })).toMatchObject({
-      tone: "neutral",
+      tone: "good",
       word: "Deployed",
       line: "v1.4.0",
       version: RUNNING.version,
@@ -941,6 +962,20 @@ describe("a deploy of a commit only moves forward", () => {
       state: "deployed",
     },
     {
+      step: "the platform's answer goes unknown on a reconnect, the stale read standing",
+      deployment: { state: "reading", sinceMs: 0, attempt: 1 },
+      row: read(NEW, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
+      step: "the active version arrives unstated, the stale read standing",
+      deployment: { state: "unread", waitingFor: null },
+      row: read(NEW, "pending"),
+      word: "Deployed",
+      state: "deployed",
+    },
+    {
       step: "the broker's success lands",
       deployment: runs(NEW),
       row: read(NEW, "success"),
@@ -962,16 +997,25 @@ describe("a deploy of a commit only moves forward", () => {
       state: "deployed",
     },
     {
-      step: "a failure after Deployed is a failed redeploy, a new fact",
+      step: "a failure on the commit it runs says so",
       deployment: runs(NEWER),
       row: read(NEWER, "failure"),
       word: "Failed",
       state: "failed",
     },
-  ] as const;
+  ] as const satisfies ReadonlyArray<{
+    step: string;
+    deployment: Shown<Deployment>;
+    row: EnvironmentRow;
+    word: string;
+    state: string;
+  }>;
 
+  // Every surface that words a stop: its page (`stopView`), the menu, the chips and the collapsed
+  // card (the group flow's stop), and the expanded card and the group page's rows (`stopTone`).
   it.each(STEPS)("$step: $word", ({ deployment, row, word, state }) => {
     expect(stopView({ deployment, row, nowMs: NOW }).word).toBe(word);
     expect(flowState(deployment, row)).toBe(state);
+    expect(deployWord(stopTone(deployment, row))).toBe(word);
   });
 });
