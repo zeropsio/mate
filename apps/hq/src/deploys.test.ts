@@ -464,22 +464,25 @@ describe("deploys", () => {
     // Main B20: one queue per environment, the newest commit wins — commits main moved past while
     // a deploy ran are never deployed.
     it.effect("deploys only the newest commit once a running deploy ends", () =>
-      withDeploys(({ appId, world, tiers, commit, until }) =>
-        Effect.gen(function* () {
-          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-          world.outcome = () => "BUILDING";
-          const first = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* Effect.sleep(Duration.millis(150));
-          yield* commit("web", { "index.js": "two\n" });
-          const third = yield* commit("web", { "index.js": "three\n" });
-          yield* Effect.sleep(Duration.millis(150));
-          world.outcome = () => "ACTIVE";
-          yield* until((rows) => rows.some((row) => row.sha === third && row.state === "live"));
-          assert.deepStrictEqual(versions(world), [
-            `main ${first.slice(0, 7)}`,
-            `main ${third.slice(0, 7)}`,
-          ]);
-        }),
+      withDeploys(
+        ({ appId, world, tiers, commit, until }) =>
+          Effect.gen(function* () {
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            world.outcome = () => "BUILDING";
+            const first = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("deploying"));
+            yield* commit("web", { "index.js": "two\n" });
+            const third = yield* commit("web", { "index.js": "three\n" });
+            yield* until((rows) => rows.some((row) => row.sha === third));
+            world.outcome = () => "ACTIVE";
+            yield* until((rows) => rows.some((row) => row.sha === third && row.state === "live"));
+            assert.deepStrictEqual(versions(world), [
+              `main ${first.slice(0, 7)}`,
+              `main ${third.slice(0, 7)}`,
+            ]);
+          }),
+        // The first deploy is still running when the later commits come, however slow they are.
+        { ...FAST, patience: Duration.seconds(30) },
       ),
     );
 
