@@ -508,10 +508,17 @@ describe("candidatesNotice for a region that says nothing while it reads", () =>
   it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<CandidateRow>> }>([
     { name: "unread", listing: { state: "unread", waitingFor: null } },
     { name: "being read", listing: { state: "reading", sinceMs: 10, attempt: 1 } },
-    { name: "partial, with rows", listing: known([row("a")], "partial") },
-    { name: "partial, with none", listing: known([], "partial") },
   ])("is silent while $name", ({ listing }) => {
     expect(candidatesNotice(listing, surface, 0, { readingSilent: true })).toBeNull();
+  });
+
+  it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<CandidateRow>> }>([
+    { name: "waiting for a connection", listing: { state: "unread", waitingFor: "online" } },
+    { name: "paused in the background", listing: { state: "unread", waitingFor: "visible" } },
+    { name: "still reading over its rows", listing: known([row("a")], "partial") },
+    { name: "still reading with none", listing: known([], "partial") },
+  ])("still says why it waits when $name", ({ listing }) => {
+    expect(candidatesNotice(listing, surface, 0, { readingSilent: true })).not.toBeNull();
   });
 
   it("still says a failed read, with its one Try again", () => {

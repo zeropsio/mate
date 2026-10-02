@@ -199,8 +199,8 @@ export interface CandidatesNoticeOptions {
   /** The listing has been partial for less than `STILL_READING_PATIENCE_MS`. */
   readonly patient?: boolean;
   /**
-   * The region holds its rows' room and says nothing while they are read — the menu, beside a page
-   * that says it once (pass 30) — so only a failed read speaks there.
+   * The region holds its rows' room and says nothing while they are plainly read — the menu, beside
+   * a page that says it once (pass 30); a wait with a cause, a partial listing and a failure speak.
    */
   readonly readingSilent?: boolean;
 }
@@ -223,7 +223,11 @@ export function candidatesNotice<Row extends CandidateRow>(
   const presentation = knownPresentation(listing, surface, { nowMs, updateOffered: false });
   const message = presentation.message;
   if (message === null) return null;
-  if (options.readingSilent === true && message.tone === "quiet") return null;
+  // Only the plain read is silent there: a wait with a cause (offline, a background tab, a sign-in)
+  // and "Still reading…" over a partial listing still say why the rows are late.
+  const plainRead =
+    (listing.state === "unread" && listing.waitingFor === null) || listing.state === "reading";
+  if (options.readingSilent === true && plainRead) return null;
   const reading = listing.state === "known" && message.tone === "quiet";
   if (reading && options.patient === false && listing.value.length > 0) return null;
   return {
