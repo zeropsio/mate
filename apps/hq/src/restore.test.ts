@@ -11,7 +11,13 @@ import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 
 import { gitClient } from "../test/harness/gitClient.ts";
-import { addProject, mateWithChange, remoteOf, rowsWhere } from "../test/harness/mates.ts";
+import {
+  addProject,
+  mateInApp,
+  mateWithChange,
+  remoteOf,
+  rowsWhere,
+} from "../test/harness/mates.ts";
 import { groupCheckout, propose, stateBecomes } from "../test/harness/recipe.ts";
 import {
   type Call,
@@ -320,6 +326,43 @@ describe("a backup set, restored", () => {
             (health.body as { readonly reason?: string }).reason,
             "restore_mismatch",
           );
+        }),
+    );
+
+    // A Mate enrolled after the set is unknown to the restored HQ, and told so: zcp's keep loop reads
+    // this answer as "enroll again" (vysledky/hq-backup.md §6).
+    it.effect(
+      "tells a Mate enrolled after the set its credential is unknown, and knows the earlier",
+      () =>
+        Effect.gen(function* () {
+          const a = yield* startCore(true);
+          yield* untilHealth(a.call, "active");
+          const owner = yield* sessionFor(a.call, "door-owner");
+          const earlier = yield* mateWithChange(a.call, a.fake, owner);
+          const manifest = yield* a.backup.take;
+          addProject(a.fake, "P_LATE");
+          const late = yield* mateInApp(a.call, a.fake, owner, "P_LATE", "Later");
+          yield* a.stop;
+
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const gitRoot = yield* temporaryDir;
+          yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
+            databaseUrl: Redacted.make(url),
+            gitRoot,
+            workDir: yield* temporaryDir,
+          });
+          const b = yield* startCore(true, { url, gitRoot });
+          yield* untilHealth(b.call, "active");
+          const whoami = (auth: Readonly<Record<string, string>>) =>
+            Effect.map(b.call("GET", "/api/mate/whoami", { headers: auth }), (answer) => [
+              answer.status,
+              answer.body,
+            ]);
+          assert.deepStrictEqual(yield* whoami(late.auth), [
+            401,
+            { code: "mate_credential_required" },
+          ]);
+          assert.deepStrictEqual(yield* whoami(earlier.auth), [200, { projectId: "P_MATE" }]);
         }),
     );
 
