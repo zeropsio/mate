@@ -21,7 +21,6 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
       fixer={undefined}
       gate={{ allowed: true }}
       hasStage={false}
-      live="v0.1.56"
       name="Beviro"
       now={NOW}
       onClose={() => {}}
@@ -30,6 +29,7 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
       outcome={{ kind: "offered" }}
       permission={{ allowed: true }}
       press={{ kind: "idle" }}
+      replaces="v0.1.56"
       rows={[]}
       services={["app"]}
       tag="v0.1.57"

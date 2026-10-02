@@ -431,6 +431,7 @@ export {
   type CrewTaskReviewInput,
   type ReleaseOutcome,
   type ReleaseReviewInput,
+  type ReleaseReviewModel,
   type ReviewClose,
   type ReviewFix,
   type ReviewFixProblem,
@@ -442,7 +443,14 @@ export {
   type ReviewTone,
   type ReviewVerdict,
   type RollbackReviewInput,
+  type RollbackReviewModel,
 } from "./reviewVerdict.ts";
+export {
+  holdReleaseFacts,
+  releaseFacts,
+  releaseStageMarks,
+  type ReleaseFacts,
+} from "./releaseFacts.ts";
 export {
   changeReadout,
   type ChangeReadout,

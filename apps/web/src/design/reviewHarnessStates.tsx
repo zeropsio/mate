@@ -557,7 +557,7 @@ function Release({
       gate={{ allowed: true }}
       permission={{ allowed: true }}
       hasStage
-      live="v0.1.56"
+      replaces="v0.1.56"
       name="Beviro"
       now={NOW}
       onClose={onClose}

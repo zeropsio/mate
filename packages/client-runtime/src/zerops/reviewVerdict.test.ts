@@ -420,7 +420,7 @@ function release(over: Partial<ReleaseReviewInput> = {}): ReleaseReviewInput {
     changes: 2,
     onStage: { total: 2, running: 2 },
     services: ["app", "api"],
-    live: "v0.1.56",
+    replaces: "v0.1.56",
     outcome: { kind: "offered" },
     now: NOW,
     ...over,
@@ -530,7 +530,7 @@ describe("releaseReview", () => {
     [
       "released",
       { outcome: { kind: "released", at: undefined } },
-      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
       undefined,
     ],
     [
@@ -544,6 +544,41 @@ describe("releaseReview", () => {
     expect(review.consequence).toBe(consequence);
     expect(review.primary?.enabled).toBe(enabled);
   });
+
+  it.each<[string, ReleaseReviewInput["replaces"], string, string | undefined, string]>([
+    [
+      "the first release",
+      undefined,
+      "the first release · 2 changes",
+      undefined,
+      "Production runs v0.1.57.",
+    ],
+    [
+      "after a release production runs",
+      "v0.1.56",
+      "replaces v0.1.56 · 2 changes",
+      "Roll back to v0.1.56 from production's menu. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
+    ],
+    [
+      // Read after it landed: production runs the release itself, never a roll back to it.
+      "naming itself",
+      "v0.1.57",
+      "replaces v0.1.57 · 2 changes",
+      undefined,
+      "Production runs v0.1.57.",
+    ],
+  ])(
+    "released, %s: the header, the roll back line and the foot",
+    (_name, replaces, meta, ifWrong, foot) => {
+      const review = releaseReview(
+        release({ replaces, outcome: { kind: "released", at: undefined } }),
+      );
+      expect(review.meta.join(" · ")).toBe(meta);
+      expect(review.ifWrong).toBe(ifWrong);
+      expect(review.consequence).toBe(foot);
+    },
+  );
 
   it("hands a failed release to the person's Mate, with when and the error (S6)", () => {
     const fix = releaseReview(
