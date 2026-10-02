@@ -29,6 +29,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { FetchImplementation } from "../api.ts";
+import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords } from "./refusals.ts";
 import { structureEventOf, type HqStructureEvent } from "./stream.ts";
 
@@ -78,6 +79,11 @@ export interface HqStructure {
       readonly kind: string;
       readonly mate: HqMate | null;
     }>;
+    /**
+     * Its stage and production with their deploys (`hq/environments.ts`), to whoever reads its
+     * changes — none to one who only sees it; absent where HQ sent none this build can read.
+     */
+    readonly environments?: ReadonlyArray<HqEnvironment>;
   }>;
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type { HqChange } from "@t3tools/shared/hqChanges";
 
 import type { HqStructure } from "./client.ts";
+import type { HqEnvironment } from "./environments.ts";
 import { applyChangesEvent, applyStructureEvent, structureEventOf } from "./stream.ts";
 
 const ACME: HqStructure["apps"][number] = {
@@ -17,6 +18,41 @@ const ACME: HqStructure["apps"][number] = {
   ],
 };
 const BETA: HqStructure["apps"][number] = { id: "app-2", name: "Beta", projects: [] };
+
+/** Acme's stage, its `api` live on one commit while the next one deploys. */
+const STAGE: HqEnvironment = {
+  projectId: "p-stage",
+  tier: "stage",
+  name: "stage",
+  sources: ["main"],
+  order: 1,
+  keyHeld: true,
+  keyInvalid: false,
+  deploys: [
+    {
+      service: "api",
+      latest: {
+        sha: "b".repeat(40),
+        state: "deploying",
+        failure: null,
+        message: null,
+        appVersionId: "av-2",
+        processId: "pr-2",
+        at: "2026-10-02T10:00:00.000Z",
+      },
+      live: {
+        sha: "a".repeat(40),
+        state: "live",
+        failure: null,
+        message: null,
+        appVersionId: "av-1",
+        processId: "pr-1",
+        at: "2026-10-02T09:00:00.000Z",
+      },
+    },
+  ],
+};
+const ACME_STAGED: HqStructure["apps"][number] = { ...ACME, environments: [STAGE] };
 const LONE: HqStructure["ungrouped"][number] = {
   projectId: "p9",
   name: "scratch",
@@ -68,6 +104,23 @@ describe("structureEventOf", () => {
       "a snapshot whose changes this build cannot read still carries its structure",
       { type: "snapshot", apps: [ACME], changes: { "app-1": [{ ...CHANGE, number: 0 }] } },
       { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] }, changes: null },
+    ],
+    // SPEC §3.2b: an application's stage and production with their deploys, to whoever reads its
+    // changes; read through the contract's shape, so a set this build cannot read is not known.
+    [
+      "a snapshot carries each application's environments and their deploys",
+      { type: "snapshot", apps: [ACME_STAGED] },
+      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME_STAGED] }, changes: null },
+    ],
+    [
+      "an application whose environments this build cannot read has them unknown, itself read",
+      { type: "snapshot", apps: [{ ...ACME, environments: [{ ...STAGE, tier: "dev" }] }] },
+      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] }, changes: null },
+    ],
+    [
+      "a change carries its application's environments",
+      { type: "change", key: "app-1", value: ACME_STAGED },
+      { kind: "change", appId: "app-1", app: ACME_STAGED },
     ],
     [
       "an application's changes, whole",
