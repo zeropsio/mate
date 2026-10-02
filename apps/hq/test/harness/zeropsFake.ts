@@ -7,21 +7,53 @@
  * without the API's clock (its `Date` header): a knob for HQ's own refusal to judge without it,
  * never measured on the real API.
  *
+ * Its deploy ({@link fakeZeropsDeploy}) moves as the rig measured one with an environment's Basic
+ * user token (2026-10-02): the service's own variables name the new version as its job starts,
+ * the active version switches when it ends; an org Read only token is refused a write
+ * (`403 insufficientPermissions`). Each job ends at its first read, as `outcome` says.
+ *
  * @module test/harness/zeropsFake
  */
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
 import {
   type ZeropsApi,
+  type ZeropsDeploy,
   type ZeropsError,
   type ZeropsMember,
   type ZeropsOwnToken,
+  type ZeropsProcess,
   type ZeropsProject,
   ZeropsRefused,
+  type ZeropsService,
   ZeropsUnavailable,
 } from "../../src/zerops/api.ts";
+
+/** A service as the fake holds it: its record, changed in place by a deploy. */
+export type FakeService = { -readonly [K in keyof ZeropsService]: ZeropsService[K] };
+
+/** How a deploy's job ends at its first read: it runs, its build fails, or it is still at it. */
+export type FakeOutcome = "ACTIVE" | "BUILD_FAILED" | "BUILDING";
+
+export interface FakeAppVersion {
+  readonly id: string;
+  readonly serviceId: string;
+  readonly name: string;
+  status: string;
+  archive: Uint8Array | undefined;
+  zeropsYaml: string | undefined;
+  setup: string | undefined;
+}
+
+interface FakeJob {
+  status: ZeropsProcess["status"];
+  failure: string | null;
+  /** The version a deploy's job builds; none for a subdomain's. */
+  readonly appVersionId: string | undefined;
+}
 
 export interface FakeWorld {
   /** Members by org id. */
@@ -39,6 +71,11 @@ export interface FakeWorld {
   apiClock: boolean;
   /** Every call, as `<operation>:<credential>`, for a test that counts what a credential spent. */
   calls: Array<string>;
+  services: Array<FakeService>;
+  appVersions: Map<string, FakeAppVersion>;
+  jobs: Map<string, FakeJob>;
+  /** How a version's deploy ends; `ACTIVE` unless it says otherwise. */
+  outcome: (version: FakeAppVersion) => FakeOutcome;
 }
 
 export const emptyWorld = (): FakeWorld => ({
@@ -49,28 +86,16 @@ export const emptyWorld = (): FakeWorld => ({
   down: false,
   apiClock: true,
   calls: [],
+  services: [],
+  appVersions: new Map(),
+  jobs: new Map(),
+  outcome: () => "ACTIVE",
 });
 
 export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
   /** The token behind `credential`, as the platform would judge the call. */
   const caller = (operation: string, credential: Redacted.Redacted) =>
-    Effect.suspend((): Effect.Effect<Omit<ZeropsOwnToken, "readAtMs">, ZeropsError> => {
-      world.calls.push(`${operation}:${Redacted.value(credential)}`);
-      if (world.down) {
-        return Effect.fail(new ZeropsUnavailable({ operation, message: "fake: platform down" }));
-      }
-      const token = world.tokens.get(Redacted.value(credential));
-      return token === undefined
-        ? Effect.fail(
-            new ZeropsRefused({
-              operation,
-              reason: "unauthorized",
-              status: 401,
-              code: "notAuthorized",
-            }),
-          )
-        : Effect.succeed(token);
-    });
+    tokenOf(world, operation, credential);
 
   const inOrg = (operation: string, credential: Redacted.Redacted, orgId: string) =>
     caller(operation, credential).pipe(
@@ -128,5 +153,177 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
         ...token,
         readAtMs: world.apiClock ? now : undefined,
       })),
+    services: (projectId) => (credential) =>
+      project("services", credential, projectId).pipe(
+        Effect.as(
+          world.services
+            .filter((service) => service.projectId === projectId)
+            .map((service) => ({ ...service })),
+        ),
+      ),
+    service: (serviceId) => (credential) =>
+      serviceOf(world, "service", credential, serviceId).pipe(
+        Effect.map((service) => ({ ...service })),
+      ),
+  };
+};
+
+const notFound = (operation: string, code: string) =>
+  new ZeropsRefused({ operation, reason: "not_found", status: 400, code });
+
+/** The token behind `credential`, refused unless it is one; the platform down refuses all. */
+const tokenOf = (world: FakeWorld, operation: string, credential: Redacted.Redacted) =>
+  Effect.suspend((): Effect.Effect<Omit<ZeropsOwnToken, "readAtMs">, ZeropsError> => {
+    world.calls.push(`${operation}:${Redacted.value(credential)}`);
+    if (world.down) {
+      return Effect.fail(new ZeropsUnavailable({ operation, message: "fake: platform down" }));
+    }
+    const token = world.tokens.get(Redacted.value(credential));
+    return token === undefined
+      ? Effect.fail(
+          new ZeropsRefused({
+            operation,
+            reason: "unauthorized",
+            status: 401,
+            code: "notAuthorized",
+          }),
+        )
+      : Effect.succeed(token);
+  });
+
+/** A service the credential reads: one of a project of its org. */
+const serviceOf = (
+  world: FakeWorld,
+  operation: string,
+  credential: Redacted.Redacted,
+  serviceId: string,
+) =>
+  Effect.flatMap(tokenOf(world, operation, credential), (token) => {
+    const service = world.services.find((candidate) => candidate.id === serviceId);
+    const project = world.projects.find((candidate) => candidate.id === service?.projectId);
+    if (service === undefined || project === undefined) {
+      return Effect.fail(notFound(operation, "serviceStackNotFound"));
+    }
+    return project.orgId === token.orgId
+      ? Effect.succeed(service)
+      : Effect.fail(
+          new ZeropsRefused({
+            operation,
+            reason: "forbidden",
+            status: 403,
+            code: "insufficientPermissions",
+          }),
+        );
+  });
+
+/** A service the credential deploys to: Basic user or more there, by its org role or a grant. */
+const deployedBy = (
+  world: FakeWorld,
+  operation: string,
+  credential: Redacted.Redacted,
+  serviceId: string,
+) =>
+  Effect.flatMap(tokenOf(world, operation, credential), (token) =>
+    Effect.flatMap(serviceOf(world, operation, credential, serviceId), (service) => {
+      const grant = token.projects.find((entry) => entry.projectId === service.projectId);
+      return roleAtLeast(token.roleCode, "BASIC_USER") || roleAtLeast(grant?.roleCode, "BASIC_USER")
+        ? Effect.succeed(service)
+        : Effect.fail(
+            new ZeropsRefused({
+              operation,
+              reason: "forbidden",
+              status: 403,
+              code: "insufficientPermissions",
+            }),
+          );
+    }),
+  );
+
+export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
+  let made = 0;
+  const id = (prefix: string) => `${prefix}-${String((made += 1))}`;
+  const versionOf = (operation: string, credential: Redacted.Redacted, appVersionId: string) =>
+    Effect.flatMap(
+      Effect.suspend(() => {
+        const version = world.appVersions.get(appVersionId);
+        return version === undefined
+          ? Effect.fail(notFound(operation, "appVersionNotFound"))
+          : Effect.succeed(version);
+      }),
+      (version) => Effect.as(deployedBy(world, operation, credential, version.serviceId), version),
+    );
+  return {
+    createAppVersion: (serviceId, name) => (credential) =>
+      Effect.map(deployedBy(world, "createAppVersion", credential, serviceId), () => {
+        const version: FakeAppVersion = {
+          id: id("V"),
+          serviceId,
+          name,
+          status: "UPLOADING",
+          archive: undefined,
+          zeropsYaml: undefined,
+          setup: undefined,
+        };
+        world.appVersions.set(version.id, version);
+        return { id: version.id };
+      }),
+    upload: (appVersionId, archive) => (credential) =>
+      Effect.map(versionOf("upload", credential, appVersionId), (version) => {
+        version.archive = archive;
+      }),
+    buildAndDeploy: (appVersionId, zeropsYaml, setup) => (credential) =>
+      Effect.flatMap(versionOf("buildAndDeploy", credential, appVersionId), (version) => {
+        if (version.archive === undefined) {
+          return Effect.fail(
+            new ZeropsRefused({
+              operation: "buildAndDeploy",
+              reason: "invalid",
+              status: 400,
+              code: "appVersionNotUploaded",
+            }),
+          );
+        }
+        version.zeropsYaml = zeropsYaml;
+        version.setup = setup;
+        version.status = "BUILDING";
+        const service = world.services.find((candidate) => candidate.id === version.serviceId);
+        if (service !== undefined) service.named = { id: version.id, name: version.name };
+        const processId = id("process");
+        world.jobs.set(processId, { status: "RUNNING", failure: null, appVersionId: version.id });
+        return Effect.succeed({ processId });
+      }),
+    process: (processId) => (credential) =>
+      Effect.flatMap(tokenOf(world, "process", credential), () => {
+        const job = world.jobs.get(processId);
+        if (job === undefined) return Effect.fail(notFound("process", "processNotFound"));
+        const version =
+          job.appVersionId === undefined ? undefined : world.appVersions.get(job.appVersionId);
+        if (job.status === "RUNNING" && version !== undefined) {
+          const outcome = world.outcome(version);
+          if (outcome === "ACTIVE") {
+            for (const other of world.appVersions.values()) {
+              if (other.serviceId === version.serviceId && other.status === "ACTIVE") {
+                other.status = "BACKUP";
+              }
+            }
+            version.status = "ACTIVE";
+            job.status = "FINISHED";
+            const service = world.services.find((candidate) => candidate.id === version.serviceId);
+            if (service !== undefined) service.activeVersionId = version.id;
+          } else if (outcome === "BUILD_FAILED") {
+            version.status = "BUILD_FAILED";
+            job.status = "FAILED";
+            job.failure = "Build failed: npm run build exited 1";
+          }
+        }
+        return Effect.succeed({ status: job.status, failure: job.failure });
+      }),
+    enableSubdomainAccess: (serviceId) => (credential) =>
+      Effect.map(deployedBy(world, "enableSubdomainAccess", credential, serviceId), (service) => {
+        service.subdomainAccess = true;
+        const processId = id("process");
+        world.jobs.set(processId, { status: "FINISHED", failure: null, appVersionId: undefined });
+        return { processId };
+      }),
   };
 };
