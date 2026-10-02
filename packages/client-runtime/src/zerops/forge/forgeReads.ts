@@ -22,6 +22,12 @@
  * memo's: pending ones on its back-off, settled ones until forgotten — or, on a commit that still
  * takes contexts, on a slower back-off of their own (`forge/statusMemo.ts`).
  *
+ * The listing is also the one answer to whether the broker has made a group's org yet: a `404` is
+ * "not made yet" ({@link ForgeReads.organizations}), kept for {@link GATE_FRESH_MS} like a
+ * listing, and the next refresh's `200` is "made". A group created a moment ago is a real state
+ * its row says out loud while the broker builds it (30–80 s), and the reader's own clock takes
+ * the line away on any screen, in any tab — no page asks `GET /orgs/{o}` of its own.
+ *
  * Every open tab re-read every group whole every minute — the org's repositories, each one's open
  * and closed pull requests, the group repo's tags, files and branches — about 160 requests a
  * minute per tab (pass 31, 2026-10-02: 317 in the first 140 s after a load). Now an idle tab
@@ -164,6 +170,14 @@ export interface ForgeReads {
    */
   readonly unauthorized: () => number;
   /**
+   * Whether each org a listing answered for is made, by owner: `true` for a listing, `false` for a
+   * `404` — the broker has not made it yet. An org never answered for, or answered only with
+   * another failure, is absent: nothing is proved. The same map until an answer changes it.
+   */
+  readonly organizations: () => ReadonlyMap<string, boolean>;
+  /** Told when {@link organizations} changes; returns the unsubscribe. */
+  readonly subscribe: (listener: () => void) => () => void;
+  /**
    * Drops what is kept for an owner — or one repository, or some of its parts — and every read
    * running for it: a verb changed it, and the next read asks Gitea.
    */
@@ -187,6 +201,10 @@ interface Listing {
 
 const signatureOf = (value: unknown): string => JSON.stringify(value) ?? "";
 
+/** A Gitea 404, as the client throws it: here, an org the broker has not made yet. */
+const giteaNotFound = (cause: unknown): boolean =>
+  cause instanceof GiteaApiError && cause.status === 404;
+
 /** A Gitea 401 no token recovered, as the client throws it. */
 export const giteaUnauthorized = (cause: unknown): boolean =>
   cause instanceof GiteaApiError && cause.status === 401;
@@ -209,6 +227,15 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
   };
   const listings = new Map<string, Listing>();
   const listing = new Map<string, Promise<ReadonlyArray<GiteaRepository>>>();
+  /** Each owner's last `404`, shared like a listing while it is fresh. */
+  const notFound = new Map<string, { readonly cause: unknown; readonly atMs: number }>();
+  let organizations: ReadonlyMap<string, boolean> = new Map();
+  const listeners = new Set<() => void>();
+  const made = (owner: string, exists: boolean) => {
+    if (organizations.get(owner) === exists) return;
+    organizations = new Map(organizations).set(owner, exists);
+    for (const listener of listeners) listener();
+  };
   const kept = new Map<string, KeptRead>();
   const inFlight = new Map<
     string,
@@ -243,22 +270,44 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
     statuses,
     forget,
     unauthorized: () => unauthorized,
+    organizations: () => organizations,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
 
     repositories: (owner, load) => {
       const held = listings.get(owner);
       const at = now();
-      if (held !== undefined && at - held.atMs < GATE_FRESH_MS) {
+      const missing = notFound.get(owner);
+      if (missing !== undefined && at - missing.atMs < GATE_FRESH_MS) {
+        return Promise.reject(missing.cause);
+      }
+      if (missing === undefined && held !== undefined && at - held.atMs < GATE_FRESH_MS) {
         return Promise.resolve(held.repositories);
       }
       const running = listing.get(owner);
       if (running !== undefined) return running;
       const read = counted(load)()
-        .then((repositories) => {
-          const plan = planGateReads(listings.get(owner)?.gate, repositories, at);
-          for (const [repo, parts] of plan.reread) forget(owner, repo, parts);
-          listings.set(owner, { gate: plan.gate, repositories, atMs: at });
-          return repositories;
-        })
+        .then(
+          (repositories) => {
+            const plan = planGateReads(listings.get(owner)?.gate, repositories, at);
+            for (const [repo, parts] of plan.reread) forget(owner, repo, parts);
+            listings.set(owner, { gate: plan.gate, repositories, atMs: at });
+            notFound.delete(owner);
+            made(owner, true);
+            return repositories;
+          },
+          (cause: unknown) => {
+            if (giteaNotFound(cause)) {
+              notFound.set(owner, { cause, atMs: at });
+              made(owner, false);
+            }
+            throw cause;
+          },
+        )
         .finally(() => {
           listing.delete(owner);
         });
