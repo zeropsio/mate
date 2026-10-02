@@ -826,7 +826,8 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
           state: "released",
           tone: "done",
           title: `Released ${tag}`,
-          why: age === undefined ? "Production runs it" : `Production runs it · ${age}`,
+          // The age is the tag's: the landing's own moment is not read.
+          why: age === undefined ? "Production runs it" : `Production runs it · tagged ${age}`,
           fix: undefined,
         },
         consequence:
@@ -1071,7 +1072,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
           state: "rolled-back",
           tone: "done",
           title: `Rolled back to ${tag}`,
-          why: `Production runs its commits again, as ${nextTag}${age === undefined ? "" : ` · ${age}`}`,
+          why: `Production runs its commits again, as ${nextTag}${age === undefined ? "" : ` · tagged ${age}`}`,
           fix: undefined,
         },
         consequence: `Production runs ${tag}'s commits again, as ${nextTag}.`,

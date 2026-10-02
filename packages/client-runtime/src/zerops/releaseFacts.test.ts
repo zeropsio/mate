@@ -195,7 +195,7 @@ describe("a finished release keeps the facts it was made with", () => {
     expect(released?.model.verdict).toMatchObject({
       state: "released",
       title: "Released v0.1.0",
-      why: "Production runs it · just now",
+      why: "Production runs it · tagged just now",
     });
     expect(released?.model.consequence).toBe("Production runs v0.1.0.");
   });
@@ -375,9 +375,11 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
       later(31, row("v0.1.1", undefined)),
       later(40, row("v0.1.1", "live")),
     ]);
+    // The age is the tag's, not the landing's.
     expect(steps.at(-1)?.model.verdict).toMatchObject({
       state: "released",
       title: "Released v0.1.1",
+      why: "Production runs it · tagged 40 minutes ago",
     });
   });
 

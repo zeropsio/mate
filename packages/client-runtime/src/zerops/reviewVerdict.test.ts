@@ -481,7 +481,7 @@ describe("releaseReview", () => {
         state: "released",
         tone: "done",
         title: "Released v0.1.57",
-        why: "Production runs it · 3 minutes ago",
+        why: "Production runs it · tagged 3 minutes ago",
       },
     ],
     [
@@ -693,7 +693,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         state: "rolled-back",
         tone: "done",
         title: "Rolled back to v0.1.55",
-        why: "Production runs its commits again, as v0.1.58 · 3 minutes ago",
+        why: "Production runs its commits again, as v0.1.58 · tagged 3 minutes ago",
       },
       "Production runs v0.1.55's commits again, as v0.1.58.",
     ],
