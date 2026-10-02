@@ -1,9 +1,11 @@
+import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -11,6 +13,8 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { mateLiveLayer } from "./mateLive.ts";
+import { treeMigrations } from "./migrationFiles.ts";
+import { migrate } from "./migrations.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, structureLayer } from "./structure.ts";
 import { type ZeropsMember, type ZeropsProject, ZeropsUnavailable } from "./zerops/api.ts";
@@ -71,16 +75,21 @@ const VIEW: Org = {
 
 /**
  * Structure over a fresh database and a Zerops whose view is `view`; a project exists while the
- * view has it, and `down` makes asking for one unanswerable.
+ * view has it, and `down` makes asking for one unanswerable. `before` writes the database over
+ * its own pool before the core migrates it.
  */
-const withStructure = <A, E>(
+const withStructure = <A, E, B = never>(
   use: (
     view: Ref.Ref<Org>,
     down: Ref.Ref<boolean>,
   ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
+  before?: Effect.Effect<void, B, SqlClient.SqlClient>,
 ) =>
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createDatabase;
+    if (before !== undefined) {
+      yield* before.pipe(Effect.provide(PgClient.layer({ url: Redacted.make(url) })));
+    }
     const view = yield* Ref.make(VIEW);
     const down = yield* Ref.make(false);
     const roles = Layer.succeed(Roles, {
@@ -516,6 +525,50 @@ describe("structure", () => {
               read.apps[0]?.projects.find((project) => project.projectId === "P_OWN")?.mate,
               { name: "Ada", face: "face-3", ...UNBORN },
             );
+          }),
+        ),
+    );
+
+    // A Mate HQ recorded before births were was set up whole, as clients did then: 0007 records it
+    // closed off, or the client's close-off gate would hold it for good. A Mate recorded after
+    // reads as not closed off until its press marks it.
+    it.effect(
+      "reads a Mate recorded before 0007 as closed off, and one recorded after as not",
+      () =>
+        withStructure(
+          () =>
+            Effect.gen(function* () {
+              const structure = yield* Structure;
+              yield* structure.createMate("owner", {
+                projectId: "P_OWN",
+                name: "Bo",
+                face: "face-1",
+              });
+              const mateOf = (projectId: string) =>
+                Effect.map(
+                  structure.read("owner"),
+                  (read) => read.ungrouped.find((entry) => entry.projectId === projectId)?.mate,
+                );
+              assert.deepStrictEqual(yield* mateOf("P_MATE"), {
+                name: "Ada",
+                face: "face-3",
+                standupRequestedBy: null,
+                closedOff: true,
+              });
+              assert.deepStrictEqual(yield* mateOf("P_OWN"), {
+                name: "Bo",
+                face: "face-1",
+                ...UNBORN,
+              });
+
+              yield* structure.markBirth("owner", "P_OWN", "closed_off");
+              assert.strictEqual((yield* mateOf("P_OWN"))?.closedOff, true);
+            }),
+          Effect.gen(function* () {
+            const applied = yield* migrate(treeMigrations().filter(({ name }) => name < "0007"));
+            assert.strictEqual(applied.at(-1), "0006_devstage.sql");
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO hq_mate (project_id, name, face) VALUES ('P_MATE', 'Ada', 'face-3')`;
           }),
         ),
     );
