@@ -3345,3 +3345,8 @@ no-cache`.
     Zerops calls on a Mate page — waited on the pace and the Zerops API to reach Mates that were up,
     and left each dropped session live on its Mate for a day, while the same storage keeps the
     Zerops token that can open every Mate
+- **2026-10-02** — **Every Mate in the menu connects on its own** (the owner, on a new Mate past the
+  twelfth that sat asleep and empty until clicked: "that's stupid, no?"). Auto-connect wants every
+  ready Mate the roster lists, up to a bound of 48 that no account comes near (the largest has 27).
+  - _Why:_ the ceiling of 12 rationed a throwaway per Mate per load; with sessions kept across loads
+    a reconnect mints nothing, and the first connect of the day waits on the door's mint pace
