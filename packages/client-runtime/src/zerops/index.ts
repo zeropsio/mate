@@ -349,6 +349,7 @@ export {
   releaseEntries,
   releaseGate,
   releaseInFlight,
+  RELEASE_IN_FLIGHT_MS,
   releaseInFlightReason,
   releaseMessage,
   releaseOffer,

@@ -33,6 +33,7 @@ import {
   isReleaseTag,
   readReleaseMessage,
   readSemver,
+  RELEASE_IN_FLIGHT_MS,
   releaseVerdict,
   shortCommit,
   type FlowPullRequest,
@@ -56,6 +57,7 @@ import {
   MERGE_RECHECK_AFTER_MS,
   mergeReadOf,
   TAGS_MAX_AGE_MS,
+  VERDICT_RECHECK_LADDER_MS,
   type ForgePart,
   type ForgeReads,
   type MergeabilityTracker,
@@ -529,20 +531,6 @@ async function readReleases(
   for (const tag of releaseTags) {
     const entries = readReleaseMessage(tag.message ?? "");
     const sha = tag.commit?.sha;
-    // The newest waits for its own verdict, which may land on a commit an older tag's already
-    // settled, and still takes production's after it; an older one is over.
-    const asked = newest === undefined ? { settled: judged(tag.name), live: true } : undefined;
-    const statuses =
-      sha === undefined
-        ? []
-        : await reads.statuses
-            .read(
-              { owner: slug, repo: GROUP_REPOSITORY, sha },
-              () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
-              asked,
-            )
-            .catch(() => []);
-    const { verdict, detail } = releaseVerdict(tag.name, statuses);
     // Only the newest can be in flight; when it was made bounds how long it holds Release, and
     // tells its own deploy's failure from an earlier release's. A lightweight tag has no tagger
     // to read, and lists nothing a release deploys. A date that does not answer holds nothing:
@@ -554,6 +542,25 @@ async function readReleases(
         : await code(`tags/${tagId}/date`, () => client.tagDate(slug, GROUP_REPOSITORY, tagId))
             .then((read) => read.value)
             .catch(() => undefined);
+    // The newest waits for its own verdict, which may land on a commit an older tag's already
+    // settled, and still takes production's after it; an older one is over. A verdict that never
+    // comes — no broker, a tag pushed by hand — is waited for on a lengthening back-off, and not
+    // past the time a release holds Release at all.
+    const asked =
+      newest === undefined
+        ? { settled: judged(tag.name, taggedAt), waiting: VERDICT_RECHECK_LADDER_MS, live: true }
+        : undefined;
+    const statuses =
+      sha === undefined
+        ? []
+        : await reads.statuses
+            .read(
+              { owner: slug, repo: GROUP_REPOSITORY, sha },
+              () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha),
+              asked,
+            )
+            .catch(() => []);
+    const { verdict, detail } = releaseVerdict(tag.name, statuses);
     releases.push({
       tag: tag.name,
       verdict,
@@ -570,12 +577,17 @@ async function readReleases(
 /** A pull request's head still takes checks after its first ones pass: a second workflow, a rerun. */
 const LIVE: StatusReadOptions = { live: true };
 
-/** Statuses that carry the broker's final word on `tag`. */
+/**
+ * Statuses that carry the broker's final word on `tag` — or a tag made so long ago that it holds
+ * nothing back whatever they say, and is waited on no longer.
+ */
 const judged =
-  (tag: string) =>
+  (tag: string, taggedAt: string | undefined) =>
   (statuses: ReadonlyArray<GiteaCommitStatus>): boolean => {
     const { verdict } = releaseVerdict(tag, statuses);
-    return verdict === "approved" || verdict === "refused";
+    if (verdict === "approved" || verdict === "refused") return true;
+    const at = taggedAt === undefined ? Number.NaN : Date.parse(taggedAt);
+    return Date.now() - at >= RELEASE_IN_FLIGHT_MS;
   };
 
 /** Newest release first, by version rather than by name. */
