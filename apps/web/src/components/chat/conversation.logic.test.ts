@@ -2884,6 +2884,12 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
     id,
     note: `request failed: Get "http://${host}/": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`,
   });
+  // The internal address answered, as the card writes zcp's note: a dev
+  // server's host check turning the project's own hostname away.
+  const hostCheck = (status: number): Check => ({
+    id: "http_internal",
+    note: `${String(status)} · HTTP ${String(status)}: Blocked request. This host ("shopdev") is not allowed.`,
+  });
 
   it.each([
     {
@@ -2926,10 +2932,10 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
       standing: { shopdev: "ok" },
     },
     {
-      // As a stand-up ran (2026-10-02): the dev servers started and answered,
-      // the check right after got no answer in its five seconds while each
-      // first page compiled, and both answered 200 a minute later.
-      name: "dev servers started, the checks right after timed out, the stage stood up and checked",
+      // As a stand-up ran (2026-10-02): the dev servers started and answered;
+      // the check right after timed out on one's first compile and met the
+      // other's host check on its internal address; both answered 200 later.
+      name: "dev servers started, the checks right after timed out or met a host check, the stage stood up and checked",
       ops: [
         standUp("s1", 1, "development"),
         devServer("d1", 2, "shopdev"),
@@ -2938,12 +2944,38 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
           timedOut("http_internal", "webdev:3000"),
           timedOut("http_public", "webdev-1a2b-3000.example.app"),
         ]),
-        verify("v2", 5, "shopdev", [timedOut("http_internal", "shopdev:9000")]),
+        verify("v2", 5, "shopdev", [hostCheck(403)]),
         standUp("s2", 6, "stage"),
         verify("v3", 7, "shopstage"),
         verify("v4", 8, "webstage"),
       ],
       standing: { shopdev: "ok", webdev: "ok", shopstage: "ok", webstage: "ok" },
+    },
+    {
+      name: "a dev server running, then a check whose internal address answered 403 and public served",
+      ops: [devServer("d1", 1, "shopdev"), verify("v1", 2, "shopdev", [hostCheck(403)])],
+      standing: { shopdev: "ok" },
+    },
+    {
+      name: "a dev server running, then a check whose internal address answered 502",
+      ops: [devServer("d1", 1, "shopdev"), verify("v1", 2, "shopdev", [hostCheck(502)])],
+      standing: { shopdev: "failed" },
+    },
+    {
+      name: "a dev server running, then a check whose internal address answered 403 and public was refused",
+      ops: [
+        devServer("d1", 1, "shopdev"),
+        verify("v1", 2, "shopdev", [
+          hostCheck(403),
+          { id: "http_public", note: "request failed: dial tcp: connection refused" },
+        ]),
+      ],
+      standing: { shopdev: "failed" },
+    },
+    {
+      name: "a check whose internal address answered 403 with no dev server found running before it",
+      ops: [verify("v1", 1, "shopdev", [hostCheck(403)])],
+      standing: { shopdev: "failed" },
     },
     {
       name: "a check that timed out with no dev server found running before it",
