@@ -376,11 +376,14 @@ const changePath = ({ appId, repo, number }: ChangeLink): string =>
 
 /**
  * What HQ's `/health` says (`apps/hq/src/health.ts`): `healthy` while it leads as the official
- * HQ; `not-ready` while it answers as anything else — a standby, an HQ whose anchor is missing;
- * `unreachable` while nothing answers as Core does.
+ * HQ; `unchecked` while it leads but cannot check Zerops right now — HQ's grace keeps it the
+ * official HQ for ten minutes past its last answer (`apps/hq/src/official.ts`), and it serves
+ * meanwhile; `not-ready` while it answers as anything else — a standby, an HQ whose anchor is
+ * missing; `unreachable` while nothing answers as Core does.
  */
 export type HqHealth =
   | { readonly kind: "healthy"; readonly build: string }
+  | { readonly kind: "unchecked"; readonly build: string }
   | { readonly kind: "not-ready"; readonly state: string; readonly official: string }
   | { readonly kind: "unreachable" };
 
@@ -402,8 +405,12 @@ export async function readHqHealth(
     if (typeof body.state !== "string" || typeof body.official !== "string") {
       return { kind: "unreachable" };
     }
-    return response.ok && body.state === "active" && body.official === "ok"
-      ? { kind: "healthy", build: typeof body.build === "string" ? body.build : "" }
+    const build = typeof body.build === "string" ? body.build : "";
+    if (response.ok && body.state === "active" && body.official === "ok") {
+      return { kind: "healthy", build };
+    }
+    return response.ok && body.state === "active" && body.official === "unknown"
+      ? { kind: "unchecked", build }
       : { kind: "not-ready", state: body.state, official: body.official };
   } catch {
     return { kind: "unreachable" };

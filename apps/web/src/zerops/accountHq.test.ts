@@ -5,6 +5,7 @@ import { nextHqStanding, readBundledCore, type HqStanding } from "./accountHq";
 describe("nextHqStanding", () => {
   const healthy = { kind: "healthy", build: "b1" } as const;
   const down = { kind: "unreachable" } as const;
+  const unchecked = { kind: "unchecked", build: "b1" } as const;
   it.each<[string, HqStanding, Parameters<typeof nextHqStanding>[1], HqStanding]>([
     ["a first answer as the official HQ", { kind: "unknown" }, healthy, { kind: "healthy" }],
     [
@@ -20,6 +21,20 @@ describe("nextHqStanding", () => {
       { kind: "unavailable", since: 1_000 },
     ],
     ["HQ back", { kind: "unavailable", since: 1_000 }, healthy, { kind: "healthy" }],
+    // An HQ that serves but cannot check Zerops right now is no outage: everything keeps using it.
+    ["an HQ that cannot check Zerops", { kind: "healthy" }, unchecked, { kind: "unchecked" }],
+    [
+      "an HQ answering again, Zerops still unchecked",
+      { kind: "unavailable", since: 1_000 },
+      unchecked,
+      { kind: "unchecked" },
+    ],
+    [
+      "an unchecked HQ that stops answering: unavailable from now",
+      { kind: "unchecked" },
+      down,
+      { kind: "unavailable", since: 5_000 },
+    ],
   ])("%s", (_name, previous, health, expected) => {
     expect(nextHqStanding(previous, health, 5_000)).toEqual(expected);
   });

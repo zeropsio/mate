@@ -153,12 +153,14 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 export type HqStanding =
   | { readonly kind: "unknown" }
   | { readonly kind: "healthy" }
+  /** Serving, while it cannot check Zerops right now: no outage, everything keeps using it. */
+  | { readonly kind: "unchecked" }
   /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
   | { readonly kind: "unavailable"; readonly since: number };
 
 /** The standing a health read leaves: an outage keeps the time it began. */
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy") return { kind: "healthy" };
+  if (health.kind === "healthy" || health.kind === "unchecked") return { kind: health.kind };
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
 }
 
