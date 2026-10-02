@@ -21,7 +21,6 @@ import type {
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
 import { readZeropsContainer } from "@t3tools/client-runtime/zerops/containerHealth";
-import { makeDescriptorShare } from "@t3tools/client-runtime/zerops/descriptorShare";
 import {
   DEFAULT_ZEROPS_GRANT_POLICY,
   makeRestAccessVerifier,
@@ -51,21 +50,13 @@ import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { loadAccountRecords, memoryIntents } from "./account-ports";
+import { mateDescriptors } from "./mate-descriptors";
 import { mobilePlatformSignals } from "./platform-signals";
 import { mobileZeropsStorage } from "./storage";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
 const doorScheduler = createAtomCommandScheduler();
-
-/**
- * The app's one reader of each Mate's descriptor (`descriptorShare.ts`): the probe, the exchange
- * driver and the door read through it, so one connect reads the descriptor once.
- */
-const mateDescriptors = makeDescriptorShare({
-  clock: systemExchangeClock,
-  fetch: (url, init) => globalThis.fetch(url, init),
-});
 
 /**
  * The Zerops door. Single-flight on the container's base URL so two exchanges can never mint
