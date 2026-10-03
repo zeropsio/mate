@@ -47,6 +47,19 @@ const same = (a: ZeropsMateIdentity, b: ZeropsMateIdentity): boolean =>
   a.project === b.project &&
   a.projectUrl === b.projectUrl;
 
+/**
+ * Whether the directory is whole, so a Mate it lacks has left and is forgotten: its listing
+ * complete, or whole for the person looking (`listingWholeForPerson` — a member with NO_ACCESS on
+ * a project never reads it complete), the menu's own rule; and every environment registered.
+ */
+export function mateDirectoryWhole(input: {
+  readonly listingComplete: boolean;
+  readonly wholeForPerson: boolean;
+  readonly environmentsReady: boolean;
+}): boolean {
+  return (input.listingComplete || input.wholeForPerson) && input.environmentsReady;
+}
+
 /** The memory with what the directory decides: its Mates remembered, its empty environments gone. */
 export function withMateIdentities(
   memory: MateIdentityMemory,

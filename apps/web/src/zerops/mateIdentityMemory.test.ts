@@ -2,6 +2,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  mateDirectoryWhole,
   mateOfProject,
   readIdentityMemory,
   withMateIdentities,
@@ -128,5 +129,43 @@ describe("the Mate identity memory", () => {
     );
     const mate = mateOfProject(memory, projectId);
     expect(mate === undefined ? undefined : [mate.environmentId, mate.mate.name]).toEqual(found);
+  });
+});
+
+// A Mate the directory lacks is forgotten only once the listing is whole for the person looking:
+// a member with NO_ACCESS on one project never reads a complete listing, and still forgets a Mate
+// deleted since — the home's guess and a Mate's page by its project read this memory.
+describe("mateDirectoryWhole: when a Mate the directory lacks has left", () => {
+  it.each([
+    {
+      case: "complete, every environment registered",
+      complete: true,
+      whole: false,
+      ready: true,
+      left: true,
+    },
+    {
+      case: "whole for the person, not complete",
+      complete: false,
+      whole: true,
+      ready: true,
+      left: true,
+    },
+    { case: "neither", complete: false, whole: false, ready: true, left: false },
+    {
+      case: "whole, environments still registering",
+      complete: true,
+      whole: true,
+      ready: false,
+      left: false,
+    },
+  ])("$case: $left", ({ complete, whole, ready, left }) => {
+    expect(
+      mateDirectoryWhole({
+        listingComplete: complete,
+        wholeForPerson: whole,
+        environmentsReady: ready,
+      }),
+    ).toBe(left);
   });
 });

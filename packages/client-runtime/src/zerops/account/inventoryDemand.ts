@@ -23,6 +23,7 @@ import {
   evidenceProjectRefs,
   inventoryProjectRefs,
   pendingDenials,
+  projectsNeverSeen,
 } from "../data/access/grantProjects.ts";
 import { projectRecordToZeropsProject } from "../data/dto.ts";
 import { MATE_TAG_NAMESPACE } from "../groups.ts";
@@ -272,4 +273,4 @@ export const holdListedProjects = (input: {
     yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
   });
 
-export { evidenceProjectRefs, inventoryProjectRefs, pendingDenials };
+export { evidenceProjectRefs, inventoryProjectRefs, pendingDenials, projectsNeverSeen };

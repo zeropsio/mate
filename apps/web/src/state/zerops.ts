@@ -3,6 +3,7 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import type { ZeropsService, ZeropsStatHistoryItem } from "@t3tools/client-runtime/zerops";
+import { projectsNeverSeen } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   processRecordToActivityProcess,
   projectKeyOf,
@@ -38,7 +39,7 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
-import { evidenceOfGrant, listingWholeForPerson, projectsNeverSeen } from "../zerops/listingWhole";
+import { evidenceOfGrant, listingWholeForPerson } from "../zerops/listingWhole";
 import type {
   ZeropsOrganizationStatus,
   ZeropsSessionStatus,

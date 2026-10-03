@@ -7,10 +7,10 @@
  * same (loading-states pass, 2026-10-03); a project only a list has named, a member unresolved,
  * a read that failed and will run again, keep it partial.
  *
- * Pure: the account's state feeds it (`state/zerops.ts`).
+ * Which projects are never this person's is client-runtime's one rule (`projectsNeverSeen`), the
+ * one the inventory admits by. Pure: the account's state feeds it (`state/zerops.ts`).
  */
 import type {
-  AccessState,
   CollectionRead,
   Evidence,
   GrantMachine,
@@ -24,37 +24,6 @@ export function evidenceOfGrant(machine: GrantMachine): Evidence | null {
     : machine.phase.phase === "lapsed"
       ? machine.phase.last
       : null;
-}
-
-/**
- * Which projects this person can never see: the grant withholds them, or their role is
- * NO_ACCESS — as a round verified it, or as a command established it — or their denial is
- * confirmed. A project only named so far, or whose read failed, is still on its way.
- */
-export function projectsNeverSeen(input: {
-  readonly evidence: Evidence | null;
-  readonly access: AccessState | undefined;
-  /** The grant withholds the project from this account (`ScopeAuthority` withheld). */
-  readonly withheld: (projectId: string) => boolean;
-}): (projectId: string) => boolean {
-  const never = new Set<string>();
-  for (const [projectId, { access }] of input.evidence?.projects ?? []) {
-    if (access.role === "NO_ACCESS") never.add(projectId);
-  }
-  for (const [projectId, { confirmation }] of input.evidence?.closedProjects ?? []) {
-    if (confirmation.status === "confirmed") never.add(projectId);
-  }
-  const access = input.access;
-  const established =
-    access?.status === "verified"
-      ? access.projects
-      : access !== undefined && "previous" in access
-        ? (access.previous?.projects ?? [])
-        : [];
-  for (const { project, role } of established) {
-    if (role === "NO_ACCESS") never.add(project.projectId);
-  }
-  return (projectId) => never.has(projectId) || input.withheld(projectId);
 }
 
 /** Whether a project's record can never be read into a row: its identity or status unavailable. */

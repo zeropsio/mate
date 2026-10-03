@@ -39,20 +39,62 @@ export function pendingDenials(evidence: Evidence | null): ReadonlySet<string> {
   );
 }
 
-/** Evidence projects plus those a command established since, from the runtime's grant. */
+/**
+ * The roles a command established since the evidence's round: the grant's verified projects, or —
+ * while it is verified again, or its read failed — the ones it held before. An expired or denied
+ * grant establishes nothing; the evidence decides.
+ */
+function establishedRoles(access: AccessState | undefined): ReadonlyArray<{
+  readonly project: ProjectRef;
+  readonly role: string;
+}> {
+  return access?.status === "verified"
+    ? access.projects
+    : access?.status === "verifying" || access?.status === "failed"
+      ? (access.previous?.projects ?? [])
+      : [];
+}
+
+/**
+ * Evidence projects plus those a command established since, from the runtime's grant; one a
+ * command established NO_ACCESS on leaves (`projectsNeverSeen` reads the same rule).
+ */
 export function inventoryProjectRefs(
   granted: ReadonlyArray<ProjectRef>,
   access: AccessState | undefined,
 ): ReadonlyArray<ProjectRef> {
   const refs = new Map(granted.map((ref) => [projectKeyOf(ref), ref]));
-  const established =
-    access?.status === "verified"
-      ? access.projects
-      : access?.status === "verifying" || access?.status === "failed"
-        ? (access.previous?.projects ?? [])
-        : [];
-  for (const { project: ref, role } of established) {
-    if (role !== "NO_ACCESS") refs.set(projectKeyOf(ref), ref);
+  for (const { project: ref, role } of establishedRoles(access)) {
+    if (role === "NO_ACCESS") refs.delete(projectKeyOf(ref));
+    else refs.set(projectKeyOf(ref), ref);
   }
   return [...refs.values()];
+}
+
+/**
+ * Which projects this person can never see: the grant withholds them, their denial is confirmed,
+ * or their role is NO_ACCESS — as a command established it since, else as the evidence's round
+ * verified it. The inventory admits by the same rule (`inventoryProjectRefs`), so a listing never
+ * counts as never seen a project the inventory reads. One only named so far, or whose read
+ * failed, is still on its way.
+ */
+export function projectsNeverSeen(input: {
+  readonly evidence: Evidence | null;
+  readonly access: AccessState | undefined;
+  /** The grant withholds the project from this account (`ScopeAuthority` withheld). */
+  readonly withheld: (projectId: string) => boolean;
+}): (projectId: string) => boolean {
+  const roles = new Map<string, string>();
+  for (const [projectId, { access }] of input.evidence?.projects ?? []) {
+    roles.set(projectId, access.role);
+  }
+  for (const { project, role } of establishedRoles(input.access)) {
+    roles.set(project.projectId, role);
+  }
+  const confirmed = new Set<string>();
+  for (const [projectId, { confirmation }] of input.evidence?.closedProjects ?? []) {
+    if (confirmation.status === "confirmed") confirmed.add(projectId);
+  }
+  return (projectId) =>
+    roles.get(projectId) === "NO_ACCESS" || confirmed.has(projectId) || input.withheld(projectId);
 }
