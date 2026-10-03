@@ -139,8 +139,14 @@ import {
 } from "./MessagesTimeline.logic";
 import {
   chatOpensAt,
+  cutEdges,
   earlierShown,
+  followAfter,
+  footTop,
   formatClock,
+  laidOutPosition,
+  type RunScrollEvent,
+  type RunScrollFollow,
   recoveredFailures,
   nowLineFace,
   nowLineOf,
@@ -153,7 +159,6 @@ import {
   severalCallsWords,
   slotModelOf,
   type SlotFiller,
-  standsAtFoot,
   stepNowWords,
   subscribeRunFolds,
   thoughtRunText,
@@ -2830,8 +2835,6 @@ interface Landing {
   readonly slot: number | null;
   /** How tall the card's row stood: a list that follows its end moves it a frame late. */
   readonly card: number | null;
-  /** The history's scroll stood at its foot: it follows it to where the landed line ends. */
-  readonly atFoot: boolean;
   /** The history's lines by their key, by where each stood on screen. */
   readonly rows: ReadonlyMap<string, number>;
   /**
@@ -3252,21 +3255,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         rows: slotted ? painted.rows : new Map(),
         slot: slotted ? painted.slot : null,
         card: painted.card,
-        atFoot: painted.atFoot,
         staying: slotted ? painted.slotRows : new Map(),
       });
     },
   });
   /** Where the history's lines, the slot and its rows stand on screen now. */
   const paintedNow = () => {
-    const scroll = scrollIn(aboveRef.current);
     const slotTop = boxOf(slotRef.current)?.top ?? null;
     return {
       rows: lineTops(aboveRef.current),
       slot: slotTop,
       slotRows: rowTops(slotRef.current, slotTop ?? 0),
       card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
-      atFoot: scroll === null || standsAtFoot(scroll),
     };
   };
   const paintedRef = useRef<ReturnType<typeof paintedNow> | null>(null);
@@ -3291,7 +3291,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     }
     const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
     const scroll = scrollIn(aboveRef.current);
-    if (scroll !== null && landing.atFoot) scroll.scrollTop = scroll.scrollHeight;
+    // A history that follows its foot follows it to where the landed line ends.
+    if (scroll !== null && scroll.hasAttribute("data-follows")) {
+      scroll.scrollTop = footTop(positionOf(scroll));
+    }
     const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
     if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows, landing.slot);
     for (const [key, from] of landing.from) {
@@ -3688,15 +3691,28 @@ function RunScroll({
   const [from, setFrom] = useState(() => chatOpensAt(lines.length));
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
-  // It follows its foot until the person scrolls up or opens something in it.
-  const followsRef = useRef(true);
-  const hold = useMemo(
-    () => () => {
-      followsRef.current = false;
-      if (readingRef !== undefined) readingRef.current = true;
-    },
-    [readingRef],
-  );
+  // It follows its foot until the person moves it up or opens something in
+  // it; where its top last stood tells their move from the page's. It opens
+  // at its foot.
+  const followRef = useRef<RunScrollFollow>({ follows: true, stood: Number.POSITIVE_INFINITY });
+  const follow = useMemo(() => {
+    const heard = (event: RunScrollEvent) => {
+      followRef.current = followAfter(followRef.current, event);
+      const { follows } = followRef.current;
+      // Said on it, for a landing to scroll exactly when it follows.
+      scrollRef.current?.toggleAttribute("data-follows", follows);
+      if (event.kind !== "set" && readingRef !== undefined) readingRef.current = !follows;
+    };
+    return {
+      heard,
+      /** The page puts its top at `top`, and remembers where the browser took it. */
+      putAt: (element: HTMLElement, top: number) => {
+        element.scrollTop = top;
+        heard({ kind: "set", top: element.scrollTop });
+      },
+      hold: () => heard({ kind: "held" }),
+    };
+  }, [readingRef]);
   // How far above its foot the scroll stood before earlier lines were drawn
   // over the ones in view.
   const keepFromFootRef = useRef<number | null>(null);
@@ -3709,9 +3725,9 @@ function RunScroll({
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
-    element.scrollTop = element.scrollHeight;
+    follow.putAt(element, footTop(positionOf(element)));
     markEdges(element);
-  }, []);
+  }, [follow]);
   // Earlier lines drawn above the ones in view keep those where they stood;
   // a chat too short to scroll draws them at once, as nothing reaches them.
   useLayoutEffect(() => {
@@ -3719,32 +3735,37 @@ function RunScroll({
     const keep = keepFromFootRef.current;
     keepFromFootRef.current = null;
     if (element === null) return;
-    if (keep !== null) element.scrollTop = element.scrollHeight - keep;
+    if (keep !== null) follow.putAt(element, positionOf(element).scrollHeight - keep);
     if (from > 0 && element.scrollHeight <= element.clientHeight) setFrom(earlierShown(from).next);
     markEdges(element);
-  }, [from]);
+  }, [from, follow]);
   // A line arriving, a bubble growing as its words stream, a call opening,
   // the live slot under it growing into its room: a scroll that follows its
-  // foot stays at it.
+  // foot stays at it, moved before the frame paints, so no arrival is ever
+  // drawn cut first.
   useLayoutEffect(() => {
     const element = scrollRef.current;
     const list = listRef.current;
     if (element === null || list === null || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (followsRef.current) element.scrollTop = element.scrollHeight;
+      // Read before it follows: a move up not heard yet (a scroll event comes
+      // a frame late) is the person's, and a clamp landed on the foot.
+      const position = positionOf(element);
+      follow.heard({ kind: "scrolled", position });
+      if (followRef.current.follows) follow.putAt(element, footTop(position));
       markEdges(element);
     });
     observer.observe(list);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [follow]);
   const shown = gatherCalls(
     (from > 0 ? lines.slice(from) : lines).map((line) =>
       plopsIn(landing, line.key) ? { ...line, plops: true } : line,
     ),
   );
   return (
-    <RunScrollHoldContext value={hold}>
+    <RunScrollHoldContext value={follow.hold}>
       <ChatShownContext value={shownRef}>
         <div
           ref={scrollRef}
@@ -3752,9 +3773,8 @@ function RunScroll({
           className="run-scroll"
           data-run-scroll=""
           onScroll={(event) => {
-            const position = event.currentTarget;
-            followsRef.current = standsAtFoot(position);
-            if (readingRef !== undefined) readingRef.current = !followsRef.current;
+            const position = positionOf(event.currentTarget);
+            follow.heard({ kind: "scrolled", position });
             if (scrollRef.current !== null) markEdges(scrollRef.current);
             drawEarlier(position);
           }}
@@ -3974,9 +3994,28 @@ function plop(row: HTMLElement, from: number) {
  * on the element: a scroll never redraws the chat.
  */
 function markEdges(element: HTMLElement): void {
-  const overflows = element.scrollHeight > element.clientHeight + 1;
-  element.toggleAttribute("data-more-above", overflows && element.scrollTop > 1);
-  element.toggleAttribute("data-more-below", overflows && !standsAtFoot(element));
+  const cut = cutEdges(positionOf(element));
+  element.toggleAttribute("data-more-above", cut.above);
+  element.toggleAttribute("data-more-below", cut.below);
+}
+
+/**
+ * Where the run's scroll stands, its foot where its lines end as laid out: a
+ * row travelling into its place paints past it (`laidOutPosition`).
+ */
+function positionOf(scroll: HTMLElement): RunScrollPosition {
+  const list = scroll.firstElementChild as HTMLElement | null | undefined;
+  // Drawn outside a page (a test's renderer), it is as it says.
+  if (list === null || list === undefined || typeof getComputedStyle !== "function") return scroll;
+  const style = getComputedStyle(scroll);
+  const pad =
+    (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+  return laidOutPosition({
+    scrollTop: scroll.scrollTop,
+    scrollHeight: scroll.scrollHeight,
+    clientHeight: scroll.clientHeight,
+    laidHeight: list.offsetHeight + pad,
+  });
 }
 
 // ---------------------------------------------------------------------------

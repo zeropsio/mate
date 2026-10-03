@@ -1757,10 +1757,365 @@ describe("RunChat, as the person uses it", () => {
       box.scrollHeight = 900;
       box.clientHeight = 440;
       heard[0]!();
-      expect(box.scrollTop).toBe(900);
+      expect(box.scrollTop).toBe(460);
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = saved;
       vi.useRealTimers();
+    }
+  });
+
+  // While the run goes on, its scroll keeps its newest line in view through
+  // every arrival; only the person scrolling up in it stops that, and nothing
+  // that arrives then moves what they read, until they scroll back down.
+  describe("its scroll, as lines arrive", () => {
+    /** A live run's scroll with its first line, and its growth heard. */
+    function liveScroll() {
+      const list = { lines: true };
+      const heard: Array<() => void> = [];
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+        readonly callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe(target: unknown) {
+          if (target === list) heard.push(this.callback);
+        }
+        disconnect() {}
+      };
+      // A browser's scroll: it never stands past its foot.
+      let top = 0;
+      const box = {
+        get scrollTop() {
+          return top;
+        },
+        set scrollTop(next: number) {
+          top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        },
+        scrollHeight: 600,
+        clientHeight: 440,
+        toggleAttribute: () => undefined,
+      };
+      const node = (element: { type: unknown }) =>
+        element.type === "ol" ? list : element.type === "div" ? box : {};
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(
+          <Rows>
+            <RunChat
+              row={record([step(command("w1", "echo one"))], { live: true, status: status() })}
+            />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      const scroll = () =>
+        renderer.root.find(
+          (found) => found.type === "div" && found.props["data-run-scroll"] !== undefined,
+        );
+      return {
+        box,
+        /** What it holds grows by `by`, as an arrival does. */
+        grow: (by: number) => {
+          box.scrollHeight += by;
+          for (const callback of heard) callback();
+        },
+        /** The person's wheel or finger on it, moving it or not. */
+        touched: () => {
+          act(() => {
+            scroll().props.onWheel?.();
+            scroll().props.onTouchStart?.();
+          });
+        },
+        /** Its scroll heard where it stands. */
+        heard: () => {
+          act(() => {
+            scroll().props.onScroll({
+              currentTarget: {
+                scrollTop: box.scrollTop,
+                scrollHeight: box.scrollHeight,
+                clientHeight: box.clientHeight,
+              },
+            });
+          });
+        },
+        /** It moves to `top` — whatever moved it: a wheel, keys, a find, focus — and is heard. */
+        scrolled: (top: number) => {
+          box.scrollTop = top;
+          act(() => {
+            scroll().props.onScroll({
+              currentTarget: {
+                scrollTop: box.scrollTop,
+                scrollHeight: box.scrollHeight,
+                clientHeight: box.clientHeight,
+              },
+            });
+          });
+        },
+        fromFoot: () => box.scrollHeight - box.scrollTop - box.clientHeight,
+      };
+    }
+
+    const saved = { resize: globalThis.ResizeObserver };
+    afterEach(() => {
+      globalThis.ResizeObserver = saved.resize;
+    });
+
+    it("keeps its foot in view through every arrival", () => {
+      const run = liveScroll();
+      for (const by of [65, 40, 120]) {
+        run.grow(by);
+        expect(run.fromFoot()).toBe(0);
+      }
+    });
+
+    it("keeps following through a scroll nobody made, read after the next arrival", () => {
+      const run = liveScroll();
+      run.grow(65);
+      // Its own move to the foot, heard once the next line already grew it.
+      run.box.scrollHeight += 40;
+      run.heard();
+      run.grow(0);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    // The wheel chains on to the conversation from a card at its foot, and a
+    // finger rests on a phone's card: neither moved it, and it still follows.
+    it("keeps following through a wheel or a touch over it that did not move it", () => {
+      const run = liveScroll();
+      run.grow(65);
+      run.touched();
+      run.grow(40);
+      // Its own move to the foot, heard once the next line already grew it.
+      run.box.scrollHeight += 40;
+      run.heard();
+      run.grow(0);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    // A find, a drag-select, middle-click autoscroll, focus moving into it:
+    // the person moved it up with no wheel, key or touch on it.
+    it("holds what the person scrolled up to with no wheel, key or touch, through three arrivals", () => {
+      const run = liveScroll();
+      run.grow(400);
+      run.scrolled(120);
+      for (const by of [65, 40, 120]) {
+        run.grow(by);
+        expect(run.box.scrollTop).toBe(120);
+      }
+      run.scrolled(run.box.scrollHeight - run.box.clientHeight - 2);
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    // What it holds shrank (a line closed) and the browser clamped it onto its
+    // new foot; the clamp is heard only after the next line grew it again.
+    it("keeps following through a clamp onto a shorter foot", () => {
+      const run = liveScroll();
+      run.grow(400);
+      run.touched();
+      run.box.scrollHeight -= 100;
+      // The browser clamps it onto its new foot.
+      run.box.scrollTop = Number.POSITIVE_INFINITY;
+      run.grow(0);
+      run.box.scrollHeight += 65;
+      run.heard();
+      run.grow(0);
+      expect(run.fromFoot()).toBe(0);
+    });
+  });
+
+  // A line landing from the live slot moves the history's scroll to where
+  // the landed line ends exactly when the scroll follows its foot: a few
+  // pixels short of it still follows; one the person stopped (they opened a
+  // call in it) stays where they read.
+  describe("its scroll, as a line lands from the slot", () => {
+    const saved = { window: (globalThis as { window?: unknown }).window };
+    afterEach(() => {
+      (globalThis as { window?: unknown }).window = saved.window;
+      vi.useRealTimers();
+    });
+
+    /** A run with a line in its history and one running in its slot, its scroll at `top`. */
+    function landingRun() {
+      vi.useFakeTimers();
+      // Motion on, as on a page.
+      (globalThis as { window?: unknown }).window = {
+        matchMedia: () => ({ matches: false }),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      };
+      let renderer!: ReactTestRenderer;
+      const scroll = () =>
+        renderer.root.find(
+          (found) => found.type === "div" && found.props["data-run-scroll"] !== undefined,
+        );
+      // The landed line takes 65px once the history draws it.
+      const landed = () =>
+        scroll().findAll((found) => String(found.props["data-run-key"]).includes("w2")).length > 0;
+      const marks = new Set<string>();
+      let top = 0;
+      const box = {
+        get scrollTop() {
+          return top;
+        },
+        set scrollTop(next: number) {
+          top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        },
+        get scrollHeight() {
+          return renderer === undefined || !landed() ? 600 : 665;
+        },
+        clientHeight: 440,
+        querySelector: () => null,
+        hasAttribute: (name: string) => marks.has(name),
+        toggleAttribute: (name: string, on: boolean) => {
+          if (on) marks.add(name);
+          else marks.delete(name);
+        },
+      };
+      const above = { querySelector: () => box, querySelectorAll: () => [] };
+      const node = (element: { type: unknown; props: unknown }) => {
+        const props = element.props as Record<string, unknown>;
+        if (element.type !== "div") return {};
+        if (props.className === "run-above") return above;
+        return props["data-run-scroll"] !== undefined ? box : {};
+      };
+      const running = command("w2", "pnpm build", {
+        toolLifecycleStatus: "inProgress",
+        sourceActivityKind: "tool.started",
+      });
+      act(() => {
+        renderer = mounted(
+          <Rows>
+            <RunChat
+              row={record([step(command("h1", SCRIPT))], {
+                live: true,
+                status: status(),
+                now: { kind: "step", step: stepOf(running) },
+              })}
+            />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      return {
+        box,
+        renderer,
+        /** The running line ends, stands its minimum, and lands in the history. */
+        land: () => {
+          act(() =>
+            renderer.update(
+              <Rows>
+                <RunChat
+                  row={record([step(command("h1", SCRIPT)), step(command("w2", "pnpm build"))], {
+                    live: true,
+                    status: status(),
+                    now: null,
+                  })}
+                />
+              </Rows>,
+            ),
+          );
+          act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+          expect(landed()).toBe(true);
+        },
+        /** It moved to `top`, and was heard. */
+        scrolled: (to: number) => {
+          box.scrollTop = to;
+          act(() =>
+            scroll().props.onScroll({
+              currentTarget: {
+                scrollTop: box.scrollTop,
+                scrollHeight: box.scrollHeight,
+                clientHeight: box.clientHeight,
+              },
+            }),
+          );
+        },
+      };
+    }
+
+    it("leaves a scroll the person stopped where they read", () => {
+      const run = landingRun();
+      expect(run.box.scrollTop).toBe(160);
+      // They open a call in it, at its foot.
+      act(() => button(run.renderer, "Show all 16 lines").props.onClick({ currentTarget: null }));
+      run.land();
+      expect(run.box.scrollTop).toBe(160);
+    });
+
+    it("moves a scroll that follows from a few pixels short of its foot to the landed line's end", () => {
+      const run = landingRun();
+      run.scrolled(157);
+      run.land();
+      expect(run.box.scrollTop).toBe(225);
+    });
+  });
+
+  // A row travelling into its place paints past the lines' foot for a moment;
+  // the browser counts that as more to scroll to. Nothing is below the last
+  // line: no fade at the bottom.
+  it("fades no bottom while a landing row's travel overhangs its last line", () => {
+    const saved = {
+      resize: (globalThis as { ResizeObserver?: unknown }).ResizeObserver,
+      style: (globalThis as { getComputedStyle?: unknown }).getComputedStyle,
+    };
+    const list = { offsetHeight: 600 };
+    const heard: Array<() => void> = [];
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      readonly callback: () => void;
+      constructor(callback: () => void) {
+        this.callback = callback;
+      }
+      observe(target: unknown) {
+        if (target === list) heard.push(this.callback);
+      }
+      disconnect() {}
+    };
+    (globalThis as { getComputedStyle?: unknown }).getComputedStyle = () => ({
+      paddingTop: "0px",
+      paddingBottom: "0px",
+    });
+    try {
+      const marks = new Set<string>();
+      let top = 0;
+      const box = {
+        get scrollTop() {
+          return top;
+        },
+        set scrollTop(next: number) {
+          top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        },
+        scrollHeight: 600,
+        clientHeight: 440,
+        firstElementChild: list,
+        toggleAttribute: (name: string, on: boolean) => {
+          if (on) marks.add(name);
+          else marks.delete(name);
+        },
+      };
+      const node = (element: { type: unknown }) =>
+        element.type === "ol" ? list : element.type === "div" ? box : {};
+      act(() => {
+        mounted(
+          <Rows>
+            <RunChat
+              row={record([step(command("w1", "echo one"))], { live: true, status: status() })}
+            />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      expect(marks.has("data-more-below")).toBe(false);
+      // A line lands: its travel overhangs the last line by 80px.
+      list.offsetHeight += 65;
+      box.scrollHeight += 65 + 80;
+      for (const callback of heard) callback();
+      expect(box.scrollHeight - box.scrollTop - box.clientHeight).toBe(80);
+      expect(marks.has("data-more-below")).toBe(false);
+      expect(marks.has("data-more-above")).toBe(true);
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = saved.resize;
+      (globalThis as { getComputedStyle?: unknown }).getComputedStyle = saved.style;
     }
   });
 

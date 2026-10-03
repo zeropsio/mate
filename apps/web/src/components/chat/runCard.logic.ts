@@ -65,13 +65,93 @@ export interface RunScrollPosition {
   readonly clientHeight: number;
 }
 
+/** How near its foot the scroll may stand and still count as at it: it follows from there. */
+export const FOLLOW_SLACK_PX = 4;
+
+/** How far up a move must go to be one: a re-read of where it stood can settle a fraction. */
+const MOVED_UP_PX = 0.5;
+
 /**
- * Whether the scroll stands at its foot, a pixel's slack for a fractional
- * zoom: there, it follows what arrives; scrolled up, it stays where the
- * person put it.
+ * Whether the scroll stands at its foot, a few pixels' slack: there, it
+ * follows what arrives; scrolled up, it stays where the person put it.
  */
 export function standsAtFoot(scroll: RunScrollPosition): boolean {
-  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1;
+  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= FOLLOW_SLACK_PX;
+}
+
+/** Whether the run's scroll follows its foot, and where its top last stood. */
+export interface RunScrollFollow {
+  readonly follows: boolean;
+  /** Where its top last stood: where it was last read, or where the page last put it. */
+  readonly stood: number;
+}
+
+/** What happened to the run's scroll, for whether it follows its foot. */
+export type RunScrollEvent =
+  /** It was read where it stands now: after a scroll, or as what it holds grew. */
+  | { readonly kind: "scrolled"; readonly position: RunScrollPosition }
+  /** The page put its top at `top` (read back as the browser took it). */
+  | { readonly kind: "set"; readonly top: number }
+  /** The person opened or closed something in it: theirs to read. */
+  | { readonly kind: "held" };
+
+/**
+ * Whether the run's scroll follows its foot after `event`: every arrival
+ * keeps its newest line in view while it does. At its foot (a few pixels'
+ * slack) it follows. Away from it, a top that moved up from where it last
+ * stood is the person's — a wheel, keys, a find, a drag-select, focus moving
+ * into it, whatever made it — and stops it; opening something in it stops it
+ * too. Nothing else does: an arrival grows it under its top, the page's own
+ * move goes down, and a clamp — a row's travel ending, a resize — lands on
+ * the foot.
+ */
+export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunScrollFollow {
+  switch (event.kind) {
+    case "held":
+      return { follows: false, stood: state.stood };
+    case "set":
+      return { follows: state.follows, stood: event.top };
+    case "scrolled": {
+      const top = event.position.scrollTop;
+      if (standsAtFoot(event.position)) return { follows: true, stood: top };
+      if (top < state.stood - MOVED_UP_PX) return { follows: false, stood: top };
+      // A fraction up is kept from where it stood, so a slow drag adds up.
+      return { follows: state.follows, stood: Math.max(top, state.stood) };
+    }
+  }
+}
+
+/**
+ * The scroll as its lines are laid out: a row travelling into its place (a
+ * plop from the live slot, a rise) paints past their foot for a moment, and
+ * the browser counts that as more to scroll to. It is not: the foot is where
+ * the lines end.
+ */
+export function laidOutPosition(
+  scroll: RunScrollPosition & { readonly laidHeight: number },
+): RunScrollPosition {
+  return {
+    scrollTop: scroll.scrollTop,
+    scrollHeight: Math.min(scroll.scrollHeight, scroll.laidHeight),
+    clientHeight: scroll.clientHeight,
+  };
+}
+
+/** Where a scroll at its foot stands: its last line's end at its bottom edge. */
+export function footTop(scroll: RunScrollPosition): number {
+  return Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+}
+
+/** The edges lines are cut past: a fade says so there, and only there. */
+export function cutEdges(scroll: RunScrollPosition): {
+  readonly above: boolean;
+  readonly below: boolean;
+} {
+  const overflows = scroll.scrollHeight > scroll.clientHeight + 1;
+  return {
+    above: overflows && scroll.scrollTop > 1,
+    below: overflows && !standsAtFoot(scroll),
+  };
 }
 
 /** Whether the scroll nears its top with earlier lines still undrawn: then it draws them. */

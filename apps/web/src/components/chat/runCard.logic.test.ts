@@ -8,10 +8,15 @@ import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeli
 import {
   CHAT_OPENS_WITH,
   chatOpensAt,
+  cutEdges,
   EARLIER_CHUNK,
   EARLIER_REACH_PX,
   earlierShown,
+  FOLLOW_SLACK_PX,
+  followAfter,
+  footTop,
   forgetRunFolds,
+  laidOutPosition,
   formatClock,
   nowLineFace,
   nowLineOf,
@@ -541,6 +546,8 @@ describe("standsAtFoot", () => {
   it.each([
     { name: "at its foot", scrollTop: 560, foot: true },
     { name: "a pixel short of it", scrollTop: 559, foot: true },
+    { name: "its slack short of it", scrollTop: 560 - FOLLOW_SLACK_PX, foot: true },
+    { name: "past its slack", scrollTop: 559 - FOLLOW_SLACK_PX, foot: false },
     { name: "scrolled up a line", scrollTop: 520, foot: false },
     { name: "at its top", scrollTop: 0, foot: false },
   ])("$name: $foot", ({ scrollTop, foot }) => {
@@ -549,6 +556,133 @@ describe("standsAtFoot", () => {
 
   it("stands at its foot while nothing overflows", () => {
     expect(standsAtFoot({ scrollTop: 0, scrollHeight: 300, clientHeight: 300 })).toBe(true);
+  });
+});
+
+// While the run goes on its scroll follows its newest line: every arrival
+// keeps the foot in view. Only the person moving it up, away from the foot,
+// stops it — told by the move itself, whatever made it (a wheel, keys, a
+// find, a drag-select, focus); growth, a plop, a resync, a re-measure, its
+// own follow or the browser clamping it never does — and back at the foot it
+// follows again.
+describe("followAfter", () => {
+  const foot = { scrollTop: 560, scrollHeight: 1000, clientHeight: 440 };
+  const nearFoot = { ...foot, scrollTop: 560 - FOLLOW_SLACK_PX };
+  const up = { ...foot, scrollTop: 300 };
+  // An arrival grew it under where it stood: the foot moved on, it did not.
+  const grownUnder = { scrollTop: 560, scrollHeight: 1065, clientHeight: 440 };
+  // A row's travel ended: the browser clamped it onto the shorter foot.
+  const clamped = { scrollTop: 500, scrollHeight: 940, clientHeight: 440 };
+  it.each([
+    { name: "moved up, away from the foot", follows: true, stood: 560, position: up, after: false },
+    { name: "moved up a hair", follows: true, stood: 560, position: nearFoot, after: true },
+    { name: "moved back to the foot", follows: false, stood: 300, position: foot, after: true },
+    { name: "moved back near it", follows: false, stood: 300, position: nearFoot, after: true },
+    { name: "moved down, still above", follows: false, stood: 120, position: up, after: false },
+    { name: "moved further up", follows: false, stood: 400, position: up, after: false },
+    { name: "an arrival under it", follows: true, stood: 560, position: grownUnder, after: true },
+    {
+      name: "a wheel that did not move it",
+      follows: true,
+      stood: 560,
+      position: grownUnder,
+      after: true,
+    },
+    {
+      name: "its own follow, read late",
+      follows: true,
+      stood: 500,
+      position: grownUnder,
+      after: true,
+    },
+    {
+      name: "a clamp onto a shorter foot",
+      follows: true,
+      stood: 560,
+      position: clamped,
+      after: true,
+    },
+    { name: "moved down, while following", follows: true, stood: 120, position: up, after: true },
+    { name: "a sub-pixel settle", follows: true, stood: 300.4, position: up, after: true },
+  ])("$name: $after", ({ follows, stood, position, after }) => {
+    expect(followAfter({ follows, stood }, { kind: "scrolled", position }).follows).toBe(after);
+  });
+
+  it.each([
+    { name: "a move it heard", stood: 560, position: up, at: 300 },
+    { name: "a move down", stood: 120, position: up, at: 300 },
+    // Read again from where it stood, so a slow drag adds up to a move.
+    { name: "less than a pixel up", stood: 300.4, position: up, at: 300.4 },
+  ])("stands where $name left it", ({ stood, position, at }) => {
+    expect(followAfter({ follows: true, stood }, { kind: "scrolled", position }).stood).toBe(at);
+  });
+
+  it("creeping up a fraction of a pixel at a time stops following once it adds up", () => {
+    let state = { follows: true, stood: 300 };
+    for (const scrollTop of [299.8, 299.6, 299.4]) {
+      state = followAfter(state, { kind: "scrolled", position: { ...foot, scrollTop } });
+    }
+    expect(state.follows).toBe(false);
+  });
+
+  it.each([
+    { follows: true, after: true },
+    { follows: false, after: false },
+  ])("its own move keeps it as it was ($follows)", ({ follows, after }) => {
+    expect(followAfter({ follows, stood: 0 }, { kind: "set", top: 460 })).toEqual({
+      follows: after,
+      stood: 460,
+    });
+  });
+
+  it("stops when the person opens something in it", () => {
+    expect(followAfter({ follows: true, stood: 560 }, { kind: "held" })).toEqual({
+      follows: false,
+      stood: 560,
+    });
+  });
+});
+
+// A row travelling into its place (a plop from the live slot, a rise) paints
+// past the lines' own foot for a moment; that is no content: the scroll's foot
+// and its fades are read from the lines as laid out.
+describe("laidOutPosition", () => {
+  it.each([
+    { name: "a plop under the foot", scrollHeight: 549, laidHeight: 511, laid: 511 },
+    { name: "nothing travelling", scrollHeight: 511, laidHeight: 511, laid: 511 },
+    { name: "a fractional box", scrollHeight: 511, laidHeight: 511.4, laid: 511 },
+  ])("$name: $laid", ({ scrollHeight, laidHeight, laid }) => {
+    expect(laidOutPosition({ scrollTop: 18, scrollHeight, clientHeight: 493, laidHeight })).toEqual(
+      { scrollTop: 18, scrollHeight: laid, clientHeight: 493 },
+    );
+  });
+});
+
+describe("footTop", () => {
+  it.each([
+    { name: "overflowing", scrollHeight: 1000, clientHeight: 440, top: 560 },
+    { name: "fitting", scrollHeight: 300, clientHeight: 440, top: 0 },
+  ])("$name: $top", ({ scrollHeight, clientHeight, top }) => {
+    expect(footTop({ scrollTop: 0, scrollHeight, clientHeight })).toBe(top);
+  });
+});
+
+// A fade at an edge says lines are cut past it, and nothing else does.
+describe("cutEdges", () => {
+  it.each([
+    { name: "at the foot", scrollTop: 560, scrollHeight: 1000, above: true, below: false },
+    { name: "at the top", scrollTop: 0, scrollHeight: 1000, above: false, below: true },
+    { name: "between", scrollTop: 300, scrollHeight: 1000, above: true, below: true },
+    {
+      name: "a pixel short of the foot",
+      scrollTop: 559,
+      scrollHeight: 1000,
+      above: true,
+      below: false,
+    },
+    { name: "fitting", scrollTop: 0, scrollHeight: 440, above: false, below: false },
+  ])("$name", ({ scrollTop, scrollHeight, above, below }) => {
+    expect(cutEdges({ scrollTop, scrollHeight, clientHeight: 440 })).toEqual({ above, below });
   });
 });
 
