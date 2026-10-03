@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  classifyTimelineScroll,
+  nextPersonScrollSession,
   nextTimelineFollow,
+  PERSON_SCROLL_IDLE,
+  PERSON_SCROLL_QUIET_MS,
   personIsScrolling,
-  PERSON_SCROLL_SETTLE_MS,
+  type PersonScrollSession,
+  type PersonScrollSessionEvent,
   type TimelineFollowEvent,
 } from "./timelineFollow.ts";
 
@@ -14,48 +19,84 @@ describe("nextTimelineFollow", () => {
     readonly event: TimelineFollowEvent;
     readonly expected: boolean;
   }> = [
-    // The person leaves the end: off at once, whatever the list says.
-    { name: "a person scrolls up", following: true, event: { type: "left-end" }, expected: false },
-    {
-      name: "a person scrolls up again",
-      following: false,
-      event: { type: "left-end" },
-      expected: false,
-    },
+    // A person's input away from the end: off at once, whatever the list says.
+    { name: "a person wheels up", following: true, event: { type: "left-end" }, expected: false },
     // Nothing that arrives moves what a person reads.
     {
-      name: "a card below settles shorter and the list lands at its end",
+      name: "a card below settles shorter and the list clamps to its end",
       following: false,
-      event: { type: "position", atEnd: true, byPerson: false },
+      event: { type: "position", atEnd: true, byPerson: false, direction: "away" },
       expected: false,
     },
     {
-      name: "a resync redraws the rows with the viewport at the end",
+      name: "a row lands below while the person reads",
       following: false,
-      event: { type: "position", atEnd: true, byPerson: false },
+      event: { type: "position", atEnd: false, byPerson: false, direction: null },
       expected: false,
     },
+    // Back on only by a person's scroll that moved toward the end and reached it.
     {
-      name: "a message lands below while the person reads",
+      name: "the person scrolls back down to the end",
       following: false,
-      event: { type: "position", atEnd: false, byPerson: false },
-      expected: false,
-    },
-    // Only a person turns it back on.
-    {
-      name: "the person scrolls back to the end",
-      following: false,
-      event: { type: "position", atEnd: true, byPerson: true },
+      event: { type: "position", atEnd: true, byPerson: true, direction: "toward-end" },
       expected: true,
     },
     {
-      name: "the person scrolls but stops short of the end",
+      name: "the person scrolls down but stops short of the end",
       following: false,
-      event: { type: "position", atEnd: false, byPerson: true },
+      event: { type: "position", atEnd: false, byPerson: true, direction: "toward-end" },
       expected: false,
     },
+    {
+      name: "a smooth step up whose first frame is still within the end band",
+      following: false,
+      event: { type: "position", atEnd: true, byPerson: true, direction: "away" },
+      expected: false,
+    },
+    // While following, the person's scroll that leaves the end turns it off.
+    {
+      name: "a flick's glide carries the list up off the end",
+      following: true,
+      event: { type: "position", atEnd: false, byPerson: true, direction: "away" },
+      expected: false,
+    },
+    {
+      name: "a scroll up that is still within the end band",
+      following: true,
+      event: { type: "position", atEnd: true, byPerson: true, direction: "away" },
+      expected: true,
+    },
+    {
+      name: "the end grows faster than the follow scroll",
+      following: true,
+      event: { type: "position", atEnd: false, byPerson: false, direction: "toward-end" },
+      expected: true,
+    },
+    {
+      name: "content shrinks under a follower and the browser clamps the list up",
+      following: true,
+      event: { type: "position", atEnd: false, byPerson: false, direction: "away" },
+      expected: true,
+    },
     { name: "jump to latest", following: false, event: { type: "jump-to-latest" }, expected: true },
-    { name: "the person sends", following: false, event: { type: "sent" }, expected: true },
+    {
+      name: "the person sends",
+      following: false,
+      event: { type: "sent", byPerson: true },
+      expected: true,
+    },
+    {
+      name: "a queued message leaves while the person reads above",
+      following: false,
+      event: { type: "sent", byPerson: false },
+      expected: false,
+    },
+    {
+      name: "a queued message leaves while the person follows",
+      following: true,
+      event: { type: "sent", byPerson: false },
+      expected: true,
+    },
     {
       name: "a thread opens at its end",
       following: false,
@@ -68,19 +109,6 @@ describe("nextTimelineFollow", () => {
       event: { type: "opened", atEnd: false },
       expected: false,
     },
-    // While following, growth that leaves the end for a frame keeps following.
-    {
-      name: "the end grows faster than the follow scroll",
-      following: true,
-      event: { type: "position", atEnd: false, byPerson: false },
-      expected: true,
-    },
-    {
-      name: "a wheel in a nested scroller while the end grows",
-      following: true,
-      event: { type: "position", atEnd: false, byPerson: true },
-      expected: true,
-    },
   ];
 
   it.each(cases)("$name", ({ following, event, expected }) => {
@@ -88,34 +116,165 @@ describe("nextTimelineFollow", () => {
   });
 });
 
-describe("personIsScrolling", () => {
+describe("classifyTimelineScroll", () => {
   const cases = [
-    { name: "no gesture yet", lastGestureAt: null, held: false, now: 5_000, expected: false },
-    { name: "a wheel just now", lastGestureAt: 4_900, held: false, now: 5_000, expected: true },
     {
-      name: "the last gesture's scroll still settling",
-      lastGestureAt: 5_000 - PERSON_SCROLL_SETTLE_MS,
-      held: false,
+      name: "a person's scroll up",
+      previous: { scrollTop: 900, contentHeight: 2_000 },
+      current: { scrollTop: 870, contentHeight: 2_000 },
+      personScrolling: true,
+      expected: { byPerson: true, direction: "away" },
+    },
+    {
+      name: "a person's scroll down",
+      previous: { scrollTop: 600, contentHeight: 2_000 },
+      current: { scrollTop: 700, contentHeight: 2_000 },
+      personScrolling: true,
+      expected: { byPerson: true, direction: "toward-end" },
+    },
+    {
+      name: "the browser clamps after content shrank, mid-gesture",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 800, contentHeight: 1_800 },
+      personScrolling: true,
+      expected: { byPerson: false, direction: "away" },
+    },
+    {
+      name: "the list pins its grown end, mid-gesture",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 1_120, contentHeight: 2_120 },
+      personScrolling: true,
+      expected: { byPerson: false, direction: "toward-end" },
+    },
+    {
+      name: "a person's scroll up while a row lands below",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 960, contentHeight: 2_080 },
+      personScrolling: true,
+      expected: { byPerson: true, direction: "away" },
+    },
+    {
+      name: "a scroll with no person behind it",
+      previous: { scrollTop: 600, contentHeight: 2_000 },
+      current: { scrollTop: 1_000, contentHeight: 2_000 },
+      personScrolling: false,
+      expected: { byPerson: false, direction: "toward-end" },
+    },
+    {
+      name: "rows changed and the list did not move",
+      previous: { scrollTop: 600, contentHeight: 2_000 },
+      current: { scrollTop: 600, contentHeight: 2_300 },
+      personScrolling: true,
+      expected: { byPerson: false, direction: null },
+    },
+    {
+      name: "the first read",
+      previous: null,
+      current: { scrollTop: 600, contentHeight: 2_000 },
+      personScrolling: true,
+      expected: { byPerson: false, direction: null },
+    },
+  ] as const;
+
+  it.each(cases)("$name", ({ previous, current, personScrolling, expected }) => {
+    expect(classifyTimelineScroll({ previous, current, personScrolling })).toEqual(expected);
+  });
+});
+
+describe("person scroll session", () => {
+  const run = (events: ReadonlyArray<PersonScrollSessionEvent>): PersonScrollSession =>
+    events.reduce(nextPersonScrollSession, PERSON_SCROLL_IDLE);
+  const quiet = PERSON_SCROLL_QUIET_MS;
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly events: ReadonlyArray<PersonScrollSessionEvent>;
+    readonly now: number;
+    readonly expected: boolean;
+  }> = [
+    { name: "no input yet", events: [], now: 5_000, expected: false },
+    {
+      name: "a wheel just now",
+      events: [{ type: "input", at: 4_950 }],
       now: 5_000,
       expected: true,
     },
     {
-      name: "a gesture long over",
-      lastGestureAt: 5_000 - PERSON_SCROLL_SETTLE_MS - 1,
-      held: false,
+      name: "a wheel long ago, the list since moved by rows",
+      events: [{ type: "input", at: 1_000 }],
       now: 5_000,
       expected: false,
     },
     {
-      name: "a scrollbar held still",
-      lastGestureAt: 1_000,
-      held: true,
+      name: "a key's smooth scroll carries on frame by frame",
+      events: [
+        { type: "input", at: 1_000 },
+        { type: "scrolled", at: 1_100, byPerson: true },
+        { type: "scrolled", at: 1_200, byPerson: true },
+      ],
+      now: 1_200 + quiet,
+      expected: true,
+    },
+    {
+      name: "a flick glides on long after the finger lifts",
+      events: [
+        { type: "hold", by: "touch", at: 1_000 },
+        { type: "release", by: "pointer", at: 1_050 },
+        { type: "release", by: "touch", at: 1_100 },
+        ...Array.from({ length: 30 }, (_, index) => ({
+          type: "scrolled" as const,
+          at: 1_116 + index * 16,
+          byPerson: true,
+        })),
+      ],
+      now: 1_116 + 29 * 16 + 16,
+      expected: true,
+    },
+    {
+      name: "a touch still down after the browser takes the pan",
+      events: [
+        { type: "hold", by: "touch", at: 1_000 },
+        { type: "release", by: "pointer", at: 1_010 },
+      ],
       now: 9_000,
       expected: true,
     },
-  ] as const;
+    {
+      name: "a code-made scroll does not keep the session going",
+      events: [
+        { type: "input", at: 1_000 },
+        { type: "scrolled", at: 1_100, byPerson: false },
+      ],
+      now: 1_100 + quiet,
+      expected: false,
+    },
+    {
+      name: "the scroll ended",
+      events: [
+        { type: "input", at: 1_000 },
+        { type: "scrolled", at: 1_016, byPerson: true },
+        { type: "scroll-ended" },
+      ],
+      now: 1_020,
+      expected: false,
+    },
+    {
+      name: "a scrollbar held still",
+      events: [{ type: "hold", by: "pointer", at: 1_000 }],
+      now: 9_000,
+      expected: true,
+    },
+    {
+      name: "a scrollbar let go a while ago",
+      events: [
+        { type: "hold", by: "pointer", at: 1_000 },
+        { type: "release", by: "pointer", at: 2_000 },
+      ],
+      now: 2_000 + quiet + 1,
+      expected: false,
+    },
+  ];
 
-  it.each(cases)("$name", ({ lastGestureAt, held, now, expected }) => {
-    expect(personIsScrolling({ lastGestureAt, held, now })).toBe(expected);
+  it.each(cases)("$name", ({ events, now, expected }) => {
+    expect(personIsScrolling(run(events), now)).toBe(expected);
   });
 });

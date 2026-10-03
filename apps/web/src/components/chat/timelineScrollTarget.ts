@@ -29,3 +29,67 @@ export function isTimelineScrollTarget(
   }
   return true;
 }
+
+/**
+ * Where a key lands, for the list: on the page itself (after a click on
+ * message text the focus is the body, yet the browser scrolls the list), in
+ * the list's content, on a control that takes Space, in editable text, or
+ * somewhere else that scrolls on its own.
+ */
+export type TimelineKeyTarget = "page" | "content" | "control" | "editable" | "elsewhere";
+
+export function resolveTimelineKeyTarget(
+  target: EventTarget | null,
+  timeline: HTMLElement,
+): TimelineKeyTarget {
+  if (!(target instanceof Element)) return "page";
+  if (target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])"))
+    return "editable";
+  const document = timeline.ownerDocument;
+  if (target === document.body || target === document.documentElement) return "page";
+  if (!timeline.contains(target)) return "elsewhere";
+  return target.closest("button, a[href], summary, [role=button]") ? "control" : "content";
+}
+
+const TIMELINE_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
+const TIMELINE_DOWN_KEYS = new Set(["ArrowDown", "PageDown", "End"]);
+
+/** Which way a key scrolls the list, or null when it does not scroll it. */
+export function timelineScrollKeyDirection(input: {
+  readonly key: string;
+  readonly shiftKey: boolean;
+  readonly target: TimelineKeyTarget;
+}): "up" | "down" | null {
+  if (input.target === "editable" || input.target === "elsewhere") return null;
+  if (input.key === " ") {
+    if (input.target === "control") return null;
+    return input.shiftKey ? "up" : "down";
+  }
+  if (TIMELINE_UP_KEYS.has(input.key)) return "up";
+  if (TIMELINE_DOWN_KEYS.has(input.key)) return "down";
+  return null;
+}
+
+/** How long the wheel rests before its next event starts a new gesture. */
+export const WHEEL_GESTURE_IDLE_MS = 100;
+
+export interface WheelGestureLatch {
+  readonly at: number;
+  readonly targetsList: boolean;
+}
+
+/**
+ * The browser latches a wheel gesture to the scroller it started in: a card
+ * that reaches its edge mid-gesture does not hand the rest to the list. So
+ * the target is decided once, on a gesture's first event.
+ */
+export function latchWheelGesture(
+  latch: WheelGestureLatch | null,
+  at: number,
+  targetsList: () => boolean,
+): WheelGestureLatch {
+  if (latch !== null && at - latch.at <= WHEEL_GESTURE_IDLE_MS) {
+    return { at, targetsList: latch.targetsList };
+  }
+  return { at, targetsList: targetsList() };
+}

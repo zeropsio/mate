@@ -220,6 +220,7 @@ function outOfSight(timeline: TimelineProps): TimelineProps {
   return {
     ...rest,
     onIsAtEndChange: nothing,
+    onPersonInput: nothing,
     onManualNavigation: nothing,
     onAnchorReady: nothing,
   };

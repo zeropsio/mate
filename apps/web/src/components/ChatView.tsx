@@ -214,7 +214,10 @@ import {
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
-import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
+import {
+  nextTimelineFollow,
+  type TimelineScrollDirection,
+} from "@t3tools/client-runtime/zerops/timelineFollow";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -335,7 +338,6 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
-import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import {
   agentAuthAction,
@@ -355,7 +357,7 @@ import { takeHandedOverCaret } from "~/zerops/mateHandOver";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
-import { MessagesTimeline } from "./chat/MessagesTimeline";
+import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
@@ -4389,137 +4391,57 @@ export default function ChatView(props: ChatViewProps) {
     timelineEntries,
     timelineLiveFollowEnabled,
   ]);
-  useEffect(() => {
-    let removeListeners: (() => void) | null = null;
-    let frame: number | null = null;
-    const attach = (remainingAttempts: number) => {
-      frame = requestAnimationFrame(() => {
-        frame = null;
-        const scrollNode = legendListRef.current?.getScrollableNode();
-        if (!scrollNode) {
-          // The list may not have mounted on the first frame after a thread
-          // switch — without a retry the opt-out listeners never attach and
-          // live-follow becomes impossible to escape for the whole thread.
-          if (remainingAttempts > 0) {
-            attach(remainingAttempts - 1);
-          }
+  // Off at once, not on the next render: LegendList pins the end on every
+  // row that lands or grows while follow is on, and a stream lands rows every
+  // few frames — a deferred off lost the person's scroll to the next one, and
+  // the list jumped back to the end under them.
+  const leaveTimelineFollow = useCallback(() => {
+    if (
+      nextTimelineFollow(
+        liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+        { type: "left-end" },
+      )
+    )
+      return;
+    if (liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current) {
+      flushSync(() => cancelTimelineLiveFollowForUserNavigationRef.current());
+    } else {
+      cancelTimelineLiveFollowForUserNavigationRef.current();
+    }
+  }, []);
+  // A person's input on the list leaves the end only when it can move the
+  // viewport away from it. Follow gates LegendList's maintainScrollAtEnd, so a
+  // spurious leave while pinned at the end strands follow off with nothing
+  // to bring it back; content that underflows the viewport can't scroll at all.
+  const onTimelinePersonInput = useCallback(
+    (input: TimelinePersonInput) => {
+      const contentScrollsUp = () => timelineRealContentOverflowsViewport();
+      // The re-arm band, not the strict flag: streaming growth makes isAtEnd
+      // flicker false for a frame before the follow scroll catches up.
+      const viewportIsAwayFromEnd = () =>
+        resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) === false;
+      switch (input.kind) {
+        // Only up is a leave; down either does nothing (at the end) or comes
+        // back, which the scroll it makes tells.
+        case "wheel":
+        case "key":
+          if (input.direction === "up" && contentScrollsUp()) leaveTimelineFollow();
           return;
-        }
-        // At once, not on the next render: LegendList pins the end on every
-        // row that lands or grows while follow is on, and a stream lands rows
-        // every few frames — a deferred off lost the person's scroll to the
-        // next one, and the list jumped back to the end under them.
-        const handleManualNavigation = () => {
-          if (liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current) {
-            flushSync(() => cancelTimelineLiveFollowForUserNavigationRef.current());
-          } else {
-            cancelTimelineLiveFollowForUserNavigationRef.current();
-          }
-        };
-        // The gestures below must only break follow when they can actually
-        // move the viewport away from the live edge. Follow now gates
-        // LegendList's maintainScrollAtEnd, so a spurious break while pinned
-        // at the end produces no scroll event, never re-arms, and streaming
-        // silently stops following. Underflowing content can't scroll at all,
-        // so nothing there should break follow.
-        const contentScrollsUp = () => timelineRealContentOverflowsViewport();
-        // The follow re-arm band, not the strict flag: streaming growth makes
-        // isAtEnd flicker false for a frame before the follow scroll catches
-        // up, and a gesture landing in that window while still pinned would
-        // otherwise break follow with no scroll event left to re-arm it.
-        const viewportIsAwayFromEnd = () =>
-          resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) ===
-          false;
-        // Only an upward wheel is a navigation intent; wheeling down while
-        // following either does nothing (at the end) or moves toward it.
-        const handleWheel = (event: WheelEvent) => {
-          // A wheel inside a nested scroller (a reasoning trace, a tool
-          // result, a code block) scrolls that, not the timeline.
-          if (event.ctrlKey || !isTimelineScrollTarget(event.target, scrollNode, event.deltaY)) {
-            return;
-          }
-          if (event.deltaY < 0 && contentScrollsUp()) {
-            handleManualNavigation();
-          }
-        };
-        // Touch direction isn't observable here (touchmove fires on any
-        // finger motion, scrolling or not), so break only once the drag has
-        // actually carried the viewport out of the end band — an upward flick
-        // gets there within its first few events and later touchmoves break.
-        const handleTouchMove = () => {
-          if (viewportIsAwayFromEnd()) {
-            handleManualNavigation();
-          }
-        };
-        // Scrollbar drags produce no wheel/touch events; they are the only
-        // pointerdowns whose target is the scroll node itself rather than a
-        // message row. Content clicks break follow only away from the end
-        // (reading or selecting up there must hold position); clicking near
-        // the live edge keeps following.
-        const handlePointerDown = (event: PointerEvent) => {
-          if (event.target === scrollNode) {
-            if (contentScrollsUp()) {
-              handleManualNavigation();
-            }
-            return;
-          }
-          if (viewportIsAwayFromEnd()) {
-            handleManualNavigation();
-          }
-        };
-        // Keyboard scrolling (PageUp/Home/ArrowUp) bypasses wheel and
-        // pointer events entirely; without this the timeline yanks back to
-        // the end on the next stream chunk.
-        const handleKeyDown = (event: KeyboardEvent) => {
-          if (!["PageUp", "Home", "ArrowUp", "PageDown", "End", "ArrowDown"].includes(event.key)) {
-            return;
-          }
-          const scrollDirection = ["PageUp", "Home", "ArrowUp"].includes(event.key) ? -1 : 1;
-          if (
-            scrollNode.contains(event.target as Node | null) &&
-            !isTimelineScrollTarget(event.target, scrollNode, scrollDirection)
-          ) {
-            return;
-          }
-          switch (event.key) {
-            case "PageUp":
-            case "Home":
-            case "ArrowUp":
-              if (contentScrollsUp()) {
-                handleManualNavigation();
-              }
-              break;
-            default:
-              break;
-          }
-        };
-        scrollNode.addEventListener("wheel", handleWheel, {
-          passive: true,
-        });
-        scrollNode.addEventListener("touchmove", handleTouchMove, {
-          passive: true,
-        });
-        scrollNode.addEventListener("pointerdown", handlePointerDown, {
-          passive: true,
-        });
-        scrollNode.addEventListener("keydown", handleKeyDown);
-        removeListeners = () => {
-          scrollNode.removeEventListener("wheel", handleWheel);
-          scrollNode.removeEventListener("touchmove", handleTouchMove);
-          scrollNode.removeEventListener("pointerdown", handlePointerDown);
-          scrollNode.removeEventListener("keydown", handleKeyDown);
-        };
-      });
-    };
-    attach(12);
-
-    return () => {
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
+        case "scrollbar":
+          if (contentScrollsUp()) leaveTimelineFollow();
+          return;
+        // A finger's direction is not observable here, nor is a click a
+        // scroll: they leave only once the list stands away from the end
+        // (reading or selecting up there holds the place); the glide after a
+        // short flick is told by the scroll it makes.
+        case "touch-move":
+        case "content-pointer":
+          if (viewportIsAwayFromEnd()) leaveTimelineFollow();
+          return;
       }
-      removeListeners?.();
-    };
-  }, [activeThread?.id, composerOverlayHeight, timelineRealContentOverflowsViewport]);
+    },
+    [composerOverlayHeight, leaveTimelineFollow, timelineRealContentOverflowsViewport],
+  );
 
   const onTimelineAnchorReady = useCallback((messageId: MessageId, anchorIndex: number) => {
     // Anchored-end space can be remeasured when the turn completes. Once the
@@ -4567,47 +4489,61 @@ export default function ChatView(props: ChatViewProps) {
     requestAnimationFrame(() => positionAnchor(12));
   }, []);
 
-  const onIsAtEndChange = useCallback((isAtEnd: boolean, byPerson: boolean) => {
-    const following =
-      liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current;
-    const followsNext = nextTimelineFollow(following, {
-      type: "position",
-      atEnd: isAtEnd,
-      byPerson,
-    });
-    if (following) {
-      showScrollDebouncer.current.cancel();
-      setShowScrollToBottom(false);
-      return;
-    }
-    const wasAtEnd = isAtEndRef.current;
-    isAtEndRef.current = isAtEnd;
-    if (followsNext) {
-      timelineScrollModeRef.current = "following-end";
-      liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
-      setTimelineLiveFollowEnabled(true);
-      // Reachable only once manual navigation has already broken follow, so
-      // the anchored turn framing is over: the user scrolled back to the live
-      // edge and expects the stream to stick to it again, exactly like the
-      // scroll-to-bottom pill.
-      setTimelineAnchor(releaseChatTimelineAnchor);
-      showScrollDebouncer.current.cancel();
-      setShowScrollToBottom(false);
-      return;
-    }
-    // Still reading: the list landed at its end under the person (a card
-    // below settled shorter) or moved off it as rows came; only the
-    // jump-to-latest control follows what they are or are not at.
-    if (wasAtEnd === isAtEnd) return;
-    if (isAtEnd) {
-      showScrollDebouncer.current.cancel();
-      setShowScrollToBottom(false);
-    } else {
-      timelineScrollModeRef.current = "free-scrolling";
-      liveFollowUserScrollGenerationRef.current = null;
-      showScrollDebouncer.current.maybeExecute();
-    }
-  }, []);
+  const onIsAtEndChange = useCallback(
+    (
+      isAtEnd: boolean,
+      scroll: { readonly byPerson: boolean; readonly direction: TimelineScrollDirection | null },
+    ) => {
+      const following =
+        liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current;
+      const followsNext = nextTimelineFollow(following, {
+        type: "position",
+        atEnd: isAtEnd,
+        ...scroll,
+      });
+      if (following && !followsNext) {
+        // The person's scroll carried the list off the end with no input seen
+        // first: a flick's glide, a scrollbar dragged from outside the list.
+        leaveTimelineFollow();
+        isAtEndRef.current = false;
+        showScrollDebouncer.current.maybeExecute();
+        return;
+      }
+      if (following) {
+        showScrollDebouncer.current.cancel();
+        setShowScrollToBottom(false);
+        return;
+      }
+      const wasAtEnd = isAtEndRef.current;
+      isAtEndRef.current = isAtEnd;
+      if (followsNext) {
+        timelineScrollModeRef.current = "following-end";
+        liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
+        setTimelineLiveFollowEnabled(true);
+        // Reachable only once manual navigation has already broken follow, so
+        // the anchored turn framing is over: the user scrolled back to the live
+        // edge and expects the stream to stick to it again, exactly like the
+        // scroll-to-bottom pill.
+        setTimelineAnchor(releaseChatTimelineAnchor);
+        showScrollDebouncer.current.cancel();
+        setShowScrollToBottom(false);
+        return;
+      }
+      // Still reading: the list landed at its end under the person (a card
+      // below settled shorter) or moved off it as rows came; only the
+      // jump-to-latest control follows what they are or are not at.
+      if (wasAtEnd === isAtEnd) return;
+      if (isAtEnd) {
+        showScrollDebouncer.current.cancel();
+        setShowScrollToBottom(false);
+      } else {
+        timelineScrollModeRef.current = "free-scrolling";
+        liveFollowUserScrollGenerationRef.current = null;
+        showScrollDebouncer.current.maybeExecute();
+      }
+    },
+    [leaveTimelineFollow],
+  );
 
   // Anchored end space intentionally disables LegendList's normal end-follow so
   // the sent message can stay near the top. T3 only owns streaming adjustments
@@ -8295,6 +8231,7 @@ export default function ChatView(props: ChatViewProps) {
                   contentInsetEndAdjustment: timelineInsetEnd,
                   liveFollowEnabled: timelineLiveFollowEnabled,
                   onIsAtEndChange,
+                  onPersonInput: onTimelinePersonInput,
                   onManualNavigation: cancelTimelineLiveFollowForUserNavigation,
                   cancelPositionRestoreRef,
                   hideEmptyPlaceholder:
@@ -8337,7 +8274,9 @@ export default function ChatView(props: ChatViewProps) {
                   className="pointer-events-auto flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
                   data-shown={showScrollToBottom ? "" : undefined}
                   inert={!showScrollToBottom}
-                  onClick={() => scrollToEnd(true)}
+                  onClick={() => {
+                    if (nextTimelineFollow(false, { type: "jump-to-latest" })) scrollToEnd(true);
+                  }}
                   type="button"
                 >
                   <ArrowDownIcon aria-hidden="true" className="size-4" />

@@ -32,6 +32,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
@@ -48,9 +49,9 @@ import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { KeptTimelines } from "~/components/chat/KeptTimelines";
+import type { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
-import { isTimelineScrollTarget } from "~/components/chat/timelineScrollTarget";
 import type { TimelineEntry } from "~/session-logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
@@ -484,6 +485,8 @@ function latestTurnOf(thread: HarnessThread, ended: boolean) {
       };
 }
 
+type TimelineProps = ComponentProps<typeof MessagesTimeline>;
+
 const threadKeyOf = (key: string) => `${ENVIRONMENT}:${key}`;
 
 /**
@@ -590,12 +593,12 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
     setFollow({ key: routeThreadKey, enabled: atEnd, atEnd });
   }
   const liveFollowEnabled = follow.enabled;
-  const onIsAtEndChange = useCallback((isAtEnd: boolean, byPerson: boolean) => {
+  const onIsAtEndChange = useCallback<TimelineProps["onIsAtEndChange"]>((isAtEnd, scroll) => {
     setFollow((current) => {
       const enabled = nextTimelineFollow(current.enabled, {
         type: "position",
         atEnd: isAtEnd,
-        byPerson,
+        ...scroll,
       });
       return current.atEnd === isAtEnd && current.enabled === enabled
         ? current
@@ -605,6 +608,15 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
   const onManualNavigation = useCallback(
     () => setFollow((current) => ({ ...current, enabled: false })),
     [],
+  );
+  // As ChatView: a wheel or a key up is the person reading history, and the
+  // end stops being followed at once.
+  const onPersonInput = useCallback<TimelineProps["onPersonInput"]>(
+    (input) => {
+      if ((input.kind === "wheel" || input.kind === "key") && input.direction === "up")
+        flushSync(onManualNavigation);
+    },
+    [onManualNavigation],
   );
   const latestTurn = useMemo(() => latestTurnOf(thread, ended), [thread, ended]);
   // What runs alongside the live run, as ChatView gives it the timeline.
@@ -623,22 +635,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
   const loading = phase === "loading";
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        className="relative flex min-h-0 flex-1 flex-col"
-        // As ChatView: a wheel up is the person reading history, and the end
-        // stops being followed.
-        onWheelCapture={(event) => {
-          const list = listRef.current?.getScrollableNode();
-          if (
-            event.deltaY < 0 &&
-            follow.enabled &&
-            list &&
-            isTimelineScrollTarget(event.target, list, event.deltaY)
-          ) {
-            flushSync(onManualNavigation);
-          }
-        }}
-      >
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <KeptTimelines
           open={routeThreadKey}
           alive={keptForever}
@@ -669,6 +666,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
             contentInsetEndAdjustment: COMPOSER_HEIGHT,
             liveFollowEnabled,
             onIsAtEndChange,
+            onPersonInput,
             onManualNavigation,
             hideEmptyPlaceholder: loading,
             loading,

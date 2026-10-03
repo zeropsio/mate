@@ -672,6 +672,7 @@ function Pane() {
             contentInsetEndAdjustment: COMPOSER_HEIGHT,
             liveFollowEnabled: true,
             onIsAtEndChange: () => undefined,
+            onPersonInput: () => undefined,
             onManualNavigation: () => undefined,
             hideEmptyPlaceholder: false,
             loading: false,

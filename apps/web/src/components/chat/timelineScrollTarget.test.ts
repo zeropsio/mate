@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { isTimelineScrollTarget } from "./timelineScrollTarget";
+import {
+  isTimelineScrollTarget,
+  latchWheelGesture,
+  timelineScrollKeyDirection,
+  WHEEL_GESTURE_IDLE_MS,
+} from "./timelineScrollTarget";
 
 class ScrollElement extends EventTarget {
   scrollTop = 0;
@@ -114,5 +119,45 @@ describe("timeline scroll targets", () => {
     expect(targetsTimeline(new EventTarget(), timeline, -30)).toBe(false);
     expect(targetsTimeline(null, timeline, -30)).toBe(false);
     expect(targetsTimeline(content, timeline, 0)).toBe(false);
+  });
+});
+
+describe("timelineScrollKeyDirection", () => {
+  const cases = [
+    { key: "PageUp", shiftKey: false, target: "content", expected: "up" },
+    { key: "ArrowUp", shiftKey: false, target: "page", expected: "up" },
+    { key: "Home", shiftKey: false, target: "page", expected: "up" },
+    { key: " ", shiftKey: true, target: "page", expected: "up" },
+    { key: " ", shiftKey: false, target: "page", expected: "down" },
+    { key: "PageDown", shiftKey: false, target: "page", expected: "down" },
+    { key: "End", shiftKey: false, target: "content", expected: "down" },
+    { key: "ArrowDown", shiftKey: false, target: "content", expected: "down" },
+    { key: "ArrowUp", shiftKey: false, target: "editable", expected: null },
+    { key: " ", shiftKey: false, target: "editable", expected: null },
+    { key: " ", shiftKey: false, target: "control", expected: null },
+    { key: "PageUp", shiftKey: false, target: "control", expected: "up" },
+    { key: "PageUp", shiftKey: false, target: "elsewhere", expected: null },
+    { key: "a", shiftKey: false, target: "page", expected: null },
+  ] as const;
+
+  it.each(cases)("$key (shift $shiftKey) on $target → $expected", (row) => {
+    expect(timelineScrollKeyDirection(row)).toBe(row.expected);
+  });
+});
+
+describe("latchWheelGesture", () => {
+  it("decides a gesture's target on its first event and keeps it while the wheel runs", () => {
+    let targetsList = false;
+    let latch = latchWheelGesture(null, 1_000, () => targetsList);
+    expect(latch.targetsList).toBe(false);
+    // The live card reaches its top mid-gesture: the gesture stays the card's.
+    targetsList = true;
+    for (const at of [1_016, 1_032, 1_100, 1_190]) {
+      latch = latchWheelGesture(latch, at, () => targetsList);
+      expect(latch.targetsList).toBe(false);
+    }
+    // A new gesture after the wheel rested starts at the card's edge and moves the list.
+    latch = latchWheelGesture(latch, 1_190 + WHEEL_GESTURE_IDLE_MS + 1, () => targetsList);
+    expect(latch.targetsList).toBe(true);
   });
 });

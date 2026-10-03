@@ -19,7 +19,16 @@ const NOOP_STOP_BACKGROUND_WORK = () => {};
 const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
-import { personIsScrolling } from "@t3tools/client-runtime/zerops/timelineFollow";
+import {
+  classifyTimelineScroll,
+  nextPersonScrollSession,
+  PERSON_SCROLL_IDLE,
+  personIsScrolling,
+  type PersonScrollSession,
+  type PersonScrollSessionEvent,
+  type TimelineScrollDirection,
+  type TimelineScrollReading,
+} from "@t3tools/client-runtime/zerops/timelineFollow";
 import {
   Fragment,
   memo,
@@ -98,7 +107,13 @@ import {
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
-import { isTimelineScrollTarget } from "./timelineScrollTarget";
+import {
+  isTimelineScrollTarget,
+  latchWheelGesture,
+  resolveTimelineKeyTarget,
+  timelineScrollKeyDirection,
+  type WheelGestureLatch,
+} from "./timelineScrollTarget";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
@@ -242,16 +257,10 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
  * pixels in a few frames, and LegendList's own tenth of a viewport lost it.
  */
 const TIMELINE_FOLLOW_THRESHOLD = 1;
-/** Keys that scroll a focused list. */
-const TIMELINE_SCROLL_KEYS = new Set([
-  "ArrowUp",
-  "ArrowDown",
-  "PageUp",
-  "PageDown",
-  "Home",
-  "End",
-  " ",
-]);
+/** An input a person gave the list, before it moved it. */
+export type TimelinePersonInput =
+  | { readonly kind: "wheel" | "key"; readonly direction: "up" | "down" }
+  | { readonly kind: "touch-move" | "scrollbar" | "content-pointer" };
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -301,10 +310,18 @@ interface MessagesTimelineProps {
    */
   liveFollowEnabled: boolean;
   /**
-   * Where the list stands: at its end or not, and whether a person's scroll
-   * put it there (`nextTimelineFollow`'s "position").
+   * Where the list stands: at its end or not, which way it moved, and whether
+   * a person's scroll moved it (`nextTimelineFollow`'s "position").
    */
-  onIsAtEndChange: (isAtEnd: boolean, byPerson: boolean) => void;
+  onIsAtEndChange: (
+    isAtEnd: boolean,
+    scroll: {
+      readonly byPerson: boolean;
+      readonly direction: TimelineScrollDirection | null;
+    },
+  ) => void;
+  /** A person's input on the list, as it comes: whether it leaves the end is the caller's to tell. */
+  onPersonInput: (input: TimelinePersonInput) => void;
   onManualNavigation: () => void;
   /** Filled while a remembered reading position is being restored; calling it hands scrolling back. */
   cancelPositionRestoreRef?: React.RefObject<(() => void) | null>;
@@ -374,6 +391,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   contentInsetEndAdjustment,
   liveFollowEnabled,
   onIsAtEndChange,
+  onPersonInput,
   onManualNavigation,
   cancelPositionRestoreRef,
   hideEmptyPlaceholder = false,
@@ -715,76 +733,138 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [rememberPosition]);
   useLayoutEffect(() => () => void rememberPositionRef.current(), []);
 
-  // What a person last did to the list: a scroll they make is told from one
-  // the list makes as rows land, grow or settle.
-  const personGestureRef = useRef<{ lastGestureAt: number | null; held: boolean }>({
-    lastGestureAt: null,
-    held: false,
-  });
+  // What a person is doing to the list, so a scroll they make is told from
+  // one the list or the browser makes as rows land, grow, settle or shrink.
+  const personSessionRef = useRef<PersonScrollSession>(PERSON_SCROLL_IDLE);
+  const notePersonSession = useCallback((event: PersonScrollSessionEvent) => {
+    personSessionRef.current = nextPersonScrollSession(personSessionRef.current, event);
+  }, []);
+  const onPersonInputRef = useRef(onPersonInput);
+  useLayoutEffect(() => {
+    onPersonInputRef.current = onPersonInput;
+  }, [onPersonInput]);
+  // Every input a person gives the list, observed here once: each starts or
+  // holds their scroll session, and each is handed up to decide follow.
   useEffect(() => {
     const wrapper = timelineViewportElement;
     if (!wrapper) return;
-    const gesture = personGestureRef.current;
-    const mark = () => {
-      gesture.lastGestureAt = performance.now();
-    };
     const scrollNode = () => listRef.current?.getScrollableNode() ?? null;
-    // A wheel that scrolls a nested scroller (a run's own scroll, a code
-    // block) is not the list's.
+    const input = (personInput: TimelinePersonInput) => {
+      notePersonSession({ type: "input", at: performance.now() });
+      onPersonInputRef.current(personInput);
+    };
+    let wheelLatch: WheelGestureLatch | null = null;
     const onWheel = (event: WheelEvent) => {
       const node = scrollNode();
-      if (node && !event.ctrlKey && isTimelineScrollTarget(event.target, node, event.deltaY))
-        mark();
+      if (!node || event.ctrlKey || event.deltaY === 0) return;
+      // A wheel that scrolls a nested scroller (a run's own scroll, a code
+      // block) is not the list's, for the whole gesture it started.
+      wheelLatch = latchWheelGesture(wheelLatch, performance.now(), () =>
+        isTimelineScrollTarget(event.target, node, event.deltaY),
+      );
+      if (wheelLatch.targetsList)
+        input({ kind: "wheel", direction: event.deltaY < 0 ? "up" : "down" });
     };
-    const onTouchStart = () => {
-      gesture.held = true;
-      mark();
-    };
+    const onTouchStart = () =>
+      notePersonSession({ type: "hold", by: "touch", at: performance.now() });
+    const onTouchMove = () => input({ kind: "touch-move" });
+    const onTouchEnd = () =>
+      notePersonSession({ type: "release", by: "touch", at: performance.now() });
     // The scrollbar: the only pointerdown whose target is the scroll node itself.
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target !== scrollNode()) return;
-      gesture.held = true;
-      mark();
+      const node = scrollNode();
+      if (!node || !(event.target instanceof Node) || !node.contains(event.target)) return;
+      if (event.target === node) {
+        notePersonSession({ type: "hold", by: "pointer", at: performance.now() });
+        onPersonInputRef.current({ kind: "scrollbar" });
+      } else {
+        onPersonInputRef.current({ kind: "content-pointer" });
+      }
     };
-    // A flick glides on after the finger lifts.
-    const onRelease = () => {
-      if (!gesture.held) return;
-      gesture.held = false;
-      mark();
+    const onPointerUp = () =>
+      notePersonSession({ type: "release", by: "pointer", at: performance.now() });
+    // With the focus on the page (a click on message text leaves it there),
+    // scroll keys move what was last clicked: the list only if it was the list.
+    let lastPointerInList = false;
+    const onDocumentPointerDown = (event: PointerEvent) => {
+      const node = scrollNode();
+      lastPointerInList =
+        node !== null && event.target instanceof Node && node.contains(event.target);
     };
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (TIMELINE_SCROLL_KEYS.has(event.key)) mark();
+      const node = scrollNode();
+      if (!node || event.defaultPrevented) return;
+      const target = resolveTimelineKeyTarget(event.target, node);
+      if (target === "page" && !lastPointerInList) return;
+      const direction = timelineScrollKeyDirection({
+        key: event.key,
+        shiftKey: event.shiftKey,
+        target,
+      });
+      if (direction === null) return;
+      if (
+        target === "content" &&
+        !isTimelineScrollTarget(event.target, node, direction === "up" ? -1 : 1)
+      )
+        return;
+      input({ kind: "key", direction });
     };
-    const view = wrapper.ownerDocument.defaultView ?? window;
+    // The end of a scroll ends the person's session with it.
+    const onScrollEnd = (event: Event) => {
+      if (event.target === scrollNode()) notePersonSession({ type: "scroll-ended" });
+    };
+    const document = wrapper.ownerDocument;
+    const view = document.defaultView ?? window;
     wrapper.addEventListener("wheel", onWheel, { passive: true });
     wrapper.addEventListener("touchstart", onTouchStart, { passive: true });
-    wrapper.addEventListener("touchmove", mark, { passive: true });
+    wrapper.addEventListener("touchmove", onTouchMove, { passive: true });
     wrapper.addEventListener("pointerdown", onPointerDown, { passive: true });
-    wrapper.addEventListener("keydown", onKeyDown);
-    view.addEventListener("touchend", onRelease, { passive: true });
-    view.addEventListener("touchcancel", onRelease, { passive: true });
-    view.addEventListener("pointerup", onRelease, { passive: true });
-    view.addEventListener("pointercancel", onRelease, { passive: true });
+    wrapper.addEventListener("scrollend", onScrollEnd, { capture: true });
+    document.addEventListener("pointerdown", onDocumentPointerDown, {
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener("keydown", onKeyDown);
+    view.addEventListener("touchend", onTouchEnd, { passive: true });
+    view.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    view.addEventListener("pointerup", onPointerUp, { passive: true });
+    view.addEventListener("pointercancel", onPointerUp, { passive: true });
     return () => {
       wrapper.removeEventListener("wheel", onWheel);
       wrapper.removeEventListener("touchstart", onTouchStart);
-      wrapper.removeEventListener("touchmove", mark);
+      wrapper.removeEventListener("touchmove", onTouchMove);
       wrapper.removeEventListener("pointerdown", onPointerDown);
-      wrapper.removeEventListener("keydown", onKeyDown);
-      view.removeEventListener("touchend", onRelease);
-      view.removeEventListener("touchcancel", onRelease);
-      view.removeEventListener("pointerup", onRelease);
-      view.removeEventListener("pointercancel", onRelease);
+      wrapper.removeEventListener("scrollend", onScrollEnd, { capture: true });
+      document.removeEventListener("pointerdown", onDocumentPointerDown, { capture: true });
+      document.removeEventListener("keydown", onKeyDown);
+      view.removeEventListener("touchend", onTouchEnd);
+      view.removeEventListener("touchcancel", onTouchEnd);
+      view.removeEventListener("pointerup", onPointerUp);
+      view.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [listRef, timelineViewportElement]);
+  }, [listRef, notePersonSession, timelineViewportElement]);
+
+  // Where the list stood at the last read: what tells which way it moved since.
+  const lastReadingRef = useRef<TimelineScrollReading | null>(null);
 
   const readList = useCallback(
-    (byPerson: boolean) => {
+    (personScrolling: boolean) => {
+      const node = listRef.current?.getScrollableNode();
+      const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
+      const scroll = reading
+        ? classifyTimelineScroll({
+            previous: lastReadingRef.current,
+            current: reading,
+            personScrolling,
+          })
+        : { byPerson: false, direction: null };
+      lastReadingRef.current = reading;
+      notePersonSession({ type: "scrolled", at: performance.now(), byPerson: scroll.byPerson });
       const state = listRef.current?.getState?.();
       if (restoringReadingPosition || state?.data !== rows) return;
       const isAtEnd = rememberPosition();
       if (isAtEnd !== undefined) {
-        onIsAtEndChange(isAtEnd, byPerson);
+        onIsAtEndChange(isAtEnd, scroll);
       }
       if (!state || minimapItems.length === 0) {
         return;
@@ -825,6 +905,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       listRef,
       minimapItems,
       minimapStripMap,
+      notePersonSession,
       onIsAtEndChange,
       rememberPosition,
       restoringReadingPosition,
@@ -832,7 +913,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const handleScroll = useCallback(
-    () => readList(personIsScrolling({ ...personGestureRef.current, now: performance.now() })),
+    () => readList(personIsScrolling(personSessionRef.current, performance.now())),
     [readList],
   );
 
@@ -1281,6 +1362,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               stripMap={minimapStripMap}
               onSelect={(item) => {
                 onManualNavigation();
+                // The person picked where to go: the list's way there is
+                // theirs, and landing on the latest follows it.
+                notePersonSession({ type: "input", at: performance.now() });
                 void listRef.current?.scrollToIndex({
                   index: item.rowIndex,
                   animated: true,
