@@ -361,6 +361,11 @@ function runningBuilds(read: CollectionRead<ProcessRecord>): StopBuilds {
   return { builds, complete };
 }
 
+/** Whether the processes listing is complete enough to prove that no build runs. */
+export function buildsListed(processes: CollectionRead<ProcessRecord>): boolean {
+  return runningBuilds(processes).complete;
+}
+
 /**
  * The names the running builds give their app versions, over the ones held: the same map while
  * no build names anything new.
@@ -675,6 +680,8 @@ export function afterBuilds(
   built: ReadonlyMap<string, SeenBuild>,
   next: Known<ReadonlyArray<StopService>>,
   nowMs: number,
+  /** The processes listing is complete (`buildsListed`): a build it no longer shows has ended. */
+  listed: boolean,
 ): {
   readonly built: ReadonlyMap<string, SeenBuild>;
   readonly shown: Known<ReadonlyArray<StopService>>;
@@ -708,6 +715,13 @@ export function afterBuilds(
     }
     const build = seen.get(id);
     if (build === undefined) return service;
+    // Its end is known only from a complete listing of the processes that no longer shows it: a
+    // re-check of them while it runs starts no grace. A source that failed says why instead.
+    if (build.endedAtMs === null && !listed) {
+      if (deployment.state === "failed") return service;
+      changed = true;
+      return { ...service, deployment: build.building };
+    }
     const endedAtMs = build.endedAtMs ?? nowMs;
     if (build.endedAtMs === null) seen.set(id, { ...build, endedAtMs });
     const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
