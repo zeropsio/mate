@@ -1036,8 +1036,9 @@ async function finishLocked(
   }
   const steps: ReadonlyArray<EnvironmentCreationStep> = [
     // Its record in its application before its container (F6b, 2026-10-03): a Finish setup that
-    // stops after leaves a Mate HQ holds there. A refused one stops nothing: the container and
-    // the close-off still run, and the Mate stays bare, waiting for an owner.
+    // stops after leaves a Mate HQ holds there. A registration that failed — refused, or failing
+    // after its tries — stops nothing: the container and the close-off still run, and the Mate
+    // stays in no application until a Finish setup attaches it where its birth intent says.
     ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     ...(input.container === null
       ? []
