@@ -46,9 +46,12 @@ import {
   releaseAttachmentUpload,
   releaseAttachmentUploads,
   retryAttachmentUpload,
+  retryFileUpload,
   startAttachmentUpload,
+  startFileUpload,
   useAttachmentUploadStore,
 } from "./attachmentUploadQueue";
+import type { ComposerFileAttachment } from "./composerFiles";
 
 type ProgressListener = (event: {
   readonly lengthComputable: boolean;
@@ -119,6 +122,20 @@ function makeImage(id: string): ComposerImageAttachment {
     sizeBytes: file.size,
     previewUrl: `blob:${id}`,
     file,
+  };
+}
+
+function makeFile(id: string, extra: Partial<ComposerFileAttachment> = {}): ComposerFileAttachment {
+  const file = new File([new Uint8Array(5)], `${id}.pdf`, { type: "application/pdf" });
+  return {
+    type: "file",
+    id,
+    name: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    file,
+    uploaded: null,
+    ...extra,
   };
 }
 
@@ -465,6 +482,82 @@ describe("attachmentUploadQueue", () => {
       startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", false) });
       expect(readAttachmentUpload(pictureOriginalUploadKey("pic"))).toBeUndefined();
       expect(readAttachmentUpload("pic")).toMatchObject({ status: "uploading" });
+    });
+  });
+
+  describe("a file", () => {
+    it("uploads as a file under its own id and goes ahead of the images", async () => {
+      const image = makeImage("image-1");
+      const file = makeFile("spec");
+      startAttachmentUpload({ environmentId: firstEnvironment, image });
+      startFileUpload({ environmentId: firstEnvironment, file });
+      await Promise.resolve();
+      expect(mocks.runAtomCommand).toHaveBeenCalledWith(
+        expect.anything(),
+        mocks.createUploadUrl,
+        {
+          environmentId: firstEnvironment,
+          input: { type: "file", name: "spec.pdf", mimeType: "application/pdf", sizeBytes: 5 },
+        },
+        expect.anything(),
+      );
+      const settled = awaitAttachmentUploads([image.id, file.id]);
+      TestXmlHttpRequest.requests[0]!.complete();
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [image], files: [file] }),
+      ).toBeNull();
+      TestXmlHttpRequest.requests[1]!.complete();
+      await settled;
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [image], files: [file] }),
+      ).toEqual([
+        {
+          type: "file",
+          id: "pending-environment-1-spec.pdf",
+          name: "spec.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 5,
+        },
+        {
+          type: "image",
+          id: "pending-environment-1-image-1.png",
+          name: "image-1.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+        },
+      ]);
+    });
+
+    it("tries a failed upload again", async () => {
+      const file = makeFile("retry");
+      startFileUpload({ environmentId: firstEnvironment, file });
+      await Promise.resolve();
+      const failed = awaitAttachmentUploads([file.id]);
+      TestXmlHttpRequest.requests[0]!.complete(500);
+      await failed;
+      expect(readAttachmentUpload(file.id)?.status).toBe("failed");
+      retryFileUpload({ environmentId: firstEnvironment, file });
+      await Promise.resolve();
+      const settled = awaitAttachmentUploads([file.id]);
+      TestXmlHttpRequest.requests[1]!.complete();
+      await settled;
+      expect(readAttachmentUpload(file.id)?.status).toBe("ready");
+    });
+
+    it.each([
+      ["in its own environment it stands uploaded", firstEnvironment, "ready"],
+      ["in another it cannot go", secondEnvironment, "failed"],
+    ])("restored after a reload: %s", (_label, environmentId, status) => {
+      const file = makeFile("kept", {
+        file: null,
+        uploaded: { environmentId: firstEnvironment, attachmentId: "att-kept" },
+      });
+      startFileUpload({ environmentId, file });
+      expect(TestXmlHttpRequest.requests).toHaveLength(0);
+      expect(readAttachmentUpload(file.id)?.status).toBe(status);
+      expect(
+        getUploadedAttachments({ environmentId, images: [], files: [file] })?.[0]?.id ?? null,
+      ).toBe(status === "ready" ? "att-kept" : null);
     });
   });
 });
