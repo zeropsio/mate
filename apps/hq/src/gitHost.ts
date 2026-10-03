@@ -114,6 +114,12 @@ export class GitHost extends Context.Service<
     ) => Effect.Effect<void, E | NotLeader | GitError, R>;
     /** Closes the layer for good: on shutdown, before the lead is given up. */
     readonly close: Effect.Effect<void>;
+    /**
+     * Runs `effect` while nothing else runs through here: a backup set from its database dump to
+     * its last bundle, and a removal of repositories — so a set holds every repository its dump
+     * names, whatever is deleted meanwhile (H4).
+     */
+    readonly holdingRepos: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
     /** Ticks after the log has followed a ref that moved, starting with the current tick. */
     readonly recorded: Stream.Stream<number>;
     /**
@@ -366,6 +372,7 @@ export const gitHostLayer = (options: {
       >(Option.none());
       const stopped = yield* Ref.make(false);
       const permit = yield* Semaphore.make(1);
+      const holding = yield* Semaphore.make(1);
 
       const open = Semaphore.withPermits(
         permit,
@@ -564,6 +571,7 @@ export const gitHostLayer = (options: {
             });
           }),
         close: Effect.andThen(Ref.set(stopped, true), shut),
+        holdingRepos: (effect) => Semaphore.withPermits(holding, 1)(effect),
         recorded: SubscriptionRef.changes(ticks),
         pushes,
       });

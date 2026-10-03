@@ -837,10 +837,12 @@ export const changesLayer: Layer.Layer<
         ),
       ensureGroupRepo: (appId) => makeRepo(appId, RECIPE_REPO, "core"),
       removeAppRepos: (appId) =>
-        Effect.gen(function* () {
-          const git = yield* gitHost.git;
-          for (const repo of yield* git.list(appId)) yield* git.remove(repo);
-        }),
+        gitHost.holdingRepos(
+          Effect.gen(function* () {
+            const git = yield* gitHost.git;
+            for (const repo of yield* git.list(appId)) yield* git.remove(repo);
+          }),
+        ),
       recipeTier,
       readRecipe: (userId, appId, tier) =>
         Effect.andThen(personApp(userId, appId, "read_change"), recipeTier(appId, tier)),
