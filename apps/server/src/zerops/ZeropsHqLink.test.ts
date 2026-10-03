@@ -393,7 +393,7 @@ describe("ZeropsHqLink", () => {
   it.effect("rotates to a successor before the cut, and closes the old link once HQ answered", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { sockets } = yield* rig({ enrolled: true });
+        const { sockets, relayed } = yield* rig({ enrolled: true });
         const first = yield* opened(sockets, 0);
         yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS - 1));
         assert.strictEqual(sockets.length, 1);
@@ -416,6 +416,11 @@ describe("ZeropsHqLink", () => {
         successor.hear({ type: "ping" });
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(successor.sent.at(-1), { type: "pong" });
+        // It hands on the access HQ relays, as the old link did (R6).
+        const members = [{ userId: "owner", role: "OWNER", visibility: "open" }];
+        successor.hear({ type: "access", ageMs: 500, members });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(relayed, [{ members, ageMs: 500 }]);
 
         // The successor rotates in its turn, counted from its own opening.
         yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
