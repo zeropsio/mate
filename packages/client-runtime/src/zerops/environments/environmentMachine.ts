@@ -207,7 +207,7 @@ export interface DescriptorFacts {
 
 /** The guard inputs the driver computes outside this target (§4.4 WANT and CAN). */
 export interface EnvironmentGuards {
-  /** Any lease holds: the route's, the Mate left last, an action's, a Connect's. */
+  /** Any lease holds: the route's, the screen's, the Mate left last, an action's, a Connect's. */
   readonly want: boolean;
   readonly routeTarget: boolean;
   readonly visible: boolean;

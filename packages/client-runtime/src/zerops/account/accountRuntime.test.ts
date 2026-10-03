@@ -1524,6 +1524,26 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  // A coming page left open on a Mate whose door fails minted a throwaway a minute as the route
+  // (review, 2026-10-03): the Mate on screen is one the person asked for, capped as no route is.
+  it.effect("the Mate on screen is asked for, and capped as no route is", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([]);
+        environments.setOnScreen(A_MATE.projectId);
+        yield* settle;
+
+        expect(rig.exchanges.map(({ input: { key, asked } }) => ({ key, asked }))).toEqual([
+          { key: MATE, asked: true },
+        ]);
+        expect(environments.machines().get(MATE)?.guards).toMatchObject({
+          want: true,
+          routeTarget: false,
+        });
+      }),
+    ),
+  );
+
   it.effect("an action holds a parked Mate connected until it answers", () =>
     Effect.scoped(
       Effect.gen(function* () {

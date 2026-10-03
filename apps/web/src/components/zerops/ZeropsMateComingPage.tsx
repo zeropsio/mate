@@ -429,7 +429,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     asked.current = connectKey;
     void connect({ key: connectKey });
   }, [connect, connectKey]);
-  // On screen, it holds the route's lease while the view stands (A9).
+  // On screen, it holds the screen's lease while the view stands (A9).
   const environments = useAccountEnvironments();
   useEffect(() => {
     if (environments === null) return;

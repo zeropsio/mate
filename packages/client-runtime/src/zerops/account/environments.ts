@@ -229,8 +229,8 @@ export interface AccountEnvironments {
   /** The organization the tab has open: a target nothing names has its inventory read (§6.2). */
   readonly setActiveOrganization: (organizationId: string | null) => void;
   /**
-   * The project whose Mate is on screen — its own view, its birth — or null: it holds the route's
-   * lease, whatever the route names.
+   * The project whose Mate is on screen — its own view, its birth — or null: it holds the
+   * screen's lease, asked for as the route's is but capped and held while hidden as no route is.
    */
   readonly setOnScreen: (projectId: string | null) => void;
 }
@@ -323,7 +323,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let activeOrganization: string | null = null;
   let onScreen: string | null = null;
   /** The targets the route and the screen hold: one that leaves them is the Mate left last. */
-  let routeKeys: ReadonlyArray<TargetKey> = [];
+  let viewed: ReadonlyArray<TargetKey> = [];
   /** The Mate left last, and what disarms the timer that lets it go. */
   let recent: { readonly key: TargetKey; readonly disarm: () => void } | null = null;
   /** Whether each registered environment was last parked, as the registry was told. */
@@ -651,11 +651,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     stores.driver.setDemand("recent", [key]);
   };
 
-  /** The route's lease: a target that leaves it is the Mate left last. */
-  const holdOnRoute = (keys: ReadonlyArray<TargetKey>) => {
-    const left = routeKeys.find((key) => !keys.includes(key));
-    routeKeys = keys;
-    stores!.driver.setDemand("route", keys);
+  /** The route's and the screen's leases: a target that leaves both is the Mate left last. */
+  const holdViewed = (onRoute: ReadonlyArray<TargetKey>, shown: ReadonlyArray<TargetKey>) => {
+    const held = [...onRoute, ...shown];
+    const left = viewed.find((key) => !held.includes(key));
+    viewed = held;
+    stores!.driver.setDemand("route", onRoute);
+    stores!.driver.setDemand("screen", shown);
     if (left !== undefined) keepRecent(left);
   };
 
@@ -673,7 +675,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const shown = rows.flatMap((row) => (row.project.id === onScreen ? [row.key] : []));
     if (route === null) {
       routeKey = null;
-      holdOnRoute(shown);
+      holdViewed([], shown);
       return;
     }
     const machines = stores.driver.machines();
@@ -686,7 +688,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       hinted ??
       undefined;
     routeKey = key ?? null;
-    holdOnRoute(key === undefined ? shown : [key, ...shown.filter((other) => other !== key)]);
+    holdViewed(key === undefined ? [] : [key], shown);
     if (resolved !== undefined || hinted !== null) return;
     const unswept = index.failed.filter((failed) => !swept.keys.has(failed));
     if (unswept.length === 0) return;
@@ -890,12 +892,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           listeners.delete(listener);
         };
       },
-      // The person's Connect holds the Mate until it answers; one it connected off the route
-      // stays as the Mate left last.
+      // The person's Connect holds the Mate until it answers; one it connected off the route and
+      // the screen stays as the Mate left last.
       connect: (key, reason) => {
         const letGo = driver.hold(key, "user");
         return driver.connect(key, reason).then((outcome) => {
-          if (outcome._tag === "Connected" && !routeKeys.includes(key)) keepRecent(key);
+          if (outcome._tag === "Connected" && !viewed.includes(key)) keepRecent(key);
           letGo();
           return outcome;
         });

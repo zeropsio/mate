@@ -288,7 +288,7 @@ describe("a Mate's own view while its link is made", () => {
   });
 
   // A live run, 2026-10-01: a browser with 21 registered stayed on "coming up" for an hour. The
-  // Mate whose view is open holds the route's lease while the view stands (A9).
+  // Mate whose view is open holds the screen's lease while the view stands (A9).
   it("puts its Mate on screen while it stands, and takes it off when it goes", () => {
     openView();
     expect(app.onScreen.mock.calls).toEqual([[PROJECT]]);

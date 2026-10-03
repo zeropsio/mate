@@ -11,12 +11,12 @@
  *   ports, and their answers come back as events carrying the op's attempt (§6.5).
  * - A credential is installed only when its answer left the machine `held` for that
  *   environment; a late or superseded answer is logged by the machine and dropped.
- * - A target the person asked for — the route's, one an action of theirs holds, or one whose
- *   Connect they pressed — starts the moment it can, past every budget. The background — the
- *   Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the door's mint pace
- *   (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every other wanted target
- *   waits `on: budget`. A target with a session kept from an earlier load mints nothing while its
- *   Mate still holds it, so it neither waits on the pace nor spends it.
+ * - A target the person asked for — the route's, the one on screen, one an action of theirs
+ *   holds, or one whose Connect they pressed — starts the moment it can, past every budget. The
+ *   background — the Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the
+ *   door's mint pace (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every
+ *   other wanted target waits `on: budget`. A target with a session kept from an earlier load
+ *   mints nothing while its Mate still holds it, so it neither waits on the pace nor spends it.
  *   A mint the platform answers 429 holds the background a while.
  * - An exchange whose attempt ends without it (its deadline, a retirement) is aborted.
  * - A Mate's backoff cap (`RETRY_CAP`) is kept across loads (`capped`): until it ends, the
@@ -52,10 +52,11 @@ import { selectReachability, type Reachability } from "./reachability.ts";
 export type TargetKey = string;
 
 /**
- * What an emitter publishes the whole of: the route's target, the Mate left last (krok-a-hub §3,
- * kept warm a while).
+ * What an emitter publishes the whole of: the route's target, the Mate on screen — its own view,
+ * its birth, asked for but capped as no route is — and the Mate left last (krok-a-hub §3, kept
+ * warm a while).
  */
-export type DemandReason = "route" | "recent";
+export type DemandReason = "route" | "screen" | "recent";
 
 /**
  * A lease one caller holds on one target until it lets it go: an action from outside the Mate's
@@ -227,14 +228,21 @@ interface Entry {
   capped: boolean;
 }
 
-/** The demands in priority order (§4.4): the user's Connect ranks after the route's target. */
-const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = ["route", "user", "action", "recent"];
+/** The demands in priority order (§4.4): the user's Connect ranks after the route's and the screen's. */
+const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = [
+  "route",
+  "screen",
+  "user",
+  "action",
+  "recent",
+];
 
 /** The demands of the person's own asking: past every budget. */
 const ASKED_RANK = PRIORITY.indexOf("action");
 
 const EXCHANGE_REASON: Record<DemandReason, IdentityExchangeReason> = {
   route: "restore",
+  screen: "restore",
   recent: "restore",
 };
 
