@@ -917,7 +917,32 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
   });
   // Bytes that pick the first free name.
   const first: RandomBytes = (bytes) => bytes.fill(0);
-  const BASE = { hqKnown: true, writer: true, mayCreateRecord: true, press: undefined };
+  /** HQ's structure: G, holding the birth intent Gus's project was created under. */
+  const STRUCTURE = {
+    ungrouped: [],
+    apps: [
+      {
+        id: "app-g",
+        name: "mate-rig-e2e-g",
+        projects: [],
+        births: [{ id: "b-gus", name: "Gus", face: "rose:seal" }],
+      },
+    ],
+  };
+  /** Gus's project, its press cut off between its creation and its attach (F6c, 2026-10-03). */
+  const GUS = {
+    id: "gus-project",
+    name: "mate-rig-e2e-g - Gus",
+    status: "ACTIVE",
+    tagList: ["mate:birth:b-gus", "mate"],
+  } as const;
+  const BASE = {
+    hqKnown: true,
+    structure: STRUCTURE,
+    writer: true,
+    mayCreateRecord: true,
+    press: undefined,
+  };
 
   it.each([
     {
@@ -944,6 +969,21 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
       name: "no record, a press here placed it: into that application, under its name and face",
       input: { ...BASE, press: pressOf("mate"), project: DAN },
       expected: { kind: "mate", groupId: "app-d", mate: { name: "Dan", face: FACE } },
+    },
+    {
+      name: "no record and no press here, its project naming its birth intent: into the intent's application, under its name and face, closing it",
+      input: { ...BASE, project: GUS },
+      expected: {
+        kind: "mate",
+        groupId: "app-g",
+        mate: { name: "Gus", face: { tint: "rose", shape: "seal" } },
+        intent: "b-gus",
+      },
+    },
+    {
+      name: "no record, a press here placed it, its project naming its birth intent: the intent",
+      input: { ...BASE, press: pressOf("mate"), project: GUS },
+      expected: { kind: "mate", groupId: "app-g", mate: { name: "Gus" }, intent: "b-gus" },
     },
     {
       name: "no record and no press here: a new Mate in no application, for who may write it",

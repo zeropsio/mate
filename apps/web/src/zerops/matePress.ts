@@ -35,12 +35,19 @@ import {
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
   heldOf,
+  readMateFace,
   readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { attachToApp, type HqEndpoint, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import {
+  attachToApp,
+  birthIntentOf,
+  type HqEndpoint,
+  type HqPlacement,
+  type HqStructure,
+} from "@t3tools/client-runtime/zerops/hq";
 import type * as Effect from "effect/Effect";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
@@ -326,20 +333,24 @@ export function placedMateRegistration(
 
 /**
  * What *Finish setup* and *Set up Mate* register for a Mate, by one rule, so neither mints a new
- * Mate where HQ holds one or may yet (F6b, 2026-10-03):
+ * Mate where HQ holds one or may yet (F6b, F6c, 2026-10-03):
  *
  * - HQ's structure not read: nothing — a project it places nowhere has no record only once it is;
  * - HQ holds it in its application: there again, under HQ's name and face, by a registry writer —
  *   an attach that finds it there writes nothing; nothing for anyone else;
  * - HQ holds it in no application: nothing, its record standing;
- * - HQ holds no record of it: into the application the press this tab still holds placed it in,
- *   under its name and face; else, for whoever HQ's rule lets write one, a new Mate in no
- *   application (`setUpMateRecord`) — what a refused attach leaves; else nothing.
+ * - HQ holds no record of it: into the application its project's birth intent names, under its
+ *   name and face, the attach closing the intent — in any browser; else into the application the
+ *   press this tab still holds placed it in, under its name and face; else, for whoever HQ's rule
+ *   lets write one, a new Mate in no application (`setUpMateRecord`) — what a refused attach
+ *   leaves; else nothing.
  */
 export function mateFinishRegistration(input: {
   readonly hq: HqEndpoint;
   /** HQ's structure is known: only then does a project it places nowhere have no record. */
   readonly hqKnown: boolean;
+  /** HQ's structure, where its open birth intents are (`birthIntentOf`). */
+  readonly structure: HqStructure | null;
   readonly project: ZeropsCandidate["project"];
   readonly press: MatePress | undefined;
   /** The viewer writes the registry: an owner or an admin (`canWriteRegistry`). */
@@ -368,6 +379,25 @@ export function mateFinishRegistration(input: {
             : { tint: face.tint, shape: face.shape },
       },
       birth: { standUp: false },
+    };
+  }
+  const { birth } = readZeropsMembership(input.project);
+  const intent = birth === undefined ? undefined : birthIntentOf(input.structure, birth);
+  if (birth !== undefined && intent !== undefined) {
+    const face = readMateFace(intent.face);
+    return {
+      hq: input.hq,
+      groupId: intent.appId,
+      kind: "mate",
+      mate: {
+        name: intent.name,
+        face:
+          face?.tint === undefined || face.shape === undefined
+            ? undefined
+            : { tint: face.tint, shape: face.shape },
+      },
+      birth: { standUp: false },
+      intent: birth,
     };
   }
   const placed = matePressPlacement(input.press);
