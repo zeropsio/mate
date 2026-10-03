@@ -138,6 +138,26 @@ describe("trackCommands", () => {
     expect(tracked.byCommand.get("1")?.description).toBe("Run the tests");
   });
 
+  // Grok names a background command's task by the command's first line, and
+  // Antigravity by the command itself: no words of its own to lend.
+  it.each([
+    { name: "Grok's first line", command: "npm run dev\necho done", description: "npm run dev" },
+    { name: "Antigravity's whole command", command: "npm run dev", description: "npm run dev" },
+    { name: "a shell-wrapped one", command: "bash -lc 'npm run dev'", description: "npm run dev" },
+    {
+      name: "a long one Grok cut",
+      command: `node ${"x".repeat(300)}`,
+      description: `node ${"x".repeat(195)}`,
+    },
+  ])("lends no words from a task named by its command: $name", ({ command: text, description }) => {
+    const run = command("1", text);
+    const tracker = task("t1", description, { taskToolUseId: "toolu_1" });
+    const tracked = trackCommands([run, tracker]);
+    expect(tracked.byCommand.get("1")?.description).toBeUndefined();
+    expect([...tracked.trackers]).toEqual(["t1"]);
+    expect(stepOf(run, tracked).words).toBeNull();
+  });
+
   it.each([
     {
       name: "a helper",

@@ -66,9 +66,12 @@ export interface WorkStep {
   readonly noResult?: "stale" | "closed";
 }
 
-/** A command a task tracked: the task's words, and the task (its end is the command's). */
+/**
+ * A command a task tracked: the task's words, where it has its own, and the
+ * task (its end is the command's).
+ */
 export interface TrackedCommand {
-  readonly description: string;
+  readonly description?: string;
   readonly task: WorkLogEntry;
 }
 
@@ -197,6 +200,18 @@ const startOf = (entry: WorkLogEntry) => Date.parse(entry.startedAt ?? entry.cre
 /** A task and a command that ended together, or the task ended while the command ran. */
 const TRACK_TOLERANCE_MS = 3_000;
 
+const folded = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/**
+ * A task named by the command it tracks — Grok names one by the command's
+ * first line, cut; Antigravity by the command whole: those are no words.
+ */
+function namesItself(command: WorkLogEntry, description: string): boolean {
+  const said = folded(description);
+  const raw = command.rawCommand ?? command.command ?? "";
+  return [raw, unwrapShell(raw)].some((text) => folded(text).startsWith(said));
+}
+
 /**
  * Which tasks track which commands: by the call the task names, else — for a
  * task that names none — the command it ended with.
@@ -226,7 +241,12 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
     if (command === undefined) continue;
     trackers.add(task.id);
     const description = (task.toolTitle ?? task.label).trim();
-    if (description.length > 0) byCommand.set(command.id, { description, task });
+    byCommand.set(
+      command.id,
+      description.length > 0 && !namesItself(command, description)
+        ? { description, task }
+        : { task },
+    );
   }
   return { byCommand, trackers };
 }
