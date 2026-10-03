@@ -19,7 +19,8 @@
  * alongside its run, and `?end=<ms>` for its run's end).
  * `window.__switchHarness
  * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
- * a switch it started itself.
+ * a switch it started itself, and `.say("mira", text)` lands a message at a
+ * conversation's end.
  *
  * Fixtures only. Nothing here ships — `design-switch.html` is not
  * `index.html`, and no route imports this module.
@@ -33,6 +34,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { LegendListRef } from "@legendapp/list/react";
 import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
@@ -41,12 +43,14 @@ import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/da
 import * as Stream from "effect/Stream";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { KeptTimelines } from "~/components/chat/KeptTimelines";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
+import { isTimelineScrollTarget } from "~/components/chat/timelineScrollTarget";
 import type { TimelineEntry } from "~/session-logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
@@ -483,6 +487,36 @@ function latestTurnOf(thread: HarnessThread, ended: boolean) {
 const threadKeyOf = (key: string) => `${ENVIRONMENT}:${key}`;
 
 /**
+ * `__switchHarness.say(key, text)`: a message from the Mate lands at the end of
+ * a conversation, shown or not — what a person reading history above meets.
+ */
+const said = new Map<string, ReadonlyArray<TimelineEntry>>();
+const SAID_EVENT = "switch-harness-said";
+function say(key: string, text: string) {
+  const earlier = said.get(key) ?? [];
+  const id = `${key}-said-${earlier.length}`;
+  const at = new Date().toISOString();
+  said.set(key, [
+    ...earlier,
+    {
+      id,
+      kind: "message",
+      createdAt: at,
+      message: {
+        id: MessageId.make(id),
+        role: "assistant",
+        text,
+        turnId: null,
+        createdAt: at,
+        updatedAt: at,
+        streaming: false,
+      },
+    },
+  ]);
+  window.dispatchEvent(new Event(SAID_EVENT));
+}
+
+/**
  * What the pane reads for the routed thread: the server's copy after a first
  * open's wait, and what the app remembers of a thread it painted before
  * (`peekRememberedThreadTimeline`), read again from the server meanwhile.
@@ -518,10 +552,17 @@ function useHarnessThread(key: string) {
     return () => clearInterval(stream);
   }, [thread.live, ended]);
   const tick = thread.live ? (ended ? Math.floor(END_MS / STREAM_EVERY_MS) : streamed) : 0;
+  const [heard, setHeard] = useState(() => new Map(said));
+  useEffect(() => {
+    const hear = () => setHeard(new Map(said));
+    window.addEventListener(SAID_EVENT, hear);
+    return () => window.removeEventListener(SAID_EVENT, hear);
+  }, []);
   const loading = shown === "loading";
   const entries = useMemo(
-    () => (loading ? [] : conversationOf(thread, tick, ended)),
-    [loading, thread, tick, ended],
+    () =>
+      loading ? [] : [...conversationOf(thread, tick, ended), ...(heard.get(thread.key) ?? [])],
+    [loading, thread, tick, ended, heard],
   );
   return { thread, live: thread.live === true && !ended, ended, phase: shown, entries };
 }
@@ -549,12 +590,17 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
     setFollow({ key: routeThreadKey, enabled: atEnd, atEnd });
   }
   const liveFollowEnabled = follow.enabled;
-  const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
-    setFollow((current) =>
-      current.atEnd === isAtEnd
+  const onIsAtEndChange = useCallback((isAtEnd: boolean, byPerson: boolean) => {
+    setFollow((current) => {
+      const enabled = nextTimelineFollow(current.enabled, {
+        type: "position",
+        atEnd: isAtEnd,
+        byPerson,
+      });
+      return current.atEnd === isAtEnd && current.enabled === enabled
         ? current
-        : { ...current, atEnd: isAtEnd, enabled: isAtEnd || current.enabled },
-    );
+        : { ...current, atEnd: isAtEnd, enabled };
+    });
   }, []);
   const onManualNavigation = useCallback(
     () => setFollow((current) => ({ ...current, enabled: false })),
@@ -582,7 +628,15 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
         // As ChatView: a wheel up is the person reading history, and the end
         // stops being followed.
         onWheelCapture={(event) => {
-          if (event.deltaY < 0) onManualNavigation();
+          const list = listRef.current?.getScrollableNode();
+          if (
+            event.deltaY < 0 &&
+            follow.enabled &&
+            list &&
+            isTimelineScrollTarget(event.target, list, event.deltaY)
+          ) {
+            flushSync(onManualNavigation);
+          }
         }}
       >
         <KeptTimelines
@@ -697,6 +751,7 @@ function Harness() {
   useEffect(() => {
     (window as unknown as { __switchHarness: unknown }).__switchHarness = {
       switchTo: (key: string) => setCurrent(key),
+      say,
       threads: THREADS.map((thread) => thread.key),
     };
   }, []);
