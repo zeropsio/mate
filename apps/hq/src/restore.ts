@@ -14,6 +14,11 @@
  * restored one is set above the one the live HQ led under, so no write of a Core from before passes
  * the leader's fence (`leader.ts`). Without `replace` the database is empty and takes the set's.
  *
+ * Each restore holds the database's lock (`leader.ts` `LOCK_KEY`) from its first look at a target to
+ * its last write, refused while a Core holds it: no Core leads in the middle of one, and none runs
+ * while a git root is moved aside or filled (H3). A git root is looked at as the disk lists it,
+ * never through the git layer, whose opening sweeps what a running Core has in flight.
+ *
  * `restoreDatabase` and `restoreRepos` are the two halves; `restoreSet` runs both from one set.
  *
  * @module restore
@@ -122,99 +127,110 @@ const fetchSet = (store: BackupStore, id: string, workDir: string) =>
   });
 
 /**
- * The database from `dump`: refused while a Core holds it, and unless empty or `replace`d (kept in
+ * The database's lock, held for the scope on a connection of its own: refused while a Core holds
+ * it. Its queries.
+ */
+const exclusive = (target: RestoreTarget) =>
+  Effect.gen(function* () {
+    const connection = yield* PgConnection.make({ url: target.databaseUrl }).pipe(
+      Effect.mapError((error) => new BackupError({ reason: "tool", message: error.message })),
+    );
+    const query = (statement: string) =>
+      connection
+        .query(statement)
+        .pipe(
+          Effect.mapError((error) => new BackupError({ reason: "tool", message: error.message })),
+        );
+    const locked = yield* query(`SELECT pg_try_advisory_lock(${String(LOCK_KEY)}) AS locked`);
+    if (locked.rows[0]?.["locked"] !== true) {
+      return yield* fail("core_running", "a Core holds this database's lock: stop it first");
+    }
+    return query;
+  });
+
+type Query = Effect.Success<ReturnType<typeof exclusive>>;
+
+/**
+ * The database from `dump`, its lock held (`exclusive`): unless empty or `replace`d (kept in
  * `workDir/before-<stamp>.dump`, then its tables dropped); sessions revoked; the epoch above the one
  * it replaced. The kept dump's path.
  */
-const databaseFrom = (dump: string, target: RestoreTarget, stamp: string) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const connection = yield* PgConnection.make({ url: target.databaseUrl }).pipe(
-        Effect.mapError((error) => new BackupError({ reason: "tool", message: error.message })),
-      );
-      const query = (statement: string) =>
-        connection
-          .query(statement)
-          .pipe(
-            Effect.mapError((error) => new BackupError({ reason: "tool", message: error.message })),
-          );
-      const count = (statement: string) =>
-        Effect.map(query(statement), (result) => Number(result.rows[0]?.["n"] ?? 0));
-      const locked = yield* query(`SELECT pg_try_advisory_lock(${String(LOCK_KEY)}) AS locked`);
-      if (locked.rows[0]?.["locked"] !== true) {
-        return yield* fail("core_running", "a Core holds this database's lock: stop it first");
+const databaseFrom = (dump: string, target: RestoreTarget, stamp: string, query: Query) =>
+  Effect.gen(function* () {
+    const count = (statement: string) =>
+      Effect.map(query(statement), (result) => Number(result.rows[0]?.["n"] ?? 0));
+    let kept: string | null = null;
+    let led: number | null = null;
+    if (
+      (yield* count("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'")) > 0
+    ) {
+      if (target.replace !== true) {
+        return yield* fail("target_not_empty", "the database has tables already");
       }
-      let kept: string | null = null;
-      let led: number | null = null;
-      if (
-        (yield* count("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'")) > 0
-      ) {
-        if (target.replace !== true) {
-          return yield* fail("target_not_empty", "the database has tables already");
-        }
-        // The epoch it led under, read before anything goes.
-        if ((yield* count("SELECT count(to_regclass('public.hq_leader'))::int AS n")) > 0) {
-          led = Number(
-            (yield* query("SELECT epoch FROM hq_leader WHERE id = 1")).rows[0]?.["epoch"],
-          );
-        }
-        const version = yield* query("SELECT current_setting('server_version_num') AS v");
-        const pgDump = target.pgDump ?? "pg_dump";
-        yield* pgDumpFits(pgDump, target.databaseUrl, String(version.rows[0]?.["v"] ?? ""));
-        kept = NodePath.join(target.workDir, `before-${stamp}.dump`);
-        yield* io("keep", () => NodeFSP.mkdir(target.workDir, { recursive: true }));
-        yield* runTool(
-          pgDump,
-          ["--format=custom", "--no-owner", "--no-acl", `--file=${kept}`],
-          target.databaseUrl,
-        );
-        yield* query(DROP_TABLES);
-        const left = yield* count(`
-          SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE n.nspname = 'public'`);
-        if (left > 0) {
-          return yield* fail("target_not_empty", `${String(left)} relations remain in public`);
-        }
+      // The epoch it led under, read before anything goes.
+      if ((yield* count("SELECT count(to_regclass('public.hq_leader'))::int AS n")) > 0) {
+        led = Number((yield* query("SELECT epoch FROM hq_leader WHERE id = 1")).rows[0]?.["epoch"]);
       }
+      const version = yield* query("SELECT current_setting('server_version_num') AS v");
+      const pgDump = target.pgDump ?? "pg_dump";
+      yield* pgDumpFits(pgDump, target.databaseUrl, String(version.rows[0]?.["v"] ?? ""));
+      kept = NodePath.join(target.workDir, `before-${stamp}.dump`);
+      yield* io("keep", () => NodeFSP.mkdir(target.workDir, { recursive: true }));
       yield* runTool(
-        target.pgRestore ?? "pg_restore",
-        [
-          "--no-owner",
-          "--no-acl",
-          "--exit-on-error",
-          `--dbname=${libpqEnv(target.databaseUrl)["PGDATABASE"] ?? ""}`,
-          dump,
-        ],
+        pgDump,
+        ["--format=custom", "--no-owner", "--no-acl", `--file=${kept}`],
         target.databaseUrl,
       );
-      yield* query("UPDATE hq_session SET revoked_at = now() WHERE revoked_at IS NULL");
-      if (led !== null && Number.isSafeInteger(led)) {
-        yield* query(
-          `UPDATE hq_leader SET epoch = GREATEST(epoch, ${String(led + 1)}) WHERE id = 1`,
-        );
+      yield* query(DROP_TABLES);
+      const left = yield* count(`
+          SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public'`);
+      if (left > 0) {
+        return yield* fail("target_not_empty", `${String(left)} relations remain in public`);
       }
-      return kept;
-    }),
-  );
+    }
+    yield* runTool(
+      target.pgRestore ?? "pg_restore",
+      [
+        "--no-owner",
+        "--no-acl",
+        "--exit-on-error",
+        `--dbname=${libpqEnv(target.databaseUrl)["PGDATABASE"] ?? ""}`,
+        dump,
+      ],
+      target.databaseUrl,
+    );
+    yield* query("UPDATE hq_session SET revoked_at = now() WHERE revoked_at IS NULL");
+    if (led !== null && Number.isSafeInteger(led)) {
+      yield* query(`UPDATE hq_leader SET epoch = GREATEST(epoch, ${String(led + 1)}) WHERE id = 1`);
+    }
+    return kept;
+  });
 
-/** The repositories under `gitRoot`. */
+/**
+ * How many repositories lie under `gitRoot` (`<appId>/<repo>.git`), as the disk lists them: nothing
+ * swept or recovered, as opening the git layer would.
+ */
 const reposIn = (gitRoot: string) =>
-  Effect.scoped(
-    Effect.flatMap(
-      makeHqGit({
-        rootDir: gitRoot,
-        authenticate: () => null,
-        canRead: () => false,
-        lookupChange: async () => null,
-      }),
-      (git) => git.list(),
-    ),
-  );
+  io("inspect", async () => {
+    let found = 0;
+    for (const app of await NodeFSP.readdir(gitRoot, { withFileTypes: true }).catch(() => [])) {
+      if (!app.isDirectory() || app.name.startsWith(".")) continue;
+      const entries = await NodeFSP.readdir(NodePath.join(gitRoot, app.name), {
+        withFileTypes: true,
+      }).catch(() => []);
+      found += entries.filter(
+        (entry) =>
+          entry.isDirectory() && !entry.name.startsWith(".") && entry.name.endsWith(".git"),
+      ).length;
+    }
+    return found;
+  });
 
 /** The git root empty: refused unless it is, or `replace`d (moved aside); its new place. */
 const gitRootCleared = (target: RestoreTarget, stamp: string) =>
   Effect.gen(function* () {
-    if ((yield* reposIn(target.gitRoot)).length === 0) return null;
+    if ((yield* reposIn(target.gitRoot)) === 0) return null;
     if (target.replace !== true) {
       return yield* fail("target_not_empty", "the git root has repositories already");
     }
@@ -254,19 +270,25 @@ const stampNow = Effect.map(DateTime.now, (now) =>
 
 /** Set `id`'s database, into an empty database no Core holds, or one it replaces. */
 export const restoreDatabase = (store: BackupStore, id: string, target: RestoreTarget) =>
-  Effect.gen(function* () {
-    const { dump } = yield* fetchSet(store, id, target.workDir);
-    return yield* databaseFrom(dump, target, yield* stampNow);
-  });
+  Effect.scoped(
+    Effect.gen(function* () {
+      const query = yield* exclusive(target);
+      const { dump } = yield* fetchSet(store, id, target.workDir);
+      return yield* databaseFrom(dump, target, yield* stampNow, query);
+    }),
+  );
 
-/** Set `id`'s repositories, into an empty git root, or one it replaces. */
+/** Set `id`'s repositories, into an empty git root, or one it replaces; no Core holds the database. */
 export const restoreRepos = (store: BackupStore, id: string, target: RestoreTarget) =>
-  Effect.gen(function* () {
-    const { manifest, bundles } = yield* fetchSet(store, id, target.workDir);
-    const aside = yield* gitRootCleared(target, yield* stampNow);
-    yield* reposFrom(manifest, bundles, target.gitRoot);
-    return aside;
-  });
+  Effect.scoped(
+    Effect.gen(function* () {
+      yield* exclusive(target);
+      const { manifest, bundles } = yield* fetchSet(store, id, target.workDir);
+      const aside = yield* gitRootCleared(target, yield* stampNow);
+      yield* reposFrom(manifest, bundles, target.gitRoot);
+      return aside;
+    }),
+  );
 
 /**
  * Set `id` whole: every file checked first, and a git root that must be empty found so before the
@@ -274,15 +296,18 @@ export const restoreRepos = (store: BackupStore, id: string, target: RestoreTarg
  * restore kept of what it replaced.
  */
 export const restoreSet = (store: BackupStore, id: string, target: RestoreTarget) =>
-  Effect.gen(function* () {
-    const { manifest, dump, bundles } = yield* fetchSet(store, id, target.workDir);
-    const stamp = yield* stampNow;
-    if (target.replace !== true && (yield* reposIn(target.gitRoot)).length > 0) {
-      return yield* fail("target_not_empty", "the git root has repositories already");
-    }
-    const dumpKept = yield* databaseFrom(dump, target, stamp);
-    const gitKept = yield* gitRootCleared(target, stamp);
-    yield* reposFrom(manifest, bundles, target.gitRoot);
-    const kept: Kept = { dump: dumpKept, git: gitKept };
-    return { manifest, kept };
-  });
+  Effect.scoped(
+    Effect.gen(function* () {
+      const query = yield* exclusive(target);
+      const { manifest, dump, bundles } = yield* fetchSet(store, id, target.workDir);
+      const stamp = yield* stampNow;
+      if (target.replace !== true && (yield* reposIn(target.gitRoot)) > 0) {
+        return yield* fail("target_not_empty", "the git root has repositories already");
+      }
+      const dumpKept = yield* databaseFrom(dump, target, stamp, query);
+      const gitKept = yield* gitRootCleared(target, stamp);
+      yield* reposFrom(manifest, bundles, target.gitRoot);
+      const kept: Kept = { dump: dumpKept, git: gitKept };
+      return { manifest, kept };
+    }),
+  );

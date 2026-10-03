@@ -361,6 +361,59 @@ describe("a backup set, restored", () => {
         }),
     );
 
+    // H3: a restore holds the database's lock from its first look to its last write, and looks at
+    // a git root without touching it: a running Core is refused before anything of it is touched.
+    it.effect("refuses a database a Core holds, leaving that Core's git root as it is", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true);
+        yield* untilHealth(a.call, "active");
+        const owner = yield* sessionFor(a.call, "door-owner");
+        const { appId } = yield* mateWithChange(a.call, a.fake, owner);
+        const manifest = yield* a.backup.take;
+        // What the running Core has in flight: its git home, a build.
+        const home = NodePath.join(a.gitRoot, ".home-live");
+        const build = NodePath.join(a.gitRoot, appId, ".build-live");
+        NodeFS.mkdirSync(home);
+        NodeFS.mkdirSync(build);
+        const refused = yield* Effect.flip(
+          restoreSet(directoryStore(a.storeDir), manifest.id, {
+            databaseUrl: Redacted.make(a.url),
+            gitRoot: a.gitRoot,
+            workDir: yield* tempDir("hq-restore-"),
+          }),
+        );
+        assert.deepStrictEqual(
+          [refused._tag, "reason" in refused && refused.reason],
+          ["BackupError", "core_running"],
+        );
+        assert.isTrue(NodeFS.existsSync(home), "the running Core's git home went");
+        assert.isTrue(NodeFS.existsSync(build), "the running Core's build went");
+      }),
+    );
+
+    it.effect("restores no repository while a Core holds the database", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true);
+        yield* untilHealth(a.call, "active");
+        const owner = yield* sessionFor(a.call, "door-owner");
+        yield* mateWithChange(a.call, a.fake, owner);
+        const manifest = yield* a.backup.take;
+        const gitRoot = yield* tempDir("hq-restore-");
+        const refused = yield* Effect.flip(
+          restoreRepos(directoryStore(a.storeDir), manifest.id, {
+            databaseUrl: Redacted.make(a.url),
+            gitRoot,
+            workDir: yield* tempDir("hq-restore-"),
+          }),
+        );
+        assert.deepStrictEqual(
+          [refused._tag, "reason" in refused && refused.reason],
+          ["BackupError", "core_running"],
+        );
+        assert.deepStrictEqual(NodeFS.readdirSync(gitRoot), []);
+      }),
+    );
+
     // Without `replace`, a target that holds anything is refused before either is written.
     it.effect("refuses a database or git root that holds anything, and writes neither", () =>
       Effect.gen(function* () {
