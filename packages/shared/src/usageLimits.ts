@@ -222,24 +222,36 @@ export function limitsReadOf(presentation: LimitsPresentation): LimitsRead {
  */
 export const LIMITS_READ_DEADLINE_MS = 4_000;
 
+/** One thing the limits page draws, keyed so its place is kept once painted. */
+export type LimitsEntry =
+  | {
+      readonly kind: "source";
+      readonly key: string;
+      readonly source: ReturnType<typeof collectLimitSources>[number];
+    }
+  | { readonly kind: "account"; readonly key: string; readonly account: LimitAccount }
+  | { readonly kind: "notice"; readonly key: string; readonly notice: LimitNoticeGroup };
+
 export interface LimitsPage<P> {
   /**
-   * `wait` until the cards are painted — every environment settled, or the deadline passed —
-   * then `shown`, or `none` when the list is whole and settled (or the deadline passed) and nothing
-   * reports limits.
+   * `wait` until the page is first painted — every environment settled, or the deadline passed —
+   * then `shown`, or `none` when nothing reports limits.
    */
   readonly state: "wait" | "shown" | "none";
   /** An environment is still on its way, or the list is not whole: the reading line stands. */
   readonly reading: boolean;
-  /** The environments whose limits are painted; empty until the cards are. */
+  /** The environments whose limits are painted; empty until the page is. */
   readonly shown: ReadonlyMap<EnvironmentId, P>;
-  /** Least quota left first as first painted; a later account joins at the end. */
-  readonly accounts: readonly LimitAccount[];
-  readonly sources: ReturnType<typeof collectLimitSources>;
-  readonly notices: readonly LimitNoticeGroup[];
+  /**
+   * What stands, in order: first painted as the sources, the accounts least quota left first,
+   * then what could not be read; whatever comes later joins at the very end.
+   */
+  readonly entries: readonly LimitsEntry[];
   /** More than one environment is listed: each account names where it is signed in. */
   readonly tellApart: boolean;
-  /** The order painted, for the next read to keep (`placed`). */
+  /** Whether this page is painted: once it is, it never goes back to waiting. */
+  readonly painted: boolean;
+  /** The entries' keys as painted, for the next read to keep (`placed`). */
   readonly placed: readonly string[];
 }
 
@@ -262,10 +274,11 @@ export function keepPlaced<T>(
 }
 
 /**
- * The limits page (unknown is not empty): the cards are painted once — when every environment has
- * settled, or `LIMITS_READ_DEADLINE_MS` after the page's first read — least quota left first, and
- * then stand as painted (`placed`): a late answer joins at the end, under the cards above it.
- * Until then the reading line; "none" only once nothing reports and nothing more is waited for.
+ * The limits page (unknown is not empty): painted once — when every environment has settled, or
+ * `LIMITS_READ_DEADLINE_MS` after the page's first read — and never back to waiting after. Then
+ * everything stands as painted (`placed`): a late source, account or notice joins at the very
+ * end. Until the first paint the reading line; "none" only once nothing reports and nothing more
+ * is waited for, or the deadline passed.
  */
 export function limitsPage<P extends LimitsPresentation>(input: {
   /** The environments are listed whole: none is still to be registered. */
@@ -273,7 +286,9 @@ export function limitsPage<P extends LimitsPresentation>(input: {
   readonly presentations: ReadonlyMap<EnvironmentId, P>;
   /** `LIMITS_READ_DEADLINE_MS` has passed since the page's first read. */
   readonly deadlinePassed: boolean;
-  /** The account keys as painted so far, in order; empty before the first paint. */
+  /** The page was painted before — "none" included: it stays painted. */
+  readonly painted: boolean;
+  /** The entries' keys as painted so far, in order. */
   readonly placed: readonly string[];
 }): LimitsPage<P> {
   const shown = new Map<EnvironmentId, P>();
@@ -285,32 +300,44 @@ export function limitsPage<P extends LimitsPresentation>(input: {
   }
   const reading = pending || !input.listed;
   const tellApart = input.presentations.size > 1;
-  const painted = !reading || input.deadlinePassed || input.placed.length > 0;
-  if (!painted) {
+  if (reading && !input.deadlinePassed && !input.painted) {
     return {
       state: "wait",
       reading,
       shown: new Map(),
-      accounts: [],
-      sources: [],
-      notices: [],
+      entries: [],
       tellApart,
+      painted: false,
       placed: [],
     };
   }
-  const collected = collectLimitAccounts(shown);
-  const accounts = keepPlaced(input.placed, collected.accounts, (account) => account.key);
-  const sources = collectLimitSources(shown);
-  const any = accounts.length > 0 || collected.notices.length > 0 || sources.length > 0;
+  const { accounts, notices } = collectLimitAccounts(shown);
+  const fresh: LimitsEntry[] = [
+    ...collectLimitSources(shown).map((source): LimitsEntry => ({
+      kind: "source",
+      key: `source:${source.key}`,
+      source,
+    })),
+    ...accounts.map((account): LimitsEntry => ({
+      kind: "account",
+      key: `account:${account.key}`,
+      account,
+    })),
+    ...notices.map((notice): LimitsEntry => ({
+      kind: "notice",
+      key: `notice:${notice.driver}\n${notice.notice}`,
+      notice,
+    })),
+  ];
+  const entries = keepPlaced(input.placed, fresh, (entry) => entry.key);
   return {
-    state: any ? "shown" : "none",
+    state: entries.length > 0 ? "shown" : "none",
     reading,
     shown,
-    accounts,
-    sources,
-    notices: collected.notices,
+    entries,
     tellApart,
-    placed: accounts.map((account) => account.key),
+    painted: true,
+    placed: entries.map((entry) => entry.key),
   };
 }
 

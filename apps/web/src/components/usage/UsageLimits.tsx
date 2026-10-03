@@ -19,6 +19,7 @@ import {
   limitsNotice,
   limitsNoticeLine,
   LIMITS_READ_DEADLINE_MS,
+  type LimitsEntry,
   limitsPage,
   type LimitPace,
   paceOf,
@@ -26,7 +27,7 @@ import {
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { environmentPresentations } from "../../state/presentation";
@@ -545,12 +546,22 @@ export function UsageLimitsSection({
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
-  const placed = useRef<readonly string[]>([]);
-  const page = limitsPage({ listed, presentations, deadlinePassed, placed: placed.current });
-  const { state, reading, accounts, notices, sources, tellApart } = page;
-  useLayoutEffect(() => {
-    placed.current = page.placed;
+  // What was painted, kept for the next read: once painted it never waits again, nothing moves.
+  const [kept, setKept] = useState<{
+    readonly painted: boolean;
+    readonly placed: readonly string[];
+  }>({ painted: false, placed: [] });
+  const page = limitsPage({
+    listed,
+    presentations,
+    deadlinePassed,
+    painted: kept.painted,
+    placed: kept.placed,
   });
+  const { state, reading, entries, tellApart } = page;
+  if (page.painted !== kept.painted || page.placed.join("\n") !== kept.placed.join("\n")) {
+    setKept({ painted: page.painted, placed: page.placed });
+  }
   // One beat from the section's mount for the whole reading, the page's line and the cards' alike.
   const readingLine = useWaitLine(reading ? READING_LIMITS_LINE : null, {
     delayMs: BOOT_WAIT_LINE_MS,
@@ -582,34 +593,57 @@ export function UsageLimitsSection({
   }
   return (
     <div className="flex flex-col gap-8">
-      {accounts.map((account) => (
-        <AccountLimits
-          key={account.key}
-          account={account}
-          places={tellApart ? placesOf(account.environmentIds) : null}
-          now={now}
-        />
-      ))}
-      {sources.map((source) => (
-        <SourceLimits key={source.key} source={source} now={now} />
-      ))}
-      {notices.length > 0 ? (
-        <div className="flex flex-col gap-1">
-          {notices.map((group) => (
-            <p key={`${group.driver}:${group.notice}`} className="text-xs text-muted-foreground">
-              {limitsNoticeLine({
-                driverLabel: getDriverOption(group.driver)?.label ?? String(group.driver),
-                notice: group.notice,
-                places: tellApart ? placesOf(group.environmentIds).map((place) => place.name) : [],
-              })}
-            </p>
-          ))}
-        </div>
-      ) : null}
+      {entryBlocks(entries).map((block) =>
+        block.kind === "notices" ? (
+          <div className="flex flex-col gap-1" key={block.key}>
+            {block.notices.map((group) => (
+              <p key={`${group.driver}:${group.notice}`} className="text-xs text-muted-foreground">
+                {limitsNoticeLine({
+                  driverLabel: getDriverOption(group.driver)?.label ?? String(group.driver),
+                  notice: group.notice,
+                  places: tellApart
+                    ? placesOf(group.environmentIds).map((place) => place.name)
+                    : [],
+                })}
+              </p>
+            ))}
+          </div>
+        ) : block.entry.kind === "account" ? (
+          <AccountLimits
+            key={block.key}
+            account={block.entry.account}
+            places={tellApart ? placesOf(block.entry.account.environmentIds) : null}
+            now={now}
+          />
+        ) : block.entry.kind === "source" ? (
+          <SourceLimits key={block.key} source={block.entry.source} now={now} />
+        ) : null,
+      )}
       {/* Under the cards while more are on their way: a late answer joins above it, at the end. */}
       {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
     </div>
   );
+}
+
+type EntryBlock =
+  | { readonly kind: "entry"; readonly key: string; readonly entry: LimitsEntry }
+  | {
+      readonly kind: "notices";
+      readonly key: string;
+      readonly notices: ReadonlyArray<Extract<LimitsEntry, { kind: "notice" }>["notice"]>;
+    };
+
+/** The entries in their order, a run of notices drawn as one tight block of lines. */
+function entryBlocks(entries: readonly LimitsEntry[]): readonly EntryBlock[] {
+  const blocks: EntryBlock[] = [];
+  for (const entry of entries) {
+    const last = blocks.at(-1);
+    if (entry.kind !== "notice") blocks.push({ kind: "entry", key: entry.key, entry });
+    else if (last?.kind === "notices") {
+      blocks[blocks.length - 1] = { ...last, notices: [...last.notices, entry.notice] };
+    } else blocks.push({ kind: "notices", key: entry.key, notices: [entry.notice] });
+  }
+  return blocks;
 }
 
 /** Whether `ms` has passed since this mounted: false, then true for good. */
