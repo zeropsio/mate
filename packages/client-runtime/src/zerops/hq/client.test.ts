@@ -820,16 +820,6 @@ describe("makeHqApi — application name and a project's application", () => {
         body: { projectId: "p2", kind: "stage", environment: { name: "stage" } },
       },
     ],
-    // Main B36/B37: "Run again" of an environment's newest failed deploy of a service.
-    [
-      "asks an environment's failed deploy of a service again",
-      (api) => api.redeploy("app-1", "stage", { service: "api", sha: "a".repeat(40) }),
-      {
-        method: "POST",
-        path: "/api/apps/app-1/environments/stage/redeploy",
-        body: { service: "api", sha: "a".repeat(40) },
-      },
-    ],
     // Minted by the person's own client; HQ keeps it, and says of it only that it holds one.
     [
       "hands HQ an environment's deploy token",
@@ -851,6 +841,57 @@ describe("makeHqApi — application name and a project's application", () => {
       }),
     );
     expect(hq.seen.at(-1)).toMatchObject(expected);
+  });
+});
+
+/** What HQ answers of the deploys an event asked for. */
+const DEPLOYS = {
+  jobs: [
+    {
+      environment: "stage",
+      kind: "deploy",
+      service: "api",
+      sha: "a".repeat(40),
+      job: "7",
+      state: "building",
+      processId: "process-1",
+      behind: null,
+      reason: null,
+    },
+  ],
+  note: null,
+} as const;
+
+// Main B36/B37, audit D2: "Run again" and "Add <service>" answer where HQ's submission stands.
+describe("makeHqApi — a person's deploys", () => {
+  it.each<
+    [string, (api: HqApi) => Promise<unknown>, { readonly path: string; readonly body: unknown }]
+  >([
+    [
+      "asks an environment's deploy of a service again",
+      (hqApi) => hqApi.redeploy("app-1", "stage", { service: "api", sha: "a".repeat(40) }),
+      {
+        path: "/api/apps/app-1/environments/stage/redeploy",
+        body: { service: "api", sha: "a".repeat(40) },
+      },
+    ],
+    [
+      "adds a service the environment's tier declares",
+      (hqApi) => hqApi.addService("app-1", "stage", "cache"),
+      { path: "/api/apps/app-1/environments/stage/services", body: { service: "cache" } },
+    ],
+  ])("%s, and reads where HQ's submission stands", async (_name, ask, expected) => {
+    const hq = fakeHq((seen) =>
+      seen.path === expected.path ? json(200, { deploys: DEPLOYS }) : undefined,
+    );
+    const hqApi = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(ask(hqApi)).resolves.toEqual(DEPLOYS);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "POST", ...expected });
   });
 });
 
@@ -972,9 +1013,12 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       mergeability: "already_merged",
     } as const;
     const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/changes/app/3/merge" ? json(200, MERGED) : undefined,
+      seen.path === "/api/apps/app-1/changes/app/3/merge"
+        ? json(200, { ...MERGED, deploys: DEPLOYS })
+        : undefined,
     );
-    await expect(hqApi.mergeChange(LINK, SHA)).resolves.toEqual(MERGED);
+    // Beside it, where the deploys it asked for stand once HQ submitted them.
+    await expect(hqApi.mergeChange(LINK, SHA)).resolves.toEqual({ made: MERGED, deploys: DEPLOYS });
     expect(hq.seen.at(-1)).toMatchObject({
       method: "POST",
       authorization: "Bearer session-1",
@@ -1044,8 +1088,14 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         : undefined,
     );
     const request = { tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
-    await expect(hqApi.release("app-1", request)).resolves.toEqual(RELEASE);
-    await expect(hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA })).resolves.toEqual(RELEASE);
+    await expect(hqApi.release("app-1", request)).resolves.toEqual({
+      made: RELEASE,
+      deploys: undefined,
+    });
+    await expect(hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA })).resolves.toEqual({
+      made: RELEASE,
+      deploys: undefined,
+    });
     expect(hq.seen.slice(-2)).toMatchObject([
       { method: "POST", path: "/api/apps/app-1/releases", body: request },
       {
@@ -1104,7 +1154,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
           : undefined,
       ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
-      made: { ...CHANGE, state: "merged" },
+      // Its deploys are HQ's stream's to bring.
+      made: { made: { ...CHANGE, state: "merged" }, deploys: undefined },
     },
     {
       name: "a close HQ holds closed",
@@ -1134,7 +1185,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           ? json(200, { releases: [ROLLED, RELEASE] })
           : undefined,
       ask: (hqApi) => hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA }),
-      made: ROLLED,
+      made: { made: ROLLED, deploys: undefined },
     },
     {
       name: "a name HQ holds",
@@ -1221,7 +1272,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         seen.path === "/api/apps/app-1/releases" ? json(200, { releases: [RELEASE] }) : undefined,
       ask: (hqApi) =>
         hqApi.release("app-1", { tag: RELEASE.tag, groupHead: SHA, entries: RELEASE.entries }),
-      made: RELEASE,
+      made: { made: RELEASE, deploys: undefined },
     },
     {
       name: "a merge of a change HQ holds merged",
@@ -1232,7 +1283,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
           : undefined,
       ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
-      made: { ...CHANGE, state: "merged" },
+      made: { made: { ...CHANGE, state: "merged" }, deploys: undefined },
     },
     {
       name: "a merge of a change no longer open, HQ holding it merged",
@@ -1243,7 +1294,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
           : undefined,
       ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
-      made: { ...CHANGE, state: "merged" },
+      made: { made: { ...CHANGE, state: "merged" }, deploys: undefined },
     },
     {
       name: "a close of a change no longer open, HQ holding it closed",
@@ -1388,7 +1439,7 @@ describe("makeHqApi — a write HQ may have made", () => {
       const settled = vi.fn();
       made.then(settled, settled);
       await vi.advanceTimersByTimeAsync(30_000);
-      await expect(made).resolves.toEqual(MADE);
+      await expect(made).resolves.toEqual({ made: MADE, deploys: undefined });
     });
   });
 
@@ -1425,7 +1476,7 @@ describe("makeHqApi — a write HQ may have made", () => {
 
   it("asks HQ what it holds when the connection drops under a release, never asking twice", async () => {
     const { api, asked } = dropping(true);
-    await expect(api.release("app-1", ASKED)).resolves.toEqual(MADE);
+    await expect(api.release("app-1", ASKED)).resolves.toEqual({ made: MADE, deploys: undefined });
     expect(asked()).toEqual(["POST", "GET"]);
   });
 
@@ -1538,7 +1589,7 @@ describe("makeHqApi — a write HQ may have made", () => {
       await vi.advanceTimersByTimeAsync(44_999);
       expect(settled).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
-      await expect(made).resolves.toEqual(MADE);
+      await expect(made).resolves.toEqual({ made: MADE, deploys: undefined });
     });
   });
 });

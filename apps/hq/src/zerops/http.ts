@@ -2,9 +2,10 @@
  * ZeropsApi and ZeropsDeploy over the REST API. Each request has a time limit; what it answers is
  * classified from the measured refusals (`401` unauthorized, `403` forbidden, `400 *NotFound`
  * not_found, any other `4xx` invalid) or is unavailable (no answer, `429`, `5xx`, a body not in the
- * expected shape). An unavailable read is tried again, a bounded number of times; so is
- * `user/list`'s `400 userNotFound`, which the member list answers about once in eight calls for a
- * valid credential (ledger, 2026-09-22) and is no verdict. A write is asked once.
+ * expected shape) — as is `user/list`'s `400 userNotFound`, which the member list answers about
+ * once in eight calls for a valid credential (ledger, 2026-09-22) and is no verdict. Every request
+ * is asked once, a read too (Karel, 2026-10-03): what does not answer is its caller's answer, and a
+ * caller that follows a handle reads it again on its own cadence.
  *
  * @module zerops/http
  */
@@ -13,7 +14,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
@@ -34,9 +34,6 @@ import { parseEnvFile } from "./envFile.ts";
 const REQUEST_TIMEOUT = Duration.seconds(10);
 /** An archive's upload: a repository's whole tree. */
 const UPLOAD_TIMEOUT = Duration.minutes(5);
-/** Up to three more tries, 250 ms apart and doubling. */
-const RETRIES = 3;
-const BACKOFF = Schedule.exponential(Duration.millis(250));
 const PAGE = 100;
 const MAX_PAGES = 50;
 
@@ -126,7 +123,12 @@ const ServicePage = Schema.Struct({
 });
 const Created = Schema.Struct({ id: Schema.String });
 const Imported = Schema.Struct({
-  serviceStacks: Schema.Array(Schema.Struct({ name: Schema.String })),
+  serviceStacks: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      processes: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String }))),
+    }),
+  ),
 });
 const AppVersionRow = Schema.Struct({ status: Schema.String });
 const ProcessRow = Schema.Struct({
@@ -251,7 +253,7 @@ export const makeZeropsApiHttp = (
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
 
-    /** One GET, tried again while unavailable. */
+    /** One GET, asked once. */
     const get = <A>(
       operation: string,
       credential: Redacted.Redacted,
@@ -261,13 +263,7 @@ export const makeZeropsApiHttp = (
     ) =>
       ask(client, operation, credential, HttpClientRequest.get(`${baseUrl}${path}`), schema, {
         transient,
-      }).pipe(
-        Effect.retry({
-          schedule: BACKOFF,
-          times: RETRIES,
-          while: (error) => error._tag === "ZeropsUnavailable",
-        }),
-      );
+      });
 
     const projects = (orgId: string) => (credential: Redacted.Redacted) =>
       Effect.gen(function* () {
@@ -428,14 +424,7 @@ export const makeZeropsDeployHttp = (
           credential,
           HttpClientRequest.get(`${baseUrl}/process/${processId}`),
           ProcessRow,
-        ).pipe(
-          Effect.retry({
-            schedule: BACKOFF,
-            times: RETRIES,
-            while: (error) => error._tag === "ZeropsUnavailable",
-          }),
-          Effect.map(({ value }) => toProcess(value)),
-        ),
+        ).pipe(Effect.map(({ value }) => toProcess(value))),
       appVersion: (appVersionId) => (credential) =>
         ask(
           client,
@@ -443,14 +432,7 @@ export const makeZeropsDeployHttp = (
           credential,
           HttpClientRequest.get(`${baseUrl}/app-version/${appVersionId}`),
           AppVersionRow,
-        ).pipe(
-          Effect.retry({
-            schedule: BACKOFF,
-            times: RETRIES,
-            while: (error) => error._tag === "ZeropsUnavailable",
-          }),
-          Effect.map(({ value }) => ({ status: value.status })),
-        ),
+        ).pipe(Effect.map(({ value }) => ({ status: value.status }))),
       enableSubdomainAccess: (serviceId) => (credential) =>
         send(
           "enableSubdomainAccess",
@@ -468,7 +450,10 @@ export const makeZeropsDeployHttp = (
           Imported,
         ).pipe(
           Effect.map(({ serviceStacks }) => ({
-            services: serviceStacks.map((stack) => stack.name),
+            services: serviceStacks.map((stack) => ({
+              name: stack.name,
+              processes: (stack.processes ?? []).map((process) => process.id),
+            })),
           })),
         ),
     };

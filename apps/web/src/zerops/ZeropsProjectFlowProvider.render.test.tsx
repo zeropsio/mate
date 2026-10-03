@@ -101,6 +101,24 @@ vi.mock("./useNowMs", () => ({ useNowMs: () => 0 }));
  * The organization's official HQ; what its stream says is each test's, and what it answers a
  * merge or a close (`answer`), with what it was asked.
  */
+/** What HQ answers of the deploys a verb asked for. */
+const DEPLOYS = {
+  jobs: [
+    {
+      environment: "production",
+      kind: "deploy",
+      service: "app",
+      sha: "f".repeat(40),
+      job: "2",
+      state: "building",
+      processId: "process-2",
+      behind: null,
+      reason: null,
+    },
+  ],
+  note: null,
+} as const;
+
 const hq = vi.hoisted(() => ({
   account: {
     hq: { kind: "official", projectId: "hq-project", address: "https://hq.example.test" },
@@ -122,6 +140,10 @@ vi.mock("./accountHq", async (importOriginal) => ({
     },
     redeploy: (appId: string, environment: string, deploy: unknown) => {
       hq.asked.push(["redeploy", { appId, environment, deploy }]);
+      return hq.answer();
+    },
+    addService: (appId: string, environment: string, service: string) => {
+      hq.asked.push(["add-service", { appId, environment, service }]);
       return hq.answer();
     },
     rollback: (appId: string, tag: string, request: unknown) => {
@@ -306,7 +328,7 @@ function environment(projectId: string, tier: HqEnvironment["tier"]): HqEnvironm
     order: 1,
     keyHeld: true,
     keyInvalid: false,
-    deploys: [],
+    jobs: [],
   };
 }
 
@@ -600,6 +622,7 @@ describe("ZeropsProjectFlowProvider", () => {
           tiers: ["stage", "production"],
           repositories: new Map([["app", "appdev"]]),
           productionRepositories: new Map(),
+          declared: new Map(),
         },
       ],
     ]);
@@ -724,6 +747,7 @@ describe("ZeropsProjectFlowProvider", () => {
             tiers: ["production"],
             repositories: new Map([["app", "appdev"]]),
             productionRepositories: new Map([["app", "appdev"]]),
+            declared: new Map([["production", ["app"]]]),
           },
         ],
       ]);
@@ -731,7 +755,7 @@ describe("ZeropsProjectFlowProvider", () => {
         { name: "appdev", mainHead: MERGED, updatedAt: "2026-10-02T09:00:00.000Z" },
         { name: "group", mainHead: GROUP_MAIN, updatedAt: "2026-10-02T09:00:00.000Z" },
       ];
-      hq.answer = () => Promise.resolve(MADE);
+      hq.answer = () => Promise.resolve({ made: MADE, deploys: DEPLOYS });
       installTestDom();
       const { createRoot } = await import("react-dom/client");
       const seen: Array<ZeropsProjectFlowValue> = [];
@@ -868,7 +892,8 @@ describe("ZeropsProjectFlowProvider", () => {
           },
         ],
       ]);
-      expect(outcome).toEqual({ ok: true, tag: "v0.1.0" });
+      // Beside the tag, where HQ answered the release's deploys stand.
+      expect(outcome).toEqual({ ok: true, tag: "v0.1.0", deploys: DEPLOYS });
       expect(seen.at(-1)?.pending.has(RELEASE)).toBe(true);
       released.releases = [MADE];
       await render();
@@ -938,7 +963,7 @@ describe("ZeropsProjectFlowProvider", () => {
       released.repos = [
         { name: "group", mainHead: groupMain, updatedAt: "2026-10-02T09:00:00.000Z" },
       ];
-      hq.answer = () => Promise.resolve(MADE);
+      hq.answer = () => Promise.resolve({ made: MADE, deploys: DEPLOYS });
       installTestDom();
       const { createRoot } = await import("react-dom/client");
       const seen: Array<ZeropsProjectFlowValue> = [];
@@ -964,7 +989,7 @@ describe("ZeropsProjectFlowProvider", () => {
       expect(hq.asked).toEqual([
         ["rollback", { appId: "g1", tag: "v1.0.0", request: { groupHead: GROUP_MAIN } }],
       ]);
-      expect(outcome).toEqual({ ok: true, tag: "v1.0.2" });
+      expect(outcome).toEqual({ ok: true, tag: "v1.0.2", deploys: DEPLOYS });
       expect(seen.at(-1)?.trouble).toBeNull();
       await act(async () => {
         root.unmount();
@@ -1243,12 +1268,14 @@ describe("merging and closing a change in HQ", () => {
   }
 
   it("merges with the head its review showed, held until HQ's stream brings it merged", async () => {
+    hq.answer = () => Promise.resolve({ made: {}, deploys: DEPLOYS });
     const { seen, say, unmount } = await mount();
     let outcome: unknown;
     await act(async () => {
       outcome = await seen.at(-1)!.merge("g1", CHANGE, HEAD);
     });
-    expect(outcome).toEqual({ ok: true });
+    // Where HQ answered the merge's deploys stand, for the review to say.
+    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
     expect(hq.asked).toEqual([["merge", { appId: "g1", repo: "app", number: 7 }, HEAD]]);
     // Nothing is read again: the change comes back down the stream.
     expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
@@ -1330,19 +1357,27 @@ describe("asking HQ to run a failed deploy again", () => {
     projectId: "p-stage",
     service: "app",
   });
-  const record = (state: "failed" | "pending"): HqEnvironment["deploys"][number]["latest"] => ({
+  /** HQ's job `id` of `app` at the failed commit, in `state`. */
+  const job = (id: string, state: "failed" | "queued"): HqEnvironment["jobs"][number] => ({
+    id,
+    kind: "deploy",
+    service: "app",
     sha: FAILED_SHA,
     state,
-    failure: state === "failed" ? "job" : null,
-    message: null,
+    cause: id === "1" ? "merge" : "run_again",
+    ref: null,
+    reason: null,
     appVersionId: null,
     processId: null,
-    requestedBy: null,
+    requestedBy: id === "1" ? null : "u-ada",
     at: "2026-10-02T10:00:00.000Z",
+    endedAt: state === "failed" ? "2026-10-02T10:04:00.000Z" : null,
+    supersededBy: null,
   });
-  const stageWith = (state: "failed" | "pending"): HqEnvironment => ({
+  const FAILED = job("1", "failed");
+  const stageWith = (...jobs: ReadonlyArray<HqEnvironment["jobs"][number]>): HqEnvironment => ({
     ...environment("p-stage", "stage"),
-    deploys: [{ service: "app", latest: record(state), live: null }],
+    jobs,
   });
 
   afterEach(() => {
@@ -1354,7 +1389,7 @@ describe("asking HQ to run a failed deploy again", () => {
   /** The provider over HQ's stream recording the stage's newest deploy of `app` as failed. */
   async function mount() {
     const atoms = signedInAtoms();
-    atoms.set(hqStructureAtom, structureWith([stageWith("failed")]));
+    atoms.set(hqStructureAtom, structureWith([stageWith(FAILED)]));
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const seen: Array<ZeropsProjectFlowValue> = [];
@@ -1372,9 +1407,9 @@ describe("asking HQ to run a failed deploy again", () => {
         ),
       );
     });
-    const say = (state: "failed" | "pending") =>
+    const say = (...jobs: ReadonlyArray<HqEnvironment["jobs"][number]>) =>
       act(async () => {
-        atoms.set(hqStructureAtom, structureWith([stageWith(state)]));
+        atoms.set(hqStructureAtom, structureWith([stageWith(...jobs)]));
       });
     const unmount = () =>
       act(async () => {
@@ -1383,13 +1418,16 @@ describe("asking HQ to run a failed deploy again", () => {
     return { seen, say, unmount };
   }
 
-  it("asks it by the environment's name, held until HQ's stream no longer records it failed", async () => {
+  it("asks it by the environment's name, held until HQ's stream brings the job it asked for", async () => {
+    hq.answer = () => Promise.resolve(DEPLOYS);
     const { seen, say, unmount } = await mount();
     let outcome: unknown;
     await act(async () => {
-      outcome = await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA });
+      outcome = await seen
+        .at(-1)!
+        .redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "1" });
     });
-    expect(outcome).toEqual({ ok: true });
+    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
     expect(hq.asked).toEqual([
       [
         "redeploy",
@@ -1397,8 +1435,46 @@ describe("asking HQ to run a failed deploy again", () => {
       ],
     ]);
     expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
-    await say("pending");
+    // The stream again, its newest job still the one asked after: still under way.
+    await say(FAILED);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
+    await say(job("2", "queued"), FAILED);
     expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
+  });
+
+  // The deploy-jobs design: a service running what HQ did not deploy is asked HQ's live commit
+  // again; its newest job went live, so only a newer one answers the ask.
+  it("holds a deploy asked over a live job until a newer job is there", async () => {
+    const live: HqEnvironment["jobs"][number] = {
+      ...job("5", "queued"),
+      state: "live",
+      appVersionId: "av-hq",
+      endedAt: "2026-10-02T10:04:00.000Z",
+    };
+    const { seen, say, unmount } = await mount();
+    await say(live);
+    await act(async () => {
+      await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "5" });
+    });
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
+    await say(job("6", "queued"), live);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
+  });
+
+  // Audit D2: a service the recipe declares and the project lacks, added by a person's ask.
+  it("adds a service by the environment's name, answering its deploys", async () => {
+    hq.answer = () => Promise.resolve(DEPLOYS);
+    const { seen, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.addService("g1", "p-stage", "cache");
+    });
+    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
+    expect(hq.asked).toEqual([
+      ["add-service", { appId: "g1", environment: "stage", service: "cache" }],
+    ]);
     await unmount();
   });
 
@@ -1407,7 +1483,9 @@ describe("asking HQ to run a failed deploy again", () => {
     const { seen, unmount } = await mount();
     let outcome: unknown;
     await act(async () => {
-      outcome = await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA });
+      outcome = await seen
+        .at(-1)!
+        .redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "1" });
     });
     expect(outcome).toEqual({ ok: false, reason: "A newer deploy took its place." });
     expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);

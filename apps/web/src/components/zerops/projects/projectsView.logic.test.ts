@@ -715,12 +715,8 @@ describe("a stop's line", () => {
       { word: "First deploy on its way", version: undefined, tone: "busy" },
     ],
     [
-      { state: "empty", version: undefined, firstDeploy: { kind: "held", why: "key" } },
+      { state: "empty", version: undefined, firstDeploy: { kind: "held" } },
       { word: "Awaiting a deploy key", version: undefined, tone: "off" },
-    ],
-    [
-      { state: "empty", version: undefined, firstDeploy: { kind: "held", why: "zerops" } },
-      { word: "Zerops not answering, retrying", version: undefined, tone: "off" },
     ],
   ] as const)("reads %j as %j", (over, expected) => {
     expect(stopLine(stop(over))).toEqual(expected);

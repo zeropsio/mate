@@ -23,6 +23,7 @@ import type {
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { createContext, useContext } from "react";
 
 /** What *Release* offers on a project, when it is offered at all. */
@@ -109,8 +110,16 @@ export interface ZeropsProjectFlow {
  * happened (pass 16, R6). A refusal carries the sentence `trouble` says too.
  */
 export type FlowVerbOutcome =
-  /** Done; a release and a roll back name the tag they made, which their review follows. */
-  | { readonly ok: true; readonly tag?: string | undefined }
+  /**
+   * Done; a release and a roll back name the tag they made, which their review follows. A verb that
+   * asked for deploys carries where HQ answered they stand; none where its answer was lost and HQ's
+   * records were read back — HQ's stream brings the jobs either way.
+   */
+  | {
+      readonly ok: true;
+      readonly tag?: string | undefined;
+      readonly deploys?: HqDeployAnswer | undefined;
+    }
   | { readonly ok: false; readonly reason: string };
 
 export interface ZeropsProjectFlowValue {
@@ -158,13 +167,23 @@ export interface ZeropsProjectFlowValue {
     change: { readonly repository: string; readonly number: number },
   ) => Promise<FlowVerbOutcome>;
   /**
-   * "Run again": the environment `projectId`'s newest deploy of `service`, at `sha`, which HQ
-   * records as failed, asked again in HQ as the person. HQ's stream brings it running.
+   * "Run again": the environment `projectId`'s newest deploy of `service`, at `sha` — failed,
+   * refused, or live where the service runs something else — asked again in HQ as the person.
+   * HQ's stream brings a newer job than `after`.
    */
   readonly redeploy: (
     groupId: string,
     projectId: string,
-    deploy: { readonly service: string; readonly sha: string },
+    deploy: { readonly service: string; readonly sha: string; readonly after: string },
+  ) => Promise<FlowVerbOutcome>;
+  /**
+   * "Add <service>": a service the environment `projectId`'s tier declares and its project lacks,
+   * added in HQ as the person — imported, then deployed.
+   */
+  readonly addService: (
+    groupId: string,
+    projectId: string,
+    service: string,
   ) => Promise<FlowVerbOutcome>;
 }
 

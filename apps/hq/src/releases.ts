@@ -5,9 +5,9 @@
  * `main` — and Core, for whoever `can`'s `release` allows, checks it against what HQ holds now and
  * tags it: an annotated tag on the recipe repository's `main`, its message the release's lines
  * (`@t3tools/shared/hqRelease`). What HQ refuses is only an answer — no tag, no record; what it
- * tags it records approved, with its event, in the same fenced write — and in it asks production
- * again for each commit it lists whose build failed there (main C15), which no deploy pass retries
- * by itself.
+ * tags it records approved, with its event and the rollout that deploys it to production
+ * (`rollouts.ts`), in the same fenced write — asking again, as its releaser, for each commit it
+ * lists whose build failed there (main C15).
  *
  * - **Checked under the recipe repository's lock**, so two releases of one application go one after
  *   another: the name is new and newer by version than every release; `main` is still the head
@@ -49,6 +49,7 @@ import { appendEvent } from "./gitEvents.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { RecipeTiers, type RecipeTierUnreadable } from "./recipeTiers.ts";
+import { Rollouts, addRollout } from "./rollouts.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
@@ -124,7 +125,7 @@ const encodeEntries = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Relea
 export const releasesLayer: Layer.Layer<
   Releases,
   never,
-  Leader | SqlClient.SqlClient | GitHost | Roles | RecipeTiers
+  Leader | SqlClient.SqlClient | GitHost | Roles | RecipeTiers | Rollouts
 > = Layer.effect(
   Releases,
   Effect.gen(function* () {
@@ -133,6 +134,7 @@ export const releasesLayer: Layer.Layer<
     const gitHost = yield* GitHost;
     const roles = yield* Roles;
     const recipes = yield* RecipeTiers;
+    const rollouts = yield* Rollouts;
     const ticks = yield* SubscriptionRef.make(0);
 
     /** The person's ask, allowed by `decision`, or refused with its reason. */
@@ -255,20 +257,9 @@ export const releasesLayer: Layer.Layer<
                 ${encodeEntries(wanted.entries)}::jsonb, ${wanted.by}, 'approved',
                 ${wanted.rollbackOf})
               RETURNING ${sql.literal(RELEASE_COLUMNS)}`;
-            // Production is asked again for each commit it lists, even over its build's own failure,
-            // which no pass retries by itself (main C15, B37): the releaser asks it.
-            for (const entry of wanted.entries) {
-              yield* sql`
-                UPDATE hq_deploy
-                SET state = 'pending', failure = NULL, message = NULL,
-                    requested_by = ${wanted.by}, updated_at = now()
-                WHERE project_id IN (
-                    SELECT project_id FROM hq_environment
-                    WHERE app_id::text = ${appId} AND tier = 'production'
-                  )
-                  AND service = ${entry.service} AND sha = ${entry.sha}
-                  AND state = 'failed' AND failure = 'job'`;
-            }
+            // Production deploys it: each commit it lists, even over its build's own failure there
+            // (main C15, B37) — the releaser asks it.
+            yield* addRollout(sql, { cause: "release", appId, tag, by: wanted.by });
             yield* appendEvent(sql, {
               kind: "released",
               appId,
@@ -280,6 +271,7 @@ export const releasesLayer: Layer.Layer<
           }),
         );
         yield* SubscriptionRef.update(ticks, (n) => n + 1);
+        yield* rollouts.wake;
         return made;
       });
 

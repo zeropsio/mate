@@ -76,6 +76,7 @@ import {
   ZeropsReviewSurface,
   type ReviewReleaseRow,
 } from "./ZeropsReviewSurface";
+import { answeredDeploys } from "../ZeropsDeployAnswer";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
@@ -327,7 +328,11 @@ function ReleaseData({
     setMade(flow.release.suggestion);
     setPress({ kind: "running" });
     const answer = await flowValue.release(flow.groupId);
-    setPress(answer.ok ? { kind: "done" } : { kind: "refused", reason: answer.reason });
+    setPress(
+      answer.ok
+        ? { kind: "done", deploys: answer.deploys }
+        : { kind: "refused", reason: answer.reason },
+    );
     // The tag it made is the one the review follows from here.
     setMade(answer.ok ? (answer.tag ?? flow.release.suggestion) : undefined);
   };
@@ -457,6 +462,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       title={`${props.name ?? "Production"} ${tag}`}
       titleId={props.titleId}
       verdict={model.verdict}
+      deploys={answeredDeploys(press)}
     >
       {rows.length === 0 && props.untold.length === 0 ? null : (
         <ReviewSection
@@ -625,7 +631,11 @@ function RollbackData({
     if (flowValue === null) return;
     setPress({ kind: "running" });
     const answer = await flowValue.rollBack(flow.groupId, tag);
-    setPress(answer.ok ? { kind: "done" } : { kind: "refused", reason: answer.reason });
+    setPress(
+      answer.ok
+        ? { kind: "done", deploys: answer.deploys }
+        : { kind: "refused", reason: answer.reason },
+    );
     if (answer.ok) setMade(answer.tag);
   };
   return (
@@ -784,6 +794,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       title={`${props.name ?? "Production"} ${tag}`}
       titleId={props.titleId}
       verdict={model.verdict}
+      deploys={answeredDeploys(press)}
     >
       <RollbackListSection
         list={props.leaving}

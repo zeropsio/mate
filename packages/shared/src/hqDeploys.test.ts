@@ -1,20 +1,68 @@
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { saysZeropsDidNotAnswer, zeropsDidNotAnswer } from "./hqDeploys.ts";
+import { HqDeployAnswer, NO_DEPLOYS, WithDeploys, zeropsDidNotAnswer } from "./hqDeploys.ts";
 
-describe("zeropsDidNotAnswer — HQ's words for a deploy it asks again because Zerops was silent", () => {
+describe("zeropsDidNotAnswer — HQ's words for a deploy Zerops did not answer", () => {
   it("says it, with what Zerops failed at", () => {
     expect(zeropsDidNotAnswer("connect ETIMEDOUT")).toBe(
       "Zerops did not answer: connect ETIMEDOUT",
     );
   });
+});
+
+describe("HqDeployAnswer — where each job an event asked for stands once HQ submitted it", () => {
+  const decode = Schema.decodeUnknownSync(HqDeployAnswer);
+  const outcome = {
+    environment: "shop-stage",
+    kind: "deploy",
+    service: "web",
+    sha: "a".repeat(40),
+    job: "7",
+    state: "building",
+    processId: "process-1",
+    behind: null,
+    reason: null,
+  };
 
   it.each([
-    { message: zeropsDidNotAnswer("connect ETIMEDOUT"), says: true },
-    { message: "stage has no deploy token yet; an admin mints it", says: false },
-    { message: "git: object not found", says: false },
-    { message: null, says: false },
-  ])("is read back from a deploy's message: $says", ({ message, says }) => {
-    expect(saysZeropsDidNotAnswer(message)).toBe(says);
+    { name: "building", deploys: [outcome] },
+    {
+      name: "queued behind the job its environment builds",
+      deploys: [{ ...outcome, state: "queued", processId: null, behind: "6" }],
+    },
+    {
+      name: "a service HQ asked nothing for",
+      deploys: [
+        {
+          ...outcome,
+          job: null,
+          state: "skipped",
+          processId: null,
+          reason: "web already runs aaaaaaa",
+        },
+      ],
+    },
+    { name: "none", deploys: [] },
+  ])("reads $name", ({ deploys }) => {
+    expect(decode({ jobs: deploys, note: null })).toEqual({ jobs: deploys, note: null });
+  });
+
+  it("refuses a state no job is in", () => {
+    expect(() => decode({ jobs: [{ ...outcome, state: "retrying" }], note: null })).toThrow();
+  });
+
+  it("answers nothing for an event that asked for no deploy", () => {
+    expect(decode(NO_DEPLOYS)).toEqual({ jobs: [], note: null });
+  });
+});
+
+const decodeWithDeploys = Schema.decodeUnknownSync(WithDeploys);
+
+describe("WithDeploys — the deploys an event's own answer carries", () => {
+  it("reads them beside what else the answer says", () => {
+    expect(decodeWithDeploys({ number: 3, deploys: { jobs: [], note: "x" } })).toEqual({
+      deploys: { jobs: [], note: "x" },
+    });
   });
 });

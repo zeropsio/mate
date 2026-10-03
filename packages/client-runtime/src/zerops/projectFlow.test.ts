@@ -303,11 +303,23 @@ describe("a verb in flight", () => {
     expect(flowVerbKey(api)).not.toBe(flowVerbKey({ ...api, projectId: "p-prod" }));
   });
 
+  it("keys a service added by its environment and service, apart from its deploy asked again", () => {
+    const cache = {
+      kind: "add-service",
+      groupId: "g1",
+      projectId: "p-stage",
+      service: "cache",
+    } as const;
+    expect(flowVerbKey(cache)).toBe("add-service g1/p-stage/cache");
+    expect(flowVerbKey(cache)).not.toBe(flowVerbKey({ ...cache, kind: "redeploy" }));
+  });
+
   it.each([
     ["merge", "Merge", "Merging…"],
     ["release", "Release", "Releasing…"],
     ["roll-back", "Roll back to this", "Rolling back…"],
     ["redeploy", "Run again", "Redeploying…"],
+    ["add-service", "Add", "Adding…"],
   ] as const)("says what %s does, then that it is doing it", (kind, idle, running) => {
     expect(flowVerbLabel(kind, false)).toBe(idle);
     expect(flowVerbLabel(kind, true)).toBe(running);

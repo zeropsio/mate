@@ -335,17 +335,28 @@ still to come says so.
 - **T8b** — Environments, deploy tokens, stage deploys
   - _State:_ live — a stage on the rig twice, 2026-10-02 (the ledger's _The HQ rebuild, as
     measured_): attached with its token, a merge deploying about 10 s later and live about 81 s
-    later as `main <7 hex>`, its subdomain answering. Only the leading Core deploys; one queue per
-    environment, the newest commit winning; every pass — at takeover and every 5 min — catches up; a
-    build's own failure is final until a person asks again, while HQ's own refusals are asked again
-    by the next pass; a tier whose import file changed adds to each environment the services it
-    lacks and reports, never applies, a changed declaration. The broker grant and the Gitea deploy
-    path are gone from the client
+    later as `main <7 hex>`, its subdomain answering. Only the leading Core deploys. Since the
+    deploy-jobs design (built 2026-10-03, not yet measured on a rig) nothing deploys on a timer and
+    nothing is tried twice: every deploy is a job an event asked for — a merge, a release, _Run
+    again_, _Add {service}_, an environment added, a deploy key kept — submitted in that event's
+    own request, which answers where each job stands; one build at a time per environment, the
+    rest queued behind it, a newer job superseding only one still queued; a lost answer is read
+    back from the version HQ made, never submitted again; HQ follows a build 75 min at most, and
+    every job ends live, failed (the build's own, final until a person asks again), refused (HQ's
+    words why), skipped (HQ's words why it submitted nothing) or superseded; a Core taking the lead
+    follows what builds and submits what waits; a service running a version HQ did not deploy is
+    said with _Deploy {sha} again_ and never overwritten; a recipe merge imports only the services
+    its tier change added, follows its own import to its end and only then asks for their deploys,
+    and a service a person deleted comes back only by _Add {service}_; every Zerops request is
+    asked once, a read too. The broker grant and the Gitea deploy path are gone from the client
   - _Built in:_ `2d93cc977d`, `bfc003b9fb`
   - _Proven by:_ `deploys.test.ts`, `environments.test.ts`, `tierRuntimes.test.ts`,
-    `recipeDeltas.test.ts`, `versionNames.test.ts`, `zerops/deploy.test.ts`;
+    `recipeDeltas.test.ts`, `versionNames.test.ts`, `zerops/deploy.test.ts`, `structure.test.ts`;
+    `hq/environments.test.ts`, `hq/deployAnswer.test.ts`, `flow/stopDetail.test.ts`,
+    `stopComing.test.ts`, `ZeropsDeployAnswer.test.tsx`,
     `addGroupEnvironment.test.ts`, `deployToken.test.ts`, `ZeropsProjectFlowProvider.render.test.tsx`,
-    `SidebarProductionChip.logic.test.ts`, `ZeropsGroupDetail.test.tsx`
+    `SidebarProductionChip.logic.test.ts`, `ZeropsGroupDetail.test.tsx`,
+    `stageComingUp.replay.test.ts`
 - **T10a** — The application's recipe in HQ
   - _State:_ live on the rig, 2026-10-02 (the ledger's _The HQ rebuild, as measured_): zcp proposed
     the tiers `main` lacked as the Mate's change of `group` at the bootstrap's close, Core landed it

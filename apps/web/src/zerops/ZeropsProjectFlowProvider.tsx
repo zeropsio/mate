@@ -36,6 +36,7 @@ import {
   releaseOffer,
   releaseReads,
   releaseRow,
+  statedActiveVersions,
   statedVersionNames,
   movedCommits,
   productionRuns,
@@ -60,6 +61,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { ChangeLink, HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import type { Release } from "@t3tools/shared/hqRelease";
 import {
@@ -120,7 +122,7 @@ const NO_GROUP_MAIN = hqRefusalWords({ code: "conflict", reason: "no_group_main"
 /**
  * A verb whose call landed, waiting until its effect is read: a release, for the application's
  * releases to list it; a change merged or closed, for HQ's stream to no longer hold it open; a
- * deploy asked again, for HQ's stream to no longer record it failed.
+ * deploy asked again, for HQ's stream to bring the job that answers it.
  */
 interface HeldVerb {
   readonly groupId: string;
@@ -131,7 +133,8 @@ interface HeldVerb {
         readonly kind: "deploy";
         readonly projectId: string;
         readonly service: string;
-        readonly sha: string;
+        /** The service's newest job when it was asked: read once a newer one is there. */
+        readonly after: string;
       };
   readonly sinceMs: number;
 }
@@ -145,7 +148,7 @@ function effectRead(held: HeldVerb, failed: boolean, flow: ZeropsProjectFlow | u
     const latest = flow?.environmentInputs
       .find((entry) => entry.projectId === against.projectId)
       ?.services.find((service) => service.hostname === against.service)?.deploy?.latest;
-    return latest?.state !== "failed" || latest.sha !== against.sha;
+    return latest === undefined || latest.id !== against.after;
   }
   return !(
     flow?.pullRequests.some(
@@ -207,6 +210,7 @@ function groupStopsFor(groupId: string, input: Parameters<typeof groupStopsOf>[0
     input.environments,
     input.projects,
     [...input.versions],
+    [...(input.activeVersions ?? [])],
     recipe === undefined ? null : [recipe.tiers, [...recipe.repositories]],
   ]);
   const before = builtStops.get(groupId);
@@ -558,19 +562,23 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     for (const [groupId, projects] of groupProjects) {
       const environments = heldEnvironments.get(groupId);
       if (environments === undefined) continue;
-      const versions = statedVersionNames(
-        new Map(
-          projects.flatMap(({ services }) =>
-            services.flatMap(({ serviceId }) => {
-              const version = stated.get(serviceId);
-              return version === undefined ? [] : [[serviceId, version] as const];
-            }),
-          ),
+      const statedHere = new Map(
+        projects.flatMap(({ services }) =>
+          services.flatMap(({ serviceId }) => {
+            const version = stated.get(serviceId);
+            return version === undefined ? [] : [[serviceId, version] as const];
+          }),
         ),
       );
       built.set(
         groupId,
-        groupStopsFor(groupId, { environments, projects, versions, recipe: recipes.get(groupId) }),
+        groupStopsFor(groupId, {
+          environments,
+          projects,
+          versions: statedVersionNames(statedHere),
+          activeVersions: statedActiveVersions(statedHere),
+          recipe: recipes.get(groupId),
+        }),
       );
     }
     return built;
@@ -877,14 +885,14 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       const verb: FlowVerb = { kind: "release", groupId };
       return run(verb, async () => {
         try {
-          const made = await hqApi.release(groupId, {
+          const { made, deploys } = await hqApi.release(groupId, {
             tag: offer.suggestion,
             groupHead,
             entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
           });
           setTrouble(null);
           hold(verb, groupId, { kind: "release", tag: made.tag });
-          return { ok: true, tag: made.tag };
+          return { ok: true, tag: made.tag, deploys };
         } catch (cause) {
           return refuse(zeropsErrorMessage(cause));
         }
@@ -908,10 +916,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           ?.find((repo) => repo.name === RECIPE_REPO)?.mainHead;
         if (groupHead == null) return refuse(NO_GROUP_MAIN);
         try {
-          const made = await hqApi.rollback(groupId, earlier, { groupHead });
+          const { made, deploys } = await hqApi.rollback(groupId, earlier, { groupHead });
           setTrouble(null);
           hold(verb, groupId, { kind: "release", tag: made.tag });
-          return { ok: true, tag: made.tag };
+          return { ok: true, tag: made.tag, deploys };
         } catch (cause) {
           return refuse(zeropsErrorMessage(cause));
         }
@@ -922,18 +930,20 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   /**
    * A change merged or closed in HQ, as the person: held until HQ's stream no longer holds it open,
-   * nothing read again; HQ's refusal is handed back in its words to the review that pressed it.
+   * nothing read again; HQ's refusal is handed back in its words to the review that pressed it, and
+   * a merge's deploys as HQ answered them.
    */
   const changeVerb = useCallback(
     async (
       verb: ChangeVerb,
-      act: (api: HqApi, link: ChangeLink) => Promise<unknown>,
+      act: (api: HqApi, link: ChangeLink) => Promise<HqDeployAnswer | undefined>,
     ): Promise<FlowVerbOutcome> => {
       if (hqApi === null) return refused(HQ_NOT_OPEN);
       const link = { appId: verb.groupId, repo: verb.repository, number: verb.number };
       return run(verb, async () => {
+        let deploys: HqDeployAnswer | undefined;
         try {
-          await act(hqApi, link);
+          deploys = await act(hqApi, link);
         } catch (cause) {
           return refused(zeropsErrorMessage(cause));
         }
@@ -942,7 +952,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           repository: verb.repository,
           number: verb.number,
         });
-        return { ok: true };
+        return { ok: true, deploys };
       });
     },
     [hold, hqApi, run],
@@ -956,9 +966,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     ): Promise<FlowVerbOutcome> => {
       // Only the head whose change was shown: one nobody saw is never merged, and HQ is not asked.
       if (expectedHead === undefined) return Promise.resolve(refused(HEAD_NOT_SHOWN));
-      return changeVerb({ kind: "merge", groupId, ...change }, (api, link) =>
-        api.mergeChange(link, expectedHead),
-      );
+      return changeVerb({ kind: "merge", groupId, ...change }, async (api, link) => {
+        const { deploys } = await api.mergeChange(link, expectedHead);
+        return deploys;
+      });
     },
     [changeVerb],
   );
@@ -968,7 +979,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       groupId: string,
       change: { readonly repository: string; readonly number: number },
     ): Promise<FlowVerbOutcome> =>
-      changeVerb({ kind: "close", groupId, ...change }, (api, link) => api.closeChange(link)),
+      changeVerb({ kind: "close", groupId, ...change }, async (api, link) => {
+        await api.closeChange(link);
+        return undefined;
+      }),
     [changeVerb],
   );
 
@@ -976,7 +990,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     (
       groupId: string,
       projectId: string,
-      deploy: { readonly service: string; readonly sha: string },
+      deploy: { readonly service: string; readonly sha: string; readonly after: string },
     ): Promise<FlowVerbOutcome> => {
       if (hqApi === null) return Promise.resolve(refused(HQ_NOT_OPEN));
       const environment = flows
@@ -985,16 +999,44 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
       const verb: FlowVerb = { kind: "redeploy", groupId, projectId, service: deploy.service };
       return run(verb, async () => {
+        let deploys: HqDeployAnswer;
         try {
-          await hqApi.redeploy(groupId, environment, deploy);
+          deploys = await hqApi.redeploy(groupId, environment, {
+            service: deploy.service,
+            sha: deploy.sha,
+          });
         } catch (cause) {
           return refused(zeropsErrorMessage(cause));
         }
-        hold(verb, groupId, { kind: "deploy", projectId, ...deploy });
-        return { ok: true };
+        hold(verb, groupId, {
+          kind: "deploy",
+          projectId,
+          service: deploy.service,
+          after: deploy.after,
+        });
+        return { ok: true, deploys };
       });
     },
     [flows, hold, hqApi, run],
+  );
+
+  const addService = useCallback(
+    (groupId: string, projectId: string, service: string): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return Promise.resolve(refused(HQ_NOT_OPEN));
+      const environment = flows
+        .get(groupId)
+        ?.environmentInputs.find((entry) => entry.projectId === projectId)?.environment;
+      if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
+      const verb: FlowVerb = { kind: "add-service", groupId, projectId, service };
+      return run(verb, async () => {
+        try {
+          return { ok: true, deploys: await hqApi.addService(groupId, environment, service) };
+        } catch (cause) {
+          return refused(zeropsErrorMessage(cause));
+        }
+      });
+    },
+    [flows, hqApi, run],
   );
 
   // While the account's access lapses, the groups the registry names and what was read of them
@@ -1035,8 +1077,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       merge,
       close,
       redeploy,
+      addService,
     }),
     [
+      addService,
       close,
       deployments,
       flows,

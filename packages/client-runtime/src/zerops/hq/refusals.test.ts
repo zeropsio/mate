@@ -54,7 +54,9 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     // A deploy asked again ("Run again").
     ["deploy_not_found", "deploy_not_found", "HQ has no such deploy."],
     ["deploy_superseded", "conflict", "A newer deploy took this one's place."],
-    ["deploy_not_failed", "conflict", "This deploy has not failed."],
+    ["deploy_running", "conflict", "HQ is deploying it now."],
+    // A service added ("Add <service>").
+    ["service_not_declared", "conflict", "The recipe declares no such service here."],
   ])("says the structure's own %s in words", (reason, code, words) => {
     expect(hqRefusalWords({ code, reason })).toBe(words);
   });

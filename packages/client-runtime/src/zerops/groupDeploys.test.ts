@@ -6,12 +6,13 @@ import {
   environmentRowInputsOf,
   groupStopsOf,
   releaseDeploys,
+  statedActiveVersions,
   statedVersionNames,
 } from "./groupDeploys.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
 import { environmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
-import type { HqDeploy, HqEnvironment } from "./hq/environments.ts";
+import { jobInFlight, type HqEnvironment, type HqJob } from "./hq/environments.ts";
 import { releaseCandidate } from "./release.ts";
 import { productionRuns, releaseReads } from "./releaseCompare.ts";
 import { sameCommit } from "./versionName.ts";
@@ -27,16 +28,26 @@ const services = [
   { projectId: "p-mate", serviceId: "s4", hostname: "api" },
 ];
 
-function record(state: HqDeploy["state"], sha: string): HqDeploy {
+let jobs = 0;
+
+/** HQ's job of a deploy of `service` at `sha`, in `state`; each newer than the one made before. */
+function record(state: HqJob["state"], sha: string, service = "api"): HqJob {
+  jobs += 1;
   return {
+    id: String(jobs),
+    kind: "deploy",
+    service,
     sha,
     state,
-    failure: state === "failed" ? "job" : null,
-    message: null,
+    cause: "merge",
+    ref: sha,
+    reason: null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: "2026-10-02T10:00:00.000Z",
+    endedAt: jobInFlight({ state }) ? null : "2026-10-02T10:04:00.000Z",
+    supersededBy: null,
   };
 }
 
@@ -48,14 +59,15 @@ function environment(
     order: 1,
     keyHeld: true,
     keyInvalid: false,
-    deploys: [],
+    jobs: [],
     ...overrides,
   };
 }
 
 describe("the join — HQ's record of an environment, a version and a deploy", () => {
-  it("reads each environment HQ records, in its order, with each service's deploys", () => {
-    const apiDeploys = { service: "api", latest: record("failed", API), live: record("live", OLD) };
+  it("reads each environment HQ records, in its order, with each service's newest and live jobs", () => {
+    const live = record("live", OLD);
+    const failed = record("failed", API);
     const inputs = environmentRowInputsOf({
       environments: [
         environment({ projectId: "p-prod", tier: "production", name: "production", order: 2 }),
@@ -65,7 +77,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
           name: "stage",
           order: 1,
           keyInvalid: true,
-          deploys: [apiDeploys],
+          jobs: [failed, live],
         }),
       ],
       projectNames: new Map([["p-stage", "Acme - stage"]]),
@@ -87,9 +99,10 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
             hostname: "api",
             repository: "apidev",
             appVersionName: `main ${OLD.slice(0, 7)}`,
-            deploy: { latest: apiDeploys.latest, live: apiDeploys.live },
+            serviceId: "s1",
+            deploy: { latest: failed, live },
           },
-          { hostname: "web" },
+          { hostname: "web", serviceId: "s2" },
         ],
       },
       {
@@ -100,25 +113,52 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         environment: "production",
         keyHeld: true,
         keyInvalid: false,
-        services: [{ hostname: "api", repository: "apidev" }],
+        services: [{ hostname: "api", repository: "apidev", serviceId: "s3" }],
       },
     ]);
+  });
+
+  it("carries the id of the version each service runs, as the platform states it", () => {
+    const [stage] = environmentRowInputsOf({
+      environments: [environment({ projectId: "p-stage", tier: "stage", name: "stage" })],
+      projectNames: new Map(),
+      services,
+      versions: new Map(),
+      activeVersions: new Map([
+        ["s1", "v-api"],
+        ["s2", null],
+      ]),
+    });
+    expect(stage?.services).toEqual([
+      { hostname: "api", serviceId: "s1", activeVersionId: "v-api" },
+      { hostname: "web", serviceId: "s2", activeVersionId: null },
+    ]);
+  });
+
+  it("reads a delta and a job of a service no newer one replaced, never as a service's deploy", () => {
+    const delta: HqJob = { ...record("live", API), kind: "delta", service: null, sha: null };
+    const [stage] = environmentRowInputsOf({
+      environments: [
+        environment({ projectId: "p-stage", tier: "stage", name: "stage", jobs: [delta] }),
+      ],
+      projectNames: new Map(),
+      services,
+      versions: new Map(),
+    });
+    expect(stage?.services.map(({ deploy }) => deploy)).toEqual([undefined, undefined]);
   });
 });
 
 describe("a service HQ records a deploy of", () => {
   it("stands in its environment's row though the account does not list it", () => {
-    const latest = record("failed", API);
+    const latest = record("failed", API, "worker");
     const [stage] = environmentRowInputsOf({
       environments: [
         environment({
           projectId: "p-stage",
           tier: "stage",
           name: "stage",
-          deploys: [
-            { service: "api", latest: record("live", API), live: record("live", API) },
-            { service: "worker", latest, live: null },
-          ],
+          jobs: [latest, record("live", API)],
         }),
       ],
       projectNames: new Map(),
@@ -143,14 +183,14 @@ describe("what a release compares, from HQ's records", () => {
           projectId: "p-stage",
           tier: "stage",
           name: "stage",
-          deploys: [{ service: "api", latest: record("failed", WEB), live: null }],
+          jobs: [record("failed", WEB)],
         }),
         environment({
           projectId: "p-prod",
           tier: "production",
           name: "production",
           order: 2,
-          deploys: [{ service: "api", latest: record("failed", API), live: record("live", OLD) }],
+          jobs: [record("failed", API), record("live", OLD)],
         }),
       ],
       projectNames: new Map(),
@@ -158,8 +198,33 @@ describe("what a release compares, from HQ's records", () => {
       versions: new Map([["s3", `v1.0.0 ${OLD.slice(0, 7)}`]]),
     });
     const { failed, production } = releaseDeploys(inputs);
-    expect([...failed]).toEqual([[`api@${API}`, "2026-10-02T10:00:00.000Z"]]);
+    expect([...failed]).toEqual([[`api@${API}`, "2026-10-02T10:04:00.000Z"]]);
     expect([...production]).toEqual([["api", OLD.slice(0, 7)]]);
+  });
+
+  it.each([
+    { state: "failed", failed: true },
+    { state: "refused", failed: true },
+    { state: "queued", failed: false },
+    { state: "building", failed: false },
+    { state: "superseded", failed: false },
+  ] as const)("holds a production job $state as failed: $failed", ({ state, failed }) => {
+    const { failed: held } = releaseDeploys(
+      environmentRowInputsOf({
+        environments: [
+          environment({
+            projectId: "p-prod",
+            tier: "production",
+            name: "production",
+            jobs: [record(state, API)],
+          }),
+        ],
+        projectNames: new Map(),
+        services,
+        versions: new Map(),
+      }),
+    );
+    expect(held.has(`api@${API}`)).toBe(failed);
   });
 });
 
@@ -183,6 +248,7 @@ describe("an application's stops, as HQ records them", () => {
         tiers: ["stage", "production"],
         repositories: new Map([["api", "apidev"]]),
         productionRepositories: new Map(),
+        declared: new Map([["stage", ["api"]]]),
       },
     });
     expect(stops.declarations).toEqual([
@@ -191,7 +257,14 @@ describe("an application's stops, as HQ records them", () => {
     expect(stops.environments.map((entry) => [entry.name, entry.services])).toEqual([
       [
         "Acme - stage",
-        [{ hostname: "api", repository: "apidev", appVersionName: `main ${API.slice(0, 7)}` }],
+        [
+          {
+            hostname: "api",
+            repository: "apidev",
+            appVersionName: `main ${API.slice(0, 7)}`,
+            serviceId: "s1",
+          },
+        ],
       ],
     ]);
     expect(stops.missing.map((row) => row.tier)).toEqual(["production"]);
@@ -228,6 +301,30 @@ describe("the version names the account's store states", () => {
       ),
     ).toEqual(new Map([["s1", `main ${API.slice(0, 7)}`]]));
   });
+
+  it("states the id of the version each service runs, null for none, nothing while unread", () => {
+    const active = (activeId: string | null): Shown<ZeropsServiceDeployedVersion> => ({
+      state: "known",
+      value: { activeId, source: "GIT", name: null },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    });
+    expect(
+      statedActiveVersions(
+        new Map<string, Shown<ZeropsServiceDeployedVersion>>([
+          ["s1", active("v-1")],
+          ["s2", active(null)],
+          ["s3", { state: "unread", waitingFor: null }],
+        ]),
+      ),
+    ).toEqual(
+      new Map([
+        ["s1", "v-1"],
+        ["s2", null],
+      ]),
+    );
+  });
 });
 
 describe("what the recipe on main offers", () => {
@@ -247,6 +344,7 @@ describe("what the recipe on main offers", () => {
       tiers: ["stage"],
       repositories: new Map([["app", "appdev"]]),
       productionRepositories: new Map(),
+      declared: new Map([["stage", ["app", "db"]]]),
     });
   });
 
@@ -262,7 +360,28 @@ describe("what the recipe on main offers", () => {
         ["web", "appprod"],
       ]),
       productionRepositories: new Map([["web", "appprod"]]),
+      declared: new Map([
+        ["stage", ["app", "db"]],
+        ["production", ["web", "db"]],
+      ]),
     });
+  });
+
+  // Audit D2: what each environment's tier declares, so a service a person deleted reads
+  // "declared in the recipe, not in Zerops" until a person adds it.
+  it("carries into each environment the services its tier declares", () => {
+    const recipe = appRecipeOf({ stage: stageTier, production: null });
+    const [stage, production] = environmentRowInputsOf({
+      environments: [
+        environment({ projectId: "p-stage", tier: "stage", name: "stage" }),
+        environment({ projectId: "p-prod", tier: "production", name: "production", order: 2 }),
+      ],
+      projectNames: new Map(),
+      services: [],
+      versions: new Map(),
+      declared: recipe.declared,
+    });
+    expect([stage?.recipeServices, production?.recipeServices]).toEqual([["app", "db"], undefined]);
   });
 });
 

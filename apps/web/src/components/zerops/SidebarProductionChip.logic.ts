@@ -37,7 +37,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import { type HqJob, jobFailed } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -142,8 +142,8 @@ export function releaseFailureOf(input: {
   return {
     tag: release.tag,
     kind: "deploy-failed",
-    at: failed?.at,
-    error: wordsOf(failed?.message ?? undefined),
+    at: failed === undefined ? undefined : (failed.endedAt ?? failed.at),
+    error: wordsOf(failed?.reason ?? undefined),
     service: entry?.service,
   };
 }
@@ -153,15 +153,23 @@ const wordsOf = (text: string | undefined): string | undefined => {
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
 
-/** HQ's record of one service's failed production deploy of one commit, while it is the newest. */
+/**
+ * HQ's job of one service's production deploy of one commit that ended deploying nothing — the
+ * build's own failure, or HQ's refusal — while it is the newest.
+ */
 function failedDeploy(
   environments: ReadonlyArray<GroupEnvironmentRowInput>,
   entry: { readonly service: string; readonly commit: string },
-): HqDeploy | undefined {
+): HqJob | undefined {
   const production = environments.find((environment) => environment.tier === "production");
   const latest = production?.services.find((service) => service.hostname === entry.service)?.deploy
     ?.latest;
-  return latest?.state === "failed" && sameCommit(entry.commit, latest.sha) ? latest : undefined;
+  return latest !== undefined &&
+    latest.sha !== null &&
+    jobFailed(latest) &&
+    sameCommit(entry.commit, latest.sha)
+    ? latest
+    : undefined;
 }
 
 export type ChipLabel = "prod" | "stage";

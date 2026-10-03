@@ -20,7 +20,7 @@
  */
 
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
-import type { HqDeploy } from "./hq/environments.ts";
+import type { HqJob, ServiceJobs } from "./hq/environments.ts";
 import { isReleaseTag, shortCommit } from "./release.ts";
 import { isWholeSha, parseVersionName } from "./versionName.ts";
 
@@ -47,8 +47,8 @@ export interface EnvironmentRow {
   readonly versionRepository: string | undefined;
   readonly line: string;
   readonly tone: GroupRowTone;
-  /** HQ's newest deploy of each of its services HQ records one for (`ServiceDeploys.latest`). */
-  readonly deploys: ReadonlyArray<HqDeploy>;
+  /** HQ's newest job of each of its services HQ records one for (`ServiceJobs.latest`). */
+  readonly deploys: ReadonlyArray<HqJob>;
   /**
    * HQ holds no deploy key that works for it (`HqEnvironment.keyHeld`, `keyInvalid`): it deploys
    * nothing there until somebody mints one.
@@ -150,22 +150,23 @@ export interface EnvironmentServiceState {
   readonly repository?: string | undefined;
   /** The deployed version's name — the sha first (`appVersionName`). */
   readonly appVersionName?: string | undefined;
+  /** The service's id, and the id of the version it runs; `null` for none, as the platform says. */
+  readonly serviceId?: string | undefined;
+  readonly activeVersionId?: string | null | undefined;
   /** Its newest deploy as HQ records it, and the newest that went live. */
-  readonly deploy?: ServiceDeploys | undefined;
+  readonly deploy?: ServiceJobs | undefined;
 }
 
-/** A service's deploys as HQ records them (`HqEnvironment.deploys`). */
-export interface ServiceDeploys {
-  readonly latest: HqDeploy;
-  readonly live: HqDeploy | null;
-}
-
-/** How a deploy went, by the state HQ records it in. */
-const DEPLOY_TONES: Record<HqDeploy["state"], GroupRowTone> = {
-  pending: "pending",
-  deploying: "pending",
+/** How a deploy went, by the state HQ records its job in. */
+const DEPLOY_TONES: Record<HqJob["state"], GroupRowTone> = {
+  queued: "pending",
+  submitting: "pending",
+  building: "pending",
   live: "good",
   failed: "bad",
+  refused: "bad",
+  skipped: "neutral",
+  superseded: "neutral",
 };
 
 /**

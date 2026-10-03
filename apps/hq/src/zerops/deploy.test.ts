@@ -140,7 +140,12 @@ describe("fakeZeropsDeploy", () => {
         refused._tag === "ZeropsRefused" ? refused.code : refused._tag,
         "insufficientPermissions",
       );
-      assert.deepStrictEqual(yield* deploy.importServices("P", yaml)(key), { services: ["cache"] });
+      const imported = yield* deploy.importServices("P", yaml)(key);
+      // Each service with the process bringing it up, which its importer follows.
+      assert.deepStrictEqual(
+        imported.services.map(({ name, processes }) => [name, processes.length]),
+        [["cache", 1]],
+      );
       assert.deepStrictEqual(
         (yield* api.services("P")(key)).map((service) => service.name),
         ["app", "cache"],

@@ -20,6 +20,7 @@ import { JUDGED_PER_MAIN_MOVE } from "@t3tools/shared/hqChanges";
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
+import { rolloutsLayer } from "./rollouts.ts";
 
 const AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
 
@@ -55,7 +56,10 @@ const hostWithChanges = (
       (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
     );
     const context = yield* Layer.build(
-      gitHostLayer({ rootDir: root }).pipe(Layer.provideMerge(activeCoreLayer(url))),
+      gitHostLayer({ rootDir: root }).pipe(
+        Layer.provideMerge(rolloutsLayer),
+        Layer.provideMerge(activeCoreLayer(url)),
+      ),
     );
     const sql = Context.get(context, SqlClient.SqlClient);
     yield* untilActive.pipe(Effect.provide(context));
@@ -143,7 +147,7 @@ describe("gitHost", () => {
           gitHostLayer({
             rootDir: NodePath.join(volume, "git"),
             openBackoff: Duration.millis(20),
-          }).pipe(Layer.provideMerge(activeCoreLayer(url))),
+          }).pipe(Layer.provideMerge(rolloutsLayer), Layer.provideMerge(activeCoreLayer(url))),
         );
         yield* untilActive.pipe(Effect.provide(context));
         const host = Context.get(context, GitHost);
@@ -169,6 +173,7 @@ describe("gitHost", () => {
         const lead = Effect.gen(function* () {
           const context = yield* Layer.build(
             gitHostLayer({ rootDir: root, openBackoff: Duration.millis(20) }).pipe(
+              Layer.provideMerge(rolloutsLayer),
               Layer.provideMerge(activeCoreLayer(url)),
             ),
           );
@@ -210,6 +215,7 @@ describe("gitHost", () => {
         const lead = Effect.gen(function* () {
           const context = yield* Layer.build(
             gitHostLayer({ rootDir: root, quarantineRetry: Duration.millis(50) }).pipe(
+              Layer.provideMerge(rolloutsLayer),
               Layer.provideMerge(activeCoreLayer(url)),
             ),
           );

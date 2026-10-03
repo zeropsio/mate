@@ -51,6 +51,7 @@ import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
+import { Rollouts, addRollout } from "./rollouts.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
 export class StructureRefused extends Schema.TaggedError<StructureRefused>()("StructureRefused", {
@@ -126,20 +127,50 @@ export interface BirthIntent {
   readonly face: string;
 }
 
-/** A deploy of a service of an environment, as its record holds it (`deploys.ts`). */
-export interface DeployView {
-  readonly sha: string;
-  readonly state: "pending" | "deploying" | "live" | "failed";
-  /** Whose failure: the build's own (`job`, final) or HQ's (`refused`, asked again); none else. */
-  readonly failure: "job" | "refused" | null;
-  readonly message: string | null;
-  /** The platform's version and job it is read by: its log. */
+/**
+ * A job of an environment, as its record holds it (`deploys.ts`): a deploy of one service at one
+ * commit, or a delta importing the services a tier change added; what asked for it, where it
+ * stands, and, once it ended, when and why.
+ */
+export interface JobView {
+  readonly id: string;
+  readonly kind: "deploy" | "delta";
+  /** The service it deploys, by its hostname; none for a delta. */
+  readonly service: string | null;
+  readonly sha: string | null;
+  readonly state:
+    | "queued"
+    | "submitting"
+    | "building"
+    | "live"
+    | "failed"
+    | "refused"
+    | "skipped"
+    | "superseded";
+  /** The event that asked for it (`rollouts.ts`). */
+  readonly cause:
+    | "merge"
+    | "release"
+    | "run_again"
+    | "add_service"
+    | "env_added"
+    | "key_kept"
+    | "import"
+    | "migrated";
+  /** What the event names: a merge's head, a release's tag; none else. */
+  readonly ref: string | null;
+  /** HQ's words for how it ended; none else. */
+  readonly reason: string | null;
+  /** The platform's version and job it is followed by: its log. */
   readonly appVersionId: string | null;
   readonly processId: string | null;
-  /** Who last asked for it again ("Run again"); none while only HQ asked. */
+  /** Who asked for it, where a person did; none while only HQ asked. */
   readonly requestedBy: string | null;
-  /** When it last changed, ISO 8601. */
+  /** When it was asked for, and when it ended; ISO 8601. */
   readonly at: string;
+  readonly endedAt: string | null;
+  /** The job that superseded it, where one did. */
+  readonly supersededBy: string | null;
 }
 
 /** A stage's or a production's environment as a reader of its application sees it. */
@@ -158,13 +189,15 @@ export interface EnvironmentView {
    * before a deploy found it (`deploys.ts`): an admin must mint a new one.
    */
   readonly keyInvalid: boolean;
-  /** Per service, by its hostname: its newest deploy, and the newest that went live. */
-  readonly deploys: ReadonlyArray<{
-    readonly service: string;
-    readonly latest: DeployView;
-    readonly live: DeployView | null;
-  }>;
+  /**
+   * Its newest jobs, newest first — at most {@link JOBS_SHOWN}, and each service's newest live one
+   * beside them where it is older.
+   */
+  readonly jobs: ReadonlyArray<JobView>;
 }
+
+/** How many of an environment's newest jobs its view carries. */
+export const JOBS_SHOWN = 20;
 
 /** A Mate's state as the structure holds it: its record and its birth; its changes are `changes.ts`'. */
 export type MateRecordState = Omit<MateState, keyof MateChanges>;
@@ -309,13 +342,14 @@ export class Structure extends Context.Service<
      * Keeps the deploy token of the application's environment `name` (SPEC §3.2b): handed over
      * by whoever may attach its project (`keep_deploy_token`), and kept only once Zerops says it
      * reaches exactly that project, as a Basic user in HQ's org (main E02) — never answered back.
+     * The environment's project, whose deploys the key asks for (`rollouts.ts`).
      */
     readonly keepDeployToken: (
       userId: string,
       appId: string,
       name: string,
       token: Redacted.Redacted,
-    ) => Effect.Effect<void, WriteError>;
+    ) => Effect.Effect<{ readonly projectId: string }, WriteError>;
     /** A Mate's record and birth, when HQ has its record. */
     readonly mateState: (
       projectId: string,
@@ -402,7 +436,7 @@ export const structureLayer = (options: {
 }): Layer.Layer<
   Structure,
   never,
-  DeployKeys | Leader | MateOverviews | Roles | SqlClient.SqlClient | ZeropsApi
+  DeployKeys | Leader | MateOverviews | Roles | Rollouts | SqlClient.SqlClient | ZeropsApi
 > =>
   Layer.effect(
     Structure,
@@ -412,9 +446,12 @@ export const structureLayer = (options: {
       const overviews = yield* MateOverviews;
       const zerops = yield* ZeropsApi;
       const keys = yield* DeployKeys;
+      const rollouts = yield* Rollouts;
       const sql = yield* SqlClient.SqlClient;
       const version = yield* SubscriptionRef.make(0);
       const changed = SubscriptionRef.update(version, (tick) => tick + 1);
+      /** After a write that added an environment or kept its key: its deploys are asked for. */
+      const changedAsking = Effect.andThen(changed, rollouts.wake);
       const mateChanged = yield* PubSub.unbounded<string>();
       /**
        * A Mate's record and birth, named as its project is in Zerops, as HQ's view of the org has
@@ -483,7 +520,8 @@ export const structureLayer = (options: {
        * In a fenced write, the application locked: the environment of a project now placed in it as
        * `tier`. It takes over `replaced` — an environment of the tier whose project Zerops no longer
        * has (main D13) — with its name, its sources and its place in the order; else it is named as
-       * asked, or from its project's name in Zerops (main D10), and declared last.
+       * asked, or from its project's name in Zerops (main D10), and declared last. It asks for what
+       * it is wanted at (`rollouts.ts`).
        */
       const recordEnvironment = (environment: {
         readonly projectId: string;
@@ -518,6 +556,11 @@ export const structureLayer = (options: {
               COALESCE(${declared}::bigint, nextval(pg_get_serial_sequence('hq_environment',
                 'declared_seq'))),
               ${environment.userId})`;
+          yield* addRollout(sql, {
+            cause: "env_added",
+            projectId: environment.projectId,
+            by: environment.userId,
+          });
         });
 
       // Over the org as recently read, never forcing a fresh read (the lead, 2026-10-03: forcing
@@ -603,7 +646,7 @@ export const structureLayer = (options: {
             const kept = yield* leader.write(
               Effect.gen(function* () {
                 yield* lockProject(sql, projectId);
-                return yield* sql`
+                const kept = yield* sql`
                   INSERT INTO hq_deploy_token (project_id, key_id, sealed, kept_by)
                   SELECT project_id, ${sealed.keyId}, ${sealed.sealed}, ${userId}
                   FROM hq_environment
@@ -612,12 +655,18 @@ export const structureLayer = (options: {
                   DO UPDATE SET key_id = EXCLUDED.key_id, sealed = EXCLUDED.sealed,
                     kept_by = EXCLUDED.kept_by, kept_at = now(), invalid_since = NULL
                   RETURNING 1`;
+                // A key kept asks for what the environment is wanted at (`rollouts.ts`).
+                if (kept.length > 0) {
+                  yield* addRollout(sql, { cause: "key_kept", projectId, by: userId });
+                }
+                return kept;
               }),
             );
             if (kept.length === 0) {
               return yield* refuse("environment_not_found", "environment_not_found");
             }
-            yield* changed;
+            yield* changedAsking;
+            return { projectId };
           }),
         ),
         markClosedOff: confirmed((userId, projectId) =>
@@ -837,7 +886,7 @@ export const structureLayer = (options: {
               ),
               "placed_or_production_taken",
             );
-            yield* changed;
+            yield* changedAsking;
             yield* PubSub.publish(mateChanged, input.projectId);
           }),
         ),
@@ -937,7 +986,7 @@ export const structureLayer = (options: {
               ),
               "production_taken",
             );
-            yield* changed;
+            yield* changedAsking;
             yield* PubSub.publish(mateChanged, projectId);
             return { projectId, appId, kind };
           }),
@@ -1080,68 +1129,72 @@ export const structureLayer = (options: {
                      t.invalid_since IS NOT NULL AS key_invalid
               FROM hq_environment e LEFT JOIN hq_deploy_token t USING (project_id)
               ORDER BY e.declared_seq`;
-            const deploys = yield* sql<{
+            const iso = (column: string) =>
+              `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+            const jobs = yield* sql<{
               readonly project_id: string;
-              readonly service: string;
-              readonly live: boolean;
-              readonly sha: string;
-              readonly state: DeployView["state"];
-              readonly failure: DeployView["failure"];
-              readonly message: string | null;
+              readonly id: string;
+              readonly kind: JobView["kind"];
+              readonly service: string | null;
+              readonly sha: string | null;
+              readonly state: JobView["state"];
+              readonly cause: JobView["cause"];
+              readonly ref: string | null;
+              readonly reason: string | null;
               readonly app_version_id: string | null;
               readonly process_id: string | null;
               readonly requested_by: string | null;
               readonly at: string;
+              readonly ended_at: string | null;
+              readonly superseded_by: string | null;
             }>`
-              SELECT * FROM (
-                SELECT DISTINCT ON (project_id, service) project_id, service, false AS live, sha,
-                       state, failure, message, app_version_id, process_id, requested_by,
-                       to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
-                FROM hq_deploy ORDER BY project_id, service, created_at DESC
-              ) newest
-              UNION ALL
-              SELECT * FROM (
-                SELECT DISTINCT ON (project_id, service) project_id, service, true AS live, sha,
-                       state, failure, message, app_version_id, process_id, requested_by,
-                       to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
-                FROM hq_deploy WHERE state = 'live' ORDER BY project_id, service, updated_at DESC
-              ) live
-              ORDER BY service`;
-            const deployView = (row: (typeof deploys)[number]): DeployView => ({
-              sha: row.sha,
-              state: row.state,
-              failure: row.failure,
-              message: row.message,
-              appVersionId: row.app_version_id,
-              processId: row.process_id,
-              requestedBy: row.requested_by,
-              at: row.at,
+              WITH ranked AS (
+                SELECT j.*,
+                       row_number() OVER (PARTITION BY j.project_id ORDER BY j.id DESC) AS place,
+                       row_number() OVER (
+                         PARTITION BY j.project_id, j.service, j.state = 'live'
+                         ORDER BY j.ended_at DESC NULLS LAST, j.id DESC
+                       ) AS live_place
+                FROM hq_deploy_job j
+              )
+              SELECT j.project_id, j.id::text AS id, j.kind, j.service, j.sha, j.state, r.cause,
+                     CASE r.cause WHEN 'merge' THEN r.sha WHEN 'release' THEN r.tag END AS ref,
+                     j.reason,
+                     j.app_version_id, j.process_id, j.requested_by,
+                     ${sql.literal(iso("j.created_at"))} AS at,
+                     ${sql.literal(iso("j.ended_at"))} AS ended_at,
+                     j.superseded_by::text AS superseded_by
+              FROM ranked j JOIN hq_rollout r ON r.id = j.rollout_id
+              WHERE j.place <= ${JOBS_SHOWN}
+                 OR (j.kind = 'deploy' AND j.state = 'live' AND j.live_place = 1)
+              ORDER BY j.project_id, j.id DESC`;
+            const environmentView = (row: (typeof environments)[number]): EnvironmentView => ({
+              projectId: row.project_id,
+              tier: row.tier,
+              name: row.name,
+              sources: row.sources,
+              order: row.order,
+              keyHeld: row.key_held,
+              keyInvalid: row.key_invalid,
+              jobs: jobs
+                .filter((job) => job.project_id === row.project_id)
+                .map((job): JobView => ({
+                  id: job.id,
+                  kind: job.kind,
+                  service: job.service,
+                  sha: job.sha,
+                  state: job.state,
+                  cause: job.cause,
+                  ref: job.ref,
+                  reason: job.reason,
+                  appVersionId: job.app_version_id,
+                  processId: job.process_id,
+                  requestedBy: job.requested_by,
+                  at: job.at,
+                  endedAt: job.ended_at,
+                  supersededBy: job.superseded_by,
+                })),
             });
-            const environmentView = (row: (typeof environments)[number]): EnvironmentView => {
-              const of = deploys.filter((deploy) => deploy.project_id === row.project_id);
-              return {
-                projectId: row.project_id,
-                tier: row.tier,
-                name: row.name,
-                sources: row.sources,
-                order: row.order,
-                keyHeld: row.key_held,
-                keyInvalid: row.key_invalid,
-                deploys: of.flatMap((deploy) => {
-                  if (deploy.live) return [];
-                  const live = of.find(
-                    (candidate) => candidate.live && candidate.service === deploy.service,
-                  );
-                  return [
-                    {
-                      service: deploy.service,
-                      latest: deployView(deploy),
-                      live: live === undefined ? null : deployView(live),
-                    },
-                  ];
-                }),
-              };
-            };
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
             const named = (projectId: string, mate: Omit<MateView, "name">): MateView => ({
               name: names.get(projectId) ?? "",

@@ -104,6 +104,8 @@ export interface ZeropsReviewSurfaceProps {
   /** The one line of provenance under the title. */
   readonly meta?: ReactNode;
   readonly verdict: ReviewVerdict;
+  /** What HQ answered of the deploys the press asked for, said under the verdict. */
+  readonly deploys?: ReactNode;
   /** "Ask Nova to resolve it": the fix, where there is a Mate of the person's to ask. */
   readonly fix?: ReviewButton | undefined;
   /** The sections, in reading order. */
@@ -134,6 +136,7 @@ export function ZeropsReviewSurface({
   titleId,
   meta,
   verdict,
+  deploys,
   fix,
   children,
   consequence,
@@ -199,6 +202,7 @@ export function ZeropsReviewSurface({
           </button>
         )}
       </div>
+      {deploys}
       <div className="rv-body">{children}</div>
       <footer className="rv-foot">
         <span className="rv-conseq">{consequence}</span>

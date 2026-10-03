@@ -28,6 +28,7 @@ export {
   HqError,
   makeHqApi,
   readHqHealth,
+  type Asked,
   type HqApi,
   type HqAttach,
   type HqBirth,
@@ -38,6 +39,12 @@ export {
   type HqStructure,
   type OpenHqSocket,
 } from "./client.ts";
+export {
+  deployAnswerSaid,
+  type DeployAnswerEnvironment,
+  type DeployAnswerJob,
+  type DeployAnswerSaid,
+} from "./deployAnswer.ts";
 export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
 export {
   birthIntentOf,
@@ -57,7 +64,15 @@ export {
   type HqAppReads,
   type HqStructureEvent,
 } from "./stream.ts";
-export { environmentsOf, type HqDeploy, type HqEnvironment } from "./environments.ts";
+export {
+  environmentsOf,
+  jobFailed,
+  jobInFlight,
+  jobsByService,
+  type HqEnvironment,
+  type HqJob,
+  type ServiceJobs,
+} from "./environments.ts";
 export { enrollmentRefusalWords, HQ_NOT_OPEN, hqRefusalWords, NO_HQ_WORDS } from "./refusals.ts";
 export {
   EMPTY_REGISTRY,

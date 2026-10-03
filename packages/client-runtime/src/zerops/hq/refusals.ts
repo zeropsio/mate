@@ -122,7 +122,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   // A deploy asked again ("Run again", `apps/hq/src/deploys.ts`).
   deploy_not_found: "HQ has no such deploy.",
   deploy_superseded: "A newer deploy took this one's place.",
-  deploy_not_failed: "This deploy has not failed.",
+  deploy_running: "HQ is deploying it now.",
+  service_not_declared: "The recipe declares no such service here.",
   // A release rolled back to (`apps/hq/src/releases.ts`).
   release_not_found: "HQ has no such release.",
 };

@@ -316,6 +316,7 @@ export {
   environmentRowInputsOf,
   groupStopsOf,
   releaseDeploys,
+  statedActiveVersions,
   statedVersionNames,
   type AppRecipe,
   type GroupEnvironmentRowInput,

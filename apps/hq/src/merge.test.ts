@@ -10,6 +10,7 @@ import * as Redacted from "effect/Redacted";
 
 import { type GitRun, gitClient } from "../test/harness/gitClient.ts";
 import { addProject, mateWithChange, remoteOf, rowsWhere } from "../test/harness/mates.ts";
+import { groupCheckout, propose, stateBecomes } from "../test/harness/recipe.ts";
 import {
   type Call,
   enrollMate,
@@ -137,6 +138,19 @@ describe("a change merged into main, or closed", () => {
             [change["state"], change["mergedSha"], change["landedHead"], change["head"]],
             ["merged", main, head, head],
           );
+          // Beside it, the deploys it asked for: none, with no stage to deploy.
+          assert.deepStrictEqual(change["deploys"], { jobs: [], note: null });
+          // Its rollout, written by the merge; the main move git reports names the same one.
+          yield* rowsWhere(
+            url,
+            `SELECT 1 FROM hq_repo WHERE name = 'appdev' AND main_head = '${main}'`,
+            (rows) => rows.length === 1,
+          );
+          yield* rowsWhere(
+            url,
+            `SELECT count(*)::int AS n FROM hq_rollout WHERE cause = 'merge' AND sha = '${main}'`,
+            (rows) => rows[0]?.["n"] === 1,
+          );
           assert.isString(change["mergedAt"]);
           // The person's socket carries it merged.
           let carried = false;
@@ -197,6 +211,108 @@ describe("a change merged into main, or closed", () => {
             reason: "change_not_open",
           });
         }),
+    );
+
+    // The deploy-jobs design: the merge's request submits each stage's deploy of the merged commit
+    // before it answers, and answers where each stands.
+    it.effect("answers a merge with each stage's deploy of the merged commit, submitted", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        // A stage, its key kept, its `app` built from appdev by the recipe's stage tier.
+        addProject(fake, "P_STAGE");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, credential, auth } = yield* mateWithChange(call, fake, owner);
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session: owner,
+          body: { projectId: "P_STAGE", kind: "stage", environment: { name: "stage" } },
+        });
+        fake.tokens.set("key-stage", {
+          id: "T_STAGE",
+          name: "deploy-stage",
+          orgId: "ORG",
+          roleCode: "NO_ACCESS",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: [{ projectId: "P_STAGE", roleCode: "BASIC_USER" }],
+          createdMs: 0,
+          createdByUser: "owner",
+        });
+        fake.services.push({
+          id: "S-app-stage",
+          projectId: "P_STAGE",
+          name: "app",
+          status: "ACTIVE",
+          isSystem: false,
+          subdomainAccess: false,
+          http: true,
+          named: null,
+          activeVersionId: null,
+        });
+        const git = yield* gitClient;
+        const number = yield* propose(call, auth);
+        const group = yield* groupCheckout(git, origin, credential, appId, "group");
+        yield* group.write(
+          {
+            "3 — Stage/import.yaml": [
+              "services:",
+              "  - hostname: app",
+              "    type: nodejs@22",
+              `    buildFromGit: ${origin}/git/${appId}/appdev.git`,
+              "    zeropsSetup: app",
+              "",
+            ].join("\n"),
+          },
+          "The stage's",
+        );
+        yield* group.push("P_MATE", number);
+        yield* stateBecomes(call, owner, appId, number, "merged");
+        const kept = yield* call("PUT", `/api/apps/${appId}/environments/stage/deploy-token`, {
+          session: owner,
+          body: { token: "key-stage" },
+        });
+        assert.strictEqual(kept.status, 200);
+        // The Mate's change to appdev, its zerops.yaml carrying the stage's setup.
+        const ada = yield* checkout(git, origin, credential, appId, "ada");
+        yield* ada.commit(
+          "zerops.yaml",
+          "zerops:\n  - setup: app\n    run:\n      start: node index.js\n",
+          "Build it",
+        );
+        const { head } = yield* ada.push("P_MATE", 1);
+        // appdev's change #1, apart from the recipe's of the same number.
+        yield* rowsWhere(
+          url,
+          "SELECT head FROM hq_change WHERE repo = 'appdev' AND number = 1",
+          (rows) => rows[0]?.["head"] === head,
+        );
+
+        const merged = yield* merge(call, owner, appId, 1, head);
+        assert.strictEqual(merged.status, 200);
+        const answered = merged.body as {
+          readonly mergedSha: string;
+          readonly deploys: {
+            readonly jobs: ReadonlyArray<{
+              readonly environment: string;
+              readonly service: string | null;
+              readonly sha: string | null;
+              readonly state: string;
+              readonly processId: string | null;
+            }>;
+          };
+        };
+        assert.deepStrictEqual(
+          answered.deploys.jobs.map(({ environment, service, sha, state }) => [
+            environment,
+            service,
+            sha,
+            state,
+          ]),
+          [["stage", "app", answered.mergedSha, "building"]],
+        );
+        assert.isString(answered.deploys.jobs[0]?.processId);
+      }),
     );
 
     it.effect("a merge carries every task of the change, however many commits it took", () =>

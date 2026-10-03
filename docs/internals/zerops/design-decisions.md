@@ -913,7 +913,19 @@ stage…`; a new project's group is placed by the birth's start — and the list
   a build runs, what ran before it, never what the build deploys, and no commit while nothing states
   what ran before), its word and age — none where it runs nothing, which its commit's place says
   once as _Nothing deployed yet_ — and its address, the _Open to the internet_ offer, or _Not public
-  yet_; "Tagged by" is dropped; _Releases · N_ on a production; _Deploys · N_ on a stage, muted _on
+  yet_; under it HQ's newest job of the service where that is not what runs (`jobOf`): _{sha}
+  queued_, _Submitting {sha}_, _Building {sha}_, _{sha} failed 1h ago_, _HQ refused {sha} 1h ago_
+  or _HQ skipped {sha} 1h ago_ — nothing is tried twice — HQ's reason under the line unless the
+  verdict already says it; where the service runs a version HQ did not put there while no job of
+  HQ's is under way (`driftOf`), _{service} runs “{name}”, which HQ did not deploy_ in the
+  attention tone, with _Deploy {sha} again_ — HQ's live commit, to whoever may _Run again_, while
+  the service's newest job is of that commit — and _Open in Zerops_: HQ never overwrites it by
+  itself (the deploy-jobs design, 2026-10-03); after the services, each one the stop's tier
+  declares and its project lacks (`notInZerops`, audit D2): _{service} · declared in the recipe,
+  not in Zerops_, with _Add {service}_ to whoever may _Run again_ — HQ never adds one by itself.
+  A verb pressed here, and a merge's or a release's review once pressed, says under its verdict
+  where HQ answered the deploys it asked for stand, by environment (`deployAnswerSaid`): _api
+  b21d904 building · web 5c3ea18 queued behind api b21d904_; "Tagged by" is dropped; _Releases · N_ on a production; _Deploys · N_ on a stage, muted _on
   main_, the running commit marked _Running here_ and a release tag drawn as the role-tag pill. A
   group with nothing in it says _None yet_. Releases are drawn by the shared `ZeropsReleaseRows`,
   the rows /zerops draws: the release production runs reads `Live`, one whose deploy failed reads

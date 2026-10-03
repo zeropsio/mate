@@ -526,9 +526,12 @@ export type FlowVerb =
     }
   | { readonly kind: "release"; readonly groupId: string }
   | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string }
-  /** A service's failed deploy in the environment `projectId`, asked again in HQ. */
+  /**
+   * In the environment `projectId`: a service's deploy asked again in HQ, or a service its tier
+   * declares added.
+   */
   | {
-      readonly kind: "redeploy";
+      readonly kind: "redeploy" | "add-service";
       readonly groupId: string;
       readonly projectId: string;
       readonly service: string;
@@ -549,7 +552,8 @@ export function flowVerbKey(verb: FlowVerb): string {
     case "roll-back":
       return `roll-back ${verb.groupId} ${verb.tag}`;
     case "redeploy":
-      return `redeploy ${verb.groupId}/${verb.projectId}/${verb.service}`;
+    case "add-service":
+      return `${verb.kind} ${verb.groupId}/${verb.projectId}/${verb.service}`;
   }
 }
 
@@ -567,5 +571,7 @@ export function flowVerbLabel(kind: Exclude<FlowVerb["kind"], "close">, running:
       return running ? "Rolling back…" : "Roll back to this";
     case "redeploy":
       return running ? "Redeploying…" : "Run again";
+    case "add-service":
+      return running ? "Adding…" : "Add";
   }
 }

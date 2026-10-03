@@ -285,7 +285,11 @@ describe("HQ API", () => {
           ],
           [
             [400, { code: "invalid", reason: "environment_name_invalid" }],
-            [201, { appId, projectId: "P_MATE", kind: "production" }],
+            // A production before any release asks for nothing.
+            [
+              201,
+              { appId, projectId: "P_MATE", kind: "production", deploys: { jobs: [], note: null } },
+            ],
           ],
         );
         const read = (yield* call("GET", "/api/structure", { session })).body as {
@@ -307,7 +311,7 @@ describe("HQ API", () => {
                 order: 1,
                 keyHeld: false,
                 keyInvalid: false,
-                deploys: [],
+                jobs: [],
               },
             ],
           ],
@@ -390,7 +394,8 @@ describe("HQ API", () => {
             [403, { code: "forbidden", reason: "not_project_admin" }],
             [400, { code: "invalid" }],
             [400, { code: "invalid" }],
-            [204, null],
+            // The key kept asks for the stage's deploys: a tier HQ cannot read asks for none.
+            [200, { deploys: { jobs: [], note: "the stage tier could not be read" } }],
           ],
         );
         const read = yield* call("GET", "/api/structure", { session });
@@ -409,7 +414,7 @@ describe("HQ API", () => {
               order: 1,
               keyHeld: true,
               keyInvalid: false,
-              deploys: [],
+              jobs: [],
             },
           ],
         );
@@ -462,7 +467,7 @@ describe("HQ API", () => {
                 order: 1,
                 keyHeld: false,
                 keyInvalid: false,
-                deploys: [],
+                jobs: [],
               },
             ],
           ]);
@@ -488,8 +493,11 @@ describe("HQ API", () => {
         const sha = "a".repeat(40);
         yield* rowsWhere(
           url,
-          `INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message)
-           VALUES ('P_MATE', 'web', '${sha}', 'web', 'failed', 'job', 'failed: Build failed')
+          `INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+             reason, ended_at)
+           SELECT id, 'deploy', 'P_MATE', 'web', 'web', '${sha}', 'failed', 'failed: Build failed',
+             now()
+           FROM hq_rollout WHERE project_id = 'P_MATE'
            RETURNING 1`,
           (rows) => rows.length === 1,
         );
@@ -506,20 +514,49 @@ describe("HQ API", () => {
             yield* ask(dev, { service: "web", sha }),
             yield* ask(owner, { service: "web", sha: "not-a-sha" }),
             yield* ask(owner, { service: "web", sha }),
-            yield* ask(owner, { service: "web", sha }),
           ],
           [
             [403, { code: "forbidden", reason: "not_app_developer" }],
             [400, { code: "invalid" }],
-            [202, null],
-            [409, { code: "conflict", reason: "deploy_not_failed" }],
+            // Run, and answered: no key kept for the stage, so refused at once.
+            [
+              200,
+              {
+                deploys: {
+                  jobs: [
+                    {
+                      environment: "stage",
+                      kind: "deploy",
+                      service: "web",
+                      sha,
+                      job: "2",
+                      state: "refused",
+                      processId: null,
+                      behind: null,
+                      reason:
+                        "stage has no deploy token yet; an admin who opens the projects page in Zerops Mate mints it",
+                    },
+                  ],
+                  note: null,
+                },
+              },
+            ],
           ],
         );
+        // A job of its own, saying who asked.
         yield* rowsWhere(
           url,
-          `SELECT 1 FROM hq_deploy
-           WHERE sha = '${sha}' AND state = 'pending' AND requested_by = 'owner'`,
+          `SELECT 1 FROM hq_deploy_job WHERE sha = '${sha}' AND requested_by = 'owner'`,
           (rows) => rows.length === 1,
+        );
+        // Add service, by the same rule: only a service the stage's tier declares.
+        const add = yield* call("POST", `/api/apps/${appId}/environments/stage/services`, {
+          session: owner,
+          body: { service: "cache" },
+        });
+        assert.deepStrictEqual(
+          [add.status, add.body],
+          [409, { code: "conflict", reason: "service_not_declared" }],
         );
       }),
     );
@@ -1139,7 +1176,7 @@ describe("HQ API", () => {
                 order: 1,
                 keyHeld: false,
                 keyInvalid: false,
-                deploys: [],
+                jobs: [],
               },
             ],
             births: [],

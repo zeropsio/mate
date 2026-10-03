@@ -57,6 +57,7 @@ import { JUDGED_PER_MAIN_MOVE, type MergeabilityKind } from "@t3tools/shared/hqC
 import { type GitEventKind, appendEvent } from "./gitEvents.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { catchUp, importingApps, missing } from "./reconcile.ts";
+import { Rollouts, addRollout } from "./rollouts.ts";
 
 /** A change whose branch moved: its repository, its Mate, its number. */
 export interface PushedChange {
@@ -173,11 +174,12 @@ export const gitHostLayer = (options: {
   readonly openBackoff?: Duration.Duration;
   /** How often a quarantined repository is tried again; 1 min. */
   readonly quarantineRetry?: Duration.Duration;
-}): Layer.Layer<GitHost, never, Leader | SqlClient.SqlClient> =>
+}): Layer.Layer<GitHost, never, Leader | Rollouts | SqlClient.SqlClient> =>
   Layer.effect(
     GitHost,
     Effect.gen(function* () {
       const leader = yield* Leader;
+      const rollouts = yield* Rollouts;
       const sql = yield* SqlClient.SqlClient;
       const services = yield* Effect.context<SqlClient.SqlClient | Leader>();
       const run = Effect.runPromiseWith(services);
@@ -255,14 +257,19 @@ export const gitHostLayer = (options: {
           );
         });
 
-      /** `main` now at `head`: the repository's record follows, with when, and the log says so. */
+      /**
+       * `main` now at `head`: the repository's record follows, with when, the log says so, and the
+       * merge asks for its deploys (`rollouts.ts`) — a move the log missed and a takeover found too,
+       * for it is a merge recorded late.
+       */
       const mainMoved = (repo: Repo, old: string | null, head: string, by: string) =>
-        Effect.andThen(
+        Effect.all([
           sql`
             UPDATE hq_repo SET main_head = ${head}, updated_at = now()
             WHERE app_id::text = ${repo.appId} AND name = ${repo.id}`,
           event(repo, "main_moved", null, { old, new: head, by }),
-        );
+          addRollout(sql, { cause: "merge", appId: repo.appId, repo: repo.id, sha: head }),
+        ]);
 
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
@@ -283,6 +290,7 @@ export const gitHostLayer = (options: {
             }
           } else if (event.kind === "main_moved") {
             yield* leader.write(mainMoved(event.repo, event.old, event.new, event.by));
+            yield* rollouts.wake;
             yield* rejudge(git, event.repo);
           }
           yield* tick;
@@ -334,6 +342,7 @@ export const gitHostLayer = (options: {
             const main = yield* mainOf(git, repo).pipe(Effect.option);
             if (Option.isSome(main) && main.value !== null && main.value !== row.main_head) {
               yield* leader.write(mainMoved(repo, row.main_head, main.value, "reconcile"));
+              yield* rollouts.wake;
             }
           }
           const open = yield* sql<{

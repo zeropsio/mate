@@ -20,7 +20,8 @@ import {
 } from "@t3tools/shared/hqChanges";
 
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
-import { deployedCommit, type ServiceDeploys } from "./groupRows.ts";
+import { deployedCommit } from "./groupRows.ts";
+import type { ServiceJobs } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import type { FlowRelease, ReleaseEntry } from "./release.ts";
 import { resolveCommit, sameCommit } from "./versionName.ts";
@@ -75,7 +76,7 @@ export function productionRuns(input: {
   /** The services the production tier builds and HQ records deploys of, by hostname. */
   readonly named: ReadonlyArray<string>;
   /** HQ's deploys of production's services, by hostname (`HqEnvironment.deploys`). */
-  readonly deploys: ReadonlyMap<string, ServiceDeploys>;
+  readonly deploys: ReadonlyMap<string, ServiceJobs>;
   readonly releases: ReadonlyArray<Pick<FlowRelease, "entries">>;
 }): ReadonlyMap<string, ProductionRun> | undefined {
   if (input.services === undefined) return undefined;
@@ -93,8 +94,8 @@ export function productionRuns(input: {
       entries.filter((entry) => entry.service === hostname).map((entry) => entry.commit),
     );
     const sha = resolveCommit(deployedCommit(version.value.name ?? undefined), [
-      deploy?.live?.sha,
-      deploy?.latest.sha,
+      deploy?.live?.sha ?? undefined,
+      deploy?.latest.sha ?? undefined,
       ...listed,
     ]);
     runs.set(hostname, sha === undefined ? { kind: "untold" } : { kind: "commit", sha });

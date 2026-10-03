@@ -939,12 +939,7 @@ describe("a declared environment's row", () => {
     const row = { line: "main", tone: "neutral", version: version(undefined) } as const;
     expect(declaredEnvironmentSummary(row, { kind: "on-its-way" })).toBe("First deploy on its way");
     expect(declaredEnvironmentSummary(row, { kind: "failed" })).toBe("First deploy failed");
-    expect(declaredEnvironmentSummary(row, { kind: "held", why: "key" })).toBe(
-      "Awaiting a deploy key",
-    );
-    expect(declaredEnvironmentSummary(row, { kind: "held", why: "zerops" })).toBe(
-      "Zerops not answering, retrying",
-    );
+    expect(declaredEnvironmentSummary(row, { kind: "held" })).toBe("Awaiting a deploy key");
   });
 });
 

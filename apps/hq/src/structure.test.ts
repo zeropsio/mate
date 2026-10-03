@@ -21,9 +21,10 @@ import { type KeySecret, deployKeysLayer, keySecretOf, openToken } from "./deplo
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
-import { type MateRecord, Structure, structureLayer } from "./structure.ts";
+import { JOBS_SHOWN, type MateRecord, Structure, structureLayer } from "./structure.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
+import { rolloutsLayer } from "./rollouts.ts";
 import {
   ZeropsApi,
   type ZeropsMember,
@@ -148,6 +149,7 @@ const withStructure = <A, E, B = never>(
     const context = yield* Layer.build(
       structureLayer({ hqProjectId: "HQ" }).pipe(
         Layer.provide(deployKeysLayer(keySecret)),
+        Layer.provideMerge(rolloutsLayer),
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(roles),
         Layer.provide(Layer.effect(MateOverviews, makeMateOverviews(memoryStore().store))),
@@ -184,7 +186,7 @@ const environmentRow = (
   order,
   keyHeld: false,
   keyInvalid: false,
-  deploys: [],
+  jobs: [],
 });
 
 /**
@@ -1509,6 +1511,16 @@ describe("structure", () => {
             });
             assert.strictEqual(opened && Redacted.value(opened), "key-stage");
             assert.notInclude(encodeJson(yield* structure.read("owner")), "key-stage");
+            // The deploy-jobs design: the environment attached, and each key kept, asked for the
+            // environment's deploys in the write that recorded it; a key refused asked for none.
+            assert.deepStrictEqual(
+              yield* sql`SELECT cause, project_id, by FROM hq_rollout ORDER BY id`,
+              [
+                { cause: "env_added", project_id: "P_OWNED", by: "owner" },
+                { cause: "key_kept", project_id: "P_OWNED", by: "maker" },
+                { cause: "key_kept", project_id: "P_OWNED", by: "maker" },
+              ],
+            );
           }),
         ),
     );
@@ -1575,34 +1587,38 @@ describe("structure", () => {
             mate: { face: "face-2" },
           });
           const [one, two, three] = ["1".repeat(40), "2".repeat(40), "3".repeat(40)] as const;
+          // The stage's jobs, in the rollout its attach asked for.
+          const [rollout] = yield* sql<{ readonly id: string }>`
+            SELECT id::text AS id FROM hq_rollout WHERE project_id = 'P_STAGE'`;
           yield* sql`
-            INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message,
-              app_version_id, process_id, requested_by, created_at, updated_at)
+            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+              reason, app_version_id, process_id, requested_by, created_at, updated_at, ended_at)
             VALUES
-              ('P_STAGE', 'web', ${one}, 'web', 'live', NULL, NULL, 'V1', 'J1', NULL,
-                now() - interval '3 minutes', now() - interval '2 minutes'),
-              ('P_STAGE', 'web', ${two}, 'web', 'failed', 'job', 'failed: Build failed', 'V2',
-                'J2', 'dev', now() - interval '1 minute', now()),
-              ('P_STAGE', 'api', ${three}, 'api', 'pending', NULL, NULL, NULL, NULL, NULL, now(),
-                now())`;
+              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${one}, 'live', NULL,
+                'V1', 'J1', NULL, now() - interval '3 minutes', now() - interval '2 minutes',
+                now() - interval '2 minutes'),
+              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${two}, 'failed',
+                'failed: Build failed', 'V2', 'J2', 'dev', now() - interval '1 minute', now(),
+                now()),
+              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'api', 'api', ${three}, 'queued', NULL,
+                NULL, NULL, NULL, now(), now(), NULL)`;
           const read = (userId: string) =>
             Effect.map(structure.read(userId), (structureRead) =>
               structureRead.apps.map((app) => ({
                 projects: app.projects.map((project) => project.projectId),
-                environments: app.environments.map(({ projectId, deploys }) => ({
+                environments: app.environments.map(({ projectId, jobs }) => ({
                   projectId,
-                  deploys: deploys.map(({ service, latest, live }) => ({
-                    service,
-                    latest: [
-                      latest.sha,
-                      latest.state,
-                      latest.failure,
-                      latest.message,
-                      latest.processId,
-                      latest.requestedBy,
-                    ],
-                    live: live === null ? null : [live.sha, live.appVersionId, typeof live.at],
-                  })),
+                  jobs: jobs.map((job) => [
+                    job.service,
+                    job.sha,
+                    job.state,
+                    job.cause,
+                    job.reason,
+                    job.processId,
+                    job.requestedBy,
+                    typeof job.at,
+                    job.endedAt === null ? null : typeof job.endedAt,
+                  ]),
                 })),
               })),
             );
@@ -1612,17 +1628,21 @@ describe("structure", () => {
               environments: [
                 {
                   projectId: "P_STAGE",
-                  deploys: [
-                    {
-                      service: "api",
-                      latest: [three, "pending", null, null, null, null],
-                      live: null,
-                    },
-                    {
-                      service: "web",
-                      latest: [two, "failed", "job", "failed: Build failed", "J2", "dev"],
-                      live: [one, "V1", "string"],
-                    },
+                  // Newest first.
+                  jobs: [
+                    ["api", three, "queued", "env_added", null, null, null, "string", null],
+                    [
+                      "web",
+                      two,
+                      "failed",
+                      "env_added",
+                      "failed: Build failed",
+                      "J2",
+                      "dev",
+                      "string",
+                      "string",
+                    ],
+                    ["web", one, "live", "env_added", null, "J1", null, "string", "string"],
                   ],
                 },
               ],
@@ -1635,6 +1655,59 @@ describe("structure", () => {
             { projects: ["P_TEAM"], environments: [] },
           ]);
           assert.deepStrictEqual(yield* read("nobody"), []);
+        }),
+      ),
+    );
+
+    // The deploy-jobs design: the view carries an environment's newest jobs, bounded, and each
+    // service's newest live one past the bound — what runs there is never cut off by what came
+    // after — each naming what asked for it.
+    it.effect("carries an environment's newest jobs, and each service's live one past them", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { face: "face-1" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_STAGE",
+            kind: "stage",
+            environment: { name: "stage" },
+          });
+          const [live, head] = ["1".repeat(40), "2".repeat(40)] as const;
+          const [merge] = yield* sql<{ readonly id: string }>`
+            INSERT INTO hq_rollout (app_id, cause, repo, sha, planned_at)
+            VALUES (${shop.id}::uuid, 'merge', 'api', ${head}, now())
+            RETURNING id::text AS id`;
+          yield* sql`
+            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+              ended_at)
+            VALUES (${merge!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${live}, 'live',
+              now())`;
+          yield* sql`
+            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+              reason, ended_at)
+            SELECT ${merge!.id}::bigint, 'deploy', 'P_STAGE', 'api', 'api', ${head}, 'refused',
+              'Zerops did not answer', now()
+            FROM generate_series(1, ${JOBS_SHOWN})`;
+          const [shown] = (yield* structure.read("dev")).apps.flatMap((app) => app.environments);
+          const jobs = shown?.jobs ?? [];
+          assert.strictEqual(jobs.length, JOBS_SHOWN + 1);
+          assert.deepStrictEqual(
+            [jobs[0], jobs.at(-1)].map((job) => [job?.service, job?.state, job?.cause, job?.ref]),
+            [
+              ["api", "refused", "merge", head],
+              ["web", "live", "merge", head],
+            ],
+          );
+          assert.deepStrictEqual(
+            jobs.map((job) => Number(job.id)),
+            jobs.map((job) => Number(job.id)).toSorted((left, right) => right - left),
+          );
         }),
       ),
     );

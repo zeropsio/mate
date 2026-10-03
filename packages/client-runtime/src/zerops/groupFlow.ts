@@ -60,7 +60,7 @@ import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
 import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
-import type { HqDeploy } from "./hq/environments.ts";
+import type { HqJob } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -164,7 +164,7 @@ export interface GroupFlowInput {
   readonly productionAddable: boolean;
   /** Its creations under way the listing does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<GroupFlowPending>;
-  /** The clock a first deploy on its way is bounded by; without one, none is promised. */
+  /** The clock a stage being set up is read by; without one, nothing is said of its setting up. */
   readonly nowMs?: number | undefined;
 }
 
@@ -387,11 +387,11 @@ export function stageFirstDeploy(input: {
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   /** What it runs, as the platform pushed it (`ZeropsProjectFlowValue.deployments`). */
   readonly deployment: Shown<Deployment> | undefined;
-  /** HQ's newest deploy of each of its services (`EnvironmentRow.deploys`); `undefined` undeclared. */
-  readonly deploys: ReadonlyArray<HqDeploy> | undefined;
+  /** HQ's newest job of each of its services (`EnvironmentRow.deploys`); `undefined` undeclared. */
+  readonly deploys: ReadonlyArray<HqJob> | undefined;
   /** HQ holds no deploy key that works for it (`EnvironmentRow.keyGap`). */
   readonly keyGap: boolean;
-  /** Without a clock, nothing is promised. */
+  /** The clock its setting up is read by; without one, nothing is said of it. */
   readonly nowMs: number | undefined;
 }): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
   const { deployment } = input;
@@ -407,8 +407,8 @@ export function stageFirstDeploy(input: {
   const step = stageSettingUp(input, input.nowMs);
   if (step !== undefined) return { kind: "setting-up", step };
   if (deployment?.state !== "known") return undefined;
-  if (input.nowMs === undefined || input.deploys === undefined) return undefined;
-  const first = firstDeploy({ deploys: input.deploys, keyGap: input.keyGap, nowMs: input.nowMs });
+  if (input.deploys === undefined) return undefined;
+  const first = firstDeploy({ deploys: input.deploys, keyGap: input.keyGap });
   return first.kind === "awaited" ? undefined : first;
 }
 

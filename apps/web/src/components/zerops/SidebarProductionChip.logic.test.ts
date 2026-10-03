@@ -5,7 +5,7 @@ import type {
   GroupFlowProduction,
   GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -777,15 +777,21 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     ...over,
   });
   const failedSha = "a".repeat(40);
-  const record = (over: Partial<HqDeploy>): HqDeploy => ({
+  const record = (over: Partial<HqJob>): HqJob => ({
+    id: "1",
+    kind: "deploy",
+    service: "app",
     sha: "b".repeat(40),
     state: "live",
-    failure: null,
-    message: null,
+    cause: "release",
+    ref: "v0.1.56",
+    reason: null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: "2026-09-28T09:00:00Z",
+    endedAt: "2026-09-28T09:04:00Z",
+    supersededBy: null,
     ...over,
   });
   const environments: ReadonlyArray<GroupEnvironmentRowInput> = [
@@ -813,11 +819,14 @@ describe("releaseFailureOf — the release that did not go through, newer than w
           appVersionName: `${"b".repeat(40)} v0.1.56 ada`,
           deploy: {
             latest: record({
+              id: "2",
               sha: failedSha,
               state: "failed",
-              failure: "job",
-              message: "The build step exited with code 2 while installing packages.",
-              at: "2026-09-29T10:41:00Z",
+              cause: "release",
+              ref: "v0.1.57",
+              reason: "The build step exited with code 2 while installing packages.",
+              at: "2026-09-29T10:37:00Z",
+              endedAt: "2026-09-29T10:41:00Z",
             }),
             live: record({}),
           },
@@ -865,6 +874,45 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     ).toMatchObject({
       tag: "v0.1.57",
       error: "The build step exited with code 2 while installing packages.",
+    });
+  });
+
+  it("names a release whose production deploy HQ refused", () => {
+    const refused = environments.map((environment) =>
+      environment.tier !== "production"
+        ? environment
+        : {
+            ...environment,
+            services: environment.services.map((service) => ({
+              ...service,
+              deploy: {
+                latest: record({
+                  id: "2",
+                  sha: failedSha,
+                  state: "refused",
+                  reason: "Zerops did not answer: timeout",
+                  endedAt: "2026-09-29T11:20:00Z",
+                }),
+                live: record({}),
+              },
+            })),
+          },
+    );
+    expect(
+      releaseFailureOf({
+        releases: [
+          release({
+            tag: "v0.1.57",
+            standing: "deploy-failed",
+            word: "Deploy failed",
+            failedEntry: { service: "app", commit: failedSha },
+          }),
+        ],
+        environmentInputs: refused,
+      }),
+    ).toMatchObject({
+      at: "2026-09-29T11:20:00Z",
+      error: "Zerops did not answer: timeout",
     });
   });
 
@@ -1132,13 +1180,8 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     { case: "failed", firstDeploy: { kind: "failed" } as const, word: "First deploy failed" },
     {
       case: "held for a deploy key",
-      firstDeploy: { kind: "held", why: "key" } as const,
+      firstDeploy: { kind: "held" } as const,
       word: "Awaiting a deploy key",
-    },
-    {
-      case: "held while Zerops does not answer",
-      firstDeploy: { kind: "held", why: "zerops" } as const,
-      word: "Zerops not answering, retrying",
     },
   ])("says an empty stage's first deploy as its cell does: $case", ({ firstDeploy, word }) => {
     const empty = {

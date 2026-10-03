@@ -326,7 +326,7 @@ describe("a backup set, taken", () => {
       Effect.gen(function* () {
         // 100 000 bytes, and two sets of the months before, each kept as its month's newest.
         const a = yield* startCore(true, { quotaGb: 0.0001 });
-        const [older, old] = yield* storedBefore(a.storeDir, [3, 2], 40_000);
+        const [older, old] = yield* storedBefore(a.storeDir, [3, 2], 30_000);
         yield* leading(a);
         const manifest = yield* a.backup.take;
         assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.storeDir, "sets")).sort(), [

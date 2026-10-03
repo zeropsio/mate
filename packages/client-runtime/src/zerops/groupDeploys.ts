@@ -35,9 +35,9 @@ import {
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
-import type { HqEnvironment } from "./hq/environments.ts";
+import { type HqEnvironment, jobFailed, jobsByService } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
-import { recipeTierRepositories } from "./recipeTier.ts";
+import { recipeTierRepositories, recipeTierServices } from "./recipeTier.ts";
 
 /** One runtime service of one Zerops project, as an environment's row needs it. */
 export interface GroupEnvironmentService {
@@ -60,6 +60,11 @@ export interface GroupEnvironmentRowInput {
   readonly keyHeld: boolean;
   /** Whether the deploy key HQ holds for it no longer answers, or reaches more than its project. */
   readonly keyInvalid: boolean;
+  /**
+   * The services its tier declares on the recipe's `main`, by hostname; none while the recipe is
+   * not read (audit D2: a service the project lacks is a person's to add).
+   */
+  readonly recipeServices?: ReadonlyArray<string> | undefined;
 }
 
 /**
@@ -78,6 +83,20 @@ export function statedVersionNames(
   return names;
 }
 
+/**
+ * The id of the version each service runs, by service id, where the platform said; `null` for one
+ * it says runs none. What a service runs against what HQ last made it run (`driftOf`).
+ */
+export function statedActiveVersions(
+  stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>,
+): ReadonlyMap<string, string | null> {
+  const ids = new Map<string, string | null>();
+  for (const [serviceId, version] of stated) {
+    if (version.state === "known") ids.set(serviceId, version.value.activeId);
+  }
+  return ids;
+}
+
 /** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
 export interface AppRecipe {
   readonly tiers: ReadonlyArray<GroupEnvironmentTier>;
@@ -88,6 +107,8 @@ export interface AppRecipe {
   readonly repositories: ReadonlyMap<string, string>;
   /** The production tier's alone: what a release lists, each at its repository's `main` (C01). */
   readonly productionRepositories: ReadonlyMap<string, string>;
+  /** The services each tier on `main` declares, by hostname, in its order. */
+  readonly declared: ReadonlyMap<GroupEnvironmentTier, ReadonlyArray<string>>;
 }
 
 /** `appdev` from `https://hq…/git/app-1/appdev.git`. */
@@ -105,10 +126,15 @@ export function appRecipeOf(files: {
   const tiers: Array<GroupEnvironmentTier> = [];
   const repositories = new Map<string, string>();
   const productionRepositories = new Map<string, string>();
+  const declared = new Map<GroupEnvironmentTier, ReadonlyArray<string>>();
   for (const tier of ["stage", "production"] as const) {
     const file = files[tier];
     if (file === null) continue;
     tiers.push(tier);
+    declared.set(
+      tier,
+      (recipeTierServices(file) ?? []).map((service) => service.hostname),
+    );
     for (const [hostname, cloneUrl] of recipeTierRepositories(file)) {
       const name = repositoryName(cloneUrl);
       if (name === undefined) continue;
@@ -116,7 +142,7 @@ export function appRecipeOf(files: {
       if (tier === "production") productionRepositories.set(hostname, name);
     }
   }
-  return { tiers, repositories, productionRepositories };
+  return { tiers, repositories, productionRepositories, declared };
 }
 
 /**
@@ -135,26 +161,32 @@ export function environmentRowInputsOf(input: {
   readonly services: ReadonlyArray<GroupEnvironmentService>;
   /** The version name each service runs, by service id. */
   readonly versions: ReadonlyMap<string, string>;
+  /** The id of the version each service runs, by service id (`statedActiveVersions`). */
+  readonly activeVersions?: ReadonlyMap<string, string | null> | undefined;
   /** The repository each service is built from, by hostname (the tier's `buildFromGit`). */
   readonly repositories?: ReadonlyMap<string, string> | undefined;
+  /** The services each tier declares (`AppRecipe.declared`); none while the recipe is unread. */
+  readonly declared?: AppRecipe["declared"] | undefined;
 }): ReadonlyArray<GroupEnvironmentRowInput> {
   return [...input.environments]
     .sort((left, right) => left.order - right.order)
     .map((environment) => {
-      const deploys = new Map(
-        environment.deploys.map(({ service, latest, live }) => [service, { latest, live }]),
-      );
+      const deploys = jobsByService(environment);
       const listed = input.services.filter(
         (service) => service.projectId === environment.projectId,
       );
       const state = (hostname: string, serviceId?: string): EnvironmentServiceState => {
         const repository = input.repositories?.get(hostname);
         const appVersionName = serviceId === undefined ? undefined : input.versions.get(serviceId);
+        const activeVersionId =
+          serviceId === undefined ? undefined : input.activeVersions?.get(serviceId);
         const deploy = deploys.get(hostname);
         return {
           hostname,
           ...(repository === undefined ? {} : { repository }),
           ...(appVersionName === undefined ? {} : { appVersionName }),
+          ...(serviceId === undefined ? {} : { serviceId }),
+          ...(activeVersionId === undefined ? {} : { activeVersionId }),
           ...(deploy === undefined ? {} : { deploy }),
         };
       };
@@ -163,6 +195,7 @@ export function environmentRowInputsOf(input: {
       const unlisted = [...deploys.keys()].filter(
         (hostname) => !listed.some((service) => service.hostname === hostname),
       );
+      const recipeServices = input.declared?.get(environment.tier);
       return {
         projectId: environment.projectId,
         name: input.projectNames.get(environment.projectId) ?? environment.name,
@@ -175,6 +208,7 @@ export function environmentRowInputsOf(input: {
           ...listed.map((service) => state(service.hostname, service.serviceId)),
           ...unlisted.map((hostname) => state(hostname)),
         ],
+        ...(recipeServices === undefined ? {} : { recipeServices }),
       };
     });
 }
@@ -206,6 +240,8 @@ export function groupStopsOf(input: {
   readonly projects: ReadonlyArray<GroupStopProject>;
   /** The version name each service runs, by service id. */
   readonly versions: ReadonlyMap<string, string>;
+  /** The id of the version each service runs, by service id (`statedActiveVersions`). */
+  readonly activeVersions?: ReadonlyMap<string, string | null> | undefined;
   readonly recipe: AppRecipe | undefined;
 }): GroupStops {
   const { recipe } = input;
@@ -224,7 +260,9 @@ export function groupStopsOf(input: {
         project.services.map((service) => ({ projectId: project.projectId, ...service })),
       ),
       versions: input.versions,
+      activeVersions: input.activeVersions,
       repositories: recipe?.repositories,
+      declared: recipe?.declared,
     }),
     missing:
       recipe === undefined
@@ -269,7 +307,9 @@ export function releaseDeploys(
     if (environment.tier !== "production") continue;
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
-      if (latest?.state === "failed") failed.set(`${service.hostname}@${latest.sha}`, latest.at);
+      if (latest !== undefined && latest.sha !== null && jobFailed(latest)) {
+        failed.set(`${service.hostname}@${latest.sha}`, latest.endedAt ?? latest.at);
+      }
       const sha = deployedCommit(service.appVersionName);
       if (sha === undefined || production.has(service.hostname)) continue;
       production.set(service.hostname, sha);
