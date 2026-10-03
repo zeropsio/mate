@@ -22,17 +22,12 @@
  * and that there is a record of who signed it in. It does not claim to stop
  * theft.
  *
- * ## The leave check
+ * ## Who may still use it
  *
- * A signer who is no longer an `ACTIVE` member of the org is not going to come
- * back for their credential, and leaving it here means the next person to open
- * this Mate spends a subscription belonging to someone who has left. So on the
- * same timer the server reads the member list with its own key and, when a
- * recorded signer is gone, **removes that agent's credential artifact**.
- *
- * A member list that cannot be read signs nobody out. Absence of evidence is
- * not evidence of a leaver, and the read is the one thing standing between a
- * platform blip and a room full of deleted logins.
+ * `hasProjectAccess` is the one answer to whether a person may use this Mate
+ * at all — the one that keeps their session open — for a turn no session of
+ * theirs stands behind (X3), and for offboarding, which signs every login of a
+ * person it says no for out (`ZeropsOffboarding`, X4).
  *
  * @module ZeropsProjectSigners
  */
@@ -52,17 +47,12 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
-import * as NodeOS from "node:os";
 
 import * as ServerConfig from "../config.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
-import { readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
 import { opensForOf, readProjectRoles } from "./ZeropsMembershipWatch.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
@@ -71,15 +61,6 @@ import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
  * person whose access went keeps running turns no longer than this, as HQ's own view (X7).
  */
 export const ACCESS_HOLDS = Duration.minutes(5);
-
-/** The agents this build knows how to record a signer for. */
-const KNOWN_AGENT_IDS: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
-
-/** Where each agent CLI keeps the credential a sign-out removes. */
-export const AGENT_CREDENTIAL_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyArray<string>>> = {
-  "claude-code": [".claude", ".credentials.json"],
-  codex: [".codex", "auth.json"],
-};
 
 /**
  * Signer key → the Zerops user id of whoever this server saw sign that login
@@ -149,26 +130,6 @@ export function loginTurnRefusal(input: {
   if (input.token) return undefined;
   if (input.signer === undefined || input.signer.length === 0) return { kind: "unrecorded" };
   return input.subject === input.signer ? undefined : { kind: "someone-else" };
-}
-
-/**
- * Which agents to sign out: those whose recorded signer the org no longer
- * knows as an `ACTIVE` member.
- *
- * `activeMemberIds` of `undefined` means the member list could not be read,
- * and then nothing is signed out — absence of evidence is not evidence of a
- * leaver.
- */
-export function planAgentSignOut(input: {
-  readonly signers: ProjectSigners;
-  readonly activeMemberIds: ReadonlySet<string> | undefined;
-}): ReadonlyArray<ZeropsAgentId> {
-  const activeMemberIds = input.activeMemberIds;
-  if (activeMemberIds === undefined) return [];
-  return KNOWN_AGENT_IDS.filter((agentId) => {
-    const signer = input.signers[agentId];
-    return signer !== undefined && signer.length > 0 && !activeMemberIds.has(signer);
-  });
 }
 
 /**
@@ -245,8 +206,6 @@ export class ZeropsProjectSigners extends Context.Service<
      * {@link ACCESS_HOLDS} from its read; past that, or with none, `undefined`.
      */
     readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
-    /** Runs one leave check now and answers how many agents it signed out. */
-    readonly checkLeaversNow: Effect.Effect<number>;
   }
 >()("t3/zerops/ZeropsProjectSigners") {}
 
@@ -267,39 +226,6 @@ export function isMemberListComplete(body: unknown, entriesLength: number): bool
   if (typeof totalCount !== "number" || !Number.isFinite(totalCount)) return true;
   return entriesLength >= totalCount;
 }
-
-/**
- * Every `ACTIVE` member of the org, or `undefined` when the list is
- * unreadable OR partial (S6) — a page that is not the whole list must not
- * sign someone out for merely being off it.
- */
-export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")(function* (input: {
-  readonly environment: ZeropsEnvironment;
-}) {
-  const { apiBaseUrl, projectId } = input.environment;
-  // The project and the member list this Mate reads once for the signers, the
-  // door and the watch.
-  const orgRead = yield* ZeropsOrgRead;
-  const own = yield* orgRead.project({ apiBaseUrl, projectId });
-  if (own.kind !== "answered" || own.status !== 200) return undefined;
-  const project = readProjectRoles(own.body);
-  if (project === null) return undefined;
-
-  const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
-  if (members.kind !== "answered" || members.status !== 200) return undefined;
-  const entries = readMemberEntries(members.body);
-  // An empty list is an outage dressed as an answer, and acting on it would
-  // delete every login in the container.
-  if (entries === null || entries.length === 0) return undefined;
-  // A partial page changes nothing (S6): a signer merely off this page is
-  // not a signer the org lost.
-  if (!isMemberListComplete(members.body, entries.length)) return undefined;
-  return new Set(
-    readOrgMembers(entries)
-      .filter((member) => member.status === "ACTIVE")
-      .map((member) => member.userId),
-  );
-});
 
 /**
  * Every Zerops user this project opens for (`opensForOf`), or `undefined` when the project or
@@ -325,9 +251,6 @@ const readProjectAccess = Effect.fn("ZeropsProjectSigners.readAccess")(function*
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const environment = config.zerops;
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const homeDir = NodeOS.homedir();
   const signIns = yield* ZeropsSignIns;
   // The project and the member list read once for all, shared with the door
   // and the watch — provided by the layer this service's own layer composes
@@ -337,10 +260,6 @@ export const make = Effect.gen(function* () {
   const lastAccess = yield* Ref.make<
     { readonly opensFor: ReadonlySet<string>; readonly atMs: number } | undefined
   >(undefined);
-
-  /** The org's active members, through the shared read. */
-  const readMembersThrough = (environment: ZeropsEnvironment) =>
-    readActiveMemberIds({ environment }).pipe(Effect.provideService(ZeropsOrgRead, orgRead));
 
   const hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"] = (userId) =>
     environment === undefined
@@ -434,42 +353,11 @@ export const make = Effect.gen(function* () {
       currentLogin,
     });
 
-  const checkLeaversNow: ZeropsProjectSigners["Service"]["checkLeaversNow"] =
-    environment === undefined
-      ? Effect.succeed(0)
-      : Effect.gen(function* () {
-          const current = yield* signers;
-          if (Object.keys(current).length === 0) return 0;
-          const activeMemberIds = yield* readMembersThrough(environment);
-          const departed = planAgentSignOut({ signers: current, activeMemberIds });
-          for (const agentId of departed) {
-            yield* fs
-              .remove(path.join(homeDir, ...AGENT_CREDENTIAL_SEGMENTS[agentId]), { force: true })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning("Could not sign a departed member's agent out.", {
-                    agentId,
-                    cause,
-                  }),
-                ),
-                Effect.orElseSucceed(() => undefined),
-              );
-          }
-          return departed.length;
-        }).pipe(Effect.catchCause(() => Effect.succeed(0)));
-
-  if (environment !== undefined) {
-    yield* Effect.forkScoped(
-      checkLeaversNow.pipe(Effect.repeat(Schedule.spaced(environment.roleRecheckInterval))),
-    );
-  }
-
   return ZeropsProjectSigners.of({
     signers,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
     hasProjectAccess,
-    checkLeaversNow,
   });
 });
 

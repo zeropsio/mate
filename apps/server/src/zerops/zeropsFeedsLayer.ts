@@ -6,7 +6,7 @@
  * failure in one never blanks the other. `ZeropsAgentLogin` is the one
  * exception: it calls `ZeropsAgentAuth.recheckNow` on a login success, so its
  * layer retains the authorization service it receives. `ws.ts` and the login
- * module therefore share the SAME `ZeropsAgentAuth` instance. `ZeropsAgentSignOut`
+ * module therefore share the SAME `ZeropsAgentAuth` instance. `ZeropsSignOut`
  * shares that same instance too, plus the same `ZeropsAgentLogin` instance —
  * see its own branch below for why. The logins beyond the defaults
  * (`ZeropsLogins`) are one instance the same way: the login walker re-checks
@@ -24,7 +24,6 @@ import { crewLayer } from "./crew/crewLayer.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsHqLinkModule from "./ZeropsHqLink.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
@@ -32,15 +31,16 @@ import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
+import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
+import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
 
@@ -118,28 +118,26 @@ const liveLayer = Layer.mergeAll(
     Layer.provideMerge(ZeropsLoginsLive),
     Layer.provideMerge(ZeropsProjectSignersModule.layer),
   ),
-  // `ZeropsAgentSignOut` declares `ZeropsAgentLogin`/`ZeropsAgentAuth` as
-  // REQUIREMENTS it locally `Layer.provide`s from the SAME `.layer` values
-  // referenced above — Effect memoizes a layer by reference across one
-  // build, so this is the one running instance of each, not a second copy.
-  // A sibling `Layer.mergeAll(...)` branch would NOT do this: layers merged
-  // as siblings are built independently against the ambient context and
-  // never see each other's output, which is what leaked `ZeropsAgentLogin`
-  // as an unmet requirement all the way up to `server.ts` the first time
-  // this was tried — see `ZeropsAgentSignOut.ts`'s own layer doc comment.
-  ZeropsAgentSignOutModule.layer.pipe(
-    Layer.provide(ZeropsAgentLoginModule.layer),
-    Layer.provide(ZeropsAgentAuthLive),
-    Layer.provide(ZeropsLoginsLive),
-    Layer.provide(ZeropsAgentFlagModule.layer),
-    Layer.provide(ZeropsProjectSignersModule.layer),
-  ),
-  // The same construction for the logins beyond the defaults, over the same
-  // walker and the same logins.
-  ZeropsLoginSignOutModule.layer.pipe(
-    Layer.provide(ZeropsAgentLoginModule.layer),
-    Layer.provide(ZeropsAgentAuthLive),
-    Layer.provide(ZeropsLoginsLive),
+  // The one sign-out (`ZeropsSignOut`) declares `ZeropsAgentLogin`/`ZeropsAgentAuth`/
+  // `ZeropsLogins` as REQUIREMENTS it locally `Layer.provide`s from the SAME
+  // `.layer` values referenced above — Effect memoizes a layer by reference
+  // across one build, so this is the one running instance of each, not a
+  // second copy. A sibling `Layer.mergeAll(...)` branch would NOT do this:
+  // layers merged as siblings are built independently against the ambient
+  // context and never see each other's output, which is what leaked
+  // `ZeropsAgentLogin` as an unmet requirement all the way up to `server.ts`
+  // the first time this was tried. Offboarding signs a person this project no
+  // longer opens for out of every login, by that same sign-out.
+  ZeropsOffboardingModule.layer.pipe(
+    Layer.provideMerge(
+      ZeropsSignOutModule.layer.pipe(
+        Layer.provide(ZeropsAgentLoginModule.layer),
+        Layer.provide(ZeropsAgentAuthLive),
+        Layer.provide(ZeropsLoginsLive),
+        Layer.provide(ZeropsAgentFlagModule.layer),
+        Layer.provide(ZeropsProjectSignersModule.layer),
+      ),
+    ),
     Layer.provide(ZeropsProjectSignersModule.layer),
   ),
   ZeropsTurnAdmissionLive,

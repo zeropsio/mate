@@ -33,7 +33,6 @@ import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
@@ -45,8 +44,8 @@ import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
+import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 
 const strictParseOptions = {
@@ -410,19 +409,10 @@ const agentLoginLayer = (scene: ShowcaseScene) =>
  * `start`/`cancel`, sign-out is never simulated for a scene, it just
  * reports the same "unavailable" a real, non-Zerops server would.
  */
-const agentSignOutFixtureLayer = () =>
-  Layer.succeed(
-    ZeropsAgentSignOutModule.ZeropsAgentSignOut,
-    ZeropsAgentSignOutModule.ZeropsAgentSignOut.of({
-      signOut: () =>
-        Effect.fail(
-          new ZeropsAgentLoginError({
-            reason: "unavailable",
-            detail: "This environment does not offer a server-driven sign-out.",
-          }),
-        ),
-    }),
-  );
+const signOutFixtureLayer = Layer.succeed(
+  ZeropsSignOutModule.ZeropsSignOut,
+  ZeropsSignOutModule.unavailable,
+);
 
 /**
  * A fixture/showcase run never has a real agent-browser daemon and must
@@ -516,7 +506,6 @@ const fixtureSignersLayer = Layer.succeed(
         ZeropsProjectSigners.loginTurnRefusal({ state, token, signer: undefined, subject }),
       ),
     hasProjectAccess: () => Effect.succeed(undefined),
-    checkLeaversNow: Effect.succeed(0),
   }),
 );
 
@@ -527,11 +516,6 @@ const fixtureSignersLayer = Layer.succeed(
 const loginsFixtureLayer = Layer.effect(
   ZeropsLoginsModule.ZeropsLogins,
   ZeropsLoginsModule.unavailable,
-);
-
-const loginSignOutFixtureLayer = Layer.succeed(
-  ZeropsLoginSignOutModule.ZeropsLoginSignOut,
-  ZeropsLoginSignOutModule.unavailable,
 );
 
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
@@ -549,9 +533,8 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       Layer.provide(fixtureSignersLayer),
       Layer.provide(providerInstancesLayer),
     ),
-    agentSignOutFixtureLayer(),
+    signOutFixtureLayer,
     loginsFixtureLayer,
-    loginSignOutFixtureLayer,
     browserStreamLayer(),
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),
