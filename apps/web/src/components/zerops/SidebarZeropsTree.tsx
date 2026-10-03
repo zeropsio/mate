@@ -64,6 +64,7 @@ import {
   selectMateEnvironments,
   sidebarChangeLabel,
   listedStopComing,
+  matePoseOf,
   stopServes,
   type EnvironmentRow,
   type FlowPullRequest,
@@ -120,8 +121,14 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateBirthFace, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
+import {
+  addEnds,
+  dismissNewProjectBirth,
+  startAddOver,
+  useNewProjectBirths,
+} from "~/zerops/newProjectBirth";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -184,6 +191,7 @@ import {
   mateBornLine,
   mateBornLineText,
   mateComingRowView,
+  mateLifeOf,
   mateRowOffersMenu,
   mateCrewItem,
   mateDeletingView,
@@ -934,6 +942,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
           mine: mateIsViewers(item.project, viewer),
+          pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
         }),
       );
     }
@@ -1215,6 +1224,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               activity: live,
               reviewWaits: reviewWaits(item),
               mine: mateIsViewers(item.project, viewer),
+              pose: matePoseOf(item, minuteMs, mateLifeOf(coming)),
             });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
@@ -2440,11 +2450,14 @@ function MateRow<T extends RosterCandidate>({
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
+  const nowMs = useNowMs();
   const read = mateRowReading({
     connected: candidate.group === "connected",
     activity,
     reviewWaits,
     mine: mateIsViewers(candidate.project, viewer),
+    // Waking while it comes up and arrives (`mateFaceFor`).
+    pose: matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming)),
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -3345,8 +3358,8 @@ function useSecondTick(ticking: boolean): number {
 
 /**
  * A Mate being created that the listing does not hold yet, drawn from its
- * birth as the row it will be: its face asleep, as every Mate's is while it
- * comes up, in the colours its person picked (slate where it picked none); the
+ * birth as the row it will be: its face waking, as every Mate's is while it
+ * comes up (`mateBirthFace`) — asleep once its birth stopped — in the colours its person picked (slate where it picked none); the
  * empty seat before its name — nobody has signed its agent in yet — and how far
  * its birth has got in the projects page's words. A press opens its own view,
  * where it comes up; its listed row stands in its place with the same face,
@@ -3364,7 +3377,12 @@ function ComingMateRow({
   readonly onOpen: ((projectId: string) => void) | undefined;
 }) {
   const tint = coming.face?.tint ?? "slate";
-  return (
+  // An Add refused before Zerops took anything: its ⋯ ends it, or starts it over (`addEnds`).
+  const ends = useNewProjectBirths((state) => {
+    const made = state.births[coming.projectId];
+    return made !== undefined && addEnds(made) !== null;
+  });
+  const row = (
     <button
       aria-current={active ? "true" : undefined}
       className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3380,7 +3398,7 @@ function ComingMateRow({
           <MateFace
             shape={coming.face?.shape ?? mateShapeOf([], tint)}
             size="md"
-            state="sleep"
+            state={mateBirthFace(coming.failed === true)}
             tint={tint}
           />
         </span>
@@ -3393,6 +3411,31 @@ function ComingMateRow({
         <MateComingLine line={pendingBornLine(coming)} />
       </span>
     </button>
+  );
+  if (!ends) return row;
+  return (
+    // The row is the container, the menu's trigger beside its button, as a Mate's own row.
+    <div className="relative">
+      {row}
+      <span
+        className="absolute end-2 top-2.5 flex h-5 items-center opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+        data-zerops-surface="sidebar-mate-actions"
+      >
+        <Menu>
+          <MenuTrigger
+            render={
+              <button aria-label={`More for ${name}`} className={ROW_ACTION_CLASS} type="button" />
+            }
+          >
+            <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
+          </MenuTrigger>
+          <MenuPopup align="start" className="w-56" side="right">
+            <MenuItem onClick={() => startAddOver(coming.projectId)}>Start over</MenuItem>
+            <MenuItem onClick={() => dismissNewProjectBirth(coming.projectId)}>Dismiss</MenuItem>
+          </MenuPopup>
+        </Menu>
+      </span>
+    </div>
   );
 }
 

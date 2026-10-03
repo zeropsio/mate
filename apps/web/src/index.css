@@ -2719,10 +2719,10 @@ code {
    belongs to the state: at work the shape turns a notch at a time (its own
    symmetry, so it never looks like somebody else) and the eyes glance about;
    as it starts to need you, it hops; done after work while you watch, it pops
-   once. Idle and asleep it is still: a menu of faces must not fidget. Its own
-   motion is transform and opacity (the morph eases the eyes' and the mouth's
-   geometry), each Mate on its own beat (`--mate-face-phase`) so a menu of them
-   never ticks in unison. */
+   once. Idle and asleep it is still: a menu of faces must not fidget; waking,
+   on its way up, it breathes, slow and low. Its own motion is transform and
+   opacity (the morph eases the eyes' and the mouth's geometry), each Mate on
+   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison. */
 :root {
   /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
   --ease-spring: linear(
@@ -2835,6 +2835,16 @@ code {
     translate: 0 -5px;
   }
 
+  /* Waking — on its way up, until its first sign-in — it breathes: asleep's closed eyes, the whole
+     face swelling from its feet once every three seconds. The face itself moves, one box the
+     compositor carries, so a menu of waking rows repaints nothing as they breathe. With reduced
+     motion it stands still, and its words say it is coming up. */
+  [data-zerops-primitive="mate-face"][data-mate-face-state="waking"] {
+    transform-origin: 50% 96%;
+    animation: mate-face-breathe 3s ease-in-out infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
+  }
+
   [data-zerops-surface="sidebar-mate"] [data-mate-face-hop] {
     transition: scale 220ms var(--ease-spring);
   }
@@ -2875,6 +2885,16 @@ code {
   86%,
   100% {
     translate: 0 0;
+  }
+}
+
+@keyframes mate-face-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.05;
   }
 }
 
@@ -7320,6 +7340,50 @@ button.rv-relrow:hover .rv-relrow-go {
   /* Wraps within the words' width, never widening the steps. */
   contain: inline-size;
   padding: 2px 0 8px;
+}
+
+/* p37/one-screen: the steps this tab runs, under the project's row — a small mark and the words
+   each, quieter than the steps, one under another. Drawn from the press to the hand-over, so they
+   never come or go under what is read. */
+.arrival-substeps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-inline-start: 0;
+  list-style: none;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.arrival-substep {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.arrival-substep-mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+}
+
+.arrival-substep-mark .arrival-glyph {
+  width: 12px;
+  height: 12px;
+}
+
+.arrival-substep[data-state="active"] .arrival-substep-label {
+  color: var(--foreground);
+}
+
+.arrival-substep-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The copy's services, one name and one dot each, quieter than the steps. */

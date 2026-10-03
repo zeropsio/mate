@@ -26,6 +26,7 @@ class FakeSocket implements BuildLogSocket {
   readonly url: string;
   closed = false;
   #message: ((event: { readonly data: unknown }) => void) | undefined;
+  #open: (() => void) | undefined;
   #error: (() => void) | undefined;
   #close: (() => void) | undefined;
 
@@ -35,14 +36,19 @@ class FakeSocket implements BuildLogSocket {
   }
 
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
-  addEventListener(type: "error" | "close", listener: () => void): void;
+  addEventListener(type: "open" | "error" | "close", listener: () => void): void;
   addEventListener(
-    type: "message" | "error" | "close",
+    type: "message" | "open" | "error" | "close",
     listener: ((event: { readonly data: unknown }) => void) | (() => void),
   ): void {
     if (type === "message") this.#message = listener as (event: { readonly data: unknown }) => void;
+    if (type === "open") this.#open = listener as () => void;
     if (type === "error") this.#error = listener as () => void;
     if (type === "close") this.#close = listener as () => void;
+  }
+
+  handshake(): void {
+    this.#open?.();
   }
 
   emit(data: unknown): void {
@@ -65,20 +71,24 @@ class FakeSocket implements BuildLogSocket {
 }
 
 function callbacks(): BuildLogFollowCallbacks & {
+  readonly opens: ReturnType<typeof vi.fn>;
   readonly lines: ReturnType<typeof vi.fn>;
   readonly malformed: ReturnType<typeof vi.fn>;
   readonly errors: ReturnType<typeof vi.fn>;
   readonly closes: ReturnType<typeof vi.fn>;
 } {
+  const opens = vi.fn();
   const lines = vi.fn();
   const malformed = vi.fn();
   const errors = vi.fn();
   const closes = vi.fn();
   return {
+    opens,
     lines,
     malformed,
     errors,
     closes,
+    onOpen: opens,
     onLines: lines,
     onMalformedFrame: malformed,
     onError: errors,
@@ -144,6 +154,50 @@ describe("build log transport", () => {
     expect(FakeSocket.instances[0]?.closed).toBe(true);
   });
 
+  /**
+   * A running build's stream is opened before the build wrote its first line,
+   * and is asked for as the Zerops GUI asks for it (`trlog.store.ts`
+   * `_openLogStream$`: `limit=100`, `desc=0`, the project's id, a `from` only
+   * as a line's id).
+   * The backfill's `from` is a time; a stream that carried it stood open
+   * through a whole build and never answered a line.
+   */
+  it.each([
+    { name: "before the build wrote a line", fromLineId: undefined, from: null },
+    { name: "after the newest read line", fromLineId: "line-7", from: "line-7" },
+  ])("opens the build's stream with no time in it, $name", async ({ fromLineId, from }) => {
+    FakeSocket.instances = [];
+    const fetchUrls: string[] = [];
+    const transport = makeBuildLogTransport({
+      scope: scope(),
+      acquireGrant: async () => ({ url: "https://logs.example.test/api/rest/log?signature=s" }),
+      fetchImpl: async (url) => {
+        fetchUrls.push(url);
+        return { ok: true, json: async () => ({ items: [] }) };
+      },
+      WebSocketCtor: FakeSocket,
+    });
+    const query = { ...QUERY, fromIso: "2026-09-08T00:00:00.000Z" };
+
+    await transport.loadPage({ project: project(), query, limit: 20 });
+    await transport.openFollow({
+      project: project(),
+      query,
+      ...(fromLineId === undefined ? {} : { fromLineId }),
+      callbacks: callbacks(),
+    });
+
+    const backfill = new URL(fetchUrls[0]!).searchParams;
+    expect(backfill.get("from")).toBe("2026-09-08T00:00:00.000Z");
+    expect(backfill.get("desc")).toBe("1");
+    const stream = new URL(FakeSocket.instances[0]!.url).searchParams;
+    expect(stream.get("from")).toBe(from);
+    expect(stream.get("desc")).toBe("0");
+    expect(stream.get("limit")).toBe("100");
+    expect(stream.get("tags")).toBe("zbuilder@version-1");
+    expect(stream.get("projectId")).toBe("project-1");
+  });
+
   it("decodes frames, reports malformed/rejected input, and ignores callbacks after close", async () => {
     FakeSocket.instances = [];
     const events = callbacks();
@@ -159,6 +213,11 @@ describe("build log transport", () => {
       callbacks: events,
     });
     const socket = FakeSocket.instances[0]!;
+
+    // The socket exists before the backend accepted it; its handshake says so.
+    expect(events.opens).not.toHaveBeenCalled();
+    socket.handshake();
+    expect(events.opens).toHaveBeenCalledOnce();
 
     socket.emit(
       JSON.stringify({
@@ -177,11 +236,13 @@ describe("build log transport", () => {
     expect(events.malformed).toHaveBeenCalledOnce();
 
     handle.close();
+    socket.handshake();
     socket.emit(JSON.stringify({ items: [] }));
     socket.fail();
     socket.serverClose();
     expect(events.errors).not.toHaveBeenCalled();
     expect(events.closes).not.toHaveBeenCalled();
+    expect(events.opens).toHaveBeenCalledOnce();
   });
 
   it("fences a late grant after shutdown before constructing a socket", async () => {

@@ -37,6 +37,9 @@ const gitea = vi.hoisted(() => ({
   outwaitReacquireOnRead: false,
   /** The next listing answers Gitea's 401 to whichever pass's client sends it. */
   listingRefusedOnce: false,
+  /** The person's whole account is listed too; every listing recorded, as `account` or the org. */
+  account: false,
+  requests: [] as Array<string>,
 }));
 
 vi.mock("./accountGiteaSessions", () => ({
@@ -47,8 +50,26 @@ vi.mock("./accountGiteaSessions", () => ({
       return Promise.reject(new Error("Gitea answered 401."));
     };
     return {
-      listOrganizationRepositories: async () => {
+      ...(gitea.account
+        ? {
+            currentUser: async () => ({ id: 9, login: "u-person" }),
+            listAccountRepositories: async () => {
+              gitea.requests.push("account");
+              const repositories = ["harbor", "links"].flatMap((owner, at) =>
+                LISTED.map((listed, each) => ({
+                  ...listed,
+                  id: at * LISTED.length + each + 1,
+                  full_name: `${owner}/${listed.name}`,
+                  owner: { login: owner },
+                })),
+              );
+              return { repositories, counts: [repositories.length] };
+            },
+          }
+        : {}),
+      listOrganizationRepositories: async (owner: string) => {
         if (!gitea.readable) return refuse();
+        if (gitea.account) gitea.requests.push(owner);
         gitea.listings += 1;
         if (gitea.loseTokenOnRead) {
           gitea.readable = false;
@@ -747,8 +768,60 @@ describe("useZeropsGroupDeploys", () => {
     gitea.declares = false;
     gitea.loseTokenOnRead = false;
     gitea.outwaitReacquireOnRead = false;
+    gitea.account = false;
+    gitea.requests = [];
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("lists the account on its minute's tick, and only the org a deploy moved between ticks", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    gitea.account = true;
+    gitea.declares = true;
+    const { createRoot } = await import("react-dom/client");
+    const running = (activeDeploy: string): ReadonlyArray<ZeropsDeployGroup> => [
+      {
+        ...GROUP,
+        projects: [
+          { ...GROUP.projects[0]!, services: [{ serviceId: "s1", hostname: "app", activeDeploy }] },
+        ],
+      },
+      NEIGHBOUR,
+    ];
+    const readVersion = async () => SHA;
+    function Probe({ groups }: { readonly groups: ReadonlyArray<ZeropsDeployGroup> }) {
+      useZeropsGroupDeploys({
+        groups,
+        giteaOrigin: "https://gitea.example.test",
+        readVersion,
+        enabled: true,
+        readable: true,
+        reads: useForgeReads("https://gitea.example.test"),
+      });
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe, { groups: running("d1") }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(40_000);
+    });
+    expect(gitea.requests).toEqual(["account"]);
+    // A new deploy between ticks reads its group again: that org's own listing, not the account.
+    await act(async () => {
+      root.render(createElement(Probe, { groups: running("d2") }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.requests).toEqual(["account", "harbor"]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_DEPLOYS_REFRESH_MS - 40_000);
+    });
+    expect(gitea.requests).toEqual(["account", "harbor", "account"]);
+    await act(async () => {
+      root.unmount();
+    });
   });
 
   it("asks about a running commit again at once when the platform pushes a new deploy", async () => {

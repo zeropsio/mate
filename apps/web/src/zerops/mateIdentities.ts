@@ -19,8 +19,11 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   hasMate,
+  mateArriving,
+  mateArrivingUntil,
   mateShapeOf,
   readZeropsGroupTags,
+  type MatePoseFacts,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
@@ -56,6 +59,16 @@ export interface ZeropsMateIdentity {
   readonly standUp?: { readonly by: string } | undefined;
   /** Who made it (`mate:by:`): whose sign-in it waits for while nobody has signed it in. */
   readonly madeBy?: string | undefined;
+  /** Until when it is arriving (`mateArrivingUntil`); absent once it has arrived, or not known. */
+  readonly arrivingUntil?: number | undefined;
+}
+
+/** What a Mate's face reads of where it is in its life, from who lives there (`mateFaceFor`). */
+export function mateIdentityPose(
+  mate: Pick<ZeropsMateIdentity, "arrivingUntil">,
+  nowMs: number,
+): MatePoseFacts {
+  return { arriving: mateArriving(mate.arrivingUntil, nowMs) };
 }
 
 const NO_ORIGINS: ReadonlyMap<string, EnvironmentId> = new Map();
@@ -85,6 +98,7 @@ export function zeropsMateIdentityOf(
 ): ZeropsMateIdentity {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const tint = tints.get(candidate.project.id) ?? "slate";
+  const arrivingUntil = mateArrivingUntil(candidate);
   return {
     serviceId: candidate.service?.id,
     name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
@@ -95,6 +109,7 @@ export function zeropsMateIdentityOf(
     connected: candidate.group === "connected",
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
+    ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
   };
 }
 

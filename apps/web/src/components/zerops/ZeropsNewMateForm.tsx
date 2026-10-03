@@ -74,13 +74,6 @@ export interface ZeropsNewMateFormProps {
   readonly tierLoading: boolean;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
-  /**
-   * Add went through and the platform is being asked for the Mate's project: a second, and the
-   * person lands on the new Mate. Nothing is pressed twice or closed half way meanwhile.
-   */
-  readonly adding?: boolean | undefined;
-  /** Why the platform refused the last Add, before it took any project; Add tries again. */
-  readonly addError?: string | undefined;
   /** Why the project takes no Mate now, and what to do about it (`newMateDoor`): no form. */
   readonly closed?: NewMateDoorClosed | undefined;
   /** The one thing to do while the project takes no Mate, pressed. */
@@ -102,8 +95,6 @@ export function ZeropsNewMateForm({
   tier,
   tierLoading,
   defaultTintFor,
-  adding = false,
-  addError,
   closed,
   onDoorAction,
   onCancel,
@@ -144,7 +135,7 @@ export function ZeropsNewMateForm({
     waitingOn: submit.kind === "wait" && waiting ? submit.on : null,
   });
   const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
-  const error = closed === undefined ? (refused ?? addError) : undefined;
+  const error = closed === undefined ? refused : undefined;
   const bot = botName.replace(/\s+/g, " ").trim();
   const action = closed?.action;
   const line =
@@ -152,9 +143,7 @@ export function ZeropsNewMateForm({
       ? action?.kind === "retry" && action.busy
         ? READING_RECIPE
         : undefined
-      : adding
-        ? `Adding ${bot}…`
-        : (error ?? words.line);
+      : (error ?? words.line);
 
   const name = (typed: string) => {
     setBotName(typed);
@@ -166,7 +155,7 @@ export function ZeropsNewMateForm({
     onCreate({ name: proposeName(bot), botName: bot, recipe: choice, face });
   };
   const press = () => {
-    if (adding || closed !== undefined) return;
+    if (closed !== undefined) return;
     setPressed(true);
     if (submit.kind === "create") create(submit.recipe);
     else setPressedFor(submit.kind === "wait" ? recipe : null);
@@ -239,10 +228,10 @@ export function ZeropsNewMateForm({
               <MateFacePicker
                 face={face}
                 onPickShape={(shape) => {
-                  if (!adding) setPicked((current) => ({ ...current, shape }));
+                  setPicked((current) => ({ ...current, shape }));
                 }}
                 onPickTint={(tint) => {
-                  if (!adding) setPicked((current) => ({ ...current, tint }));
+                  setPicked((current) => ({ ...current, tint }));
                 }}
               >
                 <div className="flex flex-col gap-1.5">
@@ -260,9 +249,6 @@ export function ZeropsNewMateForm({
                           }
                     }
                     onValueChange={name}
-                    // While the platform takes the Mate's project, what made it stays as it was:
-                    // the name reads, and nothing typed or picked changes the Mate on its way.
-                    readOnly={adding}
                     value={botName}
                   />
                 </div>
@@ -294,7 +280,7 @@ export function ZeropsNewMateForm({
           aria-live="polite"
           className={cn(
             "me-auto min-h-4 self-center text-line leading-4",
-            adding || error === undefined ? "text-muted-foreground" : "text-status-failed-text",
+            error === undefined ? "text-muted-foreground" : "text-status-failed-text",
           )}
           id={`${id}-line`}
         >
@@ -302,14 +288,10 @@ export function ZeropsNewMateForm({
         </p>
         {closed === undefined ? (
           <>
-            <Button disabled={adding} onClick={onCancel} type="button" variant="ghost">
+            <Button onClick={onCancel} type="button" variant="ghost">
               Cancel
             </Button>
-            <Button
-              aria-busy={waiting || adding || undefined}
-              disabled={waiting || adding}
-              type="submit"
-            >
+            <Button aria-busy={waiting || undefined} disabled={waiting} type="submit">
               {words.button}
             </Button>
           </>

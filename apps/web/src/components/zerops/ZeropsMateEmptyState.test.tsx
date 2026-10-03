@@ -297,6 +297,18 @@ describe("ZeropsMateEmptyState", () => {
     expect(html).not.toContain("Not signed in");
   });
 
+  // Its pose is its row's (`mateFaceFor`): waking while it arrives, read off its own records
+  // (`mateArrivingUntil`) — never off the live sign-in, which a sign-out takes back.
+  it.each([
+    { case: "just added, its sign-in to come", until: Date.now() + 600_000, face: "waking" },
+    { case: "signed in once and signed out since", until: undefined, face: "idle" },
+    { case: "nobody signed it in, past its window", until: Date.now() - 120_000, face: "idle" },
+  ])("wears, $case, $face over its sign-in", ({ until, face }) => {
+    feedState.agentAuth = known(NOT_SIGNED_IN);
+    const html = render({ ...ASKED, arrivingUntil: until });
+    expect(stage(html)).toMatchObject({ face, signIn: true });
+  });
+
   it("waits on the sign-in's read with the sign-in's own headline", () => {
     feedState.agentAuth = READING;
     expect(stage(render(ASKED)).headline).toBe("Sign Fen in to start.");
@@ -332,7 +344,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     );
   const progress = <ol data-coming-progress />;
 
-  it("says it is coming up, asleep, how long is left, its steps in the slot", () => {
+  it("says it is coming up, waking, how long is left, its steps in the slot", () => {
     const html = view({
       coming: {
         kind: "coming",
@@ -343,7 +355,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     expect(stage(html)).toMatchObject({
       headline: "Fen is coming up on Acme Docs.",
       sentence: "About two minutes.",
-      face: "sleep",
+      face: "waking",
       signIn: false,
     });
     expect(html).toMatch(/data-arrival-slot="coming".*data-coming-progress/u);
@@ -362,14 +374,15 @@ describe("MateEmptyStateView — a Mate coming up", () => {
 
   it("once up, hands its words over to the sign-in, the sign-in in the slot where the steps stood", () => {
     const html = view({
-      mate: ASKED,
+      // Just up: it arrives until its first sign-in.
+      mate: { ...ASKED, arrivingUntil: Date.now() + 600_000 },
       coming: { kind: "coming", over: true, below: progress },
       signIn: <div data-sign-in-module />,
       signInRequired: true,
     });
     expect(stage(html)).toMatchObject({
       headline: "Sign Fen in to start.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     });
     expect(html).not.toContain("data-coming-progress");
@@ -390,7 +403,8 @@ describe("MateEmptyStateView — a Mate coming up", () => {
 
   it("names the runtimes still coming up under the sign-in", () => {
     const html = view({
-      mate: ASKED,
+      // Just up: it arrives until its first sign-in.
+      mate: { ...ASKED, arrivingUntil: Date.now() + 600_000 },
       coming: { kind: "coming", over: true, below: progress },
       signIn: <div data-sign-in-module />,
       signInRequired: true,

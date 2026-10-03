@@ -800,13 +800,13 @@ describe("a creation under way in the menu", () => {
   const comingRows = (html: string) =>
     html.match(/data-zerops-surface="sidebar-mate-coming"/gu) ?? [];
 
-  it("draws a Mate being created after the listed ones: asleep, named, how far it has got", () => {
+  it("draws a Mate being created after the listed ones: waking, named, how far it has got", () => {
     const html = render([CRM_DEV], { births: [birth()] });
     expect(comingRows(html)).toHaveLength(1);
     const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(at);
     const row = html.slice(html.lastIndexOf("<div", at));
-    expect(row).toContain('data-mate-face-state="sleep"');
+    expect(row).toContain('data-mate-face-state="waking"');
     expect(row).toContain(">Vera<");
     // On the clock from when the platform took it (board D1, 2026-09-30).
     expect(row).toMatch(/>Coming up · \d+(:\d\d|h \d\dm)</u);
@@ -815,7 +815,8 @@ describe("a creation under way in the menu", () => {
   it("says a creation that stopped in its line, in red", () => {
     const html = render([CRM_DEV], { births: [{ ...birth(), failed: true }] });
     const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
-    const row = html.slice(at, html.indexOf("</button>", at));
+    const row = html.slice(html.lastIndexOf("<button", at), html.indexOf("</button>", at));
+    expect(row).toContain('data-mate-face-state="sleep"');
     expect(row).toContain(">Setting up stopped<");
     expect(row).toContain('data-zerops-coming-tone="failed"');
   });
@@ -851,7 +852,7 @@ describe("a creation under way in the menu", () => {
     expect(unit).toBeDefined();
   });
 
-  // Picked in the New Mate dialog: the Mate wears it from its first moment, asleep.
+  // Picked in the New Mate dialog: the Mate wears it from its first moment, waking.
   it.each([
     {
       case: "the face its person picked",
@@ -866,7 +867,7 @@ describe("a creation under way in the menu", () => {
     const row = html.slice(at, html.indexOf("</button>", at));
     expect(row).toContain(`data-mate-face-tint="${tint}"`);
     expect(row).toContain(`data-mate-face-shape="${shape}"`);
-    expect(row).toContain('data-mate-face-state="sleep"');
+    expect(row).toContain('data-mate-face-state="waking"');
   });
 
   it("stands the listed Mate in its place once the listing holds it, never both", () => {
@@ -907,14 +908,20 @@ describe("a listed Mate still coming up", () => {
   };
 
   it.each([
-    { case: "coming up", coming: COMING, says: "Coming up", tone: "muted" },
-    { case: "not created", coming: FAILED, says: "Setting up stopped", tone: "failed" },
+    { case: "coming up", coming: COMING, says: "Coming up", tone: "muted", face: "waking" },
+    {
+      case: "not created",
+      coming: FAILED,
+      says: "Setting up stopped",
+      tone: "failed",
+      face: "sleep",
+    },
   ] as const)(
-    "says it is $case in its line, asleep, with no sign-in line",
-    ({ coming, says, tone }) => {
+    "says it is $case in its line, $face, with no sign-in line",
+    ({ coming, says, tone, face }) => {
       const html = render([CRM_DEV], { getComing: () => coming });
       const row = rowOf(html);
-      expect(row).toContain('data-mate-face-state="sleep"');
+      expect(row).toContain(`data-mate-face-state="${face}"`);
       expect(row).toContain(`>${says}<`);
       expect(row).toContain(`data-zerops-coming-tone="${tone}"`);
       expect(row).not.toContain("Nobody has signed in yet");
@@ -2368,6 +2375,47 @@ describe("the Mate's card", () => {
     expect(html).not.toContain(">Idle<");
     expect(html).not.toContain("Connected");
     expect(html).not.toContain("sidebar-mate-subject");
+  });
+
+  // Waking while it arrives (`mateFaceFor`): from its press to its first sign-in, inside its
+  // window — never a Mate signed in once, nor one nobody signed in for days (Everyone).
+  it.each([
+    {
+      case: "up, made minutes ago, nobody signed in",
+      ago: 5,
+      signed: false,
+      group: "connected",
+      face: "waking",
+    },
+    {
+      case: "its socket not up yet, made minutes ago",
+      ago: 5,
+      signed: false,
+      group: "ready",
+      face: "waking",
+    },
+    {
+      case: "up, made two days ago, nobody signed in",
+      ago: 2880,
+      signed: false,
+      group: "connected",
+      face: "idle",
+    },
+    {
+      case: "up, made minutes ago, signed in once",
+      ago: 5,
+      signed: true,
+      group: "connected",
+      face: "idle",
+    },
+  ] as const)("$case: $face", ({ ago, signed, group, face }) => {
+    const made = new Date(Date.now() - ago * 60_000).toISOString();
+    const listed = NAMED.project.tagList ?? [];
+    const tagList = signed ? [...listed, "mate:signer:claude-code:u-eva"] : listed;
+    const html = render([
+      { ...NAMED, group, project: { ...NAMED.project, created: made, tagList } },
+    ]);
+    expect(html).toContain(`data-mate-face-state="${face}"`);
   });
 
   it("is asleep for a container nobody has connected to", () => {

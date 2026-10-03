@@ -50,10 +50,11 @@ import {
   birthRuntimesFacts,
   type BirthCopyService,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import type { ZeropsService } from "@t3tools/client-runtime/zerops";
+import { mateArriving, type ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { MateMarkState } from "@t3tools/shared/brand";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 
@@ -75,19 +76,34 @@ import {
   mateOpeningPhrase,
   type MateComing,
 } from "~/zerops/mateComing";
-import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
+import {
+  mateIdentityPose,
+  zeropsMateIdentityOf,
+  type ZeropsMateIdentity,
+} from "~/zerops/mateIdentities";
+import { mateFaceFor } from "~/zerops/agentActivity";
 import { takeMateConversation } from "~/zerops/mateOpening";
-import { arrivalSteps, comingSentence, inFirstSeenOrder } from "~/zerops/mateArrival";
+import {
+  arrivalHeaderFace,
+  arrivalSteps,
+  comingSentence,
+  inFirstSeenOrder,
+  KEEP_TAB_OPEN_LINE,
+  pressRuns,
+  type ArrivalSubstep,
+} from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
+  comingPlanned,
+  creationSubsteps,
   newProjectBirthOf,
   newProjectProgress,
   useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
-import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
@@ -119,6 +135,7 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
+import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { PressSteps } from "./ZeropsEnvironmentCreationDialog";
 import {
@@ -160,7 +177,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const press = useMatePress(projectId);
   const inventory = useZeropsInventory();
   const creation = useNewMate((state) => state.creations[projectId]);
-  // The New project this tab made whose first Mate this is, while the tab holds it.
+  // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const made = useNewProjectBirths((state) => newProjectBirthOf(state.births, projectId));
   const forgetCreation = useNewMate((state) => state.forget);
   // The platform's verdict on its creation, read while it may still be refused (H20).
@@ -446,9 +463,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // while its card is on screen and its setup is under way — every read of an older Mate costs
   // it a tag read of its own.
   const setup = useMateSetup(arrival !== undefined ? candidate?.containerOrigin : undefined);
+  // What it brings, named before its project lists them: its press's, then its creation's — a
+  // press over never takes a line back before the project's own read or its setup answers.
+  const planned = useMemo(() => comingPlanned(press, made), [press, made]);
+  const madeSince = press?.startedAt ?? made?.startedAt;
   // How far it has got, as the projects page's card draws it.
   const progress = useZeropsBirthProgress(
-    candidate === undefined && press === undefined
+    candidate === undefined && press === undefined && made === undefined
       ? null
       : {
           candidate: candidate ?? {
@@ -457,14 +478,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               id: projectId,
               name: mate.name,
               status: "NEW",
-              ...(press === undefined ? {} : { created: new Date(press.startedAt).toISOString() }),
+              ...(madeSince === undefined ? {} : { created: new Date(madeSince).toISOString() }),
             },
             group: "provisioning",
           },
           health: containerHealth,
           connecting: candidate?.connection?.phase === "connecting",
           runtimes: birthRuntimesFacts({
-            planned: press?.runtimes,
+            planned: planned.runtimes,
             setup: setup?.runtimes,
             services: resolvedServices(inventory.services.get(projectId)),
           }),
@@ -475,22 +496,24 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const managed = useMemo(
     () =>
       birthCopyServices({
-        planned: press?.managed,
+        planned: planned.managed,
         services: resolvedServices(inventory.services.get(projectId)),
       }),
-    [press?.managed, inventory.services, projectId],
+    [planned.managed, inventory.services, projectId],
   );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
+  // Made here, the steps this tab runs stay under the project's row until the hand-over.
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
       : {
-          ...(made === undefined
+          ...(made === undefined || made.adds !== undefined
             ? progress.progress
             : newProjectProgress(made, progress.progress, progress.nowMs)),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
+          ...(made === undefined ? {} : { press: creationSubsteps(made) }),
         };
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
@@ -555,6 +578,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Any other Mate: its name — "This Mate" where nothing names it, as on its conversation's route —
   // and under it what its link waits for, or why it cannot be opened.
   const named = mate.name.length > 0 ? mate : { ...mate, name: "This Mate" };
+  // The minute clock its pose reads (`mateArriving`).
+  const clockMs = useNowMs();
   const nowMs = useSecondsNowMs(
     page?.kind === "reaching" && page.reachability?.kind === "retrying",
   );
@@ -654,6 +679,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       header={
         <MateComingHeader
           arriving={shown !== undefined && !handingArrival}
+          face={
+            view === null || shown === undefined || handingArrival
+              ? undefined
+              : arrivalHeaderFace({
+                  kind: view.kind,
+                  over: view.over === true,
+                  connected: environmentId !== null,
+                  arriving: mateArriving(mate.arrivingUntil, clockMs),
+                })
+          }
           mate={{ ...mate, connected: environmentId !== null }}
           standsIn={standsInComposer || handingArrival ? { subject: standInSubject } : null}
         />
@@ -662,6 +697,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       {view === null ? null : (
         <MateEmptyStateView
           coming={view}
+          // Handed over to from the creation's view, whose headline held the focus.
+          focusOnArrival={made !== undefined}
           mate={{ ...(shown === undefined ? named : mate), connected: environmentId !== null }}
           onRetry={empty.onRetry}
           phase={handingArrival ? empty.phase : phaseAhead}
@@ -717,10 +754,16 @@ export function MateComingHeader({
   mate,
   standsIn = null,
   arriving = false,
+  face,
 }: {
   /** A new Mate coming up: its face and name only. */
   readonly arriving?: boolean;
-  readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
+  /** The pose the stage under it wears (`arrivalHeaderFace`); else its own (`mateFaceFor`). */
+  readonly face?: MateMarkState | undefined;
+  readonly mate: Pick<
+    ZeropsMateIdentity,
+    "name" | "tint" | "shape" | "connected" | "arrivingUntil"
+  > & {
     readonly projectUrl: string | undefined;
   };
   /**
@@ -730,6 +773,7 @@ export function MateComingHeader({
    */
   readonly standsIn?: { readonly subject: string | null } | null;
 }) {
+  const nowMs = useNowMs();
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
       <ConversationStripView
@@ -739,7 +783,7 @@ export function MateComingHeader({
           name: mate.name,
           tint: mate.tint,
           shape: mate.shape,
-          face: mate.connected ? "idle" : "sleep",
+          face: face ?? mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs)),
           open: true,
           threadId: null,
           tooltip: standsIn?.subject ?? null,
@@ -816,12 +860,22 @@ export function personOf(
 export function comingSentenceOf(input: {
   readonly coming: MateComing | undefined;
   readonly trouble?: string | null;
-  readonly progress: BirthLineProgress | undefined;
+  readonly progress: ArrivalProgress | undefined;
   readonly nowMs: number | undefined;
 }): string | undefined {
   const { coming, progress, nowMs } = input;
   if (coming === undefined) return undefined;
-  if (coming.kind === "failed") return input.trouble ?? coming.line;
+  if (coming.kind === "failed") {
+    if (input.trouble != null) return input.trouble;
+    // Zerops may have made it: the sentence says so, with the way to the projects — never a stop.
+    if (coming.verb === "go-to-projects") return coming.line;
+    // A step this tab ran that stopped it says why in its own place: the sentence, only that it
+    // did. A step left to an owner stopped nothing, and anything else says its own reason here.
+    const said = progress?.press?.some((step) => step.state === "failed" && step.why !== undefined);
+    return said === true ? NOT_SET_UP_LINE : coming.line;
+  }
+  // While the steps this tab runs are under way, the one thing that stops them.
+  if (pressRuns(progress?.press)) return KEEP_TAB_OPEN_LINE;
   const startedAt = progress?.startedAt === undefined ? Number.NaN : Date.parse(progress.startedAt);
   return comingSentence(
     nowMs === undefined || Number.isNaN(startedAt) ? undefined : nowMs - startedAt,
@@ -830,7 +884,7 @@ export function comingSentenceOf(input: {
 
 /**
  * In the slot while it comes up: the Mate's own steps (`arrivalSteps`), with their times — and
- * over them, for one that did not come, the view's one verb: *Remove*, *Try again* where a press
+ * under them, for one that did not come, the view's one verb: *Remove*, *Try again* where a press
  * stopped at a step safe to ask again, or *Go to projects* where the platform may have made it
  * anyway.
  */
@@ -845,6 +899,7 @@ export function ComingBelow({
   onRemove,
   onFinishSetup,
   onTryAgain,
+  ends,
   projects,
 }: {
   readonly coming: MateComing | undefined;
@@ -859,6 +914,11 @@ export function ComingBelow({
   /** *Finish setup*, for a Mate whose press stopped before its container. */
   readonly onFinishSetup?: () => void;
   readonly onTryAgain?: () => void;
+  /**
+   * An Add refused before Zerops took anything (`addEnds`): beside *Try again*, *Start over* with
+   * its name to change, and *Dismiss*, which takes it out of the menu.
+   */
+  readonly ends?: { readonly onStartOver: () => void; readonly onDismiss: () => void } | undefined;
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
@@ -895,7 +955,19 @@ export function ComingBelow({
           {FINISH_MATE_SETUP_VERB}
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
-        <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+        <>
+          <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+          {ends === undefined ? null : (
+            <>
+              <Button onClick={ends.onStartOver} variant="outline">
+                Start over
+              </Button>
+              <Button onClick={ends.onDismiss} variant="ghost">
+                Dismiss
+              </Button>
+            </>
+          )}
+        </>
       ) : coming.verb === "go-to-projects" && projects !== undefined ? (
         <Button render={projects}>Go to projects</Button>
       ) : null
@@ -903,10 +975,12 @@ export function ComingBelow({
   if (verb === null) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
+  // Under the steps, where nothing is read yet: a stop, and *Try again* taking it back, never move
+  // the rows they stand under.
   return (
     <div className="flex flex-col gap-5.5" data-zerops-surface="mate-coming-failed">
-      <div className="arrival-acts">{verb}</div>
       {steps}
+      <div className="arrival-acts">{verb}</div>
     </div>
   );
 }
@@ -918,6 +992,8 @@ export function ComingBelow({
 export type ArrivalProgress = BirthLineProgress & {
   readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
   readonly setup?: MateSetup | undefined;
+  /** The steps this tab runs for it, while it holds them (`creationSubsteps`). */
+  readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
 };
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */

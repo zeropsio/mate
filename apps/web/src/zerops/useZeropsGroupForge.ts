@@ -175,6 +175,7 @@ export function useZeropsGroupForge(input: {
     refreshMs: GROUP_FORGE_REFRESH_MS,
     keyOf: (group) => group.slug,
     unauthorizedReads: reads.unauthorized,
+    tick: reads.tick,
     read: (client, group, scope) => readForge(client, group.slug, scope, mergeability, reads),
     // A release changes the group repo's tags and what their commits are told; a group read again
     // whole forgets all. A repository read again — a merge, or Gitea saying "checking" after a
@@ -271,6 +272,11 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   readonly forget?: (group: Group, scope: Scope | "group") => void;
   /** How many shared reads met a 401 no token recovered (`ForgeReads.unauthorized`). */
   readonly unauthorizedReads: () => number;
+  /**
+   * Told on each tick of the clock, before the groups are read again: both passes tick the shared
+   * reads, so the orgs of one refresh share one account listing (`ForgeReads.tick`).
+   */
+  readonly tick?: (() => void) | undefined;
 }): {
   readonly answers: ReadonlyMap<string, Answer>;
   readonly failures: ReadonlyMap<string, string>;
@@ -365,7 +371,13 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
     });
     driver.current = answers;
     answers.setGroups(latest.current.input.groups);
-    const stopClock = startRefreshClock({ refresh: answers.refresh, everyMs: refreshMs });
+    const stopClock = startRefreshClock({
+      refresh: () => {
+        latest.current.input.tick?.();
+        answers.refresh();
+      },
+      everyMs: refreshMs,
+    });
     return () => {
       stopClock();
       answers.dispose();
@@ -467,15 +479,13 @@ export async function readForge(
   }
   // Read before the listing is asked: its own 404 is recorded as "not made" (`ForgeReads`).
   const made = reads.organizations().get(slug) === true;
-  const listed = await reads
-    .repositories(slug, () => client.listOrganizationRepositories(slug))
-    .catch((cause: unknown) => {
-      // The broker has not made its org yet (`ForgeReads.organizations`): there is nothing to
-      // read, and nothing failed — its row says it is being set up. An org listed before that
-      // answers 404 now is a failure, and what was held stays.
-      if (giteaNotFound(cause) && !made) return null;
-      throw cause;
-    });
+  const listed = await reads.repositories(slug, client).catch((cause: unknown) => {
+    // The broker has not made its org yet (`ForgeReads.organizations`): there is nothing to
+    // read, and nothing failed — its row says it is being set up. An org listed before that
+    // answers 404 now is a failure, and what was held stays.
+    if (giteaNotFound(cause) && !made) return null;
+    throw cause;
+  });
   if (listed === null) return () => NOTHING_YET;
   const repositories = listed.map((repository) => repository.name);
   const read = new Map<string, RepositoryPulls>();

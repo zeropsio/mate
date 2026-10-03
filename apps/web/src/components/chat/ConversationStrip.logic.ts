@@ -15,7 +15,7 @@
  * (R5). A face carries its state, as the menu's faces do: no status word
  * stands on the line, only in a face's accessible name.
  */
-import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
+import { resolvePrimaryConversation, type MatePoseFacts } from "@t3tools/client-runtime/zerops";
 import {
   crewJobSentence,
   crewmateRoleWords,
@@ -110,6 +110,8 @@ export function lineMate(input: {
     readonly shape?: MateShapeId | undefined;
     readonly connected: boolean;
   };
+  /** Where the Mate is in its life (`mateFaceFor`): waking while it arrives. */
+  readonly pose?: MatePoseFacts | undefined;
   /** The Mate's chats, main first (`mateChats`). */
   readonly chats: ReadonlyArray<EnvironmentThreadShell>;
   /** The chat on screen; `null` for one being started. */
@@ -132,6 +134,7 @@ export function lineMate(input: {
     face: mateFaceFor(
       mate.connected,
       status === null ? undefined : { face: mateMarkStateForThreadStatus(status.kind) },
+      input.pose,
     ),
     open,
     threadId: chats[0]?.id ?? null,

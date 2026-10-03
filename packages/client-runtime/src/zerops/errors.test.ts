@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { ZeropsApiError } from "./api.ts";
-import { zeropsErrorMessage } from "./errors.ts";
+import { isUncertainZeropsFailure, zeropsErrorMessage } from "./errors.ts";
 
 describe("zeropsErrorMessage", () => {
   it("error message shim matches the previous web and mobile outputs", () => {
@@ -26,5 +26,25 @@ describe("zeropsErrorMessage", () => {
     for (const [cause, expected] of cases) {
       expect(zeropsErrorMessage(cause)).toBe(expected);
     }
+  });
+});
+
+describe("isUncertainZeropsFailure — a write the platform may have done anyway", () => {
+  it.each<{ readonly case: string; readonly cause: unknown; readonly uncertain: boolean }>([
+    { case: "the client's own", cause: new ZeropsApiError("Lost.", "uncertain"), uncertain: true },
+    {
+      case: "the data layer's",
+      cause: { _tag: "ZeropsDataAdapterError", kind: "uncertain", message: "Lost." },
+      uncertain: true,
+    },
+    { case: "a refusal", cause: new ZeropsApiError("No.", "forbidden", 403), uncertain: false },
+    {
+      case: "the data layer's refusal",
+      cause: { _tag: "ZeropsDataAdapterError", kind: "forbidden", message: "No." },
+      uncertain: false,
+    },
+    { case: "anything else", cause: new Error("Lost."), uncertain: false },
+  ])("$case: $uncertain", ({ cause, uncertain }) => {
+    expect(isUncertainZeropsFailure(cause)).toBe(uncertain);
   });
 });

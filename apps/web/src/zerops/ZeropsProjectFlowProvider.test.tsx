@@ -301,7 +301,11 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     const listing = (answer: () => Promise<[]>) =>
       act(async () => {
-        await reads.repositories("quay", answer).catch(() => undefined);
+        await reads
+          .repositories("quay", {
+            listOrganizationRepositories: answer,
+          })
+          .catch(() => undefined);
       });
 
     await render(headquarters(["mate:tool:gitea", "mate:gn:g1:harbor"]));
