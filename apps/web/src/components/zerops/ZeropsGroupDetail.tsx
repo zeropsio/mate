@@ -975,7 +975,7 @@ export function ZeropsStopDetailPage({
   const release = useReleaseOffer(groupId);
   const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
-  const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
+  const crumbs = useCrumbs({ groupId, name: stopGroupName });
   const names = useHistoryNames(stopGroupName);
   const openProjects = useOpenProjects();
   const { routes, offers } = useStopRoutes(projectId);
@@ -1661,7 +1661,7 @@ export function ZeropsChangeDetailPage({
   readonly number: number;
 }) {
   const groupName = useGroupName(groupId);
-  const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
+  const crumbs = useCrumbs({ groupId, name: groupName });
   const openReview = useOpenReview();
   const titleId = useId();
   return (
@@ -1714,30 +1714,36 @@ const NO_COMMITS: ReadonlyArray<WaitingCommit> = [];
  * a Mate's row on the project's page is the way into its own.
  */
 function useCrumbs(
-  inside?: { readonly groupId: string; readonly name: string } | undefined,
+  inside?: { readonly groupId: string; readonly name: string | undefined } | undefined,
 ): ReadonlyArray<Crumb> {
   const navigate = useNavigate();
   const groupId = inside?.groupId;
   const name = inside?.name;
-  return useMemo(() => {
-    const trail: Array<Crumb> = [
-      {
-        label: "Projects",
+  return useMemo(
+    () =>
+      detailTrail(groupId === undefined ? undefined : { groupId, name }).map(({ label, to }) => ({
+        label,
         onClick: () => {
-          void navigate({ to: "/zerops" });
+          void (to.kind === "projects"
+            ? navigate({ to: "/zerops" })
+            : navigate({ to: "/group/$groupId/flow", params: { groupId: to.groupId } }));
         },
-      },
-    ];
-    if (groupId !== undefined && name !== undefined) {
-      trail.push({
-        label: name,
-        onClick: () => {
-          void navigate({ to: "/group/$groupId/flow", params: { groupId } });
-        },
-      });
-    }
-    return trail;
-  }, [groupId, name, navigate]);
+      })),
+    [groupId, name, navigate],
+  );
+}
+
+/** A detail page's trail as data: each crumb's words and the page it opens. */
+export function detailTrail(
+  inside: { readonly groupId: string; readonly name: string | undefined } | undefined,
+): ReadonlyArray<{
+  readonly label: string;
+  readonly to: { readonly kind: "projects" } | { readonly kind: "group"; readonly groupId: string };
+}> {
+  const projects = { label: "Projects", to: { kind: "projects" } } as const;
+  // A project's name not read yet: its crumb waits — its id is never a name.
+  if (inside?.name === undefined) return [projects];
+  return [projects, { label: inside.name, to: { kind: "group", groupId: inside.groupId } }];
 }
 
 /**
