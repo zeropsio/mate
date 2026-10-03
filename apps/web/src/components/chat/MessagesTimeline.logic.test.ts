@@ -922,6 +922,12 @@ describe("deriveMessagesTimelineRows", () => {
     expect(settled?.items.find((item) => item.key === "step:w1")).toMatchObject({
       step: { noResult: "closed" },
     });
+    // The turn's end closes it as unreturned (D4): it stays where it went stale.
+    expect(settled?.items.map((item) => [item.key, item.at])).toEqual([
+      ["step:w2", at(2, 5)],
+      ["step:w1", at(3)],
+      ["step:w3", at(3)],
+    ]);
     expect(settled?.items.find((item) => item.key === "step:w3")).toMatchObject({
       step: { noResult: "closed" },
     });

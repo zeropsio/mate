@@ -1112,6 +1112,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (!toolLifecycleStatus && activity.kind === "tool.completed") {
     toolLifecycleStatus = "completed";
   }
+  // Its turn's end closed it: the call never returned, so no result.
+  if (activity.kind === "tool.completed" && payload?.unreturned === true) {
+    toolLifecycleStatus = "inProgress";
+  }
   if (toolLifecycleStatus) {
     entry.toolLifecycleStatus = toolLifecycleStatus;
   }
