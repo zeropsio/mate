@@ -976,10 +976,10 @@ describe("a Mate's changes in HQ", () => {
       "git decides a push as the git layer reads the request, however its address is spelled",
       () =>
         Effect.gen(function* () {
-          // The org's view kept a second, no reconcile: a fetch reads it as kept, a push as a write
-          // is decided (F22) — over the view at most that old, read again past it.
+          // The org's view never young enough to serve as it is, no reconcile: a fetch takes the last
+          // good view while Zerops does not answer, a push as a write is decided (F22) over a read.
           const { call, fake } = yield* startCore(true, {
-            viewTtl: Duration.seconds(1),
+            viewTtl: Duration.millis(1),
             reconcileEvery: Duration.minutes(5),
           });
           yield* untilHealth(call, "active");
@@ -992,16 +992,18 @@ describe("a Mate's changes in HQ", () => {
               },
             });
           assert.strictEqual((yield* advertise("service=git-upload-pack")).status, 200);
-          // Zerops no longer has the Mate's project; HQ's kept view still does.
+          // Zerops no longer has the Mate's project, and does not answer: a fetch takes HQ's last good
+          // view, which still has it.
           fake.projects.splice(
             fake.projects.findIndex((project) => project.id === "P_MATE"),
             1,
           );
+          fake.down = true;
           assert.strictEqual((yield* advertise("service=git-upload-pack")).status, 200);
-          // The layer reads everything past the first `?` as the query: this is a push's
-          // advertisement, so `open_change` decides it — past the view's second, over the org read
-          // again, its refusal confirmed fresh.
-          yield* Effect.sleep(Duration.millis(1200));
+          // Zerops answers again. The layer reads everything past the first `?` as the query: this
+          // is a push's advertisement, so `open_change` decides it — over the org read again, its
+          // refusal confirmed fresh.
+          fake.down = false;
           const push = yield* advertise("x=1?&service=git-receive-pack");
           assert.deepStrictEqual(
             [push.status, push.body],
