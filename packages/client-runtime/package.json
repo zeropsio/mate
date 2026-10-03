@@ -259,6 +259,10 @@
       "types": "./src/zerops/browserStream.ts",
       "default": "./src/zerops/browserStream.ts"
     },
+    "./zerops/timelineFollow": {
+      "types": "./src/zerops/timelineFollow.ts",
+      "default": "./src/zerops/timelineFollow.ts"
+    },
     "./zerops/giteaSignIn": {
       "types": "./src/zerops/giteaSignIn.ts",
       "default": "./src/zerops/giteaSignIn.ts"
