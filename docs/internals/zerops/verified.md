@@ -7416,3 +7416,16 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   since 22:16Z at the member-list step: 308× "not in the expected shape" (it reads `items`; the
   platform answers `clientUserList`) and 7× 400 `userNotFound`. Its own key read its project and
   `user/info` fine.
+- **A NO_ACCESS member reads its projects only through search, and a search row names only its own
+  grant** — KRLS's Developer (org role NO_ACCESS): `GET /client/{id}/project` answered 403
+  `insufficientPermissions`; `POST /project/search` listed the two projects its grants name, each
+  row's `userRoles` holding only `{mine: true, roleCode}`; `GET /project/{id}` answered the whole
+  list (`[{mine: false, BASIC_USER}, {mine: true, OWNER}]`) for a project it holds, 403 for any
+  other.
+- **The organization's member list carries every integration token** — KRLS's `user/list` held
+  181 entries: 5 people and 176 `ACTIVE/NO_ACCESS` entries, one per integration token (179 listed).
+  63 of the tokens were named `zerops-zcp-zcp`.
+- **A production imported without code reads `source: NONE` only from the version list** — the
+  `activeAppVersion` embedded in `POST /service-stack/search` carries `base, created, id,
+lastUpdate, os, status` only; `/app-version/search` gives the same version `source: NONE`,
+  `name: null`.
