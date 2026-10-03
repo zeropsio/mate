@@ -4,6 +4,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -94,6 +95,14 @@ export class EnvironmentRegistry extends Context.Service<
       | PlatformEnvironmentRemovalError
     >;
     readonly retryNow: (environmentId: EnvironmentId) => Effect.Effect<void>;
+    /**
+     * Ends the environment's socket and keeps everything else: its registration, its stored
+     * credential, its cached data and its supervisor. Nothing connects it again, nor renews its
+     * credential, until it is unparked.
+     */
+    readonly park: (environmentId: EnvironmentId) => Effect.Effect<void>;
+    /** Connects a parked environment again, on the credential it kept. */
+    readonly unpark: (environmentId: EnvironmentId) => Effect.Effect<void>;
     readonly rotateCredential: (
       environmentId: EnvironmentId,
       credential: BearerConnectionCredential,
@@ -137,6 +146,8 @@ interface EnvironmentServiceScope {
   // Held while a rotated credential is written, so no attempt starts, and no
   // block is judged, between the store write and the generation bump.
   readonly credentialWrite: Semaphore.Semaphore;
+  // The credential renewal keeping it ahead of its deadline: none while it is parked.
+  readonly renewal: Ref.Ref<Fiber.Fiber<void> | null>;
 }
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -209,6 +220,12 @@ export const make = Effect.gen(function* () {
   const leaseLocks = yield* Ref.make<ReadonlyMap<EnvironmentId, LeaseLock>>(new Map());
   const leaseLocksGuard = yield* Semaphore.make(1);
   const started = yield* Ref.make(false);
+  /**
+   * Whether each environment is parked (A9, krok-a-hub §3): connected only while something holds
+   * a lease on it, set by `park` and `unpark`. One never set is parked when it is a Mate — its
+   * bearer minted at a Zerops door — and connected otherwise, as every environment was.
+   */
+  const parking = yield* Ref.make<ReadonlyMap<EnvironmentId, boolean>>(new Map());
 
   const withLeaseLock = <A, E, R>(
     environmentId: EnvironmentId,
@@ -399,6 +416,21 @@ export const make = Effect.gen(function* () {
     }
   });
 
+  /** Whether the environment is parked: as `park` or `unpark` last set it, else whether it is a Mate. */
+  const parked = Effect.fn("EnvironmentRegistry.parked")(function* (entry: ConnectionCatalogEntry) {
+    const set = (yield* Ref.get(parking)).get(entry.target.environmentId);
+    if (set !== undefined) return set;
+    if (entry.target._tag !== "BearerConnectionTarget") return false;
+    const stored = yield* credentials
+      .get(entry.target.connectionId)
+      .pipe(Effect.orElseSucceed(Option.none));
+    return (
+      Option.isSome(stored) &&
+      stored.value._tag === "BearerConnectionCredential" &&
+      stored.value.origin === "zerops-identity"
+    );
+  });
+
   const createServiceScope = Effect.fn("EnvironmentRegistry.createServiceScope")(
     (entry: ConnectionCatalogEntry) =>
       Effect.uninterruptible(
@@ -417,8 +449,14 @@ export const make = Effect.gen(function* () {
             Scope.provide(scope),
             Effect.onError(() => Scope.close(scope, Exit.void)),
           );
-          yield* supervisor.connect;
-          yield* runCredentialRenewal(entry, supervisor).pipe(Effect.forkIn(scope));
+          const renewal = yield* Ref.make<Fiber.Fiber<void> | null>(null);
+          if (!(yield* parked(entry))) {
+            yield* supervisor.connect;
+            yield* Ref.set(
+              renewal,
+              yield* runCredentialRenewal(entry, supervisor).pipe(Effect.forkIn(scope)),
+            );
+          }
           yield* SubscriptionRef.update(serviceScopes, (current) => {
             const next = new Map(current);
             next.set(environmentId, {
@@ -427,6 +465,7 @@ export const make = Effect.gen(function* () {
               scope,
               credentialGeneration,
               credentialWrite,
+              renewal,
             });
             return next;
           });
@@ -759,6 +798,11 @@ export const make = Effect.gen(function* () {
           next.delete(environmentId);
           return next;
         });
+        yield* Ref.update(parking, (current) => {
+          const next = new Map(current);
+          next.delete(environmentId);
+          return next;
+        });
         yield* forgetInstallGeneration(environmentId);
         yield* Effect.all(
           [
@@ -813,6 +857,48 @@ export const make = Effect.gen(function* () {
       );
     },
   );
+
+  const setParking = (environmentId: EnvironmentId, value: boolean) =>
+    Ref.update(parking, (current) => new Map(current).set(environmentId, value));
+
+  const park = (environmentId: EnvironmentId) =>
+    withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        yield* setParking(environmentId, true);
+        const lease = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+        if (lease === undefined) return;
+        const renewal = yield* Ref.getAndSet(lease.renewal, null);
+        if (renewal !== null) yield* Fiber.interrupt(renewal);
+        yield* lease.supervisor.disconnect;
+      }),
+    ).pipe(Effect.withSpan("EnvironmentRegistry.park"));
+
+  const unpark = (environmentId: EnvironmentId) =>
+    withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        yield* setParking(environmentId, false);
+        const lease = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+        // Built now, it connects as it is built.
+        if (lease === undefined) {
+          yield* acquireSupervisorLocked(environmentId);
+          return;
+        }
+        yield* lease.supervisor.connect;
+        if ((yield* Ref.get(lease.renewal)) === null) {
+          yield* Ref.set(
+            lease.renewal,
+            yield* runCredentialRenewal(lease.entry, lease.supervisor).pipe(
+              Effect.forkIn(lease.scope),
+            ),
+          );
+        }
+      }),
+    ).pipe(
+      Effect.catchTag("EnvironmentNotRegisteredError", () => Effect.void),
+      Effect.withSpan("EnvironmentRegistry.unpark"),
+    );
 
   const retryNow = (environmentId: EnvironmentId) =>
     acquireSupervisor(environmentId).pipe(
@@ -915,6 +1001,8 @@ export const make = Effect.gen(function* () {
     remove,
     removeRelayEnvironments,
     retryNow,
+    park,
+    unpark,
     rotateCredential,
     state,
     stateChanges,

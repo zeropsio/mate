@@ -8,13 +8,44 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
+import type { AtomCommand } from "@t3tools/client-runtime/state/runtime";
+import {
+  initialEnvironment,
+  type EnvironmentMachine,
+  type TargetKey,
+} from "@t3tools/client-runtime/zerops/environments";
+import { RegistryContext } from "@effect/atom-react";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { AtomRegistry } from "effect/unstable/reactivity";
+import { act, createElement as h } from "react";
+import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
-import { connectMate, connectResult, type MateConnectTarget } from "./accountEnvironments";
+import {
+  bindAccountEnvironments,
+  connectMate,
+  connectResult,
+  useMateCommand,
+  MATE_HOLD_WAIT_MS,
+  useMateHeld,
+  whileMateHeld,
+  type MateConnectTarget,
+} from "./accountEnvironments";
 import { onZeropsInvalidation } from "./accountInvalidations";
 
 const ENV = "env-1" as EnvironmentId;
+
+/** What happened, in order: the Mate held and let go, the command sent. */
+const sent = vi.hoisted(() => ({ log: [] as Array<string> }));
+
+vi.mock("../state/use-atom-command", () => ({
+  useAtomCommand: () => async (value: { readonly input: string }) => {
+    sent.log.push(`command ${value.input}`);
+    return "answered";
+  },
+}));
 
 const organizationRef = (organizationId: string): OrganizationRef => ({
   kind: "organization",
@@ -27,6 +58,7 @@ const organizationRef = (organizationId: string): OrganizationRef => ({
 
 afterEach(() => {
   vi.useRealTimers();
+  sent.log.length = 0;
 });
 
 describe("connectMate: the user's Connect by a Mate's target key or by the origin it was seen at", () => {
@@ -163,5 +195,211 @@ describe("connectResult: the user's Connect as the projects page reads it", () =
     },
   ])("$name", ({ outcome, result }) => {
     expect(connectResult(outcome)).toMatchObject(result);
+  });
+});
+
+/** A stage whose holds and releases go into `log`, naming no Mate. */
+const holder = (log: Array<string> = []) => ({
+  log,
+  environments: {
+    hold: (environmentId: EnvironmentId) => {
+      log.push(`hold ${environmentId}`);
+      return () => {
+        log.push(`release ${environmentId}`);
+      };
+    },
+    machines: () => new Map<TargetKey, EnvironmentMachine>(),
+    subscribe: () => () => undefined,
+  },
+});
+
+/** A stage whose Mate for `ENV` connects when the test says. */
+const connecting = (log: Array<string> = []) => {
+  const { environments } = holder(log);
+  let machines = new Map<TargetKey, EnvironmentMachine>();
+  const listeners = new Set<() => void>();
+  return {
+    log,
+    environments: {
+      ...environments,
+      machines: () => machines,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    connect: () => {
+      machines = new Map([
+        [
+          "project-1:service-1",
+          {
+            ...initialEnvironment({ record: null }),
+            credential: {
+              kind: "held",
+              environmentId: ENV,
+              installed: true,
+              staleBlock: false,
+              rereading: null,
+            },
+            link: { phase: "connected", since: { wall: 0, mono: 0 } },
+          },
+        ],
+      ]);
+      for (const listener of listeners) listener();
+    },
+  };
+};
+
+// A9: a command sent from outside a Mate's own view holds it connected — an action's lease — for
+// as long as the command takes, and lets it go however it ends.
+describe("whileMateHeld: an action's lease around its command", () => {
+  it("holds the Mate before its command and lets it go once the command answers", async () => {
+    const { log, environments } = holder();
+    expect(
+      await whileMateHeld(environments, ENV, async () => {
+        log.push("command");
+        return "answered";
+      }),
+    ).toBe("answered");
+    expect(log).toEqual(["hold env-1", "command", "release env-1"]);
+  });
+
+  it("lets it go when the command fails, and says why", async () => {
+    const { log, environments } = holder();
+    await expect(
+      whileMateHeld(environments, ENV, async () => {
+        throw new Error("refused");
+      }),
+    ).rejects.toThrow("refused");
+    expect(log).toEqual(["hold env-1", "release env-1"]);
+  });
+
+  it("runs the command as it is where no account is bound", async () => {
+    expect(await whileMateHeld(null, ENV, async () => "answered")).toBe("answered");
+  });
+
+  it("sends a Stop to a Mate this browser never registered once its hold connects it", async () => {
+    const { log, environments, connect } = connecting();
+    const sent = whileMateHeld(
+      environments,
+      ENV,
+      async () => {
+        log.push("command");
+        return "stopped";
+      },
+      { named: true },
+    );
+    await Promise.resolve();
+    expect(log).toEqual(["hold env-1"]);
+
+    connect();
+
+    expect(await sent).toBe("stopped");
+    expect(log).toEqual(["hold env-1", "command", "release env-1"]);
+  });
+
+  it("sends it anyway once its Mate has not connected in MATE_HOLD_WAIT_MS", async () => {
+    vi.useFakeTimers();
+    const { log, environments } = connecting();
+    const sent = whileMateHeld(
+      environments,
+      ENV,
+      async () => {
+        log.push("command");
+        return "not connected";
+      },
+      { named: true },
+    );
+    await vi.advanceTimersByTimeAsync(MATE_HOLD_WAIT_MS - 1);
+    expect(log).toEqual(["hold env-1"]);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(await sent).toBe("not connected");
+    expect(log).toEqual(["hold env-1", "command", "release env-1"]);
+  });
+});
+
+/** An account bound whose holds and releases go into `sent.log`; the answer unbinds it. */
+const bindHolder = () =>
+  bindAccountEnvironments(holder(sent.log).environments as unknown as AccountEnvironments);
+
+describe("useMateCommand: a Mate's command, sent with its action lease", () => {
+  it("holds the Mate the command names until the command answers", async () => {
+    const unbind = bindHolder();
+    type Stop = { readonly environmentId: EnvironmentId; readonly input: string };
+    const command = {} as AtomCommand<Stop, string, never>;
+    const senders: Array<(value: Stop) => Promise<unknown>> = [];
+    function Probe() {
+      senders.push(useMateCommand(command));
+      return null;
+    }
+    act(() => {
+      create(h(Probe));
+    });
+    const send = senders.at(-1)!;
+
+    expect(await send({ environmentId: ENV, input: "stop" })).toBe("answered");
+    expect(sent.log).toEqual(["hold env-1", "command stop", "release env-1"]);
+    unbind();
+  });
+
+  it("sends to a Mate HQ names once its hold has connected it", async () => {
+    const stage = connecting(sent.log);
+    const unbind = bindAccountEnvironments(stage.environments as unknown as AccountEnvironments);
+    const atoms = AtomRegistry.make();
+    atoms.set(zeropsSessionAtom, { activeOrganization: { organizationId: "org-acme" } } as never);
+    atoms.set(hqMatesViewAtom, {
+      organizationId: "org-acme",
+      mates: new Map([
+        ["project-1", { identity: { environmentId: ENV } } as unknown as MateLiveView],
+      ]),
+      current: true,
+    });
+    type Stop = { readonly environmentId: EnvironmentId; readonly input: string };
+    const command = {} as AtomCommand<Stop, string, never>;
+    const senders: Array<(value: Stop) => Promise<unknown>> = [];
+    function Probe() {
+      senders.push(useMateCommand(command));
+      return null;
+    }
+    act(() => {
+      create(h(RegistryContext, { value: atoms }, h(Probe)));
+    });
+    const answered = senders.at(-1)!({ environmentId: ENV, input: "stop" });
+    await Promise.resolve();
+    expect(sent.log).toEqual(["hold env-1"]);
+
+    stage.connect();
+
+    expect(await answered).toBe("answered");
+    expect(sent.log).toEqual(["hold env-1", "command stop", "release env-1"]);
+    unbind();
+  });
+});
+
+describe("useMateHeld: an action's lease for as long as a surface names its Mate", () => {
+  it("holds the Mate while it is named and lets it go once it is not", () => {
+    const unbind = bindHolder();
+    const Probe = ({ environmentId }: { readonly environmentId: EnvironmentId | null }) => {
+      useMateHeld(environmentId);
+      return null;
+    };
+    const OTHER = "env-2" as EnvironmentId;
+    const renderer = create(h(Probe, { environmentId: null }));
+    act(() => {
+      renderer.update(h(Probe, { environmentId: ENV }));
+    });
+    act(() => {
+      renderer.update(h(Probe, { environmentId: OTHER }));
+    });
+    act(() => {
+      renderer.unmount();
+    });
+
+    expect(sent.log).toEqual(["hold env-1", "release env-1", "hold env-2", "release env-2"]);
+    unbind();
   });
 });

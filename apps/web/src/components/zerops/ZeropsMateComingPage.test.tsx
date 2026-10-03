@@ -287,9 +287,8 @@ describe("a Mate's own view while its link is made", () => {
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
   });
 
-  // The ceiling on auto-connect is for Mates not on screen (a live run, 2026-10-01: a browser
-  // with 21 registered stayed on "coming up" for an hour): the Mate whose view is open is wanted
-  // past it while the view stands.
+  // A live run, 2026-10-01: a browser with 21 registered stayed on "coming up" for an hour. The
+  // Mate whose view is open holds the screen's lease while the view stands (A9).
   it("puts its Mate on screen while it stands, and takes it off when it goes", () => {
     openView();
     expect(app.onScreen.mock.calls).toEqual([[PROJECT]]);

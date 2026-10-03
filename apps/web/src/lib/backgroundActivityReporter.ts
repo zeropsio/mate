@@ -171,6 +171,29 @@ export const backgroundActivityObserverLayer = Layer.succeed(
   }),
 );
 
+/**
+ * Runs `report` on each environment connected now (A9): a Mate is connected only while something
+ * holds it, and a report to a parked one would wake it — so one parked, connecting or blocked
+ * hears nothing until it is up again. A report that fails is passed by.
+ */
+export const reportToConnected = <A, E, R>(
+  registry: Pick<EnvironmentRegistry["Service"], "entries" | "state" | "run">,
+  report: (environmentId: EnvironmentId) => Effect.Effect<A, E, R>,
+) =>
+  Effect.gen(function* () {
+    const entries = yield* SubscriptionRef.get(registry.entries);
+    yield* Effect.forEach(
+      entries.keys(),
+      (environmentId) =>
+        Effect.gen(function* () {
+          const state = yield* registry.state(environmentId);
+          if (state.phase !== "connected") return;
+          yield* registry.run(environmentId, report(environmentId));
+        }).pipe(Effect.ignore),
+      { concurrency: "unbounded", discard: true },
+    );
+  });
+
 export const backgroundActivityReporterLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     if (typeof window === "undefined" || typeof document === "undefined") {
@@ -194,20 +217,11 @@ export const backgroundActivityReporterLayer = Layer.effectDiscard(
 
     const report = Effect.gen(function* () {
       const observedAtMs = yield* Clock.currentTimeMillis;
-      const entries = yield* SubscriptionRef.get(registry.entries);
-      yield* Effect.forEach(
-        entries.keys(),
-        (environmentId) =>
-          registry
-            .run(
-              environmentId,
-              request(
-                WS_METHODS.serverReportClientActivity,
-                createActivityReport(environmentId, lastInteractionAtMs, observedAtMs),
-              ),
-            )
-            .pipe(Effect.ignore),
-        { concurrency: "unbounded", discard: true },
+      yield* reportToConnected(registry, (environmentId) =>
+        request(
+          WS_METHODS.serverReportClientActivity,
+          createActivityReport(environmentId, lastInteractionAtMs, observedAtMs),
+        ),
       );
     }).pipe(Effect.withSpan("web.backgroundActivity.report"));
 

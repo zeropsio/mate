@@ -49,8 +49,8 @@ vi.mock("../state/entities", async (original) => ({
   readEnvironmentSupportsSnooze: () => true,
   readThreadShell: () => threadShell,
 }));
-vi.mock("../state/use-atom-command", () => ({
-  useAtomCommand: (command: unknown) => {
+vi.mock("../zerops/accountEnvironments", () => ({
+  useMateCommand: (command: unknown) => {
     switch (command) {
       case threadEnvironment.pin:
         return commands.pin;

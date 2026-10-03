@@ -335,7 +335,7 @@ describe("exchangeZeropsContainerIdentity", () => {
 });
 
 describe("the exchange's diagnostics", () => {
-  it.each(["restore", "auto-connect", "repair", "user"] as const)(
+  it.each(["restore", "repair", "user"] as const)(
     "names why the exchange was attempted: %s",
     async (reason) => {
       mateDiagnostics.enable();

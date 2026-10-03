@@ -40,8 +40,8 @@ import { newMessageId } from "~/lib/utils";
 import { useThreadShells } from "~/state/entities";
 import { useThreadSearch } from "~/state/queries";
 import { threadEnvironment, useEnvironmentThread } from "~/state/threads";
-import { useAtomCommand } from "~/state/use-atom-command";
 import { formatShortTimestamp } from "~/timestampFormat";
+import { useMateCommand, useMateHeld } from "~/zerops/accountEnvironments";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useMateReadOnly, useMatesReadOnly } from "~/zerops/useMateReadOnly";
@@ -219,7 +219,9 @@ function useJumpPages(): JumpPages {
  * Writing to the picked Mate: what the line under the field says, and the
  * send Enter makes. Its conversation is read while it is picked — what it
  * asks, and what it last said — and a send made before that read waits for
- * it, so no send goes without what the Mate's own composer would carry.
+ * it, so no send goes without what the Mate's own composer would carry. The
+ * Mate is held connected while it is picked (`useMateHeld`): a parked one
+ * connects for the read and the send, and parks again once the box lets it go.
  */
 function useJumpWrite(
   target: JumpMate | undefined,
@@ -234,6 +236,7 @@ function useJumpWrite(
   const shell = shells.find(
     (entry) => entry.environmentId === environmentId && entry.id === threadId,
   );
+  useMateHeld(environmentId);
   const thread = useEnvironmentThread(environmentId, threadId);
   const detail = Option.getOrUndefined(thread.data);
   const requests = useMemo(
@@ -243,8 +246,9 @@ function useJumpWrite(
   const readOnly = useMateReadOnly(environmentId, shell?.modelSelection.instanceId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const landed = useZeropsChangeLandedEvents(environmentId);
-  const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
-  const respondToUserInput = useAtomCommand(threadEnvironment.respondToUserInput, {
+  // A parked Mate's cached conversation reads before its link is up: the send waits for it.
+  const startTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const respondToUserInput = useMateCommand(threadEnvironment.respondToUserInput, {
     reportFailure: false,
   });
   // Words sent while the conversation was still being read: they go once it is.

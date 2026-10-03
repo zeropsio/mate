@@ -1,3 +1,4 @@
+import { RegistryContext } from "@effect/atom-react";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
@@ -30,11 +31,14 @@ import {
   type RouteGate,
   type RouteTarget,
 } from "@t3tools/client-runtime/zerops/environments";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useComposerDraftStore } from "../composerDraftStore";
+import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
 import { TestNode } from "../zerops/__fixtures__/testDom";
 import {
   useEnvironmentLinks,
@@ -126,6 +130,7 @@ function shellStage(): AccountEnvironments {
       };
     },
     connect: () => new Promise(() => undefined),
+    hold: () => () => undefined,
     intend: () => false,
     initAt: async () => null,
     next: () => new Promise(() => undefined),
@@ -170,6 +175,8 @@ const inventory = (status: string | null): Inventory => ({
 
 let container: TestNode;
 let root: Root;
+/** The atoms the hooks read: HQ's word of the organization's Mates. */
+let atoms: AtomRegistry.AtomRegistry;
 
 beforeEach(() => {
   const document = new TestNode("#document", null, 9);
@@ -183,6 +190,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   container = document.createElement("div");
   root = createRoot(container as unknown as Element);
+  atoms = AtomRegistry.make();
   shell.environments = [];
   shell.records = [];
   shell.routes = [];
@@ -346,7 +354,6 @@ describe("the route gate over the exchange driver's machines", () => {
     });
     driver.setVisible(true);
     driver.setTargets([active]);
-    driver.setDemand("record", [KEY]);
     driver.setDemand("route", [KEY]);
     await settle();
     driver.link(ENV_A, { phase: "connected" });
@@ -1029,15 +1036,40 @@ function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACT
   }
   act(() =>
     root.render(
-      <InventoryContext value={value}>
-        <Probe />
-      </InventoryContext>,
+      <RegistryContext value={atoms}>
+        <InventoryContext value={value}>
+          <Probe />
+        </InventoryContext>
+      </RegistryContext>,
     ),
   );
   return { read: () => JSON.parse(container.textContent) as Routed };
 }
 
 describe("the descriptor index", () => {
+  it("resolves a route's environment through HQ's index without a descriptor sweep", async () => {
+    const one = mate(1);
+    const rig = descriptorRig([one]);
+    shell.driver = rig.driver;
+    shell.containers = rig.containers;
+    atoms.set(zeropsSessionAtom, { activeOrganization: { organizationId: "org-acme" } } as never);
+    atoms.set(hqMatesViewAtom, {
+      organizationId: "org-acme",
+      mates: new Map([
+        [one.projectId, { identity: { environmentId: ENV_A } } as unknown as MateLiveView],
+      ]),
+      current: true,
+    });
+    await settle();
+
+    // Its descriptor never answers: HQ's word alone names the route's Mate.
+    const seen = routeTo(ENV_A).read();
+    expect(seen.target?.kind).toBe("resolved");
+    expect(seen.projectId).toBe(one.projectId);
+    rig.driver.dispose();
+    rig.containers.dispose();
+  });
+
   it("deep link resolves through the descriptor on a device with no record", async () => {
     const one = mate(1);
     const rig = descriptorRig([one]);
@@ -1171,7 +1203,7 @@ describe("the descriptor index", () => {
     shell.driver = rig.driver;
     shell.containers = rig.containers;
     shell.records = [{ targetKey: one.key, environmentId: ENV_A }];
-    rig.driver.setDemand("record", [one.key]);
+    rig.driver.setDemand("recent", [one.key]);
     const draft = scopeThreadRef(ENV_A, ThreadId.make("thread-1"));
     useComposerDraftStore.getState().setPrompt(draft, "keep me");
     await settle();

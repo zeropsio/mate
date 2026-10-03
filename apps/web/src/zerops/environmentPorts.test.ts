@@ -21,17 +21,18 @@ import {
   EnvironmentId,
   EnvironmentInternalError,
 } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
-  closedOffPort,
+  hqIndexPort,
   keptSessionUnanswered,
   linkPhaseOf,
   recordsStorage,
 } from "./environmentPorts";
-import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
-import { AtomRegistry } from "effect/unstable/reactivity";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
@@ -178,7 +179,7 @@ describe("repair is the exchange driver's", () => {
         record: ENVIRONMENT_ID,
       },
     ]);
-    driver.setDemand("record", [KEY]);
+    driver.setDemand("recent", [KEY]);
     await clock.advance(0);
     expect(exchanges).toEqual([0]);
 
@@ -239,60 +240,6 @@ describe("the records port: the account's own storage", () => {
   });
 });
 
-// The auto-connect gate's word on a Mate its press marked: HQ's record of its project, as the
-// structure stands — nothing known, or nothing recorded, holds the connect.
-describe("the closed-off port: HQ's record of each project", () => {
-  const mate = (closedOff: boolean | undefined) => ({
-    name: "Ada",
-    face: "",
-    ...(closedOff === undefined ? {} : { closedOff }),
-  });
-  const registryWith = (structure: boolean) => {
-    const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-1" },
-    } as never);
-    if (structure) {
-      registry.set(hqStructureAtom, {
-        organizationId: "org-1",
-        structure: {
-          ungrouped: [{ projectId: "p-closed", name: "", mate: mate(true) }],
-          apps: [
-            {
-              id: "app-1",
-              name: "Acme",
-              projects: [
-                { projectId: "p-open", name: "", kind: "mate", mate: mate(false) },
-                { projectId: "p-older-hq", name: "", kind: "mate", mate: mate(undefined) },
-              ],
-            },
-          ],
-        },
-        changes: null,
-        readAt: 1_000,
-        current: true,
-        unavailableSince: null,
-      });
-    }
-    return registry;
-  };
-
-  it.each([
-    ["p-closed", true],
-    ["p-open", false],
-    ["p-older-hq", "unknown"],
-    ["p-unplaced", "unknown"],
-  ] as const)("reads %s as %s", (projectId, expected) => {
-    expect(closedOffPort(registryWith(true)).read(projectId)).toBe(expected);
-  });
-
-  it("reads every project as unknown while HQ's structure is not known", () => {
-    expect(closedOffPort(registryWith(false)).read("p-closed")).toBe("unknown");
-  });
-});
-
 describe("keptSessionUnanswered: what a kept session's check failing says", () => {
   const URL = "https://zcp-1-8080.prg1.zerops.app/mate/api/auth/session";
   it.each([
@@ -337,5 +284,32 @@ describe("keptSessionUnanswered: what a kept session's check failing says", () =
     ],
   ])("%s → no word: %s", (_name, unanswered, cause) => {
     expect(keptSessionUnanswered(cause)).toBe(unanswered);
+  });
+});
+
+describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
+  it("names the project whose Mate HQ says serves an environment, and tells of a change", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
+    const index = hqIndexPort(registry);
+    const told: Array<string | null> = [];
+    const stop = index.subscribe(() => {
+      told.push(index.projectOf(ENVIRONMENT_ID));
+    });
+    expect(index.projectOf(ENVIRONMENT_ID)).toBeNull();
+
+    registry.set(hqMatesViewAtom, {
+      organizationId: "org-acme",
+      mates: new Map([
+        ["p-vera", { identity: { environmentId: ENVIRONMENT_ID } } as unknown as MateLiveView],
+      ]),
+      current: true,
+    });
+
+    expect(index.projectOf(ENVIRONMENT_ID)).toBe("p-vera");
+    expect(told).toEqual(["p-vera"]);
+    stop();
   });
 });

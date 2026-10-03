@@ -25,7 +25,6 @@ import {
   pressComingInput,
   pressDoneAt,
   pressesInFlight,
-  pressingProjects,
   readMatePress,
   runPress,
   settlePress,
@@ -1051,7 +1050,6 @@ describe("finishMateSetup — the harden path", () => {
   });
 });
 
-// A press or a harden this tab runs holds its Mate back from auto-connect (pass 28 review).
 // F6b (e2e, 2026-10-03): *Set up Mate* and *Finish setup* on Dan — a Mate project its press for
 // mate-rig-e2e-d left with no container — wrote "Asha" in no application. Both verbs now register by
 // one rule, and neither mints a new Mate where HQ holds one, or may yet.
@@ -1189,28 +1187,7 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
   });
 });
 
-describe("pressingProjects", () => {
-  it("names the projects whose press runs, and says when that changes", () => {
-    let heard = 0;
-    const stop = pressingProjects.subscribe(() => {
-      heard += 1;
-    });
-    beginPress({
-      projectId: "p-run",
-      organizationId: "org-acme",
-      startedAt: 0,
-      placement: null,
-      container: true,
-    });
-    expect([...pressingProjects.read()]).toEqual(["p-run"]);
-    forgetPress("p-run");
-    expect([...pressingProjects.read()]).toEqual([]);
-    expect(heard).toBe(2);
-    stop();
-  });
-});
-
-// E2E 2026-10-03: the first write after a fresh load failed while auto-connect minted and deleted
+// E2E 2026-10-03: the first write after a fresh load failed while the background minted and deleted
 // throwaways on the token list the press reads. The background holds while any press is in
 // flight, from before the platform takes its project to its end.
 describe("pressesInFlight", () => {

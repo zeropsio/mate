@@ -738,6 +738,17 @@ describe("the link's drop (C1b)", () => {
     expect(refreshes).toHaveLength(asks);
   });
 
+  // A9 (krok-a-hub §3): a Mate no lease holds is parked, its link closed on purpose.
+  it("a link the registry parks has no drop: nothing stamped, nothing asked", () => {
+    const parked = drive(connected(), [{ type: "LINK", link: { phase: "idle" } }]);
+    expect(parked.machine.linkLostAt).toBeNull();
+    expect(
+      parked.effects.filter(
+        (effect) => effect.kind === "run" && effect.op.kind === "refresh-presence",
+      ),
+    ).toEqual([]);
+  });
+
   it("a link that never connected has no drop", () => {
     const never = drive(initialEnvironment({ record: ENV_A }), [
       { type: "LINK", link: { phase: "connecting" } },

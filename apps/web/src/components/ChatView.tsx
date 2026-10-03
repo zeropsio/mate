@@ -194,6 +194,7 @@ import {
   crewMessagePlaceholder,
   crewRunsOnWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { useMateCommand } from "../zerops/accountEnvironments";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
@@ -1351,7 +1352,9 @@ export default function ChatView(props: ChatViewProps) {
   const setThreadInteractionMode = useAtomCommand(threadEnvironment.setInteractionMode, {
     reportFailure: false,
   });
-  const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  // A send outlives its route — uploads first, a background draft's fresh composer after — so
+  // it holds its Mate until it answers (A9).
+  const startThreadTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
   const sendCrewCommand = useAtomCommand(crewCommands.command, { reportFailure: false });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,

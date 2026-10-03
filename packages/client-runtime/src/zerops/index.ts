@@ -148,11 +148,6 @@ export {
   preferredMateTint,
 } from "./mateTints.ts";
 export {
-  selectAutoConnectTargets,
-  ZEROPS_AUTO_CONNECT_LIMIT,
-  type AutoConnectCandidate,
-} from "./autoConnect.ts";
-export {
   partitionZeropsToolProjects,
   readZeropsToolKind,
   type ZeropsToolKind,
