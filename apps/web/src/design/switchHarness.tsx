@@ -19,8 +19,9 @@
  * alongside its run, and `?end=<ms>` for its run's end).
  * `window.__switchHarness
  * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
- * a switch it started itself, and `.say("mira", text)` lands a message at a
- * conversation's end.
+ * a switch it started itself, `.say("mira", text)` lands a message at a
+ * conversation's end, and `.probeFollow("nova")` measures what a person
+ * reading it meets as messages land.
  *
  * Fixtures only. Nothing here ships — `design-switch.html` is not
  * `index.html`, and no route imports this module.
@@ -520,6 +521,98 @@ function say(key: string, text: string) {
 }
 
 /**
+ * `__switchHarness.probeFollow(key)`: what a person reading the shown
+ * conversation meets as messages land, measured. From the end, following:
+ * A — a wheel notch up animating in 10–40 px frames over ~200 ms; A2 — a
+ * wheel notch and the browser's own smooth scroll 200 px up (its first
+ * frames still within the end band); both while rows land every 60 ms;
+ * B — ~600 px up, a row lands; C — the person's smooth scroll back to the
+ * end, a row lands. Each reports the row under the reading line's move
+ * (0: held) and how far the list ends from its end.
+ */
+async function probeFollow(key: string) {
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const node = [...document.querySelectorAll<HTMLElement>("div")]
+    .filter((element) => {
+      const style = getComputedStyle(element);
+      return (
+        (style.overflowY === "auto" || style.overflowY === "scroll") &&
+        element.scrollHeight > element.clientHeight + 50
+      );
+    })
+    .sort((a, b) => b.clientHeight - a.clientHeight)[0];
+  if (!node) return null;
+  const fromEnd = () => Math.round(node.scrollHeight - node.scrollTop - node.clientHeight);
+  const rowAtReadingLine = () => {
+    const box = node.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + 160);
+  };
+  const topOf = (element: Element | null) => element?.getBoundingClientRect().top ?? 0;
+  const wheel = (deltaY: number) =>
+    node.dispatchEvent(new WheelEvent("wheel", { deltaY, bubbles: true, cancelable: true }));
+  let landed = 0;
+  const land = () =>
+    say(key, `Probe row ${landed++}: the build went through and the preview answers.`);
+  const toEnd = async () => {
+    wheel(100);
+    node.scrollTop = node.scrollHeight;
+    await wait(500);
+  };
+  const out: Record<string, number> = {};
+
+  await toEnd();
+  let lander = setInterval(land, 60);
+  wheel(-100);
+  for (const step of [12, 24, 36, 40, 34, 26, 18, 10]) {
+    await frame();
+    node.scrollTop -= step;
+    await wait(25);
+  }
+  let anchor = rowAtReadingLine();
+  let anchorTop = topOf(anchor);
+  await wait(700);
+  clearInterval(lander);
+  await wait(400);
+  out.A_anchorMovedPx = Math.round(topOf(anchor) - anchorTop);
+  out.A_fromEnd = fromEnd();
+
+  await toEnd();
+  lander = setInterval(land, 60);
+  wheel(-100);
+  node.scrollBy({ top: -200, behavior: "smooth" });
+  await frame();
+  await frame();
+  out.A2_firstFramesFromEnd = fromEnd();
+  await wait(300);
+  anchor = rowAtReadingLine();
+  anchorTop = topOf(anchor);
+  await wait(700);
+  clearInterval(lander);
+  await wait(400);
+  out.A2_anchorMovedPx = Math.round(topOf(anchor) - anchorTop);
+  out.A2_fromEnd = fromEnd();
+
+  wheel(-100);
+  node.scrollTop -= 600;
+  await wait(400);
+  anchor = rowAtReadingLine();
+  anchorTop = topOf(anchor);
+  land();
+  await wait(500);
+  out.B_anchorMovedPx = Math.round(topOf(anchor) - anchorTop);
+  out.B_fromEnd = fromEnd();
+
+  wheel(100);
+  node.scrollBy({ top: fromEnd(), behavior: "smooth" });
+  await wait(1200);
+  land();
+  await wait(600);
+  out.C_fromEnd = fromEnd();
+  return out;
+}
+
+/**
  * What the pane reads for the routed thread: the server's copy after a first
  * open's wait, and what the app remembers of a thread it painted before
  * (`peekRememberedThreadTimeline`), read again from the server meanwhile.
@@ -750,6 +843,7 @@ function Harness() {
     (window as unknown as { __switchHarness: unknown }).__switchHarness = {
       switchTo: (key: string) => setCurrent(key),
       say,
+      probeFollow,
       threads: THREADS.map((thread) => thread.key),
     };
   }, []);
