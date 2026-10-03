@@ -1035,37 +1035,43 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("a self-deploy onto the service freezes its copies and interrupts their turns", () =>
-    withCrewEngine((world) =>
-      Effect.gen(function* () {
-        yield* applied(world);
-        const thread = yield* firstTurn(world, () => undefined);
-        yield* world.publish(
-          spiEvent(
-            "item.started",
-            "person-thread",
-            { itemType: "mcp_tool_call", status: "inProgress" } as never,
-            {
-              itemId: "deploy-1",
-              toolCall: {
-                name: "zerops_deploy",
-                rawName: "mcp__zerops__zerops_deploy",
-                server: "zerops",
-                arguments: { targetService: "appdev" },
-              },
-            } as never,
-          ),
-        );
-        const frozen = yield* snapshotWhere(
-          (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
-        );
-        const interrupts = yield* dispatchedOf(world, "thread.turn.interrupt");
-        assert.deepStrictEqual(
-          [frozen.crewmates[0]!.lane?.state, interrupts.map((entry) => entry.threadId)],
-          ["frozen", [thread]],
-        );
-      }),
-    ),
+  it.live.each([
+    // Claude and Codex open a call with item.started; the ACP agents only update it.
+    { opens: "item.started" },
+    { opens: "item.updated" },
+  ] as const)(
+    "a self-deploy onto the service freezes its copies and interrupts their turns ($opens)",
+    ({ opens }) =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* world.publish(
+            spiEvent(
+              opens,
+              "person-thread",
+              { itemType: "mcp_tool_call", status: "inProgress" } as never,
+              {
+                itemId: "deploy-1",
+                toolCall: {
+                  name: "zerops_deploy",
+                  rawName: "mcp__zerops__zerops_deploy",
+                  server: "zerops",
+                  arguments: { targetService: "appdev" },
+                },
+              } as never,
+            ),
+          );
+          const frozen = yield* snapshotWhere(
+            (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
+          );
+          const interrupts = yield* dispatchedOf(world, "thread.turn.interrupt");
+          assert.deepStrictEqual(
+            [frozen.crewmates[0]!.lane?.state, interrupts.map((entry) => entry.threadId)],
+            ["frozen", [thread]],
+          );
+        }),
+      ),
   );
 
   it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
