@@ -457,8 +457,10 @@ export const structureLayer = (options: {
               ${environment.userId})`;
         });
 
+      // Over the org as recently read: a fresh read is a write's (the lead, 2026-10-03: forcing one
+      // every minute read KRLS's member and project lists for nothing).
       const reconcile = Effect.gen(function* () {
-        const listed = new Set((yield* roles.fresh).projects.map((project) => project.id));
+        const listed = new Set((yield* roles.recent).projects.map((project) => project.id));
         const rows = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project
           UNION SELECT project_id FROM hq_mate

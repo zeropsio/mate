@@ -137,6 +137,8 @@ const services = (options: CoreOptions) => {
     ),
   ).pipe(
     Layer.provideMerge(mateLiveLayer),
+    Layer.provideMerge(leader),
+    // Below the leader: its official check reads the org through the view every reader shares.
     Layer.provideMerge(
       rolesLayer({
         hqProjectId: options.hqProjectId,
@@ -144,7 +146,6 @@ const services = (options: CoreOptions) => {
         ...(options.viewTtl === undefined ? {} : { viewTtl: options.viewTtl }),
       }),
     ),
-    Layer.provideMerge(leader),
     Layer.provideMerge(
       PgClient.layer({ url: options.databaseUrl, applicationName: "hq", maxConnections: 4 }),
     ),
