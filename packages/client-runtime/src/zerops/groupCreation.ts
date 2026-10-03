@@ -124,12 +124,6 @@ export function finishMateSetupVerb(input: {
    * would race that press. A press this tab made and saw stop needs no grace.
    */
   readonly pastGrace: boolean;
-  /**
-   * The platform's token list shows every key of its still `ADMIN` on its own project, and this
-   * viewer may write them — an org owner, or their creator (`mateHardenableBy`): a pool-claimed
-   * or older Mate whose harden never ran.
-   */
-  readonly needsHarden: boolean;
   /** The viewer added this Mate: closing it off needs no registry rights. */
   readonly viewerIsAdder: boolean;
   /** Its project has its container: without one there is nothing for a close-off to finish. */
@@ -154,12 +148,9 @@ export function finishMateSetupVerb(input: {
       (input.pastGrace &&
         (input.registration === "awaiting-owner" ||
           input.containerMissing ||
-          input.closedOffMissing ||
-          input.needsHarden));
+          input.closedOffMissing));
     return halfMade ? FINISH_MATE_SETUP_VERB : undefined;
   }
-  // The key's creator may harden it.
-  if (input.pastGrace && input.needsHarden) return FINISH_MATE_SETUP_VERB;
   // The Mate's own adder may close it off — nothing more: its registration and a container to
   // make are an owner's or an admin's. With no container there is nothing to close off.
   if (

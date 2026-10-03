@@ -20,7 +20,8 @@
  * token with `ADMIN` on its project; a key this client mints holds
  * `BASIC_USER` from the start, and one it did not mint — the pool's from
  * sign-up, an older account's, one made in the Zerops GUI — is lowered in
- * place by the projects screen's reconcile: `PUT
+ * place by its harden (`hardenMate`), when a person finishes setting it up,
+ * never on a screen's read (step A, A11): `PUT
  * /client/{clientId}/integration-token/{tokenId}` rewrites the grants of the
  * same token string the container holds, with no restart.
  *
@@ -96,24 +97,15 @@ export interface ZeropsTokenDelegation {
 }
 
 /**
- * The token that belongs to a Mate's container, out of every token on the
- * account.
+ * Whether `token` is a key of the Mate whose own project is `projectId`.
  *
  * Both halves of the test are needed. The name alone is not enough: it is
  * `zcp-<project name>` at mint time and a project can be renamed afterwards.
  * The grant alone is not enough either — a deploy token scoped to one project
  * looks identical by that test. Together they are unambiguous, and they stay
- * true after this module has widened *and* lowered the token, because the
- * match is "writes this project", never "grants only this project" and never
- * one exact role.
+ * true after a key was widened *and* lowered, because the match is "writes
+ * this project", never "grants only this project" and never one exact role.
  */
-export function findMateIntegrationToken(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-): ZeropsIntegrationToken | undefined {
-  return tokens.find((token) => isMateKeyOf(token, projectId));
-}
-
 function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
   return (
     token.name.startsWith(ZCP_TOKEN_NAME_PREFIX) &&
@@ -138,7 +130,7 @@ function newestFirst(keys: ReadonlyArray<ZeropsIntegrationToken>): Array<ZeropsI
 }
 
 /**
- * The key a Mate's container holds, out of every key that is its (`findMateIntegrationToken`):
+ * The key a Mate's container holds, out of every key that is its (`isMateKeyOf`):
  * the one key, or — where a raced press or an older platform key left two — the newest made before
  * its container. A key made after it is an orphan, and keys nothing tells apart are never guessed
  * at: undefined.
@@ -155,41 +147,9 @@ export function findHeldMateKey(
   return newestFirst(keys.filter((key) => createdMs(key) <= container))[0];
 }
 
-/**
- * A Mate not hardened yet, as the platform's token list says it: it has keys, and none is below
- * `ADMIN` on its own project — so the key its container holds surely is. A leftover `ADMIN` key
- * beside a lowered one says nothing of the container's.
- */
-export function mateNeedsHarden(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-): boolean {
-  const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
-  return keys.length > 0 && keys.every((key) => selfRoleOf(key, projectId) === "ADMIN");
-}
-
 /** A key's role on its Mate's own project. */
 function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | undefined {
   return (token.projects ?? []).find((grant) => grant.projectId === projectId)?.roleCode;
-}
-
-/**
- * Whether this viewer may harden the Mate: it needs it (`mateNeedsHarden`), and the viewer may
- * write its key — an org owner, or the key's creator.
- */
-export function mateHardenableBy(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-  viewer: { readonly userId: string | undefined; readonly roleCode: string | undefined },
-): boolean {
-  if (!mateNeedsHarden(tokens, projectId)) return false;
-  if (viewer.roleCode === "OWNER") return true;
-  return tokens.some(
-    (token) =>
-      isMateKeyOf(token, projectId) &&
-      viewer.userId !== undefined &&
-      token.createdByUser === viewer.userId,
-  );
 }
 
 /** Every key of a Mate still `ADMIN` on its own project: what a harden lowers. */
@@ -224,8 +184,7 @@ function sameGrants(
  * should: `MATE_SELF_PROJECT_ROLE` on its own project — added where it has no
  * grant there — and every other grant it holds exactly as it is. A key the
  * platform minted with `ADMIN` is lowered in place, its string unchanged; a key
- * already lowered is not written, so a screen that reconciles this writes
- * nothing for an account whose keys are as they should be.
+ * already lowered is not written.
  *
  * Comparison is order-insensitive: the platform returns grants in its own
  * order.
@@ -244,35 +203,6 @@ export function planMateKey(input: {
     : [own, ...current];
   if (sameGrants(current, wanted)) return undefined;
   return { tokenId: input.token.id, projects: wanted };
-}
-
-/** A write of one key's project list. */
-export interface MateKeyWrite {
-  readonly tokenId: string;
-  readonly name: string;
-  readonly projects: ReadonlyArray<ZeropsProjectGrant>;
-}
-
-/**
- * Every key write the account needs, and no others: each Mate's key lowered
- * ({@link planMateKey}). Safe to run on every read of the projects screen: a
- * write changes a token's grants and never a container's environment, so
- * nothing restarts, and an account whose keys are lowered plans no write. A
- * Mate whose key cannot be found is skipped rather than guessed at — an account
- * can hold a container this client did not create.
- */
-export function planAccountMateKeys(input: {
-  readonly mateProjectIds: ReadonlyArray<string>;
-  readonly tokens: ReadonlyArray<ZeropsIntegrationToken>;
-}): ReadonlyArray<MateKeyWrite> {
-  const writes: Array<MateKeyWrite> = [];
-  for (const selfProjectId of new Set(input.mateProjectIds)) {
-    const token = findMateIntegrationToken(input.tokens, selfProjectId);
-    if (token === undefined) continue;
-    const plan = planMateKey({ token, selfProjectId });
-    if (plan !== undefined) writes.push({ ...plan, name: token.name });
-  }
-  return writes;
 }
 
 /** The page's exclusive locks (`navigator.locks`): `hold` runs once the lock is this tab's. */
@@ -331,53 +261,4 @@ export function makeTokenWriteLock(
     });
     return next;
   };
-}
-
-/**
- * Writes tokens' project lists. A write replaces a token's whole list, so each is planned from
- * that token as read on its own (`readOne`), under its lock (`hold`), right before it — never from
- * the list the run starts from, which only says which tokens are owed a write. A token read by its
- * id is one small answer where the organization's list is every token, whole. It writes the plan
- * as it stands, with no org role: the write lowers a token's to none. It writes at most what the
- * starting list's plan asked for, and answers how many it wrote.
- */
-export async function writeTokenProjectsFresh(input: {
-  /** The list the run starts from: which tokens are owed a write. */
-  readonly tokens: ReadonlyArray<ZeropsIntegrationToken>;
-  readonly plan: (tokens: ReadonlyArray<ZeropsIntegrationToken>) => ReadonlyArray<MateKeyWrite>;
-  /** One token as the platform holds it now; `undefined` once it is gone. */
-  readonly readOne: (tokenId: string) => Promise<ZeropsIntegrationToken | undefined>;
-  readonly write: (write: MateKeyWrite) => Promise<void>;
-  /** Serializes each token's read-then-write; without it, nothing else writes these tokens. */
-  readonly hold?: TokenWriteHold;
-  /** Ends the run where it stands: no token is read, nor written, once it aborts. */
-  readonly signal?: AbortSignal;
-}): Promise<number> {
-  const hold: TokenWriteHold = input.hold ?? ((_tokenId, run) => run());
-  const ended = () => input.signal?.aborted === true;
-  let written = 0;
-  /** Tokens whose write failed: the others are still written, and the run fails at its end. */
-  const refused = new Map<string, unknown>();
-  for (const planned of input.plan(input.tokens)) {
-    if (ended()) break;
-    try {
-      const wrote = await hold(planned.tokenId, async () => {
-        // It waited for the token's lock, and read it: the run may have ended meanwhile.
-        if (ended()) return false;
-        const fresh = await input.readOne(planned.tokenId);
-        if (fresh === undefined || ended()) return false;
-        const tokens = input.tokens.map((token) => (token.id === fresh.id ? fresh : token));
-        const write = input.plan(tokens).find((next) => next.tokenId === planned.tokenId);
-        if (write === undefined) return false;
-        await input.write(write);
-        return true;
-      });
-      if (wrote) written += 1;
-    } catch (cause) {
-      refused.set(planned.tokenId, cause);
-    }
-  }
-  const [failure] = refused.values();
-  if (refused.size > 0) throw failure;
-  return written;
 }

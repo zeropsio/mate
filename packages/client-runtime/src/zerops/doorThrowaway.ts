@@ -21,15 +21,14 @@
  *
  * ## The sweep
  *
- * `withThrowaway` deletes in `finally`, but a tab closed mid-flight, a crashed
- * renderer or a killed process leaves a row behind — and Zerops refuses to
- * remove a member who still holds tokens (measured 2026-09-15), so the rows
- * are not harmless. At start-up the app therefore deletes the person's own
- * `mate-door:*` tokens older than five minutes, and the `gitea-signin:*` ones
- * main's client leaves in the same organizations.
- * {@link planThrowawaySweep} decides which; five minutes is the same window
- * the door itself allows, so a throwaway another tab is mid-flight with is
- * never swept out from under it.
+ * `withThrowaway` deletes in `finally`, but a delete can fail — and Zerops
+ * refuses to remove a member who still holds tokens (measured 2026-09-15), so
+ * the rows are not harmless. A failed delete is owed ({@link ThrowawayDebt}),
+ * and only then does the app list the organization's tokens and delete the
+ * person's own `mate-door:*` tokens older than five minutes, and the
+ * `gitea-signin:*` ones main's client leaves. {@link planThrowawaySweep}
+ * decides which; five minutes is the same window the door itself allows, so a
+ * throwaway another tab is mid-flight with is never swept out from under it.
  *
  * @module doorThrowaway
  */
@@ -47,24 +46,47 @@ import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
 
 /**
- * How often one browser sweeps an account's throwaways. A throwaway is deleted in its own
- * `finally`; the sweep only takes back what a closed tab or a lost network left, which a day's
- * wait costs nothing — while sweeping on every open listed the account's tokens, and deleted
- * them, each time anyone opened the app.
+ * Where a throwaway this tab minted could not be deleted: the organization, and when its newest
+ * such delete failed (wall ms). An organization's tokens are listed only to take those back
+ * (`planThrowawaySweep`; step A, open question 10) — never on a load, never by the day.
  */
-export const THROWAWAY_SWEEP_EVERY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Whether an account's throwaways are due a sweep on this browser: never swept here, swept a
- * day or more ago, or swept by a clock that has since gone back.
- */
-export function throwawaySweepDue(lastSweptAtMs: number | null, nowMs: number): boolean {
-  return (
-    lastSweptAtMs === null ||
-    lastSweptAtMs > nowMs ||
-    nowMs - lastSweptAtMs >= THROWAWAY_SWEEP_EVERY_MS
-  );
+export interface ThrowawayDebt {
+  readonly owe: (clientId: string, atMs: number) => void;
+  /** When the newest delete this tab owes `clientId` failed; null while it owes none. */
+  readonly failedAt: (clientId: string) => number | null;
+  /** A sweep took back what failed up to `upToMs`: owed no longer, unless one failed since. */
+  readonly settle: (clientId: string, upToMs: number) => void;
+  /** Told on every change. */
+  readonly subscribe: (listener: () => void) => () => void;
 }
+
+export function makeThrowawayDebt(): ThrowawayDebt {
+  const owed = new Map<string, number>();
+  const listeners = new Set<() => void>();
+  const told = () => {
+    for (const listener of listeners) listener();
+  };
+  return {
+    owe: (clientId, atMs) => {
+      owed.set(clientId, Math.max(atMs, owed.get(clientId) ?? atMs));
+      told();
+    },
+    failedAt: (clientId) => owed.get(clientId) ?? null,
+    settle: (clientId, upToMs) => {
+      const failed = owed.get(clientId);
+      if (failed === undefined || failed > upToMs) return;
+      owed.delete(clientId);
+      told();
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+/** This tab's debt, shared by every platform built here, as its mint budgets are. */
+export const throwawayDebt: ThrowawayDebt = makeThrowawayDebt();
 
 /** How long a throwaway delete that Zerops could not answer waits before its one retry. */
 export const THROWAWAY_DELETE_RETRY_MS = 5_000;
@@ -240,9 +262,10 @@ export function zeropsThrowawayPlatform(
     readonly signal?: AbortSignal | undefined;
     readonly asked?: boolean;
     readonly budgets?: ThrowawayMintBudgets;
+    readonly debt?: ThrowawayDebt;
   } = {},
 ): ZeropsThrowawayPlatform {
-  const { signal, asked = false, budgets = tabMintBudgets } = options;
+  const { signal, asked = false, budgets = tabMintBudgets, debt = throwawayDebt } = options;
   /**
    * What each throwaway minted here is deleted with: its name, and the access
    * token its mint carried. Held from the mint to the delete, and no longer.
@@ -306,12 +329,19 @@ export function zeropsThrowawayPlatform(
         }
       };
       try {
-        await attempt();
+        try {
+          await attempt();
+        } catch (cause) {
+          if (!isTransientDeleteFailure(cause)) throw cause;
+          // @effect-diagnostics-next-line globalTimers:off -- plain promises: the retry's own pause.
+          await new Promise((resolve) => setTimeout(resolve, THROWAWAY_DELETE_RETRY_MS));
+          await attempt();
+        }
       } catch (cause) {
-        if (!isTransientDeleteFailure(cause)) throw cause;
-        // @effect-diagnostics-next-line globalTimers:off -- plain promises: the retry's own pause.
-        await new Promise((resolve) => setTimeout(resolve, THROWAWAY_DELETE_RETRY_MS));
-        await attempt();
+        // Left on the account: this tab owes its organization a sweep.
+        // @effect-diagnostics-next-line globalDate:off -- plain promises: the wall time the token's `created` is compared with.
+        debt.owe(input.clientId, Date.now());
+        throw cause;
       }
     },
   };

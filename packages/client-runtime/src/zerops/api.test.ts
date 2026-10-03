@@ -1009,6 +1009,7 @@ describe("ZeropsApiClient project reads", () => {
 
     expect(result).toEqual({
       tokenLowered: true,
+      keyNotLowered: null,
       delegationsDropped: 1,
       isolationSteps: expect.any(Number),
       restarted: true,
@@ -1123,6 +1124,7 @@ describe("ZeropsApiClient project reads", () => {
 
     expect(result).toEqual({
       tokenLowered: false,
+      keyNotLowered: null,
       delegationsDropped: 0,
       isolationSteps: 0,
       restarted: false,
@@ -1135,6 +1137,49 @@ describe("ZeropsApiClient project reads", () => {
     expect(
       stub.requests.some((request) => request.method === "PUT" || request.method === "DELETE"),
     ).toBe(false);
+  });
+
+  // Step A, A11: an admin adopting a Mate whose key an owner made may not write that key. The
+  // adoption is not failed for it: the harden says so, and closes the project off all the same.
+  it("says a key write it was refused, and still isolates the project", async () => {
+    const token = {
+      id: "token-1",
+      name: "zcp-project-1",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    };
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list"))
+        return jsonResponse(200, { list: [token] });
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, token);
+      if (request.method === "PUT" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(403, { error: { code: "forbidden", message: "Not allowed." } });
+      if (request.url.includes("/delegation")) return jsonResponse(403, {});
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1");
+
+    expect({ ...result, keyNotLowered: typeof result.keyNotLowered }).toEqual({
+      tokenLowered: false,
+      keyNotLowered: "string",
+      delegationsDropped: 0,
+      isolationSteps: 0,
+      restarted: false,
+    });
+    expect(stub.requests.some((request) => request.url.endsWith("/project/search"))).toBe(true);
   });
 
   it("skips the token half when no token matches this project, and still isolates it", async () => {

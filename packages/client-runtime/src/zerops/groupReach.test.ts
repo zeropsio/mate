@@ -2,15 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   findHeldMateKey,
-  mateHardenableBy,
-  mateNeedsHarden,
-  findMateIntegrationToken,
   newestMateKey,
-  planAccountMateKeys,
   makeTokenWriteLock,
   planMateKey,
-  writeTokenProjectsFresh,
-  type MateKeyWrite,
   type TokenWriteLocks,
   type ZeropsIntegrationToken,
 } from "./groupReach.ts";
@@ -37,7 +31,12 @@ const DEPLOY_TOKEN: ZeropsIntegrationToken = {
 };
 const OWNER_TOKEN: ZeropsIntegrationToken = { id: "tok-owner", name: "mate-demo-owner" };
 
-describe("findMateIntegrationToken", () => {
+// Which tokens are a Mate's key: the one key found, with no container's age to tell keys apart.
+describe("findHeldMateKey — which tokens are a Mate's key", () => {
+  /** The key of the Mate in `projectId` among `tokens`, where it is the only one. */
+  const mateKeyIn = (tokens: ReadonlyArray<ZeropsIntegrationToken>, projectId: string) =>
+    findHeldMateKey(tokens, projectId, undefined);
+
   it.each([
     { name: "as the platform minted it", token: MATE_TOKEN },
     { name: "after it has been lowered", token: LOWERED_MATE_TOKEN },
@@ -45,7 +44,7 @@ describe("findMateIntegrationToken", () => {
     // Both grants are a Mate: the platform mints ADMIN and 0.2 rewrites it to
     // BASIC_USER, so a search that knew only one of them would lose every
     // Mate at exactly the moment it had been secured.
-    expect(findMateIntegrationToken([OWNER_TOKEN, token, DEPLOY_TOKEN], DEV)?.id).toBe("tok-mate");
+    expect(mateKeyIn([OWNER_TOKEN, token, DEPLOY_TOKEN], DEV)?.id).toBe("tok-mate");
   });
 
   it("does not mistake a sibling's read grant for the Mate that lives there", () => {
@@ -56,16 +55,16 @@ describe("findMateIntegrationToken", () => {
         { projectId: PROD, roleCode: "READ_ONLY" },
       ],
     };
-    expect(findMateIntegrationToken([widened], PROD)).toBeUndefined();
+    expect(mateKeyIn([widened], PROD)).toBeUndefined();
   });
 
   it("does not mistake a deploy token scoped to one project for a Mate's", () => {
     // Identical by grant; only the platform's zcp- name tells them apart.
-    expect(findMateIntegrationToken([DEPLOY_TOKEN], PROD)).toBeUndefined();
+    expect(mateKeyIn([DEPLOY_TOKEN], PROD)).toBeUndefined();
   });
 
   it("does not mistake another project's Mate for this one's", () => {
-    expect(findMateIntegrationToken([MATE_TOKEN], PROD)).toBeUndefined();
+    expect(mateKeyIn([MATE_TOKEN], PROD)).toBeUndefined();
   });
 
   it("still finds the token after it has been widened to the group", () => {
@@ -78,11 +77,11 @@ describe("findMateIntegrationToken", () => {
         { projectId: PROD, roleCode: "READ_ONLY" },
       ],
     };
-    expect(findMateIntegrationToken([widened], DEV)?.id).toBe("tok-mate");
+    expect(mateKeyIn([widened], DEV)?.id).toBe("tok-mate");
   });
 
   it("finds nothing when the account has no Mate in this project", () => {
-    expect(findMateIntegrationToken([], DEV)).toBeUndefined();
+    expect(mateKeyIn([], DEV)).toBeUndefined();
   });
 });
 
@@ -128,213 +127,6 @@ describe("planMateKey", () => {
     expect(planMateKey({ token, selfProjectId: DEV })).toEqual(
       written === null ? undefined : { tokenId: "tok-mate", projects: written },
     );
-  });
-});
-
-describe("planAccountMateKeys", () => {
-  const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
-    MATE_TOKEN,
-    DEPLOY_TOKEN,
-    OWNER_TOKEN,
-    {
-      id: "tok-other",
-      name: "zcp-Beviro - dev",
-      projects: [
-        { projectId: "b-dev", roleCode: "ADMIN" },
-        { projectId: "b-prod", roleCode: "READ_ONLY" },
-      ],
-    },
-  ];
-
-  it("lowers each Mate's key, adds no sibling, and leaves every other token alone", () => {
-    expect(planAccountMateKeys({ mateProjectIds: [DEV, "b-dev"], tokens })).toEqual([
-      {
-        tokenId: "tok-mate",
-        name: "zcp-Aurora - dev",
-        projects: [{ projectId: DEV, roleCode: "BASIC_USER" }],
-      },
-      {
-        tokenId: "tok-other",
-        name: "zcp-Beviro - dev",
-        projects: [
-          { projectId: "b-dev", roleCode: "BASIC_USER" },
-          { projectId: "b-prod", roleCode: "READ_ONLY" },
-        ],
-      },
-    ]);
-  });
-
-  it("writes nothing for an account whose keys are lowered", () => {
-    // The whole reason this can run on every screen read.
-    expect(planAccountMateKeys({ mateProjectIds: [DEV], tokens: [LOWERED_MATE_TOKEN] })).toEqual(
-      [],
-    );
-  });
-
-  it("skips a Mate whose key this client cannot find", () => {
-    expect(planAccountMateKeys({ mateProjectIds: [DEV], tokens: [DEPLOY_TOKEN] })).toEqual([]);
-  });
-});
-
-describe("writeTokenProjectsFresh", () => {
-  const grant = (projectId: string) => ({ projectId, roleCode: "BASIC_USER" as const });
-  /** Wants PROD on every token, keeping whatever it holds. */
-  const wantProd = (tokens: ReadonlyArray<ZeropsIntegrationToken>) =>
-    tokens.flatMap((token) =>
-      (token.projects ?? []).some((project) => project.projectId === PROD)
-        ? []
-        : [
-            {
-              tokenId: token.id,
-              name: token.name,
-              projects: [...(token.projects ?? []), grant(PROD)],
-            },
-          ],
-    );
-
-  it("writes from the token read under its lock, never from the list it started from", async () => {
-    // Between the list that found the token and the read under its lock, another writer gave
-    // it STAGE: the write keeps STAGE, as the platform holds it now.
-    const held: string[] = [];
-    const written: Array<MateKeyWrite> = [];
-    const count = await writeTokenProjectsFresh({
-      tokens: [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV)] }],
-      readOne: async (tokenId) => ({
-        id: tokenId,
-        name: "a",
-        roleCode: "READ_ONLY",
-        projects: [grant(DEV), grant(STAGE)],
-      }),
-      plan: wantProd,
-      hold: (tokenId, run) => {
-        held.push(tokenId);
-        return run();
-      },
-      write: async (write) => {
-        written.push(write);
-      },
-    });
-
-    expect(count).toBe(1);
-    expect(held).toEqual(["tok-a"]);
-    // As planned, no more: a Mate's token is lowered to no org role, whatever it held.
-    expect(written).toEqual([
-      { tokenId: "tok-a", name: "a", projects: [grant(DEV), grant(STAGE), grant(PROD)] },
-    ]);
-  });
-
-  it("reads only the tokens owed a write, each by its id, and none where none is", async () => {
-    const reads: string[] = [];
-    const readOne = async (tokenId: string) => {
-      reads.push(tokenId);
-      return { id: tokenId, name: tokenId, projects: [grant(DEV)] };
-    };
-    const owed = { id: "tok-a", name: "a", projects: [grant(DEV)] };
-    const settled = { id: "tok-b", name: "b", projects: [grant(DEV), grant(PROD)] };
-    await writeTokenProjectsFresh({
-      tokens: [settled],
-      readOne,
-      plan: wantProd,
-      write: async () => {},
-    });
-    expect(reads).toEqual([]);
-
-    await writeTokenProjectsFresh({
-      tokens: [owed, settled],
-      readOne,
-      plan: wantProd,
-      write: async () => {},
-    });
-    expect(reads).toEqual(["tok-a"]);
-  });
-
-  it("writes nothing for a token another writer already brought where it should be, or took away", async () => {
-    let writes = 0;
-    const answers = [{ id: "tok-a", name: "a", projects: [grant(DEV), grant(PROD)] }, undefined];
-    for (const answer of answers) {
-      const count = await writeTokenProjectsFresh({
-        tokens: [{ id: "tok-a", name: "a", projects: [grant(DEV)] }],
-        readOne: async () => answer,
-        plan: wantProd,
-        write: async () => {
-          writes += 1;
-        },
-      });
-      expect(count).toBe(0);
-    }
-    expect(writes).toBe(0);
-  });
-
-  it("writes no more than the starting list's plan asked for, whatever the platform answers", async () => {
-    let writes = 0;
-    await writeTokenProjectsFresh({
-      tokens: [{ id: "tok-a", name: "a", projects: [] }],
-      readOne: async (tokenId) => ({ id: tokenId, name: "a", projects: [] }),
-      plan: (tokens) =>
-        tokens.map((token) => ({ tokenId: token.id, name: token.name, projects: [] })),
-      write: async () => {
-        writes += 1;
-      },
-    });
-    expect(writes).toBe(1);
-  });
-});
-
-describe("writeTokenProjectsFresh once its signal aborts", () => {
-  it("reads and writes no token more: one waiting for its lock, nor one just read", async () => {
-    const abort = new AbortController();
-    const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
-      { id: "tok-a", name: "a", projects: [] },
-      { id: "tok-b", name: "b", projects: [] },
-    ];
-    const reads: string[] = [];
-    const writes: string[] = [];
-    await writeTokenProjectsFresh({
-      tokens,
-      readOne: async (tokenId) => {
-        reads.push(tokenId);
-        // The page left while the platform answered tok-a.
-        abort.abort();
-        return tokens.find((token) => token.id === tokenId);
-      },
-      plan: (listed) =>
-        listed
-          .filter((token) => (token.projects ?? []).length === 0)
-          .map((token) => ({ tokenId: token.id, name: token.name, projects: [] })),
-      write: async (write) => {
-        writes.push(write.tokenId);
-      },
-      signal: abort.signal,
-    });
-    expect([reads, writes]).toEqual([["tok-a"], []]);
-  });
-});
-
-describe("writeTokenProjectsFresh with a write the platform refuses", () => {
-  it("still writes the other tokens, then fails so its caller backs off", async () => {
-    const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
-      { id: "tok-a", name: "a", projects: [] },
-      { id: "tok-b", name: "b", projects: [] },
-    ];
-    const attempts: string[] = [];
-    const run = writeTokenProjectsFresh({
-      tokens,
-      readOne: async (tokenId) => tokens.find((token) => token.id === tokenId),
-      plan: (listed) =>
-        listed
-          .filter((token) => (token.projects ?? []).length === 0)
-          .map((token) => ({
-            tokenId: token.id,
-            name: token.name,
-            projects: [{ projectId: DEV, roleCode: "BASIC_USER" as const }],
-          })),
-      write: async (write) => {
-        attempts.push(write.tokenId);
-        if (write.tokenId === "tok-a") throw new Error("refused");
-      },
-    });
-    await expect(run).rejects.toThrow("refused");
-    expect(attempts).toEqual(["tok-a", "tok-b"]);
   });
 });
 
@@ -451,77 +243,5 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
         "p-1",
       )?.id,
     ).toBe("k-new");
-  });
-});
-
-// A Mate not hardened yet — a pool-claimed one whose harden never ran, an older one — is read off
-// the platform's own token list, so any browser, after a reload too, knows it (pass 28 review).
-describe("mateNeedsHarden — a Mate's key still ADMIN on its own project", () => {
-  const key = (roleCode: "ADMIN" | "BASIC_USER") => ({
-    id: "k-1",
-    name: "zcp-acme",
-    projects: [
-      { projectId: "p-1", roleCode },
-      { projectId: "p-stage", roleCode: "READ_ONLY" as const },
-    ],
-  });
-  it.each([
-    { case: "a key at ADMIN", tokens: [key("ADMIN")], want: true },
-    { case: "a key lowered", tokens: [key("BASIC_USER")], want: false },
-    { case: "no key of its", tokens: [], want: false },
-    {
-      case: "another project's ADMIN key",
-      tokens: [{ ...key("ADMIN"), projects: [{ projectId: "p-2", roleCode: "ADMIN" as const }] }],
-      want: false,
-    },
-    // A leftover ADMIN key beside a lowered one: the container's may well be the lowered one, and
-    // an older Mate is not held for a key it may not use (pass 28 review).
-    {
-      case: "an ADMIN key beside a lowered one",
-      tokens: [key("ADMIN"), { ...key("BASIC_USER"), id: "k-2" }],
-      want: false,
-    },
-  ])("$case: $want", ({ tokens, want }) => {
-    expect(mateNeedsHarden(tokens, "p-1")).toBe(want);
-  });
-});
-
-// Only who may write the key may harden it: an org owner, or the key's creator (pass 28 review).
-describe("mateHardenableBy", () => {
-  const admin = (createdByUser: string) => ({
-    id: "k-1",
-    name: "zcp-acme",
-    createdByUser,
-    projects: [{ projectId: "p-1", roleCode: "ADMIN" as const }],
-  });
-  it.each([
-    {
-      case: "an org owner",
-      tokens: [admin("u-eva")],
-      viewer: { userId: "u-zoe", roleCode: "OWNER" },
-      want: true,
-    },
-    {
-      case: "the key's creator",
-      tokens: [admin("u-ada")],
-      viewer: { userId: "u-ada", roleCode: "BASIC_USER" },
-      want: true,
-    },
-    {
-      case: "an admin who did not create it",
-      tokens: [admin("u-eva")],
-      viewer: { userId: "u-ada", roleCode: "ADMIN" },
-      want: false,
-    },
-    {
-      case: "anybody, where nothing needs it",
-      tokens: [
-        { ...admin("u-ada"), projects: [{ projectId: "p-1", roleCode: "BASIC_USER" as const }] },
-      ],
-      viewer: { userId: "u-ada", roleCode: "OWNER" },
-      want: false,
-    },
-  ])("$case: $want", ({ tokens, viewer, want }) => {
-    expect(mateHardenableBy(tokens, "p-1", viewer)).toBe(want);
   });
 });

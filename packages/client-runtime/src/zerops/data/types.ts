@@ -2040,6 +2040,8 @@ export type PlatformCommandResult =
       readonly kind: "harden-mate";
       readonly value: {
         readonly tokenLowered: boolean;
+        /** Why a key of the Mate's could not be lowered: the platform refused this account. */
+        readonly keyNotLowered: string | null;
         readonly delegationsDropped: number;
         readonly isolationSteps: number;
         readonly restarted: boolean;
@@ -2295,6 +2297,8 @@ export interface ZeropsDataCommands {
   readonly isolateProjectEnv: (project: ProjectRef) => Effect.Effect<
     CommandExecution<{
       readonly tokenLowered: boolean;
+      /** Why a key of the Mate's could not be lowered: the platform refused this account. */
+      readonly keyNotLowered: string | null;
       readonly delegationsDropped: number;
       readonly isolationSteps: number;
       readonly restarted: boolean;

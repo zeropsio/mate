@@ -6,7 +6,8 @@
  * organization.
  *
  * An outage is no gate: an HQ that does not answer is still the organization's, and the product
- * says since when (`hqStructure.ts`).
+ * says since when (`hqStructure.ts`). Which HQ is the official one comes from the verdict this
+ * browser keeps; only where it keeps none does the gate wait for the member list (`accountHq.ts`).
  */
 import { canWriteRegistry, type OfferViewer } from "@t3tools/client-runtime/zerops";
 import { mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -53,7 +54,7 @@ export function resolveHqGate(input: {
   return { kind: "ask", line: `An admin sets up Mate for this organization. Ask ${who}.` };
 }
 
-/** The gate over the organization open now, with its HQ as the member list names it. */
+/** The gate over the organization open now, with its HQ as this browser keeps it or the member list names it. */
 export function useHqGate(pathname: string): {
   readonly gate: HqGate;
   readonly accountHq: AccountHq;

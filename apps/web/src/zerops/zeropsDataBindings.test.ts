@@ -49,7 +49,6 @@ describe("central Zerops data bindings", () => {
     const files = [
       "../components/zerops/ZeropsNewProjectHost.tsx",
       "../components/zerops/ZeropsProjectsPage.tsx",
-      "./useZeropsMateKeys.ts",
       "./matePress.ts",
       "./useZeropsUpgradeRestart.ts",
     ];

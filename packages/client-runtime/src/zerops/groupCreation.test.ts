@@ -100,7 +100,6 @@ describe("finishMateSetupVerb", () => {
     containerMissing: false,
     pressStopped: false,
     closedOffMissing: false,
-    needsHarden: false,
     pastGrace: true,
     viewerIsAdder: false,
     hasContainer: true,
@@ -156,20 +155,6 @@ describe("finishMateSetupVerb", () => {
       name: "an owner, at once, on a Mate whose press in this tab stopped",
       input: { ...HALF_MADE, pressStopped: true, pastGrace: false },
       viewerRole: "OWNER",
-      expected: "Finish setup",
-    },
-    // Read off the platform's token list, in any browser, after a reload too.
-    {
-      name: "an owner, on a Mate whose key is still ADMIN — a pool claim whose harden never ran",
-      input: { ...HALF_MADE, needsHarden: true },
-      viewerRole: "OWNER",
-      expected: "Finish setup",
-    },
-    // `needsHarden` is the viewer's to fix — an org owner or the key's creator (`mateHardenableBy`).
-    {
-      name: "the member who created its key, on a Mate whose key is still ADMIN",
-      input: { ...HALF_MADE, needsHarden: true, viewerIsAdder: true },
-      viewerRole: "BASIC_USER",
       expected: "Finish setup",
     },
     // Closing off is all the adder may do, and a Mate with no container has nothing to close off:

@@ -2,13 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { Shown } from "../knowledge/index.ts";
-import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
-import {
-  selectLocationChoice,
-  selectMembers,
-  selectTokenGrants,
-  settledValue,
-} from "./cellSelectors.ts";
+import { selectLocationChoice, selectMembers, settledValue } from "./cellSelectors.ts";
 
 const PRAGUE: ZeropsLocation = { id: "prg1", name: "Prague", pingUrl: "https://ping.test" };
 const FAILURE = { kind: "transport", detail: "Zerops did not answer." } as const;
@@ -52,25 +46,6 @@ describe("selectLocationChoice", () => {
   };
   it.each(everyState<ReadonlyArray<ZeropsLocation>>([PRAGUE]))("%s", (name, shown) => {
     expect(selectLocationChoice(shown)).toEqual(expected[name]);
-  });
-});
-
-describe("selectTokenGrants", () => {
-  const grants: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
-    { tokenId: "token-a", name: "zcp-a", grants: [{ projectId: "project-a", roleCode: "ADMIN" }] },
-  ];
-  const expected: Readonly<Record<string, ReturnType<typeof selectTokenGrants>>> = {
-    unread: { status: "pending" },
-    reading: { status: "pending" },
-    failed: { status: "failed" },
-    "known settled": { status: "known", grants },
-    // A retained value is planned from only once a read confirmed it.
-    "known revalidating": { status: "pending" },
-    "known stale": { status: "failed" },
-    withheld: { status: "pending" },
-  };
-  it.each(everyState(grants))("%s", (name, shown) => {
-    expect(selectTokenGrants(shown)).toEqual(expected[name]);
   });
 });
 

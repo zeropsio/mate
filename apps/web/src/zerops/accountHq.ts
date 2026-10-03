@@ -3,7 +3,8 @@
  *
  * - **Which HQ:** the one its anchor names in the org's member list (`findOfficialHq`), read with
  *   the person's own token — never a project's name or tag, which anybody who can create a
- *   project could copy.
+ *   project could copy. The verdict is kept in this browser (`hqVerdict.ts`), and a load that
+ *   keeps one reads no member list.
  * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named for its
  *   project (`mate-door:<hqProjectId>:<nonce>`, deleted at once). One API per account, org and
  *   HQ, kept for the account's lifetime and in memory only, as the Mates' sessions are.
@@ -14,6 +15,7 @@
  */
 import {
   findOfficialHq,
+  HqError,
   HQ_NOT_OPEN,
   makeHqApi,
   ownersAndAdmins,
@@ -32,14 +34,17 @@ import {
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
+import { useAtomValue } from "@effect/atom-react";
 import * as Effect from "effect/Effect";
 import { useCallback, useContext, useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
+import { hqStructureAtom } from "~/state/zerops";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { forgetHqVerdict, keepHqVerdict, useKeptHqVerdict, type HqVerdictOwner } from "./hqVerdict";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -48,7 +53,10 @@ import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 export const HOSTED_APP_ORIGIN = "https://mate.zerops.io";
 
 export interface AccountHq {
-  /** `ready` once the member list was read: only then is `none` an answer to act on. */
+  /**
+   * `ready` once the member list was read, or while this browser keeps the verdict: only then is
+   * `none` an answer to act on.
+   */
   readonly status: "idle" | "loading" | "ready" | "failed";
   readonly hq: OfficialHq;
   /** The org's owners and admins: who sets an HQ up, and whom everybody else asks. */
@@ -57,14 +65,60 @@ export interface AccountHq {
   readonly reread: () => void;
 }
 
-/** The organization's HQ, as its member list names it. */
+/**
+ * How long HQ's structure stream may go unanswered before the member list is read again: once for
+ * each outage, for an anchor an admin may have moved meanwhile.
+ */
+export const HQ_OUTAGE_RECHECK_MS = 10 * 60_000;
+
+/** The outages the member list was read again for, by organization and when each began. */
+const rechecked = new Set<string>();
+
+/** The organization's HQ, as this browser keeps it, or else as its member list names it. */
 export function useAccountHq(clientId: string | undefined): AccountHq {
   const data = useContext(ZeropsDataContext);
+  const owner = useMemo<HqVerdictOwner | undefined>(
+    () =>
+      data === null || clientId === undefined
+        ? undefined
+        : { account: data.runtime.scope.account, clientId },
+    [clientId, data],
+  );
+  const kept = useKeptHqVerdict(owner);
   const { members, status } = useZeropsOrganizationMembersRead({
     clientId,
-    enabled: clientId !== undefined,
+    enabled: clientId !== undefined && kept === undefined,
   });
-  const hq = useMemo(() => findOfficialHq(members), [members]);
+  const named = useMemo(() => findOfficialHq(members), [members]);
+  // The HQ the member list names, once it has said, is this browser's verdict from then on.
+  useEffect(() => {
+    if (owner !== undefined && status === "ready" && named.kind === "official") {
+      keepHqVerdict(owner, named);
+    }
+  }, [named, owner, status]);
+  const structure = useAtomValue(hqStructureAtom);
+  const outageSince =
+    structure !== null && structure.organizationId === clientId ? structure.unavailableSince : null;
+  useEffect(() => {
+    if (clientId === undefined || kept === undefined || outageSince === null) return;
+    const outage = `${clientId}@${String(outageSince)}`;
+    if (rechecked.has(outage)) return;
+    const timer = setTimeout(
+      () => {
+        rechecked.add(outage);
+        forgetHqVerdict(clientId, kept);
+      },
+      Math.max(0, outageSince + HQ_OUTAGE_RECHECK_MS - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [clientId, kept, outageSince]);
+  const hq = useMemo<OfficialHq>(
+    () =>
+      kept === undefined
+        ? named
+        : { kind: "official", projectId: kept.projectId, address: kept.address },
+    [kept, named],
+  );
   const admins = useMemo(() => ownersAndAdmins(members), [members]);
   const reread = useCallback(() => {
     if (data === null || clientId === undefined) return;
@@ -75,7 +129,7 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     };
     Effect.runFork(data.runtime.cells.invalidate(request));
   }, [clientId, data]);
-  return { status, hq, admins, reread };
+  return { status: kept === undefined ? status : "ready", hq, admins, reread };
 }
 
 const apis = new Map<string, HqApi>();
@@ -108,7 +162,19 @@ const openBrowserSocket: OpenHqSocket = (url, on) => {
   };
 };
 
-/** HQ's API for this account and org, entered through its door on the first call. */
+/**
+ * Whether HQ's health says it is not the organization's official HQ: its anchor is gone, names
+ * another, or its own credentials are wrong — never merely a standby, or a Zerops it cannot check.
+ */
+export function saysNotOfficial(health: HqHealth): boolean {
+  return health.kind === "not-ready" && health.official !== "ok" && health.official !== "unknown";
+}
+
+/**
+ * HQ's API for this account and org, entered through its door on the first call. A door that
+ * answers not serving, from an HQ whose health says it is not the official one, makes this browser
+ * forget its verdict, so the member list is read again.
+ */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
   const key = `${client.accountEpoch}:${clientId}:${hq.projectId}:${hq.address}`;
   const held = apis.get(key);
@@ -124,6 +190,12 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         projectId: hq.projectId,
         nonce: randomUUID(),
         connect: use,
+      }).catch(async (cause: unknown) => {
+        if (cause instanceof HqError && cause.code === "not_active") {
+          const health = await readHqHealth((input, init) => fetch(input, init), hq.address);
+          if (saysNotOfficial(health)) forgetHqVerdict(clientId, hq);
+        }
+        throw cause;
       }),
     openSocket: openBrowserSocket,
   });

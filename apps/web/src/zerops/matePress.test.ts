@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   beginPress,
   finishSetupView,
+  FINISHED_SETUP_LINE,
   forgetPress,
   interruptedPresses,
   progressPress,
@@ -665,7 +666,15 @@ describe("finishMateSetup — the harden path", () => {
             isolateProjectEnv: () => {
               calls.push("harden");
               return harden()
-                ? Effect.succeed({ value: undefined })
+                ? Effect.succeed({
+                    value: {
+                      tokenLowered: true,
+                      keyNotLowered: null,
+                      delegationsDropped: 0,
+                      isolationSteps: 1,
+                      restarted: false,
+                    },
+                  })
                 : Effect.fail({
                     _tag: "IsolationRefused" as const,
                     message: "The isolation was refused.",
@@ -820,6 +829,62 @@ describe("finishMateSetup — the harden path", () => {
       }),
     ).toMatchObject({ ok: true });
     expect(calls.filter((call) => call.startsWith("put") || call === "list keys")).toEqual([]);
+    forgetPress("p-old");
+  });
+
+  // Step A, A11: an admin adopting a Mate whose key an owner made may not write that key. The
+  // adoption finishes, and its view and its row say the key stayed as it was, and who can lower it.
+  it("says a key it could not lower, and finishes", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const refusedKey = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            isolateProjectEnv: () =>
+              Effect.succeed({
+                value: {
+                  tokenLowered: false,
+                  keyNotLowered: "This Zerops account is not allowed to do that.",
+                  delegationsDropped: 0,
+                  isolationSteps: 1,
+                  restarted: false,
+                },
+              }),
+          },
+        },
+      },
+    };
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: refusedKey as never,
+        projectId: "p-old",
+        projectName: "Acme - Ada",
+        container: null,
+        registration: null,
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        harden: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    const said =
+      "The Mate's key couldn't be lowered: This Zerops account is not allowed to do that; an owner can do it.";
+    const press = readMatePress("p-old");
+    expect([press?.state.kind, finishSetupView(press)?.line, finishSetupRowLine(press)]).toEqual([
+      "pressed",
+      `${FINISHED_SETUP_LINE} ${said}`,
+      `Setup finished. ${said}`,
+    ]);
     forgetPress("p-old");
   });
 
