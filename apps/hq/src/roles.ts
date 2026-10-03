@@ -9,9 +9,12 @@
  * (`@t3tools/shared/zeropsPermissions`); nothing about people is stored in HQ.
  *
  * While Zerops does not answer, `view` serves the last good view for five minutes from its read,
- * at once, and asks Zerops again behind it at most every 30 s: a read verb is decided over it, a
- * write never (E2E 2026-10-03: KRLS's member list missing HQ's 10 s answered every read of a new
- * application `503` for a minute). Past the five minutes a read fails as a write does.
+ * at once, and asks Zerops again behind it at most every 30 s (E2E 2026-10-03: KRLS's member list
+ * missing HQ's 10 s answered every read of a new application `503` for a minute), and serves it
+ * to a read Zerops leaves 3 s unanswered too — counted from when the read under way began (F22,
+ * option A, 2026-10-03: KRLS's member list went unanswered for minutes at a time, and every read
+ * past the 30 s waited 44 s on it): a read verb is decided over it, a write never. Past the five
+ * minutes a read fails as a write does.
  *
  * `recent` is the view at most 30 s old, read now past that, and never the last good one: what
  * HQ's door admits by, so a reload's door after another waits on Zerops only once (t11,
@@ -64,7 +67,7 @@ type OrgRead = Omit<OrgView, "freshness">;
 export class Roles extends Context.Service<
   Roles,
   {
-    /** The org's view, at most 30 s old. */
+    /** The org's view, at most 30 s old, or the last good one while Zerops does not answer. */
     readonly view: Effect.Effect<OrgView<"cached">, ZeropsError>;
     /**
      * The org's view a write is decided over: at most 30 s old, or read now where the write is
@@ -126,6 +129,9 @@ export const confirmingRefusal = <A, E, R>(write: Effect.Effect<A, E, R>): Effec
 /** How long after its read the last good view is served while Zerops does not answer. */
 const VIEW_GRACE = Duration.minutes(5);
 
+/** How long a read waits on Zerops for a view at most 30 s old before it takes the last good one. */
+const RECENT_WAIT = Duration.seconds(3);
+
 export const rolesLayer = (options: {
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */
@@ -141,6 +147,8 @@ export const rolesLayer = (options: {
       const cached = yield* Ref.make<
         { readonly view: OrgRead; readonly at: number; readonly answered: number } | undefined
       >(undefined);
+      /** When the read under way began; none while no read is. */
+      const underWay = yield* Ref.make<number | undefined>(undefined);
       /** The last read Zerops did not answer: when it ended, and why. */
       const failed = yield* Ref.make<
         { readonly at: number; readonly error: ZeropsUnavailable } | undefined
@@ -198,6 +206,7 @@ export const rolesLayer = (options: {
           const failure = yield* Ref.get(failed);
           if (failure !== undefined && failure.at >= asked) return yield* failure.error;
           const at = yield* Clock.currentTimeMillis;
+          yield* Ref.set(underWay, at);
           const view = yield* read.pipe(
             Effect.tapError((error) =>
               error._tag === "ZeropsUnavailable"
@@ -206,6 +215,7 @@ export const rolesLayer = (options: {
                   )
                 : Effect.void,
             ),
+            Effect.ensuring(Ref.set(underWay, undefined)),
           );
           yield* Ref.set(cached, { view, at, answered: yield* Clock.currentTimeMillis });
           return view;
@@ -222,6 +232,40 @@ export const rolesLayer = (options: {
       const recent = Effect.flatMap(Clock.currentTimeMillis, recentAt).pipe(
         Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })),
       );
+      /** The last good view, while Zerops answered it within five minutes. */
+      const lastGood = Effect.gen(function* () {
+        const good = yield* Ref.get(cached);
+        const now = yield* Clock.currentTimeMillis;
+        return good !== undefined && now - good.answered <= Duration.toMillis(VIEW_GRACE)
+          ? good.view
+          : undefined;
+      });
+      /**
+       * What `reading` answers — or, once Zerops has left a read {@link RECENT_WAIT} unanswered
+       * (counted from when the read under way began) or fails it, the last good view; with none,
+       * what it answers still.
+       */
+      const keptAfterWait = (reading: Fiber.Fiber<OrgRead, ZeropsError>) =>
+        Effect.gen(function* () {
+          const orKept = (otherwise: Effect.Effect<OrgRead, ZeropsError>) =>
+            Effect.flatMap(lastGood, (kept) =>
+              kept === undefined ? otherwise : Effect.succeed(kept),
+            );
+          const now = yield* Clock.currentTimeMillis;
+          const since = (yield* Ref.get(underWay)) ?? now;
+          return yield* Fiber.join(reading).pipe(
+            Effect.timeoutOrElse({
+              duration: Duration.millis(
+                Math.max(0, Duration.toMillis(RECENT_WAIT) - (now - since)),
+              ),
+              orElse: () => orKept(Fiber.join(reading)),
+            }),
+            Effect.catchIf(
+              (error) => error._tag === "ZeropsUnavailable",
+              (error) => orKept(Effect.fail(error)),
+            ),
+          );
+        });
       const forWrite = Effect.gen(function* () {
         const { fresh, until } = yield* WriteConfirm;
         const now = yield* Clock.currentTimeMillis;
@@ -269,12 +313,8 @@ export const rolesLayer = (options: {
             return kept;
           }
         }
-        return yield* recentAt(now).pipe(
-          Effect.catchIf(
-            (error) => error._tag === "ZeropsUnavailable" && kept !== undefined,
-            () => Effect.succeed(kept!),
-          ),
-        );
+        // In the layer's scope: a read that took the last good view leaves its own to land.
+        return yield* keptAfterWait(yield* Effect.forkIn(recentAt(now), scope));
       }).pipe(Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })));
       return Roles.of({ view, forWrite, recent, exists });
     }),
