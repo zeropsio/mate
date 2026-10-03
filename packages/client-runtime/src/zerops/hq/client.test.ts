@@ -888,6 +888,114 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
+  // A write whose answer was lost (F22): what HQ holds now decides, read back once.
+  const ROLLED = { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" } as const;
+  const HARBOR = { id: "app-1", name: "Harbor", projects: [] };
+  it.each<{
+    readonly name: string;
+    readonly write: { readonly method: string; readonly path: string };
+    readonly holds: (seen: Seen) => Response | undefined;
+    readonly ask: (hqApi: HqApi) => Promise<unknown>;
+    readonly made: unknown;
+  }>([
+    {
+      name: "a merge HQ holds merged",
+      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/merge" },
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3"
+          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+          : undefined,
+      ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
+      made: { ...CHANGE, state: "merged" },
+    },
+    {
+      name: "a close HQ holds closed",
+      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/close" },
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3"
+          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "closed" } })
+          : undefined,
+      ask: (hqApi) => hqApi.closeChange(LINK),
+      made: { ...CHANGE, state: "closed" },
+    },
+    {
+      name: "a comment HQ holds as the newest said",
+      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/comments" },
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3/comments"
+          ? json(200, { comments: [COMMENT] })
+          : undefined,
+      ask: (hqApi) => hqApi.commentOnChange(LINK, COMMENT.body),
+      made: COMMENT,
+    },
+    {
+      name: "a roll back HQ holds as its newest release",
+      write: { method: "POST", path: "/api/apps/app-1/releases/v0.1.0/rollback" },
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/releases"
+          ? json(200, { releases: [ROLLED, RELEASE] })
+          : undefined,
+      ask: (hqApi) => hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA }),
+      made: ROLLED,
+    },
+    {
+      name: "a name HQ holds",
+      write: { method: "PATCH", path: "/api/apps/app-1" },
+      holds: (seen) =>
+        seen.path === "/api/structure" ? json(200, { ungrouped: [], apps: [HARBOR] }) : undefined,
+      ask: (hqApi) => hqApi.renameApp("app-1", "Harbor"),
+      made: undefined,
+    },
+    {
+      name: "an application HQ holds no more",
+      write: { method: "DELETE", path: "/api/apps/app-1" },
+      holds: (seen) =>
+        seen.path === "/api/structure" ? json(200, { ungrouped: [], apps: [] }) : undefined,
+      ask: (hqApi) => hqApi.deleteApp("app-1"),
+      made: undefined,
+    },
+    {
+      name: "a project HQ holds in the application",
+      write: { method: "POST", path: "/api/apps/app-1/projects" },
+      holds: (seen) =>
+        seen.path === "/api/structure"
+          ? json(200, {
+              ungrouped: [],
+              apps: [
+                {
+                  ...HARBOR,
+                  projects: [{ projectId: "p9", name: "p9", kind: "stage", mate: null }],
+                },
+              ],
+            })
+          : undefined,
+      ask: (hqApi) => hqApi.attachProject("app-1", { projectId: "p9", kind: "stage" }),
+      made: undefined,
+    },
+  ])("takes $name for made when its answer was lost", async ({ write, holds, ask, made }) => {
+    const { hq, api: hqApi } = api((seen) => {
+      if (seen.method === write.method && seen.path === write.path) {
+        throw new TypeError("Failed to fetch");
+      }
+      return holds(seen);
+    });
+    await expect(ask(hqApi)).resolves.toEqual(made);
+    expect(
+      hq.seen.filter((entry) => entry.method === write.method && entry.path === write.path),
+    ).toHaveLength(1);
+  });
+
+  it("says to check the project when HQ still holds the change open after its merge was lost", async () => {
+    const { api: hqApi } = api((seen) => {
+      if (seen.path.endsWith("/merge")) throw new TypeError("Failed to fetch");
+      return seen.path === "/api/apps/app-1/changes/app/3" ? json(200, DETAIL) : undefined;
+    });
+    await expect(hqApi.mergeChange(LINK, SHA)).rejects.toMatchObject({
+      kind: "uncertain",
+      message: HQ_WRITE_UNCERTAIN,
+    });
+  });
+
   it("fetches a change's picture with the session, as the picture it is", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const { hq, api: hqApi } = api((seen) =>

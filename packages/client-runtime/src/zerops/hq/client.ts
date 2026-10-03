@@ -576,16 +576,45 @@ export function makeHqApi(input: {
     }
   };
 
+  /** {@link confirmed} for a write that answers nothing: `holds` says whether HQ holds it made. */
+  const confirmedDone = async (
+    write: () => Promise<unknown>,
+    holds: () => Promise<boolean>,
+  ): Promise<void> => {
+    await confirmed(
+      async () => {
+        await write();
+        return true;
+      },
+      async () => ((await holds()) ? true : undefined),
+    );
+  };
+
+  const structureOf = async (signal?: AbortSignal) =>
+    json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal }));
+  const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
   const releasesOf = async (appId: string, signal?: AbortSignal) =>
     (
       await readReleases(
         await authorized(releasesPath(appId), signal === undefined ? {} : { signal }),
       )
     ).releases;
+  const changeOf = async (link: ChangeLink, signal?: AbortSignal) =>
+    readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal }));
+  const commentsOf = async (link: ChangeLink, signal?: AbortSignal) =>
+    (
+      await readComments(
+        await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
+      )
+    ).comments;
+  /** The change as HQ holds it, if it is in `state`. */
+  const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
+    const { change } = await changeOf(link);
+    return change.state === state ? change : undefined;
+  };
 
   return {
-    structure: async (signal) =>
-      json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal })),
+    structure: structureOf,
     streamStructure: async (handlers, signal) => {
       const { ticket } = await json<{ readonly ticket: string }>(
         await authorized("/api/stream-ticket", { method: "POST", signal }),
@@ -637,13 +666,19 @@ export function makeHqApi(input: {
       json(
         await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, "once"),
       ),
-    attachProject: async (appId, attach) => {
-      await authorized(
-        `/api/apps/${encodeURIComponent(appId)}/projects`,
-        { method: "POST", body: JSON.stringify(attach) },
-        "once",
-      );
-    },
+    attachProject: (appId, attach) =>
+      confirmedDone(
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}/projects`,
+            { method: "POST", body: JSON.stringify(attach) },
+            "once",
+          ),
+        async () =>
+          (await appOf(appId))?.projects.some(
+            (project) => project.projectId === attach.projectId && project.kind === attach.kind,
+          ) === true,
+      ),
     keepDeployToken: async (appId, environment, token) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/deploy-token`,
@@ -665,16 +700,21 @@ export function makeHqApi(input: {
         "idempotent",
       );
     },
-    renameApp: async (appId, name) => {
-      await authorized(
-        `/api/apps/${encodeURIComponent(appId)}`,
-        { method: "PATCH", body: JSON.stringify({ name }) },
-        "idempotent",
-      );
-    },
-    deleteApp: async (appId) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, "once");
-    },
+    renameApp: (appId, name) =>
+      confirmedDone(
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}`,
+            { method: "PATCH", body: JSON.stringify({ name }) },
+            "idempotent",
+          ),
+        async () => (await appOf(appId))?.name === name,
+      ),
+    deleteApp: (appId) =>
+      confirmedDone(
+        () => authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, "once"),
+        async () => (await appOf(appId)) === undefined,
+      ),
     moveProject: async (projectId, to) => {
       await authorized(
         `/api/projects/${encodeURIComponent(projectId)}/app`,
@@ -685,32 +725,43 @@ export function makeHqApi(input: {
     createMate: async (mate) => {
       await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, "once");
     },
-    change: async (link, signal) =>
-      readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal })),
-    changeComments: async (link, signal) =>
-      (
-        await readComments(
-          await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
-        )
-      ).comments,
-    commentOnChange: async (link, body) =>
-      readComment(
-        await authorized(
-          `${changePath(link)}/comments`,
-          { method: "POST", body: JSON.stringify({ body }) },
-          "once",
-        ),
+    change: changeOf,
+    changeComments: commentsOf,
+    // A comment has no name of its own: the newest said on the change, in the very words, is taken
+    // for it.
+    commentOnChange: (link, body) =>
+      confirmed(
+        async () =>
+          readComment(
+            await authorized(
+              `${changePath(link)}/comments`,
+              { method: "POST", body: JSON.stringify({ body }) },
+              "once",
+            ),
+          ),
+        async () => {
+          const newest = (await commentsOf(link)).at(-1);
+          return newest?.body === body ? newest : undefined;
+        },
       ),
-    mergeChange: async (link, expectedHead) =>
-      readChange(
-        await authorized(
-          `${changePath(link)}/merge`,
-          { method: "POST", body: JSON.stringify({ expectedHead }) },
-          "once",
-        ),
+    mergeChange: (link, expectedHead) =>
+      confirmed(
+        async () =>
+          readChange(
+            await authorized(
+              `${changePath(link)}/merge`,
+              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              "once",
+            ),
+          ),
+        () => changeIn(link, "merged"),
       ),
-    closeChange: async (link) =>
-      readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, "once")),
+    closeChange: (link) =>
+      confirmed(
+        async () =>
+          readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, "once")),
+        () => changeIn(link, "closed"),
+      ),
     changeAttachment: async (link, signal) =>
       (
         await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {
@@ -745,13 +796,24 @@ export function makeHqApi(input: {
           ),
         async () => (await releasesOf(appId)).find((made) => made.tag === request.tag),
       ),
-    rollback: async (appId, tag, request) =>
-      readRelease(
-        await authorized(
-          `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
-          { method: "POST", body: JSON.stringify(request) },
-          "once",
-        ),
+    // A roll back is a new release HQ names: the newest, rolling back to `tag` at the same `main`,
+    // is taken for it.
+    rollback: (appId, tag, request) =>
+      confirmed(
+        async () =>
+          readRelease(
+            await authorized(
+              `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
+              { method: "POST", body: JSON.stringify(request) },
+              "once",
+            ),
+          ),
+        async () => {
+          const [newest] = await releasesOf(appId);
+          return newest?.rollbackOf === tag && newest.sha === request.groupHead
+            ? newest
+            : undefined;
+        },
       ),
     recipeTier: async (appId, tier, signal) =>
       readRecipeTier(
