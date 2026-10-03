@@ -25,6 +25,8 @@ import type {
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
+import type { ThreadProfileSupport } from "../../spi/threadToolPolicy.ts";
+
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
 /**
@@ -52,6 +54,12 @@ export interface ProviderAdapterCapabilities {
   readonly promptlessTurnContinuation?: boolean;
   /** False when native conversation history cannot be rewound. */
   readonly supportsConversationRollback?: boolean;
+  /**
+   * The adapter asks the installed thread tool policy for a thread's
+   * profile and runs the thread by it (`spi/threadToolPolicy.ts`). Omitted:
+   * it never asks, and a profiled thread would run ungated on it.
+   */
+  readonly threadProfile?: ThreadProfileSupport;
 }
 
 export interface ProviderThreadTurnSnapshot {

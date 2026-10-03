@@ -70,6 +70,20 @@ export interface ThreadToolProfile {
   readonly tools: ReadonlyArray<ThreadTool>;
 }
 
+/**
+ * What a driver's adapter declares it does with a thread's profile
+ * (`ProviderAdapterCapabilities.threadProfile`). An adapter that declares
+ * none never asks for one, so a thread that has one would run on it
+ * ungated: owned code refuses to put such a thread on it.
+ */
+export interface ThreadProfileSupport {
+  /**
+   * It serves the profile's `tools` to the model. Without them it still
+   * runs the context, the gate, read-only and the overrides.
+   */
+  readonly tools: boolean;
+}
+
 export interface ThreadToolPolicy {
   readonly profileFor: (thread: {
     readonly threadId: ThreadId;
