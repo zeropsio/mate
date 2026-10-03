@@ -371,6 +371,8 @@ export function hqBirthDeps(client: ZeropsApiClient): HqBirthDeps {
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),
     newBirthId: randomUUID,
+    // HQ's key (`HQ_KEY_SECRET`) is drawn here, from WebCrypto, and goes only into HQ's env.
+    randomBytes: (bytes) => crypto.getRandomValues(bytes),
   };
 }
 

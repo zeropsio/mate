@@ -11,9 +11,12 @@
  *    while a `mate:hq` project no anchor names stands: one is being set up elsewhere, or stopped.
  * 2. `services` — the three services up.
  * 3. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
- *    sensitive `HQ_ORG_TOKEN` of `hq`, once the import's variables have synced. A token's value is
- *    shown once: a token whose variable is missing is regenerated; a variable that is there is
- *    never written again.
+ *    sensitive `HQ_ORG_TOKEN` of `hq`, once the import's variables have synced; beside it the
+ *    sensitive `HQ_KEY_SECRET`, 32 random bytes in base64 drawn here, the key Core seals its
+ *    environments' deploy tokens with (`apps/hq/src/deployKeys.ts`), which goes nowhere else. A
+ *    token's value is shown once: a token whose variable is missing is regenerated; a variable that
+ *    is there is never written again — a key written anew would open none of the tokens sealed
+ *    under the one before.
  * 4. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed. Core
  *    starts as a standby, its anchor missing; its deploy opens `hq`'s HTTP port, which a fresh
  *    import's `hq` does not have (measured in KRLS, 2026-10-02: a routing before it is refused,
@@ -44,6 +47,7 @@
  * @module hq/birth
  */
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
+import type { RandomBytes } from "../newProject.ts";
 import { findOfficialHq, hqAnchorName, hqOrgTokenName } from "./anchor.ts";
 import type { HqEndpoint, HqHealth } from "./client.ts";
 
@@ -62,6 +66,9 @@ const HQ_PORT = 8080;
 const HQ_SERVICES = ["db", "vol", HQ_SERVICE] as const;
 /** Core's working credential, as Core reads it (`apps/hq/src/main.ts`). */
 const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
+/** Core's key for its environments' deploy tokens, as Core reads it: an AES-256 key's 32 bytes. */
+const HQ_KEY_SECRET_ENV = "HQ_KEY_SECRET";
+const HQ_KEY_SECRET_BYTES = 32;
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
 const HQ_SETUP = "hq";
 /**
@@ -190,6 +197,8 @@ export interface HqBirthDeps {
   readonly now: () => number;
   /** A new birth's id, for its tag. */
   readonly newBirthId: () => string;
+  /** Draws HQ's key (`HQ_KEY_SECRET`): the platform's cryptographic randomness. */
+  readonly randomBytes: RandomBytes;
   readonly waits?: Partial<HqBirthWaits>;
 }
 
@@ -427,6 +436,13 @@ export async function runHqBirth(input: {
         // The import's own variables may still sync: the write waits them out with the token held.
         await afterVariablesSync(waits.servicesCapMs, () =>
           platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content }),
+        );
+      }
+      if (!written.includes(HQ_KEY_SECRET_ENV)) {
+        const key = deps.randomBytes(new Uint8Array(HQ_KEY_SECRET_BYTES));
+        const content = btoa(String.fromCharCode(...key));
+        await afterVariablesSync(waits.servicesCapMs, () =>
+          platform.writeServiceSecret({ serviceId, key: HQ_KEY_SECRET_ENV, content }),
         );
       }
       advance({ step: "deploy" });

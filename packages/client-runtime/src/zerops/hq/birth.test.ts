@@ -275,8 +275,14 @@ function deps(
     },
     now: () => now,
     newBirthId: () => "b1",
+    randomBytes: (array) => array.map((_, index) => index + 1),
   };
 }
+
+/** What `deps` draws for HQ's key: bytes 1…32, in base64. */
+const KEY_SECRET = btoa(
+  String.fromCharCode(...Array.from({ length: 32 }, (_, index) => index + 1)),
+);
 
 const INPUT = {
   clientId: ORG,
@@ -329,6 +335,7 @@ describe("runHqBirth", () => {
       "tokens",
       "mint mate-hq-org:hq1 READ_ONLY",
       "secret svc-hq HQ_ORG_TOKEN",
+      "secret svc-hq HQ_KEY_SECRET",
       "app-version svc-hq",
       "upload av-1 7",
       "deploy av-1 hq",
@@ -348,8 +355,12 @@ describe("runHqBirth", () => {
       "tokens",
       `mint mate-hq:hq1:${ADDRESS} ADMIN`,
     ]);
-    // The anchor's value is dropped; the working token's is HQ's own secret and nothing else's.
-    expect([...zerops.env]).toEqual([["HQ_ORG_TOKEN", "value-1"]]);
+    // The anchor's value is dropped; the working token's, and HQ's key, are HQ's own secrets and
+    // nothing else's.
+    expect([...zerops.env]).toEqual([
+      ["HQ_ORG_TOKEN", "value-1"],
+      ["HQ_KEY_SECRET", KEY_SECRET],
+    ]);
     const yaml = zerops.imports[0]!;
     expect(yaml).toContain("name: Headquarters");
     expect(yaml).toContain('- "mate:hq"\n    - "mate:hq-birth:b1"\n');
@@ -606,6 +617,38 @@ describe("runHqBirth", () => {
     expect(zerops.calls[1]).toBe("app-version svc-hq");
   });
 
+  // Core seals its environments' deploy tokens under HQ_KEY_SECRET (`apps/hq/src/deployKeys.ts`):
+  // written beside its token from the browser's own randomness, and never again once there — a key
+  // written anew would leave every token sealed under the first opening nowhere.
+  it.each<[string, ReadonlyArray<string>, ReadonlyArray<string>]>([
+    ["neither", [], ["secret svc-hq HQ_ORG_TOKEN", "secret svc-hq HQ_KEY_SECRET"]],
+    ["its token alone", ["HQ_ORG_TOKEN"], ["secret svc-hq HQ_KEY_SECRET"]],
+    ["both", ["HQ_ORG_TOKEN", "HQ_KEY_SECRET"], []],
+  ])(
+    "gives Core its key, 32 random bytes in base64, where %s of its variables is there",
+    async (_n, there, written) => {
+      const zerops = fakeZerops();
+      for (const name of there) zerops.env.set(name, `kept ${name}`);
+      const { outcome } = await birth(
+        {
+          step: "credential",
+          importTag: "mate:hq-birth:b1",
+          projectId: "hq1",
+          serviceId: "svc-hq",
+          address: null,
+          appVersionId: null,
+          deployProcessId: null,
+        },
+        zerops,
+      );
+      expect(outcome).toMatchObject({ ok: true });
+      expect(zerops.calls.filter((call) => call.startsWith("secret "))).toEqual(written);
+      expect(zerops.env.get("HQ_KEY_SECRET")).toBe(
+        there.includes("HQ_KEY_SECRET") ? "kept HQ_KEY_SECRET" : KEY_SECRET,
+      );
+    },
+  );
+
   // Mate s.r.o., 2026-10-03: the build right after Core's token was written was refused, 400
   // userDataSyncRunning, while the service's variables synced.
   it("waits out a variable sync its build is refused for, and builds the one version it uploaded", async () => {
@@ -672,6 +715,7 @@ describe("runHqBirth", () => {
       "secret svc-hq HQ_ORG_TOKEN",
       "secret svc-hq HQ_ORG_TOKEN",
       "secret svc-hq HQ_ORG_TOKEN",
+      "secret svc-hq HQ_KEY_SECRET",
     ]);
     expect(zerops.env.get("HQ_ORG_TOKEN")).toBe("value-1");
   });
@@ -735,6 +779,7 @@ describe("runHqBirth", () => {
     const order = zerops.calls.filter((call) => /^(secret|deploy|route|mint mate-hq:)/u.test(call));
     expect(order).toEqual([
       "secret svc-hq HQ_ORG_TOKEN",
+      "secret svc-hq HQ_KEY_SECRET",
       "deploy av-1 hq",
       `route ${PUBLIC_ZONE} -> svc-hq:8080/`,
       `mint mate-hq:hq1:${ADDRESS} ADMIN`,
