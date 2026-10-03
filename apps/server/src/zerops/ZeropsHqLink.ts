@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
  * The Mate's link to its HQ (SPEC §3.4, `@t3tools/shared/mateLink`): one outbound WebSocket, kept
  * open for as long as this server runs.
@@ -17,13 +18,18 @@
  * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks;
  *   and who its project lets in (`access`), handed on to `ZeropsProjectAccess` with its age.
  *
- * A link that closes or never opens is tried again after a growing wait. A link that stays open is
- * replaced before the Zerops L7 cuts it ({@link MATE_LINK_ROTATE_MS}): its successor opens beside
- * it, and the old one closes only once HQ answered on the new one, so HQ never holds the Mate
- * without a link.
+ * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
+ * where it answers there ({@link HQ_LINK_ADDRESS_ORDER}): the Zerops L7 cuts a WebSocket on a
+ * project's shared IPv4 at 120 s, and not one on its IPv6. A link that stays open is replaced before
+ * that cut all the same ({@link MATE_LINK_ROTATE_MS}): its successor opens beside it, and the old one
+ * closes only once HQ answered on the new one, so HQ never holds the Mate without a link.
  *
  * @module ZeropsHqLink
  */
+import * as NodeDns from "node:dns";
+import type * as NodeNet from "node:net";
+
+import { NodeWS } from "@effect/platform-node/NodeSocket";
 import type { CrewSnapshot, OrchestrationThreadShell } from "@t3tools/contracts";
 import {
   MATE_OVERVIEW_EVERY_MS,
@@ -129,6 +135,20 @@ export class ZeropsHqLink extends Context.Service<
 >()("t3/zerops/ZeropsHqLink") {}
 
 const DEFAULT_RECONNECT_DELAYS_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 10_000, 30_000];
+
+/**
+ * The order the link resolves HQ's addresses in. The Zerops L7 cuts a WebSocket on a project's shared
+ * IPv4 120 s after it opened, and not one on the project's IPv6 (verified.md, 2026-10-03): a Mate
+ * container has IPv6, so its link normally holds and never rotates. IPv4 is still tried should IPv6
+ * not answer (Node's `autoSelectFamily`, on by default), and rotation covers that case.
+ */
+export const HQ_LINK_ADDRESS_ORDER = "ipv6first";
+
+/** `lookup`, resolving in {@link HQ_LINK_ADDRESS_ORDER} whatever else a connection asks of it. */
+export const preferringIpv6 =
+  (lookup: NodeNet.LookupFunction): NodeNet.LookupFunction =>
+  (hostname, options, callback) =>
+    lookup(hostname, { ...options, order: HQ_LINK_ADDRESS_ORDER }, callback);
 
 /**
  * How long a link is kept before its successor opens. The Zerops L7 closes every WebSocket 120 s
@@ -485,7 +505,10 @@ export const layer = (crew: OverviewSources["crew"]) =>
         readOutcome: fs
           .readFileString(paths.join(paths.dirname(path), "outcome.json"))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
-        connect: (url) => new WebSocket(url) as unknown as LinkSocket,
+        connect: (url) =>
+          new NodeWS.WebSocket(url, {
+            lookup: preferringIpv6(NodeDns.lookup),
+          }) as unknown as LinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
         ...feed,
       });

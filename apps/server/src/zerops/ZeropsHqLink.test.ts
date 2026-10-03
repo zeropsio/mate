@@ -22,9 +22,11 @@ import {
   type HqEnrollment,
   type HqOutcome,
   type LinkSocket,
+  HQ_LINK_ADDRESS_ORDER,
   makeZeropsHqLink,
   MATE_LINK_ROTATE_MS,
   mateOverviewFeed,
+  preferringIpv6,
   type OverviewSources,
 } from "./ZeropsHqLink.ts";
 
@@ -459,6 +461,27 @@ describe("ZeropsHqLink", () => {
       }),
     ),
   );
+});
+
+// The 120 s cut is the shared IPv4's: a WebSocket over the project's IPv6 holds (verified.md,
+// 2026-10-03). A Mate container has IPv6, so its link asks for HQ's addresses IPv6 first.
+describe("ZeropsHqLink's addresses", () => {
+  it("resolves HQ IPv6 first, whatever else the connection asks", () => {
+    const asked: Array<unknown> = [];
+    const lookup = preferringIpv6((hostname, options, callback) => {
+      asked.push({ hostname, options });
+      callback(null, [{ address: "2001:db8::1", family: 6 }]);
+    });
+    let answered: unknown;
+    lookup("hq.example", { all: true, hints: 0 }, (_error, addresses) => {
+      answered = addresses;
+    });
+    assert.strictEqual(HQ_LINK_ADDRESS_ORDER, "ipv6first");
+    assert.deepStrictEqual(asked, [
+      { hostname: "hq.example", options: { all: true, hints: 0, order: "ipv6first" } },
+    ]);
+    assert.deepStrictEqual(answered, [{ address: "2001:db8::1", family: 6 }]);
+  });
 });
 
 describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
