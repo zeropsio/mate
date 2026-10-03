@@ -30,6 +30,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
+import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 
 export interface McpLiveServer {
   readonly name: string;
@@ -391,6 +392,8 @@ export class McpLive extends Context.Service<
       name: string,
       enabled: boolean,
     ) => Effect.Effect<void, ProviderMcpError>;
+    /** The drivers installed here, each once: the agents an added server is written for. */
+    readonly installedDrivers: Effect.Effect<ReadonlyArray<ProviderDriverKind>>;
     /** Every running session of every instance of `driver`, best effort. */
     readonly configChanged: (
       driver: ProviderDriverKind,
@@ -403,6 +406,7 @@ export const layer = Layer.effect(
   McpLive,
   Effect.gen(function* () {
     const registry = yield* ProviderInstanceRegistry;
+    const providers = yield* ProviderRegistry;
     const running = Effect.fn("McpLive.running")(function* (threadId: ThreadId) {
       for (const instance of yield* registry.listInstances) {
         if (yield* instance.adapter.hasSession(threadId)) return instance;
@@ -430,6 +434,11 @@ export const layer = Layer.effect(
         hookOf(threadId).pipe(Effect.flatMap((hook) => hook.reconnect(threadId, name))),
       setEnabled: (threadId, name, enabled) =>
         hookOf(threadId).pipe(Effect.flatMap((hook) => hook.setEnabled(threadId, name, enabled))),
+      installedDrivers: providers.getProviders.pipe(
+        Effect.map((snapshots) => [
+          ...new Set(snapshots.filter((snapshot) => snapshot.installed).map((s) => s.driver)),
+        ]),
+      ),
       configChanged: (driver, change) =>
         registry.listInstances.pipe(
           Effect.flatMap((instances) =>
