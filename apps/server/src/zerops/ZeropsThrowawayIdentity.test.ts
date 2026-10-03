@@ -15,6 +15,7 @@ import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import {
   DOOR_MEMBER_LIST_RETRY_ATTEMPTS,
   DOOR_THROWAWAY_MAX_AGE_MS,
@@ -74,22 +75,26 @@ const stub = (
   ),
 ) => {
   const seen: Array<SeenRequest> = [];
-  const layer = Layer.mergeAll(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request) => {
-        const authorization = request.headers.authorization;
-        seen.push({ url: request.url, authorization });
-        return Effect.succeed(
-          HttpClientResponse.fromWeb(
-            request,
-            route(request.url, authorization?.replace("Bearer ", "")),
-          ),
-        );
-      }),
+  const layer = ZeropsOrgReadModule.layer.pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make((request) => {
+            const authorization = request.headers.authorization;
+            seen.push({ url: request.url, authorization });
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                route(request.url, authorization?.replace("Bearer ", "")),
+              ),
+            );
+          }),
+        ),
+        Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+        ZeropsIdentityStatusModule.layer,
+      ),
     ),
-    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-    ZeropsIdentityStatusModule.layer,
   );
   return { layer, seen } as const;
 };
@@ -619,7 +624,7 @@ describe("verifyThrowawayCaller", () => {
         environment: { ...environment, apiToken: "boot-snapshot" },
         token: PRESENTED,
       }).pipe(
-        Effect.provide(layer),
+        Effect.provide(ZeropsOrgReadModule.layer.pipe(Layer.provideMerge(layer))),
         Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
         Effect.provide(ZeropsIdentityStatusModule.layer),
       );

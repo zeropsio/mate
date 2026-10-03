@@ -15,6 +15,7 @@ import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import {
   make as makeWatch,
   planMembershipRecheck,
@@ -173,16 +174,20 @@ const readLayer = (
   ),
 ) => {
   const seen: Array<string | undefined> = [];
-  const layer = Layer.mergeAll(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request) => {
-        seen.push(request.headers.authorization);
-        return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
-      }),
+  const layer = ZeropsOrgReadModule.layer.pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make((request) => {
+            seen.push(request.headers.authorization);
+            return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
+          }),
+        ),
+        Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+        ZeropsIdentityStatusModule.layer,
+      ),
     ),
-    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-    ZeropsIdentityStatusModule.layer,
   );
   return { layer, seen } as const;
 };
@@ -394,7 +399,9 @@ describe("runMembershipRecheck", () => {
       );
 
       const ended = yield* runMembershipRecheck({ environment, failures }).pipe(
-        Effect.provide(Layer.mergeAll(auth.layer, layer)),
+        Effect.provide(
+          ZeropsOrgReadModule.layer.pipe(Layer.provideMerge(Layer.mergeAll(auth.layer, layer))),
+        ),
         Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
         Effect.provide(ZeropsIdentityStatusModule.layer),
       );

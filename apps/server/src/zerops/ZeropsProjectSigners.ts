@@ -65,7 +65,8 @@ import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { requestWithMateKey } from "./ZeropsMateKey.ts";
 import { readJson, zeropsGet } from "./zeropsApiRead.ts";
-import { readMemberEntries, readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
+import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
+import { readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
 import { readProjectRoles } from "./ZeropsMembershipWatch.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
@@ -292,27 +293,16 @@ export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")
   );
   if (project === null) return undefined;
 
-  const { response: memberResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({
-      url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-      token,
-    }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
-  if (memberResponse === undefined || memberResponse.status !== 200) return undefined;
-  const memberBody = yield* readJson(memberResponse).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-  );
-  const entries = readMemberEntries(memberBody);
+  // The member list this Mate reads once for the signers, the door and the watch.
+  const members = yield* (yield* ZeropsOrgRead).members({ apiBaseUrl, clientId: project.clientId });
+  if (members.kind !== "answered" || members.status !== 200) return undefined;
+  const entries = readMemberEntries(members.body);
   // An empty list is an outage dressed as an answer, and acting on it would
   // delete every login in the container.
   if (entries === null || entries.length === 0) return undefined;
   // A partial page changes nothing (S6): a signer merely off this page is
   // not a signer the org lost.
-  if (!isMemberListComplete(memberBody, entries.length)) return undefined;
+  if (!isMemberListComplete(members.body, entries.length)) return undefined;
   return new Set(
     readOrgMembers(entries)
       .filter((member) => member.status === "ACTIVE")
@@ -332,17 +322,23 @@ export const make = Effect.gen(function* () {
     readonly at: number;
     readonly value: ReadonlySet<string>;
   } | null>(null);
-  // The process-wide reader, shared with the door and the watch — provided
-  // by the layer this service's own layer composes above
-  // (`zeropsFeedsLayer.ts`).
+  // The process-wide reader and the member list read once for all, shared
+  // with the door and the watch — provided by the layer this service's own
+  // layer composes above (`zeropsFeedsLayer.ts`).
   const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
+  const orgRead = yield* ZeropsOrgRead;
 
   const withHttp = <A>(
-    effect: Effect.Effect<A, never, HttpClient.HttpClient | ZeropsMateKeyModule.ZeropsMateKey>,
+    effect: Effect.Effect<
+      A,
+      never,
+      HttpClient.HttpClient | ZeropsMateKeyModule.ZeropsMateKey | ZeropsOrgRead
+    >,
   ) =>
     effect.pipe(
       Effect.provideService(HttpClient.HttpClient, httpClient),
       Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+      Effect.provideService(ZeropsOrgRead, orgRead),
     );
 
   /** The org's active members read now, cached on success. */

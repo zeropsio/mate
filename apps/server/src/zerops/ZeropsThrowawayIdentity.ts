@@ -73,11 +73,11 @@ import {
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type { HttpClientResponse } from "effect/unstable/http";
 
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
 import { requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
+import { readMemberEntries, ZeropsOrgRead, type OwnKeyRead } from "./ZeropsOrgRead.ts";
 import {
   readJson,
   responseDateEpochMs,
@@ -186,24 +186,6 @@ const UserInfoResponse = Schema.Struct({
 
 const decodeProject = Schema.decodeUnknownEffect(ProjectResponse);
 const decodeUserInfo = Schema.decodeUnknownEffect(UserInfoResponse);
-
-/**
- * The org's member list. The platform pages it under `items`; a bare array is
- * accepted too, and anything else is unusable rather than empty — an empty
- * member list would refuse everyone, which reads as a lockout rather than as
- * the outage it is.
- */
-/**
- * The member list's rows. `GET /client/{id}/user/list` answers
- * `{ clientUserList: [...] }` — not the `items` the search endpoints use, and
- * not a bare array (measured 2026-09-16 on a real Mate: the door refused every
- * caller with "not in the expected shape" until this read the right key).
- */
-export function readMemberEntries(body: unknown): ReadonlyArray<unknown> | null {
-  if (typeof body !== "object" || body === null) return null;
-  const rows = (body as Record<string, unknown>)["clientUserList"];
-  return Array.isArray(rows) ? rows : null;
-}
 
 /** Flags a throwaway must not carry. Any truthy one refuses the token. */
 const TOKEN_FLAG_KEYS = [
@@ -333,6 +315,11 @@ export function resolveDoorVisibility(input: {
   };
 }
 
+/** A member-list answer worth asking again: no key to read with, or a status that is no verdict. */
+const isMemberListFlake = (read: OwnKeyRead): boolean =>
+  read.kind === "no-key" ||
+  (read.kind === "answered" && read.status !== 200 && read.status !== 401 && read.status !== 403);
+
 /**
  * Proves that the presented credential is a throwaway minted for this Mate,
  * and resolves the role of the person who minted it.
@@ -447,31 +434,31 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
     return yield* refused("stale");
   }
 
-  // 6. Its creator, and whether the org still knows them. Retried up to
-  //    DOOR_MEMBER_LIST_RETRY_ATTEMPTS times when the platform's answer is
-  //    neither 200 nor 401/403 — a live flake must not read as "not a
-  //    member" (see DOOR_MEMBER_LIST_RETRY_ATTEMPTS).
+  // 6. Its creator, and whether the org still knows them, from the member
+  //    list this Mate reads once for the door, the watch and the signers
+  //    (`ZeropsOrgRead`). Asked again up to DOOR_MEMBER_LIST_RETRY_ATTEMPTS
+  //    times when the platform's answer is neither 200 nor 401/403 — a live
+  //    flake must not read as "not a member" (see
+  //    DOOR_MEMBER_LIST_RETRY_ATTEMPTS). A failed read is never kept, so each
+  //    asking reads again.
   if (record.createdByUser.length === 0) return yield* refused("not_member");
-  let memberResponse: HttpClientResponse.HttpClientResponse | undefined;
-  for (let attempt = 1; attempt <= DOOR_MEMBER_LIST_RETRY_ATTEMPTS; attempt++) {
-    const { response } = yield* requestWithMateKey(mateKey, (token) =>
-      zeropsGet({
-        url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-        token,
-      }),
-    );
-    memberResponse = response;
-    const status = response?.status;
-    const isFlake = status === undefined || (status !== 200 && status !== 401 && status !== 403);
-    if (!isFlake || attempt === DOOR_MEMBER_LIST_RETRY_ATTEMPTS) break;
+  const readMembers = (yield* ZeropsOrgRead).members({ apiBaseUrl, clientId: project.clientId });
+  let members = yield* readMembers;
+  for (
+    let attempt = 2;
+    attempt <= DOOR_MEMBER_LIST_RETRY_ATTEMPTS && isMemberListFlake(members);
+    attempt++
+  ) {
     yield* Effect.sleep(DOOR_MEMBER_LIST_RETRY_DELAY);
+    members = yield* readMembers;
   }
-  if (memberResponse === undefined || memberResponse.status !== 200) {
+  if (members.kind === "unreachable") return yield* unavailable(members.reason);
+  if (members.kind !== "answered" || members.status !== 200) {
     return yield* unavailable(
-      `The Zerops API answered ${memberResponse === undefined ? "nothing" : String(memberResponse.status)} for this org's member list.`,
+      `The Zerops API answered ${members.kind === "answered" ? String(members.status) : "nothing"} for this org's member list.`,
     );
   }
-  const entries = readMemberEntries(yield* readJson(memberResponse));
+  const entries = readMemberEntries(members.body);
   if (entries === null) {
     return yield* unavailable("This org's member list was not in the expected shape.");
   }

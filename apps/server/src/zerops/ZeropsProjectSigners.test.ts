@@ -31,6 +31,7 @@ import {
 } from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import {
   isMemberListComplete,
   loginTurnRefusal,
@@ -304,15 +305,19 @@ const httpLayer = (
   ),
 ) => {
   const seen: Array<string | undefined> = [];
-  const layer = Layer.mergeAll(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request) => {
-        seen.push(request.headers.authorization);
-        return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
-      }),
+  const layer = ZeropsOrgReadModule.layer.pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make((request) => {
+            seen.push(request.headers.authorization);
+            return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
+          }),
+        ),
+        Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+      ),
     ),
-    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
   );
   return { layer, seen } as const;
 };
