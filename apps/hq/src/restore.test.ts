@@ -12,7 +12,7 @@ import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
 import { gitClient } from "../test/harness/gitClient.ts";
-import { OTHER_KEY_SECRET, TEST_KEY_SECRET } from "../test/harness/deployKeys.ts";
+import { OTHER_KEY_SECRET, TEST_KEY_SECRET, testKey } from "../test/harness/deployKeys.ts";
 import {
   addProject,
   mateInApp,
@@ -701,8 +701,10 @@ describe("a backup set, restored", () => {
             ["--file=-", NodePath.join(a.storeDir, "sets", manifest.id, "db.dump")],
             { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
           );
-          assert.include(dump, "hq_deploy_token");
+          // pg_restore writes bytea in hex: the row is there under the key's id, its bytes no value.
+          assert.include(dump, testKey().id);
           assert.notInclude(dump, VALUE);
+          assert.notInclude(dump, Buffer.from(VALUE, "utf8").toString("hex"));
           assert.notInclude(dump, TEST_KEY_SECRET);
 
           for (const [keySecret, keys, outcome] of [
