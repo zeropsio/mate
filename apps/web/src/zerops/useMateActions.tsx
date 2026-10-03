@@ -87,6 +87,7 @@ import {
   landingAfterDelete,
 } from "../components/zerops/ZeropsDeleteMateDialog.logic";
 import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupDialog";
+import { emptyApplications } from "../components/zerops/projects/emptyApps.logic";
 import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import {
@@ -253,13 +254,16 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
   const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
+  // An application HQ holds with no project is one too: a Mate may be moved into it, as the
+  // projects page draws it (F29: a birth cut before its Mate was attached leaves its one empty).
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
         rank: rankZeropsCandidateForListing,
         ...projectOrder,
+        apps: emptyApplications(hqStructure, activeOrganization?.id),
       }),
-    [candidates, projectOrder],
+    [activeOrganization?.id, candidates, hqStructure, projectOrder],
   );
   const taken = useTakenBotNames();
   // Every Mate's tint as every surface draws it: the face a Change face dialog opens on.
@@ -1088,7 +1092,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             move(candidate, membership);
           }}
           open
-          projectName={dialog.candidate.project.name}
+          name={mateName(dialog.candidate)}
         />
       ) : null}
       {dialog?.kind === "delete" ? (

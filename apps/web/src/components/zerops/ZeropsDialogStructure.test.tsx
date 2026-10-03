@@ -152,8 +152,8 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
             none: true,
           }}
           onCancel={noop}
+          name="Fen"
           onSubmit={noop}
-          projectName="Acme Docs - stage"
         />,
       ),
   },

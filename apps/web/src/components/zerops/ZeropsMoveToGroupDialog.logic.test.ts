@@ -18,7 +18,7 @@ describe("validateMoveForm", () => {
 
   it("wants a name for a new group and a role for any group", () => {
     expect(validateMoveForm({ target: "new", newGroupName: " ", role: "" })).toEqual({
-      newGroupName: "Give the group a name.",
+      newGroupName: "Give the project a name.",
       role: "Say what this environment is for.",
     });
     expect(validateMoveForm({ target: "g1", newGroupName: "", role: "dev" })).toEqual({});

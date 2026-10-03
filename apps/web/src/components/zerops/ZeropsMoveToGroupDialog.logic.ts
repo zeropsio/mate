@@ -129,7 +129,7 @@ export function validateMoveForm(form: MoveForm): MoveFormErrors {
   const errors: { newGroupName?: string; role?: string } = {};
   if (form.target === "none") return errors;
   if (form.target === "new" && form.newGroupName.trim().length === 0) {
-    errors.newGroupName = "Give the group a name.";
+    errors.newGroupName = "Give the project a name.";
   }
   if (form.role === "") errors.role = "Say what this environment is for.";
   return errors;

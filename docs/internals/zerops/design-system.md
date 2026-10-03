@@ -780,6 +780,8 @@ left.
 | T3 says                                                                                 | mate says                                                                                       |
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | environment                                                                             | **project**                                                                                     |
+| HQ's application, the layer above Zerops projects (the code's _group_, _app_)           | **project** — "Move to project…", "New project", "No project"; never _group_, _application_     |
+| a Zerops project shown beside one (a Mate's, a stage's)                                 | **its name**, as its row in the left menu draws it; never _project_ in the same dialog          |
 | pull request, PR                                                                        | **change** — "Change #4 waits for your merge", "2 open changes"; HQ's word for a Mate's work    |
 | rebase (a change behind or in conflict with `main`)                                     | **merge `main` into it** — "Conflicts with main"; HQ takes a Mate's push only forward           |
 | provider                                                                                | **coding agent**                                                                                |

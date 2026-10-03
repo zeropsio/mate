@@ -73,6 +73,15 @@ const mock = vi.hoisted(() => ({
   membersStatus: "ready" as "idle" | "loading" | "ready" | "failed",
   /** The account HQ's read of the member list again. */
   reread: vi.fn(),
+  /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
+  moveDialog: {
+    current: null as {
+      readonly name: string;
+      readonly choices: {
+        readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+      };
+    } | null,
+  },
 }));
 
 vi.mock("./accountInvalidations", () => ({
@@ -185,6 +194,12 @@ vi.mock("../components/zerops/ZeropsAssignMateDialog", () => ({
     return null;
   },
 }));
+vi.mock("../components/zerops/ZeropsMoveToGroupDialog", () => ({
+  ZeropsMoveToGroupDialog: (props: NonNullable<typeof mock.moveDialog.current>) => {
+    mock.moveDialog.current = props;
+    return null;
+  },
+}));
 // The dialog as the hook mounts it: what it is handed, and the two answers it gives.
 vi.mock("../components/zerops/ZeropsChangeFaceDialog", () => ({
   ZeropsChangeFaceDialog: (props: FaceDialogProps) => {
@@ -255,6 +270,7 @@ beforeEach(() => {
   mock.reread.mockReset();
   mock.mateKey = null;
   mock.deleteDialog.current = null;
+  mock.moveDialog.current = null;
   mock.updateMate.mockReset();
   mock.finishMateSetup.mockReset();
   seen.length = 0;
@@ -967,6 +983,64 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
     };
     mount();
     expect(verbs(made).map((verb) => verb.id)).toContain("move");
+  });
+
+  // e2e-krls F29: a birth cut before its Mate was attached leaves its application empty in HQ.
+  it("offers every application HQ holds, one with no project in it too", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-acme", id: "org-acme" },
+    } as never);
+    registry.set(hqStructureAtom, {
+      organizationId: "org-acme",
+      structure: {
+        ungrouped: [],
+        apps: [
+          {
+            id: "acme",
+            name: "Acme Docs",
+            projects: [
+              { projectId: FEN.project.id, kind: "mate", mate: { name: "Fen", face: "" } },
+            ],
+          },
+          { id: "app-g", name: "mate-rig-e2e-g", projects: [] },
+        ],
+      },
+      changes: null,
+      readAt: 1_000,
+      current: true,
+      unavailableSince: null,
+    } as never);
+    mock.listing.current = {
+      state: "known",
+      value: [FEN],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount(registry);
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "move")!
+        .onSelect();
+    });
+
+    expect(mock.moveDialog.current?.choices.apps.map((app) => app.name)).toContain(
+      "mate-rig-e2e-g",
+    );
+  });
+
+  it("names the Mate as its row in the left menu does", () => {
+    mount();
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "move")!
+        .onSelect();
+    });
+
+    expect(mock.moveDialog.current?.name).toBe("Fen");
   });
 });
 
