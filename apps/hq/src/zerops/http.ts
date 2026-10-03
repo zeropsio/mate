@@ -311,6 +311,13 @@ export const makeZeropsApiHttp = (
         get("projectEnv", credential, `/project/${projectId}/env-file`, EnvFile).pipe(
           Effect.map(({ value }) => parseEnvFile(value.envFile)),
         ),
+      tokenProjects: (orgId, tokenId) => (credential) =>
+        get(
+          "tokenProjects",
+          credential,
+          `/client/${orgId}/integration-token/${encodeURIComponent(tokenId)}`,
+          TokenRow,
+        ).pipe(Effect.map(({ value }) => value.projects)),
       ownToken: (credential) =>
         Effect.gen(function* () {
           const { value: info } = yield* get("ownToken", credential, "/user/info", UserInfo);

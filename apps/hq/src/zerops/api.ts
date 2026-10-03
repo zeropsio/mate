@@ -120,6 +120,14 @@ export class ZeropsApi extends Context.Service<
     readonly projectEnv: (projectId: string) => Read<ReadonlyMap<string, string>>;
     /** `GET /user/info`, then the token's own record. Refused for a credential that is no token. */
     readonly ownToken: Read<ZeropsOwnToken>;
+    /**
+     * `GET /client/{org}/integration-token/{id}`: what one token of the org grants, read by its id —
+     * never its value. An org Read only token may read it (measured on KRLS 2026-10-03).
+     */
+    readonly tokenProjects: (
+      orgId: string,
+      tokenId: string,
+    ) => Read<ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>>;
     /** `GET /project/{id}/service-stack`: the project's services, the platform's own among them. */
     readonly services: (projectId: string) => Read<ReadonlyArray<ZeropsService>>;
     /** `GET /service-stack/{id}`: one service, read directly — never from a search's index. */

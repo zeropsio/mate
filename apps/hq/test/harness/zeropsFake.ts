@@ -159,6 +159,27 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
             ),
         ),
       ),
+    tokenProjects: (orgId, tokenId) => (credential) =>
+      inOrg("tokenProjects", credential, orgId).pipe(
+        Effect.flatMap(() => {
+          // An id of no token: `400 *NotFound`; another org's token: `403`, as the platform
+          // refuses its other reads (neither measured for this one).
+          const token = [...world.tokens.values()].find((candidate) => candidate.id === tokenId);
+          if (token === undefined) {
+            return Effect.fail(notFound("tokenProjects", "integrationTokenNotFound"));
+          }
+          return token.orgId === orgId
+            ? Effect.succeed(token.projects)
+            : Effect.fail(
+                new ZeropsRefused({
+                  operation: "tokenProjects",
+                  reason: "forbidden",
+                  status: 403,
+                  code: "insufficientPermissions",
+                }),
+              );
+        }),
+      ),
     ownToken: (credential) =>
       Effect.zipWith(caller("ownToken", credential), Clock.currentTimeMillis, (token, now) => ({
         ...token,

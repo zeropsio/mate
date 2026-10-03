@@ -51,6 +51,7 @@ export class MateRefused extends Schema.TaggedError<MateRefused>()("MateRefused"
     "project_gone",
     "not_a_mate",
     "mate_credential_required",
+    "key_not_its_own",
   ]),
 }) {}
 
@@ -83,7 +84,7 @@ export class MateCredentials extends Context.Service<
     readonly keepKey: (
       credential: string,
       keyTokenId: string,
-    ) => Effect.Effect<void, MateRefused | NotLeader | SqlError>;
+    ) => Effect.Effect<void, MateRefused | NotLeader | SqlError | ZeropsError>;
     /** The id of the key the Mate of `projectId` named with its live credential; none unnamed. */
     readonly keyOf: (projectId: string) => Effect.Effect<string | null, SqlError>;
     /**
@@ -156,6 +157,21 @@ export const mateCredentialsLayer = (options: {
             });
           }),
         );
+      /**
+       * Whether `keyTokenId` names a key whose one grant is the project `projectId`, read by its id
+       * with HQ's own credential — never a deploy key, a person's token, nor another Mate's key. A
+       * token Zerops refuses to show HQ, whatever its reason, is none.
+       */
+      const keyOfProject = (projectId: string, keyTokenId: string) =>
+        Effect.gen(function* () {
+          const { orgId } = yield* roles.view;
+          const credential = yield* own;
+          const grants = api.tokenProjects(orgId, keyTokenId);
+          return yield* grants(credential).pipe(
+            Effect.map((projects) => projects.length === 1 && projects[0]?.projectId === projectId),
+            Effect.catchTag("ZeropsRefused", () => Effect.succeed(false)),
+          );
+        });
       const keyOf = (projectId: string) =>
         Effect.map(
           sql<{ readonly key_token_id: string | null }>`
@@ -192,6 +208,15 @@ export const mateCredentialsLayer = (options: {
             if (env.get(CHALLENGE_ENV) !== nonce) {
               return yield* new MateRefused({ code: "env_mismatch" });
             }
+            // A key id its Mate names is kept only where it names the Mate's own key; the
+            // enrollment goes on without it otherwise, and Zerops not answering keeps none.
+            const namedKey =
+              keyTokenId !== undefined &&
+              (yield* keyOfProject(projectId, keyTokenId).pipe(
+                Effect.catchTag("ZeropsUnavailable", () => Effect.succeed(false)),
+              ))
+                ? keyTokenId
+                : undefined;
             const credential = secret();
             // The nonce is spent in the transaction that issues: of two presentations racing, one
             // finds it already spent.
@@ -209,7 +234,7 @@ export const mateCredentialsLayer = (options: {
                 yield* sql`
                   INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id)
                   VALUES (${hashOf(credential)}, ${projectId},
-                    ${keyTokenId ?? before?.key_token_id ?? null})`;
+                    ${namedKey ?? before?.key_token_id ?? null})`;
                 return true;
               }),
             );
@@ -218,6 +243,15 @@ export const mateCredentialsLayer = (options: {
           }),
         keepKey: (credential, keyTokenId) =>
           Effect.gen(function* () {
+            const [held] = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_mate_credential
+              WHERE credential_hash = ${hashOf(credential)} AND revoked_at IS NULL`;
+            if (held === undefined) {
+              return yield* new MateRefused({ code: "mate_credential_required" });
+            }
+            if (!(yield* keyOfProject(held.project_id, keyTokenId))) {
+              return yield* new MateRefused({ code: "key_not_its_own" });
+            }
             const kept = yield* leader.write(sql`
               UPDATE hq_mate_credential SET key_token_id = ${keyTokenId}
               WHERE credential_hash = ${hashOf(credential)} AND revoked_at IS NULL

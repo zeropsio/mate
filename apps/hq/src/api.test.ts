@@ -1179,6 +1179,21 @@ describe("HQ API", () => {
         const { call, fake } = yield* startCore(true);
         yield* untilHealth(call, "active");
         const owner = yield* setUpMate(call, "P_MATE");
+        // The Mate's keys as the platform holds them, each granting its project alone.
+        for (const id of ["tok-key-1", "tok-key-2"]) {
+          fake.tokens.set(`value-of-${id}`, {
+            id,
+            name: "zerops-zcp-zcp",
+            orgId: "ORG",
+            roleCode: "NO_ACCESS",
+            canCreateProjects: false,
+            canViewFinances: false,
+            canEditFinances: false,
+            projects: [{ projectId: "P_MATE", roleCode: "ADMIN" }],
+            createdMs: 0,
+            createdByUser: "owner",
+          });
+        }
         const { nonce } = (yield* call("POST", "/api/mate/challenge", {
           body: { projectId: "P_MATE" },
         })).body as { readonly nonce: string };
