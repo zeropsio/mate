@@ -1,27 +1,13 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  HqDeployAnswer,
-  NO_DEPLOYS,
-  WithDeploys,
-  saysZeropsDidNotAnswer,
-  zeropsDidNotAnswer,
-} from "./hqDeploys.ts";
+import { HqDeployAnswer, NO_DEPLOYS, WithDeploys, zeropsDidNotAnswer } from "./hqDeploys.ts";
 
 describe("zeropsDidNotAnswer — HQ's words for a deploy Zerops did not answer", () => {
   it("says it, with what Zerops failed at", () => {
     expect(zeropsDidNotAnswer("connect ETIMEDOUT")).toBe(
       "Zerops did not answer: connect ETIMEDOUT",
     );
-  });
-
-  it.each([
-    { message: zeropsDidNotAnswer("connect ETIMEDOUT"), says: true },
-    { message: "stage has no deploy token yet; an admin mints it", says: false },
-    { message: null, says: false },
-  ])("is read back from a deploy's words: $says", ({ message, says }) => {
-    expect(saysZeropsDidNotAnswer(message)).toBe(says);
   });
 });
 

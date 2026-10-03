@@ -251,7 +251,7 @@ export function zeropsStatusWord(status: string): string {
 const CONTROL_PLANE_TITLE = "Zerops Control Plane";
 
 /** The service's own page in the Zerops dashboard, the GUI's `/service-stack/:id` route. */
-const serviceDashboardUrl = (serviceId: string): string =>
+export const serviceDashboardUrl = (serviceId: string): string =>
   `https://app.zerops.io/service-stack/${serviceId}`;
 
 /** `:80`, or `:80, :443` — the ports the service declares, after its name. */

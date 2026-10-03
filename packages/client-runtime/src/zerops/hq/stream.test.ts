@@ -25,7 +25,7 @@ const ACME: HqStructure["apps"][number] = {
 };
 const BETA: HqStructure["apps"][number] = { id: "app-2", name: "Beta", projects: [] };
 
-/** Acme's stage, its `api` live on one commit while the next one deploys. */
+/** Acme's stage, its `api` live on one commit while the next one builds. */
 const STAGE: HqEnvironment = {
   projectId: "p-stage",
   tier: "stage",
@@ -34,29 +34,38 @@ const STAGE: HqEnvironment = {
   order: 1,
   keyHeld: true,
   keyInvalid: false,
-  deploys: [
+  jobs: [
     {
+      id: "2",
+      kind: "deploy",
       service: "api",
-      latest: {
-        sha: "b".repeat(40),
-        state: "deploying",
-        failure: null,
-        message: null,
-        appVersionId: "av-2",
-        processId: "pr-2",
-        requestedBy: "u-ada",
-        at: "2026-10-02T10:00:00.000Z",
-      },
-      live: {
-        sha: "a".repeat(40),
-        state: "live",
-        failure: null,
-        message: null,
-        appVersionId: "av-1",
-        processId: "pr-1",
-        requestedBy: null,
-        at: "2026-10-02T09:00:00.000Z",
-      },
+      sha: "b".repeat(40),
+      state: "building",
+      cause: "merge",
+      ref: "b".repeat(40),
+      reason: null,
+      appVersionId: "av-2",
+      processId: "pr-2",
+      requestedBy: "u-ada",
+      at: "2026-10-02T10:00:00.000Z",
+      endedAt: null,
+      supersededBy: null,
+    },
+    {
+      id: "1",
+      kind: "deploy",
+      service: "api",
+      sha: "a".repeat(40),
+      state: "live",
+      cause: "merge",
+      ref: "a".repeat(40),
+      reason: null,
+      appVersionId: "av-1",
+      processId: "pr-1",
+      requestedBy: null,
+      at: "2026-10-02T09:00:00.000Z",
+      endedAt: "2026-10-02T09:03:00.000Z",
+      supersededBy: null,
     },
   ],
 };
@@ -161,10 +170,10 @@ describe("structureEventOf", () => {
         people: null,
       },
     ],
-    // SPEC §3.2b: an application's stage and production with their deploys, to whoever reads its
+    // SPEC §3.2b: an application's stage and production with their jobs, to whoever reads its
     // changes; read through the contract's shape, so a set this build cannot read is not known.
     [
-      "a snapshot carries each application's environments and their deploys",
+      "a snapshot carries each application's environments and their jobs",
       { type: "snapshot", apps: [ACME_STAGED] },
       {
         kind: "snapshot",

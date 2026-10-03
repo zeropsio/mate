@@ -25,7 +25,7 @@ import {
 import type { ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import { stopLine } from "./projects/projectsView.logic";
@@ -144,24 +144,30 @@ const BUILD = firstBuild();
 /** HQ records the deploy it queued and the final failed job, without a forge read. */
 const FIRST = "8f7e6d5c4b3a29180f7e6d5c4b3a291807f6e5d4";
 const emptyDeploy = {
-  failure: null,
-  message: null,
+  id: "1",
+  kind: "deploy",
+  service: "app",
+  cause: "merge",
+  ref: null,
+  reason: null,
   appVersionId: null,
   processId: null,
   requestedBy: null,
-};
-const queued = (sha = FIRST, seconds = 690): HqDeploy => ({
+  endedAt: null,
+  supersededBy: null,
+} as const;
+const queued = (sha = FIRST, seconds = 690): HqJob => ({
   ...emptyDeploy,
   sha,
-  state: "pending",
+  state: "queued",
   at: iso(seconds),
 });
-const FAILED_ON_MAIN: HqDeploy = {
+const FAILED_ON_MAIN: HqJob = {
   ...emptyDeploy,
   sha: FIRST,
   state: "failed",
-  failure: "job",
-  at: iso(772.7),
+  at: iso(690),
+  endedAt: iso(772.7),
 };
 const pull = (number: number, mergedAt: number): FlowPullRequest => ({
   repository: "appdev",
@@ -194,7 +200,7 @@ interface Moment {
   /** The code changes merged by then. */
   readonly merged?: ReadonlyArray<FlowPullRequest>;
   /** `main`'s head of `appdev` and its statuses, as the deploy half last read them. */
-  readonly deploy?: HqDeploy;
+  readonly deploy?: HqJob;
 }
 
 /** What the menu's line and the page's cell say at one moment. */

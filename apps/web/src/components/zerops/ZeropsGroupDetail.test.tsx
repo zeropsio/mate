@@ -19,7 +19,8 @@ import {
   type StopFailure,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -298,16 +299,31 @@ describe("ZeropsGroupPane", () => {
 
 const fullSha = (seed: string) => seed.padEnd(40, "0");
 
-/** HQ's record of a deploy of `commit` in `state`. */
-const deployRecord = (commit: string, state: HqDeploy["state"]): HqDeploy => ({
+const ENDED: ReadonlySet<HqJob["state"]> = new Set([
+  "live",
+  "failed",
+  "refused",
+  "skipped",
+  "superseded",
+]);
+
+/** HQ's job of a deploy of `commit` in `state`. */
+const deployRecord = (commit: string, state: HqJob["state"], over: Partial<HqJob> = {}): HqJob => ({
+  id: "1",
+  kind: "deploy",
+  service: null,
   sha: commit,
   state,
-  failure: state === "failed" ? "job" : null,
-  message: null,
+  cause: "merge",
+  ref: null,
+  reason: null,
   appVersionId: null,
   processId: null,
   requestedBy: null,
   at: "2026-09-19T11:00:00Z",
+  endedAt: ENDED.has(state) ? "2026-09-19T11:04:00Z" : null,
+  supersededBy: null,
+  ...over,
 });
 
 /** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
@@ -315,7 +331,7 @@ const service = (
   hostname: string,
   seed: string,
   name: string | undefined,
-  state: HqDeploy["state"] = "live",
+  state: HqJob["state"] = "live",
 ): EnvironmentServiceState => ({
   hostname,
   repository: `${hostname}dev`,
@@ -438,6 +454,12 @@ interface StopCase {
   readonly history?: ZeropsHistoryState;
   /** The services, besides api, whose commit each earlier release moves. */
   readonly moving?: ReadonlyArray<string>;
+  /** Whether the person may deploy HQ's commit again over a version HQ did not make. */
+  readonly mayDeployAgain?: boolean;
+  /** The services the tier declares and the project lacks. */
+  readonly notInZerops?: ReadonlyArray<string>;
+  /** What HQ answered of the deploys the last verb pressed here asked for. */
+  readonly deployAnswer?: HqDeployAnswer;
   /** What each release carried, as HQ compared it; none unless given. */
   readonly carried?: ReadonlyMap<string, MovedCommits> | undefined;
   /** Production's services whose commit cannot be told. */
@@ -500,6 +522,16 @@ function renderStop(input: StopCase): string {
     <ZeropsStopPane
       carried={input.carried}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
+      deployAgain={
+        input.mayDeployAgain === true
+          ? { running: () => false, onDeployAgain: () => {} }
+          : undefined
+      }
+      addService={
+        input.mayDeployAgain === true ? { running: () => false, onAdd: () => {} } : undefined
+      }
+      notInZerops={input.notInZerops}
+      deployAnswer={input.deployAnswer}
       deployed={new Map(view.version?.sha === undefined ? [] : [[name, view.version.sha]])}
       history={input.history ?? { kind: "reading" }}
       groupId="shop"
@@ -532,6 +564,179 @@ function renderStop(input: StopCase): string {
 const TWO_LIVE = [service("api", "a1", "v0.1.13"), service("web", "b2", "v0.1.13")];
 
 const count = (markup: string, needle: string | RegExp) => markup.split(needle).length - 1;
+
+// The deploy-jobs design: each service's newest job says where it stands — its attempt of how
+// many, when the next is due, why it ended and when — and a version HQ did not make is said, with
+// HQ's commit to deploy again and the service in Zerops, never overwritten.
+describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", () => {
+  const LIVE = deployRecord(fullSha("a1"), "live", { id: "5", appVersionId: "av-hq" });
+  const drifted: EnvironmentServiceState = {
+    hostname: "api",
+    repository: "apidev",
+    serviceId: "svc-api",
+    appVersionName: "hotfix",
+    activeVersionId: "av-hand",
+    deploy: { latest: LIVE, live: LIVE },
+  };
+  const jobOf = (markup: string) =>
+    /data-zerops-surface="stop-service-job" data-zerops-job-state="(\w+)"/u.exec(markup)?.[1];
+
+  it.each<{
+    readonly name: string;
+    readonly latest: HqJob;
+    readonly state: string;
+    readonly contains: ReadonlyArray<string>;
+  }>([
+    {
+      name: "queued",
+      latest: deployRecord(fullSha("b2"), "queued"),
+      state: "queued",
+      contains: ["b200000 queued"],
+    },
+    {
+      name: "building",
+      latest: deployRecord(fullSha("b2"), "building", { processId: "pr-1" }),
+      state: "building",
+      contains: ["Building b200000"],
+    },
+    {
+      name: "refused at its one try",
+      latest: deployRecord(fullSha("b2"), "refused", { reason: "git: object not found" }),
+      state: "refused",
+      contains: ["HQ refused b200000 1h ago", "git: object not found"],
+    },
+    {
+      name: "skipped",
+      latest: deployRecord(fullSha("b2"), "skipped", {
+        reason: "apidev has no zerops.yaml at b200000",
+      }),
+      state: "skipped",
+      contains: ["HQ skipped b200000 1h ago", "apidev has no zerops.yaml at b200000"],
+    },
+  ])("says a service's newest job $name", ({ latest, state, contains }) => {
+    const markup = renderStop({
+      tier: "stage",
+      services: [{ hostname: "api", repository: "apidev", deploy: { latest, live: null } }],
+    });
+    expect(jobOf(markup)).toBe(state);
+    for (const text of contains) expect(markup).toContain(text);
+  });
+
+  it("says HQ's words for a failure once, in the verdict that names it", () => {
+    const reason = "No zerops.yaml at the commit.";
+    const markup = renderStop({
+      tier: "stage",
+      services: [
+        {
+          hostname: "api",
+          repository: "apidev",
+          deploy: { latest: deployRecord(fullSha("b2"), "failed", { reason }), live: null },
+        },
+      ],
+      failed: {
+        label: "b200000",
+        service: "api",
+        sha: fullSha("b2"),
+        running: undefined,
+        redeploy: undefined,
+        message: reason,
+        mayRunAgain: false,
+      },
+    });
+    expect(jobOf(markup)).toBe("failed");
+    expect(count(markup, reason)).toBe(1);
+  });
+
+  it("says nothing of a job that went live", () => {
+    expect(jobOf(renderStop({ tier: "stage", services: TWO_LIVE }))).toBeUndefined();
+  });
+
+  it("offers HQ's commit again and the service in Zerops, to one who may run it again", () => {
+    const markup = renderStop({ tier: "stage", services: [drifted], mayDeployAgain: true });
+    expect(markup).toContain('data-zerops-surface="stop-service-drift"');
+    expect(markup).toContain("api runs “hotfix”, which HQ did not deploy");
+    expect(markup).toContain("Deploy a100000 again");
+    expect(markup).toContain('href="https://app.zerops.io/service-stack/svc-api"');
+    expect(markup).toContain("Open in Zerops");
+  });
+
+  it("says it, with the service in Zerops only, to one who may not", () => {
+    const markup = renderStop({ tier: "stage", services: [drifted] });
+    expect(markup).toContain("api runs “hotfix”, which HQ did not deploy");
+    expect(markup).not.toContain("Deploy a100000 again");
+    expect(markup).toContain("Open in Zerops");
+  });
+
+  it("offers nothing to ask again where a newer job of another commit stands for the service", () => {
+    const markup = renderStop({
+      tier: "stage",
+      services: [
+        {
+          ...drifted,
+          deploy: {
+            latest: deployRecord(fullSha("c3"), "refused", { id: "6", reason: "no key" }),
+            live: LIVE,
+          },
+        },
+      ],
+      mayDeployAgain: true,
+    });
+    expect(markup).toContain("api runs “hotfix”, which HQ did not deploy");
+    expect(markup).not.toContain("Deploy a100000 again");
+    expect(markup).toContain("Open in Zerops");
+  });
+
+  // Audit D2: a service the recipe declares and the project lacks is said, never added by HQ
+  // alone; whoever may Run again adds it.
+  it("says what the recipe declares and the project lacks, offering to add it", () => {
+    const offered = renderStop({
+      tier: "stage",
+      services: TWO_LIVE,
+      notInZerops: ["db"],
+      mayDeployAgain: true,
+    });
+    expect(offered).toContain('data-zerops-surface="stop-not-in-zerops"');
+    expect(offered).toContain("db · declared in the recipe, not in Zerops");
+    expect(offered).toContain("Add db");
+    const told = renderStop({ tier: "stage", services: TWO_LIVE, notInZerops: ["db"] });
+    expect(told).toContain("db · declared in the recipe, not in Zerops");
+    expect(told).not.toContain("Add db");
+  });
+
+  it("says where HQ answered the deploys a verb pressed here stand", () => {
+    const markup = renderStop({
+      tier: "stage",
+      services: TWO_LIVE,
+      deployAnswer: {
+        jobs: [
+          {
+            environment: "stage",
+            kind: "deploy",
+            service: "api",
+            sha: fullSha("a1"),
+            job: "8",
+            state: "building",
+            processId: "process-8",
+            behind: null,
+            reason: null,
+          },
+        ],
+        note: null,
+      },
+    });
+    expect(markup).toContain('data-zerops-surface="deploy-answer"');
+    expect(markup).toContain("api a100000 building");
+  });
+
+  it("says no drift while the service runs what HQ put live", () => {
+    const markup = renderStop({
+      tier: "stage",
+      services: [{ ...drifted, activeVersionId: "av-hq" }],
+      mayDeployAgain: true,
+    });
+    expect(markup).not.toContain('data-zerops-surface="stop-service-drift"');
+  });
+});
 
 describe("ZeropsStopPane", () => {
   it.each<{

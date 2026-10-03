@@ -23,7 +23,7 @@ const RECORDED: HqEnvironment = {
   order: 1,
   keyHeld: false,
   keyInvalid: false,
-  deploys: [],
+  jobs: [],
 };
 
 /** HQ, taking every attachment and every key, its structure holding `environments` for `g-1`. */

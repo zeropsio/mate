@@ -62,6 +62,7 @@ import { useZeropsMemberNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { MateFace } from "../primitives";
+import { answeredDeploys } from "../ZeropsDeployAnswer";
 import {
   changeReadVerdict,
   reviewKindLine,
@@ -220,7 +221,11 @@ function ChangeReviewData({
     setPress({ kind: "running" });
     // The head the review shows: its files were read for it, and one pushed since HQ refuses.
     const outcome = await flowValue.merge(target.groupId, change, pull.headSha);
-    setPress(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
+    setPress(
+      outcome.ok
+        ? { kind: "done", deploys: outcome.deploys }
+        : { kind: "refused", reason: outcome.reason },
+    );
   };
   const close = async () => {
     setClosing({ kind: "running" });
@@ -574,6 +579,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
+      deploys={answeredDeploys(press)}
     >
       <ReviewDescription
         description={pull.description}

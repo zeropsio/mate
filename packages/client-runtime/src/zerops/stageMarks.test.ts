@@ -9,18 +9,24 @@ import {
   type StageMark,
   type StageStandings,
 } from "./stageMarks.ts";
-import type { HqDeploy } from "./hq/environments.ts";
+import { jobInFlight, type HqJob } from "./hq/environments.ts";
 
-/** HQ's record of a deploy in `state`. */
-const deployRecord = (state: HqDeploy["state"]): HqDeploy => ({
+/** HQ's job of a deploy in `state`. */
+const deployRecord = (state: HqJob["state"]): HqJob => ({
+  id: "1",
+  kind: "deploy",
+  service: "app",
   sha: "0000000000000000000000000000000000000000",
   state,
-  failure: state === "failed" ? "job" : null,
-  message: null,
+  cause: "merge",
+  ref: null,
+  reason: null,
   appVersionId: null,
   processId: null,
   requestedBy: null,
   at: "2026-10-02T10:00:00.000Z",
+  endedAt: jobInFlight({ state }) ? null : "2026-10-02T10:01:00.000Z",
+  supersededBy: null,
 });
 
 /** A full sha whose first character says which commit it is. */
@@ -175,7 +181,7 @@ describe("stageMarks", () => {
 // grant does not reach C's stage, "0 of 4". What the stage runs is HQ's, the same for everyone who
 // sees the application.
 describe("stageStandings", () => {
-  const record = (state: HqDeploy["state"], commit: string): HqDeploy => ({
+  const record = (state: HqJob["state"], commit: string): HqJob => ({
     ...deployRecord(state),
     sha: commit,
   });
@@ -217,8 +223,8 @@ describe("stageStandings", () => {
     {
       name: "a deploy under way names the commit HQ puts on the service",
       services: [
-        service("app", { latest: record("deploying", D), live: record("live", C) }),
-        service("api", { latest: record("pending", D), live: null }),
+        service("app", { latest: record("building", D), live: record("live", C) }),
+        service("api", { latest: record("queued", D), live: null }),
       ],
       expected: {
         runs: new Map([

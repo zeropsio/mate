@@ -5,8 +5,8 @@
  * between them.
  *
  * The run: the stage's project made at +1061 s; its declaration landed at +1092 s, when HQ queued
- * its deploy of `main` (code landed on `main` at +1032 s); HQ refused it at +1268 s for want of a
- * deploy key, and queued it again at +1389 s once one was minted; the stage's first build ran
+ * its deploy of `main` (code landed on `main` at +1032 s); HQ refused that job at +1268 s for want
+ * of a deploy key, and the key kept at +1389 s asked for another; the stage's first build ran
  * +1407 → +1479 s and its address turned on at +1481 s.
  */
 import {
@@ -18,7 +18,7 @@ import {
   type GroupFlowInput,
 } from "@t3tools/client-runtime/zerops";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { zeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { deployedVersion } from "@t3tools/client-runtime/zerops";
@@ -75,24 +75,27 @@ const merged: FlowPullRequest = {
 const app = (status: string) => ({ hostname: "app", status, runtime: true });
 const db = (status: string) => ({ hostname: "db", status, runtime: false });
 
-/** HQ's newest deploy of the stage's app, as its record says, changed at +`t` s. */
+/** HQ's newest job of the stage's app, asked for at +`t` s. */
 interface HqRecord {
-  readonly state: HqDeploy["state"];
-  readonly failure?: HqDeploy["failure"];
-  readonly message?: string;
+  readonly id: string;
+  readonly state: HqJob["state"];
+  readonly reason?: string;
+  /** When it ended, at +s. */
+  readonly ended?: number;
   readonly t: number;
 }
 
-const QUEUED: HqRecord = { state: "pending", t: 1092 };
+const QUEUED: HqRecord = { id: "1", state: "queued", t: 1092 };
 const REFUSED: HqRecord = {
-  state: "failed",
-  failure: "refused",
-  message: "Brine - stage has no deploy token yet",
-  t: 1268,
+  id: "1",
+  state: "refused",
+  reason: "Brine - stage has no deploy token yet",
+  ended: 1268,
+  t: 1092,
 };
-const QUEUED_AGAIN: HqRecord = { state: "pending", t: 1389 };
-const HQ_DEPLOYING: HqRecord = { state: "deploying", t: 1400 };
-const LIVE: HqRecord = { state: "live", t: 1481 };
+const QUEUED_AGAIN: HqRecord = { id: "2", state: "queued", t: 1389 };
+const HQ_DEPLOYING: HqRecord = { id: "2", state: "building", t: 1389 };
+const LIVE: HqRecord = { id: "2", state: "live", ended: 1481, t: 1389 };
 
 interface Moment {
   readonly t: number;
@@ -107,16 +110,22 @@ interface Moment {
   readonly keyless?: boolean;
 }
 
-function record({ state, failure, message, t }: HqRecord): HqDeploy {
+function record({ id, state, reason, ended, t }: HqRecord): HqJob {
   return {
+    id,
+    kind: "deploy",
+    service: "app",
     sha: SHA,
     state,
-    failure: failure ?? null,
-    message: message ?? null,
+    cause: id === "1" ? "env_added" : "key_kept",
+    ref: null,
+    reason: reason ?? null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: iso(t),
+    endedAt: ended === undefined ? null : iso(ended),
+    supersededBy: null,
   };
 }
 
@@ -336,7 +345,7 @@ describe("a stage whose first build failed", () => {
   });
 
   it("says so where HQ records its build failing, however long ago", () => {
-    const failed: HqRecord = { state: "failed", failure: "job", t: 1479 };
+    const failed: HqRecord = { id: "2", state: "failed", ended: 1479, t: 1389 };
     expect(said({ t: 1500, deployment: NONE, hq: failed, declared: true })).toMatchObject({
       line: "Stage didn’t come up · its first deploy failed",
       cell: "First deploy failed",
@@ -347,38 +356,47 @@ describe("a stage whose first build failed", () => {
   });
 });
 
-describe("a stage whose first deploy waits on Zerops", () => {
-  // HQ refused it because Zerops did not answer, and asks again on its next pass.
+describe("a stage whose first deploy Zerops did not answer", () => {
+  // Zerops did not answer HQ's submission: nothing is tried twice, so HQ refused it at once.
   const silent: HqRecord = {
-    state: "failed",
-    failure: "refused",
-    message: zeropsDidNotAnswer("connect ETIMEDOUT"),
-    t: 1290,
+    id: "1",
+    state: "refused",
+    reason: zeropsDidNotAnswer("connect ETIMEDOUT"),
+    ended: 1290,
+    t: 1092,
   };
 
-  it("says HQ is retrying, for a window after its record last changed", () => {
+  it("says its first deploy failed, for a person to run again", () => {
     expect(said({ t: 1300, deployment: NONE, hq: silent, declared: true })).toMatchObject({
-      line: "Stage coming up · Zerops not answering, retrying",
-      cell: "Zerops not answering, retrying",
+      line: "Stage didn’t come up · its first deploy failed",
+      cell: "First deploy failed",
     });
-    expect(said({ t: 1290 + 15 * 60, deployment: NONE, hq: silent, declared: true })).toMatchObject(
-      { line: null, cell: "Nothing deployed yet" },
-    );
   });
 });
 
-describe("a stage whose first deploy never starts", () => {
-  // HQ queued it; no build of it was ever seen, and its record never moved.
+describe("a stage whose first deploy HQ still follows", () => {
+  // HQ queued it; no build of it was seen yet, and HQ has not ended its job.
   const waiting: Moment = { t: 1500, deployment: NONE, hq: QUEUED, declared: true };
-  // 15 min after HQ's record last changed (+1092 s).
-  const past: Moment = { ...waiting, t: 1092 + 15 * 60 };
+  // The stage's own coming-up window ran out (+1061 s made, 15 min).
+  const past: Moment = { ...waiting, t: 1061 + 15 * 60 };
 
-  it("is on its way for a window, then says nothing is deployed, never on its way for ever", () => {
+  it("is on its way while HQ's job is, however long ago it was asked", () => {
     expect(said(waiting)).toMatchObject({
       line: "Stage coming up · first deploy on its way",
       cell: "First deploy on its way",
     });
-    expect(said(past)).toMatchObject({ line: null, cell: "Nothing deployed yet" });
+    expect(said(past).cell).toBe("First deploy on its way");
+  });
+
+  it("says its first deploy failed once HQ stops following it", () => {
+    const stopped: HqRecord = {
+      ...QUEUED,
+      state: "refused",
+      reason:
+        "HQ stopped following the build 75 min after it was submitted; Zerops still reports it running",
+      ended: 1092 + 75 * 60,
+    };
+    expect(said({ ...past, hq: stopped }).cell).toBe("First deploy failed");
   });
 
   it("never lands up as its window runs out", () => {

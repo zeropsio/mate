@@ -5,7 +5,7 @@ import {
   listedStopComing,
   type GroupFlowInput,
 } from "@t3tools/client-runtime/zerops";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { describe, expect, it } from "vite-plus/test";
@@ -15,12 +15,18 @@ import { headingLine } from "./SidebarHeadingLine.logic";
 const NOW = Date.parse("2026-10-03T10:00:00Z");
 const iso = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const emptyDeploy = {
-  failure: null,
-  message: null,
+  id: "1",
+  kind: "deploy",
+  service: "app",
+  cause: "merge",
+  ref: null,
+  reason: null,
   appVersionId: null,
   processId: null,
   requestedBy: null,
-};
+  endedAt: null,
+  supersededBy: null,
+} as const;
 const NONE: Shown<Deployment> = {
   state: "known",
   value: { kind: "none" },
@@ -28,7 +34,7 @@ const NONE: Shown<Deployment> = {
   coverage: "complete",
   freshness: { kind: "live" },
 };
-function said(deploy: HqDeploy, status = "ACTIVE", nowMs = NOW) {
+function said(deploy: HqJob, status = "ACTIVE", nowMs = NOW) {
   const services = [{ hostname: "app", status, runtime: true }];
   const row = environmentRow({
     projectId: "stage",
@@ -99,13 +105,13 @@ function said(deploy: HqDeploy, status = "ACTIVE", nowMs = NOW) {
   };
 }
 describe("a first-deploy failure delivered by HQ", () => {
-  const failure: HqDeploy = {
+  const failure: HqJob = {
     ...emptyDeploy,
     sha: "old",
     state: "failed",
-    failure: "job",
-    message: "The test step failed.",
+    reason: "The test step failed.",
     at: iso(1),
+    endedAt: iso(1),
   };
   it("shows the failed job at once, with its reason, without a forge polling interval", () => {
     expect(said(failure)).toMatchObject({
@@ -128,20 +134,33 @@ describe("a first-deploy failure delivered by HQ", () => {
     });
   });
   it("starts again when HQ queues the newer commit", () => {
-    expect(said({ ...emptyDeploy, sha: "fix", state: "pending", at: iso(0) })).toMatchObject({
+    expect(said({ ...emptyDeploy, sha: "fix", state: "queued", at: iso(0) })).toMatchObject({
       first: { kind: "on-its-way" },
       cell: "First deploy on its way",
     });
   });
-  it("does not call an unclassified refusal a failed build", () => {
+  // The deploy-jobs design: nothing is tried twice, so HQ's refusal ends the first deploy too.
+  it("calls HQ's refusal a failed first deploy, with its words", () => {
     expect(
       said({
         ...emptyDeploy,
         sha: "old",
-        state: "failed",
-        failure: "refused",
-        message: "No workflow",
+        state: "refused",
+        reason: "No workflow",
         at: iso(0),
+        endedAt: iso(0),
+      }).first,
+    ).toEqual({ kind: "failed", reason: "No workflow" });
+  });
+  it("calls nothing failed of a job HQ skipped", () => {
+    expect(
+      said({
+        ...emptyDeploy,
+        sha: "old",
+        state: "skipped",
+        reason: "appdev has no zerops.yaml at 0ld0000",
+        at: iso(0),
+        endedAt: iso(0),
       }).first,
     ).toBeUndefined();
   });

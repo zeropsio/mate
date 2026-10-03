@@ -15,6 +15,7 @@
  */
 
 import type { EnvironmentServiceState } from "./groupRows.ts";
+import { jobFailed, jobInFlight } from "./hq/environments.ts";
 import { isWholeSha, resolveCommit } from "./versionName.ts";
 
 /** One commit `main` has and a stop does not run, in the words it was merged under. */
@@ -74,13 +75,16 @@ export function stageStandings(environment: {
   const failed = new Map<string, string>();
   for (const { hostname, deploy } of environment.services) {
     const latest = deploy?.latest;
-    if (latest?.state === "pending" || latest?.state === "deploying")
-      deploying.set(hostname, latest.sha);
-    if (latest?.state === "failed") failed.set(hostname, latest.sha);
+    if (latest === undefined || latest.sha === null) continue;
+    if (jobInFlight(latest)) deploying.set(hostname, latest.sha);
+    if (jobFailed(latest)) failed.set(hostname, latest.sha);
   }
   return {
     runs: new Map(
-      environment.services.map((service) => [service.hostname, service.deploy?.live?.sha]),
+      environment.services.map((service) => [
+        service.hostname,
+        service.deploy?.live?.sha ?? undefined,
+      ]),
     ),
     deploying,
     failed,

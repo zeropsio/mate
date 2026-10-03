@@ -908,7 +908,7 @@ describe("a deploy of a commit only moves forward", () => {
       previous: { kind: "running", activatedAt: null, version: deployedVersion(ran) },
     });
   /** The deploy half's row: the commit a service runs and HQ's record of its deploy, as read. */
-  const read = (sha: string, state: "pending" | "live" | "failed"): EnvironmentRow =>
+  const read = (sha: string, state: "queued" | "live" | "failed"): EnvironmentRow =>
     environmentRow({
       projectId: "p-stage",
       name: "stage",
@@ -920,14 +920,20 @@ describe("a deploy of a commit only moves forward", () => {
           appVersionName: sha,
           deploy: {
             latest: {
+              id: "1",
+              kind: "deploy",
+              service: "app",
               sha,
               state,
-              failure: state === "failed" ? "job" : null,
-              message: null,
+              cause: "merge",
+              ref: sha,
+              reason: null,
               appVersionId: null,
               processId: null,
               requestedBy: null,
               at: "2026-10-02T10:00:00.000Z",
+              endedAt: state === "queued" ? null : "2026-10-02T10:04:00.000Z",
+              supersededBy: null,
             },
             live: null,
           },
@@ -978,21 +984,21 @@ describe("a deploy of a commit only moves forward", () => {
     {
       step: "a status read before that moment arrives after it",
       deployment: runs(NEW),
-      row: read(NEW, "pending"),
+      row: read(NEW, "queued"),
       word: "Deployed",
       state: "deployed",
     },
     {
       step: "the platform's answer goes unknown on a reconnect, the stale read standing",
       deployment: { state: "reading", sinceMs: 0, attempt: 1 },
-      row: read(NEW, "pending"),
+      row: read(NEW, "queued"),
       word: "Deployed",
       state: "deployed",
     },
     {
       step: "the active version arrives unstated, the stale read standing",
       deployment: { state: "unread", waitingFor: null },
-      row: read(NEW, "pending"),
+      row: read(NEW, "queued"),
       word: "Deployed",
       state: "deployed",
     },
@@ -1013,7 +1019,7 @@ describe("a deploy of a commit only moves forward", () => {
     {
       step: "the newer commit runs before its status says so",
       deployment: runs(NEWER),
-      row: read(NEWER, "pending"),
+      row: read(NEWER, "queued"),
       word: "Deployed",
       state: "deployed",
     },

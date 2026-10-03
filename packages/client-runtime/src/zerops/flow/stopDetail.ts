@@ -23,9 +23,10 @@ import {
   type EnvironmentServiceState,
   type GroupRowTone,
 } from "../groupRows.ts";
-import type { HqDeploy } from "../hq/environments.ts";
+import { type HqJob, jobFailed, jobInFlight } from "../hq/environments.ts";
 import type { Shown } from "../knowledge/known.ts";
 import { cannotTellWhatRuns, changesNotLive } from "../projectAttention.ts";
+import { serviceDashboardUrl } from "../serviceMap.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
 import { sameCommit } from "../versionName.ts";
 import {
@@ -68,9 +69,19 @@ export interface StopFailedDeploy {
    * The deploy *Run again* asks HQ for: the service's newest deploy, while HQ records it failed
    * and it is this one. `undefined` for any other.
    */
-  readonly redeploy: { readonly service: string; readonly sha: string } | undefined;
+  readonly redeploy: RunAgain | undefined;
   /** HQ's words for why, from its record of that deploy; `undefined` where it keeps none. */
   readonly message: string | undefined;
+}
+
+/**
+ * What *Run again* asks HQ for: `service` at `sha` once more, after the job `after` — the service's
+ * newest — which the next one HQ's stream brings takes the place of.
+ */
+export interface RunAgain {
+  readonly service: string;
+  readonly sha: string;
+  readonly after: string;
 }
 
 export interface StopFailure extends StopFailedDeploy {
@@ -323,8 +334,117 @@ export interface StopServiceRow {
   readonly runs: ServiceRuns | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
-  /** Its newest deploy, while HQ records it as failed: its commit, and HQ's words for why. */
-  readonly failed: { readonly sha: string; readonly message: string | undefined } | undefined;
+  /** Its newest deploy, while HQ records it as failed: its job, its commit, and HQ's words for why. */
+  readonly failed:
+    | { readonly jobId: string; readonly sha: string; readonly message: string | undefined }
+    | undefined;
+  /** Its newest job, while it says what its row does not (`jobOf`). */
+  readonly job: StopServiceJob | undefined;
+  /** What it runs, where that is not what HQ last made it run (`driftOf`). */
+  readonly drift: StopServiceDrift | undefined;
+}
+
+/**
+ * A service's newest job, said where it is not what the service runs: waiting its turn,
+ * submitting, building, or ended without running it — its build failed, HQ refused or skipped it —
+ * when, and HQ's words for why.
+ */
+export interface StopServiceJob {
+  readonly state: HqJob["state"];
+  readonly line: string;
+  readonly reason: string | undefined;
+}
+
+/**
+ * A service running a version HQ did not make for it (the deploy-jobs design): HQ never overwrites
+ * it; a person deploys HQ's commit again, or looks at it in Zerops.
+ */
+export interface StopServiceDrift {
+  readonly line: string;
+  /**
+   * HQ's live commit there, deployed again by *Run again*; none where a newer job of another
+   * commit stands for the service, which HQ asks again instead.
+   */
+  readonly redeploy: RunAgain | undefined;
+  /** The service's page in Zerops; none while its id is not known. */
+  readonly zerops: string | undefined;
+}
+
+/** The service's newest job, said where it is not live (`StopServiceJob`). */
+export function jobOf(
+  job: HqJob | undefined,
+  age: (iso: string) => string,
+): StopServiceJob | undefined {
+  if (job === undefined || job.sha === null) return undefined;
+  const commit = shortCommit(job.sha);
+  const reason = job.reason?.trim() || undefined;
+  const ended = age(job.endedAt ?? job.at);
+  switch (job.state) {
+    case "queued":
+      return { state: job.state, line: `${commit} queued`, reason: undefined };
+    case "submitting":
+      return { state: job.state, line: `Submitting ${commit}`, reason: undefined };
+    case "building":
+      return { state: job.state, line: `Building ${commit}`, reason: undefined };
+    case "failed":
+      return { state: job.state, line: `${commit} failed ${ended}`, reason };
+    case "refused":
+      return { state: job.state, line: `HQ refused ${commit} ${ended}`, reason };
+    case "skipped":
+      return { state: job.state, line: `HQ skipped ${commit} ${ended}`, reason };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * A service that runs a version HQ did not make for it: one HQ put live there, and the platform now
+ * runs another, while no job of HQ's is under way to change it.
+ */
+export function driftOf(state: EnvironmentServiceState): StopServiceDrift | undefined {
+  const live = state.deploy?.live;
+  if (
+    live === null ||
+    live === undefined ||
+    live.sha === null ||
+    live.appVersionId === null ||
+    state.activeVersionId === undefined ||
+    state.activeVersionId === null ||
+    state.activeVersionId === live.appVersionId ||
+    (state.deploy !== undefined && jobInFlight(state.deploy.latest))
+  ) {
+    return undefined;
+  }
+  const runs = deployedVersion(state.appVersionName).label;
+  // HQ asks again only the service's newest job: its live commit, while the newest is of it.
+  const latest = state.deploy?.latest ?? live;
+  return {
+    line:
+      runs === undefined
+        ? `${state.hostname} runs a version HQ did not deploy`
+        : `${state.hostname} runs “${runs}”, which HQ did not deploy`,
+    redeploy:
+      latest.sha === live.sha
+        ? { service: state.hostname, sha: live.sha, after: latest.id }
+        : undefined,
+    zerops: state.serviceId === undefined ? undefined : serviceDashboardUrl(state.serviceId),
+  };
+}
+
+/**
+ * The services an environment's tier declares that its project lacks, as the platform lists them
+ * (audit D2): a person deleted one, or a recipe delta did not import it — HQ never adds one by
+ * itself, so each is a person's to add. None while the recipe or the project's listing is unread.
+ */
+export function notInZerops(input: {
+  readonly recipeServices: ReadonlyArray<string> | undefined;
+  readonly platform: Shown<ReadonlyArray<StopService>>;
+}): ReadonlyArray<string> {
+  const { recipeServices, platform } = input;
+  if (recipeServices === undefined || platform.state !== "known") return [];
+  return recipeServices.filter(
+    (hostname) => !platform.value.some((service) => service.hostname === hostname),
+  );
 }
 
 /** A version a service runs, and how long it has run, already said. */
@@ -399,10 +519,11 @@ function platformDeployments(
 }
 
 /** A deploy HQ records as failed, as a row carries it: its commit, and HQ's words where it has some. */
-function failedOf(latest: HqDeploy | undefined): StopServiceRow["failed"] {
-  if (latest?.state !== "failed") return undefined;
-  const message = latest.message?.trim();
+function failedOf(latest: HqJob | undefined): StopServiceRow["failed"] {
+  if (latest === undefined || latest.sha === null || !jobFailed(latest)) return undefined;
+  const message = latest.reason?.trim();
   return {
+    jobId: latest.id,
     sha: latest.sha,
     message: message === undefined || message === "" ? undefined : message,
   };
@@ -474,6 +595,8 @@ export function serviceRows(input: {
       routes: input.routes.filter((route) => route.service === hostname),
       offers: input.offers.filter((offer) => offer.service === hostname),
       failed: failedOf(state.deploy?.latest),
+      job: jobOf(state.deploy?.latest, input.age),
+      drift: driftOf(state),
     };
   });
 }
@@ -514,7 +637,8 @@ export function stopFailedDeploy(input: {
         service,
         sha: commit,
         running: input.rows.find((row) => row.hostname === service)?.runs,
-        redeploy: record === undefined ? undefined : { service, sha: record.sha },
+        redeploy:
+          record === undefined ? undefined : { service, sha: record.sha, after: record.jobId },
         message: record?.message,
       };
     }
@@ -527,7 +651,7 @@ export function stopFailedDeploy(input: {
     service: hostname,
     sha: failed.sha,
     running: sameCommit(row.sha, failed.sha) ? undefined : row.runs,
-    redeploy: { service: hostname, sha: failed.sha },
+    redeploy: { service: hostname, sha: failed.sha, after: failed.jobId },
     message: failed.message,
   };
 }

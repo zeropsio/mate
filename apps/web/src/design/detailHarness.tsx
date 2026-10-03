@@ -40,7 +40,7 @@ import {
   type Deployment,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import { type HqJob, jobInFlight } from "@t3tools/client-runtime/zerops/hq";
 import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
@@ -246,7 +246,7 @@ function service(
   hostname: string,
   seed: string | undefined,
   name: string | undefined,
-  state: HqDeploy["state"] = "live",
+  state: HqJob["state"] = "live",
   repository = "appdev",
 ): EnvironmentServiceState {
   return {
@@ -260,17 +260,23 @@ function service(
   };
 }
 
-/** HQ's record of a deploy of `commit` in `state`. */
-function deployRecord(commit: string, state: HqDeploy["state"]): HqDeploy {
+/** HQ's job of a deploy of `commit` in `state`. */
+function deployRecord(commit: string, state: HqJob["state"]): HqJob {
   return {
+    id: `job-${commit}`,
+    kind: "deploy",
+    service: null,
     sha: commit,
     state,
-    failure: state === "failed" ? "job" : null,
-    message: null,
+    cause: "merge",
+    ref: null,
+    reason: null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: "2026-09-19T11:00:00Z",
+    endedAt: jobInFlight({ state }) ? null : "2026-09-19T11:00:00Z",
+    supersededBy: null,
   };
 }
 
@@ -831,7 +837,7 @@ function Harness() {
           fixture={{
             tier: "stage",
             services: [
-              service("api", "b21d904c", undefined, "deploying"),
+              service("api", "b21d904c", undefined, "building"),
               service("app", "5c3ea18b", undefined),
             ],
             deployment: {

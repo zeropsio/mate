@@ -25,6 +25,7 @@ import {
   type ChangeLink,
   type CompareQuery,
 } from "@t3tools/shared/hqChanges";
+import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import {
   Release,
@@ -174,6 +175,16 @@ export class HqError extends Error {
   }
 }
 
+/**
+ * A write that asked for deploys, and where HQ answered they stand (`@t3tools/shared/hqDeploys`);
+ * none where its answer was lost and HQ's records were read back for it — HQ's stream brings the
+ * jobs either way.
+ */
+export interface Asked<T> {
+  readonly made: T;
+  readonly deploys: HqDeployAnswer | undefined;
+}
+
 export interface HqApi {
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
   /**
@@ -230,14 +241,24 @@ export interface HqApi {
    */
   readonly keepDeployToken: (appId: string, environment: string, token: string) => Promise<void>;
   /**
-   * "Run again": the environment's newest deploy of `service`, at `sha`, failed, asked again as
-   * the person (`POST /api/apps/:appId/environments/:name/redeploy`); HQ's stream brings it.
+   * "Run again": the environment's newest deploy of `service`, at `sha`, ended, asked again as the
+   * person (`POST /api/apps/:appId/environments/:name/redeploy`): where HQ's submission of it
+   * stands.
    */
   readonly redeploy: (
     appId: string,
     environment: string,
     deploy: { readonly service: string; readonly sha: string },
-  ) => Promise<void>;
+  ) => Promise<HqDeployAnswer>;
+  /**
+   * "Add <service>": a service the environment's tier declares, imported into its project and
+   * deployed, as the person (`POST /api/apps/:appId/environments/:name/services`).
+   */
+  readonly addService: (
+    appId: string,
+    environment: string,
+    service: string,
+  ) => Promise<HqDeployAnswer>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
   readonly change: (link: ChangeLink, signal?: AbortSignal) => Promise<ChangeDetailResponse>;
   /** What was said on a change, oldest first. */
@@ -251,7 +272,7 @@ export interface HqApi {
    * Squashes a change into `main` as the person, if its head is still `expectedHead` — the head
    * they were shown; HQ answers the change merged, or refuses with one of `MERGE_REFUSALS`.
    */
-  readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<HqChange>;
+  readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<Asked<HqChange>>;
   /** Closes a change without merging it, as the person; its branch stays. */
   readonly closeChange: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
@@ -269,9 +290,13 @@ export interface HqApi {
     signal?: AbortSignal,
   ) => Promise<CompareResponse>;
   /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
-  readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Release>;
+  readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Asked<Release>>;
   /** Production back to `tag` as the person: a new release listing its entries. */
-  readonly rollback: (appId: string, tag: string, request: RollbackRequest) => Promise<Release>;
+  readonly rollback: (
+    appId: string,
+    tag: string,
+    request: RollbackRequest,
+  ) => Promise<Asked<Release>>;
 }
 
 /** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
@@ -437,14 +462,31 @@ const json = async <T>(response: Response): Promise<T> => (await response.json()
  */
 const decoded =
   <S extends Schema.Decoder<unknown>>(schema: S) =>
-  async (response: Response): Promise<S["Type"]> => {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw unreadable();
-    }
-    return Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(body), unreadable);
+  async (response: Response): Promise<S["Type"]> =>
+    Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(await bodyOf(response)), unreadable);
+
+const bodyOf = async (response: Response): Promise<unknown> => {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    throw unreadable();
+  }
+};
+
+/**
+ * {@link decoded} for a write that asked for deploys: what it made, and the deploys beside it —
+ * none where this version of Mate cannot read them, for HQ's stream brings their jobs.
+ */
+const readDeploysBeside = Schema.decodeUnknownOption(WithDeploys);
+
+const decodedAsked =
+  <S extends Schema.Decoder<unknown>>(schema: S) =>
+  async (response: Response): Promise<Asked<S["Type"]>> => {
+    const body = await bodyOf(response);
+    return {
+      made: Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(body), unreadable),
+      deploys: Option.getOrUndefined(readDeploysBeside(body))?.deploys,
+    };
   };
 
 const unreadable = () =>
@@ -458,11 +500,21 @@ const readChangeDetail = decoded(ChangeDetailResponse);
 const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
+const readMerged = decodedAsked(HqChange);
 const readRecipeTier = decoded(RecipeTierResponse);
 
 const readCompare = decoded(CompareResponse);
 const readReleases = decoded(ReleaseListResponse);
-const readRelease = decoded(Release);
+const readRelease = decodedAsked(Release);
+const readDeploys = decoded(WithDeploys);
+
+/** A write HQ holds made, read back for its lost answer: its deploys are the stream's to say. */
+const heldAsked = <T>(made: T | undefined): Asked<T> | undefined =>
+  made === undefined ? undefined : { made, deploys: undefined };
+
+/** An application's environment, as HQ's paths name it. */
+const environmentPath = (appId: string, environment: string) =>
+  `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}`;
 
 /** Whether two releases put the same commits live: each service at the same commit. */
 const sameEntries = (
@@ -773,18 +825,31 @@ export function makeHqApi(input: {
       ),
     keepDeployToken: async (appId, environment, token) => {
       await authorized(
-        `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/deploy-token`,
+        `${environmentPath(appId, environment)}/deploy-token`,
         { method: "PUT", body: JSON.stringify({ token }) },
         "idempotent",
       );
     },
-    redeploy: async (appId, environment, deploy) => {
-      await authorized(
-        `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/redeploy`,
-        { method: "POST", body: JSON.stringify(deploy) },
-        "once",
-      );
-    },
+    redeploy: async (appId, environment, deploy) =>
+      (
+        await readDeploys(
+          await authorized(
+            `${environmentPath(appId, environment)}/redeploy`,
+            { method: "POST", body: JSON.stringify(deploy) },
+            "once",
+          ),
+        )
+      ).deploys,
+    addService: async (appId, environment, service) =>
+      (
+        await readDeploys(
+          await authorized(
+            `${environmentPath(appId, environment)}/services`,
+            { method: "POST", body: JSON.stringify({ service }) },
+            "once",
+          ),
+        )
+      ).deploys,
     mateKey: async (projectId, signal) =>
       (
         await json<{ readonly keyTokenId: string | null }>(
@@ -860,14 +925,14 @@ export function makeHqApi(input: {
     mergeChange: (link, expectedHead) =>
       confirmed(
         async () =>
-          readChange(
+          readMerged(
             await authorized(
               `${changePath(link)}/merge`,
               { method: "POST", body: JSON.stringify({ expectedHead }) },
               "once",
             ),
           ),
-        () => changeIn(link, "merged"),
+        async () => heldAsked(await changeIn(link, "merged")),
         ["already_merged", "change_not_open"],
       ),
     closeChange: (link) =>
@@ -901,11 +966,13 @@ export function makeHqApi(input: {
             ),
           ),
         async () =>
-          (await releasesOf(appId)).find(
-            (made) =>
-              made.tag === request.tag &&
-              made.sha === request.groupHead &&
-              sameEntries(made.entries, request.entries),
+          heldAsked(
+            (await releasesOf(appId)).find(
+              (made) =>
+                made.tag === request.tag &&
+                made.sha === request.groupHead &&
+                sameEntries(made.entries, request.entries),
+            ),
           ),
         ["tag_taken"],
       ),
@@ -923,9 +990,9 @@ export function makeHqApi(input: {
           ),
         async () => {
           const [newest] = await releasesOf(appId);
-          return newest?.rollbackOf === tag && newest.sha === request.groupHead
-            ? newest
-            : undefined;
+          return heldAsked(
+            newest?.rollbackOf === tag && newest.sha === request.groupHead ? newest : undefined,
+          );
         },
       ),
     mateRecipe: async (appId, signal) =>

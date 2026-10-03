@@ -20,6 +20,8 @@
  * @module reviewVerdict
  */
 
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import { hqRefusalWords } from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
@@ -148,7 +150,8 @@ export type ReviewPress =
   | { readonly kind: "idle" }
   | { readonly kind: "running" }
   | { readonly kind: "refused"; readonly reason: string }
-  | { readonly kind: "done" };
+  /** Done: where HQ answered the deploys it asked for stand, where it answered (`hqDeploys`). */
+  | { readonly kind: "done"; readonly deploys?: HqDeployAnswer | undefined };
 
 /**
  * Closing a change without merging, as the caller holds it: asked — the review is its one

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
-import type { HqDeploy } from "./hq/environments.ts";
+import type { HqJob } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 
 import {
@@ -425,15 +425,21 @@ describe("what each production service runs, as a comparison starts from it", ()
     freshness: { kind: "live" },
   });
   const named = (name: string | null) => known({ activeId: "v1", source: null, name });
-  const live = (sha: string): HqDeploy => ({
+  const live = (sha: string): HqJob => ({
+    id: "1",
+    kind: "deploy",
+    service: "api",
     sha,
     state: "live",
-    failure: null,
-    message: null,
+    cause: "release",
+    ref: "v0.1.0",
+    reason: null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: "2026-10-02T10:00:00.000Z",
+    endedAt: "2026-10-02T10:01:00.000Z",
+    supersededBy: null,
   });
 
   it.each([

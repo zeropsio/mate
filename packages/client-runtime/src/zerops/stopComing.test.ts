@@ -1,11 +1,10 @@
-import { zeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Deployment } from "./flow/deployment.ts";
 import { groupFlow } from "./groupFlow.ts";
 import { deployedVersion, environmentRow } from "./groupRows.ts";
-import type { HqDeploy } from "./hq/environments.ts";
+import type { HqJob } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   comingLine,
@@ -139,18 +138,9 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       over: {
         deployed: false,
         routes: 0,
-        firstDeploy: { kind: "held", why: "key" } as FirstDeploy,
+        firstDeploy: { kind: "held" } as FirstDeploy,
       },
       coming: { kind: "coming", step: "awaiting-key" },
-    },
-    {
-      case: "a first deploy known not to have run, HQ retrying while Zerops is silent",
-      over: {
-        deployed: false,
-        routes: 0,
-        firstDeploy: { kind: "held", why: "zerops" } as FirstDeploy,
-      },
-      coming: { kind: "coming", step: "zerops-retrying" },
     },
     {
       case: "listed with no runtime yet (run 5, +696 s): adding the app, never the runner",
@@ -251,92 +241,90 @@ describe("stopServes — only a stop that serves lands up", () => {
   });
 });
 
-describe("firstDeploy — where a stage's first deploy stands by HQ's records of it", () => {
-  const record = (over: Partial<HqDeploy>): HqDeploy => ({
+describe("firstDeploy — where a stage's first deploy stands by HQ's jobs of it", () => {
+  const job = (over: Partial<HqJob>): HqJob => ({
+    id: "1",
+    kind: "deploy",
+    service: "app",
     sha: "e014b0e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d1",
-    state: "pending",
-    failure: null,
-    message: null,
+    state: "queued",
+    cause: "env_added",
+    ref: null,
+    reason: null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: ago(60_000),
+    endedAt: null,
+    supersededBy: null,
     ...over,
   });
+  const ended = (state: HqJob["state"], over: Partial<HqJob> = {}) =>
+    job({ state, endedAt: ago(30_000), ...over });
   it.each([
-    { case: "HQ records none", deploys: [], first: { kind: "awaited" } },
-    { case: "queued", deploys: [record({})], first: { kind: "on-its-way" } },
+    { case: "HQ has no job", deploys: [], first: { kind: "awaited" } },
+    { case: "queued", deploys: [job({})], first: { kind: "on-its-way" } },
     {
-      case: "deploying",
-      deploys: [record({ state: "deploying" })],
+      case: "submitting",
+      deploys: [job({ state: "submitting" })],
+      first: { kind: "on-its-way" },
+    },
+    { case: "building", deploys: [job({ state: "building" })], first: { kind: "on-its-way" } },
+    {
+      case: "asked for long ago and not ended: HQ still follows it, so still on its way",
+      deploys: [job({ state: "building", at: ago(COMING_UP_WINDOW_MS * 4) })],
       first: { kind: "on-its-way" },
     },
     {
-      case: "queued a window ago and never moved: nothing promised any more",
-      deploys: [record({ at: ago(COMING_UP_WINDOW_MS) })],
-      first: { kind: "awaited" },
-    },
-    {
       case: "its build failed, however long ago: final",
-      deploys: [record({ state: "failed", failure: "job", at: ago(COMING_UP_WINDOW_MS * 4) })],
+      deploys: [ended("failed", { endedAt: ago(COMING_UP_WINDOW_MS * 4) })],
       first: { kind: "failed" },
     },
     {
-      case: "HQ refused it for a reason the client does not say: nothing promised",
-      deploys: [record({ state: "failed", failure: "refused", message: "git: object not found" })],
-      first: { kind: "awaited" },
+      case: "HQ refused it — Zerops did not answer, and nothing is tried twice: final",
+      deploys: [ended("refused", { reason: "Zerops did not answer: timeout" })],
+      first: { kind: "failed", reason: "Zerops did not answer: timeout" },
     },
     {
-      case: "HQ refused it, Zerops not answering, and asks again: held, retrying",
-      deploys: [
-        record({ state: "failed", failure: "refused", message: zeropsDidNotAnswer("timeout") }),
-      ],
-      first: { kind: "held", why: "zerops" },
-    },
-    {
-      case: "refused for Zerops a window ago and never asked again: nothing promised",
-      deploys: [
-        record({
-          state: "failed",
-          failure: "refused",
-          message: zeropsDidNotAnswer("timeout"),
-          at: ago(COMING_UP_WINDOW_MS),
-        }),
-      ],
+      case: "HQ skipped it, its commit carrying no zerops.yaml: nothing promised",
+      deploys: [ended("skipped", { reason: "web has no zerops.yaml at e014b0e" })],
       first: { kind: "awaited" },
     },
     {
       case: "one service's build failed, another queued: failed",
-      deploys: [record({}), record({ state: "failed", failure: "job" })],
+      deploys: [job({}), ended("failed", { service: "api" })],
       first: { kind: "failed" },
     },
     {
       case: "live where nothing runs: nothing promised",
-      deploys: [record({ state: "live" })],
+      deploys: [ended("live")],
+      first: { kind: "awaited" },
+    },
+    {
+      case: "superseded only: nothing promised",
+      deploys: [ended("superseded", { supersededBy: "2" })],
       first: { kind: "awaited" },
     },
   ])("$case", ({ deploys, first }) => {
-    expect(firstDeploy({ deploys, keyGap: false, nowMs: NOW })).toEqual(first);
+    expect(firstDeploy({ deploys, keyGap: false })).toEqual(first);
   });
 
   // HQ deploys nothing without a key that works: whatever it has queued waits for one.
   it.each([
-    { case: "nothing recorded", deploys: [], first: { kind: "held", why: "key" } },
-    { case: "a deploy queued", deploys: [record({})], first: { kind: "held", why: "key" } },
+    { case: "no job", deploys: [], first: { kind: "held" } },
+    { case: "a job queued", deploys: [job({})], first: { kind: "held" } },
     {
       case: "refused for the key",
-      deploys: [
-        record({ state: "failed", failure: "refused", message: "stage has no deploy token yet" }),
-      ],
-      first: { kind: "held", why: "key" },
+      deploys: [ended("refused", { reason: "stage has no deploy token yet" })],
+      first: { kind: "held" },
     },
     {
       case: "its build failed before: still failed",
-      deploys: [record({ state: "failed", failure: "job" })],
+      deploys: [ended("failed")],
       first: { kind: "failed" },
     },
   ])("no deploy key that works, $case", ({ deploys, first }) => {
-    expect(firstDeploy({ deploys, keyGap: true, nowMs: NOW })).toEqual(first);
+    expect(firstDeploy({ deploys, keyGap: true })).toEqual(first);
   });
 });
 
@@ -351,15 +339,21 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
     coverage: "complete",
     freshness: { kind: "live" },
   });
-  const live: HqDeploy = {
+  const live: HqJob = {
+    id: "1",
+    kind: "deploy",
+    service: "app",
     sha: SHA,
     state: "live",
-    failure: null,
-    message: null,
+    cause: "release",
+    ref: "v1.0.0",
+    reason: null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: ago(30_000),
+    endedAt: ago(30_000),
+    supersededBy: null,
   };
   const comingOf = (deployment: Shown<Deployment> | undefined, released: boolean) => {
     const appVersionName = released ? `${SHA} v1.0.0 u-jan` : undefined;
@@ -468,11 +462,6 @@ describe("comingLine — the line an environment coming up says", () => {
       "Stage",
       { kind: "coming", step: "awaiting-key" },
       { fact: "Stage coming up", rest: "awaits a deploy key" },
-    ],
-    [
-      "Stage",
-      { kind: "coming", step: "zerops-retrying" },
-      { fact: "Stage coming up", rest: "Zerops not answering, retrying" },
     ],
   ])("%s %j", (subject, coming, line) => {
     expect(comingLine(subject, coming)).toEqual(line);

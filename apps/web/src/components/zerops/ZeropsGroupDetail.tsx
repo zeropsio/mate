@@ -63,6 +63,7 @@ import {
   earlierReleasesLabel,
   NONE_YET,
   NOT_PUBLIC_YET,
+  notInZerops,
   serviceRows,
   stopCardTitle,
   stopFailedDeploy,
@@ -73,6 +74,7 @@ import {
   stopView,
   runningVersion,
   type Deployment,
+  type RunAgain,
   type StopServiceRow,
   type StopVerdict,
   type StopView,
@@ -91,6 +93,7 @@ import { ChevronRightIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import { Fragment, useCallback, useId, useMemo, useState } from "react";
 
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -109,7 +112,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { type FlowVerbOutcome, useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useZeropsCompares } from "~/zerops/useZeropsCompares";
@@ -138,6 +141,7 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
+import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
@@ -572,8 +576,8 @@ export function ZeropsReleaseVerb({
 
 /**
  * Where each declared stage of the group that runs nothing stands on its first deploy
- * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock,
- * from what the platform runs and HQ's records of its deploys.
+ * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock
+ * its setting up is read by, from what the platform runs and HQ's jobs of its deploys.
  */
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
   const { listing } = useZeropsCandidates();
@@ -976,6 +980,17 @@ export function ZeropsStopDetailPage({
   const mayKeepKey = useKeepDeployKeyOffer();
   // Why HQ refused the last *Run again*, until another is pressed.
   const [runAgainRefused, setRunAgainRefused] = useState<string | null>(null);
+  // What HQ answered of the deploys the last verb pressed here asked for.
+  const [deployAnswer, setDeployAnswer] = useState<HqDeployAnswer | undefined>(undefined);
+  /** A verb pressed here, its refusal or its deploys said until the next. */
+  const said = (asked: Promise<FlowVerbOutcome>) => {
+    setRunAgainRefused(null);
+    setDeployAnswer(undefined);
+    void asked.then((outcome) => {
+      setRunAgainRefused(outcome.ok ? null : outcome.reason);
+      setDeployAnswer(outcome.ok ? outcome.deploys : undefined);
+    });
+  };
 
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
@@ -1043,6 +1058,34 @@ export function ZeropsStopDetailPage({
       repo={repo}
       routeTrouble={route.trouble}
       routes={routes}
+      deployAgain={
+        mayRunAgain
+          ? {
+              running: (service) =>
+                flowValue.pending.has(
+                  flowVerbKey({ kind: "redeploy", groupId, projectId, service }),
+                ),
+              onDeployAgain: (again) => said(flowValue.redeploy(groupId, projectId, again)),
+            }
+          : undefined
+      }
+      addService={
+        mayRunAgain
+          ? {
+              running: (service) =>
+                flowValue.pending.has(
+                  flowVerbKey({ kind: "add-service", groupId, projectId, service }),
+                ),
+              onAdd: (service) => said(flowValue.addService(groupId, projectId, service)),
+            }
+          : undefined
+      }
+      notInZerops={
+        declared === undefined || withheld !== null
+          ? undefined
+          : notInZerops({ recipeServices: declared.recipeServices, platform })
+      }
+      deployAnswer={deployAnswer}
       runAgain={
         redeploy === undefined || !mayRunAgain
           ? undefined
@@ -1051,12 +1094,7 @@ export function ZeropsStopDetailPage({
                 flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
               ),
               refused: runAgainRefused,
-              onRunAgain: () => {
-                setRunAgainRefused(null);
-                void flowValue.redeploy(groupId, projectId, redeploy).then((outcome) => {
-                  setRunAgainRefused(outcome.ok ? null : outcome.reason);
-                });
-              },
+              onRunAgain: () => said(flowValue.redeploy(groupId, projectId, redeploy)),
             }
       }
       services={services}
@@ -1102,6 +1140,28 @@ interface StopRunAgain {
   readonly refused: string | null;
   readonly onRunAgain: () => void;
 }
+
+/**
+ * *Deploy … again* on a service that runs a version HQ did not make for it (`StopServiceDrift`):
+ * HQ's live commit there, asked again by whoever may *Run again* (the deploy-jobs design).
+ */
+interface StopDeployAgain {
+  /** Whether it is under way for the service. */
+  readonly running: (service: string) => boolean;
+  readonly onDeployAgain: (redeploy: RunAgain) => void;
+}
+
+/**
+ * *Add <service>* on a service the recipe declares and the project lacks (audit D2): imported and
+ * deployed by HQ, asked by whoever may *Run again* — HQ never adds one by itself.
+ */
+interface StopAddService {
+  /** Whether it is under way for the service. */
+  readonly running: (service: string) => boolean;
+  readonly onAdd: (service: string) => void;
+}
+
+const NOTHING_MISSING: ReadonlyArray<string> = [];
 
 /** A stop's role, as its tag reads beside its name. */
 const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
@@ -1220,6 +1280,10 @@ export function ZeropsStopPane({
   routeTrouble,
   routes,
   runAgain,
+  deployAgain,
+  addService,
+  notInZerops = NOTHING_MISSING,
+  deployAnswer,
   services,
   stop,
   tags,
@@ -1240,6 +1304,14 @@ export function ZeropsStopPane({
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly runAgain?: StopRunAgain | undefined;
+  /** Offered beside a service that runs what HQ did not deploy, to whoever may run it again. */
+  readonly deployAgain?: StopDeployAgain | undefined;
+  /** Offered beside a service the recipe declares and the project lacks, by the same rule. */
+  readonly addService?: StopAddService | undefined;
+  /** The services the stop's tier declares and its project lacks (`notInZerops`). */
+  readonly notInZerops?: ReadonlyArray<string> | undefined;
+  /** What HQ answered of the deploys the last verb pressed here asked for. */
+  readonly deployAnswer?: HqDeployAnswer | undefined;
   /** What `main` has that this production does not; nothing for a stage. */
   readonly waiting: StopWaiting;
   /** A production's services whose commit cannot be told, said beside what waits. */
@@ -1324,6 +1396,11 @@ export function ZeropsStopPane({
             {runAgain.refused}
           </p>
         )}
+        {deployAnswer === undefined ? null : (
+          <div className="mt-1.5 px-3">
+            <ZeropsDeployAnswer answer={deployAnswer} />
+          </div>
+        )}
       </div>
 
       <FlatCard className="flex flex-col divide-y divide-border px-4">
@@ -1355,11 +1432,38 @@ export function ZeropsStopPane({
             <ul className="flex flex-col">
               {services.map((row) => (
                 <StopServiceLine
+                  deployAgain={deployAgain}
                   enablingServiceId={enablingServiceId ?? null}
                   key={row.hostname}
                   onEnableRoute={onEnableRoute}
                   row={row}
+                  said={verdict.detail}
                 />
+              ))}
+            </ul>
+          )}
+          {notInZerops.length === 0 ? null : (
+            <ul className="flex flex-col" data-zerops-surface="stop-not-in-zerops">
+              {notInZerops.map((hostname) => (
+                <li className={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")} key={hostname}>
+                  <span className="min-w-0 truncate text-sm text-muted-foreground">
+                    {hostname} · declared in the recipe, not in Zerops
+                  </span>
+                  {addService === undefined ? (
+                    <span />
+                  ) : (
+                    <Button
+                      disabled={addService.running(hostname)}
+                      onClick={() => addService.onAdd(hostname)}
+                      size="compact"
+                      variant="outline"
+                    >
+                      {addService.running(hostname)
+                        ? flowVerbLabel("add-service", true)
+                        : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                    </Button>
+                  )}
+                </li>
               ))}
             </ul>
           )}
@@ -1479,12 +1583,19 @@ function StopServiceLine({
   row,
   onEnableRoute,
   enablingServiceId,
+  deployAgain,
+  said,
 }: {
   readonly row: StopServiceRow;
   readonly onEnableRoute: ((serviceId: string) => void) | undefined;
   readonly enablingServiceId: string | null;
+  readonly deployAgain: StopDeployAgain | undefined;
+  /** What the verdict over the rows already says: HQ's words for a failure, never said twice. */
+  readonly said: string | undefined;
 }) {
   const dot = STOP_DOT_TONE[row.tone];
+  // HQ's live commit, asked again over a version HQ did not deploy, where HQ takes the ask.
+  const again = row.drift?.redeploy;
   // Nothing to offer where the caller cannot act on it — a row with a button
   // that does nothing is worse than no row.
   const offers = onEnableRoute === undefined ? [] : row.offers;
@@ -1562,6 +1673,51 @@ function StopServiceLine({
           })}
         </span>
       </div>
+      {/* Its newest job, where it is not what the service runs: where it stands, and why. */}
+      {row.job === undefined ? null : (
+        <span
+          className="flex min-w-0 flex-col pb-2 text-xs leading-4 text-muted-foreground"
+          data-zerops-surface="stop-service-job"
+          data-zerops-job-state={row.job.state}
+        >
+          <span className="truncate">{row.job.line}</span>
+          {row.job.reason === undefined || row.job.reason === said ? null : (
+            <span>{row.job.reason}</span>
+          )}
+        </span>
+      )}
+      {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
+      {row.drift === undefined ? null : (
+        <span
+          className="flex min-w-0 flex-wrap items-center gap-2 pb-2 text-xs leading-4"
+          data-zerops-surface="stop-service-drift"
+        >
+          <span className="text-status-attention-text">{row.drift.line}</span>
+          {deployAgain === undefined || again === undefined ? null : (
+            <Button
+              disabled={deployAgain.running(again.service)}
+              onClick={() => deployAgain.onDeployAgain(again)}
+              size="compact"
+              variant="outline"
+            >
+              {deployAgain.running(again.service)
+                ? flowVerbLabel("redeploy", true)
+                : `Deploy ${shortCommit(again.sha)} again`}
+            </Button>
+          )}
+          {row.drift.zerops === undefined ? null : (
+            <a
+              className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline"
+              href={row.drift.zerops}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open in Zerops
+              <ExternalLinkIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+            </a>
+          )}
+        </span>
+      )}
     </li>
   );
 }

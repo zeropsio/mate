@@ -10,20 +10,17 @@
  * build, so the address step comes only after a deploy ran; before one, the stage waits for its
  * first deploy.
  *
- * HQ deploys `main` to a stage itself, and records each deploy it asks for (`HqEnvironment.deploys`):
- * queued, deploying, live or failed — by the build (final) or by HQ (asked again on its next pass).
- * "On its way" is said only while HQ's record has it queued or deploying, and only for a window
- * after that record last changed: a first deploy that never comes reads "Nothing deployed yet"
- * again, never on its way for ever. What holds it, the line says, as main said its runner did: HQ
- * holds no deploy key that works for the stage, or Zerops did not answer and HQ asks again.
+ * HQ deploys `main` to a stage itself, as jobs (`HqEnvironment.jobs`): queued, submitting,
+ * building, then live, failed by the build, refused by HQ — nothing is tried twice — or skipped.
+ * "On its way" is said only while HQ has a job of it in flight; a job always ends, so a first
+ * deploy that never comes reads "Nothing deployed yet" again, never on its way for ever. What holds
+ * it, the line says, as main said its runner did: HQ holds no deploy key that works for the stage.
  *
  * Pure: no network, no clock of its own, no platform globals (rule R1).
  *
  * @module stopComing
  */
-import { saysZeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
-
-import type { HqDeploy } from "./hq/environments.ts";
+import { type HqJob, jobInFlight } from "./hq/environments.ts";
 
 /** Where an environment coming up has got. */
 export type ComingStep =
@@ -38,8 +35,6 @@ export type ComingStep =
   | "deploy-on-its-way"
   /** HQ holds no deploy key that works for it, and deploys nothing until somebody mints one. */
   | "awaiting-key"
-  /** HQ refused its deploy because Zerops did not answer, and asks again on its next pass. */
-  | "zerops-retrying"
   | "address";
 
 /** An environment coming up, or one that did not come up. */
@@ -50,18 +45,15 @@ export type StopComing =
 /** Where a stage's first deploy stands while it runs nothing. */
 export type FirstDeploy =
   | { readonly kind: "setting-up"; readonly step: "project" | "database" | "app" }
-  /** HQ has none queued or under way: nothing to promise. */
+  /** HQ has none in flight: nothing to promise. */
   | { readonly kind: "awaited" }
-  /** HQ has it queued or deploying, its record changed within the window. */
+  /** HQ has a job of it queued, submitting or building. */
   | { readonly kind: "on-its-way" }
-  /**
-   * HQ cannot deploy it now: it holds no deploy key that works for the stage, or Zerops did not
-   * answer and HQ asks again — its record changed within the window.
-   */
-  | { readonly kind: "held"; readonly why: "key" | "zerops" }
+  /** HQ holds no deploy key that works for the stage: it deploys nothing until one is minted. */
+  | { readonly kind: "held" }
   /**
    * A build of it was seen to end with nothing running (`Deployment.afterBuild`), or HQ says its
-   * build failed.
+   * build failed, or HQ refused it.
    */
   | { readonly kind: "failed"; readonly reason?: string | undefined };
 
@@ -75,32 +67,30 @@ export const COMING_UP_WINDOW_MS = 15 * 60_000;
 
 const failing = (status: string) => /FAIL/u.test(status);
 
+/** A first deploy that failed, with HQ's words for why where it has some. */
+const failedFirst = (job: HqJob): FirstDeploy => ({
+  kind: "failed",
+  ...(job.reason == null ? {} : { reason: job.reason }),
+});
+
 /**
- * Where a stage's first deploy stands by HQ's records of it: failed where HQ says a build of it
- * failed, which is final; held while HQ holds no deploy key that works for the stage; held while
- * Zerops did not answer and HQ asks again; on its way while HQ has it queued or deploying. Each but
- * the failure and the key only for {@link COMING_UP_WINDOW_MS} after the record last changed.
+ * Where a stage's first deploy stands by HQ's jobs of it: failed where a build of it failed, which
+ * is final; held while HQ holds no deploy key that works for the stage; failed where HQ refused it,
+ * for nothing is tried twice; on its way while a job is queued, submitting or building. A job says
+ * where it stands, so no clock does.
  */
 export function firstDeploy(input: {
-  /** HQ's newest deploy of each of the stage's services (`EnvironmentRow.deploys`). */
-  readonly deploys: ReadonlyArray<HqDeploy>;
+  /** HQ's newest job of each of the stage's services (`EnvironmentRow.deploys`). */
+  readonly deploys: ReadonlyArray<HqJob>;
   /** HQ holds no deploy key that works for the stage (`EnvironmentRow.keyGap`). */
   readonly keyGap: boolean;
-  readonly nowMs: number;
 }): FirstDeploy {
-  const failed = input.deploys.find(({ failure }) => failure === "job");
-  if (failed !== undefined)
-    return { kind: "failed", ...(failed.message == null ? {} : { reason: failed.message }) };
-  if (input.keyGap) return { kind: "held", why: "key" };
-  const recent = input.deploys.filter(
-    ({ at }) => input.nowMs - Date.parse(at) < COMING_UP_WINDOW_MS,
-  );
-  if (
-    recent.some(({ failure, message }) => failure === "refused" && saysZeropsDidNotAnswer(message))
-  )
-    return { kind: "held", why: "zerops" };
-  const asked = recent.some(({ state }) => state === "pending" || state === "deploying");
-  return asked ? { kind: "on-its-way" } : { kind: "awaited" };
+  const built = input.deploys.find(({ state }) => state === "failed");
+  if (built !== undefined) return failedFirst(built);
+  if (input.keyGap) return { kind: "held" };
+  const refused = input.deploys.find(({ state }) => state === "refused");
+  if (refused !== undefined) return failedFirst(refused);
+  return input.deploys.some(jobInFlight) ? { kind: "on-its-way" } : { kind: "awaited" };
 }
 
 /**
@@ -210,7 +200,7 @@ export function stopComing(input: {
       case "on-its-way":
         return coming("deploy-on-its-way");
       case "held":
-        return coming(first.why === "key" ? "awaiting-key" : "zerops-retrying");
+        return coming("awaiting-key");
       case "failed":
         return { kind: "failed", reason: "its first deploy failed" };
     }
@@ -309,7 +299,6 @@ const STEP_WORDS: Record<ComingStep, string> = {
   "awaiting-deploy": "awaiting a first deploy",
   "deploy-on-its-way": "first deploy on its way",
   "awaiting-key": "awaits a deploy key",
-  "zerops-retrying": "Zerops not answering, retrying",
   address: "turning its address on",
 };
 
@@ -353,9 +342,6 @@ export const FIRST_DEPLOY_ON_ITS_WAY = "First deploy on its way";
 /** A stage's first deploy held: HQ holds no deploy key that works for it. */
 const FIRST_DEPLOY_AWAITS_KEY = "Awaiting a deploy key";
 
-/** A stage's first deploy held: Zerops did not answer, and HQ asks again. */
-const FIRST_DEPLOY_ZEROPS_RETRYING = "Zerops not answering, retrying";
-
 /**
  * What a stage that runs nothing says of its first deploy, where its line says what it runs:
  * `undefined` while nothing asked for one — the line's own "Nothing deployed yet" stands.
@@ -365,7 +351,7 @@ export function firstDeployLine(first: FirstDeploy | undefined): string | undefi
     case "on-its-way":
       return FIRST_DEPLOY_ON_ITS_WAY;
     case "held":
-      return first.why === "key" ? FIRST_DEPLOY_AWAITS_KEY : FIRST_DEPLOY_ZEROPS_RETRYING;
+      return FIRST_DEPLOY_AWAITS_KEY;
     case "failed":
       return FIRST_DEPLOY_FAILED;
     case "setting-up":

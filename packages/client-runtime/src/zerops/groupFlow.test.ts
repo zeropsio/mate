@@ -13,18 +13,24 @@ import { deployedVersion, environmentRow, type EnvironmentRow } from "./groupRow
 import type { Shown } from "./knowledge/known.ts";
 import { nameStopByRelease } from "./release.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
-import type { HqDeploy } from "./hq/environments.ts";
+import { jobInFlight, type HqJob } from "./hq/environments.ts";
 
-/** HQ's record of a deploy in `state`. */
-const deployRecord = (state: HqDeploy["state"]): HqDeploy => ({
+/** HQ's job of a deploy in `state`. */
+const deployRecord = (state: HqJob["state"]): HqJob => ({
+  id: "1",
+  kind: "deploy",
+  service: "app",
   sha: "0000000000000000000000000000000000000000",
   state,
-  failure: state === "failed" ? "job" : null,
-  message: null,
+  cause: "merge",
+  ref: null,
+  reason: null,
   appVersionId: null,
   processId: null,
   requestedBy: null,
   at: "2026-10-02T10:00:00.000Z",
+  endedAt: jobInFlight({ state }) ? null : "2026-10-02T10:04:00.000Z",
+  supersededBy: null,
 });
 
 const MAIN_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
@@ -67,7 +73,7 @@ function declared(input: {
   readonly name: string;
   readonly tier: "stage" | "production";
   readonly appVersionName?: string;
-  readonly status?: HqDeploy["state"];
+  readonly status?: HqJob["state"];
 }): EnvironmentRow {
   return environmentRow({
     projectId: input.projectId,
@@ -612,7 +618,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "deploying",
+          status: "building",
         }),
         deployment: runs(MAIN_SHA),
       }),
@@ -914,25 +920,19 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     route: undefined,
     ...over,
   });
-  /** The stage's row with HQ's newest deploy of each of its services, changed `msAgo`. */
+  /** The stage's row with HQ's newest job of each of its services, asked for `msAgo`. */
   const withDeploys = (
-    ...deploys: ReadonlyArray<{
-      readonly state: HqDeploy["state"];
-      readonly failure?: HqDeploy["failure"];
-      readonly msAgo: number;
-    }>
+    ...deploys: ReadonlyArray<
+      Partial<HqJob> & { readonly state: HqJob["state"]; readonly msAgo: number }
+    >
   ): EnvironmentRow =>
     environmentRow({
       projectId: "p-pantry-stage",
       name: "Pantry - stage",
       tier: "stage",
       sources: ["main"],
-      services: deploys.map(({ state, failure, msAgo }, index) => {
-        const latest: HqDeploy = {
-          ...deployRecord(state),
-          failure: failure ?? deployRecord(state).failure,
-          at: at(msAgo),
-        };
+      services: deploys.map(({ state, msAgo, ...over }, index) => {
+        const latest: HqJob = { ...deployRecord(state), at: at(msAgo), ...over };
         return { hostname: `app${String(index)}`, deploy: { latest, live: null } };
       }),
     });
@@ -956,32 +956,37 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
   it.each([
     {
       case: "HQ queued its first deploy: on its way",
-      row: withDeploys({ state: "pending", msAgo: MINUTE }),
+      row: withDeploys({ state: "queued", msAgo: MINUTE }),
       first: { kind: "on-its-way" },
     },
     {
-      case: "HQ deploying one service, another queued: on its way",
-      row: withDeploys({ state: "deploying", msAgo: MINUTE }, { state: "pending", msAgo: MINUTE }),
+      case: "HQ building one service, another queued: on its way",
+      row: withDeploys({ state: "building", msAgo: MINUTE }, { state: "queued", msAgo: MINUTE }),
       first: { kind: "on-its-way" },
     },
     {
       case: "HQ says its build failed: the first deploy failed, however long ago",
-      row: withDeploys({ state: "failed", failure: "job", msAgo: 60 * MINUTE }),
+      row: withDeploys({ state: "failed", msAgo: 60 * MINUTE }),
       first: { kind: "failed" },
     },
     {
-      case: "HQ refused it for a reason it does not say, and asks again: nothing promised",
-      row: withDeploys({ state: "failed", failure: "refused", msAgo: MINUTE }),
-      first: undefined,
+      case: "HQ refused it, nothing tried twice: the first deploy failed",
+      row: withDeploys({ state: "refused", msAgo: MINUTE }),
+      first: { kind: "failed" },
     },
     {
       case: "HQ holds no deploy key for it: held for the key",
-      row: { ...withDeploys({ state: "pending", msAgo: MINUTE }), keyGap: true },
-      first: { kind: "held", why: "key" },
+      row: { ...withDeploys({ state: "queued", msAgo: MINUTE }), keyGap: true },
+      first: { kind: "held" },
     },
     {
-      case: "HQ's queued record unchanged for a window: never on its way for ever",
-      row: withDeploys({ state: "pending", msAgo: 15 * MINUTE }),
+      case: "a job HQ still follows, however long ago it was asked: on its way",
+      row: withDeploys({ state: "building", msAgo: 60 * MINUTE }),
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "a job superseded, none after it: nothing promised",
+      row: withDeploys({ state: "superseded", msAgo: MINUTE }),
       first: undefined,
     },
   ])("$case", ({ row, first }) => {
@@ -989,7 +994,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
   });
 
-  const queued = withDeploys({ state: "pending", msAgo: MINUTE });
+  const queued = withDeploys({ state: "queued", msAgo: MINUTE });
   it.each([
     {
       case: "HQ records no deploy of it: nothing promised",
@@ -1054,21 +1059,8 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "failed" });
   });
 
-  it("promises nothing without a clock", () => {
-    const flow = groupFlow(group({ stops: [stageStop({ row: queued })] }));
-    expect(flow.stages[0]?.firstDeploy).toBeUndefined();
-  });
-
   it("reports HQ's failed job with its words after the import, and the import first", () => {
-    const row = {
-      ...withDeploys({ state: "failed", failure: "job", msAgo: MINUTE }),
-      deploys: [
-        {
-          ...withDeploys({ state: "failed", failure: "job", msAgo: MINUTE }).deploys[0]!,
-          message: "the build exited with 1",
-        },
-      ],
-    };
+    const row = withDeploys({ state: "failed", reason: "the build exited with 1", msAgo: MINUTE });
     const first = (over: Partial<GroupFlowStopInput>) =>
       groupFlow(group({ stops: [stageStop({ row, ...over })], nowMs: NOW })).stages[0]?.firstDeploy;
     expect(first({})).toEqual({ kind: "failed", reason: "the build exited with 1" });

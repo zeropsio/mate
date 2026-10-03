@@ -7,13 +7,13 @@ import {
   environmentRow,
   type EnvironmentServiceState,
 } from "./groupRows.ts";
-import type { HqDeploy } from "./hq/environments.ts";
+import { jobInFlight, type HqJob } from "./hq/environments.ts";
 
 const SHA = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 
 function service(
   hostname: string,
-  state: HqDeploy["state"] | undefined,
+  state: HqJob["state"] | undefined,
   options: { readonly version?: string | undefined } = {},
 ): EnvironmentServiceState {
   return {
@@ -23,16 +23,22 @@ function service(
   };
 }
 
-function deployRecord(state: HqDeploy["state"], sha = SHA): HqDeploy {
+function deployRecord(state: HqJob["state"], sha = SHA): HqJob {
   return {
+    id: "1",
+    kind: "deploy",
+    service: "app",
     sha,
     state,
-    failure: state === "failed" ? "job" : null,
-    message: null,
+    cause: "merge",
+    ref: sha,
+    reason: null,
     appVersionId: null,
     processId: null,
     requestedBy: null,
     at: "2026-10-02T10:00:00.000Z",
+    endedAt: jobInFlight({ state }) ? null : "2026-10-02T10:01:00.000Z",
+    supersededBy: null,
   };
 }
 
@@ -161,10 +167,12 @@ describe("deployedVersion", () => {
 describe("deployTone", () => {
   it.each([
     { name: "nothing deployed yet", states: [undefined], expected: "neutral" },
-    { name: "a deploy HQ has yet to start", states: ["pending"], expected: "pending" },
-    { name: "a deploy HQ runs", states: ["deploying"], expected: "pending" },
-    { name: "a deploy that went live", states: ["live"], expected: "good" },
-    { name: "a deploy that failed", states: ["failed"], expected: "bad" },
+    { name: "a job queued", states: ["queued"], expected: "pending" },
+    { name: "a job HQ submits", states: ["submitting"], expected: "pending" },
+    { name: "a job building", states: ["building"], expected: "pending" },
+    { name: "a job that went live", states: ["live"], expected: "good" },
+    { name: "a job whose build failed", states: ["failed"], expected: "bad" },
+    { name: "a job HQ refused", states: ["refused"], expected: "bad" },
     {
       // Averaging a failure away is how a screen says "configured" for a
       // broken setup.
@@ -172,8 +180,8 @@ describe("deployTone", () => {
       states: ["live", "failed", undefined],
       expected: "bad",
     },
-    { name: "one service still deploying", states: ["live", "deploying"], expected: "pending" },
-    { name: "a failure behind one still going", states: ["deploying", "failed"], expected: "bad" },
+    { name: "one service still building", states: ["live", "building"], expected: "pending" },
+    { name: "a failure behind one still going", states: ["building", "failed"], expected: "bad" },
   ] as const)("reads HQ's record of $name as $expected", ({ states, expected }) => {
     expect(deployTone(states.map((state, index) => service(`app${String(index)}`, state)))).toBe(
       expected,

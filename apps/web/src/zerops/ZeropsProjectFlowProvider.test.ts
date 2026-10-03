@@ -7,7 +7,7 @@ import {
   type ProductionRun,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
-import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import { jobInFlight, type HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
@@ -46,16 +46,22 @@ const approved = (tag: string, entries: Record<string, string>, at: string): Rel
 });
 const FIRST = approved("v0.1.0", { app: "1".repeat(40) }, "2026-09-24T09:00:00Z");
 
-/** HQ's record of a production deploy of `sha`. */
-const record = (sha: string, state: HqDeploy["state"], at: string): HqDeploy => ({
+/** HQ's job of a production deploy of `sha`, in `state` since `at`. */
+const record = (sha: string, state: HqJob["state"], at: string): HqJob => ({
+  id: "1",
+  kind: "deploy",
+  service: "app",
   sha,
   state,
-  failure: state === "failed" ? "job" : null,
-  message: null,
+  cause: "release",
+  ref: "v0.1.1",
+  reason: null,
   appVersionId: null,
   processId: null,
   requestedBy: null,
   at,
+  endedAt: jobInFlight({ state }) ? null : at,
+  supersededBy: null,
 });
 
 function join(input: {
@@ -152,6 +158,7 @@ describe("joinProjectFlows", () => {
       tiers: ["stage", "production"],
       repositories: new Map([["app", "appdev"]]),
       productionRepositories: new Map([["app", "appdev"]]),
+      declared: new Map([["production", ["app"]]]),
     };
     /** What HQ compared a release would put live: the one change on appdev. */
     const COMPARED: MovedCommits = {
@@ -352,7 +359,7 @@ describe("joinProjectFlows", () => {
   const RUNNING = "1".repeat(40);
   const MERGED = "2".repeat(40);
   const TAGGED_AT = "2026-09-24T10:00:00Z";
-  function flowWithProductionDeploy(latest: HqDeploy | undefined, productionRuns = RUNNING) {
+  function flowWithProductionDeploy(latest: HqJob | undefined, productionRuns = RUNNING) {
     return join({
       stops: new Map([
         [
@@ -387,7 +394,7 @@ describe("joinProjectFlows", () => {
   it.each([
     {
       name: "the release production runs reads Live; the newer one is not a state it was in yet",
-      latest: record(MERGED, "deploying", "2026-09-24T10:01:00Z"),
+      latest: record(MERGED, "building", "2026-09-24T10:01:00Z"),
       runs: RUNNING,
       rows: [
         { tag: "v0.1.1", standing: undefined, word: "Approved", rollBack: false },
@@ -433,8 +440,18 @@ describe("joinProjectFlows", () => {
       inFlight: "v0.1.1",
     },
     {
-      name: "a retry HQ is deploying again holds it",
-      latest: record(MERGED, "deploying", "2026-09-24T10:01:00Z"),
+      name: "HQ refusing it after the tag ends the hold",
+      latest: record(MERGED, "refused", "2026-09-24T10:01:00Z"),
+      inFlight: undefined,
+    },
+    {
+      name: "a job HQ waits to try again holds it",
+      latest: { ...record(MERGED, "queued", "2026-09-24T10:01:00Z"), attempt: 2 },
+      inFlight: "v0.1.1",
+    },
+    {
+      name: "a job HQ builds holds it",
+      latest: record(MERGED, "building", "2026-09-24T10:01:00Z"),
       inFlight: "v0.1.1",
     },
   ])("$name", ({ latest, inFlight }) => {

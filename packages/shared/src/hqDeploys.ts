@@ -9,14 +9,8 @@
  */
 import * as Schema from "effect/Schema";
 
-const ZEROPS_DID_NOT_ANSWER = "Zerops did not answer";
-
 /** HQ's words for a deploy Zerops did not answer, with what Zerops failed at. */
-export const zeropsDidNotAnswer = (detail: string): string => `${ZEROPS_DID_NOT_ANSWER}: ${detail}`;
-
-/** Whether a deploy's words are that refusal: the client's held first deploy, until it reads jobs. */
-export const saysZeropsDidNotAnswer = (message: string | null): boolean =>
-  message?.startsWith(`${ZEROPS_DID_NOT_ANSWER}:`) === true;
+export const zeropsDidNotAnswer = (detail: string): string => `Zerops did not answer: ${detail}`;
 
 /**
  * One job the event asked for, in one environment, as it stands once HQ submitted what it could:
