@@ -34,6 +34,7 @@ import {
   hasProjectBlock,
   recipeProjectImportYaml,
   recipeServicesYaml,
+  recipeTierZcpServices,
   splitRecipeTier,
   type RecipeRuntime,
   type RecipeRuntimes,
@@ -233,6 +234,14 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   }
   const tier = recipe.kind === "tier" ? readTier(recipe.yaml, withAgent) : null;
   if (tier === undefined) return { ok: false, reason: "This project has no recipe merged yet." };
+  // A project holds one Mate (audit D2): the container is the press's, never the tier's too.
+  const zcp = withAgent && recipe.kind === "tier" ? recipeTierZcpServices(recipe.yaml) : [];
+  if (zcp.length > 0) {
+    return {
+      ok: false,
+      reason: `This project's recipe declares a Zerops Control Plane (${zcp.join(", ")}). A Mate brings its own: take it out of the recipe, then try again.`,
+    };
+  }
 
   // Membership first, then the name: naming is not a membership write, and
   // routing it through one clears the group (`groups.ts`).

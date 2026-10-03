@@ -468,6 +468,38 @@ services:
     });
     expect(result).toEqual({ ok: false, reason: "This project has no recipe merged yet." });
   });
+
+  // One Mate per project (audit D2): a zcp service in its tier would be a second next to the
+  // container the press brings, wherever the tier's import put it.
+  it.each([
+    { case: "a Mate", extra: {}, refused: true },
+    { case: "a stage given an agent", extra: { role: "stage", withAgent: true }, refused: true },
+    { case: "a stage", extra: { role: "stage" }, refused: false },
+  ] satisfies ReadonlyArray<{
+    case: string;
+    extra: Partial<EnvironmentCreationInput>;
+    refused: boolean;
+  }>)(
+    "plans $case from a tier that declares a zcp service: refused $refused",
+    ({ extra, refused }) => {
+      const yaml = `${SERVICES_ONLY}  - hostname: helper
+    type: zcp@1
+    priority: 5
+`;
+      const result = planEnvironmentCreation({
+        clientId: "c1",
+        role: "dev",
+        name: "Acme - Wren",
+        recipe: { kind: "tier", tier: "mate", yaml },
+        ...extra,
+      });
+      expect(result.ok ? undefined : result.reason).toBe(
+        refused
+          ? "This project's recipe declares a Zerops Control Plane (helper). A Mate brings its own: take it out of the recipe, then try again."
+          : undefined,
+      );
+    },
+  );
 });
 
 describe("planEnvironmentCreation — whole-project recipes", () => {
