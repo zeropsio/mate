@@ -8251,6 +8251,10 @@ export default function ChatView(props: ChatViewProps) {
                   routeThreadKey,
                   onOpenTurnDiff,
                   supportsConversationRollback,
+                  provider:
+                    activeThread.session?.providerName ??
+                    conversationProviderStatus?.driver ??
+                    null,
                   onRevertToTurnCount: onRevertTimelineTurn,
                   ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
                   isRevertingCheckpoint,

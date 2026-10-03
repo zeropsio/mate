@@ -43,6 +43,8 @@ type Scene = {
   helperFinishes?: ReadonlyArray<HelperFinish>;
   /** Something runs alongside the live run: its panel draws a bar. */
   alongside?: boolean;
+  /** The thread's provider driver; Codex unless given, whose batches go by timing. */
+  provider?: string | null;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -68,6 +70,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     supportsConversationRollback: false,
     ...(scene.helperFinishes === undefined ? {} : { helperFinishes: scene.helperFinishes }),
     ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
+    provider: scene.provider === undefined ? "codex" : scene.provider,
   });
 }
 
@@ -746,7 +749,14 @@ describe("deriveMessagesTimelineRows", () => {
     },
   ])("reads the live field from the newest batch: $name", ({ entries, now }) => {
     // The live run's record: a completion filed under another turn draws its own.
-    const record = rows({ entries: [user("m0", 0), ...entries], live: "t1" }).find(
+    const provider = entries.some((entry) =>
+      entry.kind === "operation"
+        ? entry.operation.responseId !== undefined
+        : "entry" in entry && "responseId" in entry.entry && entry.entry.responseId !== undefined,
+    )
+      ? "claudeAgent"
+      : "codex";
+    const record = rows({ entries: [user("m0", 0), ...entries], live: "t1", provider }).find(
       (row): row is Extract<MessagesTimelineRow, { kind: "record" }> =>
         row.kind === "record" && row.live,
     );
@@ -754,6 +764,29 @@ describe("deriveMessagesTimelineRows", () => {
     if (!("others" in now)) {
       expect(record?.now).not.toHaveProperty("others");
     }
+  });
+
+  // An older Mate server names no response: a Claude thread's calls then go
+  // stale by nothing, as before the batch rule (D1), and the timing rule is
+  // Codex's alone.
+  it.each([
+    { provider: "claudeAgent", now: { key: "w3", others: [{ step: { key: "w1" } }] }, stale: [] },
+    { provider: null, now: { key: "w3", others: [{ step: { key: "w1" } }] }, stale: [] },
+    { provider: "codex", now: { key: "w3" }, stale: ["step:w1"] },
+  ])("reads a thread whose calls name no response by its provider: $provider", (row) => {
+    const entries = [user("m0", 0), open("w1", 1), returned("w2", 1, 5, 1, 10), open("w3", 1, 20)];
+    const record = recordOf(rows({ entries, live: "t1", provider: row.provider }));
+    expect(record?.now).toMatchObject({
+      kind: "step",
+      step: { key: row.now.key },
+      ...("others" in row.now ? { others: row.now.others } : {}),
+    });
+    if (!("others" in row.now)) expect(record?.now).not.toHaveProperty("others");
+    expect(
+      record?.items.flatMap((item) =>
+        item.kind === "step" && item.step.noResult === "stale" ? [item.key] : [],
+      ),
+    ).toEqual(row.stale);
   });
 
   it("keeps a bootstrap session's line where it first returned while its follow-up runs", () => {

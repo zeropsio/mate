@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveBatch, type BatchCall } from "./liveBatch.ts";
+import { batchesByTiming, liveBatch, type BatchCall } from "./liveBatch.ts";
 
 /** A call by name, started and returned at the given seconds. */
 const call = (
@@ -107,6 +107,54 @@ describe("liveBatch", () => {
       stale: [{ item: "x", since: 4000 }],
     },
   ])("$name", ({ calls, open, stale }) => {
-    expect(liveBatch(calls)).toEqual({ open, stale });
+    expect(liveBatch(calls, { byTiming: true })).toEqual({ open, stale });
+  });
+
+  // Claude names each call's response; a Claude thread whose calls name none
+  // (an older Mate server) never times its batches.
+  it.each([
+    {
+      name: "a Claude thread with no response ids: X starts, Y returns, Z starts — nothing stale",
+      calls: [call("x", 1, null), call("y", 2, 3), call("z", 4, null)],
+      open: ["x", "z"],
+      stale: [],
+    },
+    {
+      name: "a Claude thread with no response ids: two batches, still nothing stale",
+      calls: [call("a", 1, null), call("b", 2, 3), call("c", 4, null), call("d", 4.5, null)],
+      open: ["a", "c", "d"],
+      stale: [],
+    },
+    {
+      name: "mixed: unnamed calls after a named one never make it stale",
+      calls: [call("x", 1, null, "r1"), call("u1", 3, 4), call("u2", 5, null)],
+      open: ["x", "u2"],
+      stale: [],
+    },
+    {
+      name: "mixed: a named call of the same response after an unnamed return keeps the batch",
+      calls: [call("x", 1, null, "r1"), call("u1", 3, 4), call("z", 5, null, "r1")],
+      open: ["x", "z"],
+      stale: [],
+    },
+    {
+      name: "mixed: a named call of a newer response still makes the older one stale",
+      calls: [call("x", 1, null, "r1"), call("u1", 3, 4), call("z", 5, null, "r2")],
+      open: ["z"],
+      stale: [{ item: "x", since: 5000 }],
+    },
+  ])("$name", ({ calls, open, stale }) => {
+    expect(liveBatch(calls, { byTiming: false })).toEqual({ open, stale });
+  });
+});
+
+describe("batchesByTiming", () => {
+  it.each([
+    { driver: "claudeAgent", byTiming: false },
+    { driver: "codex", byTiming: true },
+    { driver: null, byTiming: false },
+    { driver: undefined, byTiming: false },
+  ])("$driver times its batches: $byTiming", ({ driver, byTiming }) => {
+    expect(batchesByTiming(driver)).toBe(byTiming);
   });
 });

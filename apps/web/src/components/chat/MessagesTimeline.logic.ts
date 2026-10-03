@@ -1,5 +1,10 @@
 import * as Equal from "effect/Equal";
-import { liveBatch, type LiveBatch } from "@t3tools/shared/liveBatch";
+import {
+  batchesByTiming,
+  liveBatch,
+  type BatchRule,
+  type LiveBatch,
+} from "@t3tools/shared/liveBatch";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -1044,30 +1049,26 @@ function epoch(iso: string | undefined): number | null {
  * What the batch rule reads off the whole thread: the calls that returned, by
  * their call id — a start whose completion was filed under another turn, or
  * none, never merged with it (`session-logic` collapses by turn and call id),
- * yet its call returned — and whether its calls name their model response.
+ * yet its call returned — and, by the thread's provider, whether a call that
+ * names no response goes stale by timing (`batchesByTiming`).
  */
-export interface BatchReading {
+export interface BatchReading extends BatchRule {
   readonly returned: ReadonlySet<string>;
-  /** Its calls name their response (Claude): a returned call that names none is a lone completion. */
-  readonly named: boolean;
 }
 
-export function batchReadingOf(entries: ReadonlyArray<TimelineEntry>): BatchReading {
+export function batchReadingOf(
+  entries: ReadonlyArray<TimelineEntry>,
+  rule: BatchRule,
+): BatchReading {
   const returned = new Set<string>();
-  let named = false;
   for (const entry of entries) {
-    if (entry.kind === "operation") {
-      if (entry.operation.responseId !== undefined) named = true;
-      continue;
-    }
     if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
-    const { toolCallId, toolLifecycleStatus, responseId } = entry.entry;
-    if (responseId !== undefined) named = true;
+    const { toolCallId, toolLifecycleStatus } = entry.entry;
     if (toolCallId !== undefined && toolLifecycleStatus !== undefined) {
       if (toolLifecycleStatus !== "inProgress") returned.add(toolCallId);
     }
   }
-  return { returned, named };
+  return { returned, byTiming: rule.byTiming };
 }
 
 /** A start whose call's completion stands apart from it in the thread: the completion tells it. */
@@ -1114,10 +1115,9 @@ function batchCallOf(
     return { startedAt: epoch(work.startedAt ?? work.createdAt), returnedAt: null, response };
   }
   // A completion seen on its own tells that a call returned, never when one
-  // started: where calls name their response, one that names none had no
-  // start merged into it (Claude files a result as an update and a
-  // completion); elsewhere, one no later activity stamped (`updatedAt`).
-  const alone = reading.named ? response === undefined : work.updatedAt === undefined;
+  // started: one no later activity stamped (`updatedAt`). Only the timing
+  // rule reads it; a call that names its response goes by the response.
+  const alone = work.updatedAt === undefined;
   return {
     startedAt: alone ? null : epoch(work.startedAt ?? work.createdAt),
     returnedAt: epoch(work.updatedAt ?? work.createdAt),
@@ -1133,13 +1133,14 @@ function batchCallOf(
  */
 export function stretchBatch(
   stretch: Pick<Stretch, "entries">,
-  reading: BatchReading = batchReadingOf(stretch.entries),
+  reading: BatchReading,
 ): LiveBatch<BatchEntry> {
   return liveBatch(
     stretch.entries.flatMap((entry) => {
       const call = batchCallOf(entry, reading);
       return call === null ? [] : [{ item: entry as BatchEntry, ...call }];
     }),
+    reading,
   );
 }
 
@@ -1154,7 +1155,7 @@ function liveActivity(
   stretch: Stretch,
   writing: MessageEntry | null,
   tracked: TrackedCommands,
-  batch: LiveBatch<BatchEntry> = stretchBatch(stretch),
+  batch: LiveBatch<BatchEntry>,
 ): TurnHeaderActivity {
   const asked = pendingQuestion(stretch);
   if (asked !== null) return { kind: "waiting", on: "answer", key: `question:${asked.id}` };
@@ -1769,9 +1770,14 @@ export function deriveMessagesTimelineRows(input: {
   helperFinishes?: ReadonlyArray<HelperFinish>;
   /** Something runs alongside the live run: its panel draws a bar (`dockDraws`). */
   alongside?: boolean;
+  /**
+   * The thread's provider driver: whether its calls go stale by timing
+   * (`batchesByTiming`); not known, nothing does.
+   */
+  provider?: string | null;
 }): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
-  const reading = batchReadingOf(entries);
+  const reading = batchReadingOf(entries, { byTiming: batchesByTiming(input.provider) });
   const structure = deriveConversationStructure({
     timelineEntries: entries,
     latestTurn: input.latestTurn ?? null,
