@@ -280,6 +280,14 @@ function newer(candidate: GiteaCommitStatus, held: GiteaCommitStatus): boolean {
   return false;
 }
 
+const postedAt = (status: GiteaCommitStatus): number =>
+  status.created_at === undefined ? Number.NaN : Date.parse(status.created_at);
+
+/** A status of the broker's that says the job got past its steps: its grant, or its deploy. */
+const grantedOrDeployed = (status: GiteaCommitStatus): boolean =>
+  status.state === "success" ||
+  (status.state === "pending" && (status.description?.trim() ?? "").startsWith(GRANTED));
+
 /** Each context's newest status, whatever order Gitea listed them in. */
 export function newestByContext(
   statuses: ReadonlyArray<GiteaCommitStatus>,
@@ -300,11 +308,14 @@ export function newestByContext(
  *    job's own report: failed, final, and the rest is why.
  * 2. The broker's is `pending` opening "deploying" — the job got past its steps and holds the
  *    grant: not failed, whatever else failed (and `success`: deployed).
- * 3. The group's workflow's own context — any the broker does not write — is a `failure`, posted at
- *    any time: failed, not final. Gitea posts no status for the broker's `workflow_dispatch` run,
- *    which runs the same workflow on the same commit (run 5: run 280 failed beside the push run's
- *    status and left none), so the push run's failure is the one sign of it; a dispatch that gets
- *    past its steps turns it by rule 2.
+ * 3. The group's workflow's own context — any the broker does not write — is a `failure` posted
+ *    after the broker's last grant or deploy on `H`, or with none on it: failed, not final. Gitea
+ *    posts no status for the broker's `workflow_dispatch` run, which runs the same workflow on the
+ *    same commit (run 5: run 280 failed beside the push run's status and left none), so the push
+ *    run's failure is the one sign of it; a dispatch that gets past its steps turns it by rule 2,
+ *    and one from before the broker's last grant is an earlier try's. `deploy.sh` exits 1 on any
+ *    refused grant, so a refusal fails the push run too: the stage reads failed for that try until
+ *    the broker's retry writes "deploying" (2–7 min) — that try did fail.
  * 4. The broker's is a `failure` or `error` without "failed: " — a refusal it retries: not failed.
  * 5. Otherwise nothing is said.
  *
@@ -325,8 +336,22 @@ export function firstDeployOnHead(input: {
   }
   if (broker?.state === "success") return { kind: "deployed" };
   if (broker?.state === "pending" && words.startsWith(GRANTED)) return { kind: "granted" };
-  for (const [context, status] of newest) {
-    if (!context.startsWith("mate/") && failing(status))
+  // The broker's last grant or deploy on this head: a push failure from before it is an earlier
+  // try's, not the one the broker dispatched since.
+  const context = deployStatusContext(input.environment, input.hostname);
+  let movedOnAt: number | undefined;
+  for (const status of input.statuses) {
+    if (status.context !== context || !grantedOrDeployed(status)) continue;
+    const at = postedAt(status);
+    movedOnAt = Math.max(
+      movedOnAt ?? Number.NEGATIVE_INFINITY,
+      Number.isNaN(at) ? Number.POSITIVE_INFINITY : at,
+    );
+  }
+  for (const [name, status] of newest) {
+    if (name.startsWith("mate/") || !failing(status)) continue;
+    const at = postedAt(status);
+    if (movedOnAt === undefined || (!Number.isNaN(at) && at > movedOnAt))
       return { kind: "failed", reason: undefined, final: false };
   }
   return { kind: "open" };

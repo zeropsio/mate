@@ -596,6 +596,40 @@ describe("firstDeployOnHead — the one truth table for the head a stage deploys
       verdict: { kind: "open" },
     },
     { case: "nothing posted yet", statuses: [], verdict: { kind: "open" } },
+    {
+      // The grant's job died; the broker dispatched again: the old push failure is not this try's.
+      case: "deploying, then a newer dispatch, an older push failure: not failed",
+      statuses: [
+        posted(BROKER, "pending", 20, "dispatched"),
+        posted(BROKER, "pending", 15, "deploying 9a8b7c6"),
+        posted(PUSH, "failure", 12),
+      ],
+      verdict: { kind: "open" },
+    },
+    {
+      // deploy.sh exits 1 on a refused grant: the push run fails with the refusal.
+      case: "a refusal echoed by the push job: failed for that try",
+      statuses: [posted(PUSH, "failure", 15), posted(BROKER, "failure", 14, "the runner is busy")],
+      verdict: { kind: "failed", reason: undefined, final: false },
+    },
+    {
+      case: "a push failure after the broker's last grant: failed",
+      statuses: [
+        posted(PUSH, "failure", 22),
+        posted(BROKER, "pending", 20, "dispatched"),
+        posted(BROKER, "pending", 15, "deploying 9a8b7c6"),
+      ],
+      verdict: { kind: "failed", reason: undefined, final: false },
+    },
+    {
+      case: "a push failure that says not when, the broker granted once: not failed",
+      statuses: [
+        posted(BROKER, "pending", 20, "dispatched"),
+        posted(BROKER, "pending", 15, "deploying 9a8b7c6"),
+        posted(PUSH, "failure", undefined),
+      ],
+      verdict: { kind: "open" },
+    },
   ])("$case", ({ statuses, verdict }) => {
     expect(on(statuses as ReadonlyArray<ReturnType<typeof posted>>)).toEqual(verdict);
   });
