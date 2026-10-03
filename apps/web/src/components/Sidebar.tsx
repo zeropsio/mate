@@ -275,12 +275,16 @@ import {
 import {
   menuRowsOf,
   rememberedMenuCandidates,
+  rememberedMenuProjectOpenedIn,
   rememberMenuCandidates,
 } from "../zerops/menuSkeleton";
+import { useHeldFor } from "../zerops/useHeldFor";
+import { zeropsSessionAtom } from "../state/zerops";
 import {
   candidatesNotice,
   findCandidate,
   heldCandidates,
+  STILL_READING_PATIENCE_MS,
 } from "@t3tools/client-runtime/zerops/projections";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -1814,16 +1818,37 @@ export default function Sidebar() {
   const zeropsCandidates = zeropsHeld.rows;
   // What the tree draws: until the listing holds its rows, the tree this browser last drew for
   // the person and the organization (`menuSkeleton.ts`) — a reload paints the menu at once, and
-  // the listing replaces it in place when it lands.
+  // the listing replaces it in place when it lands. The listing's organization is the one the
+  // inventory reads, a commit behind the session's on a switch: until they agree, the listing is
+  // the last organization's, neither drawn nor remembered as this one's.
   const zeropsOrganizationId = zeropsSession.activeOrganization?.id;
+  const zeropsListingOrganizationId =
+    useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  const zeropsListingCurrent =
+    zeropsOrganizationId !== undefined && zeropsListingOrganizationId === zeropsOrganizationId;
+  // A listing known but not whole and read for this long is what there is: a project withheld
+  // for good, or one whose container is never read, is no longer painted from memory.
+  const zeropsGraceOver = useHeldFor(
+    zeropsListing.state === "known" && !zeropsHeld.complete,
+    STILL_READING_PATIENCE_MS,
+  );
   const zeropsMenu = useMemo(
     () =>
-      menuRowsOf(
-        zeropsListing,
-        zeropsHeld,
-        zeropsSignedIn ? rememberedMenuCandidates(zeropsOrganizationId) : undefined,
-      ),
-    [zeropsHeld, zeropsListing, zeropsOrganizationId, zeropsSignedIn],
+      menuRowsOf({
+        listing: zeropsListing,
+        held: zeropsHeld,
+        remembered: zeropsSignedIn ? rememberedMenuCandidates(zeropsOrganizationId) : undefined,
+        current: zeropsListingCurrent,
+        graceOver: zeropsGraceOver,
+      }),
+    [
+      zeropsGraceOver,
+      zeropsHeld,
+      zeropsListing,
+      zeropsListingCurrent,
+      zeropsOrganizationId,
+      zeropsSignedIn,
+    ],
   );
   // The creations under way in the organization in view, drawn in their
   // groups before the listing holds them — the projects page's own placing —
@@ -2360,12 +2385,14 @@ export default function Sidebar() {
   // The tree as drawn of a read listing, for the next reload to paint before it lands again —
   // never a Mate on its way off Zerops.
   useEffect(() => {
-    if (!zeropsMenu.settled || zeropsOrganizationId === undefined) return;
+    // Under the organization the listing is of, and only while it is the one in view.
+    if (zeropsMenu.toRemember === null || zeropsListingOrganizationId === undefined) return;
+    if (!zeropsListingCurrent) return;
     rememberMenuCandidates(
-      zeropsOrganizationId,
-      zeropsMenu.rows.filter((candidate) => !mateDeleting(candidate.project, zeropsDeleting)),
+      zeropsListingOrganizationId,
+      zeropsMenu.toRemember.filter((candidate) => !mateDeleting(candidate.project, zeropsDeleting)),
     );
-  }, [zeropsDeleting, zeropsMenu, zeropsOrganizationId]);
+  }, [zeropsDeleting, zeropsListingCurrent, zeropsListingOrganizationId, zeropsMenu]);
   useEffect(() => {
     if (!zeropsHeld.complete) return;
     const rows: Record<string, RememberedRow> = {};
@@ -2441,19 +2468,16 @@ export default function Sidebar() {
       (candidate) => candidate.environmentId === environmentId,
     );
     if (open.kind === "found") return open.row.project.id;
-    // The remembered tree's row for it, while the menu draws from memory.
-    if (!zeropsMenu.fromMemory) return null;
-    return (
-      zeropsMenu.rows.find((candidate) => candidate.environmentId === environmentId)?.project.id ??
-      null
-    );
+    // The Mate it opened in last time, as remembered: the open row keeps its highlight while the
+    // menu paints from memory, and through the hand-over until its link is made again.
+    return rememberedMenuProjectOpenedIn(zeropsOrganizationId, environmentId) ?? null;
   }, [
     comingMateRoute,
     newProjectRoute,
     routeDraftThread?.environmentId,
     routeThreadRef?.environmentId,
     zeropsListing,
-    zeropsMenu,
+    zeropsOrganizationId,
   ]);
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.

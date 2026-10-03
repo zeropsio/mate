@@ -10,7 +10,7 @@
  * forgotten when the account closes. Nothing live is kept: a row's dots, timers and status come
  * from its conversation, which a remembered row has not heard yet.
  */
-import { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidateRow, HeldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -25,6 +25,12 @@ export const MENU_SKELETON_MAX_ORGANIZATIONS = 4;
 export const MENU_SKELETON_MAX_ROWS = 200;
 /** How large the whole memory may be, encoded; the oldest organizations go first. */
 export const MENU_SKELETON_MAX_BYTES = 256 * 1024;
+/**
+ * How long after it was last marked an organization's tree drawn again marks it visited: often
+ * enough that the organization visited daily is never the oldest, seldom enough not to write the
+ * memory at every draw.
+ */
+export const MENU_SKELETON_VISIT_MS = 10 * 60_000;
 
 const RowSchema = Schema.Struct({
   key: Schema.String,
@@ -40,7 +46,11 @@ const RowSchema = Schema.Struct({
     }),
   ),
   containerOrigin: Schema.optionalKey(Schema.String),
-  environmentId: Schema.optionalKey(Schema.String),
+  /**
+   * The environment its conversation opened in, last time its link was made — only to say which
+   * row is open while the menu paints from memory, never that it is linked.
+   */
+  openedIn: Schema.optionalKey(Schema.String),
   project: Schema.Struct({
     id: Schema.String,
     name: Schema.String,
@@ -72,12 +82,20 @@ export const EMPTY_MENU_SKELETON: MenuSkeleton = { organizations: {} };
 const optional = <K extends string, V>(key: K, value: V | undefined) =>
   (value === undefined ? {} : { [key]: value }) as { [P in K]?: V };
 
-/** What a row needs of a candidate to paint again, and nothing only true now. */
-export function skeletonRowOf(candidate: ZeropsCandidate): SkeletonRow {
+/**
+ * What a row needs of a candidate to paint again, and nothing only true now: a Mate linked when
+ * it was drawn is remembered as one whose link is not made yet — whether it is linked is its
+ * socket's to say — with the environment it opened in, for the open row's highlight.
+ */
+export function skeletonRowOf(
+  candidate: ZeropsCandidate,
+  /** Where it opened before, kept while its link is not made now. */
+  openedBefore?: string,
+): SkeletonRow {
   const { project, service } = candidate;
   return {
     key: candidate.key,
-    group: candidate.group,
+    group: candidate.group === "connected" ? "ready" : candidate.group,
     ...optional("missingContainer", candidate.missingContainer),
     ...optional(
       "creationFailed",
@@ -97,7 +115,7 @@ export function skeletonRowOf(candidate: ZeropsCandidate): SkeletonRow {
           },
     ),
     ...optional("containerOrigin", candidate.containerOrigin),
-    ...optional("environmentId", candidate.environmentId),
+    ...optional("openedIn", candidate.environmentId ?? openedBefore),
     project: {
       id: project.id,
       name: project.name,
@@ -126,10 +144,6 @@ export function candidateOfSkeleton(row: SkeletonRow): CandidateRow {
     ),
     ...optional("service", row.service),
     ...optional("containerOrigin", row.containerOrigin),
-    ...optional(
-      "environmentId",
-      row.environmentId === undefined ? undefined : EnvironmentId.make(row.environmentId),
-    ),
     project: row.project,
   };
 }
@@ -137,8 +151,10 @@ export function candidateOfSkeleton(row: SkeletonRow): CandidateRow {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * The memory with an organization's tree as drawn now — its first rows up to the cap — and only
- * the newest organizations up to theirs; the same memory when the tree is as it was.
+ * The memory with an organization's tree as drawn now — its first rows up to the cap, each Mate
+ * keeping the environment it last opened in — and only the newest organizations up to theirs.
+ * The same memory when the tree is as it was, unless its last mark is `MENU_SKELETON_VISIT_MS`
+ * old: then it is marked visited.
  */
 export function withOrganizationSkeleton(
   skeleton: MenuSkeleton,
@@ -146,15 +162,34 @@ export function withOrganizationSkeleton(
   candidates: ReadonlyArray<ZeropsCandidate>,
   atMs: number,
 ): MenuSkeleton {
-  const rows = candidates.slice(0, MENU_SKELETON_MAX_ROWS).map(skeletonRowOf);
-  if (same(skeleton.organizations[organizationId]?.rows, rows)) return skeleton;
+  const before = skeleton.organizations[organizationId];
+  const opened = new Map(
+    (before?.rows ?? []).flatMap((row) =>
+      row.openedIn === undefined ? [] : [[row.key, row.openedIn] as const],
+    ),
+  );
+  const rows = candidates
+    .slice(0, MENU_SKELETON_MAX_ROWS)
+    .map((candidate) => skeletonRowOf(candidate, opened.get(candidate.key)));
+  const unchanged = before !== undefined && same(before.rows, rows);
+  if (unchanged && atMs - before.at < MENU_SKELETON_VISIT_MS) return skeleton;
   const kept = Object.entries({
     ...skeleton.organizations,
-    [organizationId]: { at: atMs, rows },
+    [organizationId]: { at: atMs, rows: unchanged ? before.rows : rows },
   })
     .toSorted(([, left], [, right]) => right.at - left.at)
     .slice(0, MENU_SKELETON_MAX_ORGANIZATIONS);
   return { organizations: Object.fromEntries(kept) };
+}
+
+/** The remembered Mate an environment's conversation opened in, in the organization's tree. */
+export function projectOpenedIn(
+  skeleton: MenuSkeleton,
+  organizationId: string,
+  environmentId: EnvironmentId,
+): string | undefined {
+  return skeleton.organizations[organizationId]?.rows.find((row) => row.openedIn === environmentId)
+    ?.project.id;
 }
 
 const encode = Schema.encodeSync(Schema.fromJsonString(MenuSkeletonSchema));
@@ -186,76 +221,124 @@ export function decodeMenuSkeleton(stored: string | null): MenuSkeleton {
   }
 }
 
-/**
- * The rows the menu draws, and whether any comes from this browser's memory:
- * - while the listing holds no rows yet — unread, being read, or its access not verified yet —
- *   the tree it last drew, where it remembers one;
- * - a listing known in part draws its rows, each one whose container is not read yet as it was
- *   remembered — and, while it holds none at all, the tree;
- * - otherwise the listing's own rows: a known, whole listing replaces the memory in place, and a
- *   failed or refused read says so as it always did.
- * A remembered row is never complete: nothing reads "none" off a memory. `settled` says the draw is
- * the one to remember: its listing is known, with rows, and every one of them read.
- */
-export function menuRowsOf<Row extends CandidateRow>(
-  listing: Shown<ReadonlyArray<Row>>,
-  held: HeldCandidates<Row>,
-  remembered: ReadonlyArray<Row> | undefined,
-): {
+/** What the menu draws of its listing and its memory (`menuRowsOf`). */
+export interface MenuRowsInput<Row extends CandidateRow> {
+  readonly listing: Shown<ReadonlyArray<Row>>;
+  readonly held: HeldCandidates<Row>;
+  /** The organization's tree as this browser remembers it (`rememberedMenuCandidates`). */
+  readonly remembered: ReadonlyArray<Row> | undefined;
+  /**
+   * The listing is the organization's in view: false for the moment a switch of organization
+   * leaves the listing on the last one's.
+   */
+  readonly current: boolean;
+  /**
+   * A known listing has not been whole and read since `STILL_READING_PATIENCE_MS`: what it holds
+   * is what there is — a project withheld for good, or one whose container is never read.
+   */
+  readonly graceOver: boolean;
+}
+
+export interface MenuRows<Row> {
   readonly rows: ReadonlyArray<Row>;
+  /** Nothing is missing from `rows`: the one licence to say "none". Never from memory. */
   readonly complete: boolean;
+  /** Some of `rows` are this browser's memory: what the menu draws teaches its memory nothing. */
   readonly fromMemory: boolean;
-  readonly settled: boolean;
-} {
-  const settled =
-    listing.state === "known" &&
-    (held.complete || (held.rows.length > 0 && held.rows.every((row) => row.presence === "known")));
-  const live = { rows: held.rows, complete: held.complete, fromMemory: false, settled };
-  if (remembered === undefined || remembered.length === 0) return live;
-  const fromMemory = { rows: remembered, complete: false, fromMemory: true, settled: false };
-  switch (listing.state) {
-    case "unread":
-    case "reading":
-      return fromMemory;
-    case "withheld":
-      return listing.reason === "access-unverified" ? fromMemory : live;
-    case "known": {
-      if (held.complete) return live;
-      if (held.rows.length === 0) return fromMemory;
-      let kept = false;
-      const rows = held.rows.flatMap((row) => {
-        if (row.presence === "known") return [row];
-        const same = remembered.filter((entry) => entry.project.id === row.project.id);
-        if (same.length === 0) return [row];
-        kept = true;
-        return same;
-      });
-      return kept ? { rows, complete: false, fromMemory: true, settled: false } : live;
-    }
-    default:
-      return live;
+  /** The tree to remember of this draw, once its listing is whole; null until then. */
+  readonly toRemember: ReadonlyArray<Row> | null;
+}
+
+/**
+ * The rows the menu draws:
+ * - while the listing holds no rows — unread, being read, its read failed and retrying, its
+ *   access not verified yet — the tree it last drew, where it remembers one, so a first read
+ *   that keeps failing never takes it back between retries (its notice stands under the rows);
+ * - a known listing draws its rows, each one whose container is not read yet as remembered, and,
+ *   while it is known only in part, the remembered projects it does not hold yet — none vanishes
+ *   to come back — until its grace is over, when it is what there is;
+ * - a whole, read listing replaces the memory in place, and a lapse says so as it always did;
+ * - and for the moment the listing is the last organization's, the tree of the one in view.
+ * Only a whole listing is remembered — its rows read, and as remembered those not read yet — so a
+ * project never read keeps neither the menu still nor the organization's other changes unkept.
+ */
+export function menuRowsOf<Row extends CandidateRow>(input: MenuRowsInput<Row>): MenuRows<Row> {
+  const { listing, held } = input;
+  const remembered = input.remembered ?? [];
+  const live: MenuRows<Row> = {
+    rows: held.rows,
+    complete: held.complete,
+    fromMemory: false,
+    toRemember: null,
+  };
+  const fromMemory: MenuRows<Row> = {
+    rows: remembered,
+    complete: false,
+    fromMemory: true,
+    toRemember: null,
+  };
+  if (!input.current)
+    return remembered.length === 0 ? { ...live, rows: [], complete: false } : fromMemory;
+  if (listing.state !== "known") {
+    const holds =
+      listing.state === "unread" ||
+      listing.state === "reading" ||
+      listing.state === "failed" ||
+      (listing.state === "withheld" && listing.reason === "access-unverified");
+    return holds && remembered.length > 0 ? fromMemory : live;
   }
+  const rememberedOf = (projectId: string) =>
+    remembered.filter((row) => row.project.id === projectId);
+  const toRemember =
+    listing.coverage === "complete"
+      ? held.rows.flatMap((row) =>
+          row.presence === "known" ? [row] : rememberedOf(row.project.id),
+        )
+      : null;
+  if (held.complete || input.graceOver || remembered.length === 0) return { ...live, toRemember };
+  let kept = false;
+  const rows = held.rows.flatMap((row) => {
+    if (row.presence === "known") return [row];
+    const same = rememberedOf(row.project.id);
+    if (same.length === 0) return [row];
+    kept = true;
+    return same;
+  });
+  if (listing.coverage === "partial") {
+    const listed = new Set(held.rows.map((row) => row.project.id));
+    const unlisted = remembered.filter((row) => !listed.has(row.project.id));
+    if (unlisted.length > 0) {
+      kept = true;
+      rows.push(...unlisted);
+    }
+  }
+  return kept ? { rows, complete: false, fromMemory: true, toRemember } : { ...live, toRemember };
 }
 
 // ── This browser's memory ───────────────────────────────────────────────────────────────────
 
 let held: { readonly account: string; skeleton: MenuSkeleton } | null = null;
+/** Each organization's tree drawn since the last write, by organization, with when. */
+let pending = new Map<
+  string,
+  { readonly candidates: ReadonlyArray<ZeropsCandidate>; readonly atMs: number }
+>();
 let writing: ReturnType<typeof setTimeout> | null = null;
 const drawn = new WeakMap<ReadonlyArray<SkeletonRow>, ReadonlyArray<CandidateRow>>();
+
+function readStored(): MenuSkeleton {
+  try {
+    return decodeMenuSkeleton(accountLocalStorage.getItem(MENU_SKELETON_STORAGE_KEY));
+  } catch {
+    return EMPTY_MENU_SKELETON;
+  }
+}
 
 /** What this browser remembers for the account signed in now; nothing before one is. */
 function memory(): MenuSkeleton {
   const account = typeof window === "undefined" ? null : currentAccountId();
   if (account === null) return EMPTY_MENU_SKELETON;
-  if (held?.account !== account) {
-    let stored: string | null = null;
-    try {
-      stored = accountLocalStorage.getItem(MENU_SKELETON_STORAGE_KEY);
-    } catch {
-      stored = null;
-    }
-    held = { account, skeleton: decodeMenuSkeleton(stored) };
-  }
+  if (held?.account !== account) held = { account, skeleton: readStored() };
   return held.skeleton;
 }
 
@@ -274,22 +357,45 @@ export function rememberedMenuCandidates(
   return candidates;
 }
 
-/** Remembers the organization's tree as drawn now, written once the menu settles a moment. */
+/** The remembered Mate an environment's conversation opened in: the open row while it paints from memory. */
+export function rememberedMenuProjectOpenedIn(
+  organizationId: string | undefined,
+  environmentId: EnvironmentId,
+): string | undefined {
+  return organizationId === undefined
+    ? undefined
+    : projectOpenedIn(memory(), organizationId, environmentId);
+}
+
+/**
+ * Remembers the organization's tree as drawn now, written once the menu settles a moment — into
+ * the memory as stored then, replacing only this organization's tree: another tab of the account,
+ * in another organization, keeps what it wrote meanwhile.
+ */
 export function rememberMenuCandidates(
   organizationId: string,
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): void {
   const before = memory();
   if (held === null) return;
-  const next = withOrganizationSkeleton(before, organizationId, candidates, Date.now());
+  const atMs = Date.now();
+  const next = withOrganizationSkeleton(before, organizationId, candidates, atMs);
   if (next === before) return;
   held.skeleton = next;
+  pending.set(organizationId, { candidates, atMs });
   if (writing !== null) clearTimeout(writing);
   writing = setTimeout(() => {
     writing = null;
+    const drawnSince = pending;
+    pending = new Map();
     if (held === null) return;
+    let skeleton = readStored();
+    for (const [id, { candidates: rows, atMs: at }] of drawnSince) {
+      skeleton = withOrganizationSkeleton(skeleton, id, rows, at);
+    }
+    held.skeleton = skeleton;
     try {
-      const encoded = encodeMenuSkeleton(held.skeleton);
+      const encoded = encodeMenuSkeleton(skeleton);
       if (encoded === null) accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY);
       else accountLocalStorage.setItem(MENU_SKELETON_STORAGE_KEY, encoded);
     } catch {
@@ -302,6 +408,7 @@ export function rememberMenuCandidates(
 onAccountLifetimeClose(() => {
   if (writing !== null) clearTimeout(writing);
   writing = null;
+  pending = new Map();
   held = null;
   try {
     accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY);
