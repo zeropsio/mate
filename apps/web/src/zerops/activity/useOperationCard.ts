@@ -381,16 +381,24 @@ export type LogDialogState = readonly [open: boolean, set: (open: boolean) => vo
 /**
  * `logDialog`: where the whole log's dialog keeps whether it is open — its
  * line, so a dialog the person opened stays open as the line plops from the
- * live slot into the history; the card's own state otherwise.
+ * live slot into the history; the card's own state otherwise. `readsLog`:
+ * whether its build's log is read — not for a line in the live slot that
+ * stands closed.
  */
 export function useOperationCard(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
   logDialog?: LogDialogState,
+  readsLog = true,
 ): OperationCardRegions {
   const target = observationTargetFor(operation);
   const nowMs = useSecondsNowMs(operation.phase === "running");
-  const { state, history, buildLog } = useOperationObservation(target, environmentId, nowMs);
+  const { state, history, buildLog } = useOperationObservation(
+    target,
+    environmentId,
+    nowMs,
+    readsLog,
+  );
   const topology = useZeropsTopology(environmentId);
   // The whole log opens in a dialog, only when asked for.
   const ownLogDialog = useState(false);

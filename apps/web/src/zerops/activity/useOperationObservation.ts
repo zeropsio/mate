@@ -228,6 +228,8 @@ export function useOperationObservation(
   target: ObservationTarget | null,
   environmentId: EnvironmentId | null,
   nowMs: number,
+  /** Whether its build's log is read: not for a line that stands closed. */
+  readsLog = true,
 ): OperationObservation {
   const session = useZeropsSessionOptional();
   const topology = useZeropsTopology(environmentId);
@@ -281,7 +283,7 @@ export function useOperationObservation(
   const observationNow = result.state.kind === "off" ? undefined : result.state.observation;
   const buildLog = useBuildLog({
     projectId: projectId ?? null,
-    query: result.buildLogQuery ?? null,
+    query: readsLog ? (result.buildLogQuery ?? null) : null,
     live: target !== null && target.running && observationNow?.outcome === undefined,
   });
 

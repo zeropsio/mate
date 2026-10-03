@@ -1691,11 +1691,15 @@ function OperationBubble(props: OperationLineProps) {
 /** An operation in the live slot, with what its card reads of the platform. */
 function WatchedOperationBubble(props: OperationLineProps) {
   const ctx = use(TimelineRowCtx);
-  // The whole log's dialog is the line's: one opened here stays open as it lands.
+  const line = use(ChatLineContext);
+  const standsOpen = use(SlotStandsOpenContext);
+  // The whole log's dialog is the line's: one opened here stays open as it
+  // lands. A line that stands closed reads no build log.
   const regions = useOperationCard(
     props.operation,
     ctx.activeThreadEnvironmentId,
     useCarried("log", () => false),
+    line !== null && line === standsOpen,
   );
   return <OperationLine {...props} regions={regions} />;
 }

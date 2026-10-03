@@ -26,6 +26,8 @@ const store = vi.hoisted(() => ({
   /** Whether a card asks the store to read the project, as of the last draw. */
   reading: false,
   logLines: [] as ReadonlyArray<{ id: string; at: string; text: string; severity: number }>,
+  /** The builds whose log a card asks for, as of the last draw. */
+  logReads: new Set<string>(),
 }));
 
 vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
@@ -49,10 +51,11 @@ vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
 });
 
 vi.mock("../../zerops/activity/useBuildLog", () => ({
-  useBuildLog: ({ query, live }: { query: unknown; live: boolean }) =>
-    query === null
-      ? { lines: [], status: "idle" }
-      : { lines: live ? store.logLines : [], status: live ? "live" : "ended" },
+  useBuildLog: ({ query, live }: { query: { appVersionId: string } | null; live: boolean }) => {
+    if (query === null) return { lines: [], status: "idle" };
+    store.logReads.add(query.appVersionId);
+    return { lines: live ? store.logLines : [], status: live ? "live" : "ended" };
+  },
 }));
 
 vi.mock("../../zerops/useZeropsFeeds", async (importOriginal) => {
@@ -268,6 +271,7 @@ describe("RunChat — an operation's card, read from the account store", () => {
     vi.setSystemTime(fixtureAt(1, 30));
     store.processes = [process("building")];
     store.reading = false;
+    store.logReads = new Set();
     store.logLines = LOG_LINES;
   });
   afterEach(() => {
@@ -342,7 +346,13 @@ describe("RunChat — an operation's card, read from the account store", () => {
   });
 
   it("a running batch deploy stands as a line per service, the one building open on its pipeline and log", () => {
+    store.processes = [
+      process("building"),
+      process("building", { serviceId: "svc-api", appVersionId: "av-42" }),
+    ];
     const renderer = mount(inSlot(batch()));
+    // The service that stands closed reads no build log.
+    expect([...store.logReads]).toEqual(["av-41"]);
     expect(operationRows(renderer)).toBe(2);
     expect(count(renderer)).toMatchObject({ log: 2, whole: 1 });
     expect(count(renderer).steps).toBeGreaterThan(0);
