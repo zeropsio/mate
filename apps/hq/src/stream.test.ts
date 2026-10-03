@@ -1,5 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -7,6 +9,7 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
+import * as Socket from "effect/unstable/socket/Socket";
 
 import { mainAt, memoryStore, overviewOf } from "../test/harness/overviews.ts";
 
@@ -28,7 +31,7 @@ import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
-import { structureMessages } from "./stream.ts";
+import { liveSocketsLayer, serveStructureSocket, structureMessages } from "./stream.ts";
 import type { ZeropsMember } from "./zerops/api.ts";
 
 const member = (userId: string, roleCode: string): ZeropsMember => ({
@@ -350,5 +353,46 @@ describe("the structure stream", () => {
         );
       }),
     ),
+  );
+});
+
+// F26: the live HQ's structure sockets ended every 120 s with no word of who ended them.
+describe("serveStructureSocket: who ended a socket, and with what code", () => {
+  /** A socket whose client stays until `closeBy` closes it with a code; it answers every ping. */
+  const clientSocket = Effect.gen(function* () {
+    const closing = yield* Deferred.make<number>();
+    const socket = Socket.make({
+      reader: Effect.succeed({
+        pull: Effect.flatMap(Deferred.await(closing), (code) =>
+          Effect.fail(new Socket.SocketError({ reason: new Socket.SocketCloseError({ code }) })),
+        ),
+        upgrade: () => Effect.void,
+      }),
+      writer: Effect.succeed({ write: () => Effect.void, writeAll: () => Effect.void }),
+    });
+    return { socket, closeBy: (code: number) => Deferred.succeed(closing, code) };
+  });
+
+  it.effect("the client, with the code its close carried", () =>
+    Effect.gen(function* () {
+      const { socket, closeBy } = yield* clientSocket;
+      const serving = yield* Effect.forkChild(
+        serveStructureSocket(socket, Stream.never, Duration.seconds(20)),
+      );
+      yield* closeBy(1006);
+      assert.deepStrictEqual(yield* Fiber.join(serving), { by: "client", code: 1006 });
+    }).pipe(Effect.provide(liveSocketsLayer)),
+  );
+
+  it.effect("HQ, with the code it closed with", () =>
+    Effect.gen(function* () {
+      const { socket } = yield* clientSocket;
+      const ended = yield* serveStructureSocket(
+        socket,
+        Stream.make({ type: "end", ending: "session" } as const),
+        Duration.seconds(20),
+      );
+      assert.deepStrictEqual(ended, { by: "hq", code: 4401 });
+    }).pipe(Effect.provide(liveSocketsLayer)),
   );
 });

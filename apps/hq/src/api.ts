@@ -924,11 +924,13 @@ const routes = (
             return (yield* Effect.isSuccess(holderOf(token))) ? undefined : ("session" as const);
           });
           const socket = yield* request.upgrade;
-          yield* serveStructureSocket(
+          const ended = yield* serveStructureSocket(
             socket,
             structureMessages(userId, ending, options.recheck ?? Duration.seconds(30)),
             options.pingEvery ?? Duration.seconds(20),
           );
+          // Which side ended it says whether a cut was HQ's or the way's (F26).
+          yield* Effect.logInfo(`structure socket closed by ${ended.by} (${String(ended.code)})`);
           return HttpServerResponse.empty();
         }),
       ),

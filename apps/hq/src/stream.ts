@@ -389,18 +389,32 @@ export const liveSocketsLayer = Layer.sync(LiveSockets, () => {
   });
 });
 
-/** Serves `messages` on `socket` with the ping and the close codes above, until either side ends. */
+/** Who ended a socket, and with what code: a cut on the way reaches HQ as the client's `1006`. */
+export interface SocketEnding {
+  readonly by: "client" | "hq";
+  readonly code: number;
+}
+
+/**
+ * Serves `messages` on `socket` with the ping and the close codes above, until either side ends;
+ * says which side ended it.
+ */
 export const serveStructureSocket = <R>(
   socket: Socket.Socket,
   messages: Stream.Stream<Outgoing, SqlError | ZeropsError, R>,
   pingEvery: Duration.Duration,
-) =>
+): Effect.Effect<SocketEnding, Socket.SocketError, LiveSockets | R> =>
   Effect.scoped(
     Effect.gen(function* () {
       const writer = yield* socket.writer;
       const reader = yield* socket.reader;
+      const ended = yield* Ref.make<SocketEnding | undefined>(undefined);
+      const endBy = (ending: SocketEnding) => Ref.update(ended, (held) => held ?? ending);
       const close = ([code, reason]: readonly [number, string]) =>
-        writer.write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore);
+        Effect.andThen(
+          endBy({ by: "hq", code }),
+          writer.write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore),
+        );
       yield* (yield* LiveSockets).track((code, reason) => close([code, reason]));
       const heard = yield* Ref.make(yield* Clock.currentTimeMillis);
       const listen = Effect.forever(
@@ -408,7 +422,14 @@ export const serveStructureSocket = <R>(
           reader.pull,
           Effect.flatMap(Clock.currentTimeMillis, (now) => Ref.set(heard, now)),
         ),
-      ).pipe(Effect.ignore);
+      ).pipe(
+        Effect.catch((error) =>
+          endBy({
+            by: "client",
+            code: error.reason._tag === "SocketCloseError" ? error.reason.code : 1006,
+          }),
+        ),
+      );
       const ping = Effect.gen(function* () {
         for (;;) {
           yield* Effect.sleep(pingEvery);
@@ -421,6 +442,8 @@ export const serveStructureSocket = <R>(
         message.type === "end" ? close(CLOSE[message.ending]) : writer.write(toJson(message)),
       ).pipe(Effect.catch(() => close(CLOSE.unreadable)));
       yield* Effect.raceAll([listen, ping, deliver]);
+      // A stream of messages that simply ran out: the scope closes the socket normally.
+      return (yield* Ref.get(ended)) ?? { by: "hq", code: 1000 };
     }),
   );
 
