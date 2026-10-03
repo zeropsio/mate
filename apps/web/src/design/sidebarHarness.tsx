@@ -33,7 +33,15 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { StrictMode, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  StrictMode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -91,7 +99,9 @@ import {
   SidebarNewProject,
   SidebarAccountLine,
   SidebarZeropsTree,
+  type SidebarDrawn,
   type SidebarProjectFlow,
+  type SidebarRemembered,
 } from "~/components/zerops/SidebarZeropsTree";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { HeadingLadder } from "./headingLadder";
@@ -99,6 +109,19 @@ import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
+import {
+  menuRowsOf,
+  rememberedMenuCandidates,
+  rememberMenuCandidates,
+} from "~/zerops/menuSkeleton";
+import {
+  menuMemory,
+  rememberedChangeOf,
+  rememberedChanges,
+  rememberMenu,
+  withChanges,
+  withChips,
+} from "~/zerops/menuMemory";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
@@ -926,6 +949,109 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
  */
 const CONTROLS = new URLSearchParams(location.search).get("inset");
 
+/**
+ * `?reload=1500`: a reload, as the app's menu goes through it — the listing being read for that
+ * many ms, then known; until then the tree this browser remembered (`menuSkeleton.ts`), written
+ * once the listing is known, so the second load paints it. Each row's top at the first frame and
+ * once the listing landed are on `window.__menuReload`, for the audit browser.
+ */
+const RELOAD_MS = (() => {
+  const reload = new URLSearchParams(location.search).get("reload");
+  return reload === null ? null : Number(reload);
+})();
+
+type ReloadFrame = ReadonlyArray<{ readonly row: string; readonly top: number }>;
+const menuReload: {
+  first?: ReloadFrame;
+  landed?: ReloadFrame;
+  fromMemory?: boolean;
+  frames?: ReadonlyArray<{ readonly ms: number; readonly tops: ReloadFrame }>;
+} = {};
+(window as unknown as { __menuReload?: typeof menuReload }).__menuReload = menuReload;
+
+const rowTops = (): ReloadFrame =>
+  [...document.querySelectorAll<HTMLElement>("[data-zerops-mate-row], [data-zerops-group]")].map(
+    (element) => ({
+      row:
+        element.getAttribute("data-zerops-mate-row") ??
+        `group:${element.getAttribute("data-zerops-group") ?? ""}`,
+      top: Math.round(element.getBoundingClientRect().top * 10) / 10,
+    }),
+  );
+
+/** What the menu remembers of its chips and changes, as the app keeps it (`menuMemory.ts`). */
+const RELOAD_REMEMBERED: SidebarRemembered = {
+  changes: rememberedChanges,
+  chips: (groupId) => menuMemory().chips[groupId],
+};
+
+function rememberReloadDrawn(drawn: SidebarDrawn): void {
+  rememberMenu((memory) =>
+    withChips(
+      withChanges(
+        memory,
+        Object.fromEntries(
+          Object.entries(drawn.changes).map(([groupId, pulls]) => [
+            groupId,
+            pulls.map(rememberedChangeOf),
+          ]),
+        ),
+      ),
+      drawn.chips,
+    ),
+  );
+}
+
+/** The listing as the app's menu reads it on a reload (`?reload=`), and what the tree draws of it. */
+function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
+  const [landed, setLanded] = useState(RELOAD_MS === null);
+  useEffect(() => {
+    if (RELOAD_MS === null) return;
+    const timer = setTimeout(() => setLanded(true), RELOAD_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const menu = useMemo(() => {
+    const rows = candidates.map((candidate) => ({ ...candidate, presence: "known" as const }));
+    const listing = (
+      landed
+        ? {
+            state: "known",
+            value: rows,
+            coverage: "complete",
+            asOf: { atMs: 0 },
+            freshness: { kind: "live" },
+          }
+        : { state: "reading", sinceMs: 0, attempt: 1 }
+    ) as Parameters<typeof menuRowsOf<(typeof rows)[number]>>[0];
+    return menuRowsOf(
+      listing,
+      { rows: landed ? rows : [], complete: landed },
+      rememberedMenuCandidates(ORGANIZATION.id),
+    );
+  }, [candidates, landed]);
+  useEffect(() => {
+    if (RELOAD_MS !== null && menu.settled) rememberMenuCandidates(ORGANIZATION.id, menu.rows);
+  }, [menu]);
+  useLayoutEffect(() => {
+    if (RELOAD_MS === null) return;
+    if (menuReload.first === undefined) {
+      menuReload.first = rowTops();
+      menuReload.fromMemory = menu.fromMemory;
+      // Each frame's tops for the first second: what moved, and when.
+      const start = performance.now();
+      const frames: Array<{ readonly ms: number; readonly tops: ReloadFrame }> = [];
+      menuReload.frames = frames;
+      const sample = () => {
+        frames.push({ ms: Math.round(performance.now() - start), tops: rowTops() });
+        if (performance.now() - start < 1000) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    }
+    if (landed) menuReload.landed = rowTops();
+  }, [landed, menu]);
+  return menu;
+}
+
 function SidebarFrame({
   width,
   onJump,
@@ -951,6 +1077,7 @@ function SidebarFrame({
   }, []);
   const coming = COMING_SET ? comingMenu(phase) : null;
   const candidates = coming?.candidates ?? FIXTURES.candidates;
+  const reloaded = useReloadedRows(candidates);
   const shown = useCallback(
     (item: ZeropsCandidate) =>
       shownInScope(scope, FIXTURES.owners.get(item.project.id), item.project.id === open),
@@ -986,9 +1113,15 @@ function SidebarFrame({
         <div className="ps-2.25 pe-2 pb-1">
           <SidebarZeropsTree
             births={coming?.births}
-            candidates={candidates}
+            candidates={RELOAD_MS === null ? candidates : reloaded.rows}
             className="mb-2"
-            complete
+            complete={RELOAD_MS === null || reloaded.complete}
+            {...(RELOAD_MS === null
+              ? {}
+              : {
+                  remembered: RELOAD_REMEMBERED,
+                  onDrawn: reloaded.fromMemory ? undefined : rememberReloadDrawn,
+                })}
             getActivity={coming?.activity ?? activityOfCandidate}
             getConversationsRead={(item) => item.group === "connected"}
             getComing={coming?.coming}
