@@ -132,9 +132,8 @@ import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
-import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
+import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
-import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -157,8 +156,8 @@ const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
  * it by (`buildZeropsGroupTree`).
  *
  * A page titled by its route parameter shows a raw id; a page that wants to
- * *rename* the project needs the group itself, because the name lives on every
- * environment in it.
+ * *rename* the project needs the group itself, the HQ application its name is
+ * kept on.
  */
 function useGroup(groupId: string): ZeropsGroup | undefined {
   const { listing } = useZeropsCandidates();
@@ -267,58 +266,38 @@ function useMateMenus(): {
  *
  * *Rename project* had lived only on the projects screen, so the page whose
  * whole subject is this project could not name it (the owner, 2026-09-19:
- * "why isn't there options to rename group?"). The write is `useRenameGroup`'s,
- * shared with that screen, so one rename means one thing wherever it is
- * offered.
+ * "why isn't there options to rename group?"). The dialog is
+ * `ZeropsRenameProjectDialog`, shared with that screen, so one rename means one
+ * thing wherever it is offered.
  */
 function useGroupActions(groupId: string): {
   readonly menu: React.ReactNode;
-  readonly trouble: string | null;
 } {
   const group = useGroup(groupId);
   const [renaming, setRenaming] = useState(false);
-  const rename = useRenameGroup();
-  if (group === undefined) return { menu: null, trouble: rename.trouble };
-  const unnamed = group.nameSource === "id";
+  if (group === undefined) return { menu: null };
   return {
-    trouble: rename.trouble,
     menu: (
       <>
         <ZeropsProjectMenu
           actions={[
             {
               id: "rename-group",
-              label: unnamed ? "Name this project" : "Rename project",
+              label: group.nameSource === "id" ? "Name this project" : "Rename project",
               onSelect: () => {
                 setRenaming(true);
               },
-              disabled: rename.renaming,
             },
           ]}
           label={`More for ${group.name}`}
         />
         {renaming ? (
-          <ZeropsRenameDialog
-            description="The name is written onto every environment in the project."
-            initialValue={unnamed ? "" : group.name}
+          <ZeropsRenameProjectDialog
+            group={group}
             key={`rename-group:${group.groupId}`}
-            label="Project name"
-            onCancel={() => {
+            onClose={() => {
               setRenaming(false);
             }}
-            onOpenChange={(open) => {
-              if (!open) setRenaming(false);
-            }}
-            onSubmit={(name) => {
-              setRenaming(false);
-              void rename.rename(group, name);
-            }}
-            open
-            submitLabel="Rename"
-            title={unnamed ? "Name this project" : "Rename the project"}
-            validate={(value) =>
-              value.trim().length === 0 ? "Give the project a name." : undefined
-            }
           />
         ) : null}
       </>
@@ -698,7 +677,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
       onSetUp={openProjects}
       release={release}
-      trouble={actions.trouble ?? mates_.trouble}
+      trouble={mates_.trouble}
       onOpenChange={openChange}
       pullRequests={flow.pullRequests}
       repo={repo}

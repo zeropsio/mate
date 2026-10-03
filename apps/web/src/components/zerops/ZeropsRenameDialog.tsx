@@ -24,6 +24,8 @@ export function ZeropsRenameForm({
   initialValue,
   submitLabel,
   validate,
+  pending = false,
+  error: refusal = null,
   onCancel,
   onSubmit,
 }: {
@@ -33,6 +35,10 @@ export function ZeropsRenameForm({
   readonly initialValue: string;
   readonly submitLabel: string;
   readonly validate: (value: string) => string | undefined;
+  /** The press is in flight: the form waits for its answer and takes no second press. */
+  readonly pending?: boolean;
+  /** Why the last press was refused, said in the dialog that made it. */
+  readonly error?: string | null;
   readonly onCancel: () => void;
   readonly onSubmit: (value: string) => void;
 }) {
@@ -47,6 +53,7 @@ export function ZeropsRenameForm({
       data-zerops-surface="rename-form"
       onSubmit={(event) => {
         event.preventDefault();
+        if (pending) return;
         setSubmitted(true);
         if (error !== undefined) return;
         onSubmit(value.replace(/\s+/g, " ").trim());
@@ -76,10 +83,18 @@ export function ZeropsRenameForm({
         </div>
       </DialogPanel>
       <DialogFooter>
-        <Button onClick={onCancel} type="button" variant="ghost">
+        <p
+          className="me-auto min-h-4 self-center text-line leading-4 text-status-failed-text"
+          role="alert"
+        >
+          {refusal}
+        </p>
+        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
-        <Button type="submit">{submitLabel}</Button>
+        <Button aria-busy={pending || undefined} disabled={pending} type="submit">
+          {submitLabel}
+        </Button>
       </DialogFooter>
     </form>
   );

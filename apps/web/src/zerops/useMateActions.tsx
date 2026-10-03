@@ -10,7 +10,7 @@
  * None of them needs that page. They need the active organization, the
  * runtime's commands, the account's registry and the org's member list — all
  * context, all reachable from any surface. So they live here, once, in the
- * same shape as `useRenameGroup` and `useEnableRoute`: the writes, the busy
+ * same shape as `useEnableRoute`: the writes, the busy
  * key, the trouble, the menu entries, and the dialogs the caller mounts.
  *
  * What is deliberately **not** here: *Open*, *Set up a Mate*, *Enable* and
