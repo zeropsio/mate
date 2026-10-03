@@ -9,19 +9,29 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
+import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Backup, type BackupStatus } from "./backup.ts";
 import { healthRoute } from "./health.ts";
 import { Leader, type LeaderStatus } from "./leader.ts";
+import { LoopWatch, type LoopStatus } from "./loopWatch.ts";
 import { Official, type OfficialStatus } from "./official.ts";
+import { Recomputes } from "./recomputes.ts";
 
-/** `GET /health` for a leader in `status` and the official verdict, over a pool on `databaseUrl`. */
+const QUIET: LoopStatus = { maxLagMs: 0, p99LagMs: 0, lastStall: null };
+
+/**
+ * `GET /health` for a leader in `status` and the official verdict, over a pool on `databaseUrl`;
+ * the event loop's watch as `loop`, the structure's recomputes of the last minute `recomputes`.
+ */
 const getHealth = (
   status: LeaderStatus,
   official: OfficialStatus["official"],
   databaseUrl: string,
   held: string | null = null,
   backup: BackupStatus = { state: "off" },
+  loop: LoopStatus = QUIET,
+  recomputes = 0,
 ) =>
   Effect.gen(function* () {
     const handler = yield* HttpRouter.toHttpEffect(healthRoute("b1"));
@@ -46,6 +56,8 @@ const getHealth = (
             inherit: () => Effect.void,
           }),
           Layer.succeed(Backup, { take: Effect.die("no sets"), status: Effect.succeed(backup) }),
+          Layer.succeed(LoopWatch, { status: Effect.succeed(loop) }),
+          Layer.succeed(Recomputes, { count: Effect.void, lastMinute: Effect.succeed(recomputes) }),
           PgClient.layer({ url: Redacted.make(databaseUrl), connectTimeout: Duration.seconds(1) }),
         ),
       ),
@@ -102,6 +114,8 @@ describe("GET /health", () => {
               official,
               db: database,
               backup: { state: "off" },
+              loop: QUIET,
+              recomputes: 0,
               epoch: leader.epoch,
               build: "b1",
             });
@@ -129,6 +143,8 @@ describe("GET /health", () => {
               official: "ok",
               db: "up",
               backup: { state: "off" },
+              loop: QUIET,
+              recomputes: 0,
               epoch: null,
               build: "b1",
             },
@@ -150,8 +166,82 @@ describe("GET /health", () => {
         const response = yield* getHealth({ state: "active", epoch: 3 }, "ok", url, null, backup);
         assert.deepStrictEqual(
           [response.status, response.body],
-          [200, { state: "active", official: "ok", db: "up", backup, epoch: 3, build: "b1" }],
+          [
+            200,
+            {
+              state: "active",
+              official: "ok",
+              db: "up",
+              backup,
+              loop: QUIET,
+              recomputes: 0,
+              epoch: 3,
+              build: "b1",
+            },
+          ],
         );
+      }),
+    );
+
+    // F22 (2026-10-03): /health answered after 52.7 s with 40 GETs, the event loop not running.
+    // What it measures since is reported, never judged.
+    it.effect(
+      "reports the event loop's watch and the structure's recomputes, and still answers 200",
+      () =>
+        Effect.gen(function* () {
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const loop: LoopStatus = {
+            maxLagMs: 52_700,
+            p99LagMs: 40,
+            lastStall: {
+              at: "2026-10-03T08:38:29.240Z",
+              lateMs: 51_700,
+              cpuMs: 30,
+              longestWriteMs: 51_650,
+            },
+          };
+          const response = yield* getHealth(
+            { state: "active", epoch: 3 },
+            "ok",
+            url,
+            null,
+            { state: "off" },
+            loop,
+            480,
+          );
+          assert.deepStrictEqual(
+            [response.status, response.body],
+            [
+              200,
+              {
+                state: "active",
+                official: "ok",
+                db: "up",
+                backup: { state: "off" },
+                loop,
+                recomputes: 480,
+                epoch: 3,
+                build: "b1",
+              },
+            ],
+          );
+        }),
+    );
+
+    it.effect("counts a structure socket's views in a running Core, beside its loop's watch", () =>
+      Effect.gen(function* () {
+        const { call, socket } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const watching = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`);
+        yield* watching.next("snapshot");
+        const health = (yield* call("GET", "/health")).body as {
+          readonly loop: LoopStatus;
+          readonly recomputes: number;
+        };
+        yield* watching.close;
+        assert.deepStrictEqual(Object.keys(health.loop), ["maxLagMs", "p99LagMs", "lastStall"]);
+        assert.isAtLeast(health.recomputes, 1);
       }),
     );
   });

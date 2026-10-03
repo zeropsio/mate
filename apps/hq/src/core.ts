@@ -29,10 +29,12 @@ import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { healthRoute } from "./health.ts";
 import { importsLayer } from "./importJob.ts";
 import { Leader, leaderLayer } from "./leader.ts";
+import { loopWatchLayer } from "./loopWatch.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
 import { mateLiveLayer } from "./mateLive.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
+import { recomputesLayer } from "./recomputes.ts";
 import { recipeTiersLayer } from "./recipeTiers.ts";
 import { releasesLayer } from "./releases.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
@@ -113,6 +115,8 @@ const services = (options: CoreOptions) => {
     mateLinkTicketsLayer,
     writesLayer,
     liveSocketsLayer,
+    loopWatchLayer,
+    recomputesLayer,
     Layer.mergeAll(
       importsLayer({
         importRoot: options.importRoot,
