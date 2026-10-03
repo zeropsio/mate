@@ -38,6 +38,7 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
+import { evidenceOfGrant, listingWholeForPerson, projectsNeverSeen } from "../zerops/listingWhole";
 import type {
   ZeropsOrganizationStatus,
   ZeropsSessionStatus,
@@ -189,6 +190,34 @@ export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateR
   const { listing, admits } = get(organizationListingAtom);
   return listing.state === "known" ? admittedOnly(listing, admits) : listing;
 }).pipe(Atom.withLabel("zerops:candidate-rows"));
+
+/**
+ * Whether the active organization's listing is whole for the person looking
+ * (`listingWholeForPerson`): known, and lacking only projects they can never see or that can never
+ * be read — what the menu remembers of it (`menuSkeleton.ts`), complete or not.
+ */
+export const candidateListingWholeAtom = Atom.make((get): boolean => {
+  const session = get(zeropsSessionAtom);
+  const runtime = get(zeropsDataRuntimeAtom);
+  const inventory = get(zeropsInventoryAtom);
+  const organization = session?.activeOrganization ?? null;
+  if (runtime === null || inventory === null || organization === null) return false;
+  const rows = get(candidateRowsAtom);
+  if (rows.state !== "known") return false;
+  const withheld = (projectId: string) =>
+    inventory.authority.get(
+      projectKeyOf({ kind: "project", organization, projectId: ZeropsProjectId.make(projectId) }),
+    )?.kind === "withheld";
+  return listingWholeForPerson({
+    read: get(runtime.reads.projectsOf(organization)),
+    shown: new Set(heldCandidates(rows).rows.map((row) => row.project.id)),
+    neverSeen: projectsNeverSeen({
+      evidence: evidenceOfGrant(get(runtime.access.view).machine),
+      access: get(runtime.reads.access),
+      withheld,
+    }),
+  });
+}).pipe(Atom.withLabel("zerops:candidate-listing-whole"));
 
 /**
  * The names the active organization's Mates go by (`takenBotNames`), read off its project list:
