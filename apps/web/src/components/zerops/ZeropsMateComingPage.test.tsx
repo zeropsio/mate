@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 
-import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 
 const ENV_QUINN = EnvironmentId.make("env-quinn");
 
@@ -764,5 +765,52 @@ describe("ComingBelow — a Mate half made", () => {
 
   it("offers nothing to anyone else", () => {
     expect(render(undefined).root.findAllByType("button")).toHaveLength(0);
+  });
+});
+
+// The stop's words come from what made the stop: a step this tab ran says why in its place, and
+// the sentence only that it did; anything else, the sentence says why.
+describe("comingSentenceOf — the sentence over a stop", () => {
+  const sub = (id: string, state: "done" | "failed" | "owner", why?: string) => ({
+    id,
+    label: id,
+    state,
+    ...(why === undefined ? {} : { why }),
+  });
+  const progressOf = (press: ReadonlyArray<ReturnType<typeof sub>>) => ({
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press,
+  });
+
+  it.each([
+    {
+      case: "a step this tab ran stopped it, certain: the step says why",
+      coming: { kind: "failed", line: "No room in this account.", verb: "try-again" },
+      press: [sub("created", "failed", "No room in this account.")],
+      want: NOT_SET_UP_LINE,
+    },
+    {
+      case: "a create Zerops may have made: the reason, with the way to the projects",
+      coming: {
+        kind: "failed",
+        line: "Zerops may have created it. Check your projects before trying again.",
+        verb: "go-to-projects",
+      },
+      press: [sub("created", "failed", "Zerops may have created it.")],
+      want: "Zerops may have created it. Check your projects before trying again.",
+    },
+    {
+      case: "a registration left to an owner, then the container stopped: the container's reason",
+      coming: { kind: "failed", line: "Its container stopped.", verb: "remove" },
+      press: [sub("closed-off", "done"), sub("registered", "owner", "An owner registers Ida.")],
+      want: "Its container stopped.",
+    },
+  ] as const)("$case", ({ coming, press, want }) => {
+    expect(comingSentenceOf({ coming, progress: progressOf(press), nowMs: 0 })).toBe(want);
   });
 });

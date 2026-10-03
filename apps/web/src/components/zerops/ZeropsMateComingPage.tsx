@@ -834,7 +834,10 @@ export function comingSentenceOf(input: {
   if (coming === undefined) return undefined;
   if (coming.kind === "failed") {
     if (input.trouble != null) return input.trouble;
-    // A step this tab ran says why it stopped in its own place: the sentence, only that it did.
+    // Zerops may have made it: the sentence says so, with the way to the projects — never a stop.
+    if (coming.verb === "go-to-projects") return coming.line;
+    // A step this tab ran that stopped it says why in its own place: the sentence, only that it
+    // did. A step left to an owner stopped nothing, and anything else says its own reason here.
     const said = progress?.press?.some((step) => step.state === "failed" && step.why !== undefined);
     return said === true ? NOT_SET_UP_LINE : coming.line;
   }
