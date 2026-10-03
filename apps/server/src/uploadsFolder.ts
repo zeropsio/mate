@@ -14,14 +14,20 @@ import * as Option from "effect/Option";
  * attachment: the agent may edit, move or remove its file and the person's
  * attachment, and its download in the conversation, stay as sent.
  *
- * All of it is asynchronous and bounded: a send waits for its copies at most
- * `timeoutMs`, and a file not kept by then is pointed at where it is stored,
- * with the reason in the agent's line.
+ * All of it is asynchronous and bounded: at most two copies run at once on
+ * the whole server (a copy holds one of Node's few I/O threads, which every
+ * other file and DNS call shares), a send waits for all of its copies until
+ * one deadline, and a file not kept by then is pointed at where it is stored,
+ * with the reason in the agent's line. A copy still waiting for its turn at
+ * the deadline is never made.
  */
 
 const NAME_MAX_BYTES = 255;
 const EXTENSION_MAX_BYTES = 32;
 const KEEP_TIMEOUT_MS = 20_000;
+const COPIES_AT_ONCE = 2;
+const PARTIAL_MAX_AGE_MS = 60 * 60 * 1000;
+const PARTIAL_PREFIX = ".partial-";
 
 // C0 and C1 controls, line and paragraph separators, the marks, embeddings,
 // overrides and isolates that reorder text (a right-to-left override turns
@@ -80,6 +86,7 @@ const isSentFile = (attachment: SentAttachment) =>
 const errorCode = (cause: unknown) => (cause as NodeJS.ErrnoException | undefined)?.code;
 
 function reasonOf(cause: unknown): string {
+  if (cause instanceof PastDeadline) return "it waited too long for its turn to be copied";
   switch (errorCode(cause)) {
     case "ENAMETOOLONG":
       return "its name is too long for the folder";
@@ -102,19 +109,67 @@ function reasonOf(cause: unknown): string {
 
 const notKept = (reason: string) => `not copied to the uploads folder: ${reason}`;
 
-/** The record of where a stored attachment was kept, so the same file finds its place again. */
+const tookTooLong = (timeoutMs: number) => `it took longer than ${Math.round(timeoutMs / 1000)} s`;
+
+/**
+ * The record of where a stored attachment was kept, so the same file finds its
+ * place again: its name, and the copy's inode, size and modification time, so
+ * a copy the agent changed or replaced is never taken for it.
+ */
+interface KeptRecord {
+  readonly name: string;
+  readonly ino: number;
+  readonly size: number;
+  readonly mtimeMs: number;
+}
+
 const recordPath = (indexDir: string, storedPath: string) =>
   NodePath.join(
     indexDir,
     NodeCrypto.createHash("sha256").update(storedPath).digest("hex").slice(0, 40),
   );
 
-async function readRecord(indexDir: string, storedPath: string): Promise<string | null> {
+async function readRecord(indexDir: string, storedPath: string): Promise<KeptRecord | null> {
   try {
-    const name = (await NodeFSP.readFile(recordPath(indexDir, storedPath), "utf8")).trim();
-    return name.length > 0 && !/[\\/]/u.test(name) ? name : null;
+    const record = JSON.parse(
+      await NodeFSP.readFile(recordPath(indexDir, storedPath), "utf8"),
+    ) as Partial<KeptRecord> | null;
+    const { ino, mtimeMs, name, size } = record ?? {};
+    if (typeof name !== "string" || name.length === 0 || /[\\/]/u.test(name)) return null;
+    if (typeof ino !== "number" || typeof size !== "number" || typeof mtimeMs !== "number") {
+      return null;
+    }
+    return { name, ino, size, mtimeMs };
   } catch {
     return null;
+  }
+}
+
+/** The recorded copy, when it still stands as it was made. */
+async function recordedCopy(uploadsDir: string, record: KeptRecord): Promise<string | null> {
+  const path = NodePath.join(uploadsDir, record.name);
+  try {
+    const stat = await NodeFSP.lstat(path);
+    return stat.isFile() &&
+      stat.ino === record.ino &&
+      stat.size === record.size &&
+      stat.mtimeMs === record.mtimeMs
+      ? path
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Best effort: without its record the copy still stands, the next send just copies again. */
+async function writeRecord(indexDir: string, storedPath: string, uploadsDir: string, name: string) {
+  try {
+    const stat = await NodeFSP.lstat(NodePath.join(uploadsDir, name));
+    const record: KeptRecord = { name, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs };
+    await NodeFSP.mkdir(indexDir, { recursive: true });
+    await NodeFSP.writeFile(recordPath(indexDir, storedPath), JSON.stringify(record));
+  } catch {
+    // The file is kept; only its place is not remembered.
   }
 }
 
@@ -134,6 +189,36 @@ function* candidateNames(name: string, recorded: string | null): Generator<strin
   for (let n = 1; n <= NUMBERED_NAMES_MAX; n += 1) yield uploadsFileName(name, n);
 }
 
+class PastDeadline extends Error {}
+
+/** A send's deadline: passed once the send stopped waiting for its copies. */
+interface Deadline {
+  passed: boolean;
+}
+
+// The copies running on the whole server, and the ones waiting their turn.
+let copying = 0;
+const waitingToCopy: Array<() => void> = [];
+const slotsFull = () => copying >= COPIES_AT_ONCE;
+
+/** Runs `copy` in one of the server's copy slots, unless `deadline` passed while it waited. */
+async function inCopySlot<A>(deadline: Deadline, copy: () => Promise<A>): Promise<A> {
+  while (slotsFull()) {
+    await new Promise<void>((resolve) => waitingToCopy.push(resolve));
+  }
+  if (deadline.passed) {
+    waitingToCopy.shift()?.();
+    throw new PastDeadline();
+  }
+  copying += 1;
+  try {
+    return await copy();
+  } finally {
+    copying -= 1;
+    waitingToCopy.shift()?.();
+  }
+}
+
 /**
  * The copy is made under a hidden name and then linked into place (an atomic
  * "create unless taken"), so the agent never meets half a file and two sends
@@ -144,21 +229,23 @@ async function keepOne(input: {
   readonly indexDir: string;
   readonly attachment: SentAttachment;
   readonly storedPath: string;
+  readonly deadline: Deadline;
 }): Promise<AgentPlace> {
-  const { attachment, indexDir, storedPath, uploadsDir } = input;
-  const recorded = await readRecord(indexDir, storedPath);
-  if (recorded !== null && (await exists(NodePath.join(uploadsDir, recorded)))) {
-    return { path: NodePath.join(uploadsDir, recorded) };
-  }
+  const { attachment, deadline, indexDir, storedPath, uploadsDir } = input;
+  const record = await readRecord(indexDir, storedPath);
+  const kept = record === null ? null : await recordedCopy(uploadsDir, record);
+  if (kept !== null) return { path: kept };
   await NodeFSP.mkdir(uploadsDir, { recursive: true });
-  const partial = NodePath.join(uploadsDir, `.partial-${NodeCrypto.randomUUID()}`);
+  const partial = NodePath.join(uploadsDir, `${PARTIAL_PREFIX}${NodeCrypto.randomUUID()}`);
   try {
-    await NodeFSP.copyFile(
-      storedPath,
-      partial,
-      NodeFSP.constants.COPYFILE_EXCL | NodeFSP.constants.COPYFILE_FICLONE,
+    await inCopySlot(deadline, () =>
+      NodeFSP.copyFile(
+        storedPath,
+        partial,
+        NodeFSP.constants.COPYFILE_EXCL | NodeFSP.constants.COPYFILE_FICLONE,
+      ),
     );
-    for (const name of candidateNames(attachment.name, recorded)) {
+    for (const name of candidateNames(attachment.name, record?.name ?? null)) {
       const candidate = NodePath.join(uploadsDir, name);
       try {
         await NodeFSP.link(partial, candidate);
@@ -166,8 +253,7 @@ async function keepOne(input: {
         if (errorCode(cause) === "EEXIST") continue;
         throw cause;
       }
-      await NodeFSP.mkdir(indexDir, { recursive: true });
-      await NodeFSP.writeFile(recordPath(indexDir, storedPath), name);
+      await writeRecord(indexDir, storedPath, uploadsDir, name);
       return { path: candidate };
     }
     throw new Error("every name it could take is taken");
@@ -209,7 +295,8 @@ async function placeOf(input: Parameters<typeof keepOne>[0]): Promise<AgentPlace
 /**
  * Where the agent is told each attachment of a send is: a sent file in the
  * uploads folder (spec.pdf, then spec-2.pdf for another file of that name, the
- * same place again for the same file), anything else where it is stored.
+ * same place again for the same file while its copy stands as it was made),
+ * anything else where it is stored.
  */
 export function keepSentFiles(input: {
   readonly uploadsDir: string;
@@ -221,20 +308,62 @@ export function keepSentFiles(input: {
   readonly timeoutMs?: number;
 }): Effect.Effect<ReadonlyArray<AgentPlace>> {
   const timeoutMs = input.timeoutMs ?? KEEP_TIMEOUT_MS;
-  return Effect.forEach(
-    input.items,
-    (item) =>
-      Effect.promise(() =>
-        placeOf({ ...item, uploadsDir: input.uploadsDir, indexDir: input.indexDir }),
-      ).pipe(
-        Effect.timeoutOption(Duration.millis(timeoutMs)),
-        Effect.map((placed) =>
-          Option.getOrElse(placed, () => ({
-            path: item.storedPath,
-            note: notKept(`still copying after ${Math.round(timeoutMs / 1000)} s`),
-          })),
+  return Effect.suspend(() => {
+    // One deadline for all of a send's copies, those waiting their turn too:
+    // every copy is waited for from one moment for one bound, and the send
+    // stops waiting, passing the deadline, once each is kept or out of time.
+    const deadline: Deadline = { passed: false };
+    return Effect.forEach(
+      input.items,
+      (item) =>
+        Effect.promise(() =>
+          placeOf({ ...item, uploadsDir: input.uploadsDir, indexDir: input.indexDir, deadline }),
+        ).pipe(
+          Effect.timeoutOption(Duration.millis(timeoutMs)),
+          Effect.map((placed) =>
+            Option.getOrElse(placed, () => ({
+              path: item.storedPath,
+              note: notKept(tookTooLong(timeoutMs)),
+            })),
+          ),
         ),
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          deadline.passed = true;
+        }),
       ),
-    { concurrency: "unbounded" },
-  );
+    );
+  });
+}
+
+/**
+ * Removes the hidden halves of copies a server stopped in the middle of, an
+ * hour old or more (a younger one may be a copy still running).
+ */
+export async function sweepPartialUploads(input: {
+  readonly uploadsDir: string;
+  readonly nowMs: number;
+}): Promise<{ readonly deleted: number }> {
+  let entries: string[];
+  try {
+    entries = await NodeFSP.readdir(input.uploadsDir);
+  } catch {
+    return { deleted: 0 };
+  }
+  let deleted = 0;
+  for (const entry of entries) {
+    if (!entry.startsWith(PARTIAL_PREFIX)) continue;
+    const path = NodePath.join(input.uploadsDir, entry);
+    try {
+      const stat = await NodeFSP.lstat(path);
+      if (!stat.isFile() || input.nowMs - stat.mtimeMs < PARTIAL_MAX_AGE_MS) continue;
+      await NodeFSP.rm(path, { force: true });
+      deleted += 1;
+    } catch {
+      // Gone already, or not ours to remove.
+    }
+  }
+  return { deleted };
 }

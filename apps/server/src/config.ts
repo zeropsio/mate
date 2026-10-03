@@ -16,6 +16,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { sweepStalePendingAttachments } from "./attachmentStore.ts";
+import { sweepPartialUploads } from "./uploadsFolder.ts";
 import { DEFAULT_SIGNAL_EXPORT, type SignalExport } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import type { ZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
@@ -206,12 +207,21 @@ export const ensureServerDirectories = Effect.fn(function* (derivedPaths: Server
     { concurrency: "unbounded" },
   );
 
+  const nowMs = yield* Clock.currentTimeMillis;
   const swept = sweepStalePendingAttachments({
     attachmentsDir: derivedPaths.attachmentsDir,
-    nowMs: yield* Clock.currentTimeMillis,
+    nowMs,
   });
   if (swept.deleted > 0) {
     yield* Effect.logInfo("Removed expired attachment uploads.", { deleted: swept.deleted });
+  }
+  const partials = yield* Effect.promise(() =>
+    sweepPartialUploads({ uploadsDir: derivedPaths.uploadsDir, nowMs }),
+  );
+  if (partials.deleted > 0) {
+    yield* Effect.logInfo("Removed unfinished uploads-folder copies.", {
+      deleted: partials.deleted,
+    });
   }
 });
 

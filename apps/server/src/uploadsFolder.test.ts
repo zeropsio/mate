@@ -4,17 +4,20 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { vi } from "vite-plus/test";
 
-import { keepSentFiles, uploadsFileName } from "./uploadsFolder.ts";
+import { keepSentFiles, sweepPartialUploads, uploadsFileName } from "./uploadsFolder.ts";
 
 // The send path never blocks the server on the filesystem: while `syncBanned`
 // is set, every synchronous fs call throws, and a held copy stays pending.
 const fsGuard = vi.hoisted(() => ({
   syncBanned: false,
   heldCopy: null as Promise<void> | null,
+  copying: 0,
+  peakCopying: 0,
 }));
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -34,8 +37,14 @@ vi.mock("node:fs", async (importOriginal) => {
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   const copyFile: typeof actual.copyFile = async (...args) => {
-    if (fsGuard.heldCopy) await fsGuard.heldCopy;
-    return actual.copyFile(...args);
+    fsGuard.copying += 1;
+    fsGuard.peakCopying = Math.max(fsGuard.peakCopying, fsGuard.copying);
+    try {
+      if (fsGuard.heldCopy) await fsGuard.heldCopy;
+      return await actual.copyFile(...args);
+    } finally {
+      fsGuard.copying -= 1;
+    }
   };
   return { ...actual, copyFile, default: { ...actual, copyFile } };
 });
@@ -120,6 +129,7 @@ describe("keepSentFiles", () => {
   afterEach(() => {
     fsGuard.syncBanned = false;
     fsGuard.heldCopy = null;
+    fsGuard.peakCopying = 0;
     NodeFS.rmSync(root, { recursive: true, force: true });
   });
 
@@ -167,11 +177,45 @@ describe("keepSentFiles", () => {
     Effect.gen(function* () {
       const storedPath = stored("thread-a", "spec v1");
       const first = yield* keepOne("spec.pdf", storedPath);
-      NodeFS.appendFileSync(first.path, " edited");
       const again = yield* keepOne("spec.pdf", storedPath);
       expect(again.path).toBe(first.path);
       expect(NodeFS.readdirSync(uploadsDir)).toEqual(["spec.pdf"]);
-      expect(NodeFS.readFileSync(again.path, "utf8")).toBe("spec v1 edited");
+    }),
+  );
+
+  it.live.each([
+    [
+      "the agent changed its copy",
+      (path: string) => NodeFS.appendFileSync(path, " edited"),
+      "spec v1 edited",
+    ],
+    [
+      "another file stands at its name",
+      (path: string) => {
+        NodeFS.rmSync(path);
+        NodeFS.writeFileSync(path, "spec v9");
+      },
+      "spec v9",
+    ],
+  ] as const)("makes a fresh copy of the same file when %s", ([_label, change, left]) =>
+    Effect.gen(function* () {
+      const storedPath = stored("thread-a", "spec v1");
+      const first = yield* keepOne("spec.pdf", storedPath);
+      change(first.path);
+      const again = yield* keepOne("spec.pdf", storedPath);
+      expect(again).toEqual({ path: NodePath.join(uploadsDir, "spec-2.pdf") });
+      expect(NodeFS.readFileSync(again.path, "utf8")).toBe("spec v1");
+      expect(NodeFS.readFileSync(first.path, "utf8")).toBe(left);
+    }),
+  );
+
+  it.live("keeps the file without a note when its record cannot be written", () =>
+    Effect.gen(function* () {
+      const storedPath = stored("thread-a", "spec v1");
+      NodeFS.writeFileSync(indexDir, "a file where the records should be");
+      const place = yield* keepOne("spec.pdf", storedPath);
+      expect(place).toEqual({ path: NodePath.join(uploadsDir, "spec.pdf") });
+      expect(NodeFS.readFileSync(place.path, "utf8")).toBe("spec v1");
     }),
   );
 
@@ -281,7 +325,7 @@ describe("keepSentFiles", () => {
       expect(settled).toBe(false);
       const place = yield* Fiber.join(keeping);
       expect(place.path).toBe(storedPath);
-      expect(place.note).toMatch(/still copying/u);
+      expect(place.note).toMatch(/took longer than/u);
       expect(NodeFS.existsSync(NodePath.join(uploadsDir, "spec.pdf"))).toBe(false);
       release();
       fsGuard.heldCopy = null;
@@ -298,4 +342,68 @@ describe("keepSentFiles", () => {
       });
     }),
   );
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      attachment: file(`spec-${index}.pdf`),
+      storedPath: stored(`thread-${index}`, `spec ${index}`),
+    }));
+
+  it.live("copies at most two files at once", () =>
+    Effect.gen(function* () {
+      const places = yield* keepSentFiles({ uploadsDir, indexDir, items: many(6) });
+      expect(places.every((place) => place.note === undefined)).toBe(true);
+      expect(fsGuard.peakCopying).toBeLessThanOrEqual(2);
+    }),
+  );
+
+  it.live(
+    "waits for all of a send's copies until one deadline, and never starts one after it",
+    () =>
+      Effect.gen(function* () {
+        let release!: () => void;
+        fsGuard.heldCopy = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const startedAt = yield* Clock.currentTimeMillis;
+        const places = yield* keepSentFiles({
+          uploadsDir,
+          indexDir,
+          items: many(5),
+          timeoutMs: 60,
+        });
+        expect((yield* Clock.currentTimeMillis) - startedAt).toBeLessThan(400);
+        expect(places.every((place) => /took longer than/u.test(place.note ?? ""))).toBe(true);
+        release();
+        fsGuard.heldCopy = null;
+        const kept = () => NodeFS.readdirSync(uploadsDir).filter((name) => !name.startsWith("."));
+        yield* Effect.promise(() => vi.waitFor(() => expect(kept()).toHaveLength(2)));
+        yield* Effect.sleep("50 millis");
+        expect(kept()).toHaveLength(2);
+      }),
+  );
+});
+
+describe("sweepPartialUploads", () => {
+  it("removes the hidden halves of copies an hour old, keeping younger ones and every kept file", async () => {
+    const uploadsDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "uploads-sweep-"));
+    const nowMs = NodeFS.statSync(uploadsDir).mtimeMs;
+    const write = (name: string, ageMs: number) => {
+      const path = NodePath.join(uploadsDir, name);
+      NodeFS.writeFileSync(path, "x");
+      const at = (nowMs - ageMs) / 1000;
+      NodeFS.utimesSync(path, at, at);
+    };
+    write(".partial-old", 2 * 60 * 60 * 1000);
+    write(".partial-young", 60 * 1000);
+    write("spec.pdf", 2 * 60 * 60 * 1000);
+    expect(await sweepPartialUploads({ uploadsDir, nowMs })).toEqual({ deleted: 1 });
+    expect(NodeFS.readdirSync(uploadsDir).toSorted()).toEqual([".partial-young", "spec.pdf"]);
+    NodeFS.rmSync(uploadsDir, { recursive: true, force: true });
+  });
+
+  it("finds nothing to sweep without a folder", async () => {
+    expect(
+      await sweepPartialUploads({ uploadsDir: "/nonexistent/uploads-sweep", nowMs: 0 }),
+    ).toEqual({ deleted: 0 });
+  });
 });
