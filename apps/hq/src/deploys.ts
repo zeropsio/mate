@@ -12,8 +12,10 @@
  * the rest deploy.
  *
  * - **Live is what runs**: a deploy is live only once the service runs the commit, read back from
- *   the version it names (B17); an HTTP service then gets its subdomain, with the same token (E13,
- *   measured 2026-10-02 — HQ's org Read only token may not).
+ *   the version it names (B17); an HTTP service HQ's own deploy brought live then gets its
+ *   subdomain, with the same token (E13, measured 2026-10-02 — HQ's org Read only token may not),
+ *   and a catch-up of a service that runs its commit turns on nothing a person turned off (audit
+ *   R1, D6).
  * - **One queue per environment, the newest wins** (B20): its services one after another, higher
  *   priority first (B19); a commit main moved past while a deploy ran is never deployed.
  * - **A build's own failure is final** (B37): only a person asks for that commit again. HQ's own
@@ -480,7 +482,10 @@ export const deploysLayer = (
           (rows) => (rows[0] === undefined ? undefined : Redacted.make(rows[0].token)),
         );
 
-      /** After a verified deploy: an HTTP service's subdomain, which never fails the deploy (B17). */
+      /**
+       * After HQ's own verified deploy: an HTTP service's subdomain, which never fails the deploy
+       * (B17). Never on a catch-up of a service that already runs its commit (audit R1).
+       */
       const openSubdomain = (service: ZeropsService, token: Redacted.Redacted) =>
         service.http && !service.subdomainAccess
           ? deploy
@@ -798,7 +803,10 @@ export const deploysLayer = (
               return refused(`the environment's project has no service ${target.service}`);
             }
             if (runs(service, target.sha)) {
-              yield* openSubdomain(service, token);
+              // Only HQ's own deploy, landed after its watch let go, opens the subdomain here: a
+              // catch-up of a service that runs its commit turns on nothing a person turned off
+              // (audit R1, D6).
+              if (existing?.state === "deploying") yield* openSubdomain(service, token);
               return existing?.state === "live" ? undefined : ({ state: "live" } as const);
             }
             if (existing?.state === "deploying" && existing.fresh && existing.process_id !== null) {

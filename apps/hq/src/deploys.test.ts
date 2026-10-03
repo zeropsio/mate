@@ -600,6 +600,26 @@ describe("deploys", () => {
       ),
     );
 
+    // Audit R1 (D6): a person who turned a service's subdomain off in Zerops keeps it off — HQ's
+    // catch-up of a service that already runs its commit turns nothing on.
+    it.effect(
+      "turns on no subdomain a person turned off, catching up a service that runs its commit",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, until }) =>
+          Effect.gen(function* () {
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* (yield* Deploys).catchUp;
+            yield* until(settled("live"));
+            const web = world.services.find((service) => service.name === "web")!;
+            web.subdomainAccess = false;
+            yield* (yield* Deploys).catchUp;
+            yield* Effect.sleep(Duration.millis(200));
+            assert.isFalse(web.subdomainAccess);
+          }),
+        ),
+    );
+
     // Main B20: one queue per environment, the newest commit wins — commits main moved past while
     // a deploy ran are never deployed.
     it.effect("deploys only the newest commit once a running deploy ends", () =>
