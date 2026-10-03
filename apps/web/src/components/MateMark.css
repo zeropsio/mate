@@ -34,7 +34,10 @@
  *
  * - idle and awake, the whole mark bobs — `sin(1.1 t)` of 0.3 of its 52-unit
  *   height, so a period of 2π / 1.1 s; the driver turns it on
- *   (`data-mate-mark-bob`) and sets its phase. One box the compositor carries.
+ *   (`data-mate-mark-bob`) and sets its phase, and only on a mark 48 px tall
+ *   or more. Chrome composites no animation on an SVG element, so the bob
+ *   costs a style recalc and a repaint of the mark a frame — paid only where
+ *   it can be seen; on a menu-size mark it would move a fifth of a pixel.
  * - waking, the band swells a fifth of the way out and back once every three
  *   seconds (`matePose`), each half along its own track (`--mate-mark-swell`,
  *   set by `MateMark`).

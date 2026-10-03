@@ -53,6 +53,8 @@ const SLEEP_AFTER_MS = 45_000;
 const DEG = Math.PI / 180;
 /** The idle bob's angular speed, in radians a second — the stylesheet's period is 2π / this. */
 const BOB_SPEED = 1.1;
+/** The smallest rendered height, in px, at which the idle bob (0.3 of 52 units) can be seen. */
+const BOB_MIN_HEIGHT = 48;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const smoothstep = (t: number) => {
@@ -541,13 +543,20 @@ function tick(
         : "",
     );
     // The idle bob is the stylesheet's (`mate-mark-bob`), started in step with where the sine
-    // `sin(1.1 t + seed)` stands now: its keyframes begin at the trough.
-    const bobbing = state === "idle" && awake && !reduced;
-    if (bobbing && mark.written.get(mark.parts.svg)?.get("data-mate-mark-bob") !== "on") {
-      const phase = ((now / 1000) * BOB_SPEED + mark.seed + Math.PI / 2) % (2 * Math.PI);
-      putStyle(mark, mark.parts.svg, "--mate-mark-bob-delay", `${-round(phase / BOB_SPEED)}s`);
+    // `sin(1.1 t + seed)` stands now: its keyframes begin at the trough. Only a mark large enough
+    // to show it carries one at all: below `BOB_MIN_HEIGHT` it would move a fifth of a pixel and
+    // repaint the mark every frame for it (Chrome composites no animation on an SVG element).
+    const wasBobbing = mark.written.get(mark.parts.svg)?.get("data-mate-mark-bob");
+    if (rect.height >= BOB_MIN_HEIGHT) {
+      const bobbing = state === "idle" && awake && !reduced;
+      if (bobbing && wasBobbing !== "on") {
+        const phase = ((now / 1000) * BOB_SPEED + mark.seed + Math.PI / 2) % (2 * Math.PI);
+        putStyle(mark, mark.parts.svg, "--mate-mark-bob-delay", `${-round(phase / BOB_SPEED)}s`);
+      }
+      put(mark, mark.parts.svg, "data-mate-mark-bob", bobbing ? "on" : "off");
+    } else if (wasBobbing === "on") {
+      put(mark, mark.parts.svg, "data-mate-mark-bob", "off");
     }
-    put(mark, mark.parts.svg, "data-mate-mark-bob", bobbing ? "on" : "off");
   }
 
   // Done, it hops: the one bob left to the loop, and it ends.

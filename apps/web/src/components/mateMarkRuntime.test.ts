@@ -23,7 +23,10 @@ describe("markBandTarget", () => {
 });
 
 /** A page at 60 Hz whose clock the test steps: frames, timers, and every write to a mark's nodes. */
-function fakePage({ reduced = false }: { readonly reduced?: boolean } = {}) {
+function fakePage({
+  reduced = false,
+  height = 33,
+}: { readonly reduced?: boolean; readonly height?: number } = {}) {
   let clock = 0;
   let nextHandle = 1;
   const frames = new Map<number, (now: number) => void>();
@@ -82,7 +85,7 @@ function fakePage({ reduced = false }: { readonly reduced?: boolean } = {}) {
       },
       addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
       removeEventListener: (type: string) => listeners.delete(type),
-      getBoundingClientRect: () => ({ left: 100, top: 100, width: 28, height: 33 }),
+      getBoundingClientRect: () => ({ left: 100, top: 100, width: height * 0.85, height }),
     };
   };
 
@@ -232,15 +235,22 @@ describe("the live mark's loop", () => {
     expect(wrote("side0") + wrote("sides") + wrote("bandLeft") + wrote("band")).toBe(0);
   });
 
+  // A bob of 0.3 of 52 units moves a menu-size mark by a fifth of a pixel: nobody sees it, and it
+  // would repaint the mark every frame. Only a mark 48 px tall or more bobs.
   it.each([
-    { name: "awake and idle", reduced: false, wait: 200, bob: "on" },
-    { name: "asleep", reduced: false, wait: 47_000, bob: "off" },
-    { name: "reduced motion", reduced: true, wait: 200, bob: "off" },
-  ])("bobs by the stylesheet only while idle and awake: $name", ({ reduced, wait, bob }) => {
-    const page = fakePage({ reduced });
+    { name: "hero size, awake and idle", height: 64, reduced: false, wait: 200, bob: "on" },
+    { name: "48 px, awake and idle", height: 48, reduced: false, wait: 200, bob: "on" },
+    { name: "hero size, asleep", height: 64, reduced: false, wait: 47_000, bob: "off" },
+    { name: "hero size, reduced motion", height: 64, reduced: true, wait: 200, bob: "off" },
+    { name: "47 px, awake and idle", height: 47, reduced: false, wait: 200, bob: undefined },
+    { name: "menu size, awake and idle", height: 33, reduced: false, wait: 200, bob: undefined },
+    { name: "menu size, asleep", height: 33, reduced: false, wait: 47_000, bob: undefined },
+  ])("bobs by the stylesheet only while idle, awake and large: $name", (row) => {
+    const page = fakePage({ reduced: row.reduced, height: row.height });
     const { svg } = page.mount(undefined, { awake: true });
-    page.advance(wait);
-    expect(svg.attributes.get("data-mate-mark-bob")).toBe(bob);
+    page.advance(row.wait);
+    expect(svg.attributes.get("data-mate-mark-bob")).toBe(row.bob);
+    expect(svg.attributes.has("data-mate-mark-bob")).toBe(row.bob !== undefined);
   });
 
   it("stops everything when the last mark goes", () => {
