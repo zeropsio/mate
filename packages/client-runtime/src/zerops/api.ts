@@ -2068,6 +2068,28 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `GET /client/{id}/integration-token/{tokenId}` — one token, with the project grants it
+   * carries, in the shape the list gives each (HQ and the Mate's door read a token this way): one
+   * small answer where the list is every token on the account, whole. `undefined` once the token
+   * is gone.
+   */
+  async readIntegrationToken(
+    clientId: string,
+    tokenId: string,
+    signal?: AbortSignal,
+  ): Promise<ZeropsIntegrationToken | undefined> {
+    try {
+      return await this.#request<ZeropsIntegrationToken>(
+        `/client/${clientId}/integration-token/${tokenId}`,
+        { signal: signal ?? null },
+      );
+    } catch (cause) {
+      if (cause instanceof ZeropsApiError && cause.kind === "not-found") return undefined;
+      throw cause;
+    }
+  }
+
+  /**
    * `PUT /client/{id}/integration-token/{tokenId}` — rewrites what a token
    * reaches, in place.
    *

@@ -162,14 +162,17 @@ export function useZeropsMateKeys(input: {
     let finished = false;
     void (async () => {
       try {
-        // The shared list says whether anything is owed; each write replaces a token's whole
-        // project list, so it is planned from the list read live right before it.
+        // The shared list says which keys are owed; each write replaces a token's whole project
+        // list, so it is planned from that token read by its id right before it.
         const organization = organizationRef(clientId);
         await writeTokenProjectsFresh({
-          read: async () =>
-            integrationTokensFromGrantMetadata(
-              await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization)),
-            ),
+          tokens,
+          readOne: async (tokenId) => {
+            const read = await runZeropsCommand(
+              runtime.commands.readIntegrationTokenGrant({ organization, tokenId }),
+            );
+            return read === null ? undefined : integrationTokensFromGrantMetadata([read])[0];
+          },
           plan: (fresh) =>
             cancelled ? [] : planAccountMateKeys({ mateProjectIds, tokens: fresh }),
           write: (write) =>

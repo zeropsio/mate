@@ -46,13 +46,16 @@ function accountWithMate(
 }
 
 /** The projects page's repair of the Mates' keys, over the harness platform. */
-async function loadRepair(harness: ReturnType<typeof accountWithMate>) {
+async function loadRepair(
+  harness: ReturnType<typeof accountWithMate>,
+  mateProjectIds: ReadonlyArray<string> = ["p1"],
+) {
   return mountTab(harness, harness.browser.openTab(), {
     page: async () => {
       const { AccountProduct } = await import("./__fixtures__/accountProduct");
       const { useZeropsMateKeys } = await import("./useZeropsMateKeys");
       function Repair() {
-        useZeropsMateKeys({ clientId: "org-1", mateProjectIds: ["p1"], enabled: true });
+        useZeropsMateKeys({ clientId: "org-1", mateProjectIds, enabled: true });
         return "repairing";
       }
       return (
@@ -80,5 +83,38 @@ describe("useZeropsMateKeys at the platform", () => {
 
     expect(routes(harness).filter((route) => route === TOKEN_LIST)).toHaveLength(1);
     expect(routes(harness).filter((route) => route.startsWith("PUT "))).toEqual([]);
+  });
+
+  // Two keys owed a write cost two whole lists each, and one more after: each key is planned from
+  // a token read by its id, under its lock, right before its write.
+  it("reads a key owed a write by its id, never the whole list, right before writing it", async () => {
+    const harness = accountWithMate([{ projectId: "p1", roleCode: "ADMIN" }]);
+    harness.rest.addProject({ id: "p2", clientId: "org-1", name: "Eva", status: "ACTIVE" });
+    harness.rest.addIntegrationToken("org-1", {
+      id: "t2",
+      name: "zcp-Eva",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "p2", roleCode: "ADMIN" }],
+    });
+    await loadRepair(harness, ["p1", "p2"]);
+    await settle(60);
+
+    const tokenRoutes = routes(harness).filter((route) => route.includes("/integration-token"));
+    const writes = tokenRoutes.filter((route) => route.startsWith("PUT "));
+    expect(writes).toEqual([
+      "PUT /client/org-1/integration-token/t1",
+      "PUT /client/org-1/integration-token/t2",
+    ]);
+    // Each write right after its own read; the lists left are the shared one's, read again once
+    // each write lands.
+    for (const write of writes) {
+      expect(tokenRoutes[tokenRoutes.indexOf(write) - 1]).toBe(write.replace("PUT ", "GET "));
+    }
+    expect(tokenRoutes.filter((route) => route === TOKEN_LIST).length).toBeLessThanOrEqual(
+      1 + writes.length,
+    );
+    expect(harness.rest.integrationToken("org-1", "t2")?.projects).toEqual([
+      { projectId: "p2", roleCode: "BASIC_USER" },
+    ]);
   });
 });

@@ -3525,7 +3525,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     );
 
   /**
-   * A read the platform answers with a value alone — a token listing: admitted as a command is,
+   * A read the platform answers with a value alone — a token, a token's delegations: admitted as a command is,
    * on the same grant and target, but never queued behind the account's writes, never waiting on
    * its ingress, never counted against its command queue. Run as commands, the Mate-key
    * reconcile's listings filled that queue and refused a New project's close-off (measured live, pass 31).
@@ -3533,7 +3533,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const runReadIntent = (
     intent: Extract<
       PlatformCommandIntent,
-      { readonly kind: "list-integration-token-grants" | "list-token-delegations" }
+      { readonly kind: "read-integration-token-grant" | "list-token-delegations" }
     >,
   ): Effect.Effect<
     { readonly attempt: ReturnType<typeof attemptRef>; readonly result: PlatformCommandResult },
@@ -3858,10 +3858,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
-    listIntegrationTokenGrants: (organization) =>
-      runReadIntent({ kind: "list-integration-token-grants", organization }).pipe(
+    readIntegrationTokenGrant: (input) =>
+      runReadIntent({ kind: "read-integration-token-grant", ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>
-          result.kind === "list-integration-token-grants"
+          result.kind === "read-integration-token-grant"
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
         ),

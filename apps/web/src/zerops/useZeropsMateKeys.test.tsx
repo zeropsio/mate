@@ -132,11 +132,13 @@ function contextFor(
     scope,
     cells: { known: broker.known },
     commands: {
-      listIntegrationTokenGrants: () =>
+      readIntegrationTokenGrant: ({ tokenId }: { readonly tokenId: string }) =>
         Effect.sync(() => ({
           attempt: {} as never,
           value:
-            options.platform?.() ?? (broker.current.state === "known" ? broker.current.value : []),
+            (
+              options.platform?.() ?? (broker.current.state === "known" ? broker.current.value : [])
+            ).find((token) => token.tokenId === tokenId) ?? null,
         })),
       setIntegrationTokenProjects: (input: unknown) => {
         setIntegrationTokenProjects(input);
@@ -231,7 +233,7 @@ describe("useZeropsMateKeys", () => {
     return root;
   }
 
-  it("plans from the live list, not the shared one: nothing to write for a key already lowered", async () => {
+  it("plans from the token read by its id, not the shared list: nothing to write for a key already lowered", async () => {
     const broker = new FakeCells<TokensCellRequest>();
     const writes: unknown[] = [];
     // The shared list is older: on the platform, the key is already lowered.
@@ -651,10 +653,13 @@ describe("useZeropsMateKeys", () => {
       scope,
       cells: { known: broker.known },
       commands: {
-        listIntegrationTokenGrants: () =>
+        readIntegrationTokenGrant: ({ tokenId }: { readonly tokenId: string }) =>
           Effect.sync(() => ({
             attempt: {} as never,
-            value: broker.current.state === "known" ? broker.current.value : [],
+            value:
+              (broker.current.state === "known" ? broker.current.value : []).find(
+                (token) => token.tokenId === tokenId,
+              ) ?? null,
           })),
         setIntegrationTokenProjects: (input: { readonly tokenId: string }) =>
           Effect.promise(async () => {
@@ -736,14 +741,22 @@ describe("useZeropsMateKeys", () => {
       cells: { known: broker.known },
       commands: {
         // The platform: what the test published, with every write that landed applied.
-        listIntegrationTokenGrants: () =>
-          Effect.sync(() => ({
-            attempt: {} as never,
-            value: (broker.current.state === "known" ? broker.current.value : []).map((token) => {
-              const landed = writes.findLast((write) => write.tokenId === token.tokenId);
-              return landed === undefined ? token : { ...token, grants: landed.projects };
-            }),
-          })),
+        readIntegrationTokenGrant: ({ tokenId }: { readonly tokenId: string }) =>
+          Effect.sync(() => {
+            const token = (broker.current.state === "known" ? broker.current.value : []).find(
+              (listed) => listed.tokenId === tokenId,
+            );
+            const landed = writes.findLast((write) => write.tokenId === tokenId);
+            return {
+              attempt: {} as never,
+              value:
+                token === undefined
+                  ? null
+                  : landed === undefined
+                    ? token
+                    : { ...token, grants: landed.projects },
+            };
+          }),
         setIntegrationTokenProjects: (input: {
           readonly tokenId: string;
           readonly projects: ZeropsIntegrationTokenGrantMetadata["grants"];

@@ -239,14 +239,17 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       // The whole list, every time: the platform ignores `limit` and `offset` (measured 2026-10-03).
       return json(200, { list: [...tokensOf(tokenList[1]!).values()] });
     }
-    const tokenWrite = /^PUT \/client\/([^/]+)\/integration-token\/([^/]+)$/.exec(request.route);
-    if (tokenWrite !== null) {
-      const [, clientId, tokenId] = tokenWrite;
+    const tokenRecord = /^(GET|PUT) \/client\/([^/]+)\/integration-token\/([^/]+)$/.exec(
+      request.route,
+    );
+    if (tokenRecord !== null) {
+      const [, method, clientId, tokenId] = tokenRecord;
       if (bearer === undefined) return failure(401, "unauthorized");
       if (!memberOf(bearer, clientId)) return failure(403, "forbidden");
       const held = tokensOf(clientId!);
       const current = held.get(tokenId!);
       if (current === undefined) return failure(404, "integrationTokenNotFound");
+      if (method === "GET") return json(200, current);
       // The platform replaces the record with what the write sent.
       const { name, roleCode, projects: grants } = request.body as ZeropsIntegrationToken;
       const updated = { ...current, name, roleCode, projects: grants };

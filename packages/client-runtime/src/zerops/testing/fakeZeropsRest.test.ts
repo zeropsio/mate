@@ -136,7 +136,7 @@ describe("FakeZeropsRest", () => {
     await expect(failureOf(client.fetchProject("p1"))).resolves.toBe("forbidden");
   });
 
-  it("lists an organization's integration tokens whole, and rewrites one in place", async () => {
+  it("lists an organization's integration tokens whole, reads one by its id, rewrites it in place", async () => {
     const rest = platform();
     const client = clientOf(rest);
     rest.addIntegrationToken("org-1", {
@@ -154,6 +154,11 @@ describe("FakeZeropsRest", () => {
         projects: [{ projectId: "p1", roleCode: "ADMIN" }],
       },
     ]);
+    await expect(client.readIntegrationToken("org-1", "t1")).resolves.toMatchObject({
+      id: "t1",
+      projects: [{ projectId: "p1", roleCode: "ADMIN" }],
+    });
+    await expect(client.readIntegrationToken("org-1", "gone")).resolves.toBeUndefined();
     await client.setIntegrationTokenProjects({
       clientId: "org-1",
       tokenId: "t1",
