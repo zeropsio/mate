@@ -249,7 +249,8 @@ export class Structure extends Context.Service<
     >;
     /**
      * Records a Mate's birth intent, before its project exists: its application, name and face,
-     * by whoever sees the application. Its attach (`birth`) closes it.
+     * by whoever sees the application. Its attach (`birth`) closes it, the Mate made by whoever
+     * recorded it. The same person's intents a week old, never attached, go with the write.
      */
     readonly recordBirth: (
       userId: string,
@@ -761,11 +762,19 @@ export const structureLayer = (options: {
                     });
                   }
                   // A Mate set up already keeps its record: renaming it is its admin's
-                  // (`edit_mate_record`), not an attacher's.
+                  // (`edit_mate_record`), not an attacher's. One born under an intent was made by
+                  // whoever started its birth, whose sign-in it waits for, whoever finishes it.
                   if (input.mate !== undefined) {
                     yield* sql`
                       INSERT INTO hq_mate (project_id, name, face, made_by)
-                      VALUES (${input.projectId}, ${input.mate.name}, ${input.mate.face}, ${userId})
+                      VALUES (
+                        ${input.projectId}, ${input.mate.name}, ${input.mate.face},
+                        COALESCE(
+                          (SELECT made_by FROM hq_birth_intent
+                           WHERE id::text = ${input.birth ?? null} AND app_id::text = ${appId}),
+                          ${userId}
+                        )
+                      )
                       ON CONFLICT (project_id) DO NOTHING`;
                   }
                   // The intent it was born under is done with, as its application's.
@@ -905,6 +914,10 @@ export const structureLayer = (options: {
                   { projectIds: appProjects.map((row) => row.project_id) },
                   view,
                 );
+                // Theirs a week old never got its attach: it goes with this one's write.
+                yield* sql`
+                  DELETE FROM hq_birth_intent
+                  WHERE made_by = ${userId} AND created_at < now() - interval '7 days'`;
                 return yield* sql<{ readonly id: string }>`
                   INSERT INTO hq_birth_intent (app_id, name, face, made_by)
                   VALUES (${birth.appId}::uuid, ${name}, ${birth.face}, ${userId})

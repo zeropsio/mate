@@ -966,6 +966,70 @@ describe("structure", () => {
         ),
     );
 
+    it.effect("a Mate attached under its birth intent was made by whoever started its birth", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const team = yield* structure.createApp("owner", "Team");
+          yield* structure.attachProject("owner", team.id, { projectId: "P_TEAM", kind: "stage" });
+          const intent = yield* structure.recordBirth("maker", {
+            appId: team.id,
+            name: "Gus",
+            face: "rose:seal",
+          });
+          // Cut off before its attach, finished by somebody else: its sign-in is still maker's.
+          yield* structure.attachProject("owner", team.id, {
+            projectId: "P_OWN",
+            kind: "mate",
+            mate: { name: "Gus", face: "rose:seal" },
+            birth: intent.id,
+          });
+          const read = yield* structure.read("owner");
+          const gus = read.apps
+            .find((app) => app.id === team.id)
+            ?.projects.find((project) => project.projectId === "P_OWN");
+          assert.strictEqual(gus?.mate?.madeBy, "maker");
+        }),
+      ),
+    );
+
+    it.effect(
+      "a new birth intent takes the same person's open ones older than a week with it",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const team = yield* structure.createApp("owner", "Team");
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            const record = (userId: string, name: string) =>
+              structure.recordBirth(userId, { appId: team.id, name, face: "" });
+            const stale = yield* record("maker", "Ida");
+            const theirs = yield* record("owner", "Ola");
+            const recent = yield* record("maker", "Una");
+            yield* sql`
+            UPDATE hq_birth_intent SET created_at = now() - interval '8 days'
+            WHERE id::text IN (${stale.id}, ${theirs.id})`;
+            yield* sql`
+            UPDATE hq_birth_intent SET created_at = now() - interval '6 days'
+            WHERE id::text = ${recent.id}`;
+
+            const fresh = yield* record("maker", "Gus");
+            const births = (yield* structure.read("owner")).apps.find(
+              (app) => app.id === team.id,
+            )?.births;
+            // Maker's week-old intent goes; a younger one of theirs, and another person's, stay.
+            assert.deepStrictEqual(
+              births?.map((birth) => birth.id),
+              [theirs.id, recent.id, fresh.id],
+            );
+          }),
+        ),
+    );
+
     it.effect("renames a Mate and changes its face: whoever is owner or admin on its project", () =>
       withStructure(() =>
         Effect.gen(function* () {
