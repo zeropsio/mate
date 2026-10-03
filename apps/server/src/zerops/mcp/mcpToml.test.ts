@@ -5,7 +5,9 @@ import {
   readTomlServers,
   removeTomlServer,
   setTomlServerBoolean,
+  TomlEditError,
   TomlSyntaxError,
+  validateToml,
 } from "./mcpToml.ts";
 
 /** What `zcp init` writes into Codex's config.toml, around a hand-edited rest. */
@@ -219,5 +221,92 @@ describe("setTomlServerBoolean", () => {
     expect(setTomlServerBoolean(CODEX_ZCP, "mcp_servers", "nope", "enabled", false)).toBe(
       CODEX_ZCP,
     );
+  });
+});
+
+/** A root written as one inline table: nothing may be appended under it as a table. */
+const INLINE_ROOT = `model = "x"
+mcp_servers = { zerops = { command = "zcp", args = ["serve"] }, other = { command = "o", args = [] } }
+
+[projects."/var/www"]
+trust_level = "trusted"
+`;
+
+const ARRAY_TABLES = `[mcp_servers.tools]
+command = "t"
+args = []
+
+[[mcp_servers.tools.allow]]
+name = "a"
+
+[[mcp_servers.tools.allow]]
+name = "b"
+
+[mcp_servers.zerops]
+command = "zcp"
+args = ["serve"]
+`;
+
+describe("validateToml", () => {
+  it.each([
+    ["a table defined twice", "[a]\nx = 1\n[a]\ny = 2\n"],
+    ["a key defined twice", "[a]\nx = 1\nx = 2\n"],
+    ["a table under an inline table", "a = { b = 1 }\n[a.c]\nx = 1\n"],
+    ["a key under an inline table", "a = { b = 1 }\na.c = 2\n"],
+    ["a table over dotted keys", "a.b.c = 1\n[a.b]\nd = 2\n"],
+  ])("refuses %s", (_label, text) => {
+    expect(() => validateToml(text)).toThrow(TomlSyntaxError);
+  });
+
+  it.each([
+    ["zcp's file", CODEX_ZCP],
+    ["a hand-edited file", HAND_EDITED],
+    ["an inline root", INLINE_ROOT],
+    ["arrays of tables", ARRAY_TABLES],
+    ["a sub-table of dotted keys", "a.b = 1\n[a.c]\nd = 2\n"],
+    ["a parent after its child", "[a.b]\nx = 1\n[a]\ny = 2\n"],
+  ])("accepts %s", (_label, text) => {
+    expect(() => validateToml(text)).not.toThrow();
+  });
+});
+
+describe("an inline root and arrays of tables", () => {
+  it("adds a server beside an inline root, keeping it valid", () => {
+    const written = appendTomlServer(INLINE_ROOT, "mcp_servers", "linear", {
+      command: "npx",
+      args: [],
+    });
+    expect(() => validateToml(written)).not.toThrow();
+    expect(Object.keys(readTomlServers(written, "mcp_servers"))).toEqual([
+      "zerops",
+      "other",
+      "linear",
+    ]);
+    expect(written).toContain('[projects."/var/www"]\ntrust_level = "trusted"\n');
+  });
+
+  it.each([
+    ["removes", (text: string) => removeTomlServer(text, "mcp_servers", "other"), ["zerops"]],
+    [
+      "turns off",
+      (text: string) => setTomlServerBoolean(text, "mcp_servers", "other", "enabled", false),
+      ["zerops", "other"],
+    ],
+  ])("%s a server of an inline root", (_label, edit, names) => {
+    const written = edit(INLINE_ROOT);
+    expect(() => validateToml(written)).not.toThrow();
+    expect(Object.keys(readTomlServers(written, "mcp_servers"))).toEqual(names);
+  });
+
+  it("removes a server's arrays of tables with it", () => {
+    const written = removeTomlServer(ARRAY_TABLES, "mcp_servers", "tools");
+    expect(written).toBe('[mcp_servers.zerops]\ncommand = "zcp"\nargs = ["serve"]\n');
+  });
+
+  it("refuses an edit whose result would not hold exactly the intended servers", () => {
+    // A root that is not a table at all: no edit can make it one without losing it.
+    expect(() =>
+      appendTomlServer('mcp_servers = "nope"\n', "mcp_servers", "a", { command: "a" }),
+    ).toThrow(TomlEditError);
   });
 });
