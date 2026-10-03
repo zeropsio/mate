@@ -32,7 +32,15 @@ export function useZeropsAppRecipes(input: {
   const [recipes, setRecipes] = useState<ReadonlyMap<string, AppRecipe>>(() => new Map());
   /** The read each application has out, by the key it was read for. */
   const reading = useRef(
-    new Map<string, { readonly key: string; readonly stop: AbortController }>(),
+    new Map<
+      string,
+      {
+        key: string;
+        revision: string | null;
+        readonly address: string;
+        readonly stop: AbortController;
+      }
+    >(),
   );
   // Each application's attempt, moved on a minute after its read failed: the read is due again.
   const [attempts, setAttempts] = useState<ReadonlyMap<string, number>>(() => new Map());
@@ -41,15 +49,29 @@ export function useZeropsAppRecipes(input: {
 
   useEffect(() => {
     if (!input.enabled || hq === null) return;
-    for (const [appId, revision] of JSON.parse(apps) as ReadonlyArray<
+    for (const [appId, suppliedRevision] of JSON.parse(apps) as ReadonlyArray<
       readonly [string, string | null]
     >) {
-      const key = `${hq.address}|${revision ?? ""}|${String(attempts.get(appId) ?? 0)}`;
       const out = reading.current.get(appId);
+      const sameHq = out?.address === hq.address;
+      const revision = suppliedRevision ?? (sameHq ? out.revision : null);
+      const attempt = String(attempts.get(appId) ?? 0);
+      const key = `${hq.address}|${revision ?? ""}|${attempt}`;
+      // The first revision tells us what the bootstrap read was for. Only a later move
+      // invalidates it, whether the pair is still in flight or has already answered.
+      if (
+        sameHq &&
+        out.revision === null &&
+        revision !== null &&
+        out.key === `${hq.address}||${attempt}`
+      ) {
+        out.revision = revision;
+        out.key = key;
+      }
       if (out?.key === key) continue;
       out?.stop.abort();
       const stop = new AbortController();
-      reading.current.set(appId, { key, stop });
+      reading.current.set(appId, { key, revision, address: hq.address, stop });
       void (async () => {
         try {
           const [stage, production] = await Promise.all([

@@ -584,6 +584,45 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 
+  it.each(["no production", "production"])(
+    "waits for the first HQ environment snapshot before reading releases (%s)",
+    async (state) => {
+      installTestDom();
+      const { createRoot } = await import("react-dom/client");
+      const atoms = signedInAtoms();
+      const root = createRoot(document.createElement("div") as unknown as Element);
+      await act(async () => {
+        root.render(
+          createElement(
+            RegistryContext.Provider,
+            { value: atoms },
+            createElement(ZeropsProjectFlowProvider, null, null),
+          ),
+        );
+      });
+      expect(released.reasons.at(-1)?.size).toBe(0);
+      await act(async () => {
+        atoms.set(
+          hqStructureAtom,
+          structureWith(state === "production" ? [environment("p1", "production")] : []),
+        );
+      });
+      const first = released.reasons.at(-1)?.get("g1");
+      expect(first).toBeDefined();
+      expect(JSON.parse(first!)[1]).toEqual(state === "production" ? [[]] : []);
+      await act(async () => {
+        atoms.set(hqStructureAtom, {
+          ...structureWith(state === "production" ? [environment("p1", "production")] : []),
+          readAt: 2,
+        });
+      });
+      expect(released.reasons.at(-1)?.get("g1")).toBe(first);
+      await act(async () => {
+        root.unmount();
+      });
+    },
+  );
+
   // Audit R4: an application's releases and repositories are read again when HQ's stream says
   // they moved — no other application's, and never on a clock.
   it("reads an application's releases again when HQ says they moved, and no other's", async () => {

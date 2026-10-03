@@ -501,6 +501,16 @@ of pull-based facts subscribe; the runtime accepts only `inventory` and `access`
 coalesce per key over 250 ms; in a hidden tab they collect into a dirty set flushed, visible first,
 on the next visible wake.
 
+A Mate link drop or a door's project mismatch asks the data runtime for that project's presence:
+its project record and a direct list of its services. Outstanding checks share one read pair per
+project. They use the existing inventory identity and leave the organization's receiver and held
+registrations alone. Actual receiver failures still enter the receiver recovery path with its
+backoff.
+
+Release reads wait for the first HQ environment snapshot to supply their production signature.
+Recipe reads adopt the first known revision as bootstrap; only subsequent revision moves re-read
+the tiers.
+
 **Polling is a backstop, and this is the complete list.**
 
 | Fact                                              | Backstop                                                                                                            | Runs only while                     |
@@ -508,7 +518,7 @@ on the next visible wake.
 | Access grant                                      | Renewal before its deadline; per-project retry for unverified projects                                              | Epoch open, hidden under 60 minutes |
 | Inventory, activity                               | None: resnapshot on reconnect, foreground and explicit refresh                                                      | —                                   |
 | Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                                        | —                                   |
-| An application's releases and repositories        | 60 s, and at once for one a verb asks or whose production's deploys move (`useZeropsAppReleases`)                   | An official HQ is known             |
+| An application's releases and repositories        | None: HQ's release revision, production deploys or an explicit refresh (`useZeropsAppReleases`)                     | An official HQ is known             |
 | HQ's structure, environments and a Mate's changes | None: HQ's stream, its snapshot again on reconnect                                                                  | —                                   |
 | A recipe's tiers on `main`                        | None: read when its application is first shown, and again once a change of the recipe lands (`useZeropsAppRecipes`) | —                                   |
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`)                      | Still wanted                        |

@@ -644,22 +644,27 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const releaseRevisions = hqStructure?.releaseRevisions ?? null;
   // Each group's releases, read again when HQ says its releases or repositories moved (audit R4),
   // and when its production's deploys move: a release in flight is over when production runs it
-  // or its deploy fails. An HQ that says no revision has them read once, after the load.
+  // or its deploy fails. The first environment snapshot supplies the bootstrap signature;
+  // an HQ that says no revision has them read once, after that snapshot.
   const releaseApps = useMemo(
     () =>
       new Map(
-        flowGroups.map(({ groupId }) => {
-          const production = heldEnvironments
-            ?.get(groupId)
-            ?.filter((entry) => entry.tier === "production");
-          return [
-            groupId,
-            JSON.stringify([
-              releaseRevisions?.get(groupId) ?? null,
-              production?.map((entry) => entry.deploys) ?? null,
-            ]),
-          ];
-        }),
+        heldEnvironments === null
+          ? []
+          : flowGroups.flatMap(({ groupId }) => {
+              const environments = heldEnvironments.get(groupId);
+              if (environments === undefined) return [];
+              const production = environments.filter((entry) => entry.tier === "production");
+              return [
+                [
+                  groupId,
+                  JSON.stringify([
+                    releaseRevisions?.get(groupId) ?? null,
+                    production.map((entry) => entry.deploys),
+                  ]),
+                ] as const,
+              ];
+            }),
       ),
     [flowGroups, heldEnvironments, releaseRevisions],
   );

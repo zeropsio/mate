@@ -255,12 +255,14 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
   const client = session?.client;
   const clientId = session?.activeOrganization?.id;
   const { hq } = useAccountHq(clientId);
+  const api =
+    client === undefined || clientId === undefined || hq.kind !== "official"
+      ? null
+      : accountHqApi(client, clientId, hq);
+  const address = hq.kind === "official" ? hq.address : null;
   return useMemo(
-    () =>
-      client === undefined || clientId === undefined || hq.kind !== "official"
-        ? null
-        : { address: hq.address, api: accountHqApi(client, clientId, hq) },
-    [client, clientId, hq],
+    () => (address === null || api === null ? null : { address, api }),
+    [address, api],
   );
 }
 
