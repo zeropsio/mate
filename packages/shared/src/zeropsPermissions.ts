@@ -18,7 +18,8 @@
  * - **The target carries its current kind** (`held`), never only the requested one: a change between a
  *   Mate and an environment is the structure's writers' alone, whoever owns the project.
  * - **Freshness is a type:** every verb that writes takes `Facts<"fresh" | "recent">` — read at
- *   the moment of use, or at most 30 s before it: whoever enforces lets an allow stand on a recent
+ *   the moment of use, or at most 30 s before it, or, while Zerops leaves a read 3 s unanswered,
+ *   the last answer it gave within five minutes: whoever enforces lets an allow stand on a recent
  *   read and confirms a refusal over a fresh one (F22, 2026-10-03: under Zerops' stalls every
  *   write waited on a fresh read and fell over). Only the reads take facts up to the cache's age,
  *   and Core's landing, which reads none.
@@ -59,12 +60,15 @@ export interface FactProject {
 
 export type Freshness = "fresh" | "recent" | "cached";
 
-/** How fresh a write's facts are: read now, or at most 30 s before it. */
+/**
+ * How fresh a write's facts are: read now, or at most 30 s before it — or, while Zerops leaves a
+ * read 3 s unanswered, its last answer within five minutes.
+ */
 export type WriteFreshness = "fresh" | "recent";
 
 /**
- * The org as Zerops gave it: read now (`fresh`), at most 30 s ago (`recent`), or from a cache that
- * may be older (`cached`).
+ * The org as Zerops gave it: read now (`fresh`), at most 30 s ago or, while Zerops does not answer,
+ * its last answer within five minutes (`recent`), or from a cache that may be older (`cached`).
  */
 export interface Facts<F extends Freshness = Freshness> {
   readonly freshness: F;

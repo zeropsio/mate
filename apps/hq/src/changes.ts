@@ -6,7 +6,8 @@
  * finds it there. Whether it may is `can` (`@t3tools/shared/zeropsPermissions`), asked here and
  * nowhere else — a Mate's writes over the org as every write is decided (`mateApp`, `mateChange`:
  * `roles.ts` `confirmingRefusal`), its fetches
- * over the org up to 30 s old (`mateFetch`); a person's reads and comments in `personApp`. Every
+ * over the org's view as every read is decided (`roles.ts` `view`, `mateFetch`); a person's reads
+ * and comments in `personApp`. Every
  * write is fenced by the leader.
  *
  * @module changes
@@ -104,7 +105,7 @@ export class Changes extends Context.Service<
     readonly mateApp: (projectId: string, verb: MateVerb) => Effect.Effect<string, MateError>;
     /**
      * The application the Mate of `projectId` fetches a repository of `repoAppId` in, as `can`'s
-     * `fetch_repo` decides it over the org up to 30 s old.
+     * `fetch_repo` decides it over the org's view (`roles.ts` `view`).
      */
     readonly mateFetch: (
       projectId: string,
@@ -478,7 +479,7 @@ export const changesLayer: Layer.Layer<
 
     /**
      * Whether the person `userId` may `verb` the changes of the application `appId`: `can` over
-     * all of its projects — a read over the org up to 30 s old, a comment as every write is decided.
+     * all of its projects — a read over the org's view, a comment as every write is decided.
      * Decided before the application's existence, so an id tells nobody without the right whether
      * it names an application. Applications are compared by their id's text, which a path may
      * spell any way.
