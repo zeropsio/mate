@@ -1,7 +1,19 @@
+import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
 import { EnvironmentId, type ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+/** A provider instance as the server sends it: signed in, models listed, unless said otherwise. */
+const agentInstance = (driver: string, status = "ready"): OtherAgentFields =>
+  ({
+    driver,
+    enabled: true,
+    installed: true,
+    status,
+    auth: { status: status === "ready" ? "authenticated" : "unauthenticated" },
+    models: [{ slug: "m" }],
+  }) as unknown as OtherAgentFields;
 
 const feedState = vi.hoisted(() => ({
   agentAuth: undefined as unknown,
@@ -9,7 +21,7 @@ const feedState = vi.hoisted(() => ({
   attempt: "none" as "none" | "sending" | "failed",
   threads: [] as ReadonlyArray<Record<string, unknown>>,
   names: new Map<string, string>(),
-  providers: [] as ReadonlyArray<{ driver: string; enabled: boolean; status: string }>,
+  providers: [] as ReadonlyArray<OtherAgentFields>,
 }));
 
 vi.mock("../../zerops/useZeropsFeeds", () => ({
@@ -137,7 +149,7 @@ const stage = (html: string) => ({
   tryAgain: html.includes("data-mate-standup-retry"),
 });
 
-const CURSOR_READY = [{ driver: "cursor", enabled: true, status: "ready" }];
+const CURSOR_READY = [agentInstance("cursor")];
 
 describe("ZeropsMateEmptyState", () => {
   beforeEach(() => {
@@ -319,7 +331,7 @@ describe("ZeropsMateEmptyState", () => {
       name: "a Mate nobody asked it of, nobody signed in, OpenCode ready",
       mate: MATE,
       auth: known(NOT_SIGNED_IN),
-      providers: [{ driver: "opencode", enabled: true, status: "ready" }],
+      providers: [agentInstance("opencode")],
       headline: "What should Fen do on Acme Docs?",
       sentence: "",
       face: "idle",

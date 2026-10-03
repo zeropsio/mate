@@ -12,7 +12,6 @@
  * branch and a button from another.
  */
 import type { AtomCommandResult } from "../state/runtime.ts";
-import { agentIdForDriverKind } from "@t3tools/contracts";
 import type {
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -22,6 +21,8 @@ import type {
 } from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
+  isAgentWithoutSignInReady,
+  type ProviderReadinessFields,
   type ZeropsAgentAuthFields,
 } from "@t3tools/shared/zeropsAgentAuth";
 
@@ -248,29 +249,18 @@ export function zeropsAgentSignInRequired(
 }
 
 /** What `zeropsOtherAgentReady` reads of a provider instance (`ServerProvider`). */
-export interface OtherAgentFields {
-  readonly driver: string;
-  readonly enabled: boolean;
-  readonly status: string;
-  readonly availability?: string | undefined;
-}
+export type OtherAgentFields = ProviderReadinessFields;
 
 /**
  * Whether the Mate can run an agent Mate never signs anybody in to — Cursor, OpenCode, Grok,
- * Antigravity: an instance of a driver outside the sign-in feed that the picker would let a
- * person send to (enabled, available, `ready` by its own probe). Claude Code and Codex never count
+ * Antigravity: an instance ready by the one test the server's stand-up uses too
+ * (`isAgentWithoutSignInReady`), its sign-in read as signed in. Claude Code and Codex never count
  * here: the feed speaks for them, whatever their driver's probe says.
  */
 export function zeropsOtherAgentReady(
   providers: ReadonlyArray<OtherAgentFields> | undefined,
 ): boolean {
-  return (providers ?? []).some(
-    (provider) =>
-      agentIdForDriverKind(provider.driver) === undefined &&
-      provider.enabled &&
-      provider.availability !== "unavailable" &&
-      provider.status === "ready",
-  );
+  return (providers ?? []).some(isAgentWithoutSignInReady);
 }
 
 /** A login that has not ended: its credential is not a sign-in until it does. */

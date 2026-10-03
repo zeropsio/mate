@@ -458,8 +458,17 @@ describe("zeropsAgentSignInRequired", () => {
   ]);
   const provider = (
     driver: string,
-    overrides: Partial<Pick<ServerProvider, "enabled" | "status" | "availability">> = {},
-  ) => ({ driver, enabled: true, status: "ready" as const, ...overrides });
+    overrides: Partial<Pick<ServerProvider, "enabled" | "status" | "availability" | "auth">> = {},
+  ) =>
+    ({
+      driver,
+      enabled: true,
+      installed: true,
+      status: "ready",
+      auth: { status: "authenticated" },
+      models: [{ slug: "m" }],
+      ...overrides,
+    }) as unknown as ServerProvider;
   it.each([
     { name: "Cursor is ready", providers: [provider("cursor")], expected: false },
     { name: "OpenCode is ready", providers: [provider("opencode")], expected: false },
@@ -496,6 +505,12 @@ describe("zeropsAgentSignInRequired", () => {
       expected: true,
     },
     { name: "no provider is known yet", providers: undefined, expected: true },
+    // Grok and Cursor can say ready with a sign-in they could not read: no agent to run.
+    {
+      name: "Cursor says ready, its sign-in unknown",
+      providers: [provider("cursor", { auth: { status: "unknown" } })],
+      expected: true,
+    },
   ])("is $expected with nobody signed in when $name", ({ providers, expected }) => {
     expect(zeropsAgentSignInRequired(nobodySignedIn, providers)).toBe(expected);
     expect(zeropsOtherAgentReady(providers)).toBe(!expected);

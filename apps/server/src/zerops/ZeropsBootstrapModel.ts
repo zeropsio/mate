@@ -25,12 +25,12 @@
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
-  agentIdForDriverKind,
-  isProviderAvailable,
   type ModelSelection,
   ProviderDriverKind,
+  type ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { isAgentWithoutSignInReady, isProviderReadyToRun } from "@t3tools/shared/zeropsAgentAuth";
 
 /**
  * Which driver the bootstrap thread prefers when more than one is ready.
@@ -44,26 +44,6 @@ export const ZEROPS_BOOTSTRAP_DRIVER_PREFERENCE: ReadonlyArray<ProviderDriverKin
   ProviderDriverKind.make("claudeAgent"),
   ProviderDriverKind.make("codex"),
 ];
-
-/**
- * Can the bootstrap thread actually start a turn on this instance?
- *
- * `status === "ready"` is the driver's own verdict and already excludes the
- * unauthenticated case (an unauthenticated CLI reports `error` +
- * `auth.status: "unauthenticated"` - see `CodexProvider`/`ClaudeProvider`).
- * The explicit auth clause covers a driver that reports ready while knowing it
- * has no session. A ready instance listing zero models is refused too: with no
- * live model list, `resolveBootstrapModelSlug` would have to fall back to a
- * manifest slug the CLI has not confirmed it serves, and landing the thread on
- * a guessed model is the failure this rule exists to prevent.
- */
-export const isBootstrapReadyProvider = (snapshot: ServerProvider): boolean =>
-  snapshot.enabled &&
-  snapshot.installed &&
-  isProviderAvailable(snapshot) &&
-  snapshot.status === "ready" &&
-  snapshot.auth.status !== "unauthenticated" &&
-  snapshot.models.length > 0;
 
 /**
  * The model the bootstrap thread opens on for one instance.
@@ -128,7 +108,7 @@ export const isBootstrapDecidable = (providers: ReadonlyArray<ServerProvider>): 
 export const pickBootstrapProvider = (
   providers: ReadonlyArray<ServerProvider>,
 ): ServerProvider | undefined => {
-  const ready = providers.filter(isBootstrapReadyProvider);
+  const ready = providers.filter(isProviderReadyToRun);
   for (const driver of ZEROPS_BOOTSTRAP_DRIVER_PREFERENCE) {
     const preferred = ready.find((snapshot) => snapshot.driver === driver);
     if (preferred !== undefined) {
@@ -139,17 +119,18 @@ export const pickBootstrapProvider = (
 };
 
 /**
- * The first ready instance of an agent Mate signs nobody in to — Cursor, OpenCode, Grok,
- * Antigravity — in the registry's order, or `undefined`. Claude Code and Codex never answer here:
- * on a Zerops project their sign-in is the feed's to say, and the person's (D6).
+ * The ready instance of an agent Mate signs nobody in to — Cursor, OpenCode, Grok, Antigravity
+ * (`isAgentWithoutSignInReady`): `current`, the conversation's own, when it is one of them, else
+ * the first in the registry's order; `undefined` when none is. Claude Code and Codex never answer
+ * here: on a Zerops project their sign-in is the feed's to say, and the person's (D6).
  */
 export const pickReadyAgentWithoutSignIn = (
   providers: ReadonlyArray<ServerProvider>,
-): ServerProvider | undefined =>
-  providers.find(
-    (snapshot) =>
-      agentIdForDriverKind(snapshot.driver) === undefined && isBootstrapReadyProvider(snapshot),
-  );
+  current?: ProviderInstanceId,
+): ServerProvider | undefined => {
+  const ready = providers.filter(isAgentWithoutSignInReady);
+  return ready.find((snapshot) => snapshot.instanceId === current) ?? ready[0];
+};
 
 /**
  * The bootstrap model selection for a Zerops container, or `undefined` when

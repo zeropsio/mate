@@ -1,3 +1,4 @@
+import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
 /**
  * The Crew tab of a Mate nobody has signed in: the one "no agent yet" screen its conversation
  * shows (`ZeropsMateEmptyState`), word for word, in place of the crew's own screens.
@@ -7,9 +8,20 @@ import { EnvironmentId, ThreadId, type ZeropsAgentAuthSnapshot } from "@t3tools/
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+/** A provider instance as the server sends it: signed in, models listed, unless said otherwise. */
+const agentInstance = (driver: string, status = "ready"): OtherAgentFields =>
+  ({
+    driver,
+    enabled: true,
+    installed: true,
+    status,
+    auth: { status: status === "ready" ? "authenticated" : "unauthenticated" },
+    models: [{ slug: "m" }],
+  }) as unknown as OtherAgentFields;
+
 const feed = vi.hoisted(() => ({
   agentAuth: undefined as unknown,
-  providers: [] as ReadonlyArray<{ driver: string; enabled: boolean; status: string }>,
+  providers: [] as ReadonlyArray<OtherAgentFields>,
 }));
 
 vi.mock("~/zerops/useZeropsFeeds", () => ({
@@ -93,7 +105,7 @@ describe("CrewPanel — a Mate nobody has signed in", () => {
     {
       name: "no agent signed in, Cursor ready",
       auth: known(agents(false)),
-      providers: [{ driver: "cursor", enabled: true, status: "ready" }],
+      providers: [agentInstance("cursor")],
       stage: false,
     },
   ])("$name: the no-agent stage $stage", ({ auth, providers, stage }) => {

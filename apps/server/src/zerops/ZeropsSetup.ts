@@ -39,6 +39,7 @@ import {
   type ServerProvider,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
+import { isProviderReadyToRun } from "@t3tools/shared/zeropsAgentAuth";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -234,15 +235,9 @@ export const standUpModelSelectionOn = (
   return { instanceId: provider.instanceId, model: resolveBootstrapModelSlug(provider) };
 };
 
-/** Whether anything on the Mate can run a turn now: an instance the picker would send to. */
+/** Whether anything on the Mate can run a turn now (`isProviderReadyToRun`). */
 const anyAgentRunnable = (providers: ReadonlyArray<ServerProvider>): boolean =>
-  providers.some(
-    (provider) =>
-      provider.enabled &&
-      provider.installed &&
-      provider.availability !== "unavailable" &&
-      provider.status === "ready",
-  );
+  providers.some(isProviderReadyToRun);
 
 /**
  * The Mate's main conversation, by the client's rule (`primaryConversation.ts`):
@@ -630,11 +625,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           yield* confirm(resuming.commandId, "server:claimed");
           return true;
         }
+        // The conversation's own instance when it is one of the ready ones.
+        const readyHere = pickReadyAgentWithoutSignIn(providers, main?.modelSelection.instanceId);
         const decision = standUpDecision({
           recorded: false,
           requestedBy,
           signers: standUpSigners(tagList, requestedBy),
-          ready: ready?.instanceId,
+          ready: readyHere?.instanceId,
           spoken: resuming === undefined && main?.latestUserMessageAt != null,
         });
         if (decision.kind === "spoken") return yield* settle("skipped");
@@ -652,8 +649,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
             main,
             project.defaultModelSelection,
           );
-        } else if (ready !== undefined) {
-          modelSelection = standUpModelSelectionOn(ready, main, project.defaultModelSelection);
+        } else if (readyHere !== undefined) {
+          modelSelection = standUpModelSelectionOn(readyHere, main, project.defaultModelSelection);
         } else {
           return false;
         }

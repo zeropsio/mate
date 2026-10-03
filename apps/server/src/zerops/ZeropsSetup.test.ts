@@ -404,6 +404,38 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
+  it.live("keeps the conversation on its own ready instance over the registry's first", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.providers, [...CURSOR_READY, instance("opencode")]);
+      yield* Ref.set(world.threads, [
+        mainThread({
+          modelSelection: { instanceId: ProviderInstanceId.make("opencode"), model: "big-pickle" },
+        }),
+      ]);
+      const [turn] = yield* withServer(world, freshDatabase(), () =>
+        eventually(turnsOf(world), (turns) => turns.length > 0),
+      );
+      assert.deepStrictEqual(
+        [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
+        ["opencode", "big-pickle"],
+      );
+    }),
+  );
+
+  // Grok and Cursor can say ready with a sign-in they could not read: that is no agent to run.
+  it.live("never stands up on a Cursor whose sign-in it could not read", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.providers, [
+        ...NOTHING_TO_RUN,
+        { ...instance("cursor"), auth: { status: "unknown" } },
+      ]);
+      yield* withServer(world, freshDatabase(), () => ticks);
+      assert.deepStrictEqual(yield* turnsOf(world), []);
+    }),
+  );
+
   /** Whether the tags are still being read: two reads apart, the count moved. */
   const stillPolling = (world: World) =>
     Effect.gen(function* () {
