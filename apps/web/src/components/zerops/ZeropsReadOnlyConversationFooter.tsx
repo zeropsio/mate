@@ -70,7 +70,10 @@ export function ZeropsReadOnlyConversationFooter({
       >
         <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
         <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
-        {onSignIn === undefined ? null : (
+        {onSignIn === undefined ? (
+          // The action's row height kept, so the strip is the height it will be once it comes.
+          <span aria-hidden="true" className="h-7 w-0 shrink-0 sm:h-6" />
+        ) : (
           <Button size="xs" onClick={onSignIn}>
             {AGENT_OWNERSHIP_RECOVERY_LABEL}
           </Button>
