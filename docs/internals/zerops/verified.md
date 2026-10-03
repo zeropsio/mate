@@ -7445,6 +7445,23 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
 - **An org READ_ONLY token reads a service by id** — 17:23Z, a `mate-probe-*` org READ_ONLY token
   with no grant: `GET /service-stack/{id}` of a rig Mate's zcp answered 200 (`ACTIVE`); a
   non-existent id answered 400 `serviceStackNotFound`. Deleted at once.
+- **Zerops runs a service's builds one after another; the last one submitted ends `ACTIVE`** —
+  22:41–22:47Z, service `app` of `mate-rig-e2e-h - stage`: build-and-deploy of version A answered
+  200 (process `RUNNING`); B, submitted 3 s later, answered 200 and waited (`PENDING`,
+  `WAITING_TO_BUILD`); A finished and went `ACTIVE`, B started 32 ms later, finished, went `ACTIVE`,
+  and A became `BACKUP`. Nothing was cancelled by itself. `PUT /process/{id}/cancel` on a running
+  build answered 400 `processIsAlreadyRunning`; `PUT /app-version/{id}/cancel-build` answered 200.
+  A version only uploaded (never submitted) vanished once later upload-only versions were created on
+  the same service: submitting it answered 400 `appVersionNotFound`.
+- **`enableSubdomainAccess: true` in a service import does not open the subdomain, not even after
+  its first deploy** — 22:4xZ, a `probesub` service imported with the flag into the same project:
+  `READY_TO_DEPLOY` with `subdomainAccess: false`; after its one deploy finished and went `ACTIVE`,
+  still `false`. The service's address (`https://probesub-…prg1.zerops.app`) was listed by the
+  environment endpoint all along. Probe service deleted.
+- **A version Zerops accepted can still read `UPLOADING` for a moment** — same run: B read
+  `UPLOADING` right after its build-and-deploy answered 200, then `WAITING_TO_BUILD`; an upload-only
+  control stayed `UPLOADING` for 82 s with no process. One immediate `UPLOADING` read does not prove a
+  submission was lost.
 - **An uploaded app version that is never built stays `UPLOADING`** — 17:46–17:51Z, service `app`
   of `mate-rig-e2e-h - stage`: `POST /service-stack/{id}/app-version` answered `UPLOADING`, and
   so did `GET /app-version/{id}` before the upload, right after `PUT …/upload` (200), 60 s and
