@@ -195,6 +195,20 @@ describe("attachmentPathLine", () => {
       '[Picture 1\'s original, "a-original.png", is saved at: /attachments/a-original.png]',
     ],
     [
+      "a placed file by its label",
+      "Read\n[File 1]",
+      [attachment("spec", "file", { mimeType: "application/pdf" })],
+      0,
+      '[File 1, "spec.png", is saved at: /attachments/spec.png]',
+    ],
+    [
+      "a file the text holds no label for as before",
+      "Read this",
+      [attachment("spec", "file", { mimeType: "application/pdf" })],
+      0,
+      '[Attached file "spec.png" is saved at: /attachments/spec.png]',
+    ],
+    [
       "pasted text as before",
       "notes",
       [attachment("p", "file", { source: { _tag: "pasted-text" } })],

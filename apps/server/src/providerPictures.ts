@@ -12,6 +12,7 @@ import {
   PICTURE_MAX_BYTES,
   PICTURE_MAX_EDGE,
   interleavePictures,
+  messageFiles,
   messagePictures,
 } from "@t3tools/shared/composerPictures";
 
@@ -140,14 +141,19 @@ export function turnPictureError(
   return claudePictureErrorMessage(turnPictures.get(turn) ?? []);
 }
 
+type MessageAttachment = PictureAttachment & {
+  readonly source?: { readonly _tag: string } | undefined;
+};
+
 /**
  * The line that tells an agent where an attachment is saved: a picture by its
- * label and a kept original as its picture's, everything else as before.
+ * label, a kept original as its picture's, a placed file by its label,
+ * everything else as before.
  */
 export function attachmentPathLine(
-  attachment: PictureAttachment & { readonly source?: { readonly _tag: string } | undefined },
+  attachment: MessageAttachment,
   path: string,
-  message: { readonly text: string; readonly attachments: ReadonlyArray<PictureAttachment> },
+  message: { readonly text: string; readonly attachments: ReadonlyArray<MessageAttachment> },
 ): string {
   const pictures = messagePictures(message.text, message.attachments);
   const picture = pictures.find((entry) => entry.image === attachment);
@@ -156,6 +162,10 @@ export function attachmentPathLine(
   if (original) {
     return `[Picture ${original.n}'s original, "${attachment.name}", is saved at: ${path}]`;
   }
+  const file = messageFiles(message.text, message.attachments).find(
+    (entry) => entry.file === attachment,
+  );
+  if (file?.placed) return `[File ${file.n}, "${attachment.name}", is saved at: ${path}]`;
   if (attachment.type === "file" && attachment.source?._tag === "pasted-text") {
     return `[Pasted text "${attachment.name}" is saved at: ${path}. Inspect it as needed.]`;
   }

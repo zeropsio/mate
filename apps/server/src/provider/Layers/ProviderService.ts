@@ -46,6 +46,7 @@ import * as Stream from "effect/Stream";
 import { appendUserInputAttachmentPaths } from "../userInputAttachments.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { attachmentPathLine } from "../../providerPictures.ts";
+import { agentAttachmentPath } from "../../uploadsFolder.ts";
 import * as ServerConfig from "../../config.ts";
 import {
   increment,
@@ -857,17 +858,21 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     // sends generic files as file parts, the others send images only and rely
     // on the path line for everything else. Folded clipboard text remains
     // path-only everywhere: eagerly embedding it would spend the same context
-    // the client deliberately preserved by folding it. Unresolvable ids are
-    // skipped here and surface as adapter errors when the file is read.
+    // the client deliberately preserved by folding it. A sent file's path is
+    // its place in the Mate's uploads folder. Unresolvable ids are skipped
+    // here and surface as adapter errors when the file is read.
     const attachmentPathLines = attachments.flatMap((attachment) => {
       const attachmentPath = resolveAttachmentPath({
         attachmentsDir: serverConfig.attachmentsDir,
         attachment,
       });
       if (attachmentPath === null) return [];
-      return [
-        attachmentPathLine(attachment, attachmentPath, { text: parsed.input ?? "", attachments }),
-      ];
+      const agentPath = agentAttachmentPath({
+        uploadsDir: serverConfig.uploadsDir,
+        attachment,
+        storedPath: attachmentPath,
+      });
+      return [attachmentPathLine(attachment, agentPath, { text: parsed.input ?? "", attachments })];
     });
     const inputTextWithAttachmentPaths =
       attachmentPathLines.length === 0
