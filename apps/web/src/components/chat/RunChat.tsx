@@ -94,7 +94,11 @@ import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { MateFace } from "../zerops/primitives";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
-import { useOperationCard } from "../../zerops/activity/useOperationCard";
+import {
+  observationTargetFor,
+  useOperationCard,
+  type OperationCardRegions,
+} from "../../zerops/activity/useOperationCard";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
@@ -123,7 +127,13 @@ import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
-import { detailLines, liveOperationBar, settledOperationBar } from "./operationBar.logic";
+import {
+  detailLines,
+  liveOperationBar,
+  observedLinesOf,
+  settledOperationBar,
+  showsCardInSlot,
+} from "./operationBar.logic";
 import { HELPER_LINE_CHARS, helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -1522,12 +1532,15 @@ export function OperationDetail({
   environmentId,
   threadRef,
   turnRuns,
+  regions,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   /** Its turn runs: a stand-up's builds that ran on are read as they stand. */
   readonly turnRuns: boolean;
+  /** What its line already read of the platform: the card draws it, never reading it twice. */
+  readonly regions?: OperationCardRegions;
 }) {
   if (operation.kind === "standup") {
     return (
@@ -1536,6 +1549,11 @@ export function OperationDetail({
   }
   if (operation.kind === "import") {
     return <ImportDetail environmentId={environmentId} operation={operation} />;
+  }
+  if (regions !== undefined) {
+    return (
+      <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />
+    );
   }
   return (
     <ZeropsOperationDetail
@@ -1594,12 +1612,8 @@ function StandupBubble({
   );
 }
 
-function OperationBubble({
-  operation,
-  undone = false,
-  noResult,
-  lines = detailLines(operation, null),
-}: {
+/** What an operation's line takes: the operation, how it ended, how much it opens to. */
+interface OperationLineProps {
   readonly operation: ZeropsOperation;
   /** It failed, and a later one on the same service went through: quiet (K9). */
   readonly undone?: boolean;
@@ -1610,16 +1624,56 @@ function OperationBubble({
   readonly noResult?: "stale" | "closed" | undefined;
   /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
   readonly lines?: number;
+}
+
+/**
+ * An operation's line. In the live slot, one whose card reads the platform —
+ * a deploy, an import, a subdomain — reads it there, from its start to its
+ * plop: its bar follows its pipeline, and it stands open on its card (the
+ * pipeline's steps, the build's newest lines, the way to the whole log) once
+ * the store has read any of it (pass 36: "the running builds, their logs ...
+ * seem to be completely gone").
+ */
+function OperationBubble(props: OperationLineProps) {
+  const inSlot = use(InSlotContext);
+  return inSlot &&
+    props.noResult === undefined &&
+    observationTargetFor(props.operation) !== null ? (
+    <WatchedOperationBubble {...props} />
+  ) : (
+    <OperationLine {...props} regions={null} />
+  );
+}
+
+/** An operation in the live slot, with what its card reads of the platform. */
+function WatchedOperationBubble(props: OperationLineProps) {
+  const ctx = use(TimelineRowCtx);
+  const regions = useOperationCard(props.operation, ctx.activeThreadEnvironmentId);
+  return <OperationLine {...props} regions={regions} />;
+}
+
+function OperationLine({
+  operation,
+  undone = false,
+  noResult,
+  lines: given,
+  regions,
+}: OperationLineProps & {
+  /** What its card read of the platform: null where nothing reads it here. */
+  readonly regions: OperationCardRegions | null;
 }) {
+  const observed = observedLinesOf(regions?.observed);
+  const lines = given ?? detailLines(operation, null, observed);
+  const inSlot = use(InSlotContext);
   const ctx = use(TimelineRowCtx);
   const turnRuns = useTurnRuns(operation);
-  const disclosure = useDisclosure();
-  const inSlot = use(InSlotContext);
+  // In the slot it stands open on what its card read, and lands so.
+  const disclosure = useDisclosure(inSlot && showsCardInSlot(observed), "open", true);
   const failed = operation.phase === "failed";
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = noResult === undefined && operation.phase === "running";
   // Live in the slot, its pipeline as it goes and the step it is on.
-  const live = running && inSlot ? liveOperationBar(operation) : null;
+  const live = running && inSlot ? liveOperationBar(operation, regions?.observed?.pipeline) : null;
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
@@ -1694,6 +1748,7 @@ function OperationBubble({
             operation={operation}
             threadRef={ctx.threadRef}
             turnRuns={turnRuns}
+            {...(regions === null ? {} : { regions })}
           />
         </div>
       ) : null}

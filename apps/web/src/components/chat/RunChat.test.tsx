@@ -23,6 +23,13 @@ import { checksStrip, formatWorkDuration, type OutcomeModel } from "./conversati
 import { operation } from "./conversationFixtures";
 import { stepOf } from "./workSteps.logic";
 
+// An operation in the live slot reads the platform through its card's hook;
+// the account store it reads is not drawn here, so it reads nothing.
+vi.mock("../../zerops/activity/useOperationCard", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../zerops/activity/useOperationCard")>()),
+  useOperationCard: () => ({}),
+}));
+
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
 const turnId = TurnId.make("turn-1");
 
