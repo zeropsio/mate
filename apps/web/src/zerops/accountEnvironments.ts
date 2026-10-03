@@ -24,7 +24,7 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { useAtomCommand } from "../state/use-atom-command";
 import { invalidateZerops } from "./accountInvalidations";
@@ -171,6 +171,18 @@ export async function whileMateHeld<T>(
   } finally {
     release?.();
   }
+}
+
+/**
+ * Holds the Mate of `environmentId` connected for as long as a surface names it — the jump box's
+ * picked Mate, a running clone's toast — and lets it go once it names another, or none (null).
+ */
+export function useMateHeld(environmentId: EnvironmentId | null): void {
+  const environments = useAccountEnvironments();
+  useEffect(() => {
+    if (environments === null || environmentId === null) return;
+    return environments.hold(environmentId);
+  }, [environments, environmentId]);
 }
 
 /** A Mate's command as a surface outside its own view sends it: with its action lease. */

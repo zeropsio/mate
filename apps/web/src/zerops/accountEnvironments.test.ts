@@ -19,6 +19,7 @@ import {
   connectMate,
   connectResult,
   useMateCommand,
+  useMateHeld,
   whileMateHeld,
   type MateConnectTarget,
 } from "./accountEnvironments";
@@ -231,16 +232,20 @@ describe("whileMateHeld: an action's lease around its command", () => {
   });
 });
 
+/** An account bound whose holds and releases go into `sent.log`; the answer unbinds it. */
+const bindHolder = () =>
+  bindAccountEnvironments({
+    hold: (environmentId: EnvironmentId) => {
+      sent.log.push(`hold ${environmentId}`);
+      return () => {
+        sent.log.push(`release ${environmentId}`);
+      };
+    },
+  } as unknown as AccountEnvironments);
+
 describe("useMateCommand: a Mate's command, sent with its action lease", () => {
   it("holds the Mate the command names until the command answers", async () => {
-    const unbind = bindAccountEnvironments({
-      hold: (environmentId: EnvironmentId) => {
-        sent.log.push(`hold ${environmentId}`);
-        return () => {
-          sent.log.push(`release ${environmentId}`);
-        };
-      },
-    } as unknown as AccountEnvironments);
+    const unbind = bindHolder();
     type Stop = { readonly environmentId: EnvironmentId; readonly input: string };
     const command = {} as AtomCommand<Stop, string, never>;
     const senders: Array<(value: Stop) => Promise<unknown>> = [];
@@ -255,6 +260,30 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
 
     expect(await send({ environmentId: ENV, input: "stop" })).toBe("answered");
     expect(sent.log).toEqual(["hold env-1", "command stop", "release env-1"]);
+    unbind();
+  });
+});
+
+describe("useMateHeld: an action's lease for as long as a surface names its Mate", () => {
+  it("holds the Mate while it is named and lets it go once it is not", () => {
+    const unbind = bindHolder();
+    const Probe = ({ environmentId }: { readonly environmentId: EnvironmentId | null }) => {
+      useMateHeld(environmentId);
+      return null;
+    };
+    const OTHER = "env-2" as EnvironmentId;
+    const renderer = create(h(Probe, { environmentId: null }));
+    act(() => {
+      renderer.update(h(Probe, { environmentId: ENV }));
+    });
+    act(() => {
+      renderer.update(h(Probe, { environmentId: OTHER }));
+    });
+    act(() => {
+      renderer.unmount();
+    });
+
+    expect(sent.log).toEqual(["hold env-1", "release env-1", "hold env-2", "release env-2"]);
     unbind();
   });
 });
