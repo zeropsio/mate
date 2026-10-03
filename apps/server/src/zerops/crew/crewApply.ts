@@ -362,6 +362,38 @@ const applyChoice = (
     }
   });
 
+/**
+ * A crewmate runs only on a login whose agent carries the crew's profile —
+ * its rules, gate and overrides — or it would work ungated; a lead also
+ * needs the crew tools from it, to hand out and land the work.
+ */
+const requireCrewLogin = (
+  core: CrewCore,
+  member: Pick<CrewMemberSpec, "handle" | "kind">,
+  login: string,
+) =>
+  Effect.gen(function* () {
+    const agent = yield* core.agentOf(login);
+    if (agent === undefined) {
+      return yield* refuse(
+        "invalid-definition",
+        `@${member.handle} runs on ${login}, which isn't a login on this Mate: give it another login.`,
+      );
+    }
+    if (agent.threadProfile === undefined) {
+      return yield* refuse(
+        "invalid-definition",
+        `@${member.handle} runs on ${agent.displayName}, which can't run a crewmate: it would work without the crew's rules. Give it another login.`,
+      );
+    }
+    if (member.kind === "lead" && !agent.threadProfile.tools) {
+      return yield* refuse(
+        "invalid-definition",
+        `@${member.handle} leads the crew, and a lead needs the crew tools, which ${agent.displayName} cannot host: give the lead another login.`,
+      );
+    }
+  });
+
 export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activate) =>
   Effect.gen(function* () {
     const definition = yield* loadHome(core);
@@ -377,12 +409,8 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activa
     const topology = validateCrewTopology(definition, { devHosts, databaseHosts });
     if (topology.length > 0) return yield* refusalOf(topology);
     const login = yield* defaultCrewLogin(core);
-    const lead = definition.members.find((member) => member.kind === "lead");
-    if (lead !== undefined && (yield* core.agentOf(lead.login ?? login)) === "codex") {
-      return yield* refuse(
-        "invalid-definition",
-        `@${lead.handle} leads the crew, and a lead needs the crew tools, which Codex cannot host: give the lead a Claude login.`,
-      );
+    for (const member of definition.members) {
+      yield* requireCrewLogin(core, member, member.login ?? login);
     }
     for (const host of verified.keys()) {
       core.memory.integration.set(host, yield* asRefusal(core.reads.integration(host)));
@@ -572,6 +600,7 @@ export const saveJob = (
     const login = next.login ?? (yield* defaultCrewLogin(core));
     const loginChanged = login !== member.row.login;
     if (loginChanged && choice !== "fresh") return yield* refuse("login-needs-fresh");
+    yield* requireCrewLogin(core, next, login);
     const jobChanged = next.job !== member.spec.job;
     const jobVersion = jobChanged ? member.row.jobVersion + 1 : member.row.jobVersion;
     yield* asRefusal(

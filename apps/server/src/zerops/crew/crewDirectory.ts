@@ -164,9 +164,9 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
         briefVersion: applied.briefVersion,
         job: spec.job,
         jobVersion: row.jobVersion,
-        // Phase C: a crewmate that hosts the crew tools keeps memory with crew_memory.
-        memory: applied.agents.get(row.handle) !== "codex",
-        crewTools: applied.agents.get(row.handle) !== "codex",
+        // A crewmate whose agent serves the crew tools keeps memory with crew_memory.
+        memory: hostsCrewTools(applied, row.handle),
+        crewTools: hostsCrewTools(applied, row.handle),
       },
       contextWindow: spec.context ?? CREW_CONTEXT_DEFAULT,
       // What the running run has left; a run with No limit sets none (PRD Δ16).
@@ -179,6 +179,10 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
       ...(row.effort === null ? {} : { effort: row.effort }),
     });
   });
+
+/** The crewmate's agent serves a profile's tools, so it gets the crew tools. */
+const hostsCrewTools = (applied: AppliedCrew, handle: string): boolean =>
+  applied.agents.get(handle)?.threadProfile?.tools === true;
 
 const text = (value: string): CrewToolText => ({ text: value, isError: false });
 const error = (value: string): CrewToolText => ({ text: value, isError: true });

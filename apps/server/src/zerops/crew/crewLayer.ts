@@ -18,6 +18,7 @@
  * @module crewLayer
  */
 import {
+  agentIdForDriverKind,
   type CrewCommand,
   type CrewCommandResult,
   type CrewLogin,
@@ -145,18 +146,23 @@ export type CrewPolicyInstaller = Effect.Effect<
   | ClaudeThreadExtensionRegistry
 >;
 
-/** The coding agent's own name, for a login that has no label of its own (the defaults). */
-const AGENT_NAMES = { "claude-code": "Claude Code", codex: "Codex" } as const;
-
-/** Each crewmate's login as the section names it: a Mate login's label, else its agent's name. */
+/**
+ * Each crewmate's login as the section names it: a Mate login's label, else
+ * its agent's own name, the one its provider shows everywhere.
+ */
 const loginsOf = (core: CrewCore, members: ReadonlyArray<CrewStore.CrewMemberRow>) =>
   Effect.gen(function* () {
     const logins = new Map<string, CrewLogin>();
     for (const row of members) {
       const id = row.login ?? DEFAULT_CREW_LOGIN;
       const mateLogin = yield* core.logins.resolve(id);
-      const agent = mateLogin?.agent ?? (yield* core.agentOf(id)) ?? "claude-code";
-      logins.set(row.handle, { id, label: mateLogin?.label ?? AGENT_NAMES[agent], agent });
+      const agent = yield* core.agentOf(id);
+      const agentId = mateLogin?.agent ?? agentIdForDriverKind(agent?.driver);
+      logins.set(row.handle, {
+        id,
+        label: mateLogin?.label ?? agent?.displayName ?? id,
+        ...(agentId === undefined ? {} : { agent: agentId }),
+      });
     }
     return logins;
   });
