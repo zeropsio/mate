@@ -4034,7 +4034,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       case "local_command_output":
         // A local slash command's output, which the SDK asks to be shown as
         // assistant text: the CLI's own `<synthetic>` reply, so it travels
-        // the same way.
+        // the same way. It belongs to the command's turn; after its result it
+        // would open a synthetic turn that nothing closes.
+        if (!context.turnState) return;
         yield* handleAssistantMessage(context, {
           type: "assistant",
           session_id: message.session_id,

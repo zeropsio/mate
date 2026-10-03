@@ -5310,8 +5310,12 @@ describe("ClaudeAdapterLive", () => {
 
   // The SDK hands some local slash commands' output over as its own message
   // and asks for it to be shown as assistant text; dropped, the command
-  // answered with nothing.
-  it.effect("shows a local slash command's output as the agent's reply", () => {
+  // answered with nothing. It belongs to the command's turn: arriving after the
+  // turn's result, it must not open one that nothing closes.
+  it.effect.each([
+    { name: "shows as the agent's reply inside the command's turn", turnOpen: true },
+    { name: "opens no turn when none is open", turnOpen: false },
+  ])("a local slash command's output $name", ({ turnOpen }) => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
@@ -5322,6 +5326,10 @@ describe("ClaudeAdapterLive", () => {
         provider: ProviderDriverKind.make("claudeAgent"),
         runtimeMode: "full-access",
       });
+      if (turnOpen) {
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "/mcp", attachments: [] });
+      }
+      const turnsBefore = runtimeEvents.filter((event) => event.type === "turn.started").length;
 
       harness.query.emit({
         type: "system",
@@ -5335,7 +5343,11 @@ describe("ClaudeAdapterLive", () => {
       const text = runtimeEvents
         .flatMap((event) => (event.type === "content.delta" ? [event.payload.delta] : []))
         .join("");
-      assert.equal(text, "2 MCP server(s): 2 connected");
+      assert.equal(text, turnOpen ? "2 MCP server(s): 2 connected" : "");
+      assert.equal(
+        runtimeEvents.filter((event) => event.type === "turn.started").length,
+        turnsBefore,
+      );
 
       runtimeEventsFiber.interruptUnsafe();
     }).pipe(
