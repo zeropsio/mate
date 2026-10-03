@@ -67,6 +67,8 @@ export interface FakeWorld {
   /** Integration tokens by their value; the fake's clock stamps `readAtMs` on each read. */
   tokens: Map<string, Omit<ZeropsOwnToken, "readAtMs">>;
   down: boolean;
+  /** How long the org's member list takes to answer, ms: KRLS's stalls (F22); none at 0. */
+  membersTake: number;
   /** Whether answers carry the API's clock (`readAtMs`). */
   apiClock: boolean;
   /** Every call, as `<operation>:<credential>`, for a test that counts what a credential spent. */
@@ -86,6 +88,7 @@ export const emptyWorld = (): FakeWorld => ({
   env: new Map(),
   tokens: new Map(),
   down: false,
+  membersTake: 0,
   apiClock: true,
   calls: [],
   services: [],
@@ -132,7 +135,12 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
 
   return {
     members: (orgId) => (credential) =>
-      inOrg("members", credential, orgId).pipe(Effect.as([...(world.members.get(orgId) ?? [])])),
+      Effect.suspend(() => {
+        const read = inOrg("members", credential, orgId).pipe(
+          Effect.as([...(world.members.get(orgId) ?? [])]),
+        );
+        return world.membersTake > 0 ? Effect.delay(read, world.membersTake) : read;
+      }),
     projects: (orgId) => (credential) =>
       inOrg("projects", credential, orgId).pipe(
         Effect.as(world.projects.filter((candidate) => candidate.orgId === orgId)),

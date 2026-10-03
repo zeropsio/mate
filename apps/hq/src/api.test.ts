@@ -122,6 +122,38 @@ describe("HQ API", () => {
 
     // E2E 2026-10-03 (F5): an application a stopped New project left holds its recipe repository
     // only. Deleted, it goes from disk too: nothing reconciles or bundles it again.
+    // F22 (2026-10-03): a release asked while KRLS's org-wide reads stalled went with its client,
+    // who gave up at 20 s, and was never made. A write that started is finished, and its result is
+    // there to read, whoever is left to hear its answer.
+    it.effect("finishes a write whose client went away while Zerops stalled", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const created = yield* call("POST", "/api/apps", { session, body: { name: "Shop" } });
+        const appId = (created.body as { readonly id: string }).id;
+        // The member list answers in 1.5 s; the view HQ holds is past its age (200 ms here).
+        fake.membersTake = 1500;
+        yield* Effect.sleep(Duration.millis(400));
+        yield* Effect.exit(
+          call("PATCH", `/api/apps/${appId}`, {
+            session,
+            body: { name: "Store" },
+            signal: AbortSignal.timeout(300),
+          }),
+        );
+        yield* Effect.sleep(Duration.millis(2500));
+        fake.membersTake = 0;
+        const structure = yield* call("GET", "/api/structure", { session });
+        assert.deepStrictEqual(
+          (structure.body as { readonly apps: ReadonlyArray<{ readonly name: string }> }).apps.map(
+            (app) => app.name,
+          ),
+          ["Store"],
+        );
+      }),
+    );
+
     it.effect("deletes an application that holds nothing, its repository with it; no other", () =>
       Effect.gen(function* () {
         const { call, gitRoot } = yield* startCore(true);

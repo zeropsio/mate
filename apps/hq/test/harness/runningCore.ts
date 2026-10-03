@@ -216,6 +216,8 @@ export const startCore = (
         readonly body?: unknown;
         readonly session?: string;
         readonly headers?: Record<string, string>;
+        /** Ends the call from the client's side, as a browser that gave up does. */
+        readonly signal?: AbortSignal;
       } = {},
     ) =>
       Effect.promise(async () => {
@@ -224,6 +226,7 @@ export const startCore = (
         const response = await fetch(`http://${base}${path}`, {
           method,
           redirect: "manual",
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           headers: {
             ...(options.body === undefined || raw ? {} : { "content-type": "application/json" }),
             ...(options.session === undefined
