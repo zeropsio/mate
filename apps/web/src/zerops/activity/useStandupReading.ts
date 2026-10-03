@@ -26,7 +26,7 @@ import {
   standupStepRole,
   type ZeropsOperation,
 } from "@t3tools/client-runtime/zerops/model";
-import { createContext, use, useMemo } from "react";
+import { createContext, use, useMemo, useState } from "react";
 
 import { useNowMs } from "../useNowMs";
 import { useZeropsTopology } from "../useZeropsFeeds";
@@ -110,7 +110,9 @@ function stillBuilding(operation: ZeropsOperation): ReadonlyArray<string> {
 /**
  * A call that returned while its builds run on (`standupRunsOn`), read from
  * the project as it stands: the services its report said still build, and
- * what their builds have come to since. Null before the project is read.
+ * what their builds have come to since. Only builds made before its call
+ * returned are its own — a later deploy of the same turn is not. Null before
+ * the project is read.
  */
 function ranOnReading(
   operation: ZeropsOperation,
@@ -121,11 +123,15 @@ function ranOnReading(
   },
 ): StandupReading | null {
   if (read.services === undefined || read.processes === undefined) return null;
+  const returnedMs = Date.parse(operation.returnedAt ?? "");
+  const processes = Number.isFinite(returnedMs)
+    ? read.processes.filter((process) => !(Date.parse(process.created) > returnedMs))
+    : read.processes;
   return readStandup({
     half: halfOf(operation),
     expected: stillBuilding(operation),
     services: read.services,
-    processes: read.processes,
+    processes,
     since: operation.anchorAt,
     nowMs: read.nowMs,
   });
@@ -155,27 +161,35 @@ export function standupBuildsDone(
 /**
  * The stand-ups of `operations` whose builds ran on after their call returned
  * and that the project, as it stands, says are done (`standupBuildsDone`), by
- * key. It reads the project only while such a stand-up runs on.
+ * key. One seen done stays done. It reads the project only while such a
+ * stand-up runs on and is not done yet.
  */
 export function useStandupsDone(
   operations: ReadonlyArray<ZeropsOperation>,
   environmentId: EnvironmentId | null,
 ): ReadonlySet<string> {
-  const ranOn = useMemo(() => operations.filter(standupRunsOn), [operations]);
+  const [seenDone, setSeenDone] = useState<ReadonlySet<string>>(NONE);
+  const ranOn = useMemo(
+    () =>
+      operations.filter((operation) => standupRunsOn(operation) && !seenDone.has(operation.key)),
+    [operations, seenDone],
+  );
   const topology = useZeropsTopology(ranOn.length > 0 ? environmentId : null);
   const { processes } = useProjectActivity(
     ranOn.length > 0 ? (topology?.project.id ?? null) : null,
   );
-  return useMemo(() => {
+  const doneNow = useMemo(() => {
     if (ranOn.length === 0 || topology === undefined || processes === undefined) return NONE;
     const services = standupServices(topology.services);
     const nowMs = Date.now();
-    return new Set(
-      ranOn
-        .filter((operation) => standupBuildsDone(operation, { services, processes, nowMs }))
-        .map((operation) => operation.key),
-    );
+    return ranOn
+      .filter((operation) => standupBuildsDone(operation, { services, processes, nowMs }))
+      .map((operation) => operation.key);
   }, [processes, ranOn, topology]);
+  // Latched: a later build of the same service is no build of the stand-up's.
+  const fresh = [...doneNow].filter((key) => !seenDone.has(key));
+  if (fresh.length > 0) setSeenDone(new Set([...seenDone, ...fresh]));
+  return fresh.length === 0 ? seenDone : new Set([...seenDone, ...fresh]);
 }
 
 const NONE: ReadonlySet<string> = new Set();
