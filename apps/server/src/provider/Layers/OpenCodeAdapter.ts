@@ -50,6 +50,7 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
   type OpenCodeThreadSetup,
   type OpenCodeToolInput,
@@ -2911,7 +2912,8 @@ export function makeOpenCodeAdapter(
           provider: PROVIDER,
           providerInstanceId: boundInstanceId,
           status: "connecting",
-          runtimeMode: input.runtimeMode,
+          // A crewmate asks before every call, whatever mode its thread names.
+          runtimeMode: profiledRuntimeMode(started.threadSetup !== undefined, input.runtimeMode),
           cwd: directory,
           ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
           threadId: input.threadId,
@@ -3900,7 +3902,9 @@ export function makeOpenCodeAdapter(
           yield* runOpenCodeSdk("session.update", () =>
             context.client.session.update({
               sessionID: forkedSessionId,
-              permission: buildOpenCodePermissionRules(context.session.runtimeMode),
+              permission: context.threadSetup
+                ? [...context.threadSetup.permission]
+                : buildOpenCodePermissionRules(context.session.runtimeMode),
             }),
           ).pipe(Effect.mapError(toRequestError));
           yield* clearPendingOpenCodeRequests(context, { type: "session.fork" });

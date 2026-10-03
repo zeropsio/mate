@@ -15,7 +15,7 @@
  *
  * @module threadToolPolicy
  */
-import type { ModelSelection, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import type { ModelSelection, ProviderInstanceId, RuntimeMode, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as JsonSchema from "effect/JsonSchema";
@@ -115,6 +115,15 @@ export function profileModelSelection(
       : [...kept, { id: effortOption, value: effort }];
   return { instanceId, model, ...(options.length > 0 ? { options } : {}) };
 }
+
+/**
+ * The runtime mode a profiled thread runs in on a driver whose gate is its
+ * own permission ask (the ACP agents, OpenCode): the asking one, whatever the
+ * thread names, since a mode that approves on its own (`full-access`,
+ * accepting edits) would let calls run without ever reaching the gate.
+ */
+export const profiledRuntimeMode = (profiled: boolean, mode: RuntimeMode): RuntimeMode =>
+  profiled ? "approval-required" : mode;
 
 export interface ThreadToolPolicy {
   readonly profileFor: (thread: {

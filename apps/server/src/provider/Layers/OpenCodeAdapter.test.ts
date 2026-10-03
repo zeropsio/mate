@@ -7417,7 +7417,8 @@ it.layer(OpenCodeProfiledAdapterTestLayer)("OpenCodeAdapter with a thread profil
         yield* adapter.startSession({
           provider: ProviderDriverKind.make("opencode"),
           threadId: CREWMATE_THREAD,
-          runtimeMode: "approval-required",
+          // A crewmate asks before every call, whatever mode its thread names.
+          runtimeMode: "full-access",
         });
         yield* adapter.sendTurn({
           threadId: CREWMATE_THREAD,
@@ -7446,6 +7447,9 @@ it.layer(OpenCodeProfiledAdapterTestLayer)("OpenCodeAdapter with a thread profil
             servers: runtimeMock.state.mcpAddCalls.map((call) => call.name.startsWith("crew-")),
             replies: runtimeMock.state.permissionReplyCalls,
             context: prompt?.system?.includes("You are @backend on the crew."),
+            mode: (yield* adapter.listSessions()).find(
+              (session) => session.threadId === CREWMATE_THREAD,
+            )?.runtimeMode,
           },
           {
             permission: [{ permission: "*", pattern: "*", action: "ask" }],
@@ -7455,6 +7459,7 @@ it.layer(OpenCodeProfiledAdapterTestLayer)("OpenCodeAdapter with a thread profil
               { requestID: "per_no", reply: "reject" },
             ],
             context: true,
+            mode: "approval-required",
           },
         );
         yield* adapter.stopSession(CREWMATE_THREAD);

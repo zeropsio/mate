@@ -82,6 +82,7 @@ import {
   XAiAskUserQuestionRequest,
   XAiExitPlanModeRequest,
 } from "../acp/XAiAcpExtension.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
   acpTerminalReason,
   acpThreadSetup,
@@ -1005,6 +1006,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
             Effect.provideService(Scope.Scope, sessionScope),
           );
+          // A crewmate asks before every call, whatever mode its thread names.
+          const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
           const resumeSessionId = parseGrokResume(input.resumeCursor)?.sessionId;
           const acpNativeLoggers = makeAcpNativeLoggers({
             nativeEventLogger,
@@ -1017,7 +1020,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             ...(options?.environment ? { environment: options.environment } : {}),
             childProcessSpawner,
             cwd,
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             ...(profileSetup ? { mcpServers: profileSetup.mcpServers } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
@@ -1159,9 +1162,9 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                       : undefined;
                   const alreadyApproved =
                     approvalKey !== undefined && sessionApprovedOperations.has(approvalKey);
-                  if (input.runtimeMode === "full-access" || alreadyApproved) {
+                  if (runtimeMode === "full-access" || alreadyApproved) {
                     const autoApprovedOptionId =
-                      input.runtimeMode === "full-access"
+                      runtimeMode === "full-access"
                         ? selectAutoApprovedPermissionOption(params)
                         : selectGrokPermissionOptionId(params, "accept");
                     if (autoApprovedOptionId !== undefined) {
@@ -1268,7 +1271,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             provider: PROVIDER,
             providerInstanceId: boundInstanceId,
             status: "ready",
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             cwd,
             ...(boundModelId ? { model: resolveGrokAcpBaseModelId(boundModelId) } : {}),
             threadId: input.threadId,
