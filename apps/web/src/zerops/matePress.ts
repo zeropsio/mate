@@ -271,20 +271,6 @@ export function useForgetConnectedPresses(
   }, [candidates, creations, forgetCreation]);
 }
 
-/**
- * The projects whose press or harden this tab is running — auto-connect holds them back
- * (`environments.ts`'s `pressing` port) — and a way to hear them change.
- */
-export const pressingProjects = {
-  read: (): ReadonlySet<string> =>
-    new Set(
-      Object.values(usePressStore.getState().presses).flatMap((press) =>
-        press.state.kind === "pressing" ? [press.projectId] : [],
-      ),
-    ),
-  subscribe: (listener: () => void): (() => void) => usePressStore.subscribe(listener),
-};
-
 /** The presses in flight in this browser, their project made or not (`whilePressing`). */
 let inFlight = 0;
 const inFlightListeners = new Set<() => void>();

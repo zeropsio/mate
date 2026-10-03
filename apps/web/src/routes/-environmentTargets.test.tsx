@@ -346,7 +346,6 @@ describe("the route gate over the exchange driver's machines", () => {
     });
     driver.setVisible(true);
     driver.setTargets([active]);
-    driver.setDemand("record", [KEY]);
     driver.setDemand("route", [KEY]);
     await settle();
     driver.link(ENV_A, { phase: "connected" });
@@ -1171,7 +1170,7 @@ describe("the descriptor index", () => {
     shell.driver = rig.driver;
     shell.containers = rig.containers;
     shell.records = [{ targetKey: one.key, environmentId: ENV_A }];
-    rig.driver.setDemand("record", [one.key]);
+    rig.driver.setDemand("recent", [one.key]);
     const draft = scopeThreadRef(ENV_A, ThreadId.make("thread-1"));
     useComposerDraftStore.getState().setPrompt(draft, "keep me");
     await settle();

@@ -856,6 +856,8 @@ describe("EnvironmentRegistry", () => {
       yield* Effect.gen(function* () {
         const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
         yield* registry.start;
+        // A Mate's registration starts parked: this one is connected.
+        yield* registry.unpark(BEARER_TARGET.environmentId);
 
         // 20% of the window is held back as slack, so nothing happens yet.
         yield* TestClock.adjust("11 minutes");
@@ -875,11 +877,35 @@ describe("EnvironmentRegistry", () => {
 
   // A9 (krok-a-hub §3): a Mate is connected while something holds a lease on it. Every Mate this
   // browser ever opened is a registration; on a load each opened its socket, the 20+-Mate account
-  // twenty-odd at once. A parked registration keeps its session and data and has no socket.
+  // twenty-odd at once. A Mate's registration starts parked — its session and data kept, no
+  // socket — and connects when it is unparked.
   const ZEROPS_CREDENTIAL = new BearerConnectionCredential({
     token: "kept-token",
     origin: "zerops-identity",
   });
+
+  it.effect("a Zerops Mate's registration starts parked, and any other connects", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness(
+        [BEARER_TARGET, RELAY_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+      );
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* awaitConnectionState(
+          registry,
+          RELAY_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        for (let turn = 0; turn < 20; turn += 1) yield* Effect.yieldNow;
+
+        expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
+        expect((yield* registry.state(BEARER_TARGET.environmentId)).desired).toBe(false);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
 
   it.effect("parks a registration with no lease and keeps its data", () =>
     Effect.gen(function* () {
@@ -1709,6 +1735,8 @@ describe("EnvironmentRegistry", () => {
       yield* Effect.gen(function* () {
         const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
         yield* registry.start;
+        // A Mate's registration starts parked: this one is connected.
+        yield* registry.unpark(BEARER_TARGET.environmentId);
         yield* TestClock.adjust("1 minute");
         yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
 
@@ -1777,6 +1805,8 @@ describe("EnvironmentRegistry", () => {
       yield* Effect.gen(function* () {
         const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
         yield* registry.start;
+        // A Mate's registration starts parked: this one is connected.
+        yield* registry.unpark(BEARER_TARGET.environmentId);
         yield* TestClock.adjust("12 minutes");
         yield* Deferred.await(renewalStarted);
 

@@ -240,7 +240,8 @@ function rig(
           record: input.records?.includes(mate) ? mate.descriptor().environmentId : null,
         })),
       );
-      driver.setDemand("record", (input.records ?? []).map(keyOf));
+      // The remembered targets are the background's: each a Mate left last.
+      driver.setDemand("recent", (input.records ?? []).map(keyOf));
       driver.setDemand("route", input.route === undefined ? [] : [keyOf(input.route)]);
       if (input.demand !== undefined) {
         driver.setDemand(input.demand.reason, input.demand.mates.map(keyOf));
@@ -368,7 +369,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
 
     // A round closes the mint while shop's exchange is in flight, and cafe is wanted meanwhile.
     driver.setAccount(RENEWING);
-    driver.setDemand("auto-connect", [keyOf(cafe)]);
+    driver.setDemand("recent", [keyOf(shop), keyOf(cafe)]);
     await flush();
     expect(exchanges).toHaveLength(1);
     expect(exchanges[0]!.signal.aborted).toBe(false);
@@ -456,12 +457,12 @@ describe("exchange driver (DESIGN §4.4)", () => {
         record: listed.descriptor().environmentId,
       })),
     ]);
-    driver.setDemand("auto-connect", spent.map(keyOf));
+    driver.setDemand("recent", spent.map(keyOf));
     await flush();
     expect(exchanges).toHaveLength(DOOR_MINT_BURST - 1);
 
     // Both are looked for where their records kept them: one mint is left for the two.
-    driver.setDemand("record", remembered.map(keyOf));
+    driver.setDemand("recent", [...spent, ...remembered].map(keyOf));
     await flush();
 
     expect(exchanges).toHaveLength(DOOR_MINT_BURST);
@@ -543,7 +544,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
   it("the background starts a bucket of exchanges at once, then one a gap (I12)", async () => {
     const mates = Array.from({ length: DOOR_MINT_BURST + 2 }, (_, index) => mate(`m${index}`));
     const { clock, exchanges, start } = rig(mates);
-    await start({ demand: { reason: "auto-connect", mates } });
+    await start({ demand: { reason: "recent", mates } });
     expect(exchanges).toHaveLength(DOOR_MINT_BURST);
 
     await clock.advance(GAP - 1);
@@ -552,7 +553,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges).toHaveLength(DOOR_MINT_BURST + 1);
     await clock.advance(GAP);
     expect(exchanges).toHaveLength(DOOR_MINT_BURST + 2);
-    expect(exchanges.every((request) => request.reason === "auto-connect")).toBe(true);
+    expect(exchanges.every((request) => request.reason === "restore")).toBe(true);
     expect(exchanges.every((request) => !request.asked)).toBe(true);
   });
 
@@ -569,7 +570,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       expect(driver.machine(keyOf(each))?.credential).toMatchObject({ kind: "held" });
     }
     // The bucket is still full: a whole burst of Mates that need a throwaway starts at once.
-    driver.setDemand("auto-connect", fresh.map(keyOf));
+    driver.setDemand("recent", [...restored, ...fresh].map(keyOf));
     await flush();
     expect(exchanges).toHaveLength(restored.length + DOOR_MINT_BURST);
   });
@@ -583,7 +584,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       const old = mate("old");
       const capped = new Map([[keyOf(old), WALL + 60_000]]);
       const { clock, exchanges, start } = rig([old], { capped });
-      await start({ demand: { reason: "auto-connect", mates: [old] } });
+      await start({ demand: { reason: "recent", mates: [old] } });
       expect(exchanges).toHaveLength(0);
 
       await clock.advance(59_999);
@@ -606,7 +607,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       old.scriptDoor(...Array.from({ length: RETRY_CAP }, () => "500" as const));
       const capped = new Map<TargetKey, number>();
       const { clock, driver, exchanges, start } = rig([old], { capped });
-      await start({ demand: { reason: "auto-connect", mates: [old] } });
+      await start({ demand: { reason: "recent", mates: [old] } });
       await clock.advance(2_000 + 4_000 + 8_000 + 15_000);
       expect(exchanges).toHaveLength(RETRY_CAP);
       const capAt = clock.now().wall + CAPPED_RETRY_MS;
@@ -623,7 +624,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       old.scriptDoor("500", "500");
       const capped = new Map([[keyOf(old), WALL + 1_000]]);
       const { clock, exchanges, start } = rig([old], { capped });
-      await start({ demand: { reason: "auto-connect", mates: [old] } });
+      await start({ demand: { reason: "recent", mates: [old] } });
       await clock.advance(1_000);
       expect(exchanges).toHaveLength(1);
       expect(capped.get(keyOf(old))).toBe(WALL + 1_000 + CAPPED_RETRY_MS);
@@ -636,7 +637,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     });
   });
 
-  // E2E 2026-10-03: the first write after a fresh load failed while auto-connect minted and
+  // E2E 2026-10-03: the first write after a fresh load failed while the background minted and
   // deleted throwaways on the same token list the press reads.
   it("holds the background's mints while a press is in flight, never the person's or a kept one", async () => {
     const background = mate("bg");
@@ -646,11 +647,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       kept: new Set([keyOf(restored)]),
     });
     driver.holdBackground(true);
-    await start({
-      records: [restored],
-      route: routed,
-      demand: { reason: "auto-connect", mates: [background] },
-    });
+    await start({ records: [restored, background], route: routed });
     expect(exchanges.map((request) => request.key).sort()).toEqual(
       [keyOf(restored), keyOf(routed)].sort(),
     );
@@ -729,14 +726,14 @@ describe("exchange driver (DESIGN §4.4)", () => {
     const { driver, clock, exchanges, start, reach } = rig([...records, route], {
       throttledMints: 1,
     });
-    await start({ demand: { reason: "auto-connect", mates: [records[0]!] } });
+    await start({ demand: { reason: "recent", mates: [records[0]!] } });
     expect(exchanges).toHaveLength(1);
     expect(reach(records[0]!)).toMatchObject({
       kind: "retrying",
       last: { kind: "mint", status: 429 },
     });
 
-    driver.setDemand("auto-connect", records.map(keyOf));
+    driver.setDemand("recent", records.map(keyOf));
     driver.setDemand("route", [keyOf(route)]);
     await flush();
     expect(exchanges.map((request) => request.key)).toEqual([keyOf(records[0]!), keyOf(route)]);

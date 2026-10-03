@@ -222,7 +222,8 @@ export const make = Effect.gen(function* () {
   const started = yield* Ref.make(false);
   /**
    * Whether each environment is parked (A9, krok-a-hub §3): connected only while something holds
-   * a lease on it, set by `park` and `unpark`. One never set is connected.
+   * a lease on it, set by `park` and `unpark`. One never set is parked when it is a Mate — its
+   * bearer minted at a Zerops door — and connected otherwise, as every environment was.
    */
   const parking = yield* Ref.make<ReadonlyMap<EnvironmentId, boolean>>(new Map());
 
@@ -415,11 +416,20 @@ export const make = Effect.gen(function* () {
     }
   });
 
-  /** Whether the environment is parked, as `park` or `unpark` last set it. */
-  const parked = (entry: ConnectionCatalogEntry) =>
-    Ref.get(parking).pipe(
-      Effect.map((current) => current.get(entry.target.environmentId) ?? false),
+  /** Whether the environment is parked: as `park` or `unpark` last set it, else whether it is a Mate. */
+  const parked = Effect.fn("EnvironmentRegistry.parked")(function* (entry: ConnectionCatalogEntry) {
+    const set = (yield* Ref.get(parking)).get(entry.target.environmentId);
+    if (set !== undefined) return set;
+    if (entry.target._tag !== "BearerConnectionTarget") return false;
+    const stored = yield* credentials
+      .get(entry.target.connectionId)
+      .pipe(Effect.orElseSucceed(Option.none));
+    return (
+      Option.isSome(stored) &&
+      stored.value._tag === "BearerConnectionCredential" &&
+      stored.value.origin === "zerops-identity"
     );
+  });
 
   const createServiceScope = Effect.fn("EnvironmentRegistry.createServiceScope")(
     (entry: ConnectionCatalogEntry) =>

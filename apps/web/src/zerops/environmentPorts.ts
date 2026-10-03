@@ -56,12 +56,11 @@ import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 
-import { hqPlacementsAtom } from "~/state/zerops";
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
 import { makeDoorCaps } from "./doorCaps";
-import { pressesInFlight, pressingProjects } from "./matePress";
+import { pressesInFlight } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -102,6 +101,18 @@ const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "web:zerops:retry-link",
   execute: (environmentId: EnvironmentId) =>
     EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.retryNow(environmentId))),
+});
+
+const parkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "web:zerops:park",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.park(environmentId))),
+});
+
+const unparkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "web:zerops:unpark",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.unpark(environmentId))),
 });
 
 const quiet = { reportFailure: false } as const;
@@ -250,21 +261,6 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
         ? { phase: "blocked", reason: state.lastFailure.reason }
         : null;
   }
-}
-
-/**
- * Whether HQ's record of each project's Mate says its project is closed off, as its structure
- * stands in the registry: `unknown` while the structure is not known, and for a project it holds
- * no record of — the auto-connect gate then leaves it to the press's marker.
- */
-export function closedOffPort(
-  registry: AtomRegistry.AtomRegistry,
-): NonNullable<AccountEnvironmentPorts["closedOff"]> {
-  return {
-    read: (projectId) =>
-      registry.get(hqPlacementsAtom)?.get(projectId)?.mate?.closedOff ?? "unknown",
-    subscribe: (listener) => registry.subscribe(hqPlacementsAtom, listener),
-  };
 }
 
 /**
@@ -434,6 +430,12 @@ export function webEnvironmentPorts(input: {
       remove: (environmentId) => {
         void runAtomCommand(registry, environmentCatalog.remove, environmentId, quiet);
       },
+      park: (environmentId) => {
+        void runAtomCommand(registry, parkCommand, environmentId, quiet);
+      },
+      unpark: (environmentId) => {
+        void runAtomCommand(registry, unparkCommand, environmentId, quiet);
+      },
     },
     probe: (origin, signal, ask) =>
       readZeropsContainer(
@@ -452,11 +454,7 @@ export function webEnvironmentPorts(input: {
       return environmentId === null ? null : EnvironmentId.make(environmentId);
     },
     admission: connectionAdmission,
-    // A press or a harden this tab is running: its Mate is not connected meanwhile.
-    pressing: pressingProjects,
     // Any press in flight: the background mints no throwaway meanwhile.
     pressInFlight: pressesInFlight,
-    // A Mate its press marked waits for HQ to say its project is closed off.
-    closedOff: closedOffPort(registry),
   };
 }

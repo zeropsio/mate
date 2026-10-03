@@ -12,9 +12,11 @@
  *   mobile hand over ports and send intents — the route, the active organization, a Connect.
  * - The account's guards come from its grant, the tab from the account's signals, a container's
  *   re-read from the account's bus.
- * - Restore is the records' demand, auto-connect the active organization's ready Mates (D13), and
- *   the route's target is found through its record or the descriptor index, which a route nothing
- *   names sweeps once (§4.8).
+ * - A Mate is connected while it holds a lease (krok-a-hub §3): the route's and the screen's, the
+ *   one left last for `RECENT_MS`, an action's, a Connect's. The route's target is found through
+ *   its record or the descriptor index, which a route nothing names sweeps once (§4.8). A
+ *   remembered Mate with no lease is parked: its registration, kept session and cached data stay,
+ *   its socket closes.
  * - A registration nothing remembers — and that no install is writing — is released.
  *
  * The stores are constructed by the account runtime alone (§7.2 rule 6); this module only wires
@@ -28,14 +30,6 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
-import {
-  closeOffGate,
-  directMarkerOf,
-  markerRetryDelay,
-  selectAutoConnectTargets,
-  zcpYoung,
-  type DirectMarkerRead,
-} from "../autoConnect.ts";
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
 import type { Instant } from "../data/access/grant.ts";
@@ -48,7 +42,6 @@ import {
   type OrganizationRef,
   type ProjectActivityRead,
   type ProjectRef,
-  type ServiceRef,
 } from "../data/types.ts";
 import type { IdentityExchangeReason } from "../diagnostics.ts";
 import {
@@ -56,7 +49,6 @@ import {
   type ContainerMachine,
   type MateFlag,
 } from "../environments/containerMachine.ts";
-import { containerSnapshotOf } from "../environments/containerRows.ts";
 import {
   bindContainerStore,
   type ContainerStore,
@@ -152,6 +144,10 @@ export interface AccountEnvironmentPorts {
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
     readonly remove: (environmentId: EnvironmentId) => void;
+    /** `registry.park`: the socket closes; the registration, its session and its data stay. */
+    readonly park: (environmentId: EnvironmentId) => void;
+    /** `registry.unpark`: the socket opens on the credential the registration holds, no door. */
+    readonly unpark: (environmentId: EnvironmentId) => void;
   };
   /** Reads a Mate origin's descriptor and `/healthz`; rejects when the signal aborts it. */
   readonly probe: ContainerStorePorts["probe"];
@@ -165,20 +161,12 @@ export interface AccountEnvironmentPorts {
   readonly catalog: { readonly listen: (listener: CatalogListener) => () => void };
   /**
    * The environment the tab's route names as the stage starts — the reload's address — so the
-   * route's target is wanted before the records and auto-connect fill the exchange slots; a
-   * surface's `setRoute` follows it. Absent: the route is only what `setRoute` names.
+   * route's target is wanted from the first allocation; a surface's `setRoute` follows it.
+   * Absent: the route is only what `setRoute` names.
    */
   readonly route?: () => EnvironmentId | null;
   /** The tab's socket admission (`connection/admission.ts`): the route's socket opens first. */
   readonly admission?: Pick<ConnectionAdmission, "prefer" | "down">;
-  /**
-   * The projects whose press or harden this browser is running: none is connected meanwhile. A
-   * surface with no press of its own leaves it out.
-   */
-  readonly pressing?: {
-    readonly read: () => ReadonlySet<string>;
-    readonly subscribe: (listener: () => void) => () => void;
-  };
   /**
    * Whether a press is in flight in this browser, its project made or not: the background mints
    * no throwaway meanwhile (`holdBackground`), as the press reads the token list they are written
@@ -186,16 +174,6 @@ export interface AccountEnvironmentPorts {
    */
   readonly pressInFlight?: {
     readonly read: () => boolean;
-    readonly subscribe: (listener: () => void) => () => void;
-  };
-  /**
-   * Whether HQ's record of each project's Mate says its project is closed off: `unknown` while
-   * HQ's structure is not known, and for a project it holds no record of. HQ's word decides
-   * where it has one — `true` connects, `false` holds, the press's marker or not; `unknown`
-   * leaves it to the marker (`closeOffGate`). Without it, nothing is known either way.
-   */
-  readonly closedOff?: {
-    readonly read: (projectId: string) => boolean | "unknown";
     readonly subscribe: (listener: () => void) => () => void;
   };
 }
@@ -214,8 +192,9 @@ export interface AccountEnvironments {
   /** Told after any of the above changed. */
   readonly subscribe: (listener: () => void) => () => void;
   /**
-   * The user's Connect: the target is wanted from now on, and this is a user retry. Answers
-   * with the installed environment, or with the verdict the machine settled on instead.
+   * The user's Connect, a user retry: the target is held until it answers, with the installed
+   * environment — the Mate then stays as the one left last — or with the verdict the machine
+   * settled on instead.
    */
   readonly connect: (key: TargetKey, reason: IdentityExchangeReason) => Promise<ConnectOutcome>;
   /**
@@ -233,11 +212,11 @@ export interface AccountEnvironments {
   readonly next: (origin: string) => Promise<ProbeReading>;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
-  /** The organization the tab has open: auto-connect wants its ready Mates (D13). */
+  /** The organization the tab has open: a target nothing names has its inventory read (§6.2). */
   readonly setActiveOrganization: (organizationId: string | null) => void;
   /**
-   * The project whose Mate is on screen — its own view, its conversation — or null: it is
-   * connected past auto-connect's ceiling, which is for Mates not on screen.
+   * The project whose Mate is on screen — its own view, its birth — or null: it holds the route's
+   * lease, whatever the route names.
    */
   readonly setOnScreen: (projectId: string | null) => void;
 }
@@ -309,6 +288,9 @@ const runningOn = (activity: ProjectActivityRead, row: CandidateRow): boolean =>
 const origin = (url: string | undefined | null): string | null =>
   url === undefined || url === null ? null : normalizeOrigin(url);
 
+/** How long the Mate left last stays connected (krok-a-hub §3, the warm policy Q8). */
+const RECENT_MS = 5 * 60_000;
+
 // ── The wiring ───────────────────────────────────────────────────────────────────────────────
 
 export function makeEnvironmentWiring(options: EnvironmentWiringOptions): EnvironmentWiring {
@@ -326,6 +308,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let routeKey: TargetKey | null = null;
   let activeOrganization: string | null = null;
   let onScreen: string | null = null;
+  /** The targets the route and the screen hold: one that leaves them is the Mate left last. */
+  let routeKeys: ReadonlyArray<TargetKey> = [];
+  /** The Mate left last, and what disarms the timer that lets it go. */
+  let recent: { readonly key: TargetKey; readonly disarm: () => void } | null = null;
+  /** Whether each registered environment was last parked, as the registry was told. */
+  const parking = new Map<EnvironmentId, boolean>();
   /** Installs in flight, by the Mate origin they exchanged at. */
   const installing = new Map<string, number>();
   /** The origin each target's latest exchange ran at. */
@@ -445,11 +433,42 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /**
+   * A registration whose Mate holds no lease is parked (krok-a-hub §3): its socket closes, and its
+   * registration, kept session and cached data stay. A leased one is unparked: it connects on the
+   * credential it holds, with no door. One nothing remembers or holds is left to `release`.
+   */
+  const updateParking = () => {
+    if (stores === null || closed) return;
+    const known = new Set(stores.records.list().map((record) => record.environmentId));
+    const leased = new Set<EnvironmentId>();
+    for (const machine of stores.driver.machines().values()) {
+      const held = machine.credential.kind === "held" ? [machine.credential.environmentId] : [];
+      for (const environmentId of [...held, ...(machine.record === null ? [] : [machine.record])]) {
+        known.add(environmentId);
+        if (machine.guards.want) leased.add(environmentId);
+      }
+    }
+    const present = new Set(registered.map((environment) => environment.environmentId));
+    for (const environmentId of parking.keys()) {
+      if (!present.has(environmentId)) parking.delete(environmentId);
+    }
+    for (const environmentId of present) {
+      if (!known.has(environmentId)) continue;
+      const park = !leased.has(environmentId);
+      if (parking.get(environmentId) === park) continue;
+      parking.set(environmentId, park);
+      if (park) ports.door.park(environmentId);
+      else ports.door.unpark(environmentId);
+    }
+  };
+
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
     updateRoute();
     updateTargets();
     release();
+    updateParking();
     notify();
   };
 
@@ -533,8 +552,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   // ── Feeding the stores ─────────────────────────────────────────────────────────────────────
 
   /**
-   * Every target, its presence and its container, and the records' demand. An absence that
-   * begins a wait has its project's services read on their own, lag-free (§9 C19): the
+   * Every target, its presence and its container. An absence that begins a wait has its project's services read on their own, lag-free (§9 C19): the
    * organization's search may trail a service it lacks.
    */
   const updateTargets = () => {
@@ -566,187 +584,43 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         container: stores!.containers.verdict(target.key),
       })),
     );
-    stores.driver.setDemand(
-      "record",
-      records.map((record) => record.targetKey),
-    );
   };
 
-  /**
-   * The press's marker (`MATE_SETUP_RUNTIMES`) on each listed Mate's container whose project HQ
-   * holds no word on (`ports.closedOff` reads `unknown`), by service id: a press stopped before
-   * its close-off, and nobody is let in until *Finish setup* closes it. The gate fails closed
-   * (`closeOffGate`): a marker not read yet holds, and one the stream could not say is read from
-   * the service's own variables once. Followed only while such a Mate is listed.
-   */
-  interface FollowedMarker {
-    readonly projectId: string;
-    marker: boolean | "unknown" | "unread";
-    direct: DirectMarkerRead | undefined;
-    /** Direct checks that failed so far: each waits longer before the next (`markerRetryDelay`). */
-    failures: number;
-    /** Disarms the wait before the next direct check. */
-    retry: (() => void) | null;
-    stop: () => void;
-  }
-  const markers = new Map<string, FollowedMarker>();
-  const readMarkerDirectly = (followed: FollowedMarker, ref: ServiceRef) => {
-    followed.direct = "reading";
-    void Effect.runPromiseWith(options.services)(
-      Effect.scoped(
-        data.cells
-          .acquire({ kind: "env", account: data.cells.scope, service: ref })
-          .pipe(Effect.flatMap((lease) => lease.awaitSettled)),
-      ),
-    )
-      .then(
-        (shown): DirectMarkerRead => directMarkerOf(shown),
-        (): DirectMarkerRead => "failed",
-      )
-      .then((direct) => {
-        if (markers.get(ref.serviceId) !== followed || closed) return;
-        followed.direct = direct;
-        // A check that failed is asked again later and later: 30 s, 2 min, then every 10 min.
-        if (direct === "failed") {
-          followed.failures += 1;
-          followed.retry = ports.clock.setTimer(markerRetryDelay(followed.failures), () => {
-            followed.retry = null;
-            if (markers.get(ref.serviceId) !== followed || closed) return;
-            followed.direct = undefined;
-            updateAutoConnect();
-          });
-        }
-        updateAutoConnect();
-      });
-  };
-  const followMarkers = (rows: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
-    const open = new Map<
-      string,
-      {
-        readonly projectId: string;
-        readonly created: string | undefined;
-        readonly ref: ServiceRef;
-      }
-    >();
-    const held = new Set<string>();
-    for (const row of rows) {
-      if (row.service === undefined) continue;
-      const closedOff = ports.closedOff?.read(row.project.id) ?? "unknown";
-      if (closedOff === true) continue;
-      // A record that says its project is not closed off holds the Mate, its marker or not.
-      if (closedOff === false) {
-        held.add(row.project.id);
-        continue;
-      }
-      const project = projectRefOf(row.project.id);
-      if (project === undefined) continue;
-      open.set(row.service.id, {
-        projectId: row.project.id,
-        created: row.service.created,
-        ref: { kind: "service", project, serviceId: ZeropsServiceId.make(row.service.id) },
-      });
-    }
-    for (const [serviceId, followed] of markers) {
-      if (open.has(serviceId)) continue;
-      followed.stop();
-      markers.delete(serviceId);
-    }
-    for (const [serviceId, { projectId, created, ref }] of open) {
-      let followed = markers.get(serviceId);
-      if (followed === undefined) {
-        const entry: FollowedMarker = {
-          projectId,
-          marker: "unread",
-          direct: undefined,
-          failures: 0,
-          retry: null,
-          stop: () => undefined,
-        };
-        markers.set(serviceId, entry);
-        let ready = false;
-        const unsubscribe = atomRegistry.subscribe(
-          data.reads.setupMarker(ref),
-          (marker) => {
-            if (entry.marker === marker) return;
-            entry.marker = marker;
-            if (ready) updateAutoConnect();
-          },
-          { immediate: true },
-        );
-        entry.stop = () => {
-          unsubscribe();
-          entry.retry?.();
-        };
-        ready = true;
-        followed = entry;
-      }
-      const gate = closeOffGate(
-        followed.marker,
-        followed.direct,
-        zcpYoung(created, ports.clock.now().wall),
-      );
-      if (gate === "read-env") readMarkerDirectly(followed, ref);
-      if (gate !== "connect") held.add(projectId);
-    }
-    return held;
-  };
-
-  /**
-   * The Mates held back from auto-connect: a press left open, and a press or a harden this browser
-   * is running. An older Mate whose keys are still ADMIN connects: its ⋯ menu offers its harden.
-   */
-  const heldBack = (candidates: ReadonlyArray<CandidateRow>): ReadonlySet<string> => {
-    const pressing = ports.pressing?.read() ?? new Set<string>();
-    return new Set([...followMarkers(candidates), ...pressing]);
-  };
-
-  /** The active organization's ready Mates, capped (D13), none a stopped press left open. */
-  const updateAutoConnect = () => {
+  /** The Mate left last stays connected `RECENT_MS`, unless another is left after it. */
+  const keepRecent = (key: TargetKey) => {
     if (stores === null || closed) return;
-    const listed = listings.find(({ organizationId }) => organizationId === activeOrganization);
-    const byOrigin = new Map(
-      registered.flatMap((environment) =>
-        environment.origin === null
-          ? []
-          : [[environment.origin, environment.environmentId] as const],
-      ),
-    );
-    const active = listed === undefined ? [] : heldCandidates(listed.listing).rows;
-    // The Mate on screen, from whichever organization lists it.
-    const shown =
-      onScreen === null || active.some((row) => row.project.id === onScreen)
-        ? []
-        : listings
-            .flatMap(({ listing }) => heldCandidates(listing).rows)
-            .filter((row) => row.project.id === onScreen);
-    const candidates = [...active, ...shown].map((row) => {
-      const environmentId = byOrigin.get(origin(row.containerOrigin) ?? "");
-      return environmentId === undefined ? row : { ...row, environmentId };
+    recent?.disarm();
+    const disarm = ports.clock.setTimer(RECENT_MS, () => {
+      if (recent?.disarm !== disarm || stores === null || closed) return;
+      recent = null;
+      stores.driver.setDemand("recent", []);
     });
-    stores.driver.setDemand(
-      "auto-connect",
-      selectAutoConnectTargets({
-        candidates,
-        health: containerSnapshotOf(stores.containers.machines()).health,
-        closeOffPendingProjectIds: heldBack(candidates),
-        onScreenProjectId: onScreen,
-      }),
-    );
+    recent = { key, disarm };
+    stores.driver.setDemand("recent", [key]);
+  };
+
+  /** The route's lease: a target that leaves it is the Mate left last. */
+  const holdOnRoute = (keys: ReadonlyArray<TargetKey>) => {
+    const left = routeKeys.find((key) => !keys.includes(key));
+    routeKeys = keys;
+    stores!.driver.setDemand("route", keys);
+    if (left !== undefined) keepRecent(left);
   };
 
   /**
    * The route's target, wanted first: the one its record remembers, else the one the descriptor
-   * index finds. While nothing names the route's environment, each present target read without
-   * an answer is read once more, once per route (§4.8's sweep, `sweepRead`): on its poll when one
-   * reads it, a poll interval after the failure the sweep saw, else at once. An unreachable one
-   * that fails that read too has answered for the index.
+   * index finds; and the on-screen project's. While nothing names the route's environment, each
+   * present target read without an answer is read once more, once per route (§4.8's sweep,
+   * `sweepRead`): on its poll when one reads it, a poll interval after the failure the sweep saw,
+   * else at once. An unreachable one that fails that read too has answered for the index.
    */
   const updateRoute = () => {
     if (stores === null || closed) return;
     if (swept.route !== route) swept = { route, keys: new Map() };
+    const shown = rows.flatMap((row) => (row.project.id === onScreen ? [row.key] : []));
     if (route === null) {
       routeKey = null;
-      stores.driver.setDemand("route", []);
+      holdOnRoute(shown);
       return;
     }
     const machines = stores.driver.machines();
@@ -756,7 +630,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       stores.records.list().find((record) => record.environmentId === route)?.targetKey ??
       resolved?.key;
     routeKey = key ?? null;
-    stores.driver.setDemand("route", key === undefined ? [] : [key]);
+    holdOnRoute(key === undefined ? shown : [key, ...shown.filter((other) => other !== key)]);
     if (resolved !== undefined) return;
     const unswept = index.failed.filter((failed) => !swept.keys.has(failed));
     if (unswept.length === 0) return;
@@ -898,7 +772,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     stops.push(
       bindContainerStore(containers, driver),
       containers.subscribe(() => {
-        updateAutoConnect();
         updateRoute();
         updateProcesses();
         updateDowns();
@@ -909,17 +782,16 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         updateDowns();
         // A credential its machine let go — an install that failed, a retirement — is released.
         release();
+        updateParking();
         notify();
       }),
       ports.records.listen(registrationsChanged),
-      ports.pressing?.subscribe(updateAutoConnect) ?? (() => undefined),
       ports.pressInFlight?.subscribe(holdBackground) ?? (() => undefined),
-      ports.closedOff?.subscribe(updateAutoConnect) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
           release();
-          updateAutoConnect();
+          updateParking();
         },
         link: (environmentId, phase) => driver.link(environmentId, phase),
       }),
@@ -935,13 +807,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           updateRoute();
           if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
             updateTargets();
-          if (moved) updateAutoConnect();
         },
         { immediate: true },
       ),
     );
     updateTargets();
     release();
+    updateParking();
 
     const environments: AccountEnvironments = {
       machines: driver.machines,
@@ -955,10 +827,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           listeners.delete(listener);
         };
       },
-      // The person's Connect holds the Mate from now on.
+      // The person's Connect holds the Mate until it answers; one it connected off the route
+      // stays as the Mate left last.
       connect: (key, reason) => {
-        driver.hold(key, "user");
-        return driver.connect(key, reason);
+        const letGo = driver.hold(key, "user");
+        return driver.connect(key, reason).then((outcome) => {
+          if (outcome._tag === "Connected" && !routeKeys.includes(key)) keepRecent(key);
+          letGo();
+          return outcome;
+        });
       },
       intend: (key, intent) => {
         if (closed) return false;
@@ -974,12 +851,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       },
       setActiveOrganization: (organizationId) => {
         activeOrganization = organizationId;
-        updateAutoConnect();
       },
       setOnScreen: (projectId) => {
         if (onScreen === projectId) return;
         onScreen = projectId;
-        updateAutoConnect();
+        updateRoute();
       },
     };
 
@@ -1023,8 +899,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
-        for (const followed of markers.values()) followed.stop();
-        markers.clear();
+        recent?.disarm();
         for (const release of checks.values()) release();
         checks.clear();
         driver.dispose();

@@ -86,6 +86,18 @@ const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
     EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.retryNow(environmentId))),
 });
 
+const parkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "mobile:zerops:park",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.park(environmentId))),
+});
+
+const unparkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "mobile:zerops:unpark",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.unpark(environmentId))),
+});
+
 /** Which door minted a connection's credential; null when none is stored or it names none. */
 const credentialOriginCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "mobile:zerops:credential-origin",
@@ -260,6 +272,12 @@ export async function mobileAccountPorts(input: {
         },
         remove: (environmentId) => {
           void runAtomCommand(appAtomRegistry, environmentCatalog.remove, environmentId, quiet);
+        },
+        park: (environmentId) => {
+          void runAtomCommand(appAtomRegistry, parkCommand, environmentId, quiet);
+        },
+        unpark: (environmentId) => {
+          void runAtomCommand(appAtomRegistry, unparkCommand, environmentId, quiet);
         },
       },
       probe: (origin, signal, ask) =>

@@ -197,7 +197,7 @@ async function boundDriver(rig: Rig) {
       record: ENVIRONMENT_ID,
     },
   ]);
-  driver.setDemand("record", [KEY]);
+  driver.setDemand("route", [KEY]);
   await rig.clock.advance(0);
   expect(driver.machine(KEY)?.credential.kind).toBe("held");
   return {

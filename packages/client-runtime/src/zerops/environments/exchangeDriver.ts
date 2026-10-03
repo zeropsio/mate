@@ -2,21 +2,21 @@
  * The exchange driver (DESIGN §4.4): one per account epoch, one environment machine per Mate
  * target, and the only place a door exchange starts.
  *
- * Restore, auto-connect, repair and the leases — the route's, the Mate left last, an action, the
- * user's Connect — are demand on it, never connectors of their own: each publishes which targets
- * it wants, or holds one until it lets it go, and the machine for a target decides when an
- * exchange runs, reads its answer, backs off and waits for a named input.
+ * Repair and the leases — the route's, the Mate left last, an action, the user's Connect — are
+ * demand on it, never connectors of their own (krok-a-hub §3): each publishes which targets it
+ * wants, or holds one until it lets it go, and the machine for a target decides when an exchange
+ * runs, reads its answer, backs off and waits for a named input.
  *
  * - One serialized queue feeds `transitionEnvironment`; the ops it asks for run through the
  *   ports, and their answers come back as events carrying the op's attempt (§6.5).
  * - A credential is installed only when its answer left the machine `held` for that
  *   environment; a late or superseded answer is logged by the machine and dropped.
  * - A target the person asked for — the route's, one an action of theirs holds, or one whose
- *   Connect they pressed — starts the moment it can, past every budget. The rest, the background, start in priority order —
- *   remembered targets, then auto-connect — at most `EXCHANGE_CONCURRENCY` at once and at the
- *   door's mint pace (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every
- *   other wanted target waits `on: budget`. A target with a session kept from an earlier load
- *   mints nothing while its Mate still holds it, so it neither waits on the pace nor spends it.
+ *   Connect they pressed — starts the moment it can, past every budget. The background — the
+ *   Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the door's mint pace
+ *   (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every other wanted target
+ *   waits `on: budget`. A target with a session kept from an earlier load mints nothing while its
+ *   Mate still holds it, so it neither waits on the pace nor spends it.
  *   A mint the platform answers 429 holds the background a while.
  * - An exchange whose attempt ends without it (its deadline, a retirement) is aborted.
  * - A Mate's backoff cap (`RETRY_CAP`) is kept across loads (`capped`): until it ends, the
@@ -53,9 +53,9 @@ export type TargetKey = string;
 
 /**
  * What an emitter publishes the whole of: the route's target, the Mate left last (krok-a-hub §3,
- * kept warm a while), remembered targets, auto-connect.
+ * kept warm a while).
  */
-export type DemandReason = "route" | "recent" | "record" | "auto-connect";
+export type DemandReason = "route" | "recent";
 
 /**
  * A lease one caller holds on one target until it lets it go: an action from outside the Mate's
@@ -228,14 +228,7 @@ interface Entry {
 }
 
 /** The demands in priority order (§4.4): the user's Connect ranks after the route's target. */
-const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = [
-  "route",
-  "user",
-  "action",
-  "recent",
-  "record",
-  "auto-connect",
-];
+const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = ["route", "user", "action", "recent"];
 
 /** The demands of the person's own asking: past every budget. */
 const ASKED_RANK = PRIORITY.indexOf("action");
@@ -243,8 +236,6 @@ const ASKED_RANK = PRIORITY.indexOf("action");
 const EXCHANGE_REASON: Record<DemandReason, IdentityExchangeReason> = {
   route: "restore",
   recent: "restore",
-  record: "restore",
-  "auto-connect": "auto-connect",
 };
 
 const isLease = (reason: DemandReason | LeaseKind): reason is LeaseKind =>

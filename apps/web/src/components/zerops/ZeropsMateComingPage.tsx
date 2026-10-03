@@ -401,8 +401,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   }, [candidate, noConversation, openMate, projectId]);
 
   // Its link, made as the projects screen's Connect would, where the person's session allows: a
-  // Mate on its way, by its target — auto-connect may be full, or have passed it by; a new one,
-  // once its container answers and no socket to it is open yet.
+  // Mate on its way, by its target; a new one, once its container answers and no socket to it is
+  // open yet.
   const connect = useConnectMate("user");
   const asked = useRef<string | null>(null);
   const answering =
@@ -429,7 +429,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     asked.current = connectKey;
     void connect({ key: connectKey });
   }, [connect, connectKey]);
-  // On screen, it is connected past auto-connect's ceiling, which is for Mates not on screen.
+  // On screen, it holds the route's lease while the view stands (A9).
   const environments = useAccountEnvironments();
   useEffect(() => {
     if (environments === null) return;

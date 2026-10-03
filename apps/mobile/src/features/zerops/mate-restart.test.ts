@@ -247,6 +247,8 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
       readDescriptor: async () => ready(null).descriptor,
       retryLink: (environmentId) => void retried.push(environmentId),
       remove: () => undefined,
+      park: () => undefined,
+      unpark: () => undefined,
     },
     probe: async () => ({
       reading: probe.answer,
@@ -261,6 +263,8 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
         return () => undefined;
       },
     },
+    // The Mate is open: only a lease connects a remembered Mate (A9), and the route's holds it.
+    route: () => ENVIRONMENT_ID,
   };
   const built = yield* Effect.gen(function* () {
     const data: ManagedZeropsDataRuntime = yield* makeZeropsDataRuntime({
@@ -358,7 +362,7 @@ describe("a Mate on mobile", () => {
         yield* clock.advance(SECOND);
         yield* settle;
 
-        // The remembered Mate is on the platform; the grant's first round is still out.
+        // The remembered Mate is open and on the platform; the grant's first round is still out.
         expect(account.grant.rounds()).toBe(1);
         expect(account.exchanges).toEqual([]);
 
