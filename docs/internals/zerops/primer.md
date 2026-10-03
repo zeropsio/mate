@@ -340,7 +340,7 @@ still to come says so.
   - _Built in:_ `2d93cc977d`, `bfc003b9fb`
   - _Proven by:_ `deploys.test.ts`, `environments.test.ts`, `tierRuntimes.test.ts`,
     `recipeDeltas.test.ts`, `versionNames.test.ts`, `zerops/deploy.test.ts`;
-    `addGroupEnvironment.test.ts`, `deployToken.test.ts`, `ZeropsProjectFlowProvider.test.tsx`,
+    `addGroupEnvironment.test.ts`, `deployToken.test.ts`, `ZeropsProjectFlowProvider.render.test.tsx`,
     `SidebarProductionChip.logic.test.ts`, `ZeropsGroupDetail.test.tsx`
 - **T10a** — The application's recipe in HQ
   - _State:_ live on the rig, 2026-10-02 (the ledger's _The HQ rebuild, as measured_): zcp proposed
@@ -409,7 +409,7 @@ still to come says so.
   - _Built in:_ `7cd89a21a6`; the release path `7418440275`; the sign-in page `bb9fc20db8`; the
     session, the broker, the Gitea client and its state `23762ac9b3`; the keys and the copy
     `04d73b1557`
-  - _Proven by:_ `-accountGate.test.ts`, `ZeropsProjectFlowProvider.test.tsx` ("opens no Gitea
+  - _Proven by:_ `-accountGate.test.ts`, `ZeropsProjectFlowProvider.render.test.tsx` ("opens no Gitea
     session: the flow names no sign-in to Gitea and no Gitea org"), `accountRuntime.test.ts` (the
     post-grant stage holds no forge), `zeropsThrowaway.test.ts`, `doorThrowaway.test.ts`
 - **T13** — The migration of an organization that ran the release
