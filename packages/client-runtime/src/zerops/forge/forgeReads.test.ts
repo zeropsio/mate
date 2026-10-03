@@ -384,6 +384,30 @@ describe("createForgeReads — whether a group's Gitea org is made", () => {
     await expect(ask()).rejects.toThrow("Not found");
     expect(asked).toBe(2);
   });
+
+  // The reviewer's repro (pass 37): a group created between two ticks is read at once, its org
+  // still being made; the broker makes it before the next tick, which must see it.
+  it.each([
+    { name: "a 404 off the tick answers no later tick", madeAtMs: 55_000, made: true },
+    { name: "a 404 stays shared until the next tick", madeAtMs: undefined, made: false },
+  ])("$name", async ({ madeAtMs, made }) => {
+    const server = gitea({ acme: ["group"] });
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
+    reads.tick();
+    await reads.repositories("acme", server.client);
+    clock = NOW + 40_000;
+    await expect(reads.repositories("fresh", server.client)).rejects.toThrow();
+    if (madeAtMs !== undefined) {
+      clock = NOW + madeAtMs;
+      server.state.orgs = { acme: ["group"], fresh: ["group"] };
+    }
+    clock = NOW + 60_000;
+    reads.tick();
+    await reads.repositories("acme", server.client);
+    await reads.repositories("fresh", server.client).catch(() => null);
+    expect(reads.organizations().get("fresh")).toBe(made);
+  });
 });
 
 /**

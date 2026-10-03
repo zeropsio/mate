@@ -37,9 +37,9 @@
  * failed (other than with the session's 401) or does not add up ({@link splitAccountListing}), and
  * for {@link ACCOUNT_SKIP_MS} after one that stopped at the client's page limit or named none of
  * the orgs asked of it. That own listing is also the one answer to whether the broker has made a
- * group's org yet: a `404` is "not made yet" ({@link ForgeReads.organizations}), kept for
- * {@link GATE_FRESH_MS} like a listing, and the next refresh's `200`, or the account listing
- * naming it, is "made". A group created a moment ago is a real state its row says out loud while
+ * group's org yet: a `404` is "not made yet" ({@link ForgeReads.organizations}), kept like a
+ * listing — never past the next tick — and the next refresh's `200`, or the account listing naming
+ * it, is "made". A group created a moment ago is a real state its row says out loud while
  * the broker builds it (30–80 s), and the reader's own clock takes the line away on any screen, in
  * any tab — no page asks `GET /orgs/{o}` of its own.
  *
@@ -480,7 +480,8 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       const at = now();
       const freshMs = listOptions?.maxAgeMs ?? GATE_FRESH_MS;
       const missing = notFound.get(owner);
-      if (missing !== undefined && at - missing.atMs < freshMs) {
+      // A 404 answers its own refresh, never the next tick's: the broker may have made it since.
+      if (missing !== undefined && missing.atMs >= burstMs && at - missing.atMs < freshMs) {
         return Promise.reject(missing.cause);
       }
       // Never a listing made before this refresh's tick: the watch's of a moment ago is not it.
