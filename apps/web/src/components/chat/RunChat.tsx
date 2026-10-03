@@ -3179,6 +3179,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Whether the person reads the work this moment — scrolled up in it, or
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
+  // How the history's scroll keeps to its foot, for a line landing in it.
+  const keepScrollRef = useRef<(() => void) | null>(null);
   const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
@@ -3290,11 +3292,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       return;
     }
     const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
+    // A history that follows its foot follows it to where the landed line
+    // ends; a move up the person made just before is read first, and stops it.
+    keepScrollRef.current?.();
     const scroll = scrollIn(aboveRef.current);
-    // A history that follows its foot follows it to where the landed line ends.
-    if (scroll !== null && scroll.hasAttribute("data-follows")) {
-      scroll.scrollTop = footTop(positionOf(scroll));
-    }
     const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
     if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows, landing.slot);
     for (const [key, from] of landing.from) {
@@ -3366,6 +3367,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         label={`${ctx.speaker.name}'s work`}
         landing={landing?.from ?? null}
         lines={lines}
+        keepRef={keepScrollRef}
         {...(above ? { readingRef } : {})}
       />
     );
@@ -3672,12 +3674,15 @@ function RunScroll({
   label,
   lines,
   readingRef,
+  keepRef,
   landing = null,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
   /** Told whether the person reads the work: scrolled up in it, or something in it opened. */
   readonly readingRef?: { current: boolean };
+  /** Given how to keep it at its foot while it follows, read first (`keep`). */
+  readonly keepRef?: { current: (() => void) | null };
   /** The lines landing from the live slot this draw: they plop into place, never rise in. */
   readonly landing?: ReadonlyMap<string, number> | null;
 }) {
@@ -3705,7 +3710,7 @@ function RunScroll({
     const heard = (event: RunScrollEvent) => {
       followRef.current = followAfter(followRef.current, event);
       const { follows } = followRef.current;
-      // Said on it, for a landing to scroll exactly when it follows.
+      // Said on it, as its cut edges are, for what looks at the page.
       scrollRef.current?.toggleAttribute("data-follows", follows);
       if (event.kind !== "set" && readingRef !== undefined) readingRef.current = !follows;
     };
@@ -3745,6 +3750,13 @@ function RunScroll({
       },
     };
   }, [readingRef]);
+  useLayoutEffect(() => {
+    if (keepRef === undefined) return;
+    keepRef.current = follow.keep;
+    return () => {
+      keepRef.current = null;
+    };
+  }, [follow, keepRef]);
   // How far above its foot the scroll stood before earlier lines were drawn
   // over the ones in view.
   const keepFromFootRef = useRef<number | null>(null);

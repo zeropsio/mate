@@ -1986,8 +1986,9 @@ describe("RunChat, as the person uses it", () => {
   });
 
   // A line landing from the live slot moves the history's scroll to where
-  // the landed line ends exactly when the scroll follows its foot: one the
-  // person stopped (they opened a call in it) stays where they read.
+  // the landed line ends exactly when the scroll follows its foot, read as
+  // it lands: one the person stopped (they opened a call in it, or moved it
+  // up) stays where they read.
   describe("its scroll, as a line lands from the slot", () => {
     const saved = { window: (globalThis as { window?: unknown }).window };
     afterEach(() => {
@@ -2094,6 +2095,14 @@ describe("RunChat, as the person uses it", () => {
       const run = landingRun();
       run.land();
       expect(run.box.scrollTop).toBe(225);
+    });
+
+    // A find or focus moved it up just before; its scroll event has not come.
+    it("leaves a scroll moved up just before, its move not heard yet, where it was", () => {
+      const run = landingRun();
+      run.box.scrollTop = 120;
+      run.land();
+      expect(run.box.scrollTop).toBe(120);
     });
   });
 
