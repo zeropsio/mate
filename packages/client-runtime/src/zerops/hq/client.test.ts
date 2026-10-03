@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "@effect/vitest";
 
 import {
   attachToApp,
+  HQ_WRITE_UNCERTAIN,
   HqError,
   makeHqApi,
   readHqHealth,
@@ -253,7 +254,12 @@ describe("makeHqApi", () => {
       json(503, { code: "not_active" }),
       { kind: "unavailable", code: "not_active" },
     ],
-    ["no answer is unavailable", "throw", { kind: "unavailable", code: "network" }],
+    // A read with no answer is HQ not answering (`a connection that drops`); a write may have landed.
+    [
+      "a write with no answer is uncertain",
+      "throw",
+      { kind: "uncertain", code: "uncertain", message: HQ_WRITE_UNCERTAIN },
+    ],
   ])("%s", async (_name, answer, expected) => {
     const hq = fakeHq((seen) => {
       if (seen.path !== "/api/apps") return undefined;
@@ -895,6 +901,161 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     expect(hq.seen.at(-1)).toMatchObject({
       authorization: "Bearer session-1",
       accept: "image/png",
+    });
+  });
+});
+
+describe("makeHqApi — a write HQ may have made", () => {
+  const SHA = "a".repeat(40);
+  const MADE = {
+    tag: "v0.1.1",
+    sha: SHA,
+    entries: [{ service: "app", sha: "b".repeat(40) }],
+    by: "u1",
+    at: "2026-10-03T10:00:00.000Z",
+    state: "approved",
+    reason: null,
+    rollbackOf: null,
+  } as const;
+  const ASKED = { tag: MADE.tag, groupHead: SHA, entries: MADE.entries };
+
+  /** Runs `body` on fake timers, the calls' deadlines on the same clock. */
+  async function onTheClock(body: () => Promise<void>) {
+    vi.useFakeTimers();
+    const deadlines = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const deadline = new AbortController();
+      // @effect-diagnostics-next-line globalTimers:off -- the deadline the client asks for, on fake timers.
+      setTimeout(() => deadline.abort(new DOMException("timed out", "TimeoutError")), ms);
+      return deadline.signal;
+    });
+    try {
+      await body();
+    } finally {
+      deadlines.mockRestore();
+      vi.useRealTimers();
+    }
+  }
+
+  // F22 (2026-10-03): HQ waited on a slow Zerops read inside the release, the client gave the call
+  // up at 20 s, and the person read "HQ could not be reached." of a release under way.
+  it("waits for a release HQ answers in 30 s", async () => {
+    await onTheClock(async () => {
+      const hq = fakeHq();
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: async (input, init) => {
+          if (new URL(input).pathname !== "/api/apps/app-1/releases") return hq.fetch(input, init);
+          return new Promise<Response>((resolve, reject) => {
+            // @effect-diagnostics-next-line globalTimers:off -- HQ's answer, on fake timers.
+            const answer = setTimeout(() => resolve(json(201, MADE)), 30_000);
+            init?.signal?.addEventListener("abort", () => {
+              clearTimeout(answer);
+              reject(init.signal?.reason);
+            });
+          });
+        },
+        throughDoor: doors().throughDoor,
+        openSocket: NO_SOCKET,
+      });
+      const made = api.release("app-1", ASKED);
+      const settled = vi.fn();
+      made.then(settled, settled);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(made).resolves.toEqual(MADE);
+    });
+  });
+
+  /**
+   * HQ whose connection drops under each release asked, after HQ made it (`made`) or not; it lists
+   * the releases it holds.
+   */
+  function dropping(made: boolean) {
+    const releases: Array<typeof MADE> = [];
+    const hq = fakeHq((seen) => {
+      if (seen.path !== "/api/apps/app-1/releases") return undefined;
+      return seen.method === "GET" ? json(200, { releases }) : undefined;
+    });
+    const fetch = async (input: string, init?: RequestInit) => {
+      if (new URL(input).pathname === "/api/apps/app-1/releases" && init?.method === "POST") {
+        await hq.fetch(input, init);
+        if (made) releases.push(MADE);
+        throw new TypeError("Failed to fetch");
+      }
+      return hq.fetch(input, init);
+    };
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    const asked = () =>
+      hq.seen
+        .filter((entry) => entry.path === "/api/apps/app-1/releases")
+        .map((entry) => entry.method);
+    return { api, asked };
+  }
+
+  it("asks HQ what it holds when the connection drops under a release, never asking twice", async () => {
+    const { api, asked } = dropping(true);
+    await expect(api.release("app-1", ASKED)).resolves.toEqual(MADE);
+    expect(asked()).toEqual(["POST", "GET"]);
+  });
+
+  it("says to check the project when HQ holds no release after its connection dropped", async () => {
+    const { api, asked } = dropping(false);
+    await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
+      kind: "uncertain",
+      message: HQ_WRITE_UNCERTAIN,
+    });
+    expect(asked()).toEqual(["POST", "GET"]);
+  });
+
+  it("stays uncertain when HQ cannot say what it holds either", async () => {
+    const hq = fakeHq((seen) => {
+      if (seen.path !== "/api/apps/app-1/releases") return undefined;
+      if (seen.method === "POST") throw new TypeError("Failed to fetch");
+      return json(503, { code: "zerops_unavailable" });
+    });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
+      kind: "uncertain",
+      message: HQ_WRITE_UNCERTAIN,
+    });
+  });
+
+  it("asks HQ what it holds when a release goes unanswered for 45 s", async () => {
+    await onTheClock(async () => {
+      const hq = fakeHq((seen) =>
+        seen.path === "/api/apps/app-1/releases" && seen.method === "GET"
+          ? json(200, { releases: [MADE] })
+          : undefined,
+      );
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: async (input, init) => {
+          if (new URL(input).pathname !== "/api/apps/app-1/releases" || init?.method !== "POST") {
+            return hq.fetch(input, init);
+          }
+          return new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+          });
+        },
+        throughDoor: doors().throughDoor,
+        openSocket: NO_SOCKET,
+      });
+      const made = api.release("app-1", ASKED);
+      const settled = vi.fn();
+      made.then(settled, settled);
+      await vi.advanceTimersByTimeAsync(44_999);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(made).resolves.toEqual(MADE);
     });
   });
 });

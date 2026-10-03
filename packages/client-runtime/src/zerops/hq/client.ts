@@ -9,7 +9,8 @@
  *
  * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or is not
  * serving (`503 not_active`, a standby or an HQ that is not the official one), `refused` when it
- * answered no — with HQ's own code and words.
+ * answered no — with HQ's own code and words — and `uncertain` when a write's answer was lost and
+ * what HQ holds, read back at once, does not show it made.
  *
  * @module hq/client
  */
@@ -112,7 +113,11 @@ export interface HqAttach {
 }
 
 export class HqError extends Error {
-  readonly kind: "unavailable" | "refused";
+  /**
+   * `unavailable` when HQ could not be reached or is not serving; `refused` when it answered no;
+   * `uncertain` when a write was sent and its answer lost — HQ may have made it.
+   */
+  readonly kind: "unavailable" | "refused" | "uncertain";
   /** HQ's code (`forbidden`, `conflict`, `not_active`, …), or `network`. */
   readonly code: string;
   readonly status: number | undefined;
@@ -264,13 +269,32 @@ const SOCKET_CLOSE = {
 
 const PONG = JSON.stringify({ type: "pong" });
 
+/** How long a read waits for HQ's answer. */
 const CALL_TIMEOUT_MS = 20_000;
 /**
- * The door reads the org fresh from Zerops (`apps/hq/src/door.ts`), which took tens of seconds on
- * a slow Zerops (measured 2026-10-03): a door given up at the calls' 20 s threw HQ's answer away,
- * and the next caller minted another throwaway for a door queued behind the first.
+ * How long the door and every write wait for HQ's answer. HQ reads the org from Zerops for each,
+ * which took tens of seconds on a slow Zerops (measured 2026-10-03): a door given up at 20 s threw
+ * HQ's answer away, and the next caller minted another throwaway for a door queued behind the
+ * first; a release given up at 20 s told the person "HQ could not be reached." of a release under
+ * way (F22).
  */
-const DOOR_TIMEOUT_MS = 45_000;
+const WRITE_TIMEOUT_MS = 45_000;
+
+/**
+ * A call that changes what HQ holds: one HQ makes again the same if asked twice
+ * (`idempotent` — it sets a value), or one it would make twice (`once`).
+ */
+type Write = "once" | "idempotent";
+
+/**
+ * What a write whose answer was lost says, when HQ holds nothing of it either: main's words for an
+ * attempt that may have landed (`docs/internals/zerops/client-state-model.md`, command attempts).
+ */
+export const HQ_WRITE_UNCERTAIN =
+  "HQ could not confirm whether this finished. Check the project before trying again.";
+
+const uncertain = () =>
+  new HqError({ kind: "uncertain", code: "uncertain", message: HQ_WRITE_UNCERTAIN });
 
 /** HQ's code and reason in an answer's body; a body that is not HQ's JSON names neither. */
 function said(text: string): { readonly code?: unknown; readonly reason?: unknown } {
@@ -310,12 +334,20 @@ const stopped = (cause: unknown, signal: AbortSignal | null | undefined) =>
   (cause instanceof DOMException && (cause.name === "AbortError" || cause.name === "TimeoutError"));
 
 /**
- * One call to HQ: its answer, or an {@link HqError}. A connection that drops under the call is
+ * One call to HQ: its answer, or an {@link HqError}. A read whose connection drops under it is
  * tried once more — a kept-alive connection is cut as HQ's Core is redeployed (measured on the rig,
- * 2026-10-02) — and HQ's own answer never is.
+ * 2026-10-02) — and HQ's own answer never is. A write is never sent twice: one whose answer was
+ * lost — its deadline passed, or its connection dropped — is `uncertain`, for what HQ holds to
+ * decide.
  */
-async function send(fetch: FetchImplementation, url: string, init: RequestInit): Promise<Response> {
-  const signal = init.signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS);
+async function send(
+  fetch: FetchImplementation,
+  url: string,
+  init: RequestInit,
+  write?: Write,
+): Promise<Response> {
+  const signal =
+    init.signal ?? AbortSignal.timeout(write === undefined ? CALL_TIMEOUT_MS : WRITE_TIMEOUT_MS);
   const headers = {
     Accept: "application/json",
     ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
@@ -326,6 +358,7 @@ async function send(fetch: FetchImplementation, url: string, init: RequestInit):
     try {
       response = await fetch(url, { ...init, signal, headers });
     } catch (cause) {
+      if (write !== undefined) throw uncertain();
       if (attempt === 0 && !stopped(cause, signal)) continue;
       throw new HqError({
         kind: "unavailable",
@@ -449,7 +482,7 @@ export function makeHqApi(input: {
           await send(input.fetch, `${origin}/api/door`, {
             method: "POST",
             body: JSON.stringify({ token }),
-            signal: AbortSignal.timeout(DOOR_TIMEOUT_MS),
+            signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
           }),
         ),
       )
@@ -463,15 +496,21 @@ export function makeHqApi(input: {
   };
 
   /** A call as the session's holder; a session HQ no longer takes is replaced once. */
-  const authorized = async (path: string, init: RequestInit = {}): Promise<Response> => {
+  const authorized = async (
+    path: string,
+    init: RequestInit = {},
+    write?: Write,
+  ): Promise<Response> => {
     for (let attempt = 0; ; attempt += 1) {
       const held = session ?? enter();
       const token = await held;
       try {
-        return await send(input.fetch, `${origin}${path}`, {
-          ...init,
-          headers: { ...init.headers, Authorization: `Bearer ${token}` },
-        });
+        return await send(
+          input.fetch,
+          `${origin}${path}`,
+          { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
+          write,
+        );
       } catch (cause) {
         const stale = cause instanceof HqError && cause.code === "session_required";
         if (!stale || attempt > 0) throw cause;
@@ -479,6 +518,38 @@ export function makeHqApi(input: {
       }
     }
   };
+
+  /**
+   * A write whose answer was lost, decided by what HQ holds now: `holds` reads it back — what the
+   * write would have answered, or `undefined` while HQ holds nothing of it. Nothing held, or no
+   * answer to the read either, leaves it uncertain.
+   */
+  const confirmed = async <T>(
+    write: () => Promise<T>,
+    holds: () => Promise<T | undefined>,
+  ): Promise<T> => {
+    try {
+      return await write();
+    } catch (cause) {
+      if (!(cause instanceof HqError && cause.kind === "uncertain")) throw cause;
+      let held: T | undefined;
+      try {
+        held = await holds();
+      } catch {
+        // No answer to the read either: the write stays as uncertain as it was.
+        throw cause;
+      }
+      if (held === undefined) throw cause;
+      return held;
+    }
+  };
+
+  const releasesOf = async (appId: string, signal?: AbortSignal) =>
+    (
+      await readReleases(
+        await authorized(releasesPath(appId), signal === undefined ? {} : { signal }),
+      )
+    ).releases;
 
   return {
     structure: async (signal) =>
@@ -531,48 +602,56 @@ export function makeHqApi(input: {
       });
     },
     createApp: async (name) =>
-      json(await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) })),
+      json(
+        await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, "once"),
+      ),
     attachProject: async (appId, attach) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}/projects`, {
-        method: "POST",
-        body: JSON.stringify(attach),
-      });
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/projects`,
+        { method: "POST", body: JSON.stringify(attach) },
+        "once",
+      );
     },
     keepDeployToken: async (appId, environment, token) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/deploy-token`,
         { method: "PUT", body: JSON.stringify({ token }) },
+        "idempotent",
       );
     },
     redeploy: async (appId, environment, deploy) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/redeploy`,
         { method: "POST", body: JSON.stringify(deploy) },
+        "once",
       );
     },
     updateMate: async (projectId, change) => {
-      await authorized(`/api/mates/${encodeURIComponent(projectId)}`, {
-        method: "PATCH",
-        body: JSON.stringify(change),
-      });
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}`,
+        { method: "PATCH", body: JSON.stringify(change) },
+        "idempotent",
+      );
     },
     renameApp: async (appId, name) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name }),
-      });
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}`,
+        { method: "PATCH", body: JSON.stringify({ name }) },
+        "idempotent",
+      );
     },
     deleteApp: async (appId) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" });
+      await authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, "once");
     },
     moveProject: async (projectId, to) => {
-      await authorized(`/api/projects/${encodeURIComponent(projectId)}/app`, {
-        method: "PUT",
-        body: JSON.stringify(to),
-      });
+      await authorized(
+        `/api/projects/${encodeURIComponent(projectId)}/app`,
+        { method: "PUT", body: JSON.stringify(to) },
+        "idempotent",
+      );
     },
     createMate: async (mate) => {
-      await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) });
+      await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, "once");
     },
     change: async (link, signal) =>
       readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal })),
@@ -584,20 +663,22 @@ export function makeHqApi(input: {
       ).comments,
     commentOnChange: async (link, body) =>
       readComment(
-        await authorized(`${changePath(link)}/comments`, {
-          method: "POST",
-          body: JSON.stringify({ body }),
-        }),
+        await authorized(
+          `${changePath(link)}/comments`,
+          { method: "POST", body: JSON.stringify({ body }) },
+          "once",
+        ),
       ),
     mergeChange: async (link, expectedHead) =>
       readChange(
-        await authorized(`${changePath(link)}/merge`, {
-          method: "POST",
-          body: JSON.stringify({ expectedHead }),
-        }),
+        await authorized(
+          `${changePath(link)}/merge`,
+          { method: "POST", body: JSON.stringify({ expectedHead }) },
+          "once",
+        ),
       ),
     closeChange: async (link) =>
-      readChange(await authorized(`${changePath(link)}/close`, { method: "POST" })),
+      readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, "once")),
     changeAttachment: async (link, signal) =>
       (
         await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {
@@ -618,22 +699,27 @@ export function makeHqApi(input: {
       readCompare(
         await authorized(comparePath(appId, repo, query), signal === undefined ? {} : { signal }),
       ),
-    releases: async (appId, signal) =>
-      (
-        await readReleases(
-          await authorized(releasesPath(appId), signal === undefined ? {} : { signal }),
-        )
-      ).releases,
-    release: async (appId, request) =>
-      readRelease(
-        await authorized(releasesPath(appId), { method: "POST", body: JSON.stringify(request) }),
+    releases: releasesOf,
+    // A release is named by its tag, which HQ gives no second one.
+    release: (appId, request) =>
+      confirmed(
+        async () =>
+          readRelease(
+            await authorized(
+              releasesPath(appId),
+              { method: "POST", body: JSON.stringify(request) },
+              "once",
+            ),
+          ),
+        async () => (await releasesOf(appId)).find((made) => made.tag === request.tag),
       ),
     rollback: async (appId, tag, request) =>
       readRelease(
-        await authorized(`${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`, {
-          method: "POST",
-          body: JSON.stringify(request),
-        }),
+        await authorized(
+          `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
+          { method: "POST", body: JSON.stringify(request) },
+          "once",
+        ),
       ),
     recipeTier: async (appId, tier, signal) =>
       readRecipeTier(
@@ -643,12 +729,18 @@ export function makeHqApi(input: {
         ),
       ),
     recordStandUp: async (projectId) => {
-      await authorized(`/api/mates/${encodeURIComponent(projectId)}/standup`, { method: "POST" });
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/standup`,
+        { method: "POST" },
+        "once",
+      );
     },
     recordClosedOff: async (projectId) => {
-      await authorized(`/api/mates/${encodeURIComponent(projectId)}/closed-off`, {
-        method: "POST",
-      });
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
+        { method: "POST" },
+        "once",
+      );
     },
   };
 }
