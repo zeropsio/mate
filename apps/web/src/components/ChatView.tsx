@@ -5597,16 +5597,27 @@ export default function ChatView(props: ChatViewProps) {
       ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
-    const alsoWorkingItems = alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
+    // What belongs to the conversation — another of its chats at work, its compaction, its waking
+    // or parking, its branch — waits until the conversation shows, not over its opening line.
+    const conversationShown = !threadDetailLoading;
+    const alsoWorkingItems =
+      !conversationShown || alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const resumeCompactionItems =
-      resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
-    const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
-    const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+      !conversationShown || resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
+    const wokeThreadItems =
+      !conversationShown || wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
+    const parkedThreadItems =
+      !conversationShown || parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
     // The user asked for this one, so it leads the notice tier instead of trailing it.
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
-    if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
+    if (
+      !conversationShown ||
+      !localCheckoutBranchMismatch ||
+      !showBranchMismatchBanner ||
+      !activeBranchMismatchKey
+    ) {
       return [
         ...urgentSystemItems,
         ...usageLimitsItems,
@@ -5686,6 +5697,7 @@ export default function ChatView(props: ChatViewProps) {
     showBranchMismatchBanner,
     systemComposerBannerItems,
     usageLimitsBanner,
+    threadDetailLoading,
     wokeThreadBannerItem,
     zeropsShownReadOnly,
   ]);
@@ -8565,7 +8577,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
-                              top={composerTop}
+                              top={threadDetailLoading ? null : composerTop}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
                                 ? {}
                                 : {
