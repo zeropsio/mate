@@ -5,6 +5,7 @@ import type { ComposerCommandItem } from "./ComposerCommandMenu";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
+  withoutShadowedProviderCommands,
 } from "./composerSlashCommandSearch";
 
 describe("searchSlashCommandItems", () => {
@@ -221,3 +222,61 @@ describe("searchSlashCommandItems", () => {
     ]);
   });
 });
+
+describe("withoutShadowedProviderCommands — a built-in's name is the built-in's", () => {
+  const claudeDriver = ProviderDriverKind.make("claudeAgent");
+  const builtIn = {
+    id: "slash:mcp",
+    type: "slash-command",
+    command: "mcp",
+    label: "/mcp",
+    description: "Open this Mate's MCP servers",
+  } as const;
+  const provider = (name: string) =>
+    ({
+      id: `provider-slash-command:claudeAgent:${name}`,
+      type: "provider-slash-command",
+      provider: claudeDriver,
+      command: { name },
+      label: `/${name}`,
+      description: name,
+    }) as const;
+  const skill = {
+    id: "skill:claudeAgent:mcp",
+    type: "skill",
+    provider: claudeDriver,
+    skill: { name: "mcp", path: "/skills/mcp/SKILL.md", enabled: true },
+    label: "/skill:mcp",
+    description: "a skill",
+  } as const;
+
+  it.each<{ case: string; items: ReadonlyArray<SlashItem>; ids: string[] }>([
+    {
+      case: "the provider's /mcp leaves the menu beside Mate's own",
+      items: [builtIn, provider("mcp"), provider("compact")],
+      ids: ["slash:mcp", "provider-slash-command:claudeAgent:compact"],
+    },
+    {
+      case: "names match whatever their case",
+      items: [builtIn, provider("MCP")],
+      ids: ["slash:mcp"],
+    },
+    {
+      case: "without the built-in the provider's stays",
+      items: [provider("mcp")],
+      ids: ["provider-slash-command:claudeAgent:mcp"],
+    },
+    {
+      case: "a skill of the same name is not a command and stays",
+      items: [builtIn, skill],
+      ids: ["slash:mcp", "skill:claudeAgent:mcp"],
+    },
+  ])("$case", ({ items, ids }) => {
+    expect(withoutShadowedProviderCommands(items).map((item) => item.id)).toEqual(ids);
+  });
+});
+
+type SlashItem = Extract<
+  ComposerCommandItem,
+  { type: "slash-command" | "provider-slash-command" | "skill" }
+>;

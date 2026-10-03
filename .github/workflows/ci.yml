@@ -175,7 +175,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The client packages' suites run ~8.5 min on a hosted runner after setup.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6

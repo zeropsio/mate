@@ -17,9 +17,11 @@
  * (`ArrivalSwap`); the conversation the Mate's own view hands over to paints that same frame at
  * once. Who the Mate is comes from `useZeropsMate` (the caller resolves it, so a conversation
  * nobody lives in keeps upstream's empty line); whether a sign-in is required is
- * `zeropsAgentSignInRequired` over the environment's agent-auth feed once it is known, and until
+ * `zeropsAgentSignInRequired` over the environment's agent-auth feed once it is known — and its
+ * provider instances, where an agent Mate signs nobody in to may already be ready — and until
  * then the slot says it is checking, or why it could not.
  */
+import { signInReadSettled } from "@t3tools/client-runtime/zerops/conversationWriter";
 import { mateArriving, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
   birthRuntimesFacts,
@@ -28,6 +30,7 @@ import {
 import {
   zeropsAgentAuthView,
   zeropsAgentSignInRequired,
+  zeropsOtherAgentReady,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
@@ -36,7 +39,7 @@ import { Fragment, useContext, useEffect, useId, useMemo, useRef, type ReactNode
 
 import { cn } from "~/lib/utils";
 
-import { useThreadShells } from "../../state/entities";
+import { useServerConfigs, useThreadShells } from "../../state/entities";
 import {
   arrivalFace,
   arrivalHeadlineClauses,
@@ -80,6 +83,7 @@ export function ZeropsMateEmptyState({
   return (
     <MateEmptyStateView
       addedBy={state.addedBy}
+      agentReady={state.agentReady}
       mate={mate}
       onRetry={state.onRetry}
       phase={state.phase}
@@ -98,8 +102,16 @@ export interface MateEmptyState {
   /** The sign-in, once the agents' sign-in is known; null before. */
   readonly signIn: ReactNode | null;
   readonly signInRequired: boolean;
+  /**
+   * An agent Mate signs nobody in to (Cursor, OpenCode…) is ready, and no sign-in of the viewer's
+   * is: what the stand-up waits on is not a sign-in.
+   */
+  readonly agentReady: boolean;
   readonly unknown: KnownMessage | null;
-  /** Whether the agents' sign-in is read: the conversation's first paint says it whole. */
+  /**
+   * Whether the agents' sign-in read has ended — read, or failed (`signInReadSettled`): the
+   * conversation's first paint says it whole.
+   */
   readonly signInKnown: boolean;
   /**
    * A colleague's view of a Mate nobody has signed in: who added it, by name where it is known
@@ -128,11 +140,14 @@ export function useMateEmptyState({
   /** Its project, where the caller knows it before its environment's record says it. */
   readonly projectId?: string | undefined;
 }): MateEmptyState {
-  const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(
-    useZeropsAgentAuth(environmentId),
-  );
-  // Only a known snapshot can ask for a sign-in; one still being read says so.
-  const signInRequired = agentAuth !== null && zeropsAgentSignInRequired(agentAuth);
+  const agentAuthRead = useZeropsAgentAuth(environmentId);
+  const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(agentAuthRead);
+  // Only a known snapshot can ask for a sign-in; one still being read says so. An agent outside
+  // the sign-in (Cursor, OpenCode…) that is ready asks for none.
+  const serverConfigs = useServerConfigs();
+  const providers =
+    environmentId === null ? undefined : serverConfigs.get(environmentId)?.providers;
+  const signInRequired = agentAuth !== null && zeropsAgentSignInRequired(agentAuth, providers);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const localSigners = useLocalAgentSigners(environmentId);
   const attempt = useMateStandUpAttempt(environmentId);
@@ -146,6 +161,11 @@ export function useMateEmptyState({
       ).primary?.id === threadRef.threadId,
     [threadRef, threads],
   );
+  const viewerSignedIn =
+    agentAuth !== null &&
+    viewerSubject !== undefined &&
+    mateStandUpSignedIn(agentAuth, viewerSubject, localSigners, undefined);
+  const agentReady = !viewerSignedIn && zeropsOtherAgentReady(providers);
   const phase = mateStandUpPhase({
     marker: mate.standUp,
     viewer: viewerSubject,
@@ -155,8 +175,7 @@ export function useMateEmptyState({
         ? "unknown"
         : signInRequired
           ? "required"
-          : viewerSubject !== undefined &&
-              mateStandUpSignedIn(agentAuth, viewerSubject, localSigners)
+          : viewerSignedIn || agentReady
             ? "signed-in"
             : "someone-else",
     attempt,
@@ -190,8 +209,9 @@ export function useMateEmptyState({
         />
       ),
     signInRequired,
+    agentReady,
     unknown: agentAuthUnknown,
-    signInKnown: agentAuth !== null,
+    signInKnown: signInReadSettled(agentAuthRead),
     addedBy: colleague && adder !== undefined ? (nameOf(adder) ?? null) : undefined,
     onRetry: () => {
       if (environmentId !== null) retryMateStandUp(environmentId);
@@ -275,6 +295,7 @@ export function MateEmptyStateView({
   onRetry,
   coming = null,
   addedBy,
+  agentReady = false,
   runtimes,
   focusOnArrival = false,
 }: {
@@ -290,6 +311,8 @@ export function MateEmptyStateView({
   readonly coming?: MateEmptyComing | null;
   /** A colleague's view of a Mate nobody has signed in (`MateEmptyState.addedBy`). */
   readonly addedBy?: string | null | undefined;
+  /** Its agent needs no sign-in, and none of the viewer's made it ready (`MateEmptyState`). */
+  readonly agentReady?: boolean | undefined;
   /** Its project's runtimes: under the sign-in, the ones still coming up; undefined while unread. */
   readonly runtimes?: ReadonlyArray<BirthRuntimeFact> | undefined;
   /**
@@ -315,7 +338,7 @@ export function MateEmptyStateView({
   const sentence =
     coming !== null && coming.over !== true && coming.sentence !== undefined
       ? coming.sentence
-      : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined });
+      : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined, agentReady });
   const slot = arrivalSlot({ kind, coming, signIn, unknown, onRetry, runtimes });
   // A press's words change while its steps run, stop and go again: on a narrow screen each holds
   // two lines' room, so none of it moves the rows under them.

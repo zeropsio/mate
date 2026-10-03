@@ -194,6 +194,14 @@ import {
   ProviderConsumeResetCreditInput,
   ProviderConsumeResetCreditResult,
 } from "./providerUsageLimits.ts";
+import {
+  McpServerAddInput,
+  McpServerSetEnabledInput,
+  McpServersError,
+  McpServersList,
+  McpServersListInput,
+  McpServerTargetInput,
+} from "./mcpServers.ts";
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
@@ -236,6 +244,13 @@ export const WS_METHODS = {
   assetsCreateUrl: "assets.createUrl",
   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
   attachmentsDelete: "attachments.delete",
+
+  // MCP servers (the MCP tab)
+  mcpServersList: "mcp.servers.list",
+  mcpServersAdd: "mcp.servers.add",
+  mcpServersRemove: "mcp.servers.remove",
+  mcpServersSetEnabled: "mcp.servers.setEnabled",
+  mcpServersReconnect: "mcp.servers.reconnect",
 
   // Provider methods
   providerUploadFeedback: "provider.uploadFeedback",
@@ -688,6 +703,38 @@ const WsAttachmentsCreateUploadUrlRpc = Rpc.make(WS_METHODS.attachmentsCreateUpl
 const WsAttachmentsDeleteRpc = Rpc.make(WS_METHODS.attachmentsDelete, {
   payload: AttachmentDeleteInput,
   error: EnvironmentAuthorizationError,
+});
+
+const McpServersRpcError = Schema.Union([McpServersError, EnvironmentAuthorizationError]);
+
+const WsMcpServersListRpc = Rpc.make(WS_METHODS.mcpServersList, {
+  payload: McpServersListInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersAddRpc = Rpc.make(WS_METHODS.mcpServersAdd, {
+  payload: McpServerAddInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersRemoveRpc = Rpc.make(WS_METHODS.mcpServersRemove, {
+  payload: McpServerTargetInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersSetEnabledRpc = Rpc.make(WS_METHODS.mcpServersSetEnabled, {
+  payload: McpServerSetEnabledInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersReconnectRpc = Rpc.make(WS_METHODS.mcpServersReconnect, {
+  payload: McpServerTargetInput,
+  success: McpServersList,
+  error: McpServersRpcError,
 });
 
 const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, {
@@ -1180,6 +1227,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
   WsProviderUploadFeedbackRpc,
+  WsMcpServersListRpc,
+  WsMcpServersAddRpc,
+  WsMcpServersRemoveRpc,
+  WsMcpServersSetEnabledRpc,
+  WsMcpServersReconnectRpc,
   WsSubscribeVcsStatusRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,

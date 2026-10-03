@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   Plus,
   TerminalSquare,
+  Plug,
   Users,
 } from "lucide-react";
 import {
@@ -82,6 +83,7 @@ const SURFACE_DISABLED_REASONS = {
   data: "Data is only available from a Zerops project thread.",
   git: "Git is only available from a Zerops project thread.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
+  mcp: "MCP servers are only available from a conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -189,6 +191,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return GitBranch;
     case "crew":
       return Users;
+    case "mcp":
+      return Plug;
   }
 }
 
@@ -388,6 +392,8 @@ function surfaceTitle(
       return "Git";
     case "crew":
       return "Crew";
+    case "mcp":
+      return "MCP";
     case "change":
       return `${surface.repository} #${String(surface.number)}`;
   }
@@ -422,6 +428,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <GitBranch className="size-3 shrink-0" />;
     case "crew":
       return <Users className="size-3 shrink-0" />;
+    case "mcp":
+      return <Plug className="size-3 shrink-0" />;
     case "change":
       return <GitPullRequestArrow className="size-3 shrink-0" />;
   }

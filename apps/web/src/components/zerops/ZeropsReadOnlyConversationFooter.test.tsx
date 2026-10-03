@@ -101,4 +101,18 @@ describe("ZeropsReadOnlyConversationFooter", () => {
     expect(html).not.toContain("uppercase");
     expect(html).not.toContain("data-pending-user-input-other");
   });
+
+  // Remembered from an earlier visit, the strip says whose agent it is and offers nothing yet: its
+  // sign-in comes with the read answer.
+  it("offers no action where it is given none", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsReadOnlyConversationFooter
+        readOnly={readOnly}
+        pendingApprovals={[]}
+        pendingUserInputs={[]}
+      />,
+    );
+    expect(html).toContain("only they can run this agent");
+    expect(buttons(html)).toEqual([]);
+  });
 });

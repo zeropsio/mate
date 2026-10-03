@@ -16,6 +16,7 @@ import {
   selectCandidates,
   takenBotNames,
   type CandidateRow,
+  listingSettled,
 } from "./candidates.ts";
 
 const admission: FacetAdmission = {
@@ -659,5 +660,37 @@ describe("learnAddresses — what the listings teach the address memory, and the
     const learned = learnAddresses(waited, [known([row("s-later", { until: 500_000 }), arriving])]);
     expect(learned.waitEnd).toBe(220_000);
     expect(learned.memory.get("s-landed")).toEqual({ addressed: true, since: 100_000 });
+  });
+});
+
+describe("listingSettled: a listing that will tell no more", () => {
+  const known = (coverage: "complete" | "partial") =>
+    ({ state: "known", value: [], coverage }) as unknown as Parameters<typeof listingSettled>[0];
+  const state = (name: string) =>
+    ({ state: name }) as unknown as Parameters<typeof listingSettled>[0];
+  it.each([
+    ["complete", known("complete"), { loading: true, patient: true }, true],
+    [
+      "complete, a row's container not read yet",
+      {
+        state: "known",
+        value: [{ presence: "unknown" }],
+        coverage: "complete",
+      } as unknown as Parameters<typeof listingSettled>[0],
+      { loading: true, patient: true },
+      false,
+    ],
+    ["being read", state("reading"), { loading: false, patient: true }, false],
+    ["unread", state("unread"), { loading: false, patient: true }, false],
+    ["failed", state("failed"), { loading: true, patient: true }, true],
+    ["withheld whole", state("withheld"), { loading: true, patient: true }, true],
+    ["gone", state("gone"), { loading: true, patient: true }, true],
+    // What it lacks the inventory is not reading: withheld projects.
+    ["partial, nothing more being read", known("partial"), { loading: false, patient: true }, true],
+    ["partial, parts still being read", known("partial"), { loading: true, patient: true }, false],
+    // Past its patience the missing parts are failing, retried on their own backoff.
+    ["partial past its patience", known("partial"), { loading: true, patient: false }, true],
+  ] as const)("%s", (_case, listing, input, settled) => {
+    expect(listingSettled(listing, input)).toBe(settled);
   });
 });

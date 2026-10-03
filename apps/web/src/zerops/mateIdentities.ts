@@ -19,13 +19,17 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   hasMate,
+  isZeropsMateRunsWithoutSignIn,
   mateArriving,
   mateArrivingUntil,
   mateShapeOf,
   readZeropsGroupTags,
   type MatePoseFacts,
 } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  candidateContainerRuns,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -37,6 +41,8 @@ import { rowEnvironment } from "./environmentOrigins";
 export interface ZeropsMateIdentity {
   /** The exact container behind this environment; absent for a row that names no service. */
   readonly serviceId?: string | undefined;
+  /** The Mate's own project; absent where only its creation knew it. */
+  readonly projectId?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
   /** The shape its person picked (`mate:face:`), else its tint's own — `mateShapeOf`. */
@@ -53,6 +59,12 @@ export interface ZeropsMateIdentity {
    */
   readonly connected: boolean;
   /**
+   * Whether the account's listing has its container running (socket up or not); absent where
+   * the listing never said. What its face wears while its conversation opens
+   * (`mateOpeningAwake`).
+   */
+  readonly running?: boolean | undefined;
+  /**
    * Who asked for the project's development to be stood up (`mate:standup:`), while the ask
    * waits for their first sign-in: their empty conversation says so and sends it (`mateStandUp.ts`).
    */
@@ -61,6 +73,8 @@ export interface ZeropsMateIdentity {
   readonly madeBy?: string | undefined;
   /** Until when it is arriving (`mateArrivingUntil`); absent once it has arrived, or not known. */
   readonly arrivingUntil?: number | undefined;
+  /** Its project says it runs on an agent Mate signs nobody in to (`mate:runs:`). */
+  readonly runsWithoutSignIn?: boolean | undefined;
 }
 
 /** What a Mate's face reads of where it is in its life, from who lives there (`mateFaceFor`). */
@@ -101,16 +115,46 @@ export function zeropsMateIdentityOf(
   const arrivingUntil = mateArrivingUntil(candidate);
   return {
     serviceId: candidate.service?.id,
+    projectId: candidate.project.id,
     name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
     tint,
     shape: mateShapeOf(candidate.project.tagList, tint),
     project: tags.label,
     projectUrl: zeropsProjectUrl(candidate.project.id),
     connected: candidate.group === "connected",
+    running: candidateContainerRuns(candidate),
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
     ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
+    ...(isZeropsMateRunsWithoutSignIn(candidate.project.tagList)
+      ? { runsWithoutSignIn: true }
+      : {}),
   };
+}
+
+/**
+ * Whether a Mate's opening wears its face awake: the account's listing has its container up — its
+ * socket not open yet is this page's wait, not the Mate's sleep.
+ */
+export function mateOpeningAwake(mate: Pick<ZeropsMateIdentity, "connected" | "running">): boolean {
+  return mate.connected || mate.running === true;
+}
+
+/**
+ * Whether a Mate's own page (`/mate/$projectId`) wears it awake: linked, or — while the page only
+ * waits on its link — where its container runs (`mateOpeningAwake`). Asleep where the page speaks
+ * of the link (a restart, a container that is not running, one that cannot be opened); a new Mate
+ * arriving wears what its board says instead.
+ */
+export function mateStageAwake(input: {
+  readonly linked: boolean;
+  readonly arriving: boolean;
+  readonly speaks: boolean;
+  readonly mate: Pick<ZeropsMateIdentity, "connected" | "running">;
+}): boolean {
+  if (input.linked) return true;
+  if (input.arriving || input.speaks) return false;
+  return mateOpeningAwake(input.mate);
 }
 
 /** Who lives in one environment: its Mate, nobody, or not known yet. */

@@ -429,6 +429,31 @@ export function withZeropsClosedOffTag(
   return tags.includes(MATE_CLOSED_OFF_TAG) ? tags : [...tags, MATE_CLOSED_OFF_TAG];
 }
 
+/**
+ * A Mate that runs on an agent Mate signs nobody in to — Cursor, OpenCode, Grok, Antigravity —
+ * says which: `mate:runs:<driverKind>`, written as a person the first time their client finds one
+ * ready on it (the Mate's own key cannot write tags). It names the agent, not anybody: whose Mate
+ * it is still comes from who made it (`mateOwnerRecords`).
+ */
+export const MATE_RUNS_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:runs:`;
+
+/** Whether the project says its Mate runs on an agent that needs no sign-in. */
+export function isZeropsMateRunsWithoutSignIn(tagList: ReadonlyArray<string> | undefined): boolean {
+  return (tagList ?? []).some(
+    (tag) => tag.startsWith(MATE_RUNS_TAG_PREFIX) && tag.length > MATE_RUNS_TAG_PREFIX.length,
+  );
+}
+
+/** The project said to run on `driver`, every other tag kept. Idempotent. */
+export function withZeropsRunsTag(
+  tagList: ReadonlyArray<string> | undefined,
+  driver: string,
+): ReadonlyArray<string> {
+  const tags = tagList ?? [];
+  const tag = `${MATE_RUNS_TAG_PREFIX}${driver}`;
+  return tags.includes(tag) ? tags : [...tags, tag];
+}
+
 /** The ask answered: every stand-up tag goes, every other tag stays. Idempotent. */
 export function withoutZeropsStandUpTag(
   tagList: ReadonlyArray<string> | undefined,
@@ -680,6 +705,23 @@ function consensusLabel(labels: ReadonlyArray<string>): string | undefined {
     }
   }
   return winner;
+}
+
+/**
+ * A project's name as the account's own projects carry it — the label its members agree on — for
+ * a surface that must name it while the listing cannot: failed, lapsed, or every member withheld.
+ * Undefined while none of the projects held is its member with a label.
+ */
+export function heldGroupLabel(
+  projects: ReadonlyArray<{ readonly tagList?: ReadonlyArray<string> | undefined }>,
+  groupId: string,
+): string | undefined {
+  return consensusLabel(
+    projects.flatMap((project) => {
+      const tags = readZeropsGroupTags(project.tagList);
+      return tags.groupId === groupId && tags.label !== undefined ? [tags.label] : [];
+    }),
+  );
 }
 
 /**

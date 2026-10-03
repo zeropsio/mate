@@ -11,6 +11,7 @@ import {
   filterCommandPaletteGroups,
   reduceCommandPaletteUiState,
   type CommandPaletteGroup,
+  paletteNoMatchMessage,
 } from "./CommandPalette.logic";
 
 describe("browseInputEndPaddingClass", () => {
@@ -558,5 +559,29 @@ describe("filterPinnedBrowseEntries", () => {
       visibleEntries: windowsEntries,
       exactEntry: windowsEntries[0],
     });
+  });
+});
+
+describe('paletteNoMatchMessage: no "no matching" before the lists are read', () => {
+  it.each([
+    [
+      "threads and projects not read yet: says nothing",
+      { isActionsOnly: false, listsRead: false },
+      "",
+    ],
+    [
+      "read, nothing matches",
+      { isActionsOnly: false, listsRead: true },
+      "No matching commands, projects, or threads.",
+    ],
+    // Actions are the palette's own: known from the first frame.
+    [
+      "actions only, the lists not read yet",
+      { isActionsOnly: true, listsRead: false },
+      "No matching actions.",
+    ],
+    ["actions only, read", { isActionsOnly: true, listsRead: true }, "No matching actions."],
+  ] as const)("%s", (_case, input, message) => {
+    expect(paletteNoMatchMessage(input)).toBe(message);
   });
 });

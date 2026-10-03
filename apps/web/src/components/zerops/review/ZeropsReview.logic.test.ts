@@ -602,9 +602,28 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
     readable: true,
     signInTrouble: null,
     changesFailure: undefined,
+    gitea: "ready",
   } as const;
   it.each([
     ["a read in flight", { read: { kind: "reading" } }, "busy", "Reading this change"],
+    [
+      "no read sent: the organization has no Gitea",
+      { read: { kind: "idle" }, readable: false, gitea: "none" },
+      "attention",
+      "This organization has no Gitea.",
+    ],
+    [
+      "no read sent: Gitea's broker has no public address",
+      { read: { kind: "idle" }, readable: false, gitea: "no-broker-address" },
+      "attention",
+      "Gitea's broker has no public address.",
+    ],
+    [
+      "no read sent: the Gitea project's services not read yet",
+      { read: { kind: "idle" }, readable: false, gitea: "unknown" },
+      "quiet",
+      "Reading this change",
+    ],
     [
       "no change by that number",
       { read: { kind: "gone" } },
@@ -630,10 +649,11 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
       "This project's changes couldn't be read",
     ],
     [
-      "no read sent: signing in to Gitea",
+      // The app fetches its own Gitea session: nothing waits on the person, so no sign-in words.
+      "no read sent: the app is fetching its own Gitea session",
       { read: { kind: "idle" }, readable: false },
       "quiet",
-      "Waiting for Gitea's sign-in",
+      "Reading this change",
     ],
     [
       "no read sent: the project's Gitea is not known",

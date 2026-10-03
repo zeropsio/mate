@@ -24,7 +24,9 @@ function stripMcpPrefix(toolName: string): string {
 
 /**
  * The one normalisation: `data.zerops.toolName` ?? strip `mcp__<server>__`
- * off `data.toolName` ?? `data.item.tool` (the ACP driver shape). Undefined
+ * off `data.toolName` ?? `data.item.tool` (Codex's MCP item). The server
+ * names every driver's call at `data.toolName` (`ActivityPayloadProjection.ts`),
+ * OpenCode's and the ACP agents' with the server already dropped. Undefined
  * when the row carries no name at all.
  */
 export function normalizedToolName(payload: Record<string, unknown>): string | undefined {

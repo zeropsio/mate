@@ -8,6 +8,7 @@
  *
  * Pure: no DOM, no clock.
  */
+import { giteaReachWords, type GiteaReach } from "~/zerops/giteaReach.logic";
 import { sha1 } from "@noble/hashes/legacy";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import type { ReviewPrimary, ReviewVerdict } from "@t3tools/client-runtime/zerops";
@@ -527,8 +528,8 @@ export function crewLandCommand(task: { readonly id: string; readonly state: str
 /**
  * What a change's review says before the change is read, when the project's flow does not hold
  * it: it spins only while a read of it is in flight. A read never sent says why — the Gitea
- * sign-in, the project's changes failing, a project not known here — never a spinner that does
- * not end.
+ * sign-in refused, the project's changes failing, a project not known here — never a spinner that
+ * does not end.
  */
 export function changeReadVerdict(input: {
   readonly repository: string;
@@ -546,6 +547,8 @@ export function changeReadVerdict(input: {
   readonly signInTrouble: string | null;
   /** Why the project's changes were never read, where they failed. */
   readonly changesFailure: string | undefined;
+  /** Whether the app can fetch its own Gitea session, and why not (`giteaReach`). */
+  readonly gitea: GiteaReach;
 }): ReviewVerdict {
   const which = `${input.repository} #${String(input.number)}`;
   const verdict = (
@@ -564,7 +567,14 @@ export function changeReadVerdict(input: {
   if (input.signInTrouble !== null) {
     return verdict("attention", "Gitea isn't signed in", input.signInTrouble);
   }
-  if (!input.readable) return verdict("quiet", "Waiting for Gitea's sign-in");
+  if (!input.readable) {
+    // A Gitea the app cannot reach is named; else the app is fetching its own Gitea session
+    // (signed in from the app's own): nothing waits on the person, so never sign-in words.
+    const blocked = giteaReachWords(input.gitea);
+    return blocked === null
+      ? verdict("quiet", "Reading this change")
+      : verdict("attention", blocked.title, blocked.why);
+  }
   if (input.changesFailure !== undefined) {
     return verdict("attention", "This project's changes couldn't be read", input.changesFailure);
   }

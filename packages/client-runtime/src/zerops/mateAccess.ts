@@ -33,6 +33,8 @@ import {
 } from "@t3tools/shared/zeropsRoles";
 import { knownSigner, readSignerTags } from "@t3tools/shared/zeropsAgentAuth";
 
+import { isZeropsMateRunsWithoutSignIn, readZeropsGroupTags } from "./groups.ts";
+
 export type { RoleMateVisibility };
 
 /** As much of a project as this decision needs. */
@@ -281,7 +283,14 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
  * 2026-09-24), and the one record naming a person is D6's signer tag, written
  * as that person. With two agents signed in, the first tag names the owner.
  *
- * `undefined` when neither names anybody the member list has. A row then says
+ * A Mate that runs on an agent Mate signs nobody in to (Cursor, OpenCode, Grok,
+ * Antigravity: its project says `mate:runs:`) and has no Claude Code or Codex
+ * signer is its maker's — the person its birth names (`mate:by:`, else
+ * `mate:standup:`), the one record of a person it carries
+ * (`mateOwnerRecords`). A Mate that waits on a sign-in stays nobody's until
+ * somebody signs it in.
+ *
+ * `undefined` when nothing names anybody the member list has. A row then says
  * the same thing without a name, and a face goes without the owner's beside it.
  */
 export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
@@ -292,9 +301,33 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   if (ownerEntry !== undefined) {
     return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
   }
-  const signer = mateOwnerSigner(input.project.tagList).signer;
-  if (signer === undefined) return undefined;
-  return input.members.find((entry) => entry.user?.id === signer);
+  const person = mateTagPerson(input.project.tagList).person;
+  if (person === undefined) return undefined;
+  return input.members.find((entry) => entry.user?.id === person);
+}
+
+/**
+ * The person a Mate's tags name, the one reading every caller shares: the signer of its Claude
+ * Code or Codex (D6), else — where it runs on an agent Mate signs nobody in to (`mate:runs:`) and
+ * nobody signed those in — its maker. A project token or a login added beside the agents names
+ * nobody.
+ */
+function mateTagPerson(tagList: ReadonlyArray<string> | undefined): {
+  readonly signedIn: boolean;
+  readonly signer: string | undefined;
+  readonly runsWithoutSignIn: boolean;
+  readonly person: string | undefined;
+} {
+  const { signedIn, signer } = mateOwnerSigner(tagList);
+  const runsWithoutSignIn = isZeropsMateRunsWithoutSignIn(tagList);
+  const person = signedIn ? signer : runsWithoutSignIn ? mateMaker(tagList) : undefined;
+  return { signedIn, signer, runsWithoutSignIn, person };
+}
+
+/** Who made the Mate, as its birth names them: `mate:by:`, else its stand-up's `mate:standup:`. */
+function mateMaker(tagList: ReadonlyArray<string> | undefined): string | undefined {
+  const tags = readZeropsGroupTags(tagList);
+  return tags.madeBy ?? tags.standUp?.by;
 }
 
 /**
@@ -312,29 +345,48 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
  * credential nobody recorded is refused a turn (`unrecorded`).
  */
 export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "userRoles">): {
-  readonly named: boolean;
+  /**
+   * `undefined` while its roles are not read (a project without `userRoles`, as the account's
+   * store holds every project) and no tag names anybody: unknown, never nobody's.
+   */
+  readonly named: boolean | undefined;
   readonly signedIn: boolean;
   /** The Zerops user id its signer tag names, where somebody signed its agent in. */
   readonly signer: string | undefined;
+  /** The Zerops user id its tags make it the Mate of (`mateTagPerson`): its signer, or its maker. */
+  readonly person: string | undefined;
+  /** It runs on an agent Mate signs nobody in to (`mate:runs:`): it waits on no sign-in. */
+  readonly runsWithoutSignIn: boolean;
 } {
-  const { signedIn, signer } = mateOwnerSigner(project.tagList);
-  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
-  return { named: owned || signedIn, signedIn, signer };
+  const { signedIn, signer, person, runsWithoutSignIn } = mateTagPerson(project.tagList);
+  // Its tags name somebody (its signer, or its maker where it runs without a sign-in); else its
+  // roles say whether an OWNER entry does — unknown while they are not read.
+  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER");
+  return {
+    named: signedIn || person !== undefined || owned,
+    signedIn,
+    signer,
+    person,
+    runsWithoutSignIn,
+  };
 }
 
 /**
  * Whether a Mate is the viewer's own: they signed its agent in (D6's signer tag, read as
- * `mateOwnerRecords` reads it). Only what one's own Mate waits on waits on them — its question,
- * its change's review; a colleague's waits on its owner (the owner, 2026-09-30: "sana doesn't
- * wait for me, it waits for karlos"). Nobody's Mate, one whose signers disagree, and any Mate
- * while the viewer is not known yet, are nobody's to be waited on.
+ * `mateOwnerRecords` reads it), or — where it runs on an agent Mate signs nobody in to
+ * (`mate:runs:`) and no Claude Code or Codex sign-in names anybody — they made it (`mate:by:`,
+ * else `mate:standup:`). Only
+ * what one's own Mate waits on waits on them — its question, its change's review; a colleague's
+ * waits on its owner (the owner, 2026-09-30: "sana doesn't wait for me, it waits for karlos").
+ * Nobody's Mate, one whose signers disagree, and any Mate while the viewer is not known yet, are
+ * nobody's to be waited on.
  */
 export function mateIsViewers(
   project: Pick<MateAccessProject, "tagList">,
   viewer: string | undefined,
 ): boolean {
-  const { signer } = mateOwnerSigner(project.tagList);
-  return signer !== undefined && viewer !== undefined && viewer.length > 0 && signer === viewer;
+  if (viewer === undefined || viewer.length === 0) return false;
+  return mateTagPerson(project.tagList).person === viewer;
 }
 
 /** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */

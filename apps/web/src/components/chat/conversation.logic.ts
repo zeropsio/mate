@@ -957,11 +957,15 @@ const NAMED_CALL_ACTION: Readonly<Record<string, ActivityAction>> = {
   Grep: "code-search",
   Glob: "code-search",
   WebSearch: "search",
+  WebFetch: "search",
 };
 
 function activityAction(entry: WorkLogEntry): ActivityAction {
+  // A name the effort has a word for says what the call did; any other
+  // falls to what the call is, as its step reads it (`stepKind`).
   const named = namedToolCall(entry);
-  if (named !== null) return NAMED_CALL_ACTION[named] ?? "other";
+  const action = named === null ? undefined : NAMED_CALL_ACTION[named];
+  if (action !== undefined) return action;
   if (
     entry.requestKind === "file-read" ||
     entry.itemType === "image_view" ||
@@ -1017,7 +1021,10 @@ export function activityCounts(
       else for (const file of entry.changedFiles) edited.add(file);
       continue;
     }
-    const kind = action === "other" ? (ZEROPS_TOOL_KIND[entry.label] ?? "tool") : action;
+    const kind =
+      action === "other"
+        ? (ZEROPS_TOOL_KIND[namedToolCall(entry) ?? ""] ?? ZEROPS_TOOL_KIND[entry.label] ?? "tool")
+        : action;
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
   if (edited.size + unnamedEdits > 0) counts.set("edit", edited.size + unnamedEdits);
@@ -1033,22 +1040,63 @@ export function activityCounts(
 }
 
 /**
- * The tool a generic call ran, when its detail names it: a call the runtime
- * knows only as a "Tool call" carries its name and arguments as
- * "AskUserQuestion: {…}" — the name is for people, the arguments never are.
+ * Every driver's name for a tool, in Claude's: OpenCode's own tools and an
+ * ACP agent's kinds (`read`, `edit`, `search`, `execute`, `fetch`, ...).
+ * Claude's own names read the same, lowercased.
+ */
+const TOOL_NAMES: Readonly<Record<string, string>> = {
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  multiedit: "Edit",
+  patch: "Edit",
+  apply_patch: "Edit",
+  delete: "Edit",
+  move: "Edit",
+  bash: "Bash",
+  execute: "Bash",
+  grep: "Grep",
+  search: "Grep",
+  codesearch: "Grep",
+  glob: "Glob",
+  list: "Glob",
+  ls: "Glob",
+  webfetch: "WebFetch",
+  fetch: "WebFetch",
+  websearch: "WebSearch",
+  todowrite: "TodoWrite",
+  todoread: "TodoWrite",
+  task: "Task",
+  skill: "Skill",
+  question: "AskUserQuestion",
+};
+
+/** An ACP agent's kinds that name no tool: the call's title says what it is. */
+const UNNAMED_KINDS: ReadonlySet<string> = new Set(["other", "think", "switch_mode"]);
+
+/**
+ * The tool a call ran, in Claude's words: where its detail names it — a call
+ * the runtime knows only as a "Tool call" carries its name and arguments as
+ * "AskUserQuestion: {…}", the name is for people, the arguments never are —
+ * else the name the server gives every driver's call (`toolName`): an MCP
+ * tool by its own name, its server dropped; OpenCode's tools and an ACP
+ * agent's kinds as Claude's.
  */
 export function namedToolCall(
-  entry: Pick<WorkLogEntry, "itemType" | "label" | "detail">,
+  entry: Pick<WorkLogEntry, "itemType" | "label" | "detail" | "toolName">,
 ): string | null {
   if (
-    entry.itemType !== "dynamic_tool_call" &&
-    entry.itemType !== "collab_agent_tool_call" &&
-    entry.label !== "Tool call"
+    entry.itemType === "dynamic_tool_call" ||
+    entry.itemType === "collab_agent_tool_call" ||
+    entry.label === "Tool call"
   ) {
-    return null;
+    const match = /^([A-Za-z][\w-]*):\s*[{[]/.exec(entry.detail ?? "");
+    if (match?.[1] !== undefined) return match[1];
   }
-  const match = /^([A-Za-z][\w-]*):\s*[{[]/.exec(entry.detail ?? "");
-  return match?.[1] ?? null;
+  const name = entry.toolName?.trim();
+  if (name === undefined || name.length === 0 || UNNAMED_KINDS.has(name)) return null;
+  if (name.startsWith("mcp__")) return name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "");
+  return TOOL_NAMES[name.toLowerCase()] ?? name;
 }
 
 /** The file a file tool call names in its arguments, by its name alone. */

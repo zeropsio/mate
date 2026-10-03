@@ -82,12 +82,21 @@ import {
   XAiAskUserQuestionRequest,
   XAiExitPlanModeRequest,
 } from "../acp/XAiAcpExtension.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
+import {
+  acpTerminalReason,
+  acpThreadSetup,
+  acpTurnProfile,
+  readAcpThreadPolicies,
+} from "../../spi/acpThreadProfile.ts";
 import { type GrokAdapterShape } from "../Services/GrokAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 
 const PROVIDER = ProviderDriverKind.make("grok");
+/** The model option a thread profile's effort sets (`GrokProvider.ts`). */
+const GROK_EFFORT_OPTION = "reasoningEffort";
 const GROK_RESUME_VERSION = 1 as const;
 const NANOS_PER_MILLI = 1_000_000n;
 // ACP does not expose Grok's private `streaming_reasoning` phase. Once it has
@@ -349,6 +358,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
     const path = yield* Path.Path;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const serverConfig = yield* Effect.service(ServerConfig);
+    const threadPolicies = yield* readAcpThreadPolicies;
     const crypto = yield* Crypto.Crypto;
     const nativeEventLogger =
       options?.nativeEventLogger ??
@@ -632,6 +642,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 payload: {
                   state: options.completedStopReason === "cancelled" ? "cancelled" : "completed",
                   stopReason: options.completedStopReason ?? null,
+                  ...acpTerminalReason(options.completedStopReason),
                 },
               });
             }
@@ -713,6 +724,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             payload: {
               state: options.completedStopReason === "cancelled" ? "cancelled" : "completed",
               stopReason: options.completedStopReason ?? null,
+              ...acpTerminalReason(options.completedStopReason),
             },
           });
         }
@@ -969,8 +981,13 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           }
 
           const cwd = path.resolve(input.cwd.trim());
-          const grokModelSelection =
-            input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
+          const threadRef = { threadId: input.threadId, instanceId: boundInstanceId, cwd };
+          const grokModelSelection = (yield* acpTurnProfile(
+            threadPolicies,
+            threadRef,
+            input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
+            GROK_EFFORT_OPTION,
+          )).modelSelection;
           const existing = sessions.get(input.threadId);
           if (existing && !existing.stopped) {
             yield* stopSessionInternal(existing);
@@ -985,6 +1002,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
           );
 
+          // A crewmate's thread: its tools served for this session, its gate in the person's place.
+          const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
+            Effect.provideService(Scope.Scope, sessionScope),
+          );
+          // A crewmate asks before every call, whatever mode its thread names.
+          const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
           const resumeSessionId = parseGrokResume(input.resumeCursor)?.sessionId;
           const acpNativeLoggers = makeAcpNativeLoggers({
             nativeEventLogger,
@@ -997,8 +1020,9 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             ...(options?.environment ? { environment: options.environment } : {}),
             childProcessSpawner,
             cwd,
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             ...(resumeSessionId ? { resumeSessionId } : {}),
+            ...(profileSetup ? { mcpServers: profileSetup.mcpServers } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(
@@ -1121,6 +1145,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               mapAcpCallbackFailure(
                 Effect.gen(function* () {
                   yield* logNative(input.threadId, "session/request_permission", params);
+                  if (profileSetup) return yield* profileSetup.decidePermission(params);
                   const permissionRequest = parsePermissionRequest(params);
                   const command = permissionRequest.toolCall?.command;
                   const { kind, title, rawInput, locations } = params.toolCall;
@@ -1137,9 +1162,9 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                       : undefined;
                   const alreadyApproved =
                     approvalKey !== undefined && sessionApprovedOperations.has(approvalKey);
-                  if (input.runtimeMode === "full-access" || alreadyApproved) {
+                  if (runtimeMode === "full-access" || alreadyApproved) {
                     const autoApprovedOptionId =
-                      input.runtimeMode === "full-access"
+                      runtimeMode === "full-access"
                         ? selectAutoApprovedPermissionOption(params)
                         : selectGrokPermissionOptionId(params, "accept");
                     if (autoApprovedOptionId !== undefined) {
@@ -1246,7 +1271,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             provider: PROVIDER,
             providerInstanceId: boundInstanceId,
             status: "ready",
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             cwd,
             ...(boundModelId ? { model: resolveGrokAcpBaseModelId(boundModelId) } : {}),
             threadId: input.threadId,
@@ -1533,16 +1558,21 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             };
 
             return yield* Effect.gen(function* () {
-              const turnModelSelection =
+              const turnProfile = yield* acpTurnProfile(
+                threadPolicies,
+                { threadId: input.threadId, instanceId: boundInstanceId },
                 input.modelSelection?.instanceId === boundInstanceId
                   ? input.modelSelection
-                  : undefined;
+                  : undefined,
+                GROK_EFFORT_OPTION,
+              );
+              const turnModelSelection = turnProfile.modelSelection;
               const requestedTurnModelId = turnModelSelection?.model
                 ? resolveGrokAcpBaseModelId(turnModelSelection.model)
                 : undefined;
               const requestedTurnReasoningEffort = getModelSelectionStringOptionValue(
                 turnModelSelection,
-                "reasoningEffort",
+                GROK_EFFORT_OPTION,
               );
 
               const text = input.input?.trim();
@@ -1616,11 +1646,16 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               const runtimeInstructions =
                 text && /^\/[^\s/]+(?:\s|$)/.test(text)
                   ? undefined
-                  : buildRuntimeInstructions({
-                      harness: "Grok",
-                      model: displayModel,
-                      reasoningEffort: normalizeGrokReasoningEffort(requestedTurnReasoningEffort),
-                    });
+                  : [
+                      buildRuntimeInstructions({
+                        harness: "Grok",
+                        model: displayModel,
+                        reasoningEffort: normalizeGrokReasoningEffort(requestedTurnReasoningEffort),
+                      }),
+                      turnProfile.instructions,
+                    ]
+                      .filter(Boolean)
+                      .join("\n\n");
               for (let yieldAttempt = 0; yieldAttempt < 8; yieldAttempt += 1) {
                 yield* Effect.yieldNow;
               }
@@ -1901,6 +1936,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                   payload: {
                     state: result.stopReason === "cancelled" ? "cancelled" : "completed",
                     stopReason: completedStopReason,
+                    ...acpTerminalReason(completedStopReason),
                   },
                 });
                 ctx.interruptedTurnIds.delete(prepared.turnId);
@@ -2161,7 +2197,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        supportsConversationRollback: false,
+        // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
+        threadProfile: { tools: true, reportsSpend: false },
+      },
       compaction: { type: "slash-command", command: "/compact" },
       startSession,
       sendTurn,

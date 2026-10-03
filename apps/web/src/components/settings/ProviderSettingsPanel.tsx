@@ -95,6 +95,7 @@ import {
 import {
   buildProviderEnvironmentOptions,
   classifyProviderEnvironmentAccess,
+  providerEditorEmpty,
   type ProviderEnvironmentAccess,
   type ProviderOperateAccess,
   resolvePrimaryOperateAccess,
@@ -472,8 +473,8 @@ export function EnvironmentProviderSettings({
 }) {
   const settings = useEnvironmentSettings(environmentId);
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
-  const serverProviders =
-    useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
+  const readProviders = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
+  const serverProviders = readProviders ?? EMPTY_SERVER_PROVIDERS;
   const refreshServerProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });
@@ -691,6 +692,10 @@ export function EnvironmentProviderSettings({
   const selectedRow =
     rows.find((row) => row.instanceId === selectedInstanceId) ??
     (targetInstanceMissing ? null : (rows[0] ?? null));
+  const editorEmpty = providerEditorEmpty({
+    providersRead: readProviders !== null,
+    targetInstanceMissing,
+  });
 
   const updateProviderInstance = (
     row: InstanceRow,
@@ -996,9 +1001,11 @@ export function EnvironmentProviderSettings({
                 renderProviderInstance(selectedRow, "editor")
               ) : (
                 <div className="p-6 text-sm text-muted-foreground">
-                  {targetInstanceMissing
+                  {editorEmpty === "missing"
                     ? "This provider instance is no longer available on this device."
-                    : "No providers configured."}
+                    : editorEmpty === "none"
+                      ? "No providers configured."
+                      : null}
                 </div>
               )}
             </div>

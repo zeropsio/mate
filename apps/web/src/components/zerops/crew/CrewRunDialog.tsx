@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Radio, RadioGroup } from "~/components/ui/radio-group";
+import { useServerConfigs } from "~/state/entities";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 
 import { CrewPress } from "./CrewParts";
@@ -46,6 +47,7 @@ import {
   crewResumeDraft,
   crewResumeLimit,
   crewRunDraft,
+  crewSpendBlocker,
   crewStartCommand,
   type CrewLimitKind,
   type CrewResumeDraft,
@@ -82,6 +84,11 @@ export function CrewRunDialog({
   readonly onDone: (after: CrewCommand | null) => void;
 }) {
   const commands = useCrewCommand(environmentId);
+  const providers = useServerConfigs().get(environmentId)?.providers;
+  const spendBlocker = crewSpendBlocker(
+    (snapshot?.crewmates ?? []).map((crewmate) => crewmate.login.id),
+    providers,
+  );
   const run = snapshot?.run ?? null;
   const resuming = ask?.mode === "resume" && run?.state === "paused" ? run : null;
   const submit = (command: CrewCommand) => {
@@ -107,6 +114,7 @@ export function CrewRunDialog({
             hasLead={hasLead}
             initial={crewRunDraft(run, hasLead)}
             mateName={mateName}
+            spendBlocker={spendBlocker}
             onCancel={onClose}
             onStart={submit}
           />
@@ -117,6 +125,7 @@ export function CrewRunDialog({
             onCancel={onClose}
             onResume={submit}
             run={resuming}
+            spendBlocker={spendBlocker}
           />
         )}
       </DialogPopup>
@@ -194,8 +203,17 @@ function Foot({
   );
 }
 
+/** Why the crew can't keep a dollar budget, under the budget's field. */
+function SpendBlocker({ words }: { readonly words: string | null }) {
+  return words === null ? null : (
+    <p className="text-line leading-4.5 text-muted-foreground">{words}</p>
+  );
+}
+
 export function CrewStartBody(props: {
   readonly initial: CrewRunDraft;
+  /** A crewmate's agent doesn't report its spend: only *No limit* starts. */
+  readonly spendBlocker: string | null;
   readonly hasLead: boolean;
   readonly mateName: string;
   readonly canAct: boolean;
@@ -204,7 +222,7 @@ export function CrewStartBody(props: {
   readonly onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(props.initial);
-  const command = crewStartCommand(draft, props.hasLead);
+  const command = crewStartCommand(draft, props.hasLead, props.spendBlocker !== null);
   return (
     <>
       <DialogHeader>
@@ -221,6 +239,7 @@ export function CrewStartBody(props: {
               prefix="$"
               text={draft.budgetText}
             />
+            <SpendBlocker words={props.spendBlocker} />
             <LimitField
               kind={draft.time}
               label={CREW_RUN_WORDS.after}
@@ -305,6 +324,8 @@ export function CrewStartBody(props: {
 
 export function CrewResumeBody(props: {
   readonly run: CrewRun;
+  /** A crewmate's agent doesn't report its spend: a dollar budget can't go on. */
+  readonly spendBlocker: string | null;
   readonly canAct: boolean;
   readonly error: string | null;
   readonly onResume: (command: CrewCommand) => void;
@@ -331,6 +352,7 @@ export function CrewResumeBody(props: {
       </DialogHeader>
       <DialogPanel>
         <div className="flex flex-col gap-2" data-crew-run-dialog="resume">
+          <SpendBlocker words={budgetUsd === "unlimited" ? null : props.spendBlocker} />
           {limit === "budget" ? (
             <LimitField
               kind={draft.more}

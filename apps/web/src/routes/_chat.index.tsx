@@ -7,8 +7,9 @@ import { PlusIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
+import { HomeOpeningView } from "../components/zerops/MateLinkStage";
+import { PageWaitLine } from "../components/zerops/WaitLine";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
-import { useZeropsInventory } from "../zerops/ZeropsInventoryProvider";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -23,6 +24,10 @@ import { useEnvironments } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { homeView } from "../zerops/homeLanding.logic";
+import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
+import { useMatesSettled } from "../zerops/useMatesSettled";
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 
 function ChatIndexRouteView() {
@@ -77,9 +82,11 @@ type IndexLanding =
  */
 function IndexDraftLanding() {
   const projects = useProjects();
-  const inventory = useZeropsInventory();
   const threads = useThreadShells();
   const { environments } = useEnvironments();
+  const matesSettled = useMatesSettled();
+  // Read once, as the page opens: what it waits with never changes under the eye.
+  const [remembered] = useState(rememberedHomeLanding);
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
@@ -189,30 +196,45 @@ function IndexDraftLanding() {
     });
   }, [handleNewThread, landing, navigate, startState.retryRequest]);
 
-  if (landing === null) {
-    return null;
+  const view = homeView({
+    landing: landing === null ? "unknown" : landing.kind === "none" ? "none" : "going",
+    startFailed: startState.failed,
+    targeted: targetEnvironmentId !== null,
+    remembered,
+    // "You have no projects" is an answer, and it must not be given before the account has been
+    // read. Measured on a fresh account, 2026-09-19: a second after the wizard made a project and
+    // its Mate came up, this painted "What should we work on? Add a project to start your first
+    // thread." and then replaced itself with the draft — telling somebody to add the project they
+    // had just added. Nothing here is taken back: the projects and the Mates' listing will tell
+    // no more, and every Mate this tab registers is registered (`useMatesSettled`) — a listing
+    // left partial by withheld or failing parts settles, so the hero stays reachable.
+    projectsRead: matesSettled,
+  });
+  switch (view.kind) {
+    case "start-failed":
+      return (
+        <DraftStartError
+          onRetry={() => {
+            setStartState((state) => ({
+              failed: false,
+              retryRequest: state.retryRequest + 1,
+            }));
+          }}
+        />
+      );
+    case "hero":
+      return <NoProjectsHero />;
+    // While it works out where to land, and on its way there: its guess, never blank — nothing
+    // in it takes input, so a wrong guess gives way, without motion, losing nothing typed.
+    case "opening":
+      return <HomeOpeningView environmentId={view.ref.environmentId} />;
+    case "wait":
+      return (
+        <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
+          <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
+        </SidebarInset>
+      );
   }
-  if (landing.kind !== "none") {
-    return startState.failed ? (
-      <DraftStartError
-        onRetry={() => {
-          setStartState((state) => ({
-            failed: false,
-            retryRequest: state.retryRequest + 1,
-          }));
-        }}
-      />
-    ) : null;
-  }
-  // "You have no projects" is an answer, and it must not be given before the
-  // account has been read. Measured on a fresh account, 2026-09-19: a second
-  // after the wizard made a project and its Mate came up, this painted
-  // "What should we work on? Add a project to start your first thread." and
-  // then replaced itself with the draft — telling somebody to add the project
-  // they had just added. Nothing here is taken back any more: while the read
-  // is out this waits, exactly as it already waits on `landing === null`.
-  if (inventory.isLoading) return null;
-  return <NoProjectsHero />;
 }
 
 function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {

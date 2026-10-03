@@ -176,6 +176,7 @@ export function ZeropsChangeReview({
           readable: flowValue?.readable ?? false,
           signInTrouble: flowValue?.signInTrouble ?? null,
           changesFailure: flow?.changesFailure,
+          gitea: flowValue?.giteaReach ?? "unknown",
         })}
       />
     );

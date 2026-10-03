@@ -2836,9 +2836,11 @@ code {
   }
 
   /* Waking — on its way up, until its first sign-in — it breathes: asleep's closed eyes, the whole
-     face swelling from its feet once every three seconds. The face itself moves, one box the
-     compositor carries, so a menu of waking rows repaints nothing as they breathe. With reduced
-     motion it stands still, and its words say it is coming up. */
+     face swelling from its feet once every three seconds. It is not free: Chrome composites no
+     animation on an SVG element, the outer <svg> included, so while a face wakes it costs a style
+     recalc and a repaint of the face every frame (measured 2026-10-03: ~60 recalcs/s, no layout).
+     Moving it to the face's HTML wrapper would hand it to the compositor. With reduced motion it
+     stands still, and its words say it is coming up. */
   [data-zerops-primitive="mate-face"][data-mate-face-state="waking"] {
     transform-origin: 50% 96%;
     animation: mate-face-breathe 3s ease-in-out infinite;
@@ -8274,6 +8276,12 @@ button.rv-relrow:hover .rv-relrow-go {
 
 [data-standup-holds-composer] [data-slot="composer-shell"] {
   opacity: 0;
+}
+
+/* The composer's room while who writes in the conversation is not known (`ComposerRoomHeld`):
+   kept at its size, unseen, and shown in the frame the answer comes — nothing fades in. */
+[data-slot="composer-shell"][data-room-held] {
+  visibility: hidden;
 }
 
 /* ==== end of the arrival ==== */

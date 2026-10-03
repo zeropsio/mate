@@ -122,6 +122,7 @@ vi.mock("./giteaProject", () => ({
           state: { url: GITEA, brokerUrl: "https://broker.example.test" },
         }
       : undefined,
+  useAccountHoldsGitea: () => Boolean(gitea.origin),
 }));
 vi.mock("./useZeropsRegistry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./useZeropsRegistry")>();

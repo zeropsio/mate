@@ -220,6 +220,13 @@ export interface CodexSessionRuntimeShape {
     requestId: ApprovalRequestId,
     answers: ProviderUserInputAnswers,
   ) => Effect.Effect<void, CodexSessionRuntimeError>;
+  /** The thread's MCP servers as Codex runs them (`mcpServerStatus/list`), for the MCP tab. */
+  readonly listMcpServers?: Effect.Effect<
+    EffectCodexSchema.V2ListMcpServerStatusResponse,
+    CodexSessionRuntimeError
+  >;
+  /** Re-reads the MCP servers of `config.toml` (`config/mcpServer/reload`). */
+  readonly reloadMcpServers?: Effect.Effect<void, CodexSessionRuntimeError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
@@ -2736,6 +2743,14 @@ export const makeCodexSessionRuntime = (
             threadId: providerThreadId,
           });
         }),
+      listMcpServers: Effect.gen(function* () {
+        const providerThreadId = yield* readProviderThreadId;
+        return yield* client.request("mcpServerStatus/list", {
+          threadId: providerThreadId,
+          limit: 100,
+        });
+      }),
+      reloadMcpServers: client.request("config/mcpServer/reload", undefined).pipe(Effect.asVoid),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {
           const pending = (yield* Ref.get(pendingApprovalsRef)).get(requestId);

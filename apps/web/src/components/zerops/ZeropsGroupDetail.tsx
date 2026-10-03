@@ -19,6 +19,7 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  heldGroupLabel,
   hasMate,
   mateShapeOf,
   changeState,
@@ -83,7 +84,7 @@ import {
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
-import { Fragment, useCallback, useId, useMemo, useState } from "react";
+import { Fragment, useCallback, useContext, useId, useMemo, useState } from "react";
 
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
@@ -116,6 +117,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
@@ -143,9 +145,16 @@ import { useMateActions } from "~/zerops/useMateActions";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import { findInventoryProjectRef, withheldProjectNotice } from "~/zerops/inventoryContext";
+import {
+  findInventoryProjectRef,
+  HeldInventoryContext,
+  withheldProjectNotice,
+} from "~/zerops/inventoryContext";
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
+import { unreadFlowWords } from "~/zerops/giteaReach.logic";
+import { PageWaitLine } from "./WaitLine";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -200,8 +209,14 @@ function useWithheldStops(environments: ReadonlyArray<EnvironmentRow> | undefine
 }
 
 /** What the group is called — never the raw group id. */
+/**
+ * The project's name: the listing's, else — the listing failed, lapsed, or withholds every member —
+ * the label its members carry in the inventory as held; undefined only while neither knows it.
+ */
 function useGroupName(groupId: string): string | undefined {
-  return useGroup(groupId)?.name;
+  const held = useContext(HeldInventoryContext);
+  const listed = useGroup(groupId)?.name;
+  return listed ?? (held === null ? undefined : heldGroupLabel(held.projects, groupId));
 }
 
 /**
@@ -423,7 +438,7 @@ function useGroupMates(groupId: string): {
           // Its row's face (`mateFaceOf`): needing you while it asks, or while its own change
           // waits for your review — your own Mate only; another's waits on its owner.
           face: mateFaceOf({
-            connected: item.group === "connected",
+            connected: candidateContainerRuns(item),
             activity: live,
             reviewWaits: mateReviewWaits(flow, item.project.id),
             mine,
@@ -681,8 +696,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
   if (flow === undefined) {
     return (
-      <DetailShell crumbs={crumbs} title={groupName ?? "Project"}>
-        <Note>This project has not been read yet.</Note>
+      <DetailShell crumbs={crumbs} title={groupName}>
+        <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
   }
@@ -699,7 +714,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         if (affordance.kind === "go-to-projects") openProjects();
         else rereadMates();
       }}
-      name={groupName ?? flow.groupId}
+      name={groupName}
       onAct={attention.onAct}
       names={names}
       menu={
@@ -764,7 +779,8 @@ export function ZeropsGroupPane({
   readonly commits: ZeropsCommitsState;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly groupId: string;
-  readonly name: string;
+  /** The project's name; undefined while the listing has not named it — never its id. */
+  readonly name: string | undefined;
   readonly crumbs: ReadonlyArray<Crumb>;
   /** Where a project with nothing set up goes to get something set up. */
   readonly onSetUp: () => void;
@@ -975,7 +991,7 @@ export function ZeropsStopDetailPage({
   const release = useReleaseOffer(groupId);
   const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
-  const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
+  const crumbs = useCrumbs({ groupId, name: stopGroupName });
   const names = useHistoryNames(stopGroupName);
   const openProjects = useOpenProjects();
   const { routes, offers } = useStopRoutes(projectId);
@@ -1024,8 +1040,8 @@ export function ZeropsStopDetailPage({
 
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
-      <DetailShell crumbs={crumbs} title="Environment">
-        <Note>This environment has not been read yet.</Note>
+      <DetailShell crumbs={crumbs} title={undefined}>
+        <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
   }
@@ -1661,7 +1677,7 @@ export function ZeropsChangeDetailPage({
   readonly number: number;
 }) {
   const groupName = useGroupName(groupId);
-  const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
+  const crumbs = useCrumbs({ groupId, name: groupName });
   const openReview = useOpenReview();
   const titleId = useId();
   return (
@@ -1714,30 +1730,36 @@ const NO_COMMITS: ReadonlyArray<WaitingCommit> = [];
  * a Mate's row on the project's page is the way into its own.
  */
 function useCrumbs(
-  inside?: { readonly groupId: string; readonly name: string } | undefined,
+  inside?: { readonly groupId: string; readonly name: string | undefined } | undefined,
 ): ReadonlyArray<Crumb> {
   const navigate = useNavigate();
   const groupId = inside?.groupId;
   const name = inside?.name;
-  return useMemo(() => {
-    const trail: Array<Crumb> = [
-      {
-        label: "Projects",
+  return useMemo(
+    () =>
+      detailTrail(groupId === undefined ? undefined : { groupId, name }).map(({ label, to }) => ({
+        label,
         onClick: () => {
-          void navigate({ to: "/zerops" });
+          void (to.kind === "projects"
+            ? navigate({ to: "/zerops" })
+            : navigate({ to: "/group/$groupId/flow", params: { groupId: to.groupId } }));
         },
-      },
-    ];
-    if (groupId !== undefined && name !== undefined) {
-      trail.push({
-        label: name,
-        onClick: () => {
-          void navigate({ to: "/group/$groupId/flow", params: { groupId } });
-        },
-      });
-    }
-    return trail;
-  }, [groupId, name, navigate]);
+      })),
+    [groupId, name, navigate],
+  );
+}
+
+/** A detail page's trail as data: each crumb's words and the page it opens. */
+export function detailTrail(
+  inside: { readonly groupId: string; readonly name: string | undefined } | undefined,
+): ReadonlyArray<{
+  readonly label: string;
+  readonly to: { readonly kind: "projects" } | { readonly kind: "group"; readonly groupId: string };
+}> {
+  const projects = { label: "Projects", to: { kind: "projects" } } as const;
+  // A project's name not read yet: its crumb waits — its id is never a name.
+  if (inside?.name === undefined) return [projects];
+  return [projects, { label: inside.name, to: { kind: "group", groupId: inside.groupId } }];
 }
 
 /**
@@ -2138,6 +2160,27 @@ export interface Crumb {
   readonly onClick: () => void;
 }
 
+/**
+ * A detail page whose flow is not read yet: the boot's wait line past its beat while the app reads
+ * it, and its own words where nothing will (`unreadFlowWords`) — Gitea refused the app's sign-in,
+ * a Gitea it cannot reach, a project not here any more, or reads that failed.
+ */
+function UnreadDetail({ groupId }: { readonly groupId: string }) {
+  const flowValue = useZeropsProjectFlowOptional();
+  const words =
+    flowValue === null
+      ? null
+      : unreadFlowWords({
+          signInTrouble: flowValue.signInTrouble,
+          gitea: flowValue.giteaReach,
+          groupsRead: flowValue.groupsRead,
+          groupKnown: flowValue.slugs.has(groupId),
+          failure: flowValue.groupFailures.get(groupId),
+        });
+  if (words !== null) return <Note>{words}</Note>;
+  return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
+}
+
 function DetailShell({
   title,
   titleTag,
@@ -2146,7 +2189,8 @@ function DetailShell({
   crumbs,
   children,
 }: {
-  readonly title: string;
+  /** Undefined while the name is not read: its line is held, with no placeholder in it. */
+  readonly title: string | undefined;
   /** What kind of thing the page is about, as a pill trailing its name. */
   readonly titleTag?: React.ReactNode;
   readonly subtitle?: string;
@@ -2174,7 +2218,7 @@ function DetailShell({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2.5">
               <h1 className="min-w-0 text-2xl leading-8 font-semibold tracking-tight wrap-anywhere">
-                {title}
+                {title ?? <span aria-hidden="true">{"\u00a0"}</span>}
               </h1>
               {titleTag}
             </div>

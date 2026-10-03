@@ -494,3 +494,16 @@ export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): str
       return "Enter path (e.g. ~/projects/my-app)";
   }
 }
+
+/**
+ * What the palette says when nothing matches: its actions are its own and known at once, but
+ * "no matching projects or threads" is an answer — nothing is said while they are not read.
+ */
+export function paletteNoMatchMessage(input: {
+  readonly isActionsOnly: boolean;
+  /** Every environment's threads and projects are read. */
+  readonly listsRead: boolean;
+}): string {
+  if (input.isActionsOnly) return "No matching actions.";
+  return input.listsRead ? "No matching commands, projects, or threads." : "";
+}

@@ -768,6 +768,20 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
       expect(openCodeSnapshot.continuation?.groupKey).toBe(
         `${openCodeDriverKind}:instance:${openCodeId}`,
       );
+
+      // Each snapshot says what its adapter does with a thread's profile.
+      expect(
+        [codexSnapshot, claudeSnapshot, cursorSnapshot, grokSnapshot, openCodeSnapshot].map(
+          (snapshot) => [snapshot.driver, snapshot.threadProfile],
+        ),
+      ).toEqual([
+        [codexDriverKind, codex!.adapter.capabilities.threadProfile],
+        [claudeDriverKind, claude!.adapter.capabilities.threadProfile],
+        [cursorDriverKind, cursor!.adapter.capabilities.threadProfile],
+        [grokDriverKind, grok!.adapter.capabilities.threadProfile],
+        [openCodeDriverKind, openCode!.adapter.capabilities.threadProfile],
+      ]);
+      expect(claudeSnapshot.threadProfile).toEqual({ tools: true, reportsSpend: true });
     }).pipe(Effect.provide(testLayer)),
   );
 });

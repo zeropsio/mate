@@ -82,7 +82,12 @@ import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
-import { useProjects, useThreadShells, waitForProject } from "../state/entities";
+import {
+  useAllEnvironmentShellsBootstrapped,
+  useProjects,
+  useThreadShells,
+  waitForProject,
+} from "../state/entities";
 import { useThreadSearch } from "../state/queries";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -123,6 +128,7 @@ import {
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
   type SearchOverlayMode,
+  paletteNoMatchMessage,
 } from "./CommandPalette.logic";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
 import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
@@ -706,6 +712,10 @@ function OpenCommandPaletteDialog(props: {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threadShells = useThreadShells();
+  // Read once is read: a reconnect's retry keeps the lists it had, so the sentence never toggles.
+  const bootstrapped = useAllEnvironmentShellsBootstrapped();
+  const [listsRead, setListsRead] = useState(bootstrapped);
+  if (bootstrapped && !listsRead) setListsRead(true);
   // Every thread link the palette offers — a thread row, a project's latest
   // thread — opens only into an environment the route gate would open, and
   // never into a crewmate's thread, which is the crew's to open.
@@ -2579,7 +2589,7 @@ function OpenCommandPaletteDialog(props: {
                   }
                 : threadSearch.isPending
                   ? { emptyStateMessage: "Searching thread messages…" }
-                  : {})}
+                  : { emptyStateMessage: paletteNoMatchMessage({ isActionsOnly, listsRead }) })}
       />
     </CommandPaletteContent>
   );

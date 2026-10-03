@@ -21,6 +21,7 @@ import {
   withZeropsClosedOffTag,
   withZeropsGroupTags,
   withZeropsMateTag,
+  withZeropsRunsTag,
   withoutZeropsStandUpTag,
   type ZeropsEnvironmentRole,
   type ZeropsMateFace,
@@ -47,6 +48,8 @@ export type ProjectTagPatch =
   | { readonly kind: "stand-up-done" }
   /** The press closed the project off and read it back closed (`mate:closed-off`). */
   | { readonly kind: "closed-off" }
+  /** The Mate was found ready on an agent Mate signs nobody in to (`mate:runs:<driver>`). */
+  | { readonly kind: "agent-runs"; readonly driver: string }
   /** A group in the account's registry, on its Gitea project; its slug is derived here. */
   | { readonly kind: "registry-group"; readonly groupId: string; readonly name: string }
   /** A project in a registered group as a Mate, a stage or the production. */
@@ -99,6 +102,8 @@ export function applyProjectTagPatch(
       return changed(withoutZeropsStandUpTag(tags));
     case "closed-off":
       return changed(withZeropsClosedOffTag(tags));
+    case "agent-runs":
+      return changed(withZeropsRunsTag(tags, patch.driver));
     case "registry-group": {
       const registry = parseZeropsRegistry(tags);
       // The group is there: our own earlier write, read back.

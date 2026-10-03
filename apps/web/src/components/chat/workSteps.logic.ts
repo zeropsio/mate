@@ -66,9 +66,12 @@ export interface WorkStep {
   readonly noResult?: "stale" | "closed";
 }
 
-/** A command a task tracked: the task's words, and the task (its end is the command's). */
+/**
+ * A command a task tracked: the task's words, where it has its own, and the
+ * task (its end is the command's).
+ */
 export interface TrackedCommand {
-  readonly description: string;
+  readonly description?: string;
   readonly task: WorkLogEntry;
 }
 
@@ -197,6 +200,18 @@ const startOf = (entry: WorkLogEntry) => Date.parse(entry.startedAt ?? entry.cre
 /** A task and a command that ended together, or the task ended while the command ran. */
 const TRACK_TOLERANCE_MS = 3_000;
 
+const folded = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/**
+ * A task named by the command it tracks — Grok names one by the command's
+ * first line, cut; Antigravity by the command whole: those are no words.
+ */
+function namesItself(command: WorkLogEntry, description: string): boolean {
+  const said = folded(description);
+  const raw = command.rawCommand ?? command.command ?? "";
+  return [raw, unwrapShell(raw)].some((text) => folded(text).startsWith(said));
+}
+
 /**
  * Which tasks track which commands: by the call the task names, else — for a
  * task that names none — the command it ended with.
@@ -226,7 +241,12 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
     if (command === undefined) continue;
     trackers.add(task.id);
     const description = (task.toolTitle ?? task.label).trim();
-    if (description.length > 0) byCommand.set(command.id, { description, task });
+    byCommand.set(
+      command.id,
+      description.length > 0 && !namesItself(command, description)
+        ? { description, task }
+        : { task },
+    );
   }
   return { byCommand, trackers };
 }
@@ -455,14 +475,44 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
         : say(`Searching the web for ${query}`, `Searched the web for ${query}`);
     }
     case "tool": {
-      const zerops = ZEROPS_WORDS[entry.label] ?? ZEROPS_WORDS[entry.toolTitle ?? ""];
+      const named = namedToolCall(entry) ?? entry.toolTitle ?? titleName(entry.label);
+      const zerops =
+        ZEROPS_WORDS[named ?? ""] ??
+        ZEROPS_WORDS[entry.label] ??
+        ZEROPS_WORDS[entry.toolTitle ?? ""];
       if (zerops !== undefined) return running ? zerops[0] : zerops[1];
-      const named = namedToolCall(entry) ?? entry.toolTitle ?? null;
       if (named === null) return say("Using a tool", "Used a tool");
       const words = toolCallWords(named, entry.detail);
-      return running ? words : words.replace(/^Using /, "Used ");
+      return running ? words : pastWords(words);
     }
   }
+}
+
+/** The verbs a call's words open with as it runs, as they read once it is done. */
+const DONE_VERBS: Readonly<Record<string, string>> = {
+  Using: "Used",
+  Reading: "Read",
+  Editing: "Edited",
+  Writing: "Wrote",
+  Searching: "Searched",
+  Looking: "Looked",
+  Running: "Ran",
+  Starting: "Started",
+  Updating: "Updated",
+  Finishing: "Finished",
+  Waiting: "Waited",
+};
+
+/** A call's words once it is done: "Updating its list" is "Updated its list". */
+function pastWords(words: string): string {
+  const [verb = "", ...rest] = words.split(" ");
+  const done = DONE_VERBS[verb];
+  return done === undefined ? words : [done, ...rest].join(" ");
+}
+
+/** A title that is a tool's name alone (Grok titles a call `enter_plan_mode`). */
+function titleName(label: string): string | null {
+  return /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(label.trim()) ? label.trim() : null;
 }
 
 function stepState(entry: WorkLogEntry, live: boolean): StepState {

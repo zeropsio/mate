@@ -16,6 +16,7 @@ import {
   type UsageEnvironmentIdentities,
   type UsageOwnersStatus,
 } from "./usageEnvironmentIdentities";
+import { useMatesSettled } from "./useMatesSettled";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -25,6 +26,8 @@ const NONE: UsageEnvironmentIdentities = new Map();
 export function useUsageEnvironmentIdentities(): {
   readonly identities: UsageEnvironmentIdentities;
   readonly owners: UsageOwnersStatus;
+  /** The environments are listed whole: no Mate is still to be registered (`useMatesSettled`). */
+  readonly listed: boolean;
 } {
   const session = useZeropsSession();
   const signedIn = session.status === "signed-in";
@@ -53,5 +56,6 @@ export function useUsageEnvironmentIdentities(): {
     members: status,
     listing: listing.state,
   });
-  return { identities, owners };
+  const listed = useMatesSettled();
+  return { identities, owners, listed };
 }

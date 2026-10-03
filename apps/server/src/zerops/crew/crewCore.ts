@@ -18,15 +18,12 @@
  * @module crewCore
  */
 import {
-  agentIdForDriverKind,
-  agentIdForProviderInstance,
   CrewCommandError,
   type ChatAttachment,
   type CrewApplyChoice,
   type CrewClaimState,
   type CrewRefusalReason,
   type CrewServed,
-  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 import * as Crypto from "effect/Crypto";
@@ -96,8 +93,6 @@ export interface AppliedCrew {
   readonly stints: ReadonlyArray<CrewStintRow>;
   /** The verified repository of every writer's host. */
   readonly repositories: ReadonlyMap<string, ZeropsRepository>;
-  /** Each crewmate's login's coding agent; a Codex crewmate hosts no crew tools (PRD §2.3). */
-  readonly agents: ReadonlyMap<string, ZeropsAgentId | undefined>;
   /** The crew's latest run in any state; `undefined` before its first. */
   readonly run: CrewRunRow | undefined;
 }
@@ -345,14 +340,8 @@ export const makeCrewCore = Effect.gen(function* () {
   const logins = yield* ZeropsLogins;
   const cache = yield* Ref.make<AppliedCrew | undefined>(undefined);
 
-  /** The coding agent a login runs: a Mate login's own, else its instance's driver's. */
-  const agentOf = (login: string) =>
-    Effect.gen(function* () {
-      const mateLogin = yield* logins.resolve(login);
-      if (mateLogin !== undefined) return mateLogin.agent;
-      const driver = yield* instances.driverKindOf(login);
-      return agentIdForDriverKind(driver) ?? agentIdForProviderInstance(login);
-    });
+  /** The coding agent a login runs, read off its instance's adapter. */
+  const agentOf = (login: string) => instances.agentOf(login);
   const signals = yield* PubSub.unbounded<void>();
   const memory = makeMemory();
   const scope = yield* Effect.scope;
@@ -391,12 +380,7 @@ export const makeCrewCore = Effect.gen(function* () {
       const repository = yield* Effect.option(shell.repository(host));
       if (Option.isSome(repository)) known.set(host, repository.value);
     }
-    const agents = new Map<string, ZeropsAgentId | undefined>();
-    for (const member of members.values()) {
-      agents.set(member.handle, yield* agentOf(member.login ?? DEFAULT_CREW_LOGIN));
-    }
     yield* Ref.set(cache, {
-      agents,
       definition,
       briefVersion: row.value.briefVersion,
       seq: row.value.seq,
@@ -616,6 +600,27 @@ export const defaultCrewLogin = (core: CrewCore) =>
     ),
     Effect.orElseSucceed(() => DEFAULT_CREW_LOGIN),
   );
+
+/**
+ * Why a dollar budget can't be kept, when an agent a crewmate runs on doesn't
+ * report what its turns cost: the run's spend would leave its turns out.
+ */
+export const noSpendWords = (agent: string): string =>
+  `${agent} doesn't report what it spends, so this crew can't keep a budget`;
+
+/** The first agent of `logins` that doesn't report its spend, by name; `undefined` when all do. */
+export const silentSpender = (core: CrewCore, logins: Iterable<string>) =>
+  Effect.gen(function* () {
+    for (const login of logins) {
+      const agent = yield* core.agentOf(login);
+      if (agent?.threadProfile?.reportsSpend !== true) return agent?.displayName ?? login;
+    }
+    return undefined;
+  });
+
+/** Every crewmate's login in the applied crew. */
+export const appliedLogins = (applied: AppliedCrew): ReadonlyArray<string> =>
+  [...applied.members.values()].map((member) => member.login ?? DEFAULT_CREW_LOGIN);
 
 /** The applied crew, or the refusal that nothing is applied. */
 export const requireApplied = (core: CrewCore) =>
