@@ -465,6 +465,7 @@ function Change({
       readout={readout}
       run={run}
       waitingForProduction={0}
+      release={{ allowed: true }}
     />
   );
 }
@@ -1092,6 +1093,7 @@ export function ReviewDialogTry() {
           run={RUN}
           titleId="review-try-title"
           waitingForProduction={0}
+          release={{ allowed: true }}
         />
       </ZeropsReviewDialog>
     </div>
@@ -1154,6 +1156,7 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             run={RUN}
             titleId={onChange ? "release-try-title" : undefined}
             waitingForProduction={2}
+            release={{ allowed: true }}
           />
         )
       }

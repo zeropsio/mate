@@ -3,7 +3,7 @@
  * merge did to the project's environments, from the files it changed, and never offers a release;
  * a code change still hands over to the release production waits for.
  */
-import { changeReadout, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { changeReadout, releaseOffer, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -164,6 +164,7 @@ function render(
     pictures: undefined,
     environments: [{ tier: "stage" }, { tier: "production" }],
     waitingForProduction: 2,
+    release: { allowed: true },
     live: "v0.1.0",
     now: NOW,
     onFix: noop,
@@ -221,6 +222,24 @@ describe("ChangeReviewView: a change after its merge", () => {
     const html = render(merged(), [changed("src/mail.ts")]);
     expect(textOf(html)).toContain("Production still serves v0.1.0 until you release.");
     expect(html).toContain('data-zerops-primary-action="Review release"');
+  });
+
+  it("offers no Review release when production already runs the merged squash commit", () => {
+    // The change's branch head differs from the squash on main; production runs the squash.
+    const offer = releaseOffer({
+      candidate: new Map([["app", MAIN]]),
+      production: new Map([["app", MAIN.slice(0, 7)]]),
+      permission: { allowed: true },
+      tags: ["v0.1.0"],
+      live: { state: "known", moved: [] },
+    });
+    const html = render(merged(), [changed("src/mail.ts")], {
+      waitingForProduction: 0,
+      release: offer.gate,
+    });
+    expect(footOf(html)).not.toContain("Review release");
+    expect(footOf(html)).toContain("Production already runs what is merged.");
+    expect(textOf(html)).not.toContain("Production still serves v0.1.0 until you release.");
   });
 });
 

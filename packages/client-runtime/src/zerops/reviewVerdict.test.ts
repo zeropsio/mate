@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { isRecipeProposal } from "./projectFlow.ts";
 import { recipeReach, type RecipeReach } from "./recipeReach.ts";
-import { RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+import { releaseOffer, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
 
 /** HQ's rule refusing the person the release, in its words (`releasePermission`). */
 const NOT_A_RELEASER = {
@@ -47,6 +47,64 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
 }
 
 const pull = (over: Partial<ChangeReviewInput["pull"]>) => ({ ...change().pull, ...over });
+
+describe("change and release reviews share the release verdict", () => {
+  const squash = "a".repeat(40);
+  const later = "b".repeat(40);
+  const previous = "c".repeat(40);
+
+  it.each([
+    { name: "merged + released", merged: true, main: squash, production: squash, allowed: false },
+    {
+      name: "merged + not released",
+      merged: true,
+      main: squash,
+      production: previous,
+      allowed: true,
+    },
+    { name: "not merged", merged: false, main: previous, production: previous, allowed: false },
+    {
+      name: "released with later merges",
+      merged: true,
+      main: later,
+      production: squash,
+      allowed: true,
+    },
+  ])("$name", ({ merged, main, production, allowed }) => {
+    const offer = releaseOffer({
+      candidate: new Map([["app", main]]),
+      production: new Map([["app", production.slice(0, 7)]]),
+      permission: { allowed: true },
+      tags: ["v0.1.0"],
+      live: { state: "known", moved: [] },
+    });
+    const dialog = releaseReview({
+      tag: offer.suggestion,
+      gate: offer.gate,
+      permission: { allowed: true },
+      changes: allowed ? 1 : 0,
+      onStage: undefined,
+      services: ["app"],
+      replaces: { kind: "release", tag: "v0.1.0" },
+      outcome: { kind: "offered" },
+      now: NOW,
+    });
+    const footer = changeReview(
+      change({
+        pull: pull({ merged }),
+        waiting: { count: allowed ? 1 : 0, live: "v0.1.0" },
+        release: offer.gate,
+      }),
+    );
+    expect(offer.gate.allowed).toBe(allowed);
+    expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
+    expect(footer.primary?.label).toBe(!merged ? "Merge" : allowed ? "Review release" : undefined);
+    if (merged && !allowed) {
+      expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
+      expect(footer.verdict.why).not.toContain("waits for production");
+    }
+  });
+});
 
 describe("changeReview: the verdict comes first (R2)", () => {
   it.each<[string, Partial<ChangeReviewInput>, Record<string, unknown>]>([
@@ -223,7 +281,7 @@ describe("changeReview: the button says what will happen (R5)", () => {
       {
         pull: pull({ merged: true, mergedAt: minutesAgo(1) }),
         waiting: { count: 1, live: "v0.1.0" },
-        releaseOffered: true,
+        release: { allowed: true },
       },
       "Production still serves v0.1.0 until you release.",
       "Review release",
@@ -283,7 +341,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     pull({ kind: "recipe", ...over });
   const merged = recipe({ merged: true, mergedAt: minutesAgo(0) });
   /** Where production waits for a release: a code change's review would offer it now. */
-  const releasable = { releaseOffered: true, waiting: { count: 2, live: "v0.1.0" } } as const;
+  const releasable = { release: { allowed: true }, waiting: { count: 2, live: "v0.1.0" } } as const;
 
   it.each<[string, Partial<RecipeReach>, string, string]>([
     [

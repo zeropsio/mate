@@ -25,11 +25,7 @@ import { hqRefusalWords } from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
-import {
-  RELEASE_NOTHING_MERGED,
-  RELEASE_NOTHING_NEW_ON_MAIN,
-  type ReleaseGate,
-} from "./release.ts";
+import { releaseNothingReason, type ReleaseGate } from "./release.ts";
 
 /**
  * The word on every door to a change's review. Never *Merge*: that is the review's own button,
@@ -235,10 +231,10 @@ export interface ChangeReviewInput {
   /** Once merged: how many changes wait for production now, and what production runs. */
   readonly waiting?: { readonly count: number; readonly live: string | undefined } | undefined;
   /**
-   * A release is offered once a code change merged: the next review is the release's. A recipe
-   * change is never released — a release tags the code in the service repositories.
+   * The flow's release gate, shared with the release review. A recipe change is never released —
+   * a release tags the code in the service repositories.
    */
-  readonly releaseOffered?: boolean | undefined;
+  readonly release?: ReleaseGate | undefined;
   /**
    * For a recipe change, what merging it does to the project (`recipeReach`), once its files are
    * read; `undefined` until then.
@@ -553,7 +549,8 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
       pull.mergedAt === undefined
         ? "Just now"
         : (reviewAge(pull.mergedAt, input.now) ?? "Just now");
-    const waiting = input.waiting?.count ?? 0;
+    const nothing = releaseNothingReason(input.release);
+    const waiting = nothing === undefined ? (input.waiting?.count ?? 0) : 0;
     const recipe = pull.kind === "recipe";
     const next = recipe
       ? recipeNext(input.recipe, base)
@@ -566,9 +563,10 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     const consequence = recipe
       ? recipeSentence(input.recipe)
       : input.downstream.production
-        ? live === undefined
-          ? "Production isn't touched until you release."
-          : `Production still serves ${live} until you release.`
+        ? (nothing ??
+          (live === undefined
+            ? "Production isn't touched until you release."
+            : `Production still serves ${live} until you release.`))
         : input.downstream.stage
           ? `The stage picks it up from ${base}.`
           : `It's on ${base} now.`;
@@ -583,7 +581,7 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
       consequence,
       // A recipe is never released: the next review is a code change's release, and only its.
       primary:
-        !recipe && input.releaseOffered === true
+        !recipe && input.release?.allowed === true
           ? { label: REVIEW_RELEASE_LABEL, enabled: true, safe: true }
           : undefined,
     };
@@ -881,7 +879,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
   const primary = { label: `Release ${tag}`, enabled: input.gate.allowed, safe: false };
   if (!input.gate.allowed) {
     const reason = input.gate.reason;
-    const nothing = reason === RELEASE_NOTHING_MERGED || reason === RELEASE_NOTHING_NEW_ON_MAIN;
+    const nothing = releaseNothingReason(input.gate) !== undefined;
     return {
       verdict: {
         state: "release-blocked",
