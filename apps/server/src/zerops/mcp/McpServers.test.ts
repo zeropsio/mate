@@ -7,22 +7,25 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
 import { ProviderMcpError, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
+import { antigravityProfileDirectory } from "../../spi/driverHomes.ts";
+import { mcpAgentPaths, resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import { type McpAgentPaths } from "./mcpAgents.ts";
-import { make, mcpAgentPaths, nodeFileStore, type McpLiveAccess } from "./McpServers.ts";
+import { McpFileConflict } from "./mcpFileStore.ts";
+import { make, nodeFileStore, type McpLiveAccess } from "./McpServers.ts";
 
 const HOME = "/home/zerops";
 const PATHS: McpAgentPaths = mcpAgentPaths({
   homeDir: HOME,
   cwd: "/var/www",
   env: {},
-  settings: {
-    providers: { claudeAgent: { homePath: "" }, codex: { homePath: "" } } as never,
-    providerInstances: {},
-  },
+  claudeConfigs: [`${HOME}/.claude.json`],
+  codexConfigs: [`${HOME}/.codex/config.toml`],
+  antigravityConfigs: [`${HOME}/.gemini/config/mcp_config.json`],
 });
 
 const ZCP = { command: "zcp", args: ["serve"] };
@@ -60,6 +63,7 @@ interface Rig {
   readonly files: Map<string, string>;
   readonly writes: string[];
   readonly calls: string[];
+  readonly locks: string[];
 }
 
 const setup = (input: {
@@ -70,9 +74,12 @@ const setup = (input: {
     readonly servers: ReadonlyArray<McpLiveServer>;
     readonly reconnectFails?: boolean;
   };
+  /** An agent writes this file once, between Mate's read and Mate's write. */
+  readonly agentWritesOnce?: { readonly path: string; readonly text: string };
 }) =>
   Effect.gen(function* () {
-    const rig: Rig = { files: input.files ?? zcpFiles(), writes: [], calls: [] };
+    const rig: Rig = { files: input.files ?? zcpFiles(), writes: [], calls: [], locks: [] };
+    let agentWrite = input.agentWritesOnce;
     const live: McpLiveAccess = {
       installedDrivers: Effect.succeed(
         (input.installed ?? ALL_AGENTS).map((driver) => ProviderDriverKind.make(driver)),
@@ -103,11 +110,19 @@ const setup = (input: {
       paths: Effect.succeed(PATHS),
       files: {
         read: (path) => Effect.succeed(rig.files.get(path)),
-        write: (path, text) =>
-          Effect.sync(() => {
+        write: (path, text, base) =>
+          Effect.suspend(() => {
+            if (agentWrite?.path === path) {
+              rig.files.set(path, agentWrite.text);
+              agentWrite = undefined;
+            }
+            if (rig.files.get(path) !== base) return Effect.fail(new McpFileConflict({ path }));
             rig.files.set(path, text);
             rig.writes.push(path);
+            return Effect.void;
           }),
+        locked: (paths, effect) =>
+          Effect.sync(() => rig.locks.push(...paths)).pipe(Effect.andThen(effect)),
       },
     });
     return { service, rig };
@@ -229,16 +244,46 @@ describe("McpServers.add", () => {
     }),
   );
 
-  it.effect("writes nothing when one agent's config cannot be parsed, and says which", () =>
+  it.effect("writes the agents it can and names the one it left alone", () =>
     Effect.gen(function* () {
       const files = zcpFiles();
       files.set(`${HOME}/.cursor/mcp.json`, "{ broken");
       const { service, rig } = yield* setup({ files });
       const error = yield* Effect.flip(service.add(LINEAR));
       expect(error.detail).toBe(
-        `Cursor's config at ${HOME}/.cursor/mcp.json could not be read, so nothing was changed. Fix or remove that file and try again.`,
+        `linear was added for Claude Code, Codex, OpenCode, Grok and Antigravity, not for the rest. Cursor's config at ${HOME}/.cursor/mcp.json isn't valid (InvalidSymbol at offset 2), so Mate left it as it is.`,
       );
-      expect(rig.writes).toEqual([]);
+      expect(rig.writes).not.toContain(`${HOME}/.cursor/mcp.json`);
+      expect(rig.writes).toContain(`${HOME}/.claude.json`);
+      expect(rig.calls).not.toContain("cursor added linear");
+    }),
+  );
+
+  it.effect("answers with the conversation's live state when it names one", () =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({
+        running: { driver: "claudeAgent", servers: [{ name: "linear", state: "connecting" }] },
+      });
+      const list = yield* service.add({ ...LINEAR, threadId: THREAD });
+      const linear = list.servers.find((server) => server.name === "linear");
+      expect(linear?.agents[0]).toEqual({ driver: "claudeAgent", state: "connecting" });
+    }),
+  );
+
+  it.effect("plans again over a file an agent wrote meanwhile, under Claude's lock", () =>
+    Effect.gen(function* () {
+      const agentText = `{"mcpServers":{"zerops":{"command":"zcp","args":["serve"]}},"numStartups":9}`;
+      const { service, rig } = yield* setup({
+        agentWritesOnce: { path: `${HOME}/.claude.json`, text: agentText },
+      });
+      yield* service.add(LINEAR);
+      const claude = parseJson(rig.files.get(`${HOME}/.claude.json`)!) as {
+        readonly numStartups?: number;
+        readonly mcpServers: Record<string, unknown>;
+      };
+      expect(claude.numStartups).toBe(9);
+      expect(Object.keys(claude.mcpServers)).toEqual(["zerops", "linear"]);
+      expect(rig.locks).toEqual([`${HOME}/.claude.json`]);
     }),
   );
 });
@@ -319,39 +364,7 @@ describe("McpServers.reconnect", () => {
   );
 });
 
-describe("mcpAgentPaths", () => {
-  it("names every Claude and Codex home the instances use, the defaults first", () => {
-    const paths = mcpAgentPaths({
-      homeDir: HOME,
-      cwd: "/var/www/",
-      env: { XDG_CONFIG_HOME: "/xdg", GROK_HOME: "/g" },
-      settings: {
-        providers: { claudeAgent: { homePath: "" }, codex: { homePath: "~/.codex" } } as never,
-        providerInstances: {
-          "claudeAgent-2": {
-            driver: ProviderDriverKind.make("claudeAgent"),
-            config: { homePath: "~/.mate/logins/claudeAgent-2" },
-          },
-          "codex-2": {
-            driver: ProviderDriverKind.make("codex"),
-            config: { shadowHomePath: "~/.mate/logins/codex-2" },
-          },
-        } as never,
-      },
-    });
-    expect(paths).toEqual({
-      cwd: "/var/www",
-      claudeConfigs: [`${HOME}/.claude.json`, `${HOME}/.mate/logins/claudeAgent-2/.claude.json`],
-      codexConfigs: [`${HOME}/.codex/config.toml`],
-      cursorHome: `${HOME}/.cursor`,
-      grokConfig: "/g/config.toml",
-      antigravityConfig: `${HOME}/.gemini/config/mcp_config.json`,
-      openCodeConfig: "/xdg/opencode/opencode.json",
-    });
-  });
-});
-
-it.layer(NodeServices.layer)("nodeFileStore", (it) => {
+it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it) => {
   it.effect("writes a config whole, through a link, keeping its permissions", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -359,7 +372,7 @@ it.layer(NodeServices.layer)("nodeFileStore", (it) => {
       const store = yield* nodeFileStore;
 
       // A new file is private to its owner: it can hold keys.
-      yield* store.write(`${dir}/new/.claude.json`, "{}\n");
+      yield* store.write(`${dir}/new/.claude.json`, "{}\n", undefined);
       expect(yield* store.read(`${dir}/new/.claude.json`)).toBe("{}\n");
       expect((yield* fs.stat(`${dir}/new/.claude.json`)).mode & 0o777).toBe(0o600);
 
@@ -367,7 +380,7 @@ it.layer(NodeServices.layer)("nodeFileStore", (it) => {
       yield* fs.writeFileString(`${dir}/shared.toml`, "a = 1\n", { mode: 0o640 });
       yield* fs.chmod(`${dir}/shared.toml`, 0o640);
       yield* fs.symlink(`${dir}/shared.toml`, `${dir}/link.toml`);
-      yield* store.write(`${dir}/link.toml`, "a = 2\n");
+      yield* store.write(`${dir}/link.toml`, "a = 2\n", "a = 1\n");
       expect(yield* fs.readLink(`${dir}/link.toml`)).toBe(`${dir}/shared.toml`);
       expect(yield* fs.readFileString(`${dir}/shared.toml`)).toBe("a = 2\n");
       expect((yield* fs.stat(`${dir}/shared.toml`)).mode & 0o777).toBe(0o640);
@@ -378,6 +391,100 @@ it.layer(NodeServices.layer)("nodeFileStore", (it) => {
         "new",
         "shared.toml",
       ]);
+    }),
+  );
+
+  it.effect("refuses to write over a file that changed since it was read", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped();
+      const store = yield* nodeFileStore;
+      yield* fs.writeFileString(`${dir}/config.toml`, "a = 2\n");
+      const refused = yield* Effect.flip(store.write(`${dir}/config.toml`, "a = 3\n", "a = 1\n"));
+      expect(refused).toBeInstanceOf(McpFileConflict);
+      expect(yield* fs.readFileString(`${dir}/config.toml`)).toBe("a = 2\n");
+    }),
+  );
+
+  it.effect("holds Claude Code's lock on .claude.json while it writes, past a stale one", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped();
+      const store = yield* nodeFileStore;
+      const lock = `${dir}/.claude.json.lock`;
+      // A lock left by a Claude that died: untouched for a minute.
+      yield* fs.makeDirectory(lock);
+      const minuteAgo = DateTime.toDateUtc(DateTime.subtract(yield* DateTime.now, { minutes: 1 }));
+      yield* fs.utimes(lock, minuteAgo, minuteAgo);
+      const seen = yield* store.locked(
+        [`${dir}/.claude.json`, `${dir}/config.toml`],
+        Effect.all([fs.exists(lock), fs.exists(`${dir}/config.toml.lock`)]),
+      );
+      expect(seen).toEqual([true, false]);
+      expect(yield* fs.exists(lock)).toBe(false);
+    }),
+  );
+
+  it.effect("resolves each home the way its driver does", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped();
+      const stateDir = `${dir}/state`;
+      // One Antigravity profile keeps a file of its own; the default's links to ~/.gemini.
+      const own = `${antigravityProfileDirectory(stateDir, "antigravity-2" as never)}/config`;
+      yield* fs.makeDirectory(own, { recursive: true });
+      yield* fs.writeFileString(`${own}/mcp_config.json`, "{}");
+      const linked = `${antigravityProfileDirectory(stateDir, "antigravity" as never)}/config`;
+      yield* fs.makeDirectory(linked, { recursive: true });
+      yield* fs.symlink(`${dir}/home/.gemini/config/mcp_config.json`, `${linked}/mcp_config.json`);
+
+      const paths = yield* resolveMcpAgentPaths({
+        homeDir: `${dir}/home`,
+        cwd: "/var/www/",
+        stateDir,
+        env: { CODEX_HOME: `${dir}/codex-env`, XDG_CONFIG_HOME: "/xdg", GROK_HOME: "/g" },
+        settings: {
+          providers: {
+            claudeAgent: { homePath: "" },
+            codex: { homePath: "", shadowHomePath: "" },
+          } as never,
+          providerInstances: {
+            "claudeAgent-2": {
+              driver: ProviderDriverKind.make("claudeAgent"),
+              config: { homePath: `${dir}/logins/claudeAgent-2` },
+            },
+            "claudeAgent-env": {
+              driver: ProviderDriverKind.make("claudeAgent"),
+              environment: [{ name: "CLAUDE_CONFIG_DIR", value: `${dir}/claude-env` }],
+            },
+            "codex-2": {
+              driver: ProviderDriverKind.make("codex"),
+              config: { shadowHomePath: `${dir}/logins/codex-2` },
+            },
+            "antigravity-2": { driver: ProviderDriverKind.make("antigravity") },
+          } as never,
+        },
+      });
+      expect(paths).toEqual({
+        cwd: "/var/www",
+        claudeConfigs: [
+          `${dir}/home/.claude.json`,
+          `${dir}/logins/claudeAgent-2/.claude.json`,
+          `${dir}/claude-env/.claude.json`,
+        ],
+        // The default inherits CODEX_HOME; a login's shadow home links to the shared ~/.codex.
+        codexConfigs: [
+          `${dir}/codex-env/config.toml`,
+          expect.stringMatching(/\/\.codex\/config\.toml$/),
+        ],
+        cursorHome: `${dir}/home/.cursor`,
+        grokConfig: "/g/config.toml",
+        antigravityConfigs: [
+          `${dir}/home/.gemini/config/mcp_config.json`,
+          `${own}/mcp_config.json`,
+        ],
+        openCodeConfig: "/xdg/opencode/opencode.json",
+      });
     }),
   );
 });
