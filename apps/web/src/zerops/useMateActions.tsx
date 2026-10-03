@@ -595,6 +595,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const registration = mateFinishRegistration({
         hq: officialHq(accountHq),
         hqKnown,
+        structure: hqStructure?.structure ?? null,
         project: candidate.project,
         press,
         writer: whole,
@@ -652,6 +653,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       candidates,
       client,
       hqKnown,
+      hqStructure?.structure,
       interrupted,
       mayCreateRecord,
       organizationRef,

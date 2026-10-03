@@ -29,7 +29,7 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { HqStructure } from "./client.ts";
+import type { HqBirth, HqStructure } from "./client.ts";
 import { environmentsOf } from "./environments.ts";
 
 type HqApp = HqStructure["apps"][number];
@@ -93,11 +93,33 @@ const isUngrouped = (value: unknown): value is HqUngrouped =>
       (entry as { readonly mate?: unknown }).mate !== null,
   );
 
-/** An application as HQ sent it, its environments read through their shape or not known. */
+/** A birth intent as HQ sent it: one whose shape this build cannot read is none. */
+const isBirth = (value: unknown): value is HqBirth =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { readonly id?: unknown }).id === "string" &&
+  typeof (value as { readonly name?: unknown }).name === "string" &&
+  typeof (value as { readonly face?: unknown }).face === "string";
+
+/**
+ * An application as HQ sent it, its environments read through their shape or not known, and each
+ * of its birth intents read through its own.
+ */
 function appOf(value: HqApp): HqApp {
-  const { environments: sent, ...app } = value as HqApp & { readonly environments?: unknown };
+  const {
+    environments: sent,
+    births: told,
+    ...app
+  } = value as HqApp & {
+    readonly environments?: unknown;
+    readonly births?: unknown;
+  };
   const environments = sent === undefined ? undefined : environmentsOf(sent);
-  return environments === undefined ? app : { ...app, environments };
+  return {
+    ...app,
+    ...(environments === undefined ? {} : { environments }),
+    ...(Array.isArray(told) ? { births: told.filter(isBirth) } : {}),
+  };
 }
 
 /** The Mates a snapshot sent, each read on its own: one this build cannot read is left out. */

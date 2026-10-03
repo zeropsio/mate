@@ -1114,6 +1114,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         const registration = mateFinishRegistration({
           hq,
           hqKnown,
+          structure: hqStructure?.structure ?? null,
           project: candidate.project,
           press: held,
           writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
@@ -1168,6 +1169,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       client,
       groupTree.groups,
       hqKnown,
+      hqStructure,
       organizationRef,
       projectRef,
       readGroupAgents,

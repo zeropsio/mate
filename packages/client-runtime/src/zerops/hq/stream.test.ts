@@ -177,6 +177,23 @@ describe("structureEventOf", () => {
       },
     ],
     [
+      "a snapshot carries each application's birth intents, each read through its shape",
+      {
+        type: "snapshot",
+        apps: [{ ...ACME, births: [{ id: "b-1", name: "Gus", face: "rose:seal" }, { id: 7 }] }],
+      },
+      {
+        kind: "snapshot",
+        structure: {
+          ungrouped: [],
+          apps: [{ ...ACME, births: [{ id: "b-1", name: "Gus", face: "rose:seal" }] }],
+        },
+        changes: null,
+        mates: null,
+        people: null,
+      },
+    ],
+    [
       "a change carries its application's environments",
       { type: "change", key: "app-1", value: ACME_STAGED },
       { kind: "change", appId: "app-1", app: ACME_STAGED },

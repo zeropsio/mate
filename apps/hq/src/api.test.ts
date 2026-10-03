@@ -103,6 +103,7 @@ describe("HQ API", () => {
                   },
                 ],
                 environments: [],
+                births: [],
               },
             ],
           });
@@ -736,7 +737,7 @@ describe("HQ API", () => {
           ).id;
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [], environments: [] },
+            value: { id: appId, name: "Shop", projects: [], environments: [], births: [] },
           });
           yield* call("POST", `/api/apps/${appId}/projects`, {
             session,
@@ -756,6 +757,7 @@ describe("HQ API", () => {
                 },
               ],
               environments: [],
+              births: [],
             },
           });
           assert.deepStrictEqual(
@@ -779,7 +781,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [], environments: [] },
+            value: { id: appId, name: "Shop", projects: [], environments: [], births: [] },
           });
           // Nothing names its maker any more.
           assert.deepStrictEqual(yield* owner.next("people"), { people: {} });
@@ -789,6 +791,51 @@ describe("HQ API", () => {
           assert.deepStrictEqual(yield* owner.quiet("1 millis"), []);
           yield* owner.close;
         }),
+    );
+
+    it.effect("records a Mate's birth intent in its application, and its attach closes it", () =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const appId = (
+          (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
+            readonly id: string;
+          }
+        ).id;
+        const birthsOf = Effect.map(
+          call("GET", "/api/structure", { session }),
+          (read) =>
+            (
+              read.body as {
+                readonly apps: ReadonlyArray<{ readonly id: string; readonly births: unknown }>;
+              }
+            ).apps.find((app) => app.id === appId)?.births,
+        );
+
+        const recorded = yield* call("POST", "/api/births", {
+          session,
+          body: { appId, name: "Gus", face: "rose:seal" },
+        });
+        const { id } = recorded.body as { readonly id: string };
+        assert.deepStrictEqual(
+          [recorded.status, recorded.body],
+          [201, { id, name: "Gus", face: "rose:seal" }],
+        );
+        assert.deepStrictEqual(yield* birthsOf, [{ id, name: "Gus", face: "rose:seal" }]);
+
+        const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
+          session,
+          body: {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { name: "Gus", face: "rose:seal" },
+            birth: id,
+          },
+        });
+        assert.strictEqual(attached.status, 201);
+        assert.deepStrictEqual(yield* birthsOf, []);
+      }),
     );
 
     it.effect(
@@ -839,7 +886,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Store", projects: [], environments: [] },
+            value: { id: appId, name: "Store", projects: [], environments: [], births: [] },
           });
 
           const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
@@ -861,6 +908,7 @@ describe("HQ API", () => {
                   name: "Store",
                   projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
                   environments: [],
+                  births: [],
                 },
               },
             ],
@@ -877,7 +925,10 @@ describe("HQ API", () => {
             [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
             [
               { key: "ungrouped", value: lone },
-              { key: appId, value: { id: appId, name: "Store", projects: [], environments: [] } },
+              {
+                key: appId,
+                value: { id: appId, name: "Store", projects: [], environments: [], births: [] },
+              },
             ],
           );
           yield* owner.close;
@@ -932,6 +983,7 @@ describe("HQ API", () => {
                 deploys: [],
               },
             ],
+            births: [],
           },
         });
         yield* devSocket.close;
@@ -954,7 +1006,7 @@ describe("HQ API", () => {
         );
         assert.deepStrictEqual(yield* readerSocket.next("snapshot"), {
           ungrouped: [],
-          apps: [{ id: appId, name: "Shop", projects: [], environments: [] }],
+          apps: [{ id: appId, name: "Shop", projects: [], environments: [], births: [] }],
           changes: { [appId]: [] },
           mates: {},
           people: {},

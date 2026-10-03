@@ -272,6 +272,25 @@ describe("nothing of a Mate's place on its project", () => {
   });
 });
 
+// F6c (2026-10-03): a press cut off between its project and its attach left a Mate any other
+// browser finished under a new name in no application. Its project names the birth intent HQ holds
+// of it, by id, so whoever finishes it attaches it where and as it was asked for.
+describe("a Mate's birth intent on its project", () => {
+  const WHOLE = "project:\n  name: published-name\nservices:\n  - hostname: app\n";
+  it.each([
+    { case: "an empty Mate", recipe: { kind: "none" as const } },
+    { case: "a Mate from a whole-project recipe", recipe: { ...TIER, yaml: WHOLE } },
+  ])("is tagged at birth for $case, by the intent's id", ({ recipe }) => {
+    const plan = planEnvironmentCreation({ ...BASE, role: "dev", recipe, birth: "b-1" });
+    if (!plan.ok) throw new Error(plan.reason);
+    const [step] = plan.steps;
+    expect(
+      step?.kind === "create-project" || step?.kind === "import-project" ? step.tagList : [],
+    ).toEqual(["mate:birth:b-1", "mate"]);
+    if (step?.kind === "import-project") expect(step.yaml).toContain("    - mate:birth:b-1\n");
+  });
+});
+
 describe("the recipe choice", () => {
   it("imports the tier it is handed, each build taken out for an empty start", () => {
     const plan = planEnvironmentCreation({

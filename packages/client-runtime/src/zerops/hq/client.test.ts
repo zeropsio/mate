@@ -535,6 +535,27 @@ describe("makeHqApi — the structure socket", () => {
   });
 });
 
+describe("makeHqApi — a Mate's birth intent", () => {
+  it("records where and as whom a Mate is born, before its project, and answers its id", async () => {
+    const intent = { id: "b-1", name: "Gus", face: "rose:seal" };
+    const hq = fakeHq((seen) => (seen.path === "/api/births" ? json(201, intent) : undefined));
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    expect(await api.recordBirth({ appId: "app-1", name: "Gus", face: "rose:seal" })).toEqual(
+      intent,
+    );
+    expect(hq.seen.at(-1)).toMatchObject({
+      method: "POST",
+      path: "/api/births",
+      body: { appId: "app-1", name: "Gus", face: "rose:seal" },
+    });
+  });
+});
+
 describe("makeHqApi — application name and a project's application", () => {
   it.each<[string, (api: HqApi) => Promise<void>, Partial<Seen>]>([
     [
