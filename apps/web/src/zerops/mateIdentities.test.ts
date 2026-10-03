@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   knownMate,
+  mateOpeningAwake,
   mateQuestion,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
@@ -280,5 +281,39 @@ describe("mateQuestion", () => {
 
   it("asks without a project for a Mate in none", () => {
     expect(mateQuestion({ name: "Nova", project: undefined })).toBe("What should Nova do?");
+  });
+});
+
+// A Mate's opening wears the face its container's state gives it (the owner, 2026-10-03: the face
+// stood asleep on every open and woke as the conversation came, though nothing had slept).
+describe("whether a Mate's opening wears it awake", () => {
+  it.each<{
+    readonly case: string;
+    readonly mate: Pick<ZeropsMateIdentity, "connected" | "running">;
+    readonly awake: boolean;
+  }>([
+    { case: "its container connected", mate: { connected: true, running: true }, awake: true },
+    {
+      case: "its container running, its socket not up yet",
+      mate: { connected: false, running: true },
+      awake: true,
+    },
+    { case: "its container not running", mate: { connected: false, running: false }, awake: false },
+    { case: "nothing known of its container", mate: { connected: false }, awake: false },
+  ])("$case", ({ mate, awake }) => {
+    expect(mateOpeningAwake(mate)).toBe(awake);
+  });
+
+  it.each<{
+    readonly case: string;
+    readonly group: ZeropsCandidate["group"];
+    readonly running: boolean;
+  }>([
+    { case: "connected", group: "connected", running: true },
+    { case: "ready, its socket not up", group: "ready", running: true },
+    { case: "stopped", group: "unavailable", running: false },
+  ])("carries its project, and its container running when $case", ({ group, running }) => {
+    const mate = zeropsMateIdentities([{ ...FEN_DEV, group }]).get(FEN);
+    expect(mate).toMatchObject({ projectId: "acme-docs-dev", running });
   });
 });
