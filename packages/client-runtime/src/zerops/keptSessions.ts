@@ -1,5 +1,8 @@
 /**
- * A Mate's session, kept across loads (the owner, 2026-10-02).
+ * A Mate's session, kept across loads (the owner, 2026-10-02) — and HQ's, by the same rules
+ * (audit K7): its door opened a session per load in this page's memory only, so every load minted
+ * and deleted a throwaway on the first paint's path, and a sign-out left the session live for its
+ * 12 hours.
  *
  * The door's throwaway (`doorThrowaway.ts`) opens a session on a Mate, and ending it is the
  * Mate's call: its membership watch ends it when the person's access changes, and its age ends
@@ -68,6 +71,25 @@ export interface KeptSessionKind<T, E> {
   /** When the session ends, epoch ms; undefined leaves it to its issuer to judge. */
   readonly expiresAtEpochMs: (session: T) => number | undefined;
 }
+
+/** The account-scoped storage key HQ's kept sessions live under. */
+export const KEPT_HQ_SESSIONS_KEY = "hq-sessions.v1";
+
+/** HQ's session as its door issued it, for the HQ at `address`. */
+export const KeptHqSession = Schema.Struct({
+  address: Schema.String,
+  token: Schema.String,
+  expiresAtEpochMs: Schema.Number,
+});
+export type KeptHqSession = typeof KeptHqSession.Type;
+
+/** HQ's session, by organization and HQ (`clientId:hqProjectId:address`). */
+export const HQ_SESSIONS: KeptSessionKind<KeptHqSession, typeof KeptHqSession.Encoded> = {
+  storageKey: KEPT_HQ_SESSIONS_KEY,
+  schema: KeptHqSession,
+  token: (session) => session.token,
+  expiresAtEpochMs: (session) => session.expiresAtEpochMs,
+};
 
 /** A Mate's session, by target (`projectId:serviceId`). */
 export const MATE_SESSIONS: KeptSessionKind<

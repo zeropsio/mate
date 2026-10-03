@@ -5,6 +5,8 @@ import {
   BearerConnectionTarget,
 } from "@t3tools/client-runtime/connection";
 import {
+  HQ_SESSIONS,
+  KEPT_HQ_SESSIONS_KEY,
   KEPT_SESSIONS_KEY,
   makeKeptSessions,
   MATE_SESSIONS,
@@ -149,5 +151,38 @@ describe("no kept session outlives the login it was opened under", () => {
       "https://shop.example.test/mate/api/auth/logout",
     ]);
     expect([...values.keys()].some((key) => key.endsWith(KEPT_SESSIONS_KEY))).toBe(false);
+  });
+
+  // Audit K7: HQ's sessions are kept by the same rules, so a refused login revokes them too.
+  it("a refused login revokes every HQ session kept under any account on this origin", () => {
+    const hqSession = (name: string) => ({
+      address: `https://${name}.example.test`,
+      token: `session-${name}`,
+      expiresAtEpochMs: Date.now() + 12 * 3_600_000,
+    });
+    lifetime.openAccountLifetime("person-1");
+    kept.keptHqSessions.keep("org-1:P_HQ:https://hq.example.test", hqSession("hq"));
+    const other = `mate:account:person-2:${KEPT_HQ_SESSIONS_KEY}`;
+    makeKeptSessions(
+      {
+        getItem: () => values.get(other) ?? null,
+        setItem: (_name, value) => {
+          values.set(other, value);
+        },
+        removeItem: () => {
+          values.delete(other);
+        },
+      },
+      Date.now,
+      HQ_SESSIONS,
+    ).keep("org-9:P_HQ9:https://hq9.example.test", hqSession("hq9"));
+
+    kept.endEveryKeptSession();
+
+    expect(fetched.map(({ url, authorization }) => [url, authorization]).toSorted()).toEqual([
+      ["https://hq.example.test/api/session", "Bearer session-hq"],
+      ["https://hq9.example.test/api/session", "Bearer session-hq9"],
+    ]);
+    expect([...values.keys()].some((key) => key.endsWith(KEPT_HQ_SESSIONS_KEY))).toBe(false);
   });
 });

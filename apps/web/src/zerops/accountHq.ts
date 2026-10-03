@@ -7,7 +7,8 @@
  *   keeps one reads no member list.
  * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named for its
  *   project (`mate-door:<hqProjectId>:<nonce>`, deleted at once). One API per account, org and
- *   HQ, kept for the account's lifetime and in memory only, as the Mates' sessions are.
+ *   HQ for the account's lifetime; its session is kept across loads as the Mates' are
+ *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
  * - **Whether it answers:** `/health`, read while a surface shows it. An HQ that stops answering
  *   is `unavailable` from the first read that failed, and says so with that time (SPEC §4).
  * - **Its birth's ports:** Core comes from this very build, same-origin under `hq-core/`
@@ -45,6 +46,7 @@ import { hqStructureAtom } from "~/state/zerops";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { forgetHqVerdict, keepHqVerdict, useKeptHqVerdict, type HqVerdictOwner } from "./hqVerdict";
+import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -171,17 +173,34 @@ export function saysNotOfficial(health: HqHealth): boolean {
 }
 
 /**
- * HQ's API for this account and org, entered through its door on the first call. A door that
- * answers not serving, from an HQ whose health says it is not the official one, makes this browser
- * forget its verdict, so the member list is read again.
+ * HQ's API for this account and org, with the session the account kept for this HQ, else entered
+ * through its door on the first call. A door that answers not serving, from an HQ whose health says
+ * it is not the official one, makes this browser forget its verdict, so the member list is read
+ * again.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
   const key = `${client.accountEpoch}:${clientId}:${hq.projectId}:${hq.address}`;
   const held = apis.get(key);
   if (held !== undefined) return held;
   const platform = zeropsThrowawayPlatform(client, { asked: true });
+  const keptKey = `${clientId}:${hq.projectId}:${hq.address}`;
   const api = makeHqApi({
     address: hq.address,
+    kept: {
+      read: () => keptHqSessions.read(keptKey)?.token ?? null,
+      keep: ({ token, expiresAt }) => {
+        const expiresAtEpochMs = Date.parse(expiresAt);
+        if (!Number.isFinite(expiresAtEpochMs)) return;
+        // A session another tab kept meanwhile is revoked, never left live for its 12 hours.
+        const displaced = keptHqSessions.keep(keptKey, {
+          address: hq.address,
+          token,
+          expiresAtEpochMs,
+        });
+        if (displaced !== null) endHqSession(displaced);
+      },
+      forget: (token) => void keptHqSessions.forget(keptKey, token),
+    },
     fetch: (input, init) => fetch(input, init),
     throughDoor: (use) =>
       connectThroughThrowaway({
