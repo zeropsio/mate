@@ -381,3 +381,62 @@ describe("attributeActivity — a settled card's exact keys win over time and se
     ).toEqual({ ...expected, projectMismatch: false });
   });
 });
+
+// A batch deploys its services one after another: its card shows the one the
+// platform says is building, else one that failed, else the last that ended
+// (pass 36).
+describe("attributeActivity — a batch deploy's step source", () => {
+  const at = (minute: number) => new Date(NOW + minute * 60_000).toISOString();
+  const api = (overrides: Partial<ActivityProcess>) =>
+    process({ id: "p-api", serviceStackIds: ["svc-api"], created: at(0), ...overrides });
+  const web = (overrides: Partial<ActivityProcess>) =>
+    process({ id: "p-web", serviceStackIds: ["svc-web"], created: at(1), ...overrides });
+  const ended = (minute: number) => ({ status: "FINISHED", finished: at(minute) });
+  it.each([
+    {
+      name: "the one building, though another started later",
+      processes: [api({ status: "RUNNING" }), web({ ...ended(2) })],
+      source: "p-api",
+    },
+    {
+      name: "none building: the one that failed",
+      processes: [api({ status: "FAILED", finished: at(1) }), web(ended(3))],
+      source: "p-api",
+    },
+    {
+      name: "none building: the one whose build failed",
+      processes: [api({ ...ended(1), appVersion: { status: "BUILD_FAILED" } }), web(ended(3))],
+      source: "p-api",
+    },
+    {
+      name: "all ended well: the last that ended",
+      processes: [api(ended(4)), web(ended(3))],
+      source: "p-api",
+    },
+  ])("$name", ({ processes, source }) => {
+    const result = attributeActivity({
+      processes,
+      projectId: "proj-1",
+      serviceIds: ["svc-api", "svc-web"],
+      startedAtMs: NOW,
+      kind: "deploy",
+      batch: true,
+    });
+    expect(result.stepSource?.id).toBe(source);
+  });
+
+  it("settled, it is read by the versions its entries named", () => {
+    const named = api({ ...ended(1), appVersion: { id: "av-a", status: "ACTIVE" } });
+    const later = web({ status: "RUNNING", appVersion: { id: "av-later", status: "BUILDING" } });
+    const result = attributeActivity({
+      processes: [named, later],
+      projectId: "proj-1",
+      serviceIds: ["svc-api", "svc-web"],
+      startedAtMs: NOW,
+      kind: "deploy",
+      batch: true,
+      exact: { appVersionIds: ["av-a"] },
+    });
+    expect(result).toEqual({ stepSource: named, chips: [], projectMismatch: false });
+  });
+});

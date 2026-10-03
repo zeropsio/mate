@@ -40,6 +40,8 @@ export interface Observation {
   readonly readAtMs: number;
   /** Present once the step source's appVersion carries both an id and `build.serviceStackId`. */
   readonly buildLog?: BuildLogQuery;
+  /** The services the step source names — which of a batch's services it is. */
+  readonly serviceIds?: ReadonlyArray<string>;
 }
 
 /** Extracts the `off` variant's `reason` union, so both sides of the contract share one list. */
@@ -170,6 +172,7 @@ function observationFor(attribution: AttributionResult, atMs: number): Observati
     readAtMs: atMs,
     ...(outcome === undefined ? {} : { outcome }),
     ...(buildLog === undefined ? {} : { buildLog }),
+    ...(stepSource === undefined ? {} : { serviceIds: stepSource.serviceStackIds }),
   };
 }
 

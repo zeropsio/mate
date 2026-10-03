@@ -194,6 +194,7 @@ function buildStandaloneOperation(
     hasResult: fields.hasResult,
     ...(fields.version !== undefined ? { version: fields.version } : {}),
     ...(fields.processIds !== undefined ? { processIds: fields.processIds } : {}),
+    ...(fields.appVersionIds !== undefined ? { appVersionIds: fields.appVersionIds } : {}),
     ...(fields.explanation !== undefined ? { explanation: fields.explanation } : {}),
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
     ...(fields.browserSummary !== undefined ? { browserSummary: fields.browserSummary } : {}),

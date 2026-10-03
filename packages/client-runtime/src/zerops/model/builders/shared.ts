@@ -74,6 +74,7 @@ export interface BuiltCardFields {
   readonly hasResult: boolean;
   readonly version?: ZeropsOperationVersion;
   readonly processIds?: ReadonlyArray<string>;
+  readonly appVersionIds?: ReadonlyArray<string>;
   readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. */
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };

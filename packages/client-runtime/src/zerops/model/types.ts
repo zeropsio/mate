@@ -311,6 +311,8 @@ export interface ZeropsOperation {
   readonly version?: ZeropsOperationVersion;
   /** `import` only: the platform processes the result says it started — exact attribution keys. */
   readonly processIds?: ReadonlyArray<string>;
+  /** A batch `deploy` only: the app versions its entries' results named — exact attribution keys. */
+  readonly appVersionIds?: ReadonlyArray<string>;
   /** A failed or timed-out card's reason and log tail. */
   readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. Absent when the result carried none, or the provider dropped the image content block. */
