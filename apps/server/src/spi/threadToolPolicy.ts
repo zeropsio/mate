@@ -15,7 +15,7 @@
  *
  * @module threadToolPolicy
  */
-import type { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import type { ModelSelection, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as JsonSchema from "effect/JsonSchema";
@@ -82,6 +82,33 @@ export interface ThreadProfileSupport {
    * runs the context, the gate, read-only and the overrides.
    */
   readonly tools: boolean;
+}
+
+/**
+ * The model selection a profiled thread runs with on a driver whose effort
+ * option is `effortOption`: the profile's model and effort over the thread's
+ * own choice, the thread's other options kept. Effort needs a model, so an
+ * effort-only profile on a thread with no selection changes nothing.
+ */
+export function profileModelSelection(
+  profile: ThreadToolProfile | undefined,
+  instanceId: ProviderInstanceId,
+  selection: ModelSelection | undefined,
+  effortOption: string | undefined,
+): ModelSelection | undefined {
+  const effort = effortOption === undefined ? undefined : profile?.effort;
+  const model = profile?.model ?? selection?.model;
+  if (!profile || !model || (profile.model === undefined && effort === undefined)) {
+    return selection;
+  }
+  const kept = (selection?.options ?? []).filter(
+    (option) => effort === undefined || option.id !== effortOption,
+  );
+  const options =
+    effort === undefined || effortOption === undefined
+      ? kept
+      : [...kept, { id: effortOption, value: effort }];
+  return { instanceId, model, ...(options.length > 0 ? { options } : {}) };
 }
 
 export interface ThreadToolPolicy {

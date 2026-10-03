@@ -1499,6 +1499,8 @@ const SPI_INBOUND_FILES: ReadonlySet<string> = new Set([
   `${SPI_DIR}/threadToolPolicy.ts`,
   `${SPI_DIR}/claudeThreadProfile.ts`,
   `${SPI_DIR}/codexThreadProfile.ts`,
+  `${SPI_DIR}/acpThreadProfile.ts`,
+  `${SPI_DIR}/threadToolsMcp.ts`,
 ]);
 
 const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(function* (
