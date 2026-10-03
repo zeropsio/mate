@@ -1968,6 +1968,31 @@ describe("CrewEngine", () => {
     ),
   );
 
+  it.live("an agent not live yet when the engine boots gets its crew tools once it is", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.crew.create"), (creates) => creates.length > 0),
+          );
+          yield* Ref.set(world.missingAgents, new Set(["claudeAgent"]));
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* Ref.set(world.missingAgents, new Set());
+          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
+            (entry) => entry.crew.crewmate === "backend",
+          )!;
+          const member = Option.getOrThrow(
+            yield* (yield* CrewThreadDirectory).memberFor(created.threadId),
+          );
+          assert.deepStrictEqual([member.prompt.crewTools, member.prompt.memory], [true, true]);
+        }),
+    ]),
+  );
+
   const NO_SPEND = "Grok doesn't report what it spends, so this crew can't keep a budget";
 
   it.live(

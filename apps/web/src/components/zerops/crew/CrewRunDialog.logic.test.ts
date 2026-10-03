@@ -251,6 +251,13 @@ describe("crewSpendBlocker", () => {
     },
   ])("$name", ({ logins, blocker }) => {
     expect(crewSpendBlocker(logins, providers)).toBe(blocker);
+    // A server that names no agent's capability refused no budget: neither does the dialog.
+    expect(
+      crewSpendBlocker(
+        logins,
+        providers.map(({ threadProfile: _, ...provider }) => provider as ServerProvider),
+      ),
+    ).toBeNull();
     expect(crewSpendBlocker(logins, undefined)).toBeNull();
   });
 });

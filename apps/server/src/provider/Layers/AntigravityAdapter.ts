@@ -82,6 +82,7 @@ import {
   sanitizeAntigravityToolPayload,
   selectAntigravityPermissionOptionId,
 } from "../acp/AntigravityProtocol.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
   acpTerminalReason,
   acpThreadSetup,
@@ -791,6 +792,8 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
           Effect.provideService(Scope.Scope, sessionScope),
         );
+        // A crewmate asks before every call, whatever mode its thread names.
+        const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
         const startModel = (yield* acpTurnProfile(
           threadPolicies,
           threadRef,
@@ -856,7 +859,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                 defaultModel: yield* options.defaultModel ?? Effect.undefined,
                 mapError: (cause) => cause,
               });
-              yield* runtime.setMode(antigravityPermissionMode(input.runtimeMode));
+              yield* runtime.setMode(antigravityPermissionMode(runtimeMode));
               yield* options.onSessionStarted?.(started, cwd) ?? Effect.void;
               const createdAt = yield* nowIso;
               const session: ProviderSession = {
@@ -865,7 +868,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                 threadId: input.threadId,
                 cwd,
                 status: "ready",
-                runtimeMode: input.runtimeMode,
+                runtimeMode,
                 ...(model ? { model } : {}),
                 resumeCursor: { schemaVersion: 1, sessionId: started.sessionId },
                 createdAt,

@@ -83,6 +83,8 @@ interface AcpDriver {
   /** The thread's own model, and the one its profile sets instead. */
   readonly ownModel: string;
   readonly profileModel: string;
+  /** The launch flags that let every call run unasked. */
+  readonly approveAll: ReadonlyArray<string>;
   readonly make: (
     binaryPath: string,
   ) => Effect.Effect<ProviderAdapterShape<ProviderAdapterError>, never, AdapterServices>;
@@ -94,6 +96,7 @@ const DRIVERS: ReadonlyArray<AcpDriver> = [
     kind: ProviderDriverKind.make("cursor"),
     ownModel: "default",
     profileModel: "gpt-5.4",
+    approveAll: ["--force"],
     make: (binaryPath) =>
       Effect.flatMap(Schema.decodeEffect(CursorSettings)({ binaryPath }), (settings) =>
         makeCursorAdapter(settings, {}),
@@ -104,6 +107,7 @@ const DRIVERS: ReadonlyArray<AcpDriver> = [
     kind: ProviderDriverKind.make("grok"),
     ownModel: "grok-4.6",
     profileModel: "grok-mock-alt",
+    approveAll: ["--always-approve"],
     make: (binaryPath) =>
       Effect.flatMap(Schema.decodeEffect(GrokSettings)({ binaryPath }), (settings) =>
         makeGrokAdapter(settings, {}),
@@ -112,7 +116,11 @@ const DRIVERS: ReadonlyArray<AcpDriver> = [
 ];
 
 /** One turn on `threadId` through the real adapter; what the agent was sent, and the events. */
-const oneTurn = (driver: AcpDriver, threadId: ThreadId) =>
+const oneTurn = (
+  driver: AcpDriver,
+  threadId: ThreadId,
+  runtimeMode: "approval-required" | "full-access" = "approval-required",
+) =>
   Effect.gen(function* () {
     const decided: Array<unknown> = [];
     const registry = yield* ThreadToolPolicyRegistry;
@@ -126,12 +134,13 @@ const oneTurn = (driver: AcpDriver, threadId: ThreadId) =>
       NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-profile-")),
     );
     const requestLogPath = NodePath.join(dir, "requests.ndjson");
+    const argvLogPath = NodePath.join(dir, "argv.txt");
     yield* Effect.promise(() => NodeFSP.writeFile(requestLogPath, "", "utf8"));
     const binaryPath = writeFakeCli({
       directory: dir,
       name: "fake-agent",
       env: { T3_ACP_REQUEST_LOG_PATH: requestLogPath, T3_ACP_EMIT_TOOL_CALLS: "1" },
-      source: execScriptSource({ scriptPath: mockAgentPath }),
+      source: execScriptSource({ scriptPath: mockAgentPath, argvLogPath }),
     });
     const adapter = yield* driver.make(binaryPath);
     const events: Array<ProviderRuntimeEvent> = [];
@@ -148,7 +157,7 @@ const oneTurn = (driver: AcpDriver, threadId: ThreadId) =>
       threadId,
       provider: driver.kind,
       cwd: process.cwd(),
-      runtimeMode: "approval-required",
+      runtimeMode,
       modelSelection: { instanceId: ProviderInstanceId.make(driver.kind), model: driver.ownModel },
     });
     // A parked permission holds the prompt open, so the turn runs beside the wait.
@@ -159,6 +168,7 @@ const oneTurn = (driver: AcpDriver, threadId: ThreadId) =>
     yield* Fiber.interrupt(collecting);
     yield* adapter.stopSession(threadId);
     return {
+      argv: yield* Effect.promise(() => NodeFSP.readFile(argvLogPath, "utf8")),
       requests: yield* Effect.promise(() => readJsonLines(requestLogPath)),
       events,
       decided,
@@ -230,6 +240,23 @@ for (const driver of DRIVERS)
               context: true,
               model: true,
             },
+          );
+        }),
+      ),
+    );
+
+    it.effect("a crewmate's session asks before every call, whatever mode its thread names", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const crewmate = yield* oneTurn(driver, CREW_THREAD, "full-access");
+          const person = yield* oneTurn(driver, PERSON_THREAD, "full-access");
+          assert.deepStrictEqual(
+            {
+              crewmate: driver.approveAll.some((flag) => crewmate.argv.includes(flag)),
+              person: driver.approveAll.some((flag) => person.argv.includes(flag)),
+              decided: crewmate.decided.length,
+            },
+            { crewmate: false, person: true, decided: 1 },
           );
         }),
       ),

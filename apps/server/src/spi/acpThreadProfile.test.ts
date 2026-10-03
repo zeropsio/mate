@@ -78,6 +78,26 @@ describe("decideAcpPermission", () => {
       expected: "once",
     },
     {
+      name: "a command whose workdir is outside the session",
+      call: { kind: "execute", rawInput: { command: "npm test", workdir: "/etc" } },
+      expected: "no",
+    },
+    {
+      name: "a command whose dir is outside the session",
+      call: { kind: "execute", rawInput: { command: "npm test", dir: "/etc" } },
+      expected: "no",
+    },
+    {
+      name: "a move whose destination is outside the lane",
+      call: { kind: "move", rawInput: { source: "src/a.ts", destination: "/etc/a.ts" } },
+      expected: "no",
+    },
+    {
+      name: "a move inside the lane",
+      call: { kind: "move", rawInput: { from: "src/a.ts", to: "src/b.ts" } },
+      expected: "once",
+    },
+    {
       name: "a command the gate refuses",
       call: { kind: "execute", rawInput: { command: "rm -rf /" } },
       expected: "no",
@@ -157,6 +177,13 @@ describe("decideAcpPermission", () => {
 
 describe("acpGateCalls", () => {
   it.each([
+    [
+      { kind: "search", locations: [{ path: "/var/www/a" }], rawInput: { paths: ["/srv/b"] } },
+      [
+        { toolName: "Grep", input: { path: "/var/www/a" } },
+        { toolName: "Grep", input: { path: "/srv/b" } },
+      ],
+    ],
     [
       { kind: "read", locations: [{ path: "/var/www/a.ts" }] },
       [{ toolName: "Read", input: { file_path: "/var/www/a.ts" } }],

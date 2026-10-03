@@ -95,6 +95,12 @@ import {
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
 import { claudeMcpControl, type ClaudeMcpQuery } from "../../spi/mcpControl.ts";
+
+/** A session as the MCP tab's hook sees it. */
+const claudeMcpSession = (context: {
+  readonly query: ClaudeMcpQuery;
+  readonly profiled: boolean;
+}) => ({ runtime: context.query, profiled: context.profiled });
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
@@ -427,6 +433,8 @@ interface ClaudeSessionContext {
   streamFiber: Fiber.Fiber<void, Error> | undefined;
   readonly startedAt: string;
   readonly basePermissionMode: PermissionMode | undefined;
+  /** It runs a thread tool profile (a crewmate): the MCP tab never reaches it. */
+  readonly profiled: boolean;
   currentApiModelId: string | undefined;
   /** Effective effort for the session's turns; subagents without an explicit
    * effort override inherit this. */
@@ -5178,6 +5186,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         streamFiber: undefined,
         startedAt,
         basePermissionMode: permissionMode,
+        profiled: threadSetup !== undefined,
         currentApiModelId: apiModelId,
         currentEffort: effectiveEffort ?? undefined,
         resumeSessionId: sessionId,
@@ -5736,9 +5745,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     mcp: claudeMcpControl({
       get: (threadId) => {
         const context = sessions.get(threadId);
-        return context === undefined || context.stopped ? undefined : context.query;
+        return context === undefined || context.stopped ? undefined : claudeMcpSession(context);
       },
-      all: () => [...sessions.values()].filter((context) => !context.stopped).map((c) => c.query),
+      all: () => [...sessions.values()].filter((context) => !context.stopped).map(claudeMcpSession),
     }),
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);

@@ -150,14 +150,61 @@ const recordingClaudeQuery = (calls: string[]): ClaudeMcpQuery => ({
   },
 });
 
+const live = <R>(runtime: R) => ({ runtime, profiled: false });
+const crewmate = <R>(runtime: R) => ({ runtime, profiled: true });
+
+describe("a crewmate's session and the MCP tab", () => {
+  it.effect("no press or config change reaches it, on any agent", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const claude = claudeMcpControl({
+        get: () => crewmate(recordingClaudeQuery(calls)),
+        all: () => [crewmate(recordingClaudeQuery(calls))],
+      });
+      const reloads = {
+        reloadMcpServers: Effect.sync(() => {
+          calls.push("reload");
+        }),
+      };
+      const codex = codexMcpControl({
+        get: () => crewmate(reloads),
+        all: () => [crewmate(reloads)],
+      });
+      const client: OpenCodeMcpClient = {
+        status: async () => ({}),
+        connect: async (name) => calls.push(`connect ${name}`),
+        disconnect: async (name) => calls.push(`disconnect ${name}`),
+        add: async (name) => calls.push(`add ${name}`),
+      };
+      const openCode = openCodeMcpControl({
+        get: () => crewmate(client),
+        all: () => [crewmate(client)],
+      });
+      const refusals: string[] = [];
+      for (const control of [claude, codex, openCode]) {
+        refusals.push((yield* Effect.flip(control.reconnect(THREAD, "zerops"))).detail);
+        refusals.push((yield* Effect.flip(control.setEnabled(THREAD, "zerops", true))).detail);
+        yield* control.configChanged({ kind: "enabled", name: "zerops", enabled: true });
+        yield* control.configChanged({ kind: "added", name: "x", entry: {} });
+      }
+      expect({ calls, refusals: new Set(refusals) }).toEqual({
+        calls: [],
+        refusals: new Set([
+          "A crewmate's tools are the crew's to set; its MCP servers can't be changed here.",
+        ]),
+      });
+    }),
+  );
+});
+
 describe("claudeMcpControl", () => {
   it.effect("answers for the thread's running query only", () =>
     Effect.gen(function* () {
       const calls: string[] = [];
       const query = recordingClaudeQuery(calls);
       const control = claudeMcpControl({
-        get: (threadId) => (threadId === THREAD ? query : undefined),
-        all: () => [query],
+        get: (threadId) => (threadId === THREAD ? live(query) : undefined),
+        all: () => [live(query)],
       });
       expect(yield* control.status(THREAD)).toEqual([{ name: "zerops", state: "connected" }]);
       expect(yield* control.status(OTHER)).toBeUndefined();
@@ -175,7 +222,7 @@ describe("claudeMcpControl", () => {
         const calls: string[] = [];
         const control = claudeMcpControl({
           get: () => undefined,
-          all: () => [recordingClaudeQuery(calls), recordingClaudeQuery(calls)],
+          all: () => [live(recordingClaudeQuery(calls)), live(recordingClaudeQuery(calls))],
         });
         yield* control.configChanged({ kind: "enabled", name: "x", enabled: false });
         yield* control.configChanged({ kind: "added", name: "y", entry: {} });
@@ -187,11 +234,12 @@ describe("claudeMcpControl", () => {
   it.effect("reads a query that cannot answer as no live state", () =>
     Effect.gen(function* () {
       const control = claudeMcpControl({
-        get: () => ({
-          mcpServerStatus: async () => {
-            throw new Error("closed");
-          },
-        }),
+        get: () =>
+          live({
+            mcpServerStatus: async () => {
+              throw new Error("closed");
+            },
+          }),
         all: () => [],
       });
       expect(yield* control.status(THREAD)).toBeUndefined();
@@ -210,8 +258,8 @@ describe("codexMcpControl", () => {
         }),
       };
       const control = codexMcpControl({
-        get: (threadId) => (threadId === THREAD ? runtime : undefined),
-        all: () => [runtime, runtime],
+        get: (threadId) => (threadId === THREAD ? live(runtime) : undefined),
+        all: () => [live(runtime), live({ ...runtime })],
       });
       expect(yield* control.status(THREAD)).toEqual([{ name: "zerops", state: "connected" }]);
       yield* control.reconnect(THREAD, "zerops");
@@ -231,7 +279,7 @@ describe("openCodeMcpControl", () => {
         disconnect: async (name) => calls.push(`disconnect ${name}`),
         add: async (name, config) => calls.push(`add ${name} ${JSON.stringify(config)}`),
       };
-      const control = openCodeMcpControl({ get: () => client, all: () => [client] });
+      const control = openCodeMcpControl({ get: () => live(client), all: () => [live(client)] });
       yield* control.configChanged({
         kind: "added",
         name: "a",

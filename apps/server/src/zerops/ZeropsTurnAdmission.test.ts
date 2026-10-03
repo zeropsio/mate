@@ -290,6 +290,15 @@ const RETIRED =
   "This crewmate conversation is retired; message the crewmate in its current conversation.";
 const NOT_RUNNING =
   "Crew mode is not running this crewmate's conversation, so it cannot take a turn.";
+const MODE_KEPT =
+  "A crewmate's conversation runs in the crew's own mode, so its mode can't be changed.";
+const onCrewThreadMode = {
+  type: "thread.runtime-mode.set",
+  commandId: CommandId.make("command-mode"),
+  threadId: THREAD,
+  runtimeMode: "full-access",
+  createdAt: CREATED_AT,
+} as unknown as OrchestrationCommand;
 const UNGATED =
   "Cursor can't run a crewmate: it would work without the crew's rules. Give this crewmate another login.";
 
@@ -581,6 +590,20 @@ describe("ZeropsTurnAdmission", () => {
         ] as const,
     ),
     [
+      "refuses a runtime-mode change on a crewmate's conversation",
+      { ...janSignedClaude, crewThread: { profile: "given" } },
+      onCrewThreadMode,
+      session(JAN),
+      MODE_KEPT,
+    ],
+    [
+      "leaves a runtime-mode change on a person's own conversation alone",
+      { ...janSignedClaude, threadInstanceId: "claudeAgent" },
+      onCrewThreadMode,
+      session(JAN),
+      undefined,
+    ],
+    [
       "leaves archiving a crewmate's conversation to the crew itself",
       { ...janSignedClaude, crewThread: { profile: "given" } },
       onCrewThread("thread.archive"),
@@ -614,6 +637,18 @@ describe("ZeropsTurnAdmission", () => {
         ...janSignedClaude,
         drivers: { ...DEFAULT_DRIVERS, cursor: "cursor" },
         threadInstanceId: "cursor",
+        crewThread: { profile: "given" },
+      },
+      turnStart("cursor"),
+      { kind: "crew", startedBy: JAN },
+      UNGATED,
+    ],
+    [
+      "refuses a crewmate turn that names an agent which never reads the crew's profile",
+      {
+        ...janSignedClaude,
+        drivers: { ...DEFAULT_DRIVERS, cursor: "cursor" },
+        threadInstanceId: "claudeAgent",
         crewThread: { profile: "given" },
       },
       turnStart("cursor"),

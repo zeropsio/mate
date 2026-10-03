@@ -50,6 +50,7 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
   type OpenCodeThreadSetup,
   type OpenCodeToolInput,
@@ -1754,9 +1755,16 @@ export function makeOpenCodeAdapter(
       request: PermissionRequest,
     ) {
       const call = request.tool ? context.toolInputByCallId.get(request.tool.callID) : undefined;
-      const reply = yield* threadSetup.decidePermission(request, call);
+      const decided = yield* threadSetup.decidePermission(request, call);
       yield* runOpenCodeSdk("permission.reply", (signal) =>
-        context.client.permission.reply({ requestID: request.id, reply }, { signal }),
+        context.client.permission.reply(
+          {
+            requestID: request.id,
+            reply: decided.reply,
+            ...(decided.message === undefined ? {} : { message: decided.message }),
+          },
+          { signal },
+        ),
       ).pipe(Effect.timeout("10 seconds"), Effect.ignore);
     });
 
@@ -2911,7 +2919,8 @@ export function makeOpenCodeAdapter(
           provider: PROVIDER,
           providerInstanceId: boundInstanceId,
           status: "connecting",
-          runtimeMode: input.runtimeMode,
+          // A crewmate asks before every call, whatever mode its thread names.
+          runtimeMode: profiledRuntimeMode(started.threadSetup !== undefined, input.runtimeMode),
           cwd: directory,
           ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
           threadId: input.threadId,
@@ -2961,6 +2970,12 @@ export function makeOpenCodeAdapter(
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
         };
+        if (resumeSessionId !== undefined) {
+          // A resumed or forked session's total carries what it ran before, as
+          // Claude's does across its resumes; a crew run counts a turn's spend
+          // as what the total rose by.
+          yield* seedSessionCost(context);
+        }
         const raceWinner = sessions.get(input.threadId);
         if (raceWinner) {
           // Another start published first. A newly created remote session
@@ -3017,6 +3032,30 @@ export function makeOpenCodeAdapter(
         return context.session;
       },
     );
+
+    /** Each earlier assistant message's cost, read once when a session is resumed. */
+    const seedSessionCost = (context: OpenCodeSessionContext) =>
+      runOpenCodeSdk("session.messages", () =>
+        context.client.session.messages({ sessionID: context.openCodeSessionId }),
+      ).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.map((response) => {
+          for (const entry of response.data ?? []) {
+            const info = entry.info;
+            if (info.role === "assistant" && typeof info.cost === "number") {
+              context.costByMessageId.set(info.id, info.cost);
+            }
+          }
+        }),
+        Effect.ignore,
+      );
+
+    /** A session as the MCP tab's hook sees it: sessions on one server share its connections. */
+    const openCodeMcpSession = (context: OpenCodeSessionContext) => ({
+      runtime: openCodeMcpClient(context.client),
+      profiled: context.threadSetup !== undefined,
+      shareKey: context.server,
+    });
 
     const sendTurn: OpenCodeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
       const context = yield* ensureSessionContext(sessions, input.threadId);
@@ -3893,7 +3932,9 @@ export function makeOpenCodeAdapter(
           yield* runOpenCodeSdk("session.update", () =>
             context.client.session.update({
               sessionID: forkedSessionId,
-              permission: buildOpenCodePermissionRules(context.session.runtimeMode),
+              permission: context.threadSetup
+                ? [...context.threadSetup.permission]
+                : buildOpenCodePermissionRules(context.session.runtimeMode),
             }),
           ).pipe(Effect.mapError(toRequestError));
           yield* clearPendingOpenCodeRequests(context, { type: "session.fork" });
@@ -3969,12 +4010,9 @@ export function makeOpenCodeAdapter(
       mcp: openCodeMcpControl({
         get: (threadId) => {
           const context = sessions.get(threadId);
-          return context === undefined ? undefined : openCodeMcpClient(context.client);
+          return context === undefined ? undefined : openCodeMcpSession(context);
         },
-        all: () =>
-          [...new Map([...sessions.values()].map((c) => [c.server, c.client])).values()].map(
-            openCodeMcpClient,
-          ),
+        all: () => [...sessions.values()].map(openCodeMcpSession),
       }),
       get streamEvents() {
         return Stream.fromQueue(runtimeEvents);

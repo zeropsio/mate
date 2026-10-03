@@ -75,6 +75,7 @@ import {
   extractPlanMarkdown,
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
   acpTerminalReason,
   acpThreadSetup,
@@ -541,6 +542,8 @@ export function makeCursorAdapter(
           const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
             Effect.provideService(Scope.Scope, sessionScope),
           );
+          // A crewmate asks before every call, whatever mode its thread names.
+          const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
 
           const resumeSessionId = parseCursorResume(input.resumeCursor)?.sessionId;
           const acpNativeLoggers = makeAcpNativeLoggers({
@@ -566,7 +569,7 @@ export function makeCursorAdapter(
             ...(options?.environment ? { environment: options.environment } : {}),
             childProcessSpawner,
             cwd,
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             ...(profileSetup ? { mcpServers: profileSetup.mcpServers } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
@@ -687,7 +690,7 @@ export function makeCursorAdapter(
                     "acp.jsonrpc",
                   );
                   if (profileSetup) return yield* profileSetup.decidePermission(params);
-                  if (input.runtimeMode === "full-access") {
+                  if (runtimeMode === "full-access") {
                     const autoApprovedOptionId = selectAutoApprovedPermissionOption(params);
                     if (autoApprovedOptionId !== undefined) {
                       return {
@@ -758,7 +761,7 @@ export function makeCursorAdapter(
 
           yield* applyRequestedSessionConfiguration({
             runtime: acp,
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             interactionMode: undefined,
             modelSelection: cursorModelSelection,
             mapError: ({ cause, method }) =>
@@ -770,7 +773,7 @@ export function makeCursorAdapter(
             provider: PROVIDER,
             providerInstanceId: boundInstanceId,
             status: "ready",
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             cwd,
             model: cursorModelSelection?.model,
             threadId: input.threadId,

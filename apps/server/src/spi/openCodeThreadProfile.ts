@@ -180,39 +180,51 @@ const sameInput = (input: Record<string, unknown>, updated: Record<string, unkno
 };
 
 /**
- * One call through the gate. A failing or silent gate denies, and so does an
- * allow that rewrites the call: OpenCode's reply is once or reject, so it
- * would run what it asked, not what the gate allowed.
+ * One call through the gate: `undefined` when it passes, else why not. A
+ * failing or silent gate denies, and so does an allow that rewrites the
+ * call: OpenCode's reply is once or reject, so it would run what it asked,
+ * not what the gate allowed.
  */
-const allows = (profile: ThreadToolProfile, call: OpenCodeGateCall, toolUseId: string) =>
+const refusalOf = (profile: ThreadToolProfile, call: OpenCodeGateCall, toolUseId: string) =>
   profile.decideTool({ ...call, toolUseId }).pipe(
     Effect.catchCause(() => Effect.succeed(deny("The tool gate failed."))),
     Effect.timeoutOrElse({
       duration: DECIDE_TOOL_TIMEOUT,
       orElse: () => Effect.succeed(deny("The tool gate gave no decision in time.")),
     }),
-    Effect.map(
-      (decision) =>
-        decision.kind === "allow" &&
-        (decision.updatedInput === undefined || sameInput(call.input, decision.updatedInput)),
+    Effect.map((decision): string | undefined =>
+      decision.kind === "deny"
+        ? decision.reason
+        : decision.updatedInput === undefined || sameInput(call.input, decision.updatedInput)
+          ? undefined
+          : "Run the call exactly as the crew's instructions give it.",
     ),
   );
 
-/** The reply to one ask: `once` when every call passes the gate, else `reject`. Never `always`. */
+/** The reply to one ask, with the gate's reason for a rejection, which the model reads. */
+export interface OpenCodePermissionReply {
+  readonly reply: "once" | "reject";
+  readonly message?: string;
+}
+
+/** `once` when every call passes the gate, else `reject` with why. Never `always`. */
 export const decideOpenCodePermission = (
   profile: ThreadToolProfile,
   ask: OpenCodePermissionAsk,
   call: OpenCodeToolInput | undefined,
   cwd: string,
   toolsServer: string | undefined,
-): Effect.Effect<"once" | "reject"> =>
+): Effect.Effect<OpenCodePermissionReply> =>
   Effect.gen(function* () {
     const calls = openCodeGateCalls(ask, call, cwd, toolsServer);
-    if (calls === undefined || calls.length === 0) return "reject";
-    for (const gateCall of calls) {
-      if (!(yield* allows(profile, gateCall, ask.tool?.callID ?? ask.id))) return "reject";
+    if (calls === undefined || calls.length === 0) {
+      return { reply: "reject", message: `${ask.permission} is not available to a crewmate.` };
     }
-    return "once";
+    for (const gateCall of calls) {
+      const refusal = yield* refusalOf(profile, gateCall, ask.tool?.callID ?? ask.id);
+      if (refusal !== undefined) return { reply: "reject", message: refusal };
+    }
+    return { reply: "once" };
   });
 
 /** What a profiled thread's session starts with on OpenCode. */
@@ -232,7 +244,7 @@ export interface OpenCodeThreadSetup {
   readonly decidePermission: (
     ask: OpenCodePermissionAsk,
     call: OpenCodeToolInput | undefined,
-  ) => Effect.Effect<"once" | "reject">;
+  ) => Effect.Effect<OpenCodePermissionReply>;
 }
 
 /**

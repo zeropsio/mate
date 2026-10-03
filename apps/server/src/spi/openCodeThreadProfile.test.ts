@@ -114,7 +114,9 @@ describe("decideOpenCodePermission", () => {
     },
   ])("$name", ({ ask, call, expected }) =>
     Effect.gen(function* () {
-      expect(yield* decideOpenCodePermission(profile, ask, call, CWD, SERVER)).toBe(expected);
+      expect((yield* decideOpenCodePermission(profile, ask, call, CWD, SERVER)).reply).toBe(
+        expected,
+      );
     }),
   );
 
@@ -128,7 +130,21 @@ describe("decideOpenCodePermission", () => {
           CWD,
           SERVER,
         ),
-      ).toBe("reject");
+      ).toEqual({ reply: "reject", message: "The tool gate failed." });
+    }),
+  );
+
+  it.effect("a rejection carries the gate's reason, for the model to read", () =>
+    Effect.gen(function* () {
+      expect(
+        yield* decideOpenCodePermission(
+          profile,
+          ask({ permission: "bash" }),
+          call("bash", { command: "rm -rf /" }),
+          CWD,
+          SERVER,
+        ),
+      ).toEqual({ reply: "reject", message: "no" });
     }),
   );
 });

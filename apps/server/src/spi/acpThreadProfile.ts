@@ -58,7 +58,16 @@ const shellWord = (word: string): string =>
  * a `<shell> -c|-lc` wrapper; an argv the same, or its words quoted for sh.
  */
 const COMMAND_KEYS = ["command", "cmd", "CommandLine", "commandLine", "command_line"] as const;
-const CWD_KEYS = ["cwd", "Cwd", "WorkingDirectory", "workingDir", "working_dir"] as const;
+const CWD_KEYS = [
+  "cwd",
+  "Cwd",
+  "WorkingDirectory",
+  "workingDir",
+  "working_dir",
+  "workdir",
+  "dir",
+  "directory",
+] as const;
 
 const commandOf = (rawInput: unknown): string | undefined => {
   if (!isRecord(rawInput)) return undefined;
@@ -81,7 +90,24 @@ const commandOf = (rawInput: unknown): string | undefined => {
   return command.map(shellWord).join(" ");
 };
 
-const PATH_KEYS = ["file_path", "filePath", "path", "target_file", "notebook_path"] as const;
+/** Every key an agent names a file by, a move's source and destination included. */
+const PATH_KEYS = [
+  "file_path",
+  "filePath",
+  "path",
+  "target_file",
+  "notebook_path",
+  "source",
+  "from",
+  "old_path",
+  "oldPath",
+  "destination",
+  "dest",
+  "to",
+  "new_path",
+  "newPath",
+  "target_path",
+] as const;
 
 /** `path` against `cwd`, `.` and `..` resolved, as POSIX resolves it. */
 export const resolvePosixPath = (cwd: string, path: string): string => {
@@ -124,12 +150,13 @@ const pathsOf = (toolCall: AcpToolCall, cwd: string): ReadonlyArray<string> => {
   }
   const input = toolCall.rawInput;
   if (isRecord(input)) {
-    for (const key of PATH_KEYS) {
-      const value = input[key];
+    const add = (value: unknown) => {
       if (typeof value === "string" && value.trim().length > 0) {
         paths.add(absoluteIn(cwd, value.trim()));
       }
-    }
+    };
+    for (const key of PATH_KEYS) add(input[key]);
+    if (Array.isArray(input.paths)) input.paths.forEach(add);
   }
   return [...paths];
 };
@@ -174,7 +201,11 @@ export const acpGateCalls = (
     case "read":
       return each("Read");
     case "search":
-      return [{ toolName: "Grep", input: { path: paths[0] ?? cwd } }];
+      // Every place the search reads must be one the gate lets it read.
+      return (paths.length === 0 ? [cwd] : paths).map((path) => ({
+        toolName: "Grep",
+        input: { path },
+      }));
     case "fetch": {
       const url = isRecord(toolCall.rawInput) ? toolCall.rawInput.url : undefined;
       return [{ toolName: "WebFetch", input: typeof url === "string" ? { url } : {} }];
