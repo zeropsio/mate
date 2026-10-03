@@ -6,7 +6,6 @@
  */
 import {
   assignCandidateMateTints,
-  botDisplayName,
   hasMate,
   mateShapeOf,
   readZeropsMembership,
@@ -40,7 +39,7 @@ export function useZeropsReviewMates(
       const tint = tints.get(row.project.id) ?? "slate";
       mates.set(row.project.id, {
         mateProjectId: row.project.id,
-        name: botDisplayName({ bot: tags.bot, projectName: row.project.name }),
+        name: row.project.name,
         tint,
         shape: mateShapeOf(row.project, tint),
       });

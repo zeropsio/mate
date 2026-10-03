@@ -104,14 +104,9 @@ describe("deleteMateConfirmed — the name, typed", () => {
   });
 });
 
-/** Where HQ places a project of Acme Docs, as `kind`; a Mate by its name. */
-function inAcme(kind: HqPlacement["kind"], mate: string | null = null): HqPlacement {
-  return {
-    appId: "acme",
-    appName: "Acme Docs",
-    kind,
-    mate: mate === null ? null : { name: mate, face: "" },
-  };
+/** Where HQ places a project of Acme Docs, as `kind`; with a Mate's record where it is one. */
+function inAcme(kind: HqPlacement["kind"]): HqPlacement {
+  return { appId: "acme", appName: "Acme Docs", kind, mate: kind === "mate" ? { face: "" } : null };
 }
 
 function candidate(
@@ -136,7 +131,7 @@ function candidate(
 }
 
 const MATE = ["mate"];
-const QUINN = inAcme("mate", "Quinn");
+const QUINN = inAcme("mate");
 
 describe("deleteMateOffered — where a Mate's menu offers Delete", () => {
   it.each([

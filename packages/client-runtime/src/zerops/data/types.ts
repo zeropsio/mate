@@ -1572,6 +1572,7 @@ export type PlatformCommandKind =
   | "start-service"
   | "start-project"
   | "update-project-tags"
+  | "rename-project"
   | "set-project-member-role"
   | "import-development-container"
   | "enable-zerops-mate"
@@ -1834,6 +1835,16 @@ export interface UpdateProjectTagsCommandIntent {
   readonly patch: ProjectTagPatch;
 }
 
+/**
+ * The one write of a project's name — a Mate's (D3): put on a fresh read by the TagWriter, which
+ * keeps the project's record, so a rename and a tag write never undo each other.
+ */
+export interface RenameProjectCommandIntent {
+  readonly kind: "rename-project";
+  readonly project: ProjectRef;
+  readonly name: string;
+}
+
 /** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
 export type MateProjectRoleCode = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
 
@@ -1969,6 +1980,7 @@ export type PlatformCommandIntent =
   | StartServiceCommandIntent
   | StartProjectCommandIntent
   | UpdateProjectTagsCommandIntent
+  | RenameProjectCommandIntent
   | SetProjectMemberRoleCommandIntent
   | ImportDevelopmentContainerCommandIntent
   | EnableZeropsMateCommandIntent
@@ -2017,6 +2029,7 @@ export type PlatformCommandResult =
   | { readonly kind: "start-service"; readonly value: void }
   | { readonly kind: "start-project"; readonly value: void }
   | { readonly kind: "update-project-tags"; readonly value: ProjectTagWrite }
+  | { readonly kind: "rename-project"; readonly value: ProjectTagWrite }
   | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
@@ -2239,6 +2252,14 @@ export interface ZeropsDataCommands {
   readonly updateProjectTags: (
     project: ProjectRef,
     patch: ProjectTagPatch,
+  ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
+  /**
+   * Names a project — a Mate's name is its project's (D3) — on a fresh read, its tags put back as
+   * that read holds them, serialized with every tag write to it and verified by reading back.
+   */
+  readonly renameProject: (
+    project: ProjectRef,
+    name: string,
   ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
   /**
    * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one

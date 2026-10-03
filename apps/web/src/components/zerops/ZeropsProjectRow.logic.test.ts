@@ -1,4 +1,4 @@
-import { newMateTint, offerAsker, type RandomBytes } from "@t3tools/client-runtime/zerops";
+import { newMateTint, offerAsker } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
@@ -879,30 +879,15 @@ describe("setUpMateRecord", () => {
     missingContainer: true,
     project: { id, name: id, status: "ACTIVE", tagList: [], ...(hq === undefined ? {} : { hq }) },
   });
-  // Bytes that pick the first free name.
-  const first: RandomBytes = (bytes) => bytes.fill(0);
 
-  it("names the Mate as nobody in the organization is named, with the face a new Mate of that name is born with", () => {
+  // D3: the Mate is called what its project is; only its face is HQ's to record.
+  it("records the face a new Mate of its project's name is born with, and no name", () => {
     const record = setUpMateRecord({
       project: lone("scratch").project,
       candidates: [lone("scratch")],
-      taken: [],
-      random: first,
     });
-    expect(record).toBeDefined();
-    const [tint, shape, named] = record!.face.split(":");
-    expect({ tint, shape, named }).toEqual({
-      tint: newMateTint([lone("scratch")], record!.name),
-      shape: MATE_SHAPE_OF_TINT[newMateTint([lone("scratch")], record!.name)],
-      named: undefined,
-    });
-    const again = setUpMateRecord({
-      project: lone("scratch").project,
-      candidates: [lone("scratch")],
-      taken: [record!.name],
-      random: first,
-    });
-    expect(again?.name).not.toBe(record!.name);
+    const tint = newMateTint([lone("scratch")], "scratch");
+    expect(record).toEqual({ face: `${tint}:${MATE_SHAPE_OF_TINT[tint]}` });
   });
 
   it("writes nothing for a Mate whose record HQ holds already", () => {
@@ -910,11 +895,9 @@ describe("setUpMateRecord", () => {
       appId: null,
       appName: null,
       kind: "mate",
-      mate: { name: "Ada", face: "sky:flower" },
+      mate: { face: "sky:flower" },
     });
-    expect(
-      setUpMateRecord({ project: held.project, candidates: [held], taken: [], random: first }),
-    ).toBeUndefined();
+    expect(setUpMateRecord({ project: held.project, candidates: [held] })).toBeUndefined();
   });
 });
 

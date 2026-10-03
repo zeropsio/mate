@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { botDisplayName, generateBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
+import { generateBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
 import type { RandomBytes } from "./newProject.ts";
 
 /** Deterministic bytes, so a name choice is a fact rather than a coin flip. */
@@ -66,15 +66,5 @@ describe("generateBotName", () => {
     // or the first names in the pool come up more often than the last.
     const name = generateBotName([], bytesReturning(255, 1));
     expect(ZEROPS_BOT_NAME_POOL).toContain(name);
-  });
-});
-
-describe("botDisplayName", () => {
-  it.each([
-    ["the agent's name when it has one", "Ada", "crm-dev", "Ada"],
-    ["the project's name when it does not", undefined, "crm-dev", "crm-dev"],
-    ["the project's name for a blank one", "   ", "crm-dev", "crm-dev"],
-  ] as const)("shows %s", (_label, bot, projectName, expected) => {
-    expect(botDisplayName({ bot, projectName })).toBe(expected);
   });
 });

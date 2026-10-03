@@ -1,8 +1,9 @@
 /**
  * *Change face…* as `useMateActions` offers it, wherever a Mate is listed: beside Rename, where
- * the viewer may rename the Mate; its dialog opening on the face the Mate wears; a save that is
+ * the viewer may change the Mate; its dialog opening on the face the Mate wears; a save that is
  * one write to the organization's HQ, closing once HQ takes it; and a refusal said in the dialog,
- * nothing else changed.
+ * nothing else changed. *Rename Mate* renames the Mate's project in Zerops, whose name is the
+ * Mate's (D3).
  */
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
@@ -43,6 +44,8 @@ interface FaceDialogProps {
 const mock = vi.hoisted(() => ({
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
   updateMate: vi.fn(),
+  /** The platform's rename of a project, through the account's commands. */
+  renameProject: vi.fn(),
   /** *Finish setup*'s steps, as the hook hands them over. */
   finishMateSetup: vi.fn(),
   roleCode: "OWNER",
@@ -115,6 +118,7 @@ vi.mock("./zeropsDataContext", () => ({
     runtime: {
       commands: {
         setProjectMemberRole: mock.setProjectMemberRole,
+        renameProject: mock.renameProject,
         deleteProject: async () => ({ value: undefined }),
       },
       reads: { setupMarker: () => null },
@@ -209,16 +213,16 @@ vi.mock("../components/zerops/ZeropsChangeFaceDialog", () => ({
 }));
 
 /**
- * A Mate of Acme Docs as HQ places it, wearing `face` as HQ records it ("" where none was picked),
- * its stand-up asked by `asker` where one is.
+ * A Mate of Acme Docs as HQ places it, its project named `name` in Zerops, wearing `face` as HQ
+ * records it ("" where none was picked), its stand-up asked by `asker` where one is.
  */
-function mate(bot: string, face = "", asker?: string): ZeropsCandidatePresentation {
-  const id = `acme-docs-${bot.toLowerCase()}`;
+function mate(name: string, face = "", asker?: string): ZeropsCandidatePresentation {
+  const id = `acme-docs-${name.toLowerCase()}`;
   const hq: HqPlacement = {
     appId: "acme",
     appName: "Acme Docs",
     kind: "mate",
-    mate: { name: bot, face, ...(asker === undefined ? {} : { standupRequestedBy: asker }) },
+    mate: { face, ...(asker === undefined ? {} : { standupRequestedBy: asker }) },
   };
   return {
     key: `${id}:zcp`,
@@ -227,7 +231,7 @@ function mate(bot: string, face = "", asker?: string): ZeropsCandidatePresentati
     environmentId: EnvironmentId.make(`env-${id}`),
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name,
       status: "ACTIVE",
       clientId: "org-acme",
       tagList: ["mate"],
@@ -272,6 +276,7 @@ beforeEach(() => {
   mock.deleteDialog.current = null;
   mock.moveDialog.current = null;
   mock.updateMate.mockReset();
+  mock.renameProject.mockReset();
   mock.finishMateSetup.mockReset();
   seen.length = 0;
   mock.listing.current = {
@@ -732,7 +737,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
       registration: {
         hq: { kind: "official", projectId: "p-hq" },
         kind: "mate-record",
-        record: { name: expect.any(String), face: expect.any(String) },
+        record: { face: expect.any(String) },
         standUp: false,
       },
       hq: { kind: "official", projectId: "p-hq" },
@@ -800,7 +805,6 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
         groupName: "mate-rig-e2e-d",
         kind: "mate",
         displayName: "mate-rig-e2e-d - Dan",
-        botName: "Dan",
         face: FACE,
       },
       container: true,
@@ -836,7 +840,7 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
       registration: {
         kind: "mate",
         groupId: "app-d",
-        mate: { name: "Dan", face: FACE },
+        mate: { face: FACE },
       },
     });
   });
@@ -873,7 +877,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
               {
                 projectId: IVO.project.id,
                 kind: "mate",
-                mate: { name: "Ivo", face: "coral:gem" },
+                mate: { face: "coral:gem" },
               },
             ],
           },
@@ -888,7 +892,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     return registry;
   };
 
-  it("registers it there again under HQ's name and face, writing no new Mate", async () => {
+  it("registers it there again under HQ's face, writing no new Mate", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
     mock.listing.current = {
       state: "known",
@@ -909,7 +913,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
       registration: {
         kind: "mate",
         groupId: "acme",
-        mate: { name: "Ivo", face: { tint: "coral", shape: "gem" } },
+        mate: { face: { tint: "coral", shape: "gem" } },
       },
       // A Mate HQ holds is not adopted: its key is not touched.
       harden: false,
@@ -950,7 +954,7 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
 });
 
 describe("useMateActions — HQ's verbs only on a Mate HQ holds", () => {
-  it("offers no rename, face, move or leave on a Mate HQ has no record of", () => {
+  it("offers no face, move or leave on a Mate HQ has no record of: its rename is Zerops'", () => {
     const { hq: _none, ...project } = FEN.project as typeof FEN.project & { hq?: unknown };
     const unrecorded = { ...FEN, project } as ZeropsCandidatePresentation;
     mock.listing.current = {
@@ -962,8 +966,40 @@ describe("useMateActions — HQ's verbs only on a Mate HQ holds", () => {
     };
     mount();
     const ids = verbs(unrecorded).map((verb) => verb.id);
-    expect(ids.filter((id) => ["rename-agent", "face", "move", "leave"].includes(id))).toEqual([]);
-    expect(actions().renameInPlace(unrecorded)).toBeUndefined();
+    expect(ids.filter((id) => ["rename-agent", "face", "move", "leave"].includes(id))).toEqual([
+      "rename-agent",
+    ]);
+    expect(actions().renameInPlace(unrecorded)).toBeDefined();
+  });
+});
+
+// D3: a Mate's name is its project's in Zerops. A rename is the project's, written by the account's
+// one writer of the project's record, and offered where the platform takes it: never HQ's.
+describe("useMateActions — Rename Mate", () => {
+  it("renames the Mate's project in Zerops, starting from its name there, and writes nothing to HQ", () => {
+    mock.renameProject.mockReturnValue(Promise.resolve({ value: { kind: "written" } }));
+    mount();
+    const rename = actions().renameInPlace(FEN);
+    expect(rename?.initialValue).toBe("Fen");
+    act(() => {
+      rename!.commit("Nova");
+    });
+    expect(mock.renameProject).toHaveBeenCalledWith(
+      { organizationId: "org-acme", projectId: FEN.project.id },
+      "Nova",
+    );
+    expect(mock.updateMate).not.toHaveBeenCalled();
+  });
+
+  it("offers it to a member who owns the Mate's project, as the platform takes it", () => {
+    mock.roleCode = "NO_ACCESS";
+    const owned = {
+      ...FEN,
+      project: { ...FEN.project, userRoles: [{ clientUserId: "member-ada", roleCode: "OWNER" }] },
+    } as ZeropsCandidatePresentation;
+    mount();
+    expect(verbs(owned).map((verb) => verb.id)).toContain("rename-agent");
+    expect(actions().renameInPlace(owned)).toBeDefined();
   });
 });
 
@@ -1051,7 +1087,7 @@ describe("mateAddedBy — whether the viewer added this Mate", () => {
     appId: "app-1",
     appName: "Acme",
     kind: "mate",
-    mate: { name: "Fen", face: "", ...mate },
+    mate: { face: "", ...mate },
   });
   it.each([
     { case: "HQ names its maker (New project)", hq: placed({ madeBy: "user-ada" }), added: true },

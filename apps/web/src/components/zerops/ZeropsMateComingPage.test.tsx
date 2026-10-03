@@ -35,10 +35,10 @@ const QUINN = {
   key: KEY,
   project: {
     id: PROJECT,
-    name: "Beviro - Quinn",
+    name: "Quinn",
     status: "ACTIVE",
     tagList: ["mate"],
-    hq: { appId: "beviro", appName: "Beviro", kind: "mate", mate: { name: "Quinn", face: "" } },
+    hq: { appId: "beviro", appName: "Beviro", kind: "mate", mate: { face: "" } },
   },
   group: "ready",
   service: { id: "zcp", name: "zcp", status: "ACTIVE" },
@@ -1054,7 +1054,6 @@ describe("an added Mate's own view, after its hand-over", () => {
     progress: null,
     adds: {
       appId: "beviro",
-      displayName: "Beviro - Quinn",
       registers: true,
       managed: ["db"],
       runtimes: [{ hostname: "appdev", role: "dev" }],

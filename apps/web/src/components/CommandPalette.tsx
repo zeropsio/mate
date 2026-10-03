@@ -15,6 +15,7 @@ import {
 } from "@t3tools/client-runtime/operations/projects";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
   canPreloadBrowsePath,
   createBrowseNavigationCoordinator,
@@ -88,7 +89,7 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
-import { hqMatesAtom, hqPlacementsAtom } from "../state/zerops";
+import { hqMatesAtom, hqStructureAtom } from "../state/zerops";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -125,6 +126,7 @@ import {
   filterPinnedBrowseEntries,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
+  hqChatMateNames,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
@@ -154,6 +156,7 @@ import { useSidebarJump } from "../zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
 import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
+import { candidateListingAtom } from "../zerops/useZeropsCandidates";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
@@ -1196,7 +1199,12 @@ function OpenCommandPaletteDialog(props: {
   );
 
   const hqMates = useAtomValue(hqMatesAtom);
-  const hqPlacements = useAtomValue(hqPlacementsAtom);
+  const candidateListing = useAtomValue(candidateListingAtom);
+  const hqStructure = useAtomValue(hqStructureAtom);
+  const mateNames = useMemo(
+    () => hqChatMateNames(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
+    [candidateListing, hqStructure],
+  );
   const threadLastVisitedAtById = useUiStateStore((store) => store.threadLastVisitedAtById);
   // Every Mate's chats HQ lists, of those this browser holds no socket to: titles and status only.
   const hqThreads = useMemo((): CommandPaletteHqThreads => {
@@ -1212,10 +1220,10 @@ function OpenCommandPaletteDialog(props: {
       linkable,
       lastVisitedAt: (environmentId, threadId) =>
         threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
-      mateName: (projectId) => hqPlacements?.get(projectId)?.mate?.name,
+      mateName: (projectId) => mateNames.get(projectId),
       renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
     };
-  }, [environments, hqMates, hqPlacements, linkable, threadLastVisitedAtById]);
+  }, [environments, hqMates, mateNames, linkable, threadLastVisitedAtById]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({

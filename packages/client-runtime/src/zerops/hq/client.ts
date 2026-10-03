@@ -50,9 +50,11 @@ export interface HqEndpoint {
   readonly address: string;
 }
 
-/** A Mate's record in HQ: its name, and its face in the grammar `readMateFace` reads. */
+/**
+ * A Mate's record in HQ: its face in the grammar `readMateFace` reads. Its name is its project's in
+ * Zerops (D3), never HQ's.
+ */
 export interface HqMateRecord {
-  readonly name: string;
   readonly face: string;
 }
 
@@ -138,12 +140,11 @@ export interface HqAttach {
 }
 
 /**
- * A Mate's birth intent at HQ: where it goes and as whom, recorded before its Zerops project exists
- * — which is created tagged with its id (`mate:birth:<id>`) — until its attach closes it.
+ * A Mate's birth intent at HQ: where it goes and with which face, recorded before its Zerops project
+ * exists — which is created tagged with its id (`mate:birth:<id>`) — until its attach closes it.
  */
 export interface HqBirth {
   readonly id: string;
-  readonly name: string;
   /** Its face as its attach records it: empty where it wears its name's tint. */
   readonly face: string;
 }
@@ -196,11 +197,8 @@ export interface HqApi {
    * /api/mates/{projectId}/key`); none where it named none. Told to the project's admin alone.
    */
   readonly mateKey: (projectId: string, signal?: AbortSignal) => Promise<string | null>;
-  /** A Mate's name or face, as HQ records them (`PATCH /api/mates/{projectId}`). */
-  readonly updateMate: (
-    projectId: string,
-    change: { readonly name?: string; readonly face?: string },
-  ) => Promise<void>;
+  /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
+  readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
   readonly renameApp: (appId: string, name: string) => Promise<void>;
   /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */

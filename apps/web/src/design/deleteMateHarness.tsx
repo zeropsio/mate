@@ -68,10 +68,10 @@ function mate(bot: string, hostnames: ReadonlyArray<string> | undefined): Candid
     environmentId: EnvironmentId.make(`env-${id}`),
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status: "ACTIVE",
       tagList: ["mate"],
-      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { name: bot, face: "" } },
+      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { face: "" } },
     },
     service: { id: `zcp-${id}`, name: "zcp", status: "ACTIVE" },
     ...(hostnames === undefined
@@ -168,7 +168,7 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
 const NO_CREW = { status: "none", crew: null, logins: {} } as const;
 
 function actionsOf(candidate: Candidate, live: ZeropsAgentActivity | undefined): MateRowActions {
-  const name = candidate.project.hq?.mate?.name ?? candidate.project.name;
+  const name = candidate.project.name;
   return {
     muted: false,
     toggleMute: () => {},

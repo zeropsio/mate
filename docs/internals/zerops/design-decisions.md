@@ -3648,3 +3648,20 @@ no-cache`.
   The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
   the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
   runs and the stream's handshake has stood.
+- **2026-10-03** — **A Mate's name is its Zerops project's name** (D3, the owner: Zerops is the
+  source of truth, HQ stores only what Zerops lacks, and a name's source is Zerops). A Mate is called
+  what its project is, wherever it is drawn; HQ keeps no name of a Mate or of a Mate on its way
+  (migration `0030`), only its face, its place and its birth. _Rename Mate_ renames the project
+  (`renameProject`, by the TagWriter that puts back the tags a fresh read holds), offered where the
+  platform takes it — effective `OWNER` or `ADMIN` there; a rename in Zerops reaches every surface by
+  the project's own update. A new Mate's project is named as the Mate is, typed in one field;
+  _Set up Mate_ derives only a face. A stage or a production is offered `<project> - stage` or
+  `<project> - production`, numbered once taken, a suggestion nothing reads back; it has one name,
+  and an agent in it goes by it. A stop's row, its page, its line in a history and its find in the
+  jump box name it whole, as Zerops has it — no prefix is cut. An application's title stays HQ's.
+  **Supersedes:** the 2026-09-29 _New Mate_ row's "called what the project calls its Mates ('Acme
+  Docs - Quinn')", and the name in "A Mate's birth is HQ's record — its name and face" of the
+  2026-10-02 HQ row.
+  - _Why:_ HQ's name drew over the project's, so a rename in HQ left the project's, a rename in
+    Zerops changed nothing on screen, and a moved Mate kept its old project's prefix; and a stop's
+    name read back for its project's prefix cut `Shopper - stage` to `per - stage` under `Shop`

@@ -353,7 +353,7 @@ export const setUpMate = (call: Call, projectId: string) =>
     const session = yield* sessionFor(call, "door-owner");
     const created = yield* call("POST", "/api/mates", {
       session,
-      body: { projectId, name: "Ada", face: "face-1" },
+      body: { projectId, face: "face-1" },
     });
     assert.strictEqual(created.status, 201);
     return session;

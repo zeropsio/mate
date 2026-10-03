@@ -135,7 +135,7 @@ describe("placeListing", () => {
 });
 
 describe("birthIntentOf", () => {
-  it("finds an open birth intent by its id: the application it goes into, its name and face", () => {
+  it("finds an open birth intent by its id: the application it goes into and its face", () => {
     const structure = {
       ungrouped: [],
       apps: [
@@ -144,13 +144,12 @@ describe("birthIntentOf", () => {
           id: "app-g",
           name: "G",
           projects: [],
-          births: [{ id: "b-1", name: "Gus", face: "rose:seal" }],
+          births: [{ id: "b-1", face: "rose:seal" }],
         },
       ],
     };
     expect(birthIntentOf(structure, "b-1")).toEqual({
       appId: "app-g",
-      name: "Gus",
       face: "rose:seal",
     });
     // Closed by its attach, or never HQ's: none.

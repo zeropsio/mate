@@ -21,7 +21,7 @@ const KNOWN: HqStructure = {
           projectId: "p-vera",
           name: "Shop - Vera",
           kind: "mate",
-          mate: { name: "Vera", face: "" },
+          mate: { face: "" },
         },
         { projectId: "p-stage", name: "Shop - stage", kind: "stage", mate: null },
       ],

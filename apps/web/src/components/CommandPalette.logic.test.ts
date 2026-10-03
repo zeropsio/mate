@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
@@ -12,6 +13,7 @@ import {
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
+  hqChatMateNames,
   reduceCommandPaletteUiState,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
@@ -685,6 +687,48 @@ describe("filterPinnedBrowseEntries", () => {
     ).toEqual({
       visibleEntries: windowsEntries,
       exactEntry: windowsEntries[0],
+    });
+  });
+});
+
+// D3: a Mate HQ lists chats of is named as its project is in Zerops — as this client's listing reads
+// it, or, until the listing has it, as HQ's structure relays it.
+describe("hqChatMateNames", () => {
+  const STRUCTURE: HqStructure = {
+    ungrouped: [{ projectId: "p-lone", name: "Lone", mate: { face: "" } }],
+    apps: [
+      {
+        id: "app-1",
+        name: "Shop",
+        projects: [
+          { projectId: "p-ada", name: "Ada", kind: "mate", mate: { face: "" } },
+          { projectId: "p-bo", name: "Bo", kind: "mate", mate: { face: "" } },
+          { projectId: "p-stage", name: "Shop - stage", kind: "stage", mate: null },
+          { projectId: "p-unread", name: "", kind: "mate", mate: { face: "" } },
+        ],
+      },
+    ],
+  };
+  /** A listed project: a Mate's, with its container, or one no Mate lives in. */
+  const listed = (id: string, name: string, mate = true) =>
+    ({
+      key: `${id}:zcp`,
+      project: { id, name, status: "ACTIVE", tagList: mate ? ["mate"] : [] },
+      group: mate ? "ready" : "unavailable",
+      ...(mate ? { service: { id: "zcp", name: "zcp", status: "ACTIVE" } } : {}),
+    }) as ZeropsCandidate;
+
+  it("names each Mate by the listing first, else by HQ's structure, and nothing else", () => {
+    expect(
+      Object.fromEntries(
+        hqChatMateNames([listed("p-ada", "Ada Lin"), listed("p-shop", "Shop", false)], STRUCTURE),
+      ),
+    ).toEqual({ "p-ada": "Ada Lin", "p-bo": "Bo", "p-lone": "Lone" });
+  });
+
+  it("names only what the listing holds while HQ's structure is not known", () => {
+    expect(Object.fromEntries(hqChatMateNames([listed("p-ada", "Ada")], null))).toEqual({
+      "p-ada": "Ada",
     });
   });
 });

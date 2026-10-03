@@ -23,8 +23,10 @@ vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
 const MINUTE_MS = 60_000;
 
 /** A project write as the TagWriter makes one: the project read, then its tags written. */
-const markTags = async (client: ZeropsApiClient) =>
-  client.writeProjectTags(await client.fetchProject("p1"), ["mate"]);
+const markTags = async (client: ZeropsApiClient) => {
+  const project = await client.fetchProject("p1");
+  return client.writeProject(project, { name: project.name, tagList: ["mate"] });
+};
 const CHILD = "product mounted";
 
 const person: ZeropsUser = {

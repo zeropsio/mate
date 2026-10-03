@@ -5,7 +5,7 @@
  * runs in.
  *
  * Read off the candidate list — the one source for names, tags and faces
- * (`hasMate`, `botDisplayName`, `assignCandidateMateTints`, `mateShapeOf`) — by the derived
+ * (`hasMate`, its project's name, `assignCandidateMateTints`, `mateShapeOf`) — by the derived
  * `zeropsMatesAtom` (`useZeropsMates.ts`), so the chat header, an empty
  * conversation and a draft's headline never load anything themselves and can
  * never disagree with the left menu about who a Mate is.
@@ -17,7 +17,6 @@
  */
 import {
   assignCandidateMateTints,
-  botDisplayName,
   hasMate,
   mateArriving,
   mateArrivingUntil,
@@ -101,7 +100,7 @@ export function zeropsMateIdentityOf(
   const arrivingUntil = mateArrivingUntil(candidate);
   return {
     serviceId: candidate.service?.id,
-    name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
+    name: candidate.project.name,
     tint,
     shape: mateShapeOf(candidate.project, tint),
     project: tags.label,

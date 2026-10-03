@@ -21,7 +21,6 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
-  botDisplayName,
   deployedCommit,
   environmentRow,
   flowChanges,
@@ -907,16 +906,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, [awaiting, letGo]);
 
   const mateNames = useMemo(
-    () =>
-      new Map(
-        inventory.projects.map((project) => [
-          project.id,
-          botDisplayName({
-            bot: readZeropsMembership(project).bot,
-            projectName: project.name,
-          }),
-        ]),
-      ),
+    () => new Map(inventory.projects.map((project) => [project.id, project.name])),
     [inventory.projects],
   );
 

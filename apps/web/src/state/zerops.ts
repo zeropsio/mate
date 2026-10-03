@@ -341,7 +341,7 @@ const organizationListingAtom = Atom.make(
     // none, and a Mate's owner is its `OWNER` grant (F11).
     const grants = projectGrantsOf(heldEvidence(get(runtime.access.view).machine));
     return {
-      // Each project where HQ places it (ADR 0002): its group, its kind, its Mate's name and face.
+      // Each project where HQ places it (ADR 0002): its group, its kind, its Mate's face.
       listing: grantListing(placeListing(listing, placements), grants),
       withheldMembers: get(runtime.reads.projectsOf(organization)).value.some(
         (member) => member.knowledge === "unavailable" && member.reason === "forbidden",

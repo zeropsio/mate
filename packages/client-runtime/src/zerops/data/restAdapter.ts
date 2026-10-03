@@ -1136,7 +1136,11 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     command: Extract<
       PlatformCommand,
       {
-        readonly kind: "update-project-tags" | "set-project-member-role" | "create-project";
+        readonly kind:
+          | "update-project-tags"
+          | "rename-project"
+          | "set-project-member-role"
+          | "create-project";
       }
     >,
     project: unknown,
@@ -1254,6 +1258,18 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         ).pipe(
           // The read that confirmed the write — or found nothing to write — is the project as
           // the platform holds it now: the re-read after our own write (DESIGN §6.2).
+          Effect.flatMap((value) =>
+            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
+          ),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "rename-project":
+        return executeApi(context, (signal) =>
+          tags.rename(command.project.projectId, command.name, {
+            signal,
+            beforeWrite: context.beforeProjectWrite,
+          }),
+        ).pipe(
           Effect.flatMap((value) =>
             projectCommandReceipt(command, value.project, { kind: command.kind, value }),
           ),

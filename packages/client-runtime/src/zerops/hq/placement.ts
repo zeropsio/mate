@@ -1,10 +1,10 @@
 /**
  * Where the organization's HQ places each project (ADR 0002): its application, its kind — a Mate,
- * a stage, the production — and a Mate's name and face. HQ is the structure's only writer; the
- * client reads it from HQ's stream and joins it onto the projects it reads from Zerops
- * (`ZeropsProject.hq`), where they enter the screen. A Mate HQ holds in no application is placed
- * by its record alone; a project HQ does not place at all is in no application, and no Mate's
- * name or face is known for it.
+ * a stage, the production — and a Mate's face. HQ is the structure's only writer; the client reads
+ * it from HQ's stream and joins it onto the projects it reads from Zerops (`ZeropsProject.hq`),
+ * where they enter the screen. A Mate HQ holds in no application is placed by its record alone; a
+ * project HQ does not place at all is in no application, and no Mate's face is known for it. A
+ * Mate's name is its project's in Zerops (D3), never HQ's.
  *
  * Pure: no network (rule R1).
  *
@@ -21,7 +21,7 @@ export type HqPlacement =
       readonly appId: string;
       readonly appName: string;
       readonly kind: RoleProjectKind;
-      /** A Mate's name and face as HQ records them (`readMateFace`). */
+      /** A Mate's face as HQ records it (`readMateFace`). */
       readonly mate: HqMate | null;
     }
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
@@ -121,17 +121,17 @@ export function placeListing<
 }
 
 /**
- * Where a Mate born under intent `birthId` goes, and as whom (`HqBirth`): its application, its name
+ * Where a Mate born under intent `birthId` goes, and with which face (`HqBirth`): its application
  * and its face, while HQ holds the intent open — none once its attach closed it, or where HQ's
  * structure is not known.
  */
 export function birthIntentOf(
   structure: HqStructure | null,
   birthId: string,
-): { readonly appId: string; readonly name: string; readonly face: string } | undefined {
+): { readonly appId: string; readonly face: string } | undefined {
   for (const app of structure?.apps ?? []) {
     const birth = app.births?.find((entry) => entry.id === birthId);
-    if (birth !== undefined) return { appId: app.id, name: birth.name, face: birth.face };
+    if (birth !== undefined) return { appId: app.id, face: birth.face };
   }
   return undefined;
 }

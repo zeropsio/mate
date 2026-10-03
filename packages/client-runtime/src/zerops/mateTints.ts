@@ -25,7 +25,6 @@ import {
   type MateTintId,
 } from "@t3tools/shared/brand";
 
-import { botDisplayName } from "./bots.ts";
 import type { ZeropsCandidate } from "./candidates.ts";
 import { readZeropsMembership } from "./groups.ts";
 import { selectMateEnvironments } from "./mateEnvironments.ts";
@@ -80,15 +79,14 @@ export function assignMateTints(names: ReadonlyArray<string>): ReadonlyMap<strin
 /**
  * The account's Mates, each with its tint, keyed by the project it lives in.
  * Membership is `selectMateEnvironments` — the project has a Mate container —
- * and the name is what the menu calls the row (`botDisplayName`), so a Mate
- * named by its project falls back the same way everywhere. A Mate that picked
- * its tint wears it. The rest share the tints their names give them among
- * themselves alone, exactly as before any Mate could pick: a pick — even of a
- * tint another Mate wears — never recolours anybody else. Two Mates may then
- * wear one tint, which their shapes tell apart. A Mate that wore its name's
- * tint and then had its face changed keeps its name among them (`named`): it
- * wears its pick, and the tint its name held stays held, so the change moves
- * nobody else along.
+ * and the name is its project's in Zerops (D3), what the menu calls the row.
+ * A Mate that picked its tint wears it. The rest share the tints their names
+ * give them among themselves alone, exactly as before any Mate could pick: a
+ * pick — even of a tint another Mate wears — never recolours anybody else. Two
+ * Mates may then wear one tint, which their shapes tell apart. A Mate that
+ * wore its name's tint and then had its face changed keeps its name among them
+ * (`named`): it wears its pick, and the tint its name held stays held, so the
+ * change moves nobody else along.
  */
 export function assignCandidateMateTints(
   candidates: ReadonlyArray<ZeropsCandidate>,
@@ -101,10 +99,7 @@ export function assignCandidateMateTints(
     const picked = tags.face?.tint;
     if (picked !== undefined) byProject.set(mate.project.id, picked);
     if (picked !== undefined && tags.face?.named !== true) continue;
-    nameByProject.set(
-      mate.project.id,
-      botDisplayName({ bot: tags.bot, projectName: mate.project.name }),
-    );
+    nameByProject.set(mate.project.id, mate.project.name);
   }
   const byName = assignMateTints([...nameByProject.values()]);
   for (const [projectId, name] of nameByProject) {

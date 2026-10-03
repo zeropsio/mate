@@ -91,7 +91,7 @@ export interface JumpStop {
   /** The stop's own Zerops project. */
   readonly projectId: string;
   readonly groupId: string;
-  /** Its project and its name: `Shop production`. */
+  /** Its name, as Zerops has its project: `Shop - production`. */
   readonly title: string;
   /** What it runs. */
   readonly line: string;

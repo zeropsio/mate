@@ -9,11 +9,7 @@
  * whole account (`ZeropsProjectFlowProvider`); the tab adds only what is this
  * Mate's: its checkouts, and its change in each.
  */
-import {
-  botDisplayName,
-  readZeropsMembership,
-  type GitBlock,
-} from "@t3tools/client-runtime/zerops";
+import { readZeropsMembership, type GitBlock } from "@t3tools/client-runtime/zerops";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -41,10 +37,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
    * The Mate this panel belongs to, by the name every other surface calls it —
    * never its bot login, which is `mate-{projectId}` (`changeAuthorName`).
    */
-  const mateName =
-    project === undefined
-      ? undefined
-      : botDisplayName({ bot: tags.bot, projectName: project.name });
+  const mateName = project === undefined ? undefined : project.name;
   const projectFlow = groupId === undefined ? undefined : flow.flows.get(groupId);
 
   /**

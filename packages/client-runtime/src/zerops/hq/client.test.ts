@@ -494,7 +494,7 @@ describe("attachToApp", () => {
     const attaching = attachToApp(api(attached), "app-1", {
       projectId: "p1",
       kind: attached[0]?.kind === "production" ? "production" : "mate",
-      ...(attached[0]?.kind === "production" ? {} : { mate: { name: "Vera", face: "rose:seal" } }),
+      ...(attached[0]?.kind === "production" ? {} : { mate: { face: "rose:seal" } }),
     });
     if (attachedAsAsked) await expect(attaching).resolves.toBeUndefined();
     else await expect(attaching).rejects.toBe(conflict);
@@ -697,18 +697,18 @@ describe("makeHqApi — the structure socket", () => {
       throughDoor: doors().throughDoor,
       openSocket: NO_SOCKET,
     });
-    await api.updateMate("p1", { name: "Vera", face: "rose:seal:named" });
+    await api.updateMate("p1", { face: "rose:seal:named" });
     expect(hq.seen.at(-1)).toMatchObject({
       method: "PATCH",
       path: "/api/mates/p1",
-      body: { name: "Vera", face: "rose:seal:named" },
+      body: { face: "rose:seal:named" },
     });
   });
 });
 
 describe("makeHqApi — a Mate's birth intent", () => {
-  it("records where and as whom a Mate is born, before its project, and answers its id", async () => {
-    const intent = { id: "b-1", name: "Gus", face: "rose:seal" };
+  it("records where and with which face a Mate is born, before its project, and answers its id", async () => {
+    const intent = { id: "b-1", face: "rose:seal" };
     const hq = fakeHq((seen) => (seen.path === "/api/births" ? json(201, intent) : undefined));
     const api = makeHqApi({
       address: ADDRESS,
@@ -716,13 +716,11 @@ describe("makeHqApi — a Mate's birth intent", () => {
       throughDoor: doors().throughDoor,
       openSocket: NO_SOCKET,
     });
-    expect(await api.recordBirth({ appId: "app-1", name: "Gus", face: "rose:seal" })).toEqual(
-      intent,
-    );
+    expect(await api.recordBirth({ appId: "app-1", face: "rose:seal" })).toEqual(intent);
     expect(hq.seen.at(-1)).toMatchObject({
       method: "POST",
       path: "/api/births",
-      body: { appId: "app-1", name: "Gus", face: "rose:seal" },
+      body: { appId: "app-1", face: "rose:seal" },
     });
   });
 
@@ -730,7 +728,7 @@ describe("makeHqApi — a Mate's birth intent", () => {
   // ask in one write.
   it("records a stand-up ask with the intent", async () => {
     const hq = fakeHq((seen) =>
-      seen.path === "/api/births" ? json(201, { id: "b-1", name: "Gus", face: "" }) : undefined,
+      seen.path === "/api/births" ? json(201, { id: "b-1", face: "" }) : undefined,
     );
     const api = makeHqApi({
       address: ADDRESS,
@@ -738,10 +736,10 @@ describe("makeHqApi — a Mate's birth intent", () => {
       throughDoor: doors().throughDoor,
       openSocket: NO_SOCKET,
     });
-    await api.recordBirth({ appId: "app-1", name: "Gus", face: "", standUp: true });
+    await api.recordBirth({ appId: "app-1", face: "", standUp: true });
     expect(hq.seen.at(-1)).toMatchObject({
       path: "/api/births",
-      body: { appId: "app-1", name: "Gus", face: "", standUp: true },
+      body: { appId: "app-1", face: "", standUp: true },
     });
   });
 });
@@ -771,21 +769,21 @@ describe("makeHqApi — application name and a project's application", () => {
     ],
     [
       "sets a Mate up in no application, by its record",
-      (api) => api.createMate({ projectId: "p1", name: "Ada", face: "sky:flower:named" }),
+      (api) => api.createMate({ projectId: "p1", face: "sky:flower:named" }),
       {
         method: "POST",
         path: "/api/mates",
-        body: { projectId: "p1", name: "Ada", face: "sky:flower:named" },
+        body: { projectId: "p1", face: "sky:flower:named" },
       },
     ],
     // Audit B3: the ask in the write that records the Mate, never a call of its own.
     [
       "sets a Mate up asking for its stand-up",
-      (api) => api.createMate({ projectId: "p1", name: "Ada", face: "", standUp: true }),
+      (api) => api.createMate({ projectId: "p1", face: "", standUp: true }),
       {
         method: "POST",
         path: "/api/mates",
-        body: { projectId: "p1", name: "Ada", face: "", standUp: true },
+        body: { projectId: "p1", face: "", standUp: true },
       },
     ],
     [
@@ -794,12 +792,12 @@ describe("makeHqApi — application name and a project's application", () => {
         api.attachProject("app-1", {
           projectId: "p1",
           kind: "mate",
-          mate: { name: "Ada", face: "", standUp: true },
+          mate: { face: "", standUp: true },
         }),
       {
         method: "POST",
         path: "/api/apps/app-1/projects",
-        body: { projectId: "p1", kind: "mate", mate: { name: "Ada", face: "", standUp: true } },
+        body: { projectId: "p1", kind: "mate", mate: { face: "", standUp: true } },
       },
     ],
     [
@@ -1222,11 +1220,11 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       holds: (seen) =>
         seen.path === "/api/structure"
           ? json(200, {
-              ungrouped: [{ projectId: "p7", name: "p7", mate: { name: "Ada", face: "sky" } }],
+              ungrouped: [{ projectId: "p7", name: "p7", mate: { face: "sky" } }],
               apps: [],
             })
           : undefined,
-      ask: (hqApi) => hqApi.createMate({ projectId: "p7", name: "Ada", face: "sky" }),
+      ask: (hqApi) => hqApi.createMate({ projectId: "p7", face: "sky" }),
       made: undefined,
     },
   ])("takes $name for made when its answer was lost", async ({ write, holds, ask, made }) => {

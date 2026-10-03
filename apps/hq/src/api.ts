@@ -21,9 +21,10 @@
  *   (`deployKeys.ts`; without one `409 conflict` `no_key_secret`); the structure says only `keyHeld`.
  * - `POST /api/apps/:appId/environments/:name/redeploy` `{ service, sha }` → `202`: a person's "Run
  *   again" of the environment's newest deploy of that service, failed (`deploys.ts`).
- * - `POST /api/mates` `{ projectId, name, face, standUp?, serviceId? }`, `PATCH
- *   /api/mates/:projectId` `{ name?, face? }` → `{ projectId, name, face }`: a Mate's record, in an
- *   application or not, naming its zcp service where its client knows it (one Mate per project).
+ * - `POST /api/mates` `{ projectId, face, standUp?, serviceId? }`, `PATCH /api/mates/:projectId`
+ *   `{ face }` → `{ projectId, face }`: a Mate's record, in an application or not, naming its zcp
+ *   service where its client knows it (one Mate per project); its name is its project's in Zerops
+ *   (D3).
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
  *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce, keyTokenId?,
  *   serviceId? }` → `{ credential }`, refused `409 not_this_projects_mate` to a zcp service other
@@ -156,23 +157,20 @@ const MoveBody = Schema.Struct({
   appId: Schema.NullOr(Schema.String),
   kind: Schema.Literals(["mate", "devstage", "stage", "production"]),
 });
+// A Mate's name is its project's in Zerops (D3): a body that still names it, as a client before
+// D3 sends one, is read without it.
 const NewMateBody = Schema.Struct({
   projectId: Schema.String,
-  name: Schema.String,
   face: Schema.String,
   standUp: Schema.optionalKey(Schema.Boolean),
   serviceId: Schema.optionalKey(ServiceId),
 });
-const MateBody = Schema.Struct({
-  name: Schema.optionalKey(Schema.String),
-  face: Schema.optionalKey(Schema.String),
-});
+const MateBody = Schema.Struct({ face: Schema.String });
 const AttachBody = Schema.Struct({
   projectId: Schema.String,
   kind: Schema.Literals(["mate", "devstage", "stage", "production"]),
   mate: Schema.optionalKey(
     Schema.Struct({
-      name: Schema.String,
       face: Schema.String,
       standUp: Schema.optionalKey(Schema.Boolean),
       serviceId: Schema.optionalKey(ServiceId),
@@ -184,7 +182,6 @@ const AttachBody = Schema.Struct({
 });
 const BirthBody = Schema.Struct({
   appId: Schema.String,
-  name: Schema.String,
   face: Schema.String,
   standUp: Schema.optionalKey(Schema.Boolean),
 });

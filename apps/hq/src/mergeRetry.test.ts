@@ -105,7 +105,7 @@ const withMovingMain = (moves: number) =>
     yield* sql`
       INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
       VALUES ('P', ${appId}::uuid, 'mate', 'owner')`;
-    yield* sql`INSERT INTO hq_mate (project_id, name, face) VALUES ('P', 'Ada', 'face-1')`;
+    yield* sql`INSERT INTO hq_mate (project_id, face) VALUES ('P', 'face-1')`;
     yield* Effect.retry(changes.ensureRepo("P", "appdev"), { times: 50 });
     yield* changes.openChange("P", "appdev", "Add a page");
     const dir = NodePath.join(root, appId, "appdev.git");

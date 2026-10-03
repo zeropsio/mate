@@ -1079,7 +1079,11 @@ export interface RestartResponseDecodeResult extends ProtocolDecodeResult {
 type ProjectResponseCommand = Extract<
   PlatformCommand,
   {
-    readonly kind: "update-project-tags" | "set-project-member-role" | "create-project";
+    readonly kind:
+      | "update-project-tags"
+      | "rename-project"
+      | "set-project-member-role"
+      | "create-project";
   }
 >;
 
@@ -1089,10 +1093,7 @@ export function decodeProjectCommandResponse(
   input: unknown,
 ): ProtocolDecodeResult {
   const row = Option.getOrUndefined(decodeProjectRow(input));
-  const expectedProject =
-    command.kind === "update-project-tags" || command.kind === "set-project-member-role"
-      ? command.project
-      : null;
+  const expectedProject = command.kind === "create-project" ? null : command.project;
   if (
     !row ||
     !hasValidProjectIds(row) ||
@@ -1112,6 +1113,7 @@ export function decodeProjectCommandResponse(
   const organization: ProjectRef["organization"] = (() => {
     switch (command.kind) {
       case "update-project-tags":
+      case "rename-project":
       case "set-project-member-role":
         return command.project.organization;
       case "create-project":

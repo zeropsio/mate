@@ -378,9 +378,8 @@ export const importsLayer = (
               VALUES (${project.projectId}, ${appId}::uuid, ${project.kind}, ${by})`;
             if (project.mate !== null) {
               yield* sql`
-                INSERT INTO hq_mate (project_id, name, face, standup_requested_by, closed_off_at,
-                  made_by)
-                VALUES (${project.projectId}, ${project.mate.name}, ${project.mate.face},
+                INSERT INTO hq_mate (project_id, face, standup_requested_by, closed_off_at, made_by)
+                VALUES (${project.projectId}, ${project.mate.face},
                   ${project.mate.standupRequestedBy},
                   CASE WHEN ${project.mate.closedOff} THEN now() END, ${project.mate.madeBy ?? null})`;
             }

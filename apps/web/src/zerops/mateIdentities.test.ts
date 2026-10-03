@@ -20,15 +20,17 @@ const FEN = EnvironmentId.make("env-fen");
 const JUNO = EnvironmentId.make("env-juno");
 const STAGE = EnvironmentId.make("env-stage");
 
+/** A project's candidate: Acme Docs' dev project is Fen's, named as Fen is (D3). */
 function candidate(
   id: string,
   tagList: ReadonlyArray<string>,
   environmentId?: EnvironmentId,
   hq?: HqPlacement,
 ): ZeropsCandidate {
+  const name = id === "acme-docs-dev" ? "Fen" : id;
   return {
     key: `${id}:zcp`,
-    project: { id, name: id, status: "ACTIVE", tagList, ...(hq === undefined ? {} : { hq }) },
+    project: { id, name, status: "ACTIVE", tagList, ...(hq === undefined ? {} : { hq }) },
     group: environmentId === undefined ? "ready" : "connected",
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
     ...(environmentId === undefined ? {} : { environmentId }),
@@ -41,9 +43,9 @@ function acme(kind: HqPlacement["kind"], mate: HqPlacement["mate"] = null): HqPl
 }
 
 /** Fen, wearing `face` as HQ records it ("" where nobody picked one). */
-const fen = (face = "") => acme("mate", { name: "Fen", face });
+const fen = (face = "") => acme("mate", { face });
 const FEN_DEV = candidate("acme-docs-dev", ["mate"], FEN, fen());
-/** A Mate in no project: HQ records no name for it, and it goes by its project's. */
+/** A Mate in no project, going by its project's name as every Mate does. */
 const LOOSE = candidate("scratch", ["mate"], JUNO);
 const ACME_STAGE = candidate("acme-docs-stage", [], STAGE, acme("stage"));
 
@@ -62,7 +64,7 @@ describe("zeropsMateIdentities", () => {
     { name: "names who asked for it", asker: "u-ada", by: "u-ada" },
     { name: "is absent once it was sent", asker: null, by: undefined },
   ])("carries the stand-up ask HQ records: $name", ({ asker, by }) => {
-    const placed = acme("mate", { name: "Fen", face: "", standupRequestedBy: asker });
+    const placed = acme("mate", { face: "", standupRequestedBy: asker });
     const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
     expect(mate?.standUp).toEqual(by === undefined ? undefined : { by });
   });
@@ -71,7 +73,7 @@ describe("zeropsMateIdentities", () => {
     { name: "names who made it", maker: "u-ada", madeBy: "u-ada" },
     { name: "is absent on a Mate recorded before HQ kept it", maker: null, madeBy: undefined },
   ])("carries who made it, as HQ records it: $name", ({ maker, madeBy }) => {
-    const placed = acme("mate", { name: "Fen", face: "", madeBy: maker });
+    const placed = acme("mate", { face: "", madeBy: maker });
     const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
     expect(mate?.madeBy).toBe(madeBy);
   });

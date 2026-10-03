@@ -33,7 +33,7 @@ const twoMates = (call: Call, fake: FakeWorld, owner: string) =>
     addProject(fake, "P_MATE2");
     yield* call("POST", `/api/apps/${ada.appId}/projects`, {
       session: owner,
-      body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+      body: { projectId: "P_MATE2", kind: "mate", mate: { face: "face-2" } },
     });
     const credential = yield* enrollMate(call, fake, "P_MATE2");
     return {
@@ -106,7 +106,7 @@ describe("an application's recipe in HQ", () => {
           addProject(fake, "P_LONE");
           yield* call("POST", "/api/mates", {
             session: owner,
-            body: { projectId: "P_LONE", name: "Cy", face: "face-3" },
+            body: { projectId: "P_LONE", face: "face-3" },
           });
           const lone = yield* enrollMate(call, fake, "P_LONE");
           assert.deepStrictEqual(
@@ -144,7 +144,7 @@ describe("an application's recipe in HQ", () => {
         addProject(fake, "P_MATE2");
         yield* call("POST", `/api/apps/${appId}/projects`, {
           session: owner,
-          body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+          body: { projectId: "P_MATE2", kind: "mate", mate: { face: "face-2" } },
         });
         const boCredential = yield* enrollMate(call, fake, "P_MATE2");
         const third = yield* propose(call, { authorization: `Mate ${boCredential}` });
@@ -368,7 +368,7 @@ describe("an application's recipe in HQ", () => {
           addProject(first.fake, "P_MATE2");
           yield* first.call("POST", `/api/apps/${ada.appId}/projects`, {
             session: owner,
-            body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+            body: { projectId: "P_MATE2", kind: "mate", mate: { face: "face-2" } },
           });
           const bo = {
             authorization: `Mate ${yield* enrollMate(first.call, first.fake, "P_MATE2")}`,

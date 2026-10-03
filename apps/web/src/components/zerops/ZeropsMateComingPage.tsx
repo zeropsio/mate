@@ -276,7 +276,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     if (candidate !== undefined) return zeropsMateIdentityOf(candidate, tints);
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
     return {
-      name: creation?.botName ?? press?.placement?.botName ?? press?.placement?.displayName ?? "",
+      name: creation?.botName ?? press?.placement?.displayName ?? "",
       tint: face.tint,
       shape: face.shape,
       project: creation?.groupName ?? press?.placement?.groupName,

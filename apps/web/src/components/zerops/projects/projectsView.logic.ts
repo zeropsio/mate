@@ -14,10 +14,8 @@
 import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
-  botDisplayName,
   changesNotLive,
   deployWord,
-  environmentNameUnderGroup,
   firstDeployLine,
   STAGE_SETTING_UP,
   firstDeployTone,
@@ -25,7 +23,6 @@ import {
   flowVerbLabel,
   hasMate,
   pairPreviewRoute,
-  readZeropsMembership,
   releaseContentsSummary,
   releaseInFlightReason,
   REVIEW_LABEL,
@@ -579,7 +576,7 @@ export interface GroupMemberFacts {
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
   readonly role: ZeropsEnvironmentRole | undefined;
-  /** Its name under the group's (`environmentNameUnderGroup`). */
+  /** Its name, as Zerops has its project (D3). */
   readonly name: string;
   /** Present where a Mate lives (`hasMate`). */
   readonly mate:
@@ -629,7 +626,6 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   viewer: string | undefined,
 ): ReadonlyArray<GroupMemberFacts> {
   return environments.map(({ item, role }) => {
-    const tags = readZeropsMembership(item.project);
     const activity = activityOfNow(activityOf(item));
     const connected =
       (item.group === "connected" && item.environmentId !== undefined) || activity !== undefined;
@@ -639,10 +635,10 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
       services: item.services?.statuses,
       projectId: item.project.id,
       role,
-      name: environmentNameUnderGroup(tags.label, item.project.name),
+      name: item.project.name,
       mate: hasMate(item)
         ? {
-            name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+            name: item.project.name,
             // Waiting on an answer: its conversation's question. A change of its waiting for
             // review wears the same face (`mateFaceOf`) and is the flow's own step — *Review* —
             // never "waiting on an answer". Another's Mate waits on its owner, not the viewer.

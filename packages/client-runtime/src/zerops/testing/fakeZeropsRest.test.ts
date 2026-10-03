@@ -261,7 +261,7 @@ describe("FakeZeropsRest", () => {
 
     const client = clientOf(rest);
     const read = await client.fetchProject("p1");
-    await client.writeProjectTags(read, ["mate"]);
+    await client.writeProject(read, { name: read.name, tagList: ["mate"] });
 
     // The whole-list PUT lands on the other writer's list and drops its tag.
     const tags = rest.project("p1")?.tagList ?? [];

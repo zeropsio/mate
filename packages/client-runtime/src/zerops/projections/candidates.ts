@@ -348,9 +348,9 @@ export function findCandidate<Row extends CandidateRow>(
 }
 
 /**
- * The names the organization's Mates already go by, as HQ records them (`ZeropsProject.hq`).
- * `complete` — the one licence to call a name free — is the listing being known and complete, HQ's
- * structure known (`structureKnown`: until it answers, a Mate's name is unread), and no member of
+ * The names the organization's Mates already go by: their projects' names in Zerops (D3). `complete`
+ * — the one licence to call a name free — is the listing being known and complete, HQ's structure
+ * known (`structureKnown`: until it answers, which project is a Mate is unread), and no member of
  * its list withheld from this account (`withheldMembers`: its name is on it, unread). Until then a
  * name found here is taken and one missing may still be.
  */
@@ -367,8 +367,7 @@ export function takenBotNames(
     case "known":
       return {
         names: listing.value.flatMap((row) => {
-          const bot = readZeropsMembership(row.project).bot;
-          return bot === undefined ? [] : [bot];
+          return readZeropsMembership(row.project).mate ? [row.project.name] : [];
         }),
         complete:
           listing.coverage === "complete" &&

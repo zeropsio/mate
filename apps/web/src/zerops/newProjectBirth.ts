@@ -9,10 +9,10 @@
  * any project does (ADR 0001):
  * - `registry` — the project's application in HQ, which is what makes the project exist. HQ names
  *   it: its id is the project's group from then on. Then its first Mate's birth intent there —
- *   its name and face, before its project exists — which the project is created under (F6c).
- * - `create` — its first Mate's Zerops project, tagged into the project at birth. Once the platform
- *   takes it the Mate's birth carries the rest (`zeropsBirths.ts`), and the view hands the route to
- *   the Mate's own (`/mate/$projectId`), in its place.
+ *   its face, before its project exists — which the project is created under (F6c).
+ * - `create` — its first Mate's Zerops project, named as the Mate is (D3), tagged into the project
+ *   at birth. Once the platform takes it the Mate's birth carries the rest (`zeropsBirths.ts`), and
+ *   the view hands the route to the Mate's own (`/mate/$projectId`), in its place.
  *
  * Until then this tab holds the creation — how far it got, and where it stopped and why — and
  * nothing else does: a reload forgets it, as it forgets an Add a Mate the platform has not taken
@@ -75,14 +75,13 @@ export interface NewProjectAsk {
   readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
    * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
-   * hosting or registration of the project's own — its environment called `displayName`, and
-   * its own registration written where `registers`.
+   * hosting or registration of the project's own — its Zerops project named as the Mate is (D3),
+   * and its own registration written where `registers`.
    */
   readonly adds?:
     | {
         /** The existing application in HQ. */
         readonly appId: string;
-        readonly displayName: string;
         readonly registers: boolean;
         /** The managed services its recipe names, from the press (`recipeManaged`). */
         readonly managed?: ReadonlyArray<string> | undefined;
@@ -122,9 +121,9 @@ export type NewProjectPatch = Partial<
 >;
 
 /**
- * What the first Mate's project is created with: the project alone, under its birth intent. Its
- * application, name and face are HQ's, written by its press's registration before its container
- * (F6b) — and its intent's before that (F6c).
+ * What the first Mate's project is created with: the project alone, named as its Mate is (D3),
+ * under its birth intent. Its application and face are HQ's, written by its press's registration
+ * before its container (F6b) — and its intent's before that (F6c).
  */
 export interface NewProjectCreation {
   readonly name: string;
@@ -151,13 +150,12 @@ export interface NewProjectPorts {
     readonly name: string;
   }) => Promise<{ readonly appId: string }>;
   /**
-   * Records the first Mate's birth intent in its application (`POST /api/births`): its name and
-   * face, before its project exists, under HQ's id.
+   * Records the first Mate's birth intent in its application (`POST /api/births`): its face,
+   * before its project exists, under HQ's id.
    */
   readonly recordBirth: (birth: {
     readonly hq: HqEndpoint;
     readonly appId: string;
-    readonly name: string;
     readonly face: string;
   }) => Promise<{ readonly id: string }>;
   /**
@@ -193,10 +191,9 @@ export function newProjectPlacement(
     groupId: ask.appId ?? ask.birthId,
     groupName: ask.name,
     kind: "mate",
-    // The group has no project of its own; its first Mate is named after its bot, the way every
-    // Mate added afterwards is — "Acme CRM - Vera"; an added one as Add named it.
-    displayName: ask.adds?.displayName ?? `${ask.name} - ${ask.botName}`,
-    botName: ask.botName,
+    // The group has no project of its own; its first Mate's project is named as the Mate is, the
+    // way every Mate added afterwards is (D3).
+    displayName: ask.botName,
     face: ask.face,
   };
 }
@@ -363,7 +360,7 @@ export async function runNewProjectBirth(
   // no application and never writes the new-project registration.
   if (birth.adds !== undefined) {
     try {
-      const { project } = await ports.createProject({ name: birth.adds.displayName });
+      const { project } = await ports.createProject({ name: birth.botName });
       ports.accepted(project.id, null, birth.startedAt);
       moved({ step: "created", projectId: project.id });
     } catch (cause) {
@@ -385,14 +382,7 @@ export async function runNewProjectBirth(
   let intent = birth.intent;
   if (intent === null) {
     try {
-      intent = (
-        await ports.recordBirth({
-          hq,
-          appId,
-          name: birth.botName,
-          face: formatMateFace(birth.face),
-        })
-      ).id;
+      intent = (await ports.recordBirth({ hq, appId, face: formatMateFace(birth.face) })).id;
     } catch (cause) {
       stop(zeropsErrorMessage(cause));
       return;
@@ -585,7 +575,6 @@ export function creationEnds(birth: NewProjectBirth): {
       groupId: birth.adds.appId,
       again: {
         botName: birth.botName,
-        name: birth.adds.displayName,
         tint: birth.face.tint,
         shape: birth.face.shape,
       },

@@ -18,7 +18,8 @@ const mate = (
     key: `${id}:zcp`,
     project: {
       id,
-      name: id,
+      // Named as the Mate is (D3).
+      name: bot,
       status: "ACTIVE",
       tagList: ["mate"],
       hq: {
@@ -26,7 +27,6 @@ const mate = (
         appName: "Acme",
         kind: "mate",
         mate: {
-          name: bot,
           face,
           // Who signed it in, as HQ's overview of its logins names them.
           ...(signer === null

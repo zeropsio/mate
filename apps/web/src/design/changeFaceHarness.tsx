@@ -62,10 +62,10 @@ function mate(bot: string, face = ""): ZeropsCandidate {
     environmentId: EnvironmentId.make(`env-${id}`),
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status: "ACTIVE",
       tagList: ["mate"],
-      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { name: bot, face } },
+      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { face } },
     },
     service: { id: `zcp-${id}`, name: "zcp", status: "ACTIVE" },
   };
@@ -243,7 +243,7 @@ function Harness() {
   }, []);
 
   const actionsOf = (candidate: ZeropsCandidate): MateRowActions => {
-    const name = candidate.project.hq?.mate?.name ?? candidate.project.name;
+    const name = candidate.project.name;
     return {
       muted: false,
       toggleMute: () => {},

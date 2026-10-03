@@ -28,7 +28,7 @@ export const mateInApp = (
     const appId = (app.body as { readonly id: string }).id;
     const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
       session: owner,
-      body: { projectId, kind: "mate", mate: { name: "Ada", face: "face-1" } },
+      body: { projectId, kind: "mate", mate: { face: "face-1" } },
     });
     assert.strictEqual(attached.status, 201);
     const credential = yield* enrollMate(call, fake, projectId);

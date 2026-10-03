@@ -89,7 +89,7 @@ const withMates = <A, E>(
     // P_MATE is a Mate in no application; P_STAGE and P_DEV are Shop's stage and devstage.
     const held = Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO hq_mate (project_id, name, face) VALUES ('P_MATE', 'Ada', 'face-1')`;
+      yield* sql`INSERT INTO hq_mate (project_id, face) VALUES ('P_MATE', 'face-1')`;
       const [app] = yield* sql<{ readonly id: string }>`
         INSERT INTO hq_app (name, created_by) VALUES ('Shop', 'owner') RETURNING id::text AS id`;
       yield* sql`

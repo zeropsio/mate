@@ -27,6 +27,9 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ],
     ["held_changed", "conflict", "Somebody changed this project in HQ meanwhile. Try again."],
     ["name_length", "invalid", "A name has 1 to 100 characters."],
+    // D3: a Mate's face is all HQ records of it.
+    ["face_length", "invalid", "A face has at most 64 characters."],
+    ["mate_record_with_kind", "invalid", "Only a Mate has a face."],
     ["change_not_found", "change_not_found", "HQ has no such change."],
     ["change_not_open", "conflict", "This change is merged or closed already."],
     ["recipe_too_large", "too_large", "This project's recipe is too large to read here."],

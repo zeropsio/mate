@@ -3828,6 +3828,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
+    renameProject: (project, name) =>
+      runCommand({ kind: "rename-project", project, name }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "rename-project"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
     setProjectMemberRole: (project, input) =>
       runCommand({ kind: "set-project-member-role", project, ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>

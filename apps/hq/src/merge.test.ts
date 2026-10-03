@@ -35,7 +35,7 @@ const siblingMate = (
     addProject(fake, projectId);
     const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
       session: owner,
-      body: { projectId, kind: "mate", mate: { name: "Bo", face: "face-2" } },
+      body: { projectId, kind: "mate", mate: { face: "face-2" } },
     });
     assert.strictEqual(attached.status, 201);
     const credential = yield* enrollMate(call, fake, projectId);
@@ -164,6 +164,11 @@ describe("a change merged into main, or closed", () => {
           assert.strictEqual(
             yield* git.checked(["rev-list", "--count", "origin/main"], ada.work),
             "2",
+          );
+          // Its author is the Mate, by its project's name in Zerops (D3).
+          assert.strictEqual(
+            yield* git.checked(["log", "-1", "--format=%an <%ae>", "origin/main"], ada.work),
+            "P_MATE <P_MATE@mate.hq.invalid>",
           );
           yield* rowsWhere(
             url,

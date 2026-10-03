@@ -115,10 +115,8 @@ import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 import {
   changeKindTag,
   changeState,
-  environmentNameUnderGroup,
   halfMadeGroupEnvironments,
   assignCandidateMateTints,
-  botDisplayName,
   buildZeropsGroupTree,
   mateShapeOf,
   newMateTint,
@@ -126,7 +124,6 @@ import {
   rankZeropsCandidateForListing,
   readZeropsToolKind,
   defaultAgentForRole,
-  generateBotName,
   hasMate,
   canCreateProjectsInOrganization,
   groupFlow,
@@ -1102,7 +1099,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         const project = projectRef(activeOrganization.id, projectId);
         const hq = officialHq(accountHq);
         // What it registers, by the rule Finish setup registers by, before its container: in the
-        // application HQ or the press this tab holds places it in, under that name and face (F6b);
+        // application HQ or the press this tab holds places it in, under that face (F6b);
         // a new Mate in no application only where neither does.
         const held = readMatePress(projectId);
         const registration = mateFinishRegistration({
@@ -1115,8 +1112,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           mayCreateRecord: mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
           standUp: false,
           candidates,
-          taken: taken.names,
-          random: (bytes) => crypto.getRandomValues(bytes),
         });
         // Already listed, the listing places it; still placed by the press it was made by.
         beginPress({
@@ -1170,7 +1165,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       setConnectError,
       settingUpKey,
       runtime,
-      taken.names,
       user,
     ],
   );
@@ -1589,7 +1583,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const [creationRequest, setCreationRequest] = useState<{
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
-    readonly botName: string;
   } | null>(null);
   const requestedGroup = useMemo(
     () =>
@@ -1665,18 +1658,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [groupDeploys],
   );
 
-  /** Each Mate's name, for a pull request's line — the bot's, the project's when it has none. */
+  /** Each Mate's name, for a pull request's line: its project's (D3). */
   const mateNames = useMemo(
     () =>
       new Map(
         groupTree.groups.flatMap(({ environments }) =>
-          environments.map(({ item }) => {
-            const tags = readZeropsMembership(item.project);
-            return [
-              item.project.id,
-              botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-            ] as const;
-          }),
+          environments.map(({ item }) => [item.project.id, item.project.name] as const),
         ),
       ),
     [groupTree.groups],
@@ -1831,15 +1818,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         return;
       }
       if (creationRunning) return;
-      setCreationRequest({
-        groupId,
-        role,
-        // A proposal only: the dialog refuses it until every Mate's name is
-        // read, and names the clash if one turns up (`validateBotName`).
-        botName: generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
-      });
+      setCreationRequest({ groupId, role });
     },
-    [addMate, creationRunning, taken],
+    [addMate, creationRunning],
   );
   // A stage or a production asked for from the left menu (`setUpEnvironment.ts`): its form opens
   // here, as this page's own ⋯ opens it — taken once, so a later visit opens nothing.
@@ -2148,9 +2129,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         // A group's stage or production: its name opens the stop's page.
         link={stopLinkOf(tags.groupId, candidate.project.id, role)}
         menu={renderEnvironmentMenu(candidate, tags, false)}
-        // `Links - stage` under a heading that says `Links`: the group's
-        // own page calls it `stage`, and so does the left menu.
-        name={environmentNameUnderGroup(tags.label, candidate.project.name)}
+        // As Zerops names the project, whole (D3).
+        name={candidate.project.name}
         status={
           projectTrouble ? (
             <StatusDot
@@ -2223,7 +2203,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           {busy ? "Removing…" : "Remove"}
         </Button>
       ) : undefined;
-    const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+    const name = candidate.project.name;
     const tint = tints.get(candidate.project.id) ?? "slate";
     const shape = mateShapeOf(candidate.project, tint);
     // What the menu asked of this Mate's server — a check, an update — is
@@ -2734,23 +2714,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           recipe={creationRecipe(groupRecipe)}
           recipeRereading={groupRecipe.rereading}
           onRecipeRetry={groupRecipe.reread}
-          defaultBotName={creationRequest.botName}
           defaultName={proposedEnvironmentName({
             groupName: requestedGroup.group.name,
             roleLabel:
               environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
-            botName: creationRequest.role === "dev" ? creationRequest.botName : undefined,
             taken: requestedGroup.environments.map(({ item }) => item.project.name),
           })}
-          proposeName={(botName) =>
-            proposedEnvironmentName({
-              groupName: requestedGroup.group.name,
-              roleLabel:
-                environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
-              botName: creationRequest.role === "dev" ? botName : undefined,
-              taken: requestedGroup.environments.map(({ item }) => item.project.name),
-            })
-          }
           defaultTintFor={(name) => newMateTint(candidates, name)}
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}
           groupName={requestedGroup.group.name}

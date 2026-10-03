@@ -268,27 +268,27 @@ describe("historyLine naming", () => {
     change: { number: 4, title: "Deploy the link keeper", mateProjectId: "PXGYIVK9RLWlE3eTL3QwoW" },
   };
   const now = Date.parse("2026-09-19T12:00:00Z");
-  const names = {
-    mateNames: new Map([["PXGYIVK9RLWlE3eTL3QwoW", "Theo"]]),
-    groupName: "Links",
-  };
+  const names = { mateNames: new Map([["PXGYIVK9RLWlE3eTL3QwoW", "Theo"]]) };
 
   it("names the Mate whose change landed it, not the commit's author", () => {
-    expect(historyLine(entry, now, names)).toBe("Theo · production · 4h");
+    expect(historyLine(entry, now, names)).toBe("Theo · Links - production · 4h");
   });
 
   it("drops a Mate it cannot name instead of falling back to the author", () => {
-    expect(historyLine(entry, now, { groupName: "Links" })).toBe("production · 4h");
+    expect(historyLine(entry, now)).toBe("Links - production · 4h");
   });
 
   it("names a person's commit by its author", () => {
     expect(historyLine({ ...entry, author: "ales", change: null }, now, names)).toBe(
-      "ales · production · 4h",
+      "ales · Links - production · 4h",
     );
   });
 
-  it("stops a project repeating itself on every stop it names", () => {
-    expect(historyLine(entry, now, names)).not.toContain("Links - production");
+  // D3: a stop is named as its project is in Zerops, whole — never read back for a prefix.
+  it("names a stop whole, as Zerops has it", () => {
+    expect(historyLine({ ...entry, deployedTo: ["Linkshop staging"] }, now)).toBe(
+      "Linkshop staging · 4h",
+    );
   });
 });
 

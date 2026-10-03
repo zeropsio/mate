@@ -19,7 +19,7 @@ const ACME: HqStructure["apps"][number] = {
       projectId: "p1",
       name: "Acme - Vera",
       kind: "mate",
-      mate: { name: "Vera", face: "rose:seal" },
+      mate: { face: "rose:seal" },
     },
   ],
 };
@@ -64,7 +64,7 @@ const ACME_STAGED: HqStructure["apps"][number] = { ...ACME, environments: [STAGE
 const LONE: HqStructure["ungrouped"][number] = {
   projectId: "p9",
   name: "scratch",
-  mate: { name: "Ada", face: "sky:flower" },
+  mate: { face: "sky:flower" },
 };
 
 /** Vera's change #3 in Acme's `app`, open and pushed to. */
@@ -191,14 +191,14 @@ describe("structureEventOf", () => {
       "a snapshot carries each application's birth intents, each read through its shape",
       {
         type: "snapshot",
-        apps: [{ ...ACME, births: [{ id: "b-1", name: "Gus", face: "rose:seal" }, { id: 7 }] }],
+        apps: [{ ...ACME, births: [{ id: "b-1", face: "rose:seal" }, { id: 7 }] }],
       },
       {
         kind: "snapshot",
         releaseRevisions: null,
         structure: {
           ungrouped: [],
-          apps: [{ ...ACME, births: [{ id: "b-1", name: "Gus", face: "rose:seal" }] }],
+          apps: [{ ...ACME, births: [{ id: "b-1", face: "rose:seal" }] }],
         },
         changes: null,
         mates: null,

@@ -8,7 +8,6 @@
  */
 import {
   assignCandidateMateTints,
-  botDisplayName,
   hasMate,
   mateShapeOf,
   readZeropsMembership,
@@ -59,12 +58,11 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
         pose: undefined,
       });
       if (face !== "needs") return [];
-      const tags = readZeropsMembership(candidate.project);
       const tint = input.tints.get(candidate.project.id) ?? "slate";
       return [
         {
           projectId: candidate.project.id,
-          name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
+          name: candidate.project.name,
           tint,
           shape: mateShapeOf(candidate.project, tint),
           face,

@@ -1155,6 +1155,47 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  // D3: a Mate's rename is its project's, through the one writer of the project's record.
+  it.effect("renames a project on a fresh read, its tags put back, as a typed Project result", () =>
+    Effect.gen(function* () {
+      const requests: RequestInit[] = [];
+      const client = clientFor((_url, init) => {
+        requests.push(init ?? {});
+        return new Response(
+          JSON.stringify({
+            id: "project",
+            name: requests.length === 1 ? "Snap - Nova" : "Nova",
+            status: "ACTIVE",
+            tagList: ["mate"],
+          }),
+          { status: 200 },
+        );
+      });
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
+      const rename: PlatformCommand = {
+        kind: "rename-project",
+        project,
+        name: "Nova",
+        ...commandBase,
+      };
+
+      const receipt = yield* adapter.execute(rename, context());
+
+      expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "PUT", "GET"]);
+      expect(String(requests[1]?.body)).toContain(
+        '"name":"Nova","description":"","tagList":["mate"]',
+      );
+      expect(receipt.result).toMatchObject({
+        kind: "rename-project",
+        value: { kind: "written", project: { id: "project", name: "Nova" } },
+      });
+    }),
+  );
+
   it.effect("validates import command results before exposing typed success", () =>
     Effect.gen(function* () {
       const responses: unknown[] = [

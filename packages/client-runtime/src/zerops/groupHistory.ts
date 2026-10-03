@@ -24,7 +24,6 @@
 import { COMPARE_COUNT_MAX, type CompareCommit } from "@t3tools/shared/hqChanges";
 import { compareReleaseTags } from "@t3tools/shared/hqRelease";
 
-import { environmentNameUnderGroup } from "./groupRows.ts";
 import { rolledBackTo, shortCommit, type FlowRelease } from "./release.ts";
 import { resolveCommit } from "./versionName.ts";
 
@@ -100,15 +99,13 @@ export function historyLine(
   names?: {
     /** `projectId → the Mate's name`, so a bot login never reaches the line. */
     readonly mateNames?: ReadonlyMap<string, string> | undefined;
-    /** The project, so a stop under it does not repeat it. */
-    readonly groupName?: string | undefined;
   },
 ): string | undefined {
   // A change a Mate landed is the Mate's, whoever git says wrote its commit: named, or not said.
   const who =
     entry.change === null ? entry.author : names?.mateNames?.get(entry.change.mateProjectId);
-  const where = entry.deployedTo.map((stop) => environmentNameUnderGroup(names?.groupName, stop));
-  const parts = [who, ...where].filter(
+  // Each stop as Zerops names its project, whole (D3).
+  const parts = [who, ...entry.deployedTo].filter(
     (part): part is string => part !== undefined && part.length > 0,
   );
   // A history with no time in it is a list, not a history: the age is the one

@@ -85,11 +85,11 @@ const RELEASE_WORDS: { readonly [R in ReleaseRefusal]: string } = {
  */
 const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   name_length: "A name has 1 to 100 characters.",
+  face_length: "A face has at most 64 characters.",
   hq_project: "HQ's own project belongs to no project.",
-  mate_record_with_kind: "Only a Mate has a name and a face.",
+  mate_record_with_kind: "Only a Mate has a face.",
   mate_record_missing: "HQ has no record of this Mate yet.",
   mate_record_exists: "This Mate is set up already.",
-  nothing_to_change: "There is nothing to change.",
   app_name_taken: "Another project already has this name.",
   app_not_found: "That project is gone from HQ.",
   app_not_empty:

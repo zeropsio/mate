@@ -211,7 +211,7 @@ export {
   mateEnvironmentsEmptyReason,
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
-export { botDisplayName, generateBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
+export { generateBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
 export {
   type ZeropsRegistry,
   type ZeropsRegistryGroup,
@@ -559,7 +559,6 @@ export {
   deployedCommit,
   deployedVersion,
   deployTone,
-  environmentNameUnderGroup,
   environmentRow,
   type DeployedVersion,
   type EnvironmentRow,

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { addedMateBirth } from "./useEnvironmentCreation";
 
 describe("addedMateBirth — the birth intent an added Mate is pressed under", () => {
-  const hq = () => ({ recordBirth: vi.fn(async () => ({ id: "b-gus", name: "Gus", face: "" })) });
+  const hq = () => ({ recordBirth: vi.fn(async () => ({ id: "b-gus", face: "" })) });
 
   // F6c (2026-10-03): recorded at HQ before its project exists, so a press cut off between the
   // project and its attach is finished where and as it was asked for, in any browser. Audit B3:
@@ -11,26 +11,17 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
   it.each([
     { case: "a dev Mate, asking its stand-up", role: "dev" as const, standUp: true },
     { case: "a devstage Mate, asking none", role: "devstage" as const, standUp: false },
-  ])("records $case, in its application under its name and face", async ({ role, standUp }) => {
+  ])("records $case, in its application under its face", async ({ role, standUp }) => {
     const api = hq();
     expect(
       await addedMateBirth(api, {
         groupId: "app-g",
         role,
-        choice: {
-          name: "G - Gus",
-          withAgent: true,
-          botName: "Gus",
-          face: { tint: "rose", shape: "seal" },
-        },
+        choice: { withAgent: true, face: { tint: "rose", shape: "seal" } },
       }),
     ).toBe("b-gus");
-    expect(api.recordBirth).toHaveBeenCalledWith({
-      appId: "app-g",
-      name: "Gus",
-      face: "rose:seal",
-      standUp,
-    });
+    // D3: its name is its project's, never HQ's.
+    expect(api.recordBirth).toHaveBeenCalledWith({ appId: "app-g", face: "rose:seal", standUp });
   });
 
   it.each([
@@ -43,7 +34,7 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
       await addedMateBirth(api, {
         groupId: "app-g",
         role,
-        choice: { name: "G - stage", withAgent },
+        choice: { withAgent },
       }),
     ).toBeUndefined();
     expect(api.recordBirth).not.toHaveBeenCalled();
