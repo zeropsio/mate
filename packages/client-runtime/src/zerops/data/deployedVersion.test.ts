@@ -13,6 +13,7 @@ import {
   SERVICE_VARIABLE_KEYS,
   tableRowsWanted,
 } from "./entityTable.ts";
+import { decodeEntityQueryResponse } from "./platformProtocol.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import {
   makeInitialZeropsDataState,
@@ -26,6 +27,7 @@ import type {
   ServiceRecord,
   TableQueryDescriptor,
 } from "./types.ts";
+import { decodeTableRow } from "./tableProtocol.ts";
 import { ReceiptOrdinal, serviceKeyOf } from "./types.ts";
 import {
   desiredInterest,
@@ -33,6 +35,7 @@ import {
   entityRegistration,
   identity,
   organization,
+  queryTicket,
   scope,
   service,
   stamp,
@@ -669,6 +672,90 @@ describe("a service's variables heard before it moved to another version", () =>
     },
   ])("are not read again when $name", ({ state }) => {
     expect(tableRowsWanted(wantStaleVariables(state, 9, 1_000).table)).toEqual([]);
+  });
+});
+
+// F10, 2026-10-03: B's production `app` as the platform answered t10 — the import's own no-code
+// version, which the service's row names without a source and the versions list sources NONE.
+describe("a production on the import's no-code version, as the platform answers it", () => {
+  const VERSION = "fJCalELVSOuR53ZwvjA1GA";
+  const services = {
+    kind: "services-of-organization" as const,
+    organization,
+    schemaVersion: 1 as const,
+  };
+
+  it("is known to run that version, sourced NONE and named nothing", () => {
+    const decoded = decodeEntityQueryResponse(
+      services,
+      queryTicket(services),
+      {
+        items: [
+          {
+            id: "s-1",
+            projectId: ref.project.projectId,
+            name: "app",
+            status: "ACTIVE",
+            activeAppVersion: {
+              base: "nodejs@22",
+              created: "2026-10-02T23:16:00Z",
+              id: VERSION,
+              lastUpdate: "2026-10-02T23:16:00Z",
+              os: "ubuntu",
+              status: "ACTIVE",
+            },
+          },
+        ],
+        limit: 2000,
+        offset: 0,
+        totalHits: 1,
+      },
+      "indexed-search",
+    );
+    const pushed = decoded.observations.find(
+      (observation) => observation.kind === "service-deployment-observed",
+    );
+    const activeDeploy = (
+      pushed as { observation: { fields: { activeDeploy: ServiceDeployInfo } } }
+    ).observation.fields.activeDeploy;
+    // The row names the version and nothing of where it came from.
+    expect(activeDeploy).toMatchObject({ id: VERSION, source: null, name: null });
+    const state = withService(
+      answered(
+        answered(makeInitialZeropsDataState(scope()), versions, [
+          decodeTableRow("app-version", {
+            id: VERSION,
+            serviceStackId: "s-1",
+            projectId: ref.project.projectId,
+            status: "ACTIVE",
+            source: "NONE",
+            name: null,
+          })!,
+        ] as never),
+        variables,
+        [
+          decodeTableRow("user-data", {
+            id: "u-appVersionId",
+            serviceStackId: "s-1",
+            projectId: ref.project.projectId,
+            key: "appVersionId",
+            content: VERSION,
+          })!,
+          decodeTableRow("user-data", {
+            id: "u-appVersionName",
+            serviceStackId: "s-1",
+            projectId: ref.project.projectId,
+            key: "appVersionName",
+            content: "",
+          })!,
+        ] as never,
+      ),
+      activeDeploy,
+    );
+    expect(selectDeployedVersion(state, ref)).toMatchObject({
+      state: "known",
+      value: { activeId: VERSION, source: "NONE", name: null },
+    });
   });
 });
 
