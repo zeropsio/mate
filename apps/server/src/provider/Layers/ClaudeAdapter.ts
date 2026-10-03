@@ -2846,6 +2846,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             toolName: tool.toolName,
             input: tool.input,
           },
+          // Mate: its result never came; the turn's end closes it.
+          unreturned: true,
         },
         providerRefs: nativeProviderRefs(context, {
           providerItemId: tool.itemId,

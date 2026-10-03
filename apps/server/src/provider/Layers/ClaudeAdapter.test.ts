@@ -2479,6 +2479,77 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // A call still open when its turn's result comes never returned: the turn's
+  // end closes it as unreturned, never as a call that came back (D4).
+  it.effect("closes a call left open at the turn's end as unreturned", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "test", attachments: [] });
+      const stream = (uuid: string, event: Record<string, unknown>) =>
+        ({
+          type: "stream_event",
+          session_id: "sdk-session-sweep",
+          uuid,
+          parent_tool_use_id: null,
+          event,
+        }) as unknown as SDKMessage;
+      const toolUse = (index: number, id: string) => ({
+        type: "content_block_start",
+        index,
+        content_block: { type: "tool_use", id, name: "Bash", input: { command: "pnpm test" } },
+      });
+      harness.query.emit(stream("s1", { type: "message_start", message: { id: "msg-a" } }));
+      harness.query.emit(stream("s2", toolUse(0, "tool-lost")));
+      harness.query.emit(stream("s3", toolUse(1, "tool-back")));
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-sweep",
+        uuid: "user-back",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-back", content: "ok" }],
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-sweep",
+        uuid: "result-sweep",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const completed = events.flatMap((event) =>
+        event.type === "item.completed" && event.itemId !== undefined
+          ? [[String(event.itemId), event.payload.unreturned === true] as const]
+          : [],
+      );
+      assert.deepStrictEqual(
+        completed.filter(([id]) => id === "tool-lost" || id === "tool-back"),
+        [
+          ["tool-back", false],
+          ["tool-lost", true],
+        ],
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("treats user-aborted Claude results as interrupted without a runtime error", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
