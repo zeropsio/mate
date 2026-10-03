@@ -20,6 +20,7 @@ import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zerop
 import { LOCK_KEY, Leader, type LeaderStatus, NotLeader, leaderLayer } from "./leader.ts";
 import { type Migration, MIGRATIONS_TABLE } from "./migrations.ts";
 import { Official, officialLayer } from "./official.ts";
+import { rolesLayer } from "./roles.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { ZeropsApi } from "./zerops/api.ts";
 
@@ -118,7 +119,16 @@ const startReading = (url: string, world: FakeWorld, projectId = "P1") =>
             projectId,
             credential: Option.some(Redacted.make("org-token")),
             recheck: Duration.hours(1),
-          }).pipe(Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world)))),
+            recheckOk: Duration.hours(1),
+          }).pipe(
+            Layer.provide(
+              rolesLayer({
+                hqProjectId: projectId,
+                credential: Option.some(Redacted.make("org-token")),
+              }),
+            ),
+            Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
+          ),
         ),
       ),
       scope,

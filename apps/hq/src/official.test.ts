@@ -5,11 +5,13 @@ import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { Official, anchorVerdict, credentialFits, officialLayer } from "./official.ts";
+import { Roles, rolesLayer } from "./roles.ts";
 import { ZeropsApi, type ZeropsMember, type ZeropsOwnToken } from "./zerops/api.ts";
 
 const SELF = { projectId: "P1", address: "https://p1zone.prg1-zerops.zone" };
@@ -158,13 +160,15 @@ const world = () => {
   return fake;
 };
 
-const official = (fake: FakeWorld, credential: string | null = "org-token") =>
-  Layer.build(
-    officialLayer({
-      projectId: SELF.projectId,
-      credential: credential === null ? Option.none() : Option.some(Redacted.make(credential)),
-    }).pipe(Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake)))),
+const official = (fake: FakeWorld, credential: string | null = "org-token") => {
+  const held = credential === null ? Option.none() : Option.some(Redacted.make(credential));
+  return Layer.build(
+    officialLayer({ projectId: SELF.projectId, credential: held }).pipe(
+      Layer.provide(rolesLayer({ hqProjectId: SELF.projectId, credential: held })),
+      Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake))),
+    ),
   ).pipe(Effect.map((context) => Context.get(context, Official)));
+};
 
 /** Moves the test clock and lets the recheck run. */
 const after = (duration: Duration.Input) =>
@@ -206,7 +210,8 @@ describe("officialLayer", () => {
       yield* Effect.yieldNow;
       assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
       fake.members.get("ORG")!.push(token("mate-hq:P2:https://decoy.invalid"));
-      yield* after("30 seconds");
+      // An ok is read again a minute on; anything else every 30 s.
+      yield* after("60 seconds");
       assert.deepStrictEqual(yield* service.status, {
         official: "anchor_elsewhere",
         allowed: false,
@@ -299,7 +304,7 @@ describe("officialLayer", () => {
       yield* after("30 seconds");
       assert.deepStrictEqual(yield* service.lastOk, { at: 30_000, projectId: "P1" });
       fake.members.get("ORG")!.pop();
-      yield* after("30 seconds");
+      yield* after("60 seconds");
       assert.strictEqual(yield* service.lastOk, undefined);
     }),
   );
@@ -311,9 +316,13 @@ describe("officialLayer", () => {
       const service = yield* official(fake);
       yield* Effect.yieldNow;
       fake.down = true;
-      yield* after("30 seconds");
+      // An ok is read again a minute on: the platform's silence is seen then.
+      yield* after("59 seconds");
+      assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
+      yield* after("1 second");
       assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed: true });
-      yield* after("569 seconds");
+      // Ten minutes from the ok read, whatever the cadence.
+      yield* after("539 seconds");
       assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed: true });
       yield* after("1 second");
       assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed: false });
@@ -322,10 +331,97 @@ describe("officialLayer", () => {
       assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
 
       fake.members.get("ORG")!.pop();
-      yield* after("30 seconds");
+      yield* after("60 seconds");
       fake.down = true;
       yield* after("30 seconds");
       assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed: false });
+    }),
+  );
+});
+
+// The lead, 2026-10-03: HQ read KRLS's member list (181 entries) far more than it needed — the
+// official check every 30 s on its own (user/info, its token, its project, the member list), on
+// standby too, and the reconcile's forced fresh read of the members and projects every minute.
+// The official check reads the org through the view every reader shares, every minute while ok;
+// the credential's fit every ten minutes.
+describe("HQ's reads of Zerops, a minute at a time", () => {
+  /** Zerops HTTP calls as HQ's client makes them: its own token two, every other read one. */
+  const counted = (
+    api: ZeropsApi["Service"],
+    calls: Ref.Ref<{ total: number; members: number }>,
+  ) => {
+    const count = (total: number, members = 0) =>
+      Ref.update(calls, (before) => ({
+        total: before.total + total,
+        members: before.members + members,
+      }));
+    return {
+      ...api,
+      ownToken: (credential: Redacted.Redacted) =>
+        Effect.andThen(count(2), api.ownToken(credential)),
+      project: (projectId: string) => (credential: Redacted.Redacted) =>
+        Effect.andThen(count(1), api.project(projectId)(credential)),
+      members: (orgId: string) => (credential: Redacted.Redacted) =>
+        Effect.andThen(count(1, 1), api.members(orgId)(credential)),
+      projects: (orgId: string) => (credential: Redacted.Redacted) =>
+        Effect.andThen(count(1), api.projects(orgId)(credential)),
+    } satisfies ZeropsApi["Service"];
+  };
+
+  // The trade for it: a credential raised above Read only is seen within ten minutes, not one.
+  it.effect("reads the credential's own token again ten minutes after it fit", () =>
+    Effect.gen(function* () {
+      const fake = world();
+      fake.members.get("ORG")!.push(token(OWN));
+      const service = yield* official(fake);
+      yield* Effect.yieldNow;
+      assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
+      fake.tokens.set("org-token", { ...fake.tokens.get("org-token")!, roleCode: "ADMIN" });
+      yield* after("599 seconds");
+      assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
+      yield* after("1 second");
+      assert.deepStrictEqual(yield* service.status, {
+        official: "credentials_wrong",
+        allowed: false,
+      });
+    }),
+  );
+
+  it.effect("reads about three times a minute while ok, the member list once", () =>
+    Effect.gen(function* () {
+      const fake = world();
+      fake.members.get("ORG")!.push(token(OWN));
+      const calls = yield* Ref.make({ total: 0, members: 0 });
+      const credential = Option.some(Redacted.make("org-token"));
+      const context = yield* Layer.build(
+        officialLayer({ projectId: SELF.projectId, credential }).pipe(
+          Layer.provideMerge(rolesLayer({ hqProjectId: SELF.projectId, credential })),
+          Layer.provide(Layer.succeed(ZeropsApi, counted(fakeZeropsApi(fake), calls))),
+        ),
+      );
+      const service = Context.get(context, Official);
+      const roles = Context.get(context, Roles);
+      // Structure's reconcile, every minute, reading the org as it does (`structure.test.ts`).
+      yield* Effect.forkChild(
+        Effect.forever(Effect.andThen(Effect.sleep("60 seconds"), Effect.ignore(roles.recent))),
+      );
+      yield* Effect.yieldNow;
+      assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
+      // Into its stride, then ten minutes counted.
+      for (let minute = 0; minute < 10; minute += 1) yield* after("60 seconds");
+      const before = yield* Ref.get(calls);
+      for (let minute = 0; minute < 10; minute += 1) yield* after("60 seconds");
+      const counted10 = yield* Ref.get(calls);
+      assert.deepStrictEqual(
+        {
+          total: counted10.total - before.total,
+          members: counted10.members - before.members,
+        },
+        // The org's view (HQ's project, its members, its projects) once a minute, and the
+        // credential's own token once in the ten.
+        { total: 32, members: 10 },
+      );
+      assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
     }),
   );
 });

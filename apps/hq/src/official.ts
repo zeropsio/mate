@@ -9,9 +9,12 @@
  * calls and git pushes reach it through the project's own balancer, not the shared `zerops.app`
  * one with its 50 MB body cap (T3c).
  *
- * The verdict is read at boot and every 30 s, and each change of it is logged. A read the platform
- * could not answer is `unknown`: it keeps an `ok` for at most ten minutes after that `ok` was
- * read, and never allows otherwise. Until the platform first answers this Core, the `ok` the Core
+ * The verdict is read at boot, then every minute while it is `ok` and every 30 s while it is not,
+ * and each change of it is logged. The members and the project come from the org's view every
+ * reader shares (`roles.ts`'s `recent`), the credential's own token every ten minutes: HQ read
+ * KRLS's member list of 181 a dozen times a minute before (the lead, 2026-10-03). A read the
+ * platform could not answer is `unknown`: it keeps an `ok` for at most ten minutes after that `ok`
+ * was read, and never allows otherwise. Until the platform first answers this Core, the `ok` the Core
  * that led before held counts as its own (`inherit`, recorded in `hq_leader` by `leader.ts`): a
  * takeover does not wait on a Zerops that is slow to answer the new container (F18).
  *
@@ -26,8 +29,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
 
+import { Roles } from "./roles.ts";
 import { ZeropsApi, type ZeropsMember, type ZeropsOwnToken } from "./zerops/api.ts";
 
 const ANCHOR_PREFIX = "mate-hq:";
@@ -106,17 +109,29 @@ export interface OfficialOptions {
   readonly projectId: string;
   /** `HQ_ORG_TOKEN`. */
   readonly credential: Option.Option<Redacted.Redacted>;
+  /** How often the verdict is read while it is not `ok`; 30 s. */
   readonly recheck?: Duration.Duration;
+  /** How often it is read while it is `ok`; a minute. */
+  readonly recheckOk?: Duration.Duration;
+  /** How long the credential's own token is held to fit, once read so; ten minutes. */
+  readonly fitHeld?: Duration.Duration;
   readonly grace?: Duration.Duration;
 }
 
-export const officialLayer = (options: OfficialOptions): Layer.Layer<Official, never, ZeropsApi> =>
+export const officialLayer = (
+  options: OfficialOptions,
+): Layer.Layer<Official, never, ZeropsApi | Roles> =>
   Layer.effect(
     Official,
     Effect.gen(function* () {
       const api = yield* ZeropsApi;
+      const roles = yield* Roles;
       const recheck = options.recheck ?? Duration.seconds(30);
+      const recheckOk = options.recheckOk ?? Duration.minutes(1);
+      const fitHeld = Duration.toMillis(options.fitHeld ?? Duration.minutes(10));
       const grace = Duration.toMillis(options.grace ?? Duration.minutes(10));
+      /** When the credential's own token was last read to fit; none until it was, or once not. */
+      const fitAt = yield* Ref.make<number | undefined>(undefined);
       const state = yield* Ref.make<{
         readonly official: OfficialStatus["official"];
         /** When the last verdict was read, if it was `ok`. */
@@ -125,16 +140,29 @@ export const officialLayer = (options: OfficialOptions): Layer.Layer<Official, n
         readonly answered: boolean;
       }>({ official: "unknown", okAt: undefined, answered: false });
 
+      /** Whether the credential's own token fits, read again once the last fitting read is old. */
+      const fits = (credential: Redacted.Redacted, orgId: string) =>
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+          const at = yield* Ref.get(fitAt);
+          if (at !== undefined && now - at < fitHeld) return true;
+          const fit = credentialFits(yield* api.ownToken(credential), orgId);
+          yield* Ref.set(fitAt, fit ? now : undefined);
+          return fit;
+        });
+
       /** The verdict; a refusal of any read is the credential's fault, an unanswered read none. */
       const read = Effect.gen(function* () {
         if (Option.isNone(options.credential)) return "credentials_wrong" as const;
-        const credential = options.credential.value;
-        const own = yield* api.ownToken(credential);
-        const project = yield* api.project(options.projectId)(credential);
-        if (!credentialFits(own, project.orgId)) return "credentials_wrong" as const;
+        const view = yield* roles.recent;
+        const project = view.projects.find((candidate) => candidate.id === options.projectId);
+        if (project === undefined) return "credentials_wrong" as const;
+        if (!(yield* fits(options.credential.value, view.orgId))) {
+          return "credentials_wrong" as const;
+        }
         return anchorVerdict(
           { projectId: options.projectId, address: `https://${project.publicZone}` },
-          yield* api.members(project.orgId)(credential),
+          view.members,
         );
       }).pipe(
         Effect.catchTags({
@@ -154,8 +182,15 @@ export const officialLayer = (options: OfficialOptions): Layer.Layer<Official, n
         if (was.official !== official) {
           yield* Effect.logInfo("official verdict changed", { from: was.official, to: official });
         }
+        return official;
       });
-      yield* Effect.forkScoped(Effect.repeat(check, Schedule.spaced(recheck)));
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.flatMap(check, (official) =>
+            Effect.sleep(official === "ok" ? recheckOk : recheck),
+          ),
+        ),
+      );
 
       return Official.of({
         lastOk: Effect.map(Ref.get(state), ({ okAt }) =>
