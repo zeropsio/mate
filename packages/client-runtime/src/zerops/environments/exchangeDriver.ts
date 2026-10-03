@@ -21,6 +21,8 @@
  * - A Mate's backoff cap (`RETRY_CAP`) is kept across loads (`capped`): until it ends, the
  *   background asks that Mate nothing, and one that fails again once it ends is capped again at
  *   once — a load no longer starts its ladder over with five exchanges in its first minute.
+ * - While a press is in flight in this browser (`holdBackground`), the background starts no
+ *   exchange that mints: the press reads the token list every throwaway is written to.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -172,6 +174,11 @@ export interface ExchangeDriver {
    */
   readonly connect: (key: TargetKey, reason: IdentityExchangeReason) => Promise<ConnectOutcome>;
   readonly setAccount: (guards: AccountGuards) => void;
+  /**
+   * A press is in flight in this browser: the background starts no exchange that mints until it
+   * ends. The person's own and a kept session's still start.
+   */
+  readonly holdBackground: (held: boolean) => void;
   readonly setVisible: (visible: boolean) => void;
   /** §6.4's coalesced wake; a visible one fires pending retries now. */
   readonly wake: (visible: boolean) => void;
@@ -248,6 +255,8 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     grantVerifiedAtMs: null,
   };
   let visible = false;
+  /** A press is in flight in this browser (`holdBackground`). */
+  let holding = false;
   let disposed = false;
   const queue: Array<() => void> = [];
   let scheduled = false;
@@ -530,7 +539,8 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
    * budget back from every other one — so a slot is never held by a target that waits on
    * something else. An asked-for target is handed one whenever it would start; the background
    * starts nothing past the concurrency or the mint pace, counting the mint each descriptor
-   * probe in flight may still spend, and nothing for a Mate whose cap holds.
+   * probe in flight may still spend, nothing for a Mate whose cap holds, and nothing that mints
+   * while a press is in flight.
    */
   const allocate = (): void => {
     const now = clock.now();
@@ -549,10 +559,11 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       if (capHolds && wantedBy(key).length > 0) {
         capEnds = Math.min(capEnds ?? entry.capUntil!, entry.capUntil!);
       }
+      const held = capHolds || (holding && !asked(key) && !kept(key));
       if (entry.machine.credential.kind === "exchanging") {
         budget = entry.machine.guards.budget;
       } else if (
-        !capHolds &&
+        !held &&
         (asked(key) || (exchanging < EXCHANGE_CONCURRENCY && (paced || kept(key))))
       ) {
         const trial = transitionEnvironment(
@@ -695,6 +706,10 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     setAccount: (guards) =>
       enqueue(() => {
         account = guards;
+      }),
+    holdBackground: (held) =>
+      enqueue(() => {
+        holding = held;
       }),
     setVisible: (next) =>
       enqueue(() => {

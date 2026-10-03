@@ -61,7 +61,7 @@ import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "
 import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
 import { makeDoorCaps } from "./doorCaps";
-import { pressingProjects } from "./matePress";
+import { pressesInFlight, pressingProjects } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -454,6 +454,8 @@ export function webEnvironmentPorts(input: {
     admission: connectionAdmission,
     // A press or a harden this tab is running: its Mate is not connected meanwhile.
     pressing: pressingProjects,
+    // Any press in flight: the background mints no throwaway meanwhile.
+    pressInFlight: pressesInFlight,
     // A Mate its press marked waits for HQ to say its project is closed off.
     closedOff: closedOffPort(registry),
   };

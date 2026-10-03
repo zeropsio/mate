@@ -180,6 +180,15 @@ export interface AccountEnvironmentPorts {
     readonly subscribe: (listener: () => void) => () => void;
   };
   /**
+   * Whether a press is in flight in this browser, its project made or not: the background mints
+   * no throwaway meanwhile (`holdBackground`), as the press reads the token list they are written
+   * to. A surface with no press of its own leaves it out.
+   */
+  readonly pressInFlight?: {
+    readonly read: () => boolean;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
+  /**
    * Whether HQ's record of each project's Mate says its project is closed off: `unknown` while
    * HQ's structure is not known, and for a project it holds no record of. HQ's word decides
    * where it has one — `true` connects, `false` holds, the press's marker or not; `unknown`
@@ -884,6 +893,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const stops: Array<() => void> = [];
     driver.setVisible(!options.hidden);
     containers.setVisible(!options.hidden);
+    const holdBackground = () => driver.holdBackground(ports.pressInFlight?.read() ?? false);
+    holdBackground();
     stops.push(
       bindContainerStore(containers, driver),
       containers.subscribe(() => {
@@ -902,6 +913,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       ports.records.listen(registrationsChanged),
       ports.pressing?.subscribe(updateAutoConnect) ?? (() => undefined),
+      ports.pressInFlight?.subscribe(holdBackground) ?? (() => undefined),
       ports.closedOff?.subscribe(updateAutoConnect) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {

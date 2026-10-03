@@ -630,6 +630,30 @@ describe("exchange driver (DESIGN §4.4)", () => {
     });
   });
 
+  // E2E 2026-10-03: the first write after a fresh load failed while auto-connect minted and
+  // deleted throwaways on the same token list the press reads.
+  it("holds the background's mints while a press is in flight, never the person's or a kept one", async () => {
+    const background = mate("bg");
+    const routed = mate("route");
+    const restored = mate("kept");
+    const { driver, exchanges, start } = rig([background, routed, restored], {
+      kept: new Set([keyOf(restored)]),
+    });
+    driver.holdBackground(true);
+    await start({
+      records: [restored],
+      route: routed,
+      demand: { reason: "auto-connect", mates: [background] },
+    });
+    expect(exchanges.map((request) => request.key).sort()).toEqual(
+      [keyOf(restored), keyOf(routed)].sort(),
+    );
+
+    driver.holdBackground(false);
+    await flush();
+    expect(exchanges.map((request) => request.key)).toContain(keyOf(background));
+  });
+
   describe("a Mate the person asks for never waits on the mint budget", () => {
     const records = Array.from({ length: DOOR_MINT_BURST + 2 }, (_, index) => mate(`r${index}`));
     type Ask = (driver: ExchangeDriver, key: TargetKey) => void;
