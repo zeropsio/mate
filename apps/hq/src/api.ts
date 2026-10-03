@@ -5,9 +5,10 @@
  * - `DELETE /api/session`: revokes the presented session.
  * - `POST /api/apps` `{ name }` → the application; `DELETE /api/apps/:id` → `204`, only one that
  *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it.
- * - `POST /api/apps/:id/projects` `{ projectId, kind, mate?, environment? }`: attaches a project; a
- *   stage or a production is its application's environment, named `environment.name` or after
- *   its project (`environments.ts`).
+ * - `POST /api/apps/:id/projects` `{ projectId, kind, mate?, environment?, created? }`: attaches a
+ *   project; a stage or a production is its application's environment, named `environment.name` or
+ *   after its project (`environments.ts`); `created` says the person's client made it for HQ to
+ *   deploy, whose services then get their subdomain on their first deploy (audit R1).
  * - `GET /api/structure` → `{ apps }`, as the caller sees them in Zerops: each with its projects,
  *   and its environments with their deploys.
  * - `GET /api/structure/ws?ticket=`: the same, then its changes, over a WebSocket (`stream.ts`);
@@ -154,6 +155,7 @@ const AttachBody = Schema.Struct({
   mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
   birth: Schema.optionalKey(Schema.String),
+  created: Schema.optionalKey(Schema.Boolean),
 });
 const BirthBody = Schema.Struct({ appId: Schema.String, name: Schema.String, face: Schema.String });
 /**

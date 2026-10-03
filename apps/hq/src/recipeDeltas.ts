@@ -92,16 +92,24 @@ export function isPublicBuild(buildFromGit: string): boolean {
 /** The platform evaluates a directive (`<@generateRandomString(<32>)>`) only under this header. */
 const PREPROCESSOR = "#zeropsPreprocessor=on\n";
 
+/**
+ * Whether HQ deploys the service `declaration` declares: a runtime built from HQ's own repository —
+ * neither a public build the platform makes itself, nor a managed service.
+ */
+export function deployedByHq(declaration: Readonly<Record<string, unknown>>): boolean {
+  const build = declaration["buildFromGit"];
+  if (typeof build === "string" && isPublicBuild(build)) return false;
+  const managed =
+    build === undefined &&
+    declaration["zeropsSetup"] === undefined &&
+    declaration["startWithoutCode"] === undefined;
+  return !managed;
+}
+
 /** The services-only import that creates `services` in a project, empty where HQ deploys them. */
 export function deltaImport(services: ReadonlyArray<TierService>): string {
   const declared = services.map(({ declaration }) => {
-    const build = declaration["buildFromGit"];
-    if (typeof build === "string" && isPublicBuild(build)) return declaration;
-    const managed =
-      build === undefined &&
-      declaration["zeropsSetup"] === undefined &&
-      declaration["startWithoutCode"] === undefined;
-    if (managed) return declaration;
+    if (!deployedByHq(declaration)) return declaration;
     const {
       buildFromGit: _build,
       zeropsSetup: _setup,

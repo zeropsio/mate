@@ -879,6 +879,31 @@ describe("structure", () => {
 
     // The person whose sign-in a Mate waits for: whoever set its record up, by their session —
     // never a field a client sends. Attaching a Mate set up already keeps its maker.
+    // Audit R1 (D6): an environment the person's client created for HQ to deploy says so as it is
+    // attached, and HQ records it: its services get their subdomain on their first deploy. One
+    // attached as it was — a project the person made otherwise — records nothing.
+    it.effect("records the subdomain intent of an environment attached as created for HQ", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_DEV",
+            kind: "stage",
+            created: true,
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_OWNED",
+            kind: "production",
+          });
+          assert.deepStrictEqual(yield* sql`SELECT project_id, service FROM hq_subdomain_intent`, [
+            { project_id: "P_DEV", service: null },
+          ]);
+        }),
+      ),
+    );
+
     it.effect("records who made a Mate: whoever creates or attaches it, and only them", () =>
       withStructure(() =>
         Effect.gen(function* () {

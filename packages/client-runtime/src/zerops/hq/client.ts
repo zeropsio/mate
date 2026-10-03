@@ -110,6 +110,11 @@ export interface HqAttach {
   readonly environment?: { readonly name: string };
   /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
   readonly birth?: string;
+  /**
+   * This client created the stage's or production's project for HQ to deploy: HQ turns its
+   * services' subdomains on at their first deploy, and never otherwise (audit R1, D6).
+   */
+  readonly created?: true;
 }
 
 /**

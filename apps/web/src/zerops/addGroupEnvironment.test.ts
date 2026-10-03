@@ -70,7 +70,12 @@ describe("addGroupEnvironment", () => {
     const api = apiFake();
     const hq = hqFake();
     expect(await add(api, hq)).toEqual({ done: ["registry", "deploy-token"], failed: undefined });
-    expect(hq.attachProject).toHaveBeenCalledWith("g-1", { projectId: "p-stage", kind: "stage" });
+    // Made for HQ to deploy: its services get their subdomain on their first deploy (audit R1).
+    expect(hq.attachProject).toHaveBeenCalledWith("g-1", {
+      projectId: "p-stage",
+      kind: "stage",
+      created: true,
+    });
     expect(api.mintIntegrationToken).toHaveBeenCalledWith(
       {
         clientId: "org-1",
