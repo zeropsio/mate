@@ -10,11 +10,12 @@ function actionFor(
   permission: string,
   target = "*",
 ) {
-  // OpenCode uses the last matching rule. Its wildcards match directory separators.
+  // OpenCode uses the last matching rule. Its wildcards, in a permission's
+  // name as in its pattern, match directory separators.
+  const matches = (wildcard: string, value: string) =>
+    new RegExp(`^${RegExpUtils.escape(wildcard).replaceAll("\\*", ".*")}$`, "s").test(value);
   return buildOpenCodePermissionRules(runtimeMode).findLast(
-    (rule) =>
-      (rule.permission === "*" || rule.permission === permission) &&
-      new RegExp(`^${RegExpUtils.escape(rule.pattern).replaceAll("\\*", ".*")}$`, "s").test(target),
+    (rule) => matches(rule.permission, permission) && matches(rule.pattern, target),
   )?.action;
 }
 
@@ -54,6 +55,16 @@ describe("buildOpenCodePermissionRules", () => {
       for (const target of [".env.example", "config/service.env.example"]) {
         NodeAssert.equal(actionFor(runtimeMode, "read", target), "allow");
       }
+    }
+  });
+
+  // zcp pre-approves its own tools for every agent (Claude's mcp__zerops__*,
+  // Cursor's Mcp(zerops:*), OpenCode's config). A session's rules override
+  // OpenCode's config file, so the allowance has to be here too.
+  it("lets the Zerops tools run without asking, as zcp sets them up for every agent", () => {
+    for (const runtimeMode of ["approval-required", "auto-accept-edits", "auto"] as const) {
+      NodeAssert.equal(actionFor(runtimeMode, "zerops_zerops_discover"), "allow");
+      NodeAssert.equal(actionFor(runtimeMode, "zeropsish_tool"), "ask");
     }
   });
 
