@@ -15,6 +15,7 @@ const itemEvent = (options: {
   readonly provider?: string;
   readonly itemType?: string;
   readonly status?: string;
+  readonly title?: string;
   readonly data?: unknown;
 }): SpiEvent =>
   ({
@@ -26,6 +27,7 @@ const itemEvent = (options: {
     payload: {
       itemType: options.itemType ?? "mcp_tool_call",
       ...(options.status !== undefined ? { status: options.status } : {}),
+      ...(options.title !== undefined ? { title: options.title } : {}),
       data: options.data,
     },
   }) as unknown as SpiEvent;
@@ -306,8 +308,8 @@ describe("readToolCall — not a tool call (silent)", () => {
     expect(readToolCall(event).kind).toBe("notATool");
   });
 
-  it("a provider with no reader (cursor/grok/opencode)", () => {
-    const result = readToolCall(itemEvent({ provider: "cursor", data: claudeToolCallData({}) }));
+  it("a provider with no reader", () => {
+    const result = readToolCall(itemEvent({ provider: "unknown", data: claudeToolCallData({}) }));
     expect(result.kind).toBe("notATool");
   });
 
@@ -479,5 +481,232 @@ describe("sniffToolCallShape", () => {
   it("returns notATool for a shape neither reader recognizes", () => {
     const result = sniffToolCallShape({ command: "ls" });
     expect(result.kind).toBe("notATool");
+  });
+});
+
+/**
+ * OpenCode's shape (`OpenCodeAdapter.ts`, `message.part.updated` of a tool
+ * part): `data = {tool, state}`. An MCP tool is named `<server>_<tool>`; its
+ * result is `state.output`, its failure `state.error`.
+ */
+const openCodeData = (tool: string, state: Record<string, unknown>) => ({ tool, state });
+
+describe("readToolCall — OpenCode", () => {
+  it.each([
+    { tool: "zerops_zerops_deploy", name: "zerops_deploy", server: "zerops" },
+    { tool: "github_create_issue", name: "create_issue", server: "github" },
+    { tool: "read", name: "read", server: undefined },
+    { tool: "apply_patch", name: "apply_patch", server: undefined },
+  ])("names $tool as $name", ({ tool, name, server }) => {
+    const result = readToolCall(
+      itemEvent({
+        provider: "opencode",
+        type: "item.updated",
+        itemType: "dynamic_tool_call",
+        data: openCodeData(tool, { status: "running", input: { serviceHostname: "api" } }),
+      }),
+    );
+    expect(result).toEqual({
+      kind: "toolCall",
+      call: {
+        name,
+        rawName: tool,
+        ...(server === undefined ? {} : { server }),
+        arguments: { serviceHostname: "api" },
+      },
+    });
+  });
+
+  it.each([
+    {
+      name: "a completed call returns its output",
+      state: { status: "completed", input: {}, output: '{"status":"FINISHED"}' },
+      result: { text: '{"status":"FINISHED"}', failed: false },
+    },
+    {
+      name: "a failed call returns its error",
+      state: { status: "error", input: {}, error: "service not found" },
+      result: { text: "service not found", failed: true },
+    },
+    {
+      name: "a picture comes back as an attachment",
+      state: {
+        status: "completed",
+        input: {},
+        output: "screenshot taken",
+        attachments: [{ type: "file", mime: "image/png", url: "data:image/png;base64,iVBORw0K" }],
+      },
+      result: {
+        text: "screenshot taken",
+        failed: false,
+        images: [{ mimeType: "image/png", data: "iVBORw0K" }],
+      },
+    },
+  ])("$name", ({ state, result }) => {
+    const read = readToolCall(
+      itemEvent({
+        provider: "opencode",
+        itemType: "dynamic_tool_call",
+        data: openCodeData("zerops_zerops_browser", state),
+      }),
+    );
+    expect(read.kind === "toolCall" && read.call.result).toEqual(result);
+  });
+
+  it("is unrecognized when a tool item carries no tool name", () => {
+    const read = readToolCall(
+      itemEvent({ provider: "opencode", itemType: "dynamic_tool_call", data: { state: {} } }),
+    );
+    expect(read.kind).toBe("unrecognized");
+  });
+});
+
+/**
+ * The ACP agents' shape (`AcpRuntimeModel.ts` `makeToolCallState`): `data =
+ * {toolCallId, kind?, command?, rawInput?, rawOutput?, content?, locations?}`,
+ * the call's title on the payload. ACP names no tool: an MCP call is known by
+ * the name its title carries, a native one by its kind.
+ */
+const acpEvent = (options: {
+  readonly provider?: string;
+  readonly title?: string;
+  readonly status?: string;
+  readonly data: Record<string, unknown>;
+}) =>
+  itemEvent({
+    provider: options.provider ?? "cursor",
+    type:
+      options.status === "completed" || options.status === "failed"
+        ? "item.completed"
+        : "item.updated",
+    itemType: "dynamic_tool_call",
+    status: options.status ?? "inProgress",
+    ...(options.title === undefined ? {} : { title: options.title }),
+    data: { toolCallId: "call-1", ...options.data },
+  });
+
+describe("readToolCall — ACP (cursor, grok, antigravity)", () => {
+  it.each([
+    { title: "Running zerops_deploy", name: "zerops_deploy", server: undefined },
+    { title: "mcp__zerops__zerops_deploy", name: "zerops_deploy", server: "zerops" },
+    { title: "zerops-zerops_deploy", name: "zerops_deploy", server: "zerops" },
+    { title: "zerops_zerops_deploy", name: "zerops_deploy", server: "zerops" },
+    { title: "zerops: zerops_deploy", name: "zerops_deploy", server: "zerops" },
+    { title: "zerops_deploy", name: "zerops_deploy", server: undefined },
+    { title: "enter_plan_mode", name: "enter_plan_mode", server: undefined },
+  ])("names the call titled $title as $name", ({ title, name, server }) => {
+    const result = readToolCall(
+      acpEvent({ title, data: { kind: "other", rawInput: { targetService: "api" } } }),
+    );
+    expect(result).toEqual({
+      kind: "toolCall",
+      call: {
+        name,
+        rawName: title,
+        ...(server === undefined ? {} : { server }),
+        arguments: { targetService: "api" },
+      },
+    });
+  });
+
+  it.each([
+    { kind: "read", title: "Read file" },
+    { kind: "edit", title: "Changed files" },
+    { kind: "search", title: "Searched files" },
+    { kind: "execute", title: "Ran command" },
+  ])("names a native $kind call by its kind", ({ kind, title }) => {
+    const result = readToolCall(acpEvent({ title, data: { kind } }));
+    expect(result.kind === "toolCall" && result.call.name).toBe(kind);
+  });
+
+  it("never names a native call by what its title mentions", () => {
+    const result = readToolCall(
+      acpEvent({ title: "`grep -r zerops_deploy src`", data: { kind: "execute" } }),
+    );
+    expect(result.kind === "toolCall" && result.call.name).toBe("execute");
+  });
+
+  it.each(["grok", "antigravity"])("reads %s the same way", (provider) => {
+    const result = readToolCall(acpEvent({ provider, title: "Running zerops_standup", data: {} }));
+    expect(result.kind === "toolCall" && result.call.name).toBe("zerops_standup");
+  });
+
+  it.each([
+    {
+      name: "the MCP result in rawOutput",
+      status: "completed",
+      data: { rawOutput: { content: [{ type: "text", text: '{"ok":true}' }] } },
+      result: { text: '{"ok":true}', failed: false },
+    },
+    {
+      name: "the ACP content's text",
+      status: "completed",
+      data: { content: [{ type: "content", content: { type: "text", text: '{"ok":true}' } }] },
+      result: { text: '{"ok":true}', failed: false },
+    },
+    {
+      name: "a bare string rawOutput",
+      status: "completed",
+      data: { rawOutput: '{"ok":true}' },
+      result: { text: '{"ok":true}', failed: false },
+    },
+    {
+      name: "a failure",
+      status: "failed",
+      data: { rawOutput: { content: [{ type: "text", text: "no such service" }], isError: true } },
+      result: { text: "no such service", failed: true },
+    },
+    {
+      name: "a picture in the ACP content",
+      status: "completed",
+      data: {
+        content: [
+          { type: "content", content: { type: "text", text: "shot" } },
+          { type: "content", content: { type: "image", data: "iVBORw0K", mimeType: "image/png" } },
+        ],
+      },
+      result: {
+        text: "shot",
+        failed: false,
+        images: [{ mimeType: "image/png", data: "iVBORw0K" }],
+      },
+    },
+  ])("returns $name", ({ status, data, result }) => {
+    const read = readToolCall(acpEvent({ title: "Running zerops_browser", status, data }));
+    expect(read.kind === "toolCall" && read.call.result).toEqual(result);
+  });
+
+  it("carries no result while the call runs", () => {
+    const read = readToolCall(
+      acpEvent({ title: "Running zerops_deploy", data: { rawOutput: "partial" } }),
+    );
+    expect(read.kind === "toolCall" && read.call.result).toBeUndefined();
+  });
+
+  it("is unrecognized when neither a kind nor a name says what the call is", () => {
+    const read = readToolCall(acpEvent({ title: "Doing something", data: {} }));
+    expect(read.kind).toBe("unrecognized");
+  });
+});
+
+describe("sniffToolCallShape — every driver", () => {
+  it("recognizes an OpenCode shape", () => {
+    const result = sniffToolCallShape(
+      openCodeData("zerops_zerops_deploy", { status: "running", input: {} }),
+    );
+    expect(result.kind === "toolCall" && result.call.name).toBe("zerops_deploy");
+  });
+
+  it("recognizes an ACP shape by the title it is given", () => {
+    const result = sniffToolCallShape(
+      { toolCallId: "call-1", kind: "other" },
+      "Running zerops_deploy",
+    );
+    expect(result.kind === "toolCall" && result.call.name).toBe("zerops_deploy");
+  });
+
+  it("recognizes an ACP native call by its kind", () => {
+    const result = sniffToolCallShape({ toolCallId: "call-1", kind: "read" }, "Read file");
+    expect(result.kind === "toolCall" && result.call.name).toBe("read");
   });
 });
