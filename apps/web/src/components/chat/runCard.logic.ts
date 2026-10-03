@@ -18,7 +18,13 @@ import {
   operationLineWords,
   unrecoveredFailures,
 } from "./conversation.logic";
-import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
+import {
+  liveCallsOf,
+  type LiveCall,
+  type RecordItem,
+  type RunStatus,
+  type TurnHeaderActivity,
+} from "./MessagesTimeline.logic";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
 // ---------------------------------------------------------------------------
@@ -135,8 +141,8 @@ export type NowLine =
   | { readonly kind: "step"; readonly step: WorkStep }
   /** A platform operation it waits on: a deploy, a check in the browser. */
   | { readonly kind: "operation"; readonly operation: ZeropsOperation }
-  /** Several steps at once, oldest first: how many, and a line each under it. */
-  | { readonly kind: "several"; readonly steps: ReadonlyArray<WorkStep> }
+  /** Several calls at once, oldest first: how many, and a line each under it. */
+  | { readonly kind: "several"; readonly calls: ReadonlyArray<LiveCall> }
   /** It waits on the person: their answer to its question, or their approval. */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   | { readonly kind: "writing" }
@@ -195,11 +201,13 @@ export function nowLineOf(input: {
         thought: thoughtTicker(now.messages.map((message) => message.text).join("\n\n")),
       };
     case "step":
-      return now.others !== undefined && now.others.length > 0
-        ? { kind: "several", steps: [...now.others, now.step] }
-        : { kind: "step", step: now.step };
-    case "operation":
-      return { kind: "operation", operation: now.operation };
+    case "operation": {
+      const calls = liveCallsOf(now);
+      if (calls.length > 1) return { kind: "several", calls };
+      return now.kind === "step"
+        ? { kind: "step", step: now.step }
+        : { kind: "operation", operation: now.operation };
+    }
   }
 }
 
@@ -260,29 +268,20 @@ export function slotModelOf(input: {
         : { live: [question], filler: thinking.filler };
     }
     case "step":
-      return {
-        live: [...(now.others ?? []), now.step].map((step): RecordItem => ({
-          kind: "step",
-          key: `step:${step.key}`,
-          at: step.startedAt,
-          step,
-        })),
-        filler: thinking.filler,
-      };
-    case "operation": {
-      const op = now.operation;
-      const item: RecordItem =
-        op.kind === "browser"
-          ? {
-              kind: "strip",
-              key: `operation:${op.key}`,
-              at: op.anchorAt,
-              strip: checksStrip([op], true),
-            }
-          : { kind: "operation", key: `operation:${op.key}`, at: op.anchorAt, operation: op };
-      return { live: [item], filler: thinking.filler };
-    }
+    case "operation":
+      return { live: liveCallsOf(now).map(liveCallItem), filler: thinking.filler };
   }
+}
+
+/** A call the Mate waits on, as the record item it becomes. */
+function liveCallItem(call: LiveCall): RecordItem {
+  if (call.kind === "step") {
+    return { kind: "step", key: `step:${call.step.key}`, at: call.step.startedAt, step: call.step };
+  }
+  const op = call.operation;
+  return op.kind === "browser"
+    ? { kind: "strip", key: `operation:${op.key}`, at: op.anchorAt, strip: checksStrip([op], true) }
+    : { kind: "operation", key: `operation:${op.key}`, at: op.anchorAt, operation: op };
 }
 
 /** Several steps of one kind at once, said by their kind: "Running 3 commands", "Reading 2 files". */
@@ -294,6 +293,12 @@ const SEVERAL: Partial<Record<StepKind, (count: number) => string>> = {
   web: (count) => `Reading ${count} pages`,
   look: (count) => `Looking at ${count} pictures`,
 };
+
+/** Several calls at once, in words: by their kind when they are steps of one kind. */
+export function severalCallsWords(calls: ReadonlyArray<LiveCall>): string {
+  const steps = calls.flatMap((call) => (call.kind === "step" ? [call.step] : []));
+  return steps.length === calls.length ? severalWords(steps) : `Running ${calls.length} steps`;
+}
 
 /** Several steps at once, in words: by their kind when they share one. */
 export function severalWords(steps: ReadonlyArray<WorkStep>): string {
@@ -325,7 +330,7 @@ export function nowLineWords(line: NowLine): string {
     case "operation":
       return operationNowWords(line.operation);
     case "several":
-      return severalWords(line.steps);
+      return severalCallsWords(line.calls);
     case "waiting":
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
     case "writing":

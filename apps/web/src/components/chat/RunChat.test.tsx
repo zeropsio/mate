@@ -446,9 +446,9 @@ describe("RunChat", () => {
           kind: "step",
           step: runningCommand("w4", "pnpm typecheck"),
           others: [
-            runningCommand("w1", "pnpm build"),
-            runningCommand("w2", "pnpm test"),
-            runningCommand("w3", "pnpm lint"),
+            { kind: "step", step: runningCommand("w1", "pnpm build") },
+            { kind: "step", step: runningCommand("w2", "pnpm test") },
+            { kind: "step", step: runningCommand("w3", "pnpm lint") },
           ],
         },
       }),

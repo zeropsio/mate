@@ -148,7 +148,7 @@ import {
   runCardShows,
   runFoldOf,
   setRunFold,
-  severalWords,
+  severalCallsWords,
   slotModelOf,
   type SlotFiller,
   standsAtFoot,
@@ -2502,7 +2502,7 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
         </>
       );
     case "several":
-      return <span className="run-now-verb">{severalWords(line.steps)}</span>;
+      return <span className="run-now-verb">{severalCallsWords(line.calls)}</span>;
     case "waiting":
       return <span className="run-now-verb">{nowLineWords(line)}</span>;
     case "writing":

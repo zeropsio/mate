@@ -579,12 +579,19 @@ describe("deriveMessagesTimelineRows", () => {
     {
       name: "two batches with no thought between: the newer batch only",
       entries: [open("w1", 1), returned("w2", 1, 10, 2), open("w3", 3), open("w4", 3, 5)],
-      now: { kind: "step", step: { key: "w4" }, others: [{ key: "w3" }] },
+      now: { kind: "step", step: { key: "w4" }, others: [{ kind: "step", step: { key: "w3" } }] },
     },
     {
       name: "parallel calls in one batch: the open ones, oldest first under the newest",
       entries: [open("w1", 1), open("w2", 1, 5), open("w3", 1, 10)],
-      now: { kind: "step", step: { key: "w3" }, others: [{ key: "w1" }, { key: "w2" }] },
+      now: {
+        kind: "step",
+        step: { key: "w3" },
+        others: [
+          { kind: "step", step: { key: "w1" } },
+          { kind: "step", step: { key: "w2" } },
+        ],
+      },
     },
     {
       name: "a call of the batch returned first: the one still open",
@@ -612,10 +619,67 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       now: { kind: "operation", operation: { key: "op:d1" } },
     },
+    {
+      name: "a deploy and a command in one batch: both, the deploy under the command",
+      entries: [
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 0),
+        }),
+        open("w2", 1, 5),
+      ],
+      now: {
+        kind: "step",
+        step: { key: "w2" },
+        others: [{ kind: "operation", operation: { key: "op:d1" } }],
+      },
+    },
+    {
+      name: "a command and a deploy in one batch: both, the command under the deploy",
+      entries: [
+        open("w0", 1),
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 5),
+        }),
+      ],
+      now: {
+        kind: "operation",
+        operation: { key: "op:d1" },
+        others: [{ kind: "step", step: { key: "w0" } }],
+      },
+    },
+    {
+      name: "two deploys in one batch: both",
+      entries: [
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 0),
+        }),
+        operation("d2", "t1", 1, {
+          kind: "deploy",
+          subject: "apistage",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 5),
+        }),
+      ],
+      now: {
+        kind: "operation",
+        operation: { key: "op:d2" },
+        others: [{ kind: "operation", operation: { key: "op:d1" } }],
+      },
+    },
   ])("reads the live field from the newest batch: $name", ({ entries, now }) => {
     const record = recordOf(rows({ entries: [user("m0", 0), ...entries], live: "t1" }));
     expect(record?.now).toMatchObject(now);
-    if (now.kind === "step" && !("others" in now)) {
+    if (!("others" in now)) {
       expect(record?.now).not.toHaveProperty("others");
     }
   });
@@ -1412,7 +1476,10 @@ describe("deriveMessagesTimelineRows", () => {
     expect(now?.kind).toBe("step");
     if (now?.kind !== "step") return;
     expect(now.step.code).toBe("pnpm lint");
-    expect(now.others?.map((step) => step.code)).toEqual(["pnpm build", "pnpm test"]);
+    expect(now.others?.map((call) => call.kind === "step" && call.step.code)).toEqual([
+      "pnpm build",
+      "pnpm test",
+    ]);
     expect(recordOf(live)?.items).toEqual([]);
   });
 

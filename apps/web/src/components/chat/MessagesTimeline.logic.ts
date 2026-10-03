@@ -396,15 +396,34 @@ export type TurnHeaderActivity =
    */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval"; readonly key?: string }
   /**
-   * A call it is making, as the step it is — the newest, and any others it
-   * runs at the same time, oldest first.
+   * The calls it is making, the newest as the step or the platform operation
+   * it is, and any others of its batch, oldest first.
    */
   | {
       readonly kind: "step";
       readonly step: WorkStep;
-      readonly others?: ReadonlyArray<WorkStep>;
+      readonly others?: ReadonlyArray<LiveCall>;
     }
+  | {
+      readonly kind: "operation";
+      readonly operation: ZeropsOperation;
+      readonly others?: ReadonlyArray<LiveCall>;
+    };
+
+/** One call the Mate waits on: a step of its own, or a platform operation. */
+export type LiveCall =
+  | { readonly kind: "step"; readonly step: WorkStep }
   | { readonly kind: "operation"; readonly operation: ZeropsOperation };
+
+/** The calls a running activity carries, oldest first; none for one that is no call. */
+export function liveCallsOf(now: TurnHeaderActivity | null): ReadonlyArray<LiveCall> {
+  if (now === null) return [];
+  if (now.kind === "step") return [...(now.others ?? []), { kind: "step", step: now.step }];
+  if (now.kind === "operation") {
+    return [...(now.others ?? []), { kind: "operation", operation: now.operation }];
+  }
+  return [];
+}
 
 export type ConversationEvent =
   | { readonly type: "landed"; readonly event: ChangeLandedEvent }
@@ -1110,22 +1129,28 @@ function liveActivity(
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
     const entry = stretch.entries[index]!;
     if (open.has(entry)) {
-      if (entry.kind === "operation") return { kind: "operation", operation: entry.operation };
-      if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
-      if (isQuestionToolCall(entry.entry)) return { kind: "waiting", on: "answer" };
-      const step = stepOf(entry.entry, tracked, true);
-      // What it runs at the same time is the now line's too: none of it is
-      // in the record until it returns.
-      const others = stretch.entries
-        .slice(0, index)
-        .flatMap((earlier) =>
-          open.has(earlier) &&
-          (earlier.kind === "work" || earlier.kind === "generic-call") &&
-          !isQuestionToolCall(earlier.entry)
-            ? [stepOf(earlier.entry, tracked, true)]
-            : [],
-        );
-      return others.length > 0 ? { kind: "step", step, others } : { kind: "step", step };
+      if (
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        isQuestionToolCall(entry.entry)
+      ) {
+        return { kind: "waiting", on: "answer" };
+      }
+      // Every call of the batch is the slot's, operations too: none of them
+      // is in the record until it returns.
+      const calls = stretch.entries.slice(0, index + 1).flatMap((call): LiveCall[] => {
+        if (!open.has(call)) return [];
+        if (call.kind === "operation") return [{ kind: "operation", operation: call.operation }];
+        if (call.kind !== "work" && call.kind !== "generic-call") return [];
+        if (isQuestionToolCall(call.entry)) return [];
+        return [{ kind: "step", step: stepOf(call.entry, tracked, true) }];
+      });
+      const newest = calls.at(-1);
+      const others = calls.slice(0, -1);
+      if (newest === undefined) continue;
+      const rest = others.length > 0 ? { others } : {};
+      return newest.kind === "step"
+        ? { kind: "step", step: newest.step, ...rest }
+        : { kind: "operation", operation: newest.operation, ...rest };
     }
     if (entry.kind === "message") {
       if (entry.message.role !== "reasoning" || passed) {
