@@ -20,6 +20,7 @@
  * `zeropsAgentSignInRequired` over the environment's agent-auth feed once it is known, and until
  * then the slot says it is checking, or why it could not.
  */
+import { signInReadSettled } from "@t3tools/client-runtime/zerops/conversationWriter";
 import { mateArriving, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
   birthRuntimesFacts,
@@ -99,7 +100,10 @@ export interface MateEmptyState {
   readonly signIn: ReactNode | null;
   readonly signInRequired: boolean;
   readonly unknown: KnownMessage | null;
-  /** Whether the agents' sign-in is read: the conversation's first paint says it whole. */
+  /**
+   * Whether the agents' sign-in read has ended — read, or failed (`signInReadSettled`): the
+   * conversation's first paint says it whole.
+   */
   readonly signInKnown: boolean;
   /**
    * A colleague's view of a Mate nobody has signed in: who added it, by name where it is known
@@ -128,9 +132,8 @@ export function useMateEmptyState({
   /** Its project, where the caller knows it before its environment's record says it. */
   readonly projectId?: string | undefined;
 }): MateEmptyState {
-  const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(
-    useZeropsAgentAuth(environmentId),
-  );
+  const agentAuthRead = useZeropsAgentAuth(environmentId);
+  const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(agentAuthRead);
   // Only a known snapshot can ask for a sign-in; one still being read says so.
   const signInRequired = agentAuth !== null && zeropsAgentSignInRequired(agentAuth);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
@@ -191,7 +194,7 @@ export function useMateEmptyState({
       ),
     signInRequired,
     unknown: agentAuthUnknown,
-    signInKnown: agentAuth !== null,
+    signInKnown: signInReadSettled(agentAuthRead),
     addedBy: colleague && adder !== undefined ? (nameOf(adder) ?? null) : undefined,
     onRetry: () => {
       if (environmentId !== null) retryMateStandUp(environmentId);

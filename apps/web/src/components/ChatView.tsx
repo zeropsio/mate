@@ -188,7 +188,6 @@ import { useKnownMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
-import { REMEMBERED_READ_ONLY } from "./zerops/ConversationFooterStandIn";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
 import { rememberedWriter, rememberWriter } from "../zerops/writerMemory";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
@@ -467,6 +466,8 @@ import {
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
+  zeropsReadOnlyFooter,
+  composerOpenFocus,
   conversationContentPending,
   localThreadErrorStanding,
   queuedSendOutcome,
@@ -3915,17 +3916,23 @@ export default function ChatView(props: ChatViewProps) {
     viewerSubject: zeropsViewerSubject,
     ownership: zeropsAgentOwnership,
   });
-  const zeropsFooter = conversationFooter(
-    zeropsWriter,
-    activeThreadEnvironmentId === null ? undefined : rememberedWriter(activeThreadEnvironmentId),
+  // Remembered by the conversation: another chat of the same Mate runs on its own login.
+  const zeropsFooter = conversationFooter(zeropsWriter, rememberedWriter(routeThreadRef));
+  // Someone else's strip; painted from memory it offers no sign-in and names no owner until read.
+  const zeropsReadOnlyStrip = zeropsReadOnlyFooter({
+    footer: zeropsFooter,
+    readOnly: zeropsReadOnly,
+  });
+  const zeropsShownReadOnly = zeropsReadOnlyStrip?.readOnly ?? null;
+  // The draft the held room lays out, so the composer that takes its place is its height.
+  const zeropsHeldDraft = useComposerDraftStore((store) =>
+    zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
   );
-  const zeropsShownReadOnly =
-    zeropsFooter === "read-only" ? (zeropsReadOnly ?? REMEMBERED_READ_ONLY) : null;
-  const zeropsKnownWriter = rememberableWriter(zeropsWriter);
+  const zeropsWriterKind = zeropsWriter.kind;
+  const zeropsKnownWriter = rememberableWriter(zeropsWriter, zeropsAgentAuthRead);
   useEffect(() => {
-    if (zeropsKnownWriter === undefined || activeThreadEnvironmentId === null) return;
-    rememberWriter(activeThreadEnvironmentId, zeropsKnownWriter);
-  }, [activeThreadEnvironmentId, zeropsKnownWriter]);
+    if (zeropsKnownWriter !== undefined) rememberWriter(routeThreadRef, zeropsKnownWriter);
+  }, [routeThreadRef, zeropsKnownWriter]);
   // On a started thread the selection stays locked to the agent the session
   // began with even when it is not runnable (the picker offers sign-in
   // there); Send is disabled with that agent's own reason instead — see
@@ -4687,9 +4694,21 @@ export default function ChatView(props: ChatViewProps) {
     setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
 
+  // The conversation whose open found no composer (its room held, or a strip): its focus waits.
+  const openFocusOwedRef = useRef<string | null>(null);
+  const composerShown = zeropsFooter === "composer";
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!composerShown) {
+      openFocusOwedRef.current = routeThreadKey;
+      return;
+    }
     const frame = window.requestAnimationFrame(() => {
+      const late = openFocusOwedRef.current === routeThreadKey;
+      openFocusOwedRef.current = null;
+      const active = document.activeElement;
+      const focusElsewhere = active !== null && active !== document.body;
+      if (!composerOpenFocus({ composerShown, late, focusElsewhere })) return;
       // Handed over from its Mate's own view, what was typed there is the
       // draft: the caret stays where the person left it.
       const caret = takeHandedOverCaret(routeThreadKey, Date.now());
@@ -4699,7 +4718,14 @@ export default function ChatView(props: ChatViewProps) {
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, composerRef, focusComposer, routeThreadKey, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    composerRef,
+    composerShown,
+    focusComposer,
+    routeThreadKey,
+    terminalUiState.terminalOpen,
+  ]);
 
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The
@@ -5315,7 +5341,7 @@ export default function ChatView(props: ChatViewProps) {
   const agentOwnershipBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (zeropsOwnedAgent === undefined) return null;
     // Said only on a known answer: "nobody can run it" is not what loading looks like.
-    if (zeropsKnownWriter === undefined) return null;
+    if (zeropsWriterKind === "unknown") return null;
     // A token-authorized agent is nobody's personal login: an API key belongs
     // to the project, so nothing is said about it.
     if (zeropsOwnedAgent.flagToken) return null;
@@ -5337,7 +5363,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     openAgentAuthDialog,
     zeropsAgentOwnership,
-    zeropsKnownWriter,
+    zeropsWriterKind,
     zeropsOwnedAgent,
     zeropsReadOnly,
   ]);
@@ -8543,12 +8569,20 @@ export default function ChatView(props: ChatViewProps) {
                           {zeropsShownReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
                               readOnly={zeropsShownReadOnly}
-                              pendingApprovals={pendingApprovals}
-                              pendingUserInputs={pendingUserInputs}
-                              onSignIn={openAgentAuthDialog}
+                              pendingApprovals={
+                                zeropsReadOnlyStrip?.answered === true ? pendingApprovals : []
+                              }
+                              pendingUserInputs={
+                                zeropsReadOnlyStrip?.answered === true ? pendingUserInputs : []
+                              }
+                              onSignIn={
+                                zeropsReadOnlyStrip?.answered === true
+                                  ? openAgentAuthDialog
+                                  : undefined
+                              }
                             />
                           ) : zeropsFooter === "held" ? (
-                            <ComposerRoomHeld />
+                            <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : (
                             <ChatComposer
                               composerRef={composerRef}

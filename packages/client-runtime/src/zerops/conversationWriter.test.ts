@@ -5,6 +5,7 @@ import {
   conversationFooter,
   rememberableWriter,
   resolveConversationWriter,
+  signInReadSettled,
   type ConversationWriter,
   type ConversationWriterInput,
 } from "./conversationWriter.ts";
@@ -216,12 +217,78 @@ describe("conversationFooter", () => {
 });
 
 describe("rememberableWriter", () => {
-  it.each<{ readonly writer: ConversationWriter; readonly expected: string | undefined }>([
-    { writer: { kind: "unknown" }, expected: undefined },
-    { writer: { kind: "you" }, expected: "you" },
-    { writer: { kind: "someone" }, expected: "someone" },
-    { writer: { kind: "nobody-yet" }, expected: "nobody-yet" },
-  ])("$writer.kind → $expected", ({ writer, expected }) => {
-    expect(rememberableWriter(writer)).toBe(expected);
+  const READ = known(snapshot([claude()]));
+  it.each<{
+    readonly name: string;
+    readonly writer: ConversationWriter;
+    readonly feed: ConversationWriterInput["feed"];
+    readonly expected: string | undefined;
+  }>([
+    {
+      name: "unknown leaves nothing",
+      writer: { kind: "unknown" },
+      feed: READ,
+      expected: undefined,
+    },
+    { name: "yours from a read snapshot", writer: { kind: "you" }, feed: READ, expected: "you" },
+    {
+      name: "someone's from a read snapshot",
+      writer: { kind: "someone" },
+      feed: READ,
+      expected: "someone",
+    },
+    {
+      name: "nobody's yet from a read snapshot",
+      writer: { kind: "nobody-yet" },
+      feed: READ,
+      expected: "nobody-yet",
+    },
+    {
+      // A transport failure is no answer: it must not overwrite the one remembered.
+      name: "nothing from a read that failed",
+      writer: { kind: "nobody-yet" },
+      feed: {
+        state: "failed",
+        failure: { kind: "transport", detail: "socket closed" },
+        atMs: 0,
+        attempt: 1,
+        retryAtMs: 1_000,
+      },
+      expected: undefined,
+    },
+    {
+      name: "nothing with no environment",
+      writer: { kind: "you" },
+      feed: undefined,
+      expected: undefined,
+    },
+  ])("$name", ({ writer, feed, expected }) => {
+    expect(rememberableWriter(writer, feed)).toBe(expected);
+  });
+});
+
+describe("signInReadSettled", () => {
+  it.each<{
+    readonly name: string;
+    readonly feed: ConversationWriterInput["feed"];
+    readonly settled: boolean;
+  }>([
+    { name: "no environment", feed: undefined, settled: false },
+    { name: "not read yet", feed: { state: "unread", waitingFor: null }, settled: false },
+    { name: "being read", feed: { state: "reading", sinceMs: 0, attempt: 1 }, settled: false },
+    { name: "read", feed: known(snapshot([claude()])), settled: true },
+    {
+      name: "failed: nothing more comes of this read",
+      feed: {
+        state: "failed",
+        failure: { kind: "unsupported", capability: "agentAuth" },
+        atMs: 0,
+        attempt: 1,
+        retryAtMs: null,
+      },
+      settled: true,
+    },
+  ])("$name → $settled", ({ feed, settled }) => {
+    expect(signInReadSettled(feed)).toBe(settled);
   });
 });

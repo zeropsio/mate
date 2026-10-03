@@ -20,6 +20,7 @@ import { ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "../ComposerPromptEditor";
 import type { ComposerControlLook } from "./composerControlMemory";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { heldDraftRuns } from "./ComposerRoom.logic";
 import { ComposerModelControlStill } from "./ProviderModelPicker";
 import { ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import { shouldTypeToFocusComposer } from "./typeToFocus";
@@ -176,18 +177,33 @@ export function ComposerStandInDock({
 /**
  * The composer's room while who writes in the conversation is not known
  * (`conversationFooter`): the card at the composer's size with nothing in it — no field, no
- * caret, no words, no buttons — its shell unseen (`data-room-held`), so whichever comes, the
+ * caret, no buttons — its shell unseen (`data-room-held`), so whichever comes, the
  * composer or someone else's strip, takes its place without the page moving or anything taken
  * back.
  */
-export function ComposerRoomHeld() {
+export function ComposerRoomHeld({ draft = "" }: { readonly draft?: string }) {
   return (
     <div aria-hidden className="mx-auto w-full min-w-0 max-w-3xl" data-composer-room-held="">
       <div className="relative">
         <div className="group relative z-10 p-px">
           <div className="relative px-3 pt-3.5 pb-2 sm:px-4 sm:pt-4">
             <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
-              <div className="min-h-17.5 leading-relaxed" />
+              {/* The draft laid out as the editor will lay it out (`heldDraftRuns`), unseen. */}
+              <div className="block max-h-50 min-h-17.5 w-full overflow-hidden whitespace-pre-wrap wrap-break-word leading-relaxed">
+                {heldDraftRuns(draft).map((run, at) =>
+                  run.kind === "text" ? (
+                    // oxlint-disable-next-line react/no-array-index-key -- runs have no identity
+                    <span key={at}>{run.text}</span>
+                  ) : (
+                    // oxlint-disable-next-line react/no-array-index-key -- runs have no identity
+                    <span className="composer-attachment-slot" key={at}>
+                      <span
+                        className={run.kind === "picture" ? "block h-20 w-20" : "block h-20 w-42"}
+                      />
+                    </span>
+                  ),
+                )}
+              </div>
             </div>
           </div>
           <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 pt-1.5 pe-3 pb-3 ps-3.5">

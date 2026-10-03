@@ -1,36 +1,40 @@
 /**
- * Who wrote in each environment's conversation, as this browser last knew it
+ * Who wrote in each conversation, as this browser last knew it
  * (`resolveConversationWriter`'s known answers), so a conversation that opens before its agents'
  * sign-in is read paints its footer as it last stood — the composer for the viewer's own, the
- * read-only strip for someone else's — instead of a composer it may take back. Beside the
+ * read-only strip for someone else's — instead of a composer it may take back. Kept by the
+ * conversation, not its environment: a Mate's conversations run on different logins (a crewmate's,
+ * another chat's agent), and each has its own answer. Beside the
  * identity memory (`mateIdentityMemory`): kept per account, bounded, and forgotten when the
  * account closes.
  */
 import type { RememberedWriter } from "@t3tools/client-runtime/zerops/conversationWriter";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { accountLocalStorage, currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
 
 export const WRITER_MEMORY_KEY = "mate:zerops:conversation-writers";
-/** Environments remembered at most; the one answered longest ago goes first. */
+/** Conversations remembered at most; the one answered longest ago goes first. */
 export const WRITER_MEMORY_CAP = 200;
 
-/** Environment → its last known answer, the newest last. */
+/** Conversation (`scopedThreadKey`) → its last known answer, the newest last. */
 export type WriterMemory = Readonly<Record<string, RememberedWriter>>;
 
 const ANSWERS: ReadonlySet<string> = new Set<RememberedWriter>(["you", "someone", "nobody-yet"]);
 
-/** The memory with `writer` as the newest answer for `environmentId`, within its cap. */
+/** The memory with `writer` as the newest answer for `conversation`, within its cap. */
 export function withWriter(
   memory: WriterMemory,
-  environmentId: EnvironmentId,
+  conversation: ScopedThreadRef,
   writer: RememberedWriter,
 ): WriterMemory {
+  const key = scopedThreadKey(conversation);
   const keys = Object.keys(memory);
-  if (memory[environmentId] === writer && keys.at(-1) === environmentId) return memory;
+  if (memory[key] === writer && keys.at(-1) === key) return memory;
   const next: Record<string, RememberedWriter> = { ...memory };
-  delete next[environmentId];
-  next[environmentId] = writer;
+  delete next[key];
+  next[key] = writer;
   const kept = Object.keys(next);
   for (const key of kept.slice(0, Math.max(0, kept.length - WRITER_MEMORY_CAP))) delete next[key];
   return next;
@@ -43,9 +47,9 @@ export function readWriterMemory(text: string | null): WriterMemory {
     const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
     const memory: Record<string, RememberedWriter> = {};
-    for (const [environmentId, value] of Object.entries(parsed)) {
+    for (const [key, value] of Object.entries(parsed)) {
       if (typeof value === "string" && ANSWERS.has(value)) {
-        memory[environmentId] = value as RememberedWriter;
+        memory[key] = value as RememberedWriter;
       }
     }
     return memory;
@@ -84,16 +88,16 @@ function memoryNow(): WriterMemory {
   return held.memory;
 }
 
-/** The last known answer for `environmentId` in this browser, for this person. */
-export function rememberedWriter(environmentId: EnvironmentId): RememberedWriter | undefined {
-  return memoryNow()[environmentId];
+/** The last known answer for `conversation` in this browser, for this person. */
+export function rememberedWriter(conversation: ScopedThreadRef): RememberedWriter | undefined {
+  return memoryNow()[scopedThreadKey(conversation)];
 }
 
 /** Remembers a known answer, written at once only when it changed something. */
-export function rememberWriter(environmentId: EnvironmentId, writer: RememberedWriter): void {
+export function rememberWriter(conversation: ScopedThreadRef, writer: RememberedWriter): void {
   const before = memoryNow();
   if (held === null) return;
-  const next = withWriter(before, environmentId, writer);
+  const next = withWriter(before, conversation, writer);
   if (next === before) return;
   held.memory = next;
   try {

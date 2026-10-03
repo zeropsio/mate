@@ -78,6 +78,7 @@ import {
 } from "~/zerops/mateComing";
 import {
   mateIdentityPose,
+  mateStageAwake,
   zeropsMateIdentityOf,
   type ZeropsMateIdentity,
 } from "~/zerops/mateIdentities";
@@ -133,6 +134,7 @@ import { PanelLayoutControls } from "../chat/PanelLayoutControls";
 import { EllipsisIcon } from "lucide-react";
 import { rememberedActivity } from "~/zerops/menuMemory";
 import { rememberedMateOfProject } from "~/zerops/mateIdentityMemory";
+import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { ConversationFooterStandIn, standInFooter } from "./ConversationFooterStandIn";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -683,6 +685,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                 ),
               };
 
+  // Its face: awake while it is linked, or while the page only waits on a container that runs —
+  // not asleep for this page's own wait (`mateStageAwake`).
+  const stageAwake = mateStageAwake({
+    linked: environmentId !== null,
+    arriving: shown !== undefined,
+    speaks:
+      page?.kind === "unreachable" || (linkVoice.surface !== "none" && stageSpeaks(linkVoice)),
+    mate,
+  });
+
   // An existing Mate's composer stands in its place while its link is made, as its conversation
   // will draw it: a switch here from a conversation keeps it on screen. A new Mate holds it back
   // for its stand-up; one that cannot be opened has nothing to write to.
@@ -697,8 +709,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         standsInComposer ? (
           <ConversationFooterStandIn
             composer={<ComposerStandIn onType={type} typed={typed} />}
+            draft={typed.text}
+            // Its conversation's remembered answer: the one it opens on, or the one its menu row
+            // stands for before that is known.
             footer={standInFooter(
-              environmentId ?? rememberedMateOfProject(projectId)?.environmentId ?? null,
+              threadRef ?? (standInKey === null ? null : parseScopedThreadKey(standInKey)),
             )}
           />
         ) : null
@@ -716,7 +731,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                   arriving: mateArriving(mate.arrivingUntil, clockMs),
                 })
           }
-          mate={{ ...mate, connected: environmentId !== null }}
+          mate={{ ...mate, connected: stageAwake }}
           standsIn={standsInComposer || handingArrival ? { subject: standInSubject } : null}
         />
       }
@@ -726,7 +741,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           coming={view}
           // Handed over to from the creation's view, whose headline held the focus.
           focusOnArrival={made !== undefined}
-          mate={{ ...mate, connected: environmentId !== null }}
+          mate={{ ...mate, connected: stageAwake }}
           onRetry={empty.onRetry}
           phase={handingArrival ? empty.phase : phaseAhead}
           signIn={handingArrival ? empty.signIn : null}

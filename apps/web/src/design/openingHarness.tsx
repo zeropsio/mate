@@ -9,7 +9,8 @@
  * `someone`, `nobody-yet` or nothing; `?answer=` the live answer, `someone` by default;
  * `?thread=<ms>` when the conversation is read, 600 by default; `?auth=<ms>` when its sign-in is,
  * 900 by default; `?before=1` draws what the app drew before unknown was its own answer: the
- * composer from the first frame until the answer said someone else's). `window.__opening.frames`
+ * composer from the first frame until the answer said someone else's; `?draft=` the conversation's
+ * draft, its lines split by newlines). `window.__opening.frames`
  * holds one sample per frame from the load: what the footer showed and whether a field had the
  * focus.
  *
@@ -30,10 +31,8 @@ import {
   ComposerStandInDock,
   type StandInTyped,
 } from "~/components/chat/ComposerStandIn";
-import {
-  ConversationFooterStandIn,
-  REMEMBERED_READ_ONLY,
-} from "~/components/zerops/ConversationFooterStandIn";
+import { REMEMBERED_READ_ONLY } from "~/components/ChatView.logic";
+import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -48,12 +47,14 @@ const ANSWER = asAnswer(params.get("answer")) ?? "someone";
 const THREAD_MS = Number(params.get("thread") ?? 600);
 const AUTH_MS = Math.max(THREAD_MS, Number(params.get("auth") ?? 900));
 const BEFORE = params.get("before") === "1";
+/** The conversation's draft, `\n` for its lines (`?draft=`). */
+const DRAFT = params.get("draft") ?? "";
 const nothing = () => undefined;
 
 type Phase = "opening" | "conversation" | "answered";
 
 function useTyped() {
-  const [typed, setTyped] = useState<StandInTyped>({ text: "", caret: 0 });
+  const [typed, setTyped] = useState<StandInTyped>({ text: DRAFT, caret: DRAFT.length });
   return { typed, onType: setTyped };
 }
 
@@ -69,7 +70,7 @@ function ConversationFooter({ writer }: { readonly writer: ConversationWriter })
     return (
       <ComposerStandInDock>
         <ZeropsReadOnlyConversationFooter
-          onSignIn={nothing}
+          onSignIn={writer.kind === "someone" ? nothing : undefined}
           pendingApprovals={[]}
           pendingUserInputs={[]}
           readOnly={REMEMBERED_READ_ONLY}
@@ -80,7 +81,7 @@ function ConversationFooter({ writer }: { readonly writer: ConversationWriter })
   if (footer === "held") {
     return (
       <ComposerStandInDock held>
-        <ComposerRoomHeld />
+        <ComposerRoomHeld draft={DRAFT} />
       </ComposerStandInDock>
     );
   }
@@ -94,6 +95,7 @@ function OpeningFooter() {
   return (
     <ConversationFooterStandIn
       composer={composer}
+      draft={DRAFT}
       footer={conversationFooter({ kind: "unknown" }, REMEMBERED)}
     />
   );
