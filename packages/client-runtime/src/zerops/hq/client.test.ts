@@ -972,6 +972,27 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       ask: (hqApi) => hqApi.attachProject("app-1", { projectId: "p9", kind: "stage" }),
       made: undefined,
     },
+    {
+      name: "an application HQ holds by its name",
+      write: { method: "POST", path: "/api/apps" },
+      holds: (seen) =>
+        seen.path === "/api/structure" ? json(200, { ungrouped: [], apps: [HARBOR] }) : undefined,
+      ask: (hqApi) => hqApi.createApp("Harbor"),
+      made: { id: "app-1", name: "Harbor" },
+    },
+    {
+      name: "a Mate HQ holds by its project",
+      write: { method: "POST", path: "/api/mates" },
+      holds: (seen) =>
+        seen.path === "/api/structure"
+          ? json(200, {
+              ungrouped: [{ projectId: "p7", name: "p7", mate: { name: "Ada", face: "sky" } }],
+              apps: [],
+            })
+          : undefined,
+      ask: (hqApi) => hqApi.createMate({ projectId: "p7", name: "Ada", face: "sky" }),
+      made: undefined,
+    },
   ])("takes $name for made when its answer was lost", async ({ write, holds, ask, made }) => {
     const { hq, api: hqApi } = api((seen) => {
       if (seen.method === write.method && seen.path === write.path) {
