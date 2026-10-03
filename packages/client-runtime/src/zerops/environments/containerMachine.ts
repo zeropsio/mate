@@ -214,15 +214,17 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
 
 /**
  * How often the probe store reads this container (§4.5 probes): every 2 s while it comes up,
- * backing off past its cap, while only failed probes say it is coming up or while a ready one
- * leaves them unanswered, never while a socket proves it up, and otherwise only when a push, a
- * failure or a wake asks.
+ * backing off past its cap or while a ready one leaves them unanswered, never while a socket
+ * proves it up, and otherwise only when a push, a failure or a wake asks. A boot nothing vouches
+ * for — only failed probes say it, as of a dead Mate or a zcp serving none — is polled only while
+ * someone waits on it (`watched`: the route's, the screen's, a lease's), on the backing-off ladder.
  */
-export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
+export const probeCadence = (machine: ContainerMachine, watched = false): ProbeCadence => {
   if (platformSaysDown(machine)) return { kind: "none" };
   switch (machine.state.level) {
     case "booting":
-      return { kind: "poll", overdue: machine.overdue || machine.state.guessed };
+      if (machine.state.guessed) return watched ? { kind: "poll", overdue: true } : ON_DEMAND;
+      return { kind: "poll", overdue: machine.overdue };
     case "restarting":
     case "updating":
       return { kind: "poll", overdue: machine.overdue };
@@ -240,6 +242,8 @@ export const probeCadence = (machine: ContainerMachine): ProbeCadence => {
       return { kind: "none" };
   }
 };
+
+const ON_DEMAND: ProbeCadence = { kind: "on-demand" };
 
 /**
  * The platform's own status says the Mate's server is not up: its project or its zcp service is

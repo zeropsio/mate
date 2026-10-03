@@ -338,9 +338,10 @@ describe("container machine (DESIGN §4.5)", () => {
     readonly cadence: ReturnType<typeof probeCadence>;
   }> = [
     {
-      name: "an ACTIVE container that has only failed probes backs off from the first",
+      // Nothing vouches for its boot: a dead Mate, or a zcp that serves none, is not polled.
+      name: "an ACTIVE container that has only failed probes is read again only when asked",
       events: [active, probed({ kind: "unreachable" }, START_MS)],
-      cadence: { kind: "poll", overdue: true },
+      cadence: { kind: "on-demand" },
     },
     {
       name: "a process the platform runs against it is a boot on its way",
@@ -407,7 +408,7 @@ describe("container machine (DESIGN §4.5)", () => {
     });
   });
 
-  it("a ready container silent past its grace is a guessed boot, and stalls at its cap", () => {
+  it("a ready container silent past its grace is a guessed boot, polled only while someone waits on it, and stalls at its cap", () => {
     const linked = drive([{ type: "LINK", connected: true }], ready());
     // The Mate process dies and the platform says nothing: the service stays ACTIVE.
     const dropped = drive([{ type: "LINK", connected: false }], linked);
@@ -421,7 +422,8 @@ describe("container machine (DESIGN §4.5)", () => {
       unanswered,
     );
     expect(containerVerdict(silent.machine)).toEqual({ level: "booting", overdue: false });
-    expect(probeCadence(silent.machine)).toEqual({ kind: "poll", overdue: true });
+    expect(probeCadence(silent.machine)).toEqual({ kind: "on-demand" });
+    expect(probeCadence(silent.machine, true)).toEqual({ kind: "poll", overdue: true });
 
     const stalled = drive([{ type: "TICK" }], silent);
     expect(containerVerdict(stalled.machine)).toEqual({ level: "booting", overdue: true });

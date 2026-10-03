@@ -41,6 +41,15 @@ export function endMateSession(logout: { readonly url: string; readonly token: s
   }).catch(() => undefined);
 }
 
+/**
+ * Drops the session kept for a Mate's target where it is kept, and ends nothing at the Mate: one
+ * gone from the platform's listing has nobody to answer, and asking would be a failed request.
+ */
+export function forgetKeptMateSession(key: string): void {
+  const registration = keptSessions.read(key);
+  if (registration !== null) keptSessions.forget(key, registration.credential.token);
+}
+
 export function endKeptSession(registration: BearerConnectionRegistration): void {
   endMateSession({
     url: `${registration.profile.httpBaseUrl.replace(/\/+$/, "")}/api/auth/logout`,

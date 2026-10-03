@@ -507,6 +507,46 @@ describe("container store (DESIGN §4.5)", () => {
   });
 });
 
+// A Mate that never answers — deleted from its zcp, or a zcp serving none — while the platform
+// still says ACTIVE: polled for good, it cost a pair of failed requests a minute (t10, 2026-10-03).
+describe("container store: a container that never answers", () => {
+  it("is read once at load, and then only when someone asks, while nobody waits on it", async () => {
+    const setup = rig();
+    const { clock, store, probes } = setup;
+    setup.answer = { kind: "unreachable" };
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(10 * 60_000);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.request(KEY);
+    await clock.advance(10 * 60_000);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+    store.dispose();
+  });
+
+  it("is polled on the backing-off ladder while a lease waits on it, read at once as it starts", async () => {
+    const setup = rig();
+    const { clock, store, probes } = setup;
+    setup.answer = { kind: "unreachable" };
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(60_000);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.setWanted(new Set([KEY]));
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+    await clock.advance(30_000);
+    expect(probes.length).toBeGreaterThan(2);
+
+    // Let go, it is read again only when asked.
+    store.setWanted(new Set());
+    const read = probes.length;
+    await clock.advance(10 * 60_000);
+    expect(probes.length).toBe(read);
+    store.dispose();
+  });
+});
+
 describe("container store: what reads a container again", () => {
   /** The target held only by its record: the listing does not say its service's status. */
   const remembered = { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: null } };
@@ -879,6 +919,60 @@ describe("container store: a Mate HQ holds online (krok-a §4)", () => {
     expect(probes).toEqual([]);
     await clock.advance(1);
     expect(probes).toEqual([ORIGIN]);
+    store.dispose();
+  });
+});
+
+// t10, 2026-10-03: the zcp projects of KRLS that serve no Mate (eval, zcp-telemetry…) answered every
+// read with a redirect the browser refused. Under an official HQ whose word is current, a listed
+// project it does not hold online is read only once a lease waits on it.
+describe("container store: a project an official HQ's word speaks for", () => {
+  it("is not read at load, nor on a wake or a status push, while HQ does not hold it online", async () => {
+    const { clock, store, probes } = rig();
+    store.setHqScope(new Set(["project-1"]));
+    store.setOnline(new Set());
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(120_000);
+    store.wake(true);
+    store.setTargets([target("RESTARTING")]);
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toEqual([]);
+    store.dispose();
+  });
+
+  it("is read once a lease waits on it, and when someone asks", async () => {
+    const { clock, store, probes } = rig();
+    store.setHqScope(new Set(["project-1"]));
+    store.setOnline(new Set());
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    store.request(KEY);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.setWanted(new Set([KEY]));
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+    store.dispose();
+  });
+
+  it("is read as before where no official HQ's word is current, or outside what it speaks for", async () => {
+    const { clock, store, probes } = rig();
+    const other = "https://zcp-2.prg1.zerops.app";
+    store.setHqScope(new Set(["project-2"]));
+    store.setOnline(new Set());
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.setHqScope(null);
+    store.setTargets([
+      target("ACTIVE"),
+      { ...target("ACTIVE", other), key: "project-2:service-2" },
+    ]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, other]);
     store.dispose();
   });
 });

@@ -34,6 +34,7 @@ import {
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   hqIndexPort,
+  hqOrganizationPort,
   keptSessionUnanswered,
   linkPhaseOf,
   onlinePort,
@@ -246,21 +247,21 @@ describe("the records port: the account's own storage", () => {
   });
 });
 
-describe("onlinePort: the projects whose Mate HQ holds online", () => {
-  const presence = (online: boolean) => ({
-    presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
-  });
-  const mates = new Map([
-    ["p-up", presence(true)],
-    ["p-down", presence(false)],
-  ]) as never;
-  const registryWith = (view: HqMatesView | null, official: boolean | null = true) => {
-    const registry = AtomRegistry.make();
-    registry.set(hqMatesViewAtom, view);
-    registry.set(hqOfficialAtom, official);
-    return registry;
-  };
+const presence = (online: boolean) => ({
+  presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
+});
+const mates = new Map([
+  ["p-up", presence(true)],
+  ["p-down", presence(false)],
+]) as never;
+const registryWith = (view: HqMatesView | null, official: boolean | null = true) => {
+  const registry = AtomRegistry.make();
+  registry.set(hqMatesViewAtom, view);
+  registry.set(hqOfficialAtom, official);
+  return registry;
+};
 
+describe("onlinePort: the projects whose Mate HQ holds online", () => {
   it.each([
     ["HQ's answer now, whatever organization is in view", { mates, current: true }, ["p-up"]],
     ["HQ naming no Mates", { mates: null, current: true }, []],
@@ -371,5 +372,23 @@ describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
     expect(index.projectOf(ENVIRONMENT_ID)).toBe("p-vera");
     expect(told).toEqual(["p-vera"]);
     stop();
+  });
+});
+
+describe("hqOrganizationPort: the organization an official HQ's current word speaks for", () => {
+  it.each([
+    ["an official HQ's answer now", { mates, current: true }, true, "org-2"],
+    ["an HQ not decided yet", { mates, current: true }, null, null],
+    ["no official HQ", { mates, current: true }, false, null],
+    ["what was last known of them", { mates, current: false }, true, null],
+    [
+      "an HQ naming no Mates, from before the overviews",
+      { mates: null, current: true },
+      true,
+      null,
+    ],
+  ] as const)("reads what it holds of %s", (_name, view, official, expected) => {
+    const registry = registryWith({ organizationId: "org-2", ...view }, official);
+    expect(hqOrganizationPort(registry).read()).toBe(expected);
   });
 });

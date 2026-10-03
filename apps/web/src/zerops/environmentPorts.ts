@@ -58,7 +58,12 @@ import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { hqMatesAtom, hqMatesViewAtom, hqOfficialAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
-import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
+import {
+  endKeptSession,
+  forgetKeptMateSession,
+  keptSessionHeld,
+  keptSessions,
+} from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
 import { makeDoorCaps } from "./doorCaps";
 import { pressesInFlight } from "./matePress";
@@ -299,6 +304,33 @@ export function onlinePort(
 }
 
 /**
+ * The organization an official HQ's current word on its Mates speaks for: a project it lists that
+ * HQ does not hold online is read only once a lease waits on it. None while the organization's HQ
+ * is not official or not decided yet, while what this tab holds is not HQ's answer now, or where
+ * HQ names no Mates at all — one from before the overviews, whose word says nothing of them.
+ */
+export function hqOrganizationPort(
+  registry: AtomRegistry.AtomRegistry,
+): NonNullable<AccountEnvironmentPorts["hqOrganization"]> {
+  return {
+    read: () => {
+      const view = registry.get(hqMatesViewAtom);
+      return registry.get(hqOfficialAtom) === true && view?.current === true && view.mates !== null
+        ? view.organizationId
+        : null;
+    },
+    subscribe: (listener) => {
+      const stopView = registry.subscribe(hqMatesViewAtom, listener);
+      const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
+      return () => {
+        stopView();
+        stopOfficial();
+      };
+    },
+  };
+}
+
+/**
  * The catalog's environments, and every publication of each one's link: a repeated rejection is
  * counted by the runtime, never coalesced here.
  */
@@ -490,6 +522,7 @@ export function webEnvironmentPorts(input: {
       remove: (environmentId) => {
         void runAtomCommand(registry, environmentCatalog.remove, environmentId, quiet);
       },
+      forgetKept: forgetKeptMateSession,
       park: (environmentId) => {
         void runAtomCommand(registry, parkCommand, environmentId, quiet);
       },
@@ -519,5 +552,6 @@ export function webEnvironmentPorts(input: {
     hqIndex: hqIndexPort(registry),
     // A Mate HQ holds online is up: its container is never probed.
     online: onlinePort(registry),
+    hqOrganization: hqOrganizationPort(registry),
   };
 }

@@ -222,6 +222,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
+  /** Every target whose kept session the stage dropped. */
+  const forgotten: Array<string> = [];
   const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
   const listening = { records: 0, catalog: 0 };
@@ -257,6 +259,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
       readDescriptor: (origin, signal) => pending(descriptors, origin, signal),
       retryLink: () => undefined,
       remove: (environmentId) => void removed.push(environmentId),
+      forgetKept: (key) => void forgotten.push(key),
       park: (environmentId) => void parked.set(environmentId, true),
       unpark: (environmentId) => void parked.set(environmentId, false),
     },
@@ -321,6 +324,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     descriptors,
     probes,
     removed,
+    forgotten,
     listening,
     /** The records as they are stored now. */
     records: () =>
@@ -2060,11 +2064,11 @@ describe("the post-grant stage's Mate environments", () => {
           { key: named.key, expected: null },
         ]);
 
-        // Read on their polls as ever, neither is read again for the route: a failed read leaves
-        // each unanswered.
+        // Neither is read again for the route: the one coming up only on its poll, the one only a
+        // failed read says is coming up not at all, as nobody waits on it. Each stays unanswered.
         yield* clock.advance(10 * SECOND);
         yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        expect(rig.probes.filter(({ input }) => input === down.origin)).toHaveLength(1);
         expect(environments.index().unanswered).toEqual(
           expect.arrayContaining([down.key, coming.key]),
         );
@@ -2103,7 +2107,7 @@ describe("the post-grant stage's Mate environments", () => {
   );
 
   it.effect(
-    "a route nothing names waits for each unreachable Mate's next poll, and is answered once that read fails too",
+    "a route nothing names reads at once each unreachable Mate no poll reads, waits for the next poll of one coming up, and is answered once those reads fail too",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -2112,8 +2116,8 @@ describe("the post-grant stage's Mate environments", () => {
           const probed = () => rig.probes.length;
           const unanswered = () => environments.index().unanswered;
           yield* answerProbe(rig, named.origin, answering(ENV_B, named.projectId));
-          // Unreachable, it boots on a guess, read again at the backing-off intervals; a Mate still
-          // coming up answers /healthz only, read every poll interval.
+          // Unreachable, it boots on a guess, which no poll reads; a Mate still coming up answers
+          // /healthz only, read every poll interval.
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
           const beforeSweep = probed();
@@ -2122,14 +2126,14 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
           const sweptAtOnce = probed() - beforeSweep;
           const beforeItsPoll = unanswered();
-          // Its first backed-off poll is 10 s after its failure; a landing lets the poll read it.
+          // The one coming up is read on its poll; the sweep's read of the other fails too.
           yield* clock.advance(10 * SECOND);
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
 
           // The Mate coming up read again on the sweep's watch has still not answered.
           expect({ sweptAtOnce, beforeItsPoll, polled: unanswered() }).toEqual({
-            sweptAtOnce: 0,
+            sweptAtOnce: 1,
             beforeItsPoll: [down.key, coming.key],
             polled: [coming.key],
           });
@@ -2296,6 +2300,39 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  // t10, 2026-10-03: under KRLS's official HQ, every listed zcp project — Mate or not, up or not —
+  // was read at load. A project HQ's current word speaks for and does not hold online waits for a
+  // lease.
+  it.effect(
+    "a project an official HQ's current word does not hold online is read only once a lease holds it",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { clock, rig, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            {
+              online: { read: () => new Set(), subscribe: () => () => undefined },
+              hqOrganization: {
+                read: () => organization.organizationId,
+                subscribe: () => () => undefined,
+              },
+            },
+          );
+          yield* clock.advance(MINUTE);
+          yield* settle;
+          expect([...environments.machines().keys()]).toContain(MATE);
+          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
+        }),
+      ),
+  );
+
   it.effect(
     "a Mate listed before HQ answers waits for its word, and HQ holding it online keeps it unread",
     () =>
@@ -2362,6 +2399,9 @@ describe("the post-grant stage's Mate environments", () => {
           evidence: "complete-scope-omits-verified",
         });
         expect(rig.removed).toEqual([ENV_DELETED]);
+        // Its record and its kept session go with it: no later load reads a Mate that is gone.
+        expect(rig.records().map((record) => record.targetKey)).not.toContain(deleted.targetKey);
+        expect(rig.forgotten).toEqual([deleted.targetKey]);
         // The listed Mate beside it is untouched.
         expect(environments.machines().get(MATE)?.presence.kind).toBe("present");
       }),

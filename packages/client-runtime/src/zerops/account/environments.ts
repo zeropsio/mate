@@ -144,6 +144,11 @@ export interface AccountEnvironmentPorts {
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
     readonly remove: (environmentId: EnvironmentId) => void;
+    /**
+     * Drops the session kept for the target (`keptSessions.ts`) where it is, never ending it at a
+     * Mate that is gone. Absent: none is kept.
+     */
+    readonly forgetKept?: (key: TargetKey) => void;
     /** `registry.park`: the socket closes; the registration, its session and its data stay. */
     readonly park: (environmentId: EnvironmentId) => void;
     /** `registry.unpark`: the socket opens on the credential the registration holds, no door. */
@@ -192,6 +197,16 @@ export interface AccountEnvironmentPorts {
    */
   readonly online?: {
     readonly read: () => ReadonlySet<string> | null;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
+  /**
+   * The organization whose official HQ's word on its Mates is current: a project it lists that HQ
+   * does not hold online — no Mate of HQ's there, or one HQ holds offline — is read only once a
+   * lease waits on it (`ContainerStore.setHqScope`). Null while no official HQ's word is; absent,
+   * every listed container is read as the listing says.
+   */
+  readonly hqOrganization?: {
+    readonly read: () => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
 }
@@ -604,8 +619,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         }),
       );
     },
-    retire: (_key, environmentId) => {
+    // A Mate gone from where the platform lists it — or removed by its person — leaves the
+    // catalog, and its record and kept session with it: no later load reads it again.
+    retire: (key, environmentId) => {
       if (environmentId !== null) ports.door.remove(environmentId);
+      stores?.records.forget(key);
+      ports.door.forgetKept?.(key);
     },
   };
 
@@ -833,9 +852,22 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const stops: Array<() => void> = [];
     driver.setVisible(!options.hidden);
     containers.setVisible(!options.hidden);
-    // HQ's word before the listing's first targets, so no Mate it holds online is read on sight.
-    const updateOnline = () =>
+    // HQ's word before the listing's first targets, so no Mate it holds online — nor a project it
+    // speaks for and does not — is read on sight; what it speaks for before what it holds online,
+    // as HQ's answer reads what waited for it.
+    const updateHqScope = () => {
+      const organizationId = ports.hqOrganization?.read() ?? null;
+      const spoken = listings.find((entry) => entry.organizationId === organizationId);
+      containers.setHqScope(
+        spoken === undefined
+          ? null
+          : new Set(heldCandidates(spoken.listing).rows.map((row) => row.project.id)),
+      );
+    };
+    const updateOnline = () => {
+      updateHqScope();
       containers.setOnline(ports.online === undefined ? new Set() : ports.online.read());
+    };
     updateOnline();
     const holdBackground = () => driver.holdBackground(ports.pressInFlight?.read() ?? false);
     holdBackground();
@@ -864,6 +896,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         updateActions();
       }) ?? (() => undefined),
       ports.online?.subscribe(updateOnline) ?? (() => undefined),
+      ports.hqOrganization?.subscribe(updateOnline) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
@@ -877,6 +910,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         (next) => {
           const before = listings;
           listings = next;
+          updateHqScope();
           const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
           const moved = !sameItems(rows, listedRows);
           if (moved) rows = listedRows;

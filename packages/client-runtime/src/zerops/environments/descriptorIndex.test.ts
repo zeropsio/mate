@@ -173,12 +173,12 @@ describe("sweepRead", () => {
       read: { from: at(4_500), request: false },
     },
     {
-      name: "a Mate only failed reads say is coming up is read on its backed-off poll, never sooner",
+      name: "a Mate only failed reads say is coming up, which no poll reads, is read once more now",
       container: {
         ...read({ kind: "unreachable" }, 2_500),
         state: { level: "booting", since: at(0), guessed: true },
       },
-      read: { from: at(4_500), request: false },
+      read: { from: ASKED, request: true },
     },
     {
       name: "a Mate past its boot budget is read on its overdue poll, never sooner",
