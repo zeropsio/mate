@@ -22,6 +22,12 @@ export type TimelineFollowEvent =
       readonly byPerson: boolean;
       readonly direction: TimelineScrollDirection | null;
     }
+  /**
+   * A person's input aimed at the list that moves it toward its end (a wheel
+   * or a key down), and whether the list stands in the end band: they are
+   * coming back, even where the list can no longer move (the hard bottom).
+   */
+  | { readonly type: "toward-end-input"; readonly inEndBand: boolean }
   | { readonly type: "jump-to-latest" }
   /** A message left: the person's own send, or a queued one leaving by itself. */
   | { readonly type: "sent"; readonly byPerson: boolean }
@@ -39,6 +45,8 @@ export function nextTimelineFollow(following: boolean, event: TimelineFollowEven
       return following
         ? event.atEnd || event.direction === "toward-end"
         : event.atEnd && event.direction === "toward-end";
+    case "toward-end-input":
+      return following || event.inEndBand;
     case "jump-to-latest":
       return true;
     case "sent":
@@ -55,12 +63,16 @@ export interface TimelineScrollReading {
   readonly contentHeight: number;
 }
 
+/** Below this, the list did not move: a reading's scrollTop jitters by sub-pixels. */
+const TIMELINE_MOVE_MIN_PX = 0.5;
+
 /**
  * Which way the list moved since the last read, and whether the person's
  * scroll moved it. A scroll the list or the browser makes moves with the
  * content: rows growing above or a followed end growing push it down, content
- * shrinking clamps it up — so a move the content's own change explains is
- * never the person's, even mid-gesture.
+ * shrinking clamps it up — so a move the content's own change covers (the
+ * same way, as far, give or take a pixel) is never the person's, even
+ * mid-gesture; a person's move that outruns it is theirs.
  */
 export function classifyTimelineScroll(input: {
   readonly previous: TimelineScrollReading | null;
@@ -69,13 +81,30 @@ export function classifyTimelineScroll(input: {
 }): { readonly byPerson: boolean; readonly direction: TimelineScrollDirection | null } {
   const { previous, current } = input;
   const moved = previous === null ? 0 : current.scrollTop - previous.scrollTop;
-  if (previous === null || Math.abs(moved) < 0.5) return { byPerson: false, direction: null };
+  if (previous === null || Math.abs(moved) < TIMELINE_MOVE_MIN_PX)
+    return { byPerson: false, direction: null };
   const grew = current.contentHeight - previous.contentHeight;
-  const explainedByContent = (moved > 0 && grew > 0) || (moved < 0 && grew < 0);
+  const explainedByContent =
+    Math.sign(grew) === Math.sign(moved) && Math.abs(grew) >= Math.abs(moved) - 1;
   return {
     byPerson: input.personScrolling && !explainedByContent,
     direction: moved > 0 ? "toward-end" : "away",
   };
+}
+
+/**
+ * The reading the next one is told against: kept until the list moves far
+ * enough to register or its content changes, so a slow creep (a fraction of a
+ * pixel a frame at a high pixel ratio) adds up to a direction.
+ */
+export function nextTimelineReading(
+  previous: TimelineScrollReading | null,
+  current: TimelineScrollReading,
+): TimelineScrollReading {
+  if (previous === null || previous.contentHeight !== current.contentHeight) return current;
+  return Math.abs(current.scrollTop - previous.scrollTop) < TIMELINE_MOVE_MIN_PX
+    ? previous
+    : current;
 }
 
 /**

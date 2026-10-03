@@ -4409,6 +4409,20 @@ export default function ChatView(props: ChatViewProps) {
       cancelTimelineLiveFollowForUserNavigationRef.current();
     }
   }, []);
+  // The person came back to the end: follow again, where the list stands.
+  const resumeTimelineFollow = useCallback(() => {
+    isAtEndRef.current = true;
+    timelineScrollModeRef.current = "following-end";
+    liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
+    setTimelineLiveFollowEnabled(true);
+    // Reachable only once manual navigation has already broken follow, so
+    // the anchored turn framing is over: the user scrolled back to the live
+    // edge and expects the stream to stick to it again, exactly like the
+    // scroll-to-bottom pill.
+    setTimelineAnchor(releaseChatTimelineAnchor);
+    showScrollDebouncer.current.cancel();
+    setShowScrollToBottom(false);
+  }, []);
   // A person's input on the list leaves the end only when it can move the
   // viewport away from it. Follow gates LegendList's maintainScrollAtEnd, so a
   // spurious leave while pinned at the end strands follow off with nothing
@@ -4421,12 +4435,30 @@ export default function ChatView(props: ChatViewProps) {
       const viewportIsAwayFromEnd = () =>
         resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) === false;
       switch (input.kind) {
-        // Only up is a leave; down either does nothing (at the end) or comes
-        // back, which the scroll it makes tells.
+        // Up is a leave; down far above the end comes back only through the
+        // scroll it makes.
         case "wheel":
-        case "key":
-          if (input.direction === "up" && contentScrollsUp()) leaveTimelineFollow();
+        case "key": {
+          if (input.direction === "up") {
+            if (contentScrollsUp()) leaveTimelineFollow();
+            return;
+          }
+          // Down in the end band is coming back, even where the stream's
+          // growth covers the move or the list stands at its hard bottom.
+          const following =
+            liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current;
+          if (
+            !following &&
+            nextTimelineFollow(following, {
+              type: "toward-end-input",
+              inEndBand:
+                resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) ===
+                true,
+            })
+          )
+            resumeTimelineFollow();
           return;
+        }
         case "scrollbar":
           if (contentScrollsUp()) leaveTimelineFollow();
           return;
@@ -4440,7 +4472,12 @@ export default function ChatView(props: ChatViewProps) {
           return;
       }
     },
-    [composerOverlayHeight, leaveTimelineFollow, timelineRealContentOverflowsViewport],
+    [
+      composerOverlayHeight,
+      leaveTimelineFollow,
+      resumeTimelineFollow,
+      timelineRealContentOverflowsViewport,
+    ],
   );
 
   const onTimelineAnchorReady = useCallback((messageId: MessageId, anchorIndex: number) => {
@@ -4517,16 +4554,7 @@ export default function ChatView(props: ChatViewProps) {
       const wasAtEnd = isAtEndRef.current;
       isAtEndRef.current = isAtEnd;
       if (followsNext) {
-        timelineScrollModeRef.current = "following-end";
-        liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
-        setTimelineLiveFollowEnabled(true);
-        // Reachable only once manual navigation has already broken follow, so
-        // the anchored turn framing is over: the user scrolled back to the live
-        // edge and expects the stream to stick to it again, exactly like the
-        // scroll-to-bottom pill.
-        setTimelineAnchor(releaseChatTimelineAnchor);
-        showScrollDebouncer.current.cancel();
-        setShowScrollToBottom(false);
+        resumeTimelineFollow();
         return;
       }
       // Still reading: the list landed at its end under the person (a card
@@ -4542,7 +4570,7 @@ export default function ChatView(props: ChatViewProps) {
         showScrollDebouncer.current.maybeExecute();
       }
     },
-    [leaveTimelineFollow],
+    [leaveTimelineFollow, resumeTimelineFollow],
   );
 
   // Anchored end space intentionally disables LegendList's normal end-follow so
@@ -6476,6 +6504,16 @@ export default function ChatView(props: ChatViewProps) {
       composerTerminalContextsRef.current = [];
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
+      // The person's own send pins the end at once, though the message waits
+      // in the queue; its leaving later moves no one.
+      if (
+        nextTimelineFollow(
+          liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+          { type: "sent", byPerson: true },
+        )
+      ) {
+        scrollToEnd();
+      }
       return;
     }
     const threadIdForSend = activeThread.id;

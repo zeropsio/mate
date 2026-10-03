@@ -4,6 +4,7 @@ import {
   classifyTimelineScroll,
   nextPersonScrollSession,
   nextTimelineFollow,
+  nextTimelineReading,
   PERSON_SCROLL_IDLE,
   PERSON_SCROLL_QUIET_MS,
   personIsScrolling,
@@ -97,6 +98,26 @@ describe("nextTimelineFollow", () => {
       event: { type: "sent", byPerson: false },
       expected: true,
     },
+    // A person's wheel or key down aimed at the list, in the end band: they
+    // are coming back, even where the list cannot move (the hard bottom).
+    {
+      name: "a person wheels down in the end band",
+      following: false,
+      event: { type: "toward-end-input", inEndBand: true },
+      expected: true,
+    },
+    {
+      name: "a person wheels down far above the end",
+      following: false,
+      event: { type: "toward-end-input", inEndBand: false },
+      expected: false,
+    },
+    {
+      name: "a person wheels down while following",
+      following: true,
+      event: { type: "toward-end-input", inEndBand: false },
+      expected: true,
+    },
     {
       name: "a thread opens at its end",
       following: false,
@@ -154,6 +175,27 @@ describe("classifyTimelineScroll", () => {
       expected: { byPerson: true, direction: "away" },
     },
     {
+      name: "a person's scroll down outruns the stream growing below",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 1_060, contentHeight: 2_020 },
+      personScrolling: true,
+      expected: { byPerson: true, direction: "toward-end" },
+    },
+    {
+      name: "a person's scroll up outruns content shrinking",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 700, contentHeight: 1_900 },
+      personScrolling: true,
+      expected: { byPerson: true, direction: "away" },
+    },
+    {
+      name: "the list pins its grown end within a pixel of the growth",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 1_040.6, contentHeight: 2_040 },
+      personScrolling: true,
+      expected: { byPerson: false, direction: "toward-end" },
+    },
+    {
       name: "a scroll with no person behind it",
       previous: { scrollTop: 600, contentHeight: 2_000 },
       current: { scrollTop: 1_000, contentHeight: 2_000 },
@@ -178,6 +220,50 @@ describe("classifyTimelineScroll", () => {
 
   it.each(cases)("$name", ({ previous, current, personScrolling, expected }) => {
     expect(classifyTimelineScroll({ previous, current, personScrolling })).toEqual(expected);
+  });
+});
+
+describe("nextTimelineReading", () => {
+  const cases = [
+    {
+      name: "the first read is kept",
+      previous: null,
+      current: { scrollTop: 600, contentHeight: 2_000 },
+      expected: { scrollTop: 600, contentHeight: 2_000 },
+    },
+    {
+      name: "a sub-pixel creep keeps the reading it started from",
+      previous: { scrollTop: 600, contentHeight: 2_000 },
+      current: { scrollTop: 599.7, contentHeight: 2_000 },
+      expected: { scrollTop: 600, contentHeight: 2_000 },
+    },
+    {
+      name: "a move that registers replaces it",
+      previous: { scrollTop: 600, contentHeight: 2_000 },
+      current: { scrollTop: 599.4, contentHeight: 2_000 },
+      expected: { scrollTop: 599.4, contentHeight: 2_000 },
+    },
+    {
+      name: "content that changed replaces it",
+      previous: { scrollTop: 600, contentHeight: 2_000 },
+      current: { scrollTop: 600.2, contentHeight: 2_080 },
+      expected: { scrollTop: 600.2, contentHeight: 2_080 },
+    },
+  ] as const;
+
+  it.each(cases)("$name", ({ previous, current, expected }) => {
+    expect(nextTimelineReading(previous, current)).toEqual(expected);
+  });
+
+  it("adds a slow creep up until it registers as a move", () => {
+    let reading = nextTimelineReading(null, { scrollTop: 600, contentHeight: 2_000 });
+    const directions = [599.8, 599.6, 599.4].map((scrollTop) => {
+      const current = { scrollTop, contentHeight: 2_000 };
+      const scroll = classifyTimelineScroll({ previous: reading, current, personScrolling: true });
+      reading = nextTimelineReading(reading, current);
+      return scroll.direction;
+    });
+    expect(directions).toEqual([null, null, "away"]);
   });
 });
 

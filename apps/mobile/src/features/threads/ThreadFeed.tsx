@@ -218,6 +218,8 @@ export interface ThreadFeedProps {
   readonly freeze: SharedValue<boolean>;
   readonly anchorMessageId: MessageId | null;
   readonly submittedMessageId: MessageId | null;
+  /** Counts the person's presses of the jump-to-latest button. */
+  readonly jumpToLatestRequest: number;
   readonly contentInsetEndAdjustment: SharedValue<number>;
   readonly contentTopInset?: number;
   readonly contentBottomInset?: number;
@@ -2354,15 +2356,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       userScrollSessionRef.current = false;
       const startOffset = userScrollStartOffsetRef.current;
       userScrollStartOffsetRef.current = null;
-      const endOffset = props.listRef.current?.getState().scroll;
       transitionEndFollow({
         type: "user-scroll-end",
-        // A drag that came back to where it began, or bounced at the end,
-        // did not leave it.
-        direction:
-          startOffset === null || endOffset === undefined || endOffset >= startOffset
-            ? "toward-end"
-            : "away",
+        startOffset,
+        endOffset: props.listRef.current?.getState().scroll ?? null,
         // With no momentum, preserve the finger-release position. Streaming
         // growth during the native momentum-detection window must not turn a
         // release at the live edge into an opt-out from follow.
@@ -2430,6 +2427,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       transitionEndFollow({ type: "reset" });
     }
   }, [clearUserScrollSettle, props.submittedMessageId, transitionEndFollow]);
+  // The person pressed jump-to-latest: they are back, wherever they stood.
+  useEffect(() => {
+    if (props.jumpToLatestRequest === 0) return;
+    clearUserScrollSettle();
+    userScrollSessionRef.current = false;
+    transitionEndFollow({ type: "jump-to-latest" });
+  }, [clearUserScrollSettle, props.jumpToLatestRequest, transitionEndFollow]);
 
   const expandedWorkGroupIds = useMemo(() => {
     const ids = new Set<string>();

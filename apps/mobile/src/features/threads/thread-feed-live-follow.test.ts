@@ -182,7 +182,32 @@ describe("resolveThreadFeedLiveFollow", () => {
       event: {
         type: "user-scroll-end",
         isAtEnd: true,
-        direction: "toward-end",
+        startOffset: 1_200,
+        endOffset: 1_800,
+        userScrollSessionActive: true,
+      },
+      expected: true,
+    },
+    {
+      name: "the person's drag bounced at the end and came back where it began",
+      following: false,
+      event: {
+        type: "user-scroll-end",
+        isAtEnd: true,
+        startOffset: 1_800,
+        endOffset: 1_800,
+        userScrollSessionActive: true,
+      },
+      expected: true,
+    },
+    {
+      name: "a drag whose start was not read counts as coming back",
+      following: false,
+      event: {
+        type: "user-scroll-end",
+        isAtEnd: true,
+        startOffset: null,
+        endOffset: 1_800,
         userScrollSessionActive: true,
       },
       expected: true,
@@ -193,7 +218,8 @@ describe("resolveThreadFeedLiveFollow", () => {
       event: {
         type: "user-scroll-end",
         isAtEnd: true,
-        direction: "away",
+        startOffset: 1_800,
+        endOffset: 1_770,
         userScrollSessionActive: true,
       },
       expected: false,
@@ -204,7 +230,8 @@ describe("resolveThreadFeedLiveFollow", () => {
       event: {
         type: "user-scroll-end",
         isAtEnd: false,
-        direction: "toward-end",
+        startOffset: 600,
+        endOffset: 900,
         userScrollSessionActive: true,
       },
       expected: false,
@@ -215,7 +242,8 @@ describe("resolveThreadFeedLiveFollow", () => {
       event: {
         type: "user-scroll-end",
         isAtEnd: false,
-        direction: "away",
+        startOffset: null,
+        endOffset: 900,
         userScrollSessionActive: false,
       },
       expected: true,
@@ -243,6 +271,13 @@ describe("resolveThreadFeedLiveFollow", () => {
       following: false,
       event: { type: "disclosure-settled", isAtEnd: true, userScrollSessionActive: true },
       expected: false,
+    },
+    // The jump-to-latest button is the person coming back, wherever they stand.
+    {
+      name: "the person presses jump-to-latest after a drag up",
+      following: false,
+      event: { type: "jump-to-latest" },
+      expected: true,
     },
     {
       name: "a thread switch or the person's send",
