@@ -2,10 +2,24 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MATE_LINK_FRAME_MAX, linkFrameBytes } from "@t3tools/shared/mateLink";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as Socket from "effect/unstable/socket/Socket";
 
+import { memoryStore } from "../test/harness/overviews.ts";
 import { enrollMate, setUpMate, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { Changes } from "./changes.ts";
+import { Leader } from "./leader.ts";
+import { serveMateLink } from "./link.ts";
+import { MateCredentials } from "./mateCredentials.ts";
+import { makeMateOverviews, MateOverviews } from "./mateOverviews.ts";
+import { liveSocketsLayer } from "./stream.ts";
+import { Structure } from "./structure.ts";
 
 const toJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -58,4 +72,77 @@ describe("a Mate's link", () => {
       }),
     );
   });
+});
+
+// F26: the live HQ's sockets ended every 120 s with no word of who ended them.
+describe("serveMateLink: who ended a link, and with what code", () => {
+  /** A Mate's side of the link: frames it sends, then a close with a code. */
+  const mateSocket = Effect.gen(function* () {
+    const incoming = yield* Queue.unbounded<string | number>();
+    const socket = Socket.make({
+      reader: Effect.succeed({
+        pull: Effect.flatMap(Queue.take(incoming), (frame) =>
+          typeof frame === "number"
+            ? Effect.fail(
+                new Socket.SocketError({ reason: new Socket.SocketCloseError({ code: frame }) }),
+              )
+            : Effect.succeed([frame] as const),
+        ),
+        upgrade: () => Effect.void,
+      }),
+      writer: Effect.succeed({ write: () => Effect.void, writeAll: () => Effect.void }),
+    });
+    return { socket, send: (frame: string | number) => Queue.offer(incoming, frame) };
+  });
+
+  /** HQ's services as a link reads them: a Mate it holds no state for, under a Core that leads. */
+  const services = Layer.unwrap(
+    Effect.map(makeMateOverviews(memoryStore().store), (overviews) =>
+      Layer.mergeAll(
+        liveSocketsLayer,
+        Layer.succeed(MateOverviews, overviews),
+        Layer.succeed(
+          Structure,
+          Structure.of({
+            mateState: () => Effect.succeed(Option.none()),
+            mateChanges: Stream.never,
+          } as unknown as Structure["Service"]),
+        ),
+        Layer.succeed(
+          Changes,
+          Changes.of({ changes: Stream.never } as unknown as Changes["Service"]),
+        ),
+        Layer.succeed(
+          MateCredentials,
+          MateCredentials.of({
+            whoami: () => Effect.succeed(Option.some({ projectId: "P_MATE" })),
+          } as unknown as MateCredentials["Service"]),
+        ),
+        Layer.succeed(
+          Leader,
+          Leader.of({
+            status: Effect.succeed({ state: "active" }),
+          } as unknown as Leader["Service"]),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("the Mate, with the code its close carried", () =>
+    Effect.gen(function* () {
+      const { socket, send } = yield* mateSocket;
+      const serving = yield* Effect.forkChild(serveMateLink(socket, "P_MATE", "cred", {}));
+      yield* send(1006);
+      assert.deepStrictEqual(yield* Fiber.join(serving), { by: "client", code: 1006 });
+    }).pipe(Effect.provide(services)),
+  );
+
+  it.effect("HQ, with the code it closed with", () =>
+    Effect.gen(function* () {
+      const { socket, send } = yield* mateSocket;
+      const serving = yield* Effect.forkChild(serveMateLink(socket, "P_MATE", "cred", {}));
+      yield* send("not a link message");
+      assert.deepStrictEqual(yield* Fiber.join(serving), { by: "hq", code: 1007 });
+    }).pipe(Effect.provide(services)),
+  );
 });

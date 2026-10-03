@@ -396,6 +396,29 @@ export interface SocketEnding {
 }
 
 /**
+ * Keeps how a socket ends, the first ending winning: `close` sends HQ's close as HQ's ending, and
+ * `heardClose` takes a failed read as the client's, with its close's code. `ending` is either, or
+ * HQ's `1000` where what it served simply ran out.
+ */
+export const socketEnding = (writer: Socket.Writer) =>
+  Effect.map(Ref.make<SocketEnding | undefined>(undefined), (ended) => {
+    const endBy = (ending: SocketEnding) => Ref.update(ended, (held) => held ?? ending);
+    return {
+      close: (code: number, reason: string) =>
+        Effect.andThen(
+          endBy({ by: "hq", code }),
+          writer.write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore),
+        ),
+      heardClose: (error: Socket.SocketError) =>
+        endBy({
+          by: "client",
+          code: error.reason._tag === "SocketCloseError" ? error.reason.code : 1006,
+        }),
+      ending: Effect.map(Ref.get(ended), (held): SocketEnding => held ?? { by: "hq", code: 1000 }),
+    };
+  });
+
+/**
  * Serves `messages` on `socket` with the ping and the close codes above, until either side ends;
  * says which side ended it.
  */
@@ -408,28 +431,16 @@ export const serveStructureSocket = <R>(
     Effect.gen(function* () {
       const writer = yield* socket.writer;
       const reader = yield* socket.reader;
-      const ended = yield* Ref.make<SocketEnding | undefined>(undefined);
-      const endBy = (ending: SocketEnding) => Ref.update(ended, (held) => held ?? ending);
-      const close = ([code, reason]: readonly [number, string]) =>
-        Effect.andThen(
-          endBy({ by: "hq", code }),
-          writer.write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore),
-        );
-      yield* (yield* LiveSockets).track((code, reason) => close([code, reason]));
+      const ends = yield* socketEnding(writer);
+      const close = ([code, reason]: readonly [number, string]) => ends.close(code, reason);
+      yield* (yield* LiveSockets).track(ends.close);
       const heard = yield* Ref.make(yield* Clock.currentTimeMillis);
       const listen = Effect.forever(
         Effect.andThen(
           reader.pull,
           Effect.flatMap(Clock.currentTimeMillis, (now) => Ref.set(heard, now)),
         ),
-      ).pipe(
-        Effect.catch((error) =>
-          endBy({
-            by: "client",
-            code: error.reason._tag === "SocketCloseError" ? error.reason.code : 1006,
-          }),
-        ),
-      );
+      ).pipe(Effect.catch(ends.heardClose));
       const ping = Effect.gen(function* () {
         for (;;) {
           yield* Effect.sleep(pingEvery);
@@ -442,8 +453,7 @@ export const serveStructureSocket = <R>(
         message.type === "end" ? close(CLOSE[message.ending]) : writer.write(toJson(message)),
       ).pipe(Effect.catch(() => close(CLOSE.unreadable)));
       yield* Effect.raceAll([listen, ping, deliver]);
-      // A stream of messages that simply ran out: the scope closes the socket normally.
-      return (yield* Ref.get(ended)) ?? { by: "hq", code: 1000 };
+      return yield* ends.ending;
     }),
   );
 

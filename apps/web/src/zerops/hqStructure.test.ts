@@ -1,4 +1,5 @@
 import {
+  HqError,
   makeHqApi,
   type HqApi,
   type HqMates,
@@ -37,7 +38,8 @@ type Ping = { readonly pingAfterMs: number; readonly tick: (ms: number) => void 
 /** One stream attempt: the events (and pings) it sends, then how it ends. */
 type Attempt = {
   readonly events: ReadonlyArray<HqStructureEvent | Ping>;
-  readonly end: "close" | "fail" | "hang";
+  /** `cut`: the socket closed on its way, as the browser saw it (`1006`). */
+  readonly end: "close" | "fail" | "cut" | "hang";
 };
 
 function streamingApi(attempts: ReadonlyArray<Attempt>) {
@@ -55,6 +57,13 @@ function streamingApi(attempts: ReadonlyArray<Attempt>) {
       handlers.onEvent(event);
     }
     if (attempt.end === "fail") throw new Error("HQ could not be reached.");
+    if (attempt.end === "cut") {
+      throw new HqError({
+        kind: "unavailable",
+        code: "socket_1006",
+        message: "HQ's stream broke.",
+      });
+    }
     if (attempt.end === "hang") {
       await new Promise<void>((_resolve, reject) =>
         signal.addEventListener("abort", () => reject(new Error("aborted"))),
@@ -70,6 +79,7 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
   const people: Array<HqPeopleView> = [];
   const kept: Array<[HqStructure, number]> = [];
   const keptMates: Array<[HqMates, HqPeople | null]> = [];
+  const logged: Array<string> = [];
   let now = 10_000;
   return {
     views,
@@ -77,6 +87,7 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
     people,
     kept,
     keptMates,
+    logged,
     tick: (ms: number) => (now += ms),
     deps: {
       organizationId: "org-1",
@@ -90,6 +101,7 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
       sleep: async (ms: number) => {
         now += ms;
       },
+      log: (line: string) => logged.push(line),
       silenceMs: 60_000,
     },
   };
@@ -321,6 +333,34 @@ describe("driveHqStructure", () => {
     expect(h.views.slice(answered).every((view) => view.current)).toBe(true);
     const live = h.mates.findIndex((view) => view.current);
     expect(h.mates.slice(live).every((view) => view.current)).toBe(true);
+  });
+
+  it("logs how each stream ended, the code a break carried, and how long it lived", async () => {
+    const h = harness();
+    const api = streamingApi([
+      {
+        events: [
+          { kind: "snapshot", structure: ACME, changes: null, mates: null, people: null },
+          { pingAfterMs: 120_000, tick: h.tick },
+        ],
+        end: "cut",
+      },
+      {
+        events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+        end: "close",
+      },
+      { events: [], end: "hang" },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(api.attempts()).toBe(3));
+    stop.abort();
+    await driving;
+
+    expect(h.logged).toEqual([
+      "HQ's structure stream broke after 120000 ms: socket_1006",
+      "HQ's structure stream ended after 0 ms",
+    ]);
   });
 
   it("says since when HQ stopped answering once it has not answered for the grace", async () => {

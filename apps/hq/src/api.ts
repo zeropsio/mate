@@ -784,7 +784,10 @@ const routes = (
               : Option.getOrUndefined(yield* (yield* MateLinkTickets).take(ticket));
           const { projectId, credential } = yield* mateHolding(presented);
           const socket = yield* request.upgrade;
-          yield* serveMateLink(socket, projectId, credential, options.link ?? {});
+          const ended = yield* serveMateLink(socket, projectId, credential, options.link ?? {});
+          yield* Effect.logInfo(
+            `mate link of ${projectId} closed by ${ended.by} (${String(ended.code)})`,
+          );
           return HttpServerResponse.empty();
         }),
       ),

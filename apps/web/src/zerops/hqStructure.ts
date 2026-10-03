@@ -19,6 +19,7 @@ import {
   applyMatesEvent,
   applyPeopleEvent,
   applyStructureEvent,
+  HqError,
   type HqApi,
   type HqChanges,
   type HqMates,
@@ -73,6 +74,8 @@ export async function driveHqStructure(input: {
   readonly rememberMates: (mates: HqMates, people: HqPeople | null) => void;
   readonly now: () => number;
   readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** Told how each stream ended — the close code a break carried — and how long it lived (F26). */
+  readonly log: (line: string) => void;
   readonly signal: AbortSignal;
   readonly silenceMs?: number;
 }): Promise<void> {
@@ -136,6 +139,8 @@ export async function driveHqStructure(input: {
       unremembered = false;
     };
     let broke = false;
+    let cause: unknown;
+    const openedAt = input.now();
     try {
       await input.api.streamStructure(
         {
@@ -186,14 +191,23 @@ export async function driveHqStructure(input: {
         },
         attempt.signal,
       );
-    } catch {
+    } catch (error) {
       broke = true;
+      cause = error;
     } finally {
       rememberMates(true);
       clearTimeout(silence);
       input.signal.removeEventListener("abort", abort);
     }
     if (input.signal.aborted) return;
+    const lived = `after ${String(input.now() - openedAt)} ms`;
+    input.log(
+      !broke
+        ? `HQ's structure stream ended ${lived}`
+        : `HQ's structure stream ${attempt.signal.aborted ? "went silent" : "broke"} ${lived}: ${
+            cause instanceof HqError ? cause.code : String(cause)
+          }`,
+    );
     // A stream that ended after its snapshot is HQ restarting: read again at once. One that broke
     // or never answered is HQ not answering: read again a little later each time. Either way the
     // outage is said once HQ has not answered for `HQ_OUTAGE_GRACE_MS`, since it stopped.
@@ -294,6 +308,7 @@ export function ZeropsHqStructure(): null {
         rememberMenu((memory) => withMates(memory, organizationId, mates, people)),
       now: () => Date.now(),
       sleep,
+      log: (line) => console.info(line),
       signal: stop.signal,
     });
     return () => stop.abort();
