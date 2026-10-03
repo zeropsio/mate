@@ -54,6 +54,7 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  McpServersError,
   ProviderUploadFeedbackError,
   ProviderSetupError,
   RelayClientInstallFailedError,
@@ -2097,6 +2098,36 @@ const makeWsRpcLayer = (
               return { providers: yield* withZeropsAgentAuth(providers) };
             }),
             { "rpc.aggregate": "server" },
+          ),
+        // The MCP tab's methods; the mcp server part fills them in.
+        [WS_METHODS.mcpServersList]: () =>
+          Effect.fail(
+            new McpServersError({ operation: WS_METHODS.mcpServersList, detail: "Not built yet." }),
+          ),
+        [WS_METHODS.mcpServersAdd]: () =>
+          Effect.fail(
+            new McpServersError({ operation: WS_METHODS.mcpServersAdd, detail: "Not built yet." }),
+          ),
+        [WS_METHODS.mcpServersRemove]: () =>
+          Effect.fail(
+            new McpServersError({
+              operation: WS_METHODS.mcpServersRemove,
+              detail: "Not built yet.",
+            }),
+          ),
+        [WS_METHODS.mcpServersSetEnabled]: () =>
+          Effect.fail(
+            new McpServersError({
+              operation: WS_METHODS.mcpServersSetEnabled,
+              detail: "Not built yet.",
+            }),
+          ),
+        [WS_METHODS.mcpServersReconnect]: () =>
+          Effect.fail(
+            new McpServersError({
+              operation: WS_METHODS.mcpServersReconnect,
+              detail: "Not built yet.",
+            }),
           ),
         [WS_METHODS.providerUploadFeedback]: (input) =>
           observeRpcEffect(
