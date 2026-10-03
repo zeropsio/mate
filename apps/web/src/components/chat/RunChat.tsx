@@ -3254,7 +3254,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               // A chat opens from its first thing the Mate did (`chatLines`),
               // and only onto a line that shows something.
               shows.toggle !== null &&
-              opensOnto({ control: "work", lines: chatLines(row.items, undone).length }) ? (
+              opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
                 <WorkToggle
                   onToggle={() => {
                     hold();
@@ -3294,6 +3294,21 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       </div>
     </CarriedOpenContext>
   );
+}
+
+/** How many lines `chatLines` draws, counted without drawing them. */
+function chatLineCount(items: ReadonlyArray<RecordItem>): number {
+  let count = 0;
+  for (const item of items) {
+    // A thought with no words is no line; the person's words before anything
+    // the Mate did mark nothing.
+    if (item.kind === "thought" && item.messages.every((message) => !message.text.trim())) {
+      continue;
+    }
+    if (count === 0 && item.kind === "person") continue;
+    count += 1;
+  }
+  return count;
 }
 
 /**
