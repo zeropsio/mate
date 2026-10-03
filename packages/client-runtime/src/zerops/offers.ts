@@ -4,8 +4,9 @@
  * own membership and the projects the listing read.
  *
  * The one place a writing verb is asked over cached facts: an offer writes nothing, and HQ decides
- * the write itself over facts it reads at most 30 s before it, a refusal confirmed over a fresh
- * read (`Facts<WriteFreshness>`, whose type rule stands).
+ * the write itself over facts it reads at most 30 s before it — its last good ones while Zerops
+ * does not answer — a refusal confirmed over a fresh read (`Facts<WriteFreshness>`, whose type
+ * rule stands).
  * Nothing else in the client asks `can`, and nothing builds fresh facts (the lint rule
  * `t3code/no-direct-permission-rule` holds it, this module's import its one ledgered exception).
  * A person the client does not know is offered nothing.

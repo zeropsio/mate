@@ -522,8 +522,10 @@ describe("HQ API", () => {
         }),
     );
 
+    // An empty member list is an outage, never "nobody may": the door answers 503, and a write is
+    // decided over the last view Zerops answered within five minutes (F22, option A).
     it.effect(
-      "answers 503 while Zerops gives an empty member list, never a refusal or nothing",
+      "answers a door 503 while Zerops gives an empty member list, a write over the last good view",
       () =>
         Effect.gen(function* () {
           const { call, fake } = yield* startCore(true);
@@ -539,10 +541,10 @@ describe("HQ API", () => {
           assert.deepStrictEqual(
             answers.map((answer) => [
               answer.status,
-              (answer.body as { readonly code: string }).code,
+              (answer.body as { readonly code?: string }).code ?? "made",
             ]),
             [
-              [503, "zerops_unavailable"],
+              [201, "made"],
               [503, "zerops_unavailable"],
             ],
           );

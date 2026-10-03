@@ -8,7 +8,7 @@
  * write is decided (`roles.ts` `confirmingRefusal`).
  *
  * Who may is `can` (`@t3tools/shared/zeropsPermissions`), asked with the project's kind as HQ holds
- * it now and, for a write, the org at most 30 s old, its refusal confirmed fresh. A refusal answers
+ * it now and, for a write, the org as `Roles.forWrite` holds it, its refusal confirmed fresh. A refusal answers
  * a code and a reason code, and is
  * logged with who asked what.
  *

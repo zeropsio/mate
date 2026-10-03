@@ -10,11 +10,11 @@
  *
  * While Zerops does not answer, `view` serves the last good view for five minutes from its read,
  * at once, and asks Zerops again behind it at most every 30 s (E2E 2026-10-03: KRLS's member list
- * missing HQ's 10 s answered every read of a new application `503` for a minute), and serves it
- * to a read Zerops leaves 3 s unanswered too — counted from when the read under way began (F22,
- * option A, 2026-10-03: KRLS's member list went unanswered for minutes at a time, and every read
- * past the 30 s waited 44 s on it): a read verb is decided over it, a write never. Past the five
- * minutes a read fails as a write does.
+ * missing HQ's 10 s answered every read of a new application `503` for a minute). A read that
+ * Zerops leaves 3 s unanswered — counted from when the read under way began — takes it too, as
+ * does a write's first pass; a write's confirmation never (F22, option A, 2026-10-03: KRLS's
+ * member list went unanswered for minutes at a time, and every release and read waited on it).
+ * Past the five minutes a read fails as a write does.
  *
  * `recent` is the view at most 30 s old, read now past that, and never the last good one: what
  * HQ's door admits by, so a reload's door after another waits on Zerops only once (t11,
@@ -53,8 +53,9 @@ import {
 } from "./zerops/api.ts";
 
 /**
- * HQ's org as read, and how: read for this call (`fresh`), Zerops' answer at most 30 s old
- * (`recent`), or served from what HQ holds (`cached`).
+ * HQ's org as read, and how: read for this call (`fresh`), Zerops' answer at most 30 s old or the
+ * last good one a write took while Zerops did not answer (`recent`), or served from what HQ holds
+ * (`cached`).
  */
 export interface OrgView<F extends Freshness = Freshness> extends Facts<F> {
   readonly orgId: string;
@@ -70,9 +71,10 @@ export class Roles extends Context.Service<
     /** The org's view, at most 30 s old, or the last good one while Zerops does not answer. */
     readonly view: Effect.Effect<OrgView<"cached">, ZeropsError>;
     /**
-     * The org's view a write is decided over: at most 30 s old, or read now where the write is
-     * being confirmed (`confirmingRefusal`); never the last good one served. Its wait ends with
-     * the write's budget, past which it is `ZeropsUnavailable`; the read it left goes on.
+     * The org's view a write is decided over: at most 30 s old — or the last good one once Zerops
+     * leaves its read 3 s unanswered — or read now where the write is being confirmed
+     * (`confirmingRefusal`). Its wait ends with the write's budget, past which it is
+     * `ZeropsUnavailable`; the read it left goes on.
      */
     readonly forWrite: Effect.Effect<OrgView<WriteFreshness>, ZeropsError>;
     /** The org's view at most 30 s old, read now past that — never the last good one served. */
@@ -109,11 +111,11 @@ const refusedByFacts = (error: unknown): boolean =>
     ("_tag" in error && error._tag === "MateRefused"));
 
 /**
- * A write decided over the org: first over the view at most 30 s old (`Roles.forWrite`), and where
- * its facts refuse it, once more over a fresh read, whose refusal stands — an allow needs no fresh
- * read, a refusal is confirmed by one (F22). Both passes' waits on Zerops end within
- * `WRITE_BUDGET` of the write's start. Its refusal comes before anything is written: the second
- * pass runs the write again whole.
+ * A write decided over the org: first over the view at most 30 s old, or the last good one Zerops
+ * left a read 3 s unanswered (`Roles.forWrite`), and where its facts refuse it, once more over a
+ * fresh read, whose refusal stands — an allow needs no fresh read, a refusal is confirmed by one
+ * (F22). Both passes' waits on Zerops end within `WRITE_BUDGET` of the write's start. Its refusal
+ * comes before anything is written: the second pass runs the write again whole.
  */
 export const confirmingRefusal = <A, E, R>(write: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
   Effect.gen(function* () {
@@ -129,7 +131,10 @@ export const confirmingRefusal = <A, E, R>(write: Effect.Effect<A, E, R>): Effec
 /** How long after its read the last good view is served while Zerops does not answer. */
 const VIEW_GRACE = Duration.minutes(5);
 
-/** How long a read waits on Zerops for a view at most 30 s old before it takes the last good one. */
+/**
+ * How long a read, and a write's first pass, wait on Zerops for a view at most 30 s old before
+ * they take the last good one.
+ */
 const RECENT_WAIT = Duration.seconds(3);
 
 export const rolesLayer = (options: {
@@ -272,7 +277,7 @@ export const rolesLayer = (options: {
         const ends = until ?? now + Duration.toMillis(WRITE_BUDGET);
         // In the layer's scope: a write that gave up on its read leaves it to land for the next.
         const reading = yield* Effect.forkIn(fresh ? freshAt(now) : recentAt(now), scope);
-        const read = yield* Fiber.join(reading).pipe(
+        const read = yield* (fresh ? Fiber.join(reading) : keptAfterWait(reading)).pipe(
           Effect.timeoutOrElse({
             duration: Duration.millis(Math.max(0, ends - now)),
             orElse: () =>

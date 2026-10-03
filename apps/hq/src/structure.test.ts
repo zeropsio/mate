@@ -1571,8 +1571,8 @@ describe("structure", () => {
     );
 
     // F22 (2026-10-03): a write waited on a fresh read while KRLS's org-wide reads stalled, and fell
-    // with its client. It is decided over the view at most 30 s old; a refusal of its facts is
-    // confirmed over a fresh read, and stands.
+    // with its client. It is decided over the recent view; a refusal of its facts is confirmed over
+    // a fresh read, and stands.
     it.effect(
       "decides a write over the recent view, and confirms its refusal over a fresh read",
       () =>
