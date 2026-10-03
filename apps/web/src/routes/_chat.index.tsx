@@ -25,7 +25,7 @@ import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { homeView } from "../zerops/homeLanding.logic";
-import { rememberedLastConversation } from "../zerops/lastConversationMemory";
+import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
 import { useMatesSettled } from "../zerops/useMatesSettled";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
@@ -86,7 +86,7 @@ function IndexDraftLanding() {
   const { environments } = useEnvironments();
   const matesSettled = useMatesSettled();
   // Read once, as the page opens: what it waits with never changes under the eye.
-  const [remembered] = useState(rememberedLastConversation);
+  const [remembered] = useState(rememberedHomeLanding);
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();

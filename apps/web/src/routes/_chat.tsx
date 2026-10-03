@@ -19,7 +19,7 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { PageWaitLine } from "~/components/zerops/WaitLine";
 import { HomeOpeningView, MateOpeningView } from "~/components/zerops/MateLinkStage";
-import { rememberedLastConversation } from "~/zerops/lastConversationMemory";
+import { rememberedHomeLanding } from "~/zerops/lastConversationMemory";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
 import { resolveDoor } from "./-door";
@@ -134,11 +134,11 @@ function ChatRouteLayout() {
 function ChatRoutePending() {
   const pathname = useLocation({ select: (location) => location.pathname });
   // The home with no environment handed over waits as the home itself will (`homeView`): its
-  // guess, the Mate whose conversation was open last, with nothing that takes input.
+  // guess, the Mate it will land on as remembered, with nothing that takes input.
   const homeLanding = useLocation({
     select: (location) =>
       location.pathname === "/" && !("environmentId" in location.search)
-        ? rememberedLastConversation()
+        ? rememberedHomeLanding()
         : null,
   });
   if (homeLanding !== null) return <HomeOpeningView environmentId={homeLanding.environmentId} />;

@@ -140,6 +140,11 @@ function memoryNow(): MateIdentityMemory {
   return held.memory;
 }
 
+/** Every Mate this browser last knew, by environment. */
+export function rememberedMateIdentities(): MateIdentityMemory {
+  return memoryNow();
+}
+
 /** The Mate this browser last knew in `environmentId`, asleep; undefined where it knew none. */
 export function rememberedMateIdentity(
   environmentId: EnvironmentId,
