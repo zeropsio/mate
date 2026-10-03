@@ -11,7 +11,6 @@ import {
   arrivalSteps,
   comingSentence,
   inFirstSeenOrder,
-  KEEP_TAB_OPEN_LINE,
   nextRuntimesLine,
   pressRuns,
   runtimesComing,
@@ -537,10 +536,11 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
     { case: "running", press: subs("done", "active", "waiting", "waiting"), row: "active" },
     { case: "stopped", press: subs("done", "failed", "waiting", "waiting"), row: "failed" },
     { case: "through", press: subs("done", "done", "done", "done"), row: "done" },
+    // Refused, the Mate runs on: an owner registers it, and the rest of its coming-up goes on.
     {
-      case: "a registration refused",
-      press: subs("done", "done", "done", "failed"),
-      row: "failed",
+      case: "through but its registration, left to an owner",
+      press: subs("done", "done", "done", "owner"),
+      row: "done",
     },
   ])("a New project's row reads $row while its steps are $case", ({ press, row }) => {
     const steps = arrivalSteps(
@@ -556,6 +556,7 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
     { case: "running", press: subs("active", "waiting", "waiting", "waiting"), row: "active" },
     { case: "stopped", press: subs("done", "done", "failed", "waiting"), row: "failed" },
     { case: "through", press: subs("done", "done", "done", "done"), row: "done" },
+    { case: "left to an owner", press: subs("done", "done", "done", "owner"), row: "done" },
   ])("an added Mate's copy reads $row while its steps are $case", ({ press, row }) => {
     const steps = arrivalSteps({ ...mate, press }, WREN, NOW);
     expect(steps[0]).toMatchObject({ id: "copy", state: row, substeps: press });
@@ -585,16 +586,12 @@ describe("pressRuns — while the tab must stay open", () => {
     { case: "one running", press: subs("done", "active", "waiting"), runs: true },
     { case: "one stopped", press: subs("done", "failed", "waiting"), runs: false },
     {
-      case: "a registration refused at the end",
-      press: subs("done", "done", "failed"),
+      case: "its registration left to an owner",
+      press: subs("done", "done", "owner"),
       runs: false,
     },
     { case: "all through", press: subs("done", "done", "done"), runs: false },
   ])("$case: $runs", ({ press, runs }) => {
     expect(pressRuns(press)).toBe(runs);
-  });
-
-  it("says the one interruption in words", () => {
-    expect(KEEP_TAB_OPEN_LINE).toMatch(/^Keep this tab open for about half a minute/);
   });
 });

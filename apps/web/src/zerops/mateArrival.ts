@@ -251,10 +251,17 @@ export interface ArrivalStep {
 export interface ArrivalSubstep {
   readonly id: string;
   readonly label: string;
-  readonly state: "done" | "active" | "waiting" | "failed";
-  /** Why it stopped and what to do, in its own words. */
+  /**
+   * `owner`: refused here, and left to whoever may finish it — the Mate runs on without it (a
+   * registration an owner writes), so nothing waits on it and nothing stopped.
+   */
+  readonly state: "done" | "active" | "waiting" | "failed" | "owner";
+  /** Why it stopped and what to do — or, left to an owner, who finishes it — in its own words. */
   readonly why?: string;
 }
+
+/** A step through as far as this tab goes: done, or left to an owner. */
+const through = (step: ArrivalSubstep): boolean => step.state === "done" || step.state === "owner";
 
 /** What the page says while the steps this tab runs are under way: the one thing that stops them. */
 export const KEEP_TAB_OPEN_LINE =
@@ -267,7 +274,7 @@ export const KEEP_TAB_OPEN_LINE =
 export function pressRuns(press: ReadonlyArray<ArrivalSubstep> | undefined): boolean {
   if (press === undefined || press.length === 0) return false;
   if (press.some((step) => step.state === "failed")) return false;
-  return press.some((step) => step.state !== "done");
+  return press.some((step) => !through(step));
 }
 
 /**
@@ -279,7 +286,7 @@ function withSubsteps(
   press: ReadonlyArray<ArrivalSubstep>,
 ): ArrivalStep["state"] {
   if (state === "failed" || press.some((step) => step.state === "failed")) return "failed";
-  if (state === "done" && press.some((step) => step.state !== "done")) return "active";
+  if (state === "done" && press.some((step) => !through(step))) return "active";
   return state;
 }
 

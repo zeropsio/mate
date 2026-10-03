@@ -34,13 +34,15 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
-import { useNewMate } from "~/zerops/newMate";
+import { useNewMate, type NewMateAgain } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import {
+  addCreateProject,
   beginNewProjectBirth,
   newProjectView,
   progressNewProjectBirth,
   recipeManaged,
+  recipeRuntimes,
 } from "~/zerops/newProjectBirth";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -72,7 +74,7 @@ export function ZeropsNewMateHost() {
   return (
     <>
       {asked === null ? null : (
-        <NewMateDialog create={create} groupId={asked.groupId} key={asked.at} />
+        <NewMateDialog again={asked.again} create={create} groupId={asked.groupId} key={asked.at} />
       )}
       {handOver === null ? null : (
         <KeepHandOverRead conversation={handOver} key={scopedThreadKey(handOver)} />
@@ -106,9 +108,12 @@ function KeepHandOverRead({ conversation }: { readonly conversation: ScopedThrea
 function NewMateDialog({
   groupId,
   create,
+  again,
 }: {
   readonly groupId: string;
   readonly create: ReturnType<typeof useEnvironmentCreation>;
+  /** An Add started over: its name, its environment's and its tint, there to change. */
+  readonly again?: NewMateAgain | undefined;
 }) {
   const { activeOrganization } = useZeropsSession();
   const { listing } = useZeropsCandidates();
@@ -159,8 +164,8 @@ function NewMateDialog({
   const openMate = useOpenMate();
   // A proposal only: the dialog refuses it until every Mate's name is read, and names the clash
   // if one turns up.
-  const [defaultBotName] = useState(() =>
-    generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
+  const [defaultBotName] = useState(
+    () => again?.botName ?? generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
   const dismiss = useNewMate((state) => state.dismiss);
   const created = useNewMate((state) => state.created);
@@ -193,8 +198,10 @@ function NewMateDialog({
     <ZeropsEnvironmentCreationDialog
       closed={door.kind === "closed" ? door : undefined}
       defaultBotName={defaultBotName}
-      defaultName={proposeName(defaultBotName)}
-      defaultTintFor={(name) => newMateTint(candidates, name)}
+      defaultName={again?.name ?? proposeName(defaultBotName)}
+      defaultTintFor={(name) =>
+        name === again?.botName ? again.tint : newMateTint(candidates, name)
+      }
       defaultWithAgent
       groupName={group.name}
       onCancel={dismiss}
@@ -202,6 +209,7 @@ function NewMateDialog({
         if (activeOrganization === null) return;
         const name = choice.botName ?? choice.name;
         const face = choice.face ?? { tint: "slate", shape: "squircle" };
+        const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
         // Its own id, its view's: a random one, as a New project's group's.
         const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
         // Held from the press, its steps run on in the account's creations: the dialog gives way
@@ -220,9 +228,10 @@ function NewMateDialog({
               displayName: choice.name,
               // As the press decides it: an owner or an admin writes a Mate's registration.
               registers: accountGitea !== undefined && canWriteRegistry(activeOrganization),
-              // Named from the press, so its copy's line stands before the plan is heard.
-              managed:
-                choice.recipe.kind === "tier" ? recipeManaged(choice.recipe.yaml) : undefined,
+              // Named from the press, so its copy's and its workspace's lines stand before the
+              // plan is heard.
+              managed: tier === undefined ? undefined : recipeManaged(tier),
+              runtimes: tier === undefined ? undefined : recipeRuntimes(tier),
             },
           },
           gitea: accountGitea === undefined ? undefined : { projectId: accountGitea.projectId },
@@ -233,31 +242,17 @@ function NewMateDialog({
             // Taken once the platform takes its project; the press runs on after it, and a stop
             // after that is its press's to say (`matePress.ts`).
             createProject: () =>
-              new Promise((resolve, reject) => {
-                let accepted: string | undefined;
-                void create({
-                  group,
-                  environments,
-                  role: "dev",
-                  choice,
-                  onAccepted: (projectId) => {
-                    accepted = projectId;
-                    resolve({ project: { id: projectId } });
-                  },
-                  onProgress: (progress) => progressNewProjectBirth(id, progress),
-                }).then((run) => {
-                  const error =
-                    run.kind === "refused"
-                      ? (run.reason ?? "It could not be added.")
-                      : run.outcome.ok
-                        ? undefined
-                        : run.outcome.error;
-                  if (accepted === undefined) {
-                    reject(new Error(error ?? "It could not be added."));
-                    return;
-                  }
-                  if (error !== undefined) settled(accepted, error);
-                });
+              addCreateProject({
+                run: (onAccepted) =>
+                  create({
+                    group,
+                    environments,
+                    role: "dev",
+                    choice,
+                    onAccepted,
+                    onProgress: (progress) => progressNewProjectBirth(id, progress),
+                  }),
+                settled,
               }),
             accepted: (projectId) => {
               created({

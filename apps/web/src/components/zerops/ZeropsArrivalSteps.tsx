@@ -8,6 +8,7 @@ import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgr
 import { Fragment, useState, type ReactNode } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import {
   nextRuntimesLine,
@@ -86,32 +87,43 @@ const SUBSTEP_STATE_WORDS: Readonly<Record<ArrivalSubstep["state"], string>> = {
   active: "in progress",
   waiting: "waiting",
   failed: "stopped",
+  owner: "left to an owner",
 };
 
 /**
  * The steps this tab runs, under the row they make: one small mark and the words each, quieter
- * than the steps — where one stopped, why, in its place.
+ * than the steps — where one stopped, why, in its place, on its one line.
  */
 function ArrivalSubsteps({ steps }: { readonly steps: ReadonlyArray<ArrivalSubstep> }) {
   return (
     <ol aria-label="In this tab" className="arrival-step-sub arrival-substeps">
       {steps.map((step) => (
         <li
-          aria-label={`${step.label}: ${SUBSTEP_STATE_WORDS[step.state]}`}
+          aria-label={`${step.label}: ${SUBSTEP_STATE_WORDS[step.state]}${step.why === undefined ? "" : `. ${step.why}`}`}
           className="arrival-substep"
           data-arrival-substep={step.id}
           data-state={step.state}
           key={step.id}
         >
           <span className="arrival-substep-mark">
-            <ArrivalStepGlyph state={step.state} />
+            {/* Left to an owner, it waits on nobody here: the waiting mark, never a stop's. */}
+            <ArrivalStepGlyph state={step.state === "owner" ? "waiting" : step.state} />
           </span>
-          <span className="arrival-substep-label">
-            {step.label}
-            {step.why === undefined ? null : (
-              <span className="arrival-step-why"> · {step.why}</span>
-            )}
-          </span>
+          {/* One line, whatever it says: a long reason is cut, whole on hover and to a reader. */}
+          {step.why === undefined ? (
+            <span className="arrival-substep-label">{step.label}</span>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger render={<span className="arrival-substep-label" />}>
+                {step.label}
+                <span className={step.state === "owner" ? undefined : "arrival-step-why"}>
+                  {" "}
+                  · {step.why}
+                </span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">{step.why}</TooltipPopup>
+            </Tooltip>
+          )}
         </li>
       ))}
     </ol>
