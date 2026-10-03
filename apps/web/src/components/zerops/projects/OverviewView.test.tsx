@@ -471,7 +471,7 @@ describe("the Overview", () => {
 });
 
 describe("a creation under way on the Overview", () => {
-  it("draws a Mate being created in its group before the listing holds it: asleep, named, still", () => {
+  it("draws a Mate being created in its group before the listing holds it: waking, named, still", () => {
     const group = entry([WREN], { pullRequests: [pull()], pending: [VERA_COMING] });
     const row = section(
       render({ groups: [group], openMate: () => () => {} }),
@@ -484,7 +484,7 @@ describe("a creation under way on the Overview", () => {
     const at = mates.indexOf('data-zerops-surface="mate-coming"');
     const coming = mates.slice(mates.lastIndexOf("<span", at));
     expect(coming).toContain('aria-busy="true"');
-    expect(coming).toContain('data-mate-face-state="sleep"');
+    expect(coming).toContain('data-mate-face-state="waking"');
     expect(coming).toContain(">Vera<");
     expect(coming).toContain('<span class="sr-only">Coming up. A few minutes.</span>');
     // The listed Mate opens; the one being created has nothing to press.
@@ -515,7 +515,7 @@ describe("a creation under way on the Overview", () => {
     const coming = row.slice(row.lastIndexOf("<span", at));
     expect(coming).toContain(`data-mate-face-tint="${tint}"`);
     expect(coming).toContain(`data-mate-face-shape="${shape}"`);
-    expect(coming).toContain('data-mate-face-state="sleep"');
+    expect(coming).toContain('data-mate-face-state="waking"');
   });
 
   it("stands the listed Mate in its place once the listing holds it, never both", () => {

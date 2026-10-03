@@ -2835,16 +2835,13 @@ code {
     translate: 0 -5px;
   }
 
-  /* Waking — on its way up, its agent not answering yet — it breathes: asleep's closed eyes over
-     a slow swell, the eyes rising with it, once every three seconds. With reduced motion it stands
-     still, and its words say it is coming up. */
-  [data-mate-face-state="waking"] [data-mate-face-body] {
+  /* Waking — on its way up, until its first sign-in — it breathes: asleep's closed eyes, the whole
+     face swelling from its feet once every three seconds. The face itself moves, one box the
+     compositor carries, so a menu of waking rows repaints nothing as they breathe. With reduced
+     motion it stands still, and its words say it is coming up. */
+  [data-zerops-primitive="mate-face"][data-mate-face-state="waking"] {
+    transform-origin: 50% 96%;
     animation: mate-face-breathe 3s ease-in-out infinite;
-    animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
-  }
-
-  [data-mate-face-state="waking"] [data-mate-face-glance] {
-    animation: mate-face-breathe-eyes 3s ease-in-out infinite;
     animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
   }
 
@@ -2898,16 +2895,6 @@ code {
   }
   50% {
     scale: 1.05;
-  }
-}
-
-@keyframes mate-face-breathe-eyes {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-  50% {
-    translate: 0 -1.5px;
   }
 }
 

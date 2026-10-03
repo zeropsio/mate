@@ -54,6 +54,8 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
         activity: connected ? input.activityOf(candidate) : undefined,
         reviewWaits: input.reviewWaits(candidate),
         mine: mateIsViewers(candidate.project, input.viewer),
+        // Only a face that needs you stands here, and no pose of its life gives that.
+        pose: undefined,
       });
       if (face !== "needs") return [];
       const tags = readZeropsGroupTags(candidate.project.tagList);

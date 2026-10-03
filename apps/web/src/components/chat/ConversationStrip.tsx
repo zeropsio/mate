@@ -23,6 +23,8 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { menuMemory } from "~/zerops/menuMemory";
 import { useRegistrationRecord } from "~/zerops/registrationRecords";
+import { mateIdentityPose } from "~/zerops/mateIdentities";
+import { useNowMs } from "~/zerops/useNowMs";
 import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
 import {
   Menu,
@@ -703,6 +705,7 @@ export function ConversationStrip({
 }: ConversationStripProps) {
   // Read, or remembered until read: a reload's header wears the Mate's face from its first frame.
   const mate = useKnownMate(environmentId) ?? null;
+  const nowMs = useNowMs();
   const shells = useThreadShells();
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { view } = useCrew(environmentId);
@@ -778,6 +781,7 @@ export function ConversationStrip({
       }
       mate={lineMate({
         mate,
+        pose: mateIdentityPose(mate, nowMs),
         chats,
         currentThreadId,
         crewChatOpen: crewChat !== null,

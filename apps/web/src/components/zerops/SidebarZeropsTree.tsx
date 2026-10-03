@@ -64,7 +64,7 @@ import {
   selectMateEnvironments,
   sidebarChangeLabel,
   listedStopComing,
-  matePose,
+  matePoseOf,
   stopServes,
   type EnvironmentRow,
   type FlowPullRequest,
@@ -121,7 +121,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateBirthFace, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -186,7 +186,6 @@ import {
   mateBornLineText,
   mateComingRowView,
   mateLifeOf,
-  mateRowFace,
   mateRowOffersMenu,
   mateCrewItem,
   mateDeletingView,
@@ -937,8 +936,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
           mine: mateIsViewers(item.project, viewer),
-          life: mateLifeOf(getComing?.(item)),
-          signedIn: mateOwnerRecords(item.project).signedIn,
+          pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
         }),
       );
     }
@@ -1220,6 +1218,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               activity: live,
               reviewWaits: reviewWaits(item),
               mine: mateIsViewers(item.project, viewer),
+              pose: matePoseOf(item, minuteMs, mateLifeOf(coming)),
             });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
@@ -2445,11 +2444,14 @@ function MateRow<T extends RosterCandidate>({
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
+  const nowMs = useNowMs();
   const read = mateRowReading({
     connected: candidate.group === "connected",
     activity,
     reviewWaits,
     mine: mateIsViewers(candidate.project, viewer),
+    // Waking while it comes up and arrives (`mateFaceFor`).
+    pose: matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming)),
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -2481,8 +2483,6 @@ function MateRow<T extends RosterCandidate>({
       ? undefined
       : seated.signInLine;
   const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
-  // Its pose (`mateRowFace`): waking from its press until its agent answers.
-  const face = mateRowFace({ view, deleting, signedIn: records.signedIn });
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge = ownerBadge(seated.seat, owner?.isViewer === true);
   const notYours = mateNotYours({
@@ -2727,7 +2727,7 @@ function MateRow<T extends RosterCandidate>({
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
-            <MateFace greets known={known} shape={shape} size="md" state={face} tint={tint} />
+            <MateFace greets known={known} shape={shape} size="md" state={view.face} tint={tint} />
           </span>
           {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>
@@ -3353,7 +3353,7 @@ function useSecondTick(ticking: boolean): number {
 /**
  * A Mate being created that the listing does not hold yet, drawn from its
  * birth as the row it will be: its face waking, as every Mate's is while it
- * comes up (`matePose`) — asleep once its birth stopped — in the colours its person picked (slate where it picked none); the
+ * comes up (`mateBirthFace`) — asleep once its birth stopped — in the colours its person picked (slate where it picked none); the
  * empty seat before its name — nobody has signed its agent in yet — and how far
  * its birth has got in the projects page's words. A press opens its own view,
  * where it comes up; its listed row stands in its place with the same face,
@@ -3387,11 +3387,7 @@ function ComingMateRow({
           <MateFace
             shape={coming.face?.shape ?? mateShapeOf([], tint)}
             size="md"
-            state={matePose({
-              life: coming.failed === true ? "failed" : "coming",
-              answered: false,
-              face: "sleep",
-            })}
+            state={mateBirthFace(coming.failed === true)}
             tint={tint}
           />
         </span>

@@ -50,7 +50,7 @@ import {
   birthRuntimesFacts,
   type BirthCopyService,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import type { ZeropsService } from "@t3tools/client-runtime/zerops";
+import { mateArriving, type ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -76,7 +76,12 @@ import {
   mateOpeningPhrase,
   type MateComing,
 } from "~/zerops/mateComing";
-import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
+import {
+  mateIdentityPose,
+  zeropsMateIdentityOf,
+  type ZeropsMateIdentity,
+} from "~/zerops/mateIdentities";
+import { mateFaceFor } from "~/zerops/agentActivity";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
   arrivalHeaderFace,
@@ -97,7 +102,7 @@ import {
 } from "~/zerops/newProjectBirth";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
-import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
@@ -568,6 +573,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Any other Mate: its name — "This Mate" where nothing names it, as on its conversation's route —
   // and under it what its link waits for, or why it cannot be opened.
   const named = mate.name.length > 0 ? mate : { ...mate, name: "This Mate" };
+  // The minute clock its pose reads (`mateArriving`).
+  const clockMs = useNowMs();
   const nowMs = useSecondsNowMs(
     page?.kind === "reaching" && page.reachability?.kind === "retrying",
   );
@@ -673,8 +680,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               : arrivalHeaderFace({
                   kind: view.kind,
                   over: view.over === true,
-                  signInRequired: empty.signInRequired,
                   connected: environmentId !== null,
+                  arriving: mateArriving(mate.arrivingUntil, clockMs),
                 })
           }
           mate={{ ...mate, connected: environmentId !== null }}
@@ -744,9 +751,12 @@ export function MateComingHeader({
 }: {
   /** A new Mate coming up: its face and name only. */
   readonly arriving?: boolean;
-  /** The pose the stage under it wears (`arrivalHeaderFace`); else at rest once connected. */
+  /** The pose the stage under it wears (`arrivalHeaderFace`); else its own (`mateFaceFor`). */
   readonly face?: MateMarkState | undefined;
-  readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
+  readonly mate: Pick<
+    ZeropsMateIdentity,
+    "name" | "tint" | "shape" | "connected" | "arrivingUntil"
+  > & {
     readonly projectUrl: string | undefined;
   };
   /**
@@ -756,6 +766,7 @@ export function MateComingHeader({
    */
   readonly standsIn?: { readonly subject: string | null } | null;
 }) {
+  const nowMs = useNowMs();
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
       <ConversationStripView
@@ -765,7 +776,7 @@ export function MateComingHeader({
           name: mate.name,
           tint: mate.tint,
           shape: mate.shape,
-          face: face ?? (mate.connected ? "idle" : "sleep"),
+          face: face ?? mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs)),
           open: true,
           threadId: null,
           tooltip: standsIn?.subject ?? null,

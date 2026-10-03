@@ -8,6 +8,7 @@ import {
   matePose,
   pullRequestBlocked,
   type MateLife,
+  type MatePoseFacts,
   type FlowPullRequest,
   type ZeropsGroupPendingMember,
 } from "@t3tools/client-runtime/zerops";
@@ -417,7 +418,7 @@ export function mateRowView(
 export function mateDeletingView(view: MateRowView): MateRowView {
   return {
     ...view,
-    face: matePose({ life: "deleting", answered: true, face: view.face }),
+    face: matePose(view.face, { life: "deleting" }),
     slot: { kind: "none" },
     dot: undefined,
     strongName: false,
@@ -486,13 +487,15 @@ export function mateRowReading(input: {
   readonly reviewWaits?: boolean;
   /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
   readonly mine: boolean;
+  /** Where it is in its life (`mateFaceFor`): waking while it comes up and arrives. */
+  readonly pose?: MatePoseFacts | undefined;
 }): MateRowView {
   const { activity } = input;
   const live = activity !== undefined && activity.remembered !== true ? activity : undefined;
   return mateRowView(
     activity,
     mateFaceAwaitingReview(
-      mateFaceFor(input.connected || live !== undefined, live),
+      mateFaceFor(input.connected || live !== undefined, live, input.pose),
       input.reviewWaits === true,
       activity?.pausedUntil !== undefined,
       input.mine,
@@ -736,11 +739,7 @@ export function mateComingRowView(view: MateRowView, coming: MateComing): MateRo
   return {
     ...view,
     state: coming.kind === "failed" ? "failed" : "idle",
-    face: matePose({
-      life: coming.kind === "failed" ? "failed" : "coming",
-      answered: false,
-      face: view.face,
-    }),
+    face: matePose(view.face, { life: mateLifeOf(coming) }),
     slot: { kind: "none" },
     dot: coming.kind === "failed" ? "failed" : undefined,
     strongName: false,
@@ -754,25 +753,6 @@ export function mateComingRowView(view: MateRowView, coming: MateComing): MateRo
 export function mateLifeOf(coming: MateComing | undefined): MateLife {
   if (coming === undefined) return "up";
   return coming.kind === "failed" ? "failed" : "coming";
-}
-
-/**
- * The pose a Mate's row wears (`matePose`): waking from its press until its agent answers —
- * coming up, then up with nobody signed in and nothing asked, its sign-in line under the name —
- * asleep once it did not come or while it goes, else its conversation's own face.
- */
-export function mateRowFace(input: {
-  readonly view: MateRowView;
-  readonly deleting: boolean;
-  /** Somebody signed its agent in (`mateOwnerRecords`). */
-  readonly signedIn: boolean;
-}): MateMarkState {
-  const { view } = input;
-  return matePose({
-    life: input.deleting ? "deleting" : mateLifeOf(view.coming),
-    answered: input.signedIn || view.ask !== undefined,
-    face: view.face,
-  });
 }
 
 /** Which of the table's states a row is in: what waits on the person first. */

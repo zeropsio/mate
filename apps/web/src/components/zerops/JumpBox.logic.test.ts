@@ -324,58 +324,52 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
     expect(jumpMateOf({ ...base, connected: true, activity: undefined }).face).toBe("idle");
   });
 
-  // Its pose as on its row (`matePose`): waking from its press until its agent answers.
+  // Its pose as on its row (`mateFaceFor`): waking while it comes up and arrives, read afresh too.
   it.each([
     {
       case: "coming up",
-      life: "coming",
-      signedIn: false,
+      pose: { life: "coming" },
       connected: false,
       read: undefined,
       face: "waking",
     },
     {
       case: "did not come",
-      life: "failed",
-      signedIn: false,
+      pose: { life: "failed" },
       connected: false,
       read: undefined,
       face: "sleep",
     },
     {
-      case: "up, waiting for its sign-in",
-      life: "up",
-      signedIn: false,
+      case: "arriving, its sign-in to come",
+      pose: { arriving: true },
       connected: true,
       read: undefined,
       face: "waking",
     },
     {
-      case: "up, signed in",
-      life: "up",
-      signedIn: true,
+      case: "arrived, at rest",
+      pose: { arriving: false },
       connected: true,
       read: undefined,
       face: "idle",
     },
     {
-      case: "up, talked to before its sign-in was recorded",
-      life: "up",
-      signedIn: false,
+      case: "arriving, talked to: its conversation's own",
+      pose: { arriving: true },
       connected: true,
-      read: activity({ kind: "idle", face: "idle" }),
-      face: "idle",
+      read: activity({ kind: "working", face: "working" }),
+      face: "working",
     },
     {
-      case: "never signed in, not running",
-      life: "up",
-      signedIn: false,
+      case: "arrived, not running",
+      pose: { arriving: false },
       connected: false,
       read: undefined,
       face: "sleep",
     },
-  ] as const)("$case: $face", ({ life, signedIn, connected, read, face }) => {
-    const listed = jumpMateOf({ ...base, connected, activity: read, life, signedIn });
+  ] as const)("$case: $face", ({ pose, connected, read, face }) => {
+    const listed = jumpMateOf({ ...base, connected, activity: read, pose });
     expect(listed.face).toBe(face);
     // Read afresh, it keeps the pose.
     const fresh = withLiveMates({ ...EMPTY_JUMP_INDEX, mates: [listed] }, () => read);

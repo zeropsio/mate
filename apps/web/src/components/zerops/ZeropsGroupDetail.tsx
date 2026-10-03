@@ -53,6 +53,7 @@ import {
   firstDeployTone,
   stageFirstDeploy,
   type FirstDeploy,
+  matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import {
   DEPLOYS_ASIDE,
@@ -426,6 +427,7 @@ function useGroupMates(groupId: string): {
             activity: live,
             reviewWaits: mateReviewWaits(flow, item.project.id),
             mine,
+            pose: matePoseOf(item, nowMs),
           }),
           asks: mine && mateFaceFor(item.group === "connected", live) === "needs",
           ...(live?.kind === "failed" ? { failed: true } : {}),
@@ -438,7 +440,7 @@ function useGroupMates(groupId: string): {
           update: mateUpdateStatus(updates.of(item)),
         };
       });
-  }, [activity, flow, groupId, listing, updates, viewer]);
+  }, [activity, flow, groupId, listing, nowMs, updates, viewer]);
   const patient = useListingPatience(listing);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),

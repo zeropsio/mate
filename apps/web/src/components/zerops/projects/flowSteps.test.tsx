@@ -39,6 +39,8 @@ vi.mock("~/components/ui/tooltip", async () => {
 });
 
 import {
+  ComingMateCard,
+  ComingMateFace,
   MainStep,
   MateChip,
   matesOf,
@@ -472,5 +474,26 @@ describe("a row's cell on a medium container", () => {
     );
     const lines = tree.root.findByProps({ "data-zerops-cell-lines": "true" });
     expect(lines.props.className).not.toContain(MEDIUM);
+  });
+});
+
+// A Mate being created, on Projects (its row's Mates cell) and Overview (its chip, its card, the
+// lone Mate's face): waking while it comes up, as its row in the menu — asleep once its birth
+// stopped (run 6: every surface wore it asleep).
+describe("a Mate being created", () => {
+  const stateOf = (markup: string) => /data-mate-face-state="([^"]+)"/u.exec(markup)?.[1];
+  it.each([
+    { case: "coming up", failed: false, state: "waking" },
+    { case: "its birth stopped", failed: true, state: "sleep" },
+  ] as const)("$case: its face $state", ({ failed, state }) => {
+    const coming = { face: { tint: "coral", shape: "gem" }, failed } as const;
+    expect(stateOf(renderToStaticMarkup(<ComingMateFace coming={coming} size="sm" />))).toBe(state);
+    for (const layout of ["card", "row"] as const) {
+      expect(
+        stateOf(
+          renderToStaticMarkup(<ComingMateCard coming={coming} layout={layout} name="Kai" />),
+        ),
+      ).toBe(state);
+    }
   });
 });

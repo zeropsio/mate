@@ -65,6 +65,8 @@ function mate(
       id,
       name: `Acme Docs - ${bot}`,
       status,
+      // Made minutes ago: an unsigned one is still arriving (`mateArrivingUntil`).
+      created: minutesAgo(3),
       tagList: [...ACME, `mate:bot:${bot}`, ...tags],
     },
     group,

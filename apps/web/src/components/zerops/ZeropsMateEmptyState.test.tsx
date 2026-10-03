@@ -182,7 +182,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen stands up development on Acme Docs.",
-      face: "waking",
+      face: "idle",
       signIn: true,
     },
     {
@@ -223,7 +223,7 @@ describe("ZeropsMateEmptyState", () => {
       headline: "Sign Fen in to start.",
       sentence:
         "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
-      face: "waking",
+      face: "idle",
       signIn: true,
     },
     {
@@ -235,7 +235,7 @@ describe("ZeropsMateEmptyState", () => {
       headline: "Sign Fen in to start.",
       sentence:
         "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
-      face: "waking",
+      face: "idle",
       signIn: true,
     },
     {
@@ -245,7 +245,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Nobody has signed Fen in yet. Sign it in with your own account and it's yours.",
-      face: "waking",
+      face: "idle",
       signIn: true,
     },
     {
@@ -255,7 +255,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
-      face: "waking",
+      face: "idle",
       signIn: true,
     },
     {
@@ -264,7 +264,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
-      face: "waking",
+      face: "idle",
       signIn: true,
     },
     {
@@ -295,6 +295,18 @@ describe("ZeropsMateEmptyState", () => {
     // shouldn't exist").
     expect(html.match(/<h1/gu)).toHaveLength(1);
     expect(html).not.toContain("Not signed in");
+  });
+
+  // Its pose is its row's (`mateFaceFor`): waking while it arrives, read off its own records
+  // (`mateArrivingUntil`) — never off the live sign-in, which a sign-out takes back.
+  it.each([
+    { case: "just added, its sign-in to come", until: Date.now() + 600_000, face: "waking" },
+    { case: "signed in once and signed out since", until: undefined, face: "idle" },
+    { case: "nobody signed it in, past its window", until: Date.now() - 120_000, face: "idle" },
+  ])("wears, $case, $face over its sign-in", ({ until, face }) => {
+    feedState.agentAuth = known(NOT_SIGNED_IN);
+    const html = render({ ...ASKED, arrivingUntil: until });
+    expect(stage(html)).toMatchObject({ face, signIn: true });
   });
 
   it("waits on the sign-in's read with the sign-in's own headline", () => {
@@ -362,7 +374,8 @@ describe("MateEmptyStateView — a Mate coming up", () => {
 
   it("once up, hands its words over to the sign-in, the sign-in in the slot where the steps stood", () => {
     const html = view({
-      mate: ASKED,
+      // Just up: it arrives until its first sign-in.
+      mate: { ...ASKED, arrivingUntil: Date.now() + 600_000 },
       coming: { kind: "coming", over: true, below: progress },
       signIn: <div data-sign-in-module />,
       signInRequired: true,
@@ -390,7 +403,8 @@ describe("MateEmptyStateView — a Mate coming up", () => {
 
   it("names the runtimes still coming up under the sign-in", () => {
     const html = view({
-      mate: ASKED,
+      // Just up: it arrives until its first sign-in.
+      mate: { ...ASKED, arrivingUntil: Date.now() + 600_000 },
       coming: { kind: "coming", over: true, below: progress },
       signIn: <div data-sign-in-module />,
       signInRequired: true,

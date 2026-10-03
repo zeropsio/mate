@@ -16,7 +16,6 @@
  *
  * Pure: the words, the face and the steps; the views draw them.
  */
-import { matePose } from "@t3tools/client-runtime/zerops";
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import type { MateMarkState } from "@t3tools/shared/brand";
@@ -31,6 +30,7 @@ import {
   type SignInPhrasePart,
 } from "~/components/zerops/ZeropsAgentSignIn.logic";
 
+import { mateFaceFor } from "./agentActivity";
 import { mateComingHeadlineClauses, type MateViewKind } from "./mateComing";
 import { mateQuestion, type ZeropsMateIdentity } from "./mateIdentities";
 
@@ -153,14 +153,19 @@ export function arrivalSentence(
 }
 
 /**
- * The face the stage wears: waking from the press until its agent answers (`matePose`), at work on
- * the stand-up, asking on a stop; any other Mate on its way to its conversation asleep.
+ * The face the stage wears: waking while it comes up and arrives — from the press to its first
+ * sign-in (`mateFaceFor`, `arriving` from `mateArriving`) — at work on the stand-up, asking on a
+ * stop; any other Mate on its way to its conversation asleep.
  */
-export function arrivalFace(kind: ArrivalKind, connected: boolean): MateMarkState {
-  const face = connected ? "idle" : "sleep";
+export function arrivalFace(
+  kind: ArrivalKind,
+  connected: boolean,
+  /** It is still arriving (`mateArriving`): nobody has signed it in, inside its window. */
+  arriving: boolean,
+): MateMarkState {
   switch (kind) {
     case "coming":
-      return matePose({ life: "coming", answered: false, face });
+      return mateFaceFor(connected, undefined, { life: "coming" });
     case "reaching":
     case "unreachable":
       return "sleep";
@@ -172,36 +177,34 @@ export function arrivalFace(kind: ArrivalKind, connected: boolean): MateMarkStat
     case "sign-in":
     case "sign-in-plain":
     case "sign-in-colleague":
-      return matePose({ life: "up", answered: false, face });
     case "question":
-      return matePose({ life: "up", answered: true, face });
+      return mateFaceFor(connected, undefined, { arriving });
   }
 }
 
 /**
- * The face the header wears over a Mate's arrival: the stage's pose for where it is in its life
- * (`matePose`) — waking while it comes up and until its agent answers, asleep where it did not
- * come or its link is not made, at rest once its agent is signed in.
+ * The face the header wears over a Mate's arrival, through the same rule (`mateFaceFor`): waking
+ * while it comes up and arrives, asleep where it did not come or its link is not made, at rest
+ * once it has arrived.
  */
 export function arrivalHeaderFace(input: {
   /** What the stage says of it (`MateEmptyComing.kind`). */
   readonly kind: MateViewKind;
   /** It is up: the stage hands over. */
   readonly over: boolean;
-  /** No agent is signed in yet. */
-  readonly signInRequired: boolean;
   readonly connected: boolean;
+  /** It is still arriving (`mateArriving`). */
+  readonly arriving: boolean;
 }): MateMarkState {
   const still = !input.over;
-  return matePose({
+  return mateFaceFor(input.connected, undefined, {
     life:
       still && input.kind === "coming"
         ? "coming"
         : still && input.kind === "failed"
           ? "failed"
           : "up",
-    answered: !input.signInRequired,
-    face: input.connected ? "idle" : "sleep",
+    arriving: input.arriving,
   });
 }
 

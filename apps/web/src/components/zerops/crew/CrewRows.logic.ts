@@ -560,10 +560,8 @@ export function crewRowModel(input: {
       ? finished && !plan
         ? "done"
         : "needs"
-      : matePose({
+      : matePose(thread.face === "sleep" ? "idle" : thread.face, {
           life: readying ? "coming" : "up",
-          answered: true,
-          face: thread.face === "sleep" ? "idle" : thread.face,
         });
 
   return {

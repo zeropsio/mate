@@ -20,7 +20,7 @@
  * `zeropsAgentSignInRequired` over the environment's agent-auth feed once it is known, and until
  * then the slot says it is checking, or why it could not.
  */
-import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
+import { mateArriving, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
   birthRuntimesFacts,
   type BirthRuntimeFact,
@@ -58,6 +58,7 @@ import {
 } from "../../zerops/useZeropsAgentSigner";
 import { InventoryContext } from "../../zerops/inventoryContext";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
+import { useNowMs } from "../../zerops/useNowMs";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
@@ -286,6 +287,8 @@ export function MateEmptyStateView({
   readonly runtimes?: ReadonlyArray<BirthRuntimeFact> | undefined;
 }) {
   const kind = mateArrivalKind({ coming, phase, signInRequired, addedBy });
+  // The minute clock its pose reads: it wakes only while it arrives (`mateArriving`).
+  const nowMs = useNowMs();
   const clauses = arrivalHeadlineClauses(mate, kind);
   const sentence =
     coming !== null && coming.over !== true && coming.sentence !== undefined
@@ -306,7 +309,7 @@ export function MateEmptyStateView({
           className={MATE_EMPTY_FACE_CLASS}
           size="lg"
           shape={mate.shape}
-          state={arrivalFace(kind, mate.connected)}
+          state={arrivalFace(kind, mate.connected, mateArriving(mate.arrivingUntil, nowMs))}
           tint={mate.tint}
         />
         <ArrivalSwap
