@@ -3461,9 +3461,10 @@ no-cache`.
   keeping the 'working' card scrolled to the bottom"). While a card is live its history scroll
   follows its newest line, catching up in the frame it grows, before paint. Following stops when
   the top ends above where it last stood and is not at the foot (4 px), whatever moved it: wheel,
-  keys, find, drag-select, focus; or when the person opens something in the card. Growth, the
-  card's own moves and a clamp from a shrinking scroll height never stop it; back at the foot it
-  follows again. The foot and the fades come from where the lines end as laid out, so a row moving
+  keys, find, drag-select, focus; or when the person opens something in the card. It follows
+  again only when the person brings it back: their move down onto the foot, or closing the last thing
+  they opened if it followed as they opened it and they have not moved it up since. Growth, the
+  card's own moves, a clamp from a shrinking scroll height and a re-read at the foot never change it. The foot and the fades come from where the lines end as laid out, so a row moving
   into place is never more content; a fade shows only at an edge with lines cut past it. The wheel
   chains from the card's edges to the conversation.
   - _Why:_ a time window after input read the card's own catch-up as the person's scroll and
@@ -3482,10 +3483,10 @@ no-cache`.
   one reads them from the account store** (the owner: "the running builds, their logs etc all the
   more advanced details of async flows seems to be completely gone now"). In the slot a deploy reads
   the store from start to plop: its steps, the step it is on, the build's newest lines and the way
-  to its whole log; a batch stands as one line per service; only the newest running deploy stands
-  open. Once its call settles the card reads on until the outcome is read; a settled row reads its
-  process from the store by the ids its result named, so any window and any reload show the same
-  details. Only deploys read; a landed card keeps its height; a log dialog the person opened stays
+  to its whole log; a batch stands as one line, its card on the service the store says is building;
+  only the newest running deploy stands open. A settled deploy reads its process once per open, by the ids its result named, so any
+  window and any reload show the same details within the project's last 100 processes; with no id it
+  shows what its call returned, never a guess by time and service. Only deploys read; a landed card keeps its height; a log dialog the person opened stays
   open through the plop.
   - _Why:_ 0.11.88 moved a running deploy from the band into the slot, whose row read only the
     call's placeholder steps; a page-held memory of the read would tie the details to one tab.
