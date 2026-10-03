@@ -22,6 +22,7 @@ import {
   ZEROPS_GROUP_LABEL_MAX_LENGTH,
   type ZeropsEnvironmentRole,
   type ZeropsPlacedBirth,
+  heldGroupLabel,
 } from "./groups.ts";
 import { withMateSignerTag } from "./mateAccess.ts";
 
@@ -1226,5 +1227,24 @@ describe("deriveZeropsGroups — the viewer's own order", () => {
   it("keeps the ungrouped projects newest first — only groups are arranged by hand", () => {
     const result = deriveZeropsGroups(PROJECTS, { order: "custom", customOrder: ["aaa"] });
     expect(result.ungrouped.map((entry) => entry.id)).toEqual(["loose-new", "loose-old"]);
+  });
+});
+
+describe("heldGroupLabel: a project's name off the projects the account holds", () => {
+  const tagged = (groupId: string, label?: string) => ({
+    tagList: [`mate:g:${groupId}`, ...(label === undefined ? [] : [`mate:name:${label}`])],
+  });
+  it.each([
+    ["its members agree", [tagged("grpA1", "Orchard"), tagged("grpA1", "Orchard")], "Orchard"],
+    [
+      "a rename half applied: the majority",
+      [tagged("grpA1", "Orchard"), tagged("grpA1", "Grove"), tagged("grpA1", "Grove")],
+      "Grove",
+    ],
+    ["another project's members only", [tagged("grpB2", "Harbor")], undefined],
+    ["members with no label", [tagged("grpA1")], undefined],
+    ["no project held", [], undefined],
+  ] as const)("%s", (_case, projects, label) => {
+    expect(heldGroupLabel(projects, "grpA1")).toBe(label);
   });
 });

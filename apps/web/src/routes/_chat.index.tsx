@@ -4,14 +4,12 @@ import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/co
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import { PlusIcon, RotateCcwIcon } from "lucide-react";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
-import { MateOpeningView } from "../components/zerops/MateLinkStage";
+import { HomeOpeningView } from "../components/zerops/MateLinkStage";
 import { PageWaitLine } from "../components/zerops/WaitLine";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
-import { useZeropsInventory } from "../zerops/ZeropsInventoryProvider";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -27,8 +25,8 @@ import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { homeView } from "../zerops/homeLanding.logic";
-import { rememberedHomeLanding, rememberHomeLanding } from "../zerops/homeLandingMemory";
-import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
+import { rememberedLastConversation } from "../zerops/lastConversationMemory";
+import { useMatesSettled } from "../zerops/useMatesSettled";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 
@@ -84,12 +82,11 @@ type IndexLanding =
  */
 function IndexDraftLanding() {
   const projects = useProjects();
-  const inventory = useZeropsInventory();
   const threads = useThreadShells();
-  const { environments, isReady: environmentsReady } = useEnvironments();
-  const { listing } = useZeropsCandidates();
+  const { environments } = useEnvironments();
+  const matesSettled = useMatesSettled();
   // Read once, as the page opens: what it waits with never changes under the eye.
-  const [remembered] = useState(rememberedHomeLanding);
+  const [remembered] = useState(rememberedLastConversation);
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
@@ -183,7 +180,6 @@ function IndexDraftLanding() {
     startedForKeyRef.current = key;
 
     if (landing.kind === "thread") {
-      rememberHomeLanding(landing.ref);
       void navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(landing.ref),
@@ -209,9 +205,10 @@ function IndexDraftLanding() {
     // read. Measured on a fresh account, 2026-09-19: a second after the wizard made a project and
     // its Mate came up, this painted "What should we work on? Add a project to start your first
     // thread." and then replaced itself with the draft — telling somebody to add the project they
-    // had just added. Nothing here is taken back: the projects, the Mates' listing and the
-    // environments are read whole first.
-    projectsRead: !inventory.isLoading && heldCandidates(listing).complete && environmentsReady,
+    // had just added. Nothing here is taken back: the projects and the Mates' listing will tell
+    // no more, and every Mate this tab registers is registered (`useMatesSettled`) — a listing
+    // left partial by withheld or failing parts settles, so the hero stays reachable.
+    projectsRead: matesSettled,
   });
   switch (view.kind) {
     case "start-failed":
@@ -227,9 +224,10 @@ function IndexDraftLanding() {
       );
     case "hero":
       return <NoProjectsHero />;
-    // While it works out where to land, and on its way there: what it waits for, never blank.
+    // While it works out where to land, and on its way there: its guess, never blank — nothing
+    // in it takes input, so a wrong guess gives way, without motion, losing nothing typed.
     case "opening":
-      return <MateOpeningView threadRef={view.ref} />;
+      return <HomeOpeningView environmentId={view.ref.environmentId} />;
     case "wait":
       return (
         <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">

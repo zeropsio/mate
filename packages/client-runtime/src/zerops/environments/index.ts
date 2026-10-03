@@ -17,5 +17,6 @@ export * from "./mateVoice.ts";
 export * from "./mateLink.ts";
 export * from "./probeStore.ts";
 export * from "./reachability.ts";
+export * from "./registration.ts";
 export * from "./records.ts";
 export * from "./targets.ts";

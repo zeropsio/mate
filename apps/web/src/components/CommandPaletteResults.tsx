@@ -27,12 +27,16 @@ interface CommandPaletteResultsProps {
 
 export function CommandPaletteResults(props: CommandPaletteResultsProps) {
   if (props.groups.length === 0) {
+    const message =
+      props.emptyStateMessage ??
+      (props.isActionsOnly
+        ? "No matching actions."
+        : "No matching commands, projects, or threads.");
     return (
       <div className="py-10 text-center text-sm text-muted-foreground">
-        {props.emptyStateMessage ??
-          (props.isActionsOnly
-            ? "No matching actions."
-            : "No matching commands, projects, or threads.")}
+        {/* Nothing to say yet (`paletteNoMatchMessage`): the line's room is held, so the box never
+            grows when the sentence comes. */}
+        {message === "" ? <span aria-hidden="true">{"\u00a0"}</span> : message}
       </div>
     );
   }

@@ -2,8 +2,8 @@
  * What the home (`/`) shows while it works out where to land (unknown is not empty): it lands on
  * the most recently active Mate once the Mates' connections have said so, seconds on a cold load —
  * and meanwhile it shows what it waits for, never a blank page. Where this browser remembers the
- * conversation it landed on last, that Mate's opening stage, as a reload of the conversation draws
- * it; else the boot's one wait line. "No projects" is an answer: only once the read is whole. Pure.
+ * conversation open last, it guesses by it: that Mate's face, name and opening line, with nothing
+ * that takes input; else the boot's one wait line. "No projects" is an answer: only once the read is whole. Pure.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
@@ -21,7 +21,7 @@ export function homeView(input: {
   readonly startFailed: boolean;
   /** A connect named the environment to land in: the remembered Mate is not where it goes. */
   readonly targeted: boolean;
-  /** The conversation it landed on last, when this browser still knows its Mate. */
+  /** The conversation open last, when this browser still knows its Mate: the guess. */
   readonly remembered: ScopedThreadRef | null;
   /** The account's projects and its Mates are read whole. */
   readonly projectsRead: boolean;

@@ -1,5 +1,9 @@
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
-import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedProjectKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   MATE_VOICE_QUIET_MS,
@@ -91,6 +95,7 @@ import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { rememberLastConversation } from "~/zerops/lastConversationMemory";
 import { rememberedMateIdentity, rememberMateIdentities } from "~/zerops/mateIdentityMemory";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
@@ -227,6 +232,13 @@ function SignedInRootRouteView() {
     environmentId: routeEnvironmentId ?? undefined,
     threadId: pathname.split("/").filter((part) => part.length > 0)[1],
   });
+  // The conversation open last, on whichever route: the home's next cold load guesses by it.
+  const openEnvironmentId = routeThreadRef?.environmentId ?? null;
+  const openThreadId = routeThreadRef?.threadId ?? null;
+  useEffect(() => {
+    if (openEnvironmentId === null || openThreadId === null) return;
+    rememberLastConversation(scopeThreadRef(openEnvironmentId, openThreadId));
+  }, [openEnvironmentId, openThreadId]);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",

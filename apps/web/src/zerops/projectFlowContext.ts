@@ -8,6 +8,7 @@
  * verbs that change it, as the person; a verb re-reads what it changed once
  * it has settled.
  */
+import type { GiteaReach } from "./giteaReach.logic";
 import type {
   EnvironmentRow,
   FlowPullRequest,
@@ -116,6 +117,12 @@ export interface ZeropsProjectFlowValue {
    * two failed tries.
    */
   readonly signInTrouble: string | null;
+  /** Whether the app can fetch its own Gitea session, and why not (`giteaReach`). */
+  readonly giteaReach: GiteaReach;
+  /** The registry of projects is read: a project it lacks is not here. */
+  readonly groupsRead: boolean;
+  /** Why a project's flow will not be read, by group id: both of its reads failed. */
+  readonly groupFailures: ReadonlyMap<string, string>;
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
   /**
    * What each Zerops project's stop runs, by project id — the platform's

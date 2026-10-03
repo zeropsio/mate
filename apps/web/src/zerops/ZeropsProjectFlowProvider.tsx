@@ -69,7 +69,8 @@ import {
 } from "react";
 
 import { useStopDeployments } from "./accountForge";
-import { useAccountGitea, useAccountGiteaServices } from "./giteaProject";
+import { useAccountGitea, useAccountGiteaServices, useAccountHoldsGitea } from "./giteaProject";
+import { giteaReach as reachOf } from "./giteaReach.logic";
 import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
 import {
   ZeropsProjectFlowContext,
@@ -370,6 +371,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";
 
+  const holdsGitea = useAccountHoldsGitea(clientId);
+  const giteaReach = reachOf({ holdsGitea, state: accountGitea?.state });
   const registry = useZeropsRegistry(clientId);
   const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
   const {
@@ -569,6 +572,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           })
         : EMPTY_FLOWS,
     [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease, nowMs, withheld],
+  );
+
+  // A project both of whose reads failed is joined into no flow: its page says why.
+  const groupFailures = useMemo(
+    () =>
+      new Map(
+        groups.flatMap(({ groupId }) => {
+          const deploysFailed = deployFailures.get(groupId);
+          const forgeFailed = forgeFailures.get(groupId);
+          return deploysFailed === undefined || forgeFailed === undefined
+            ? []
+            : [[groupId, deploysFailed] as const];
+        }),
+      ),
+    [deployFailures, forgeFailures, groups],
   );
 
   // Time to the first pull request row, per group, for diagnostics.
@@ -906,6 +924,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       signedIn,
       readable,
       signInTrouble,
+      giteaReach,
+      groupsRead: !registry.loading,
+      groupFailures,
       flows: lapsed ? EMPTY_FLOWS : flows,
       deployments,
       slugs: lapsed ? EMPTY_SLUGS : slugs,
@@ -925,7 +946,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       deployments,
       flows,
       giteaOrigin,
+      giteaReach,
+      groupFailures,
       lapsed,
+      registry.loading,
       mateNames,
       mergePullRequest,
       organizations,

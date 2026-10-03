@@ -86,6 +86,7 @@ export {
   formatGroupTag,
   formatRoleTag,
   generateZeropsGroupId,
+  heldGroupLabel,
   readZeropsGroupTags,
   withZeropsBotTag,
   ZEROPS_BOT_NAME_MAX_LENGTH,

@@ -8,7 +8,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
-import { environmentCatalog } from "../connection/catalog";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
@@ -17,6 +16,7 @@ import {
   type UsageEnvironmentIdentities,
   type UsageOwnersStatus,
 } from "./usageEnvironmentIdentities";
+import { useMatesSettled } from "./useMatesSettled";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -26,17 +26,13 @@ const NONE: UsageEnvironmentIdentities = new Map();
 export function useUsageEnvironmentIdentities(): {
   readonly identities: UsageEnvironmentIdentities;
   readonly owners: UsageOwnersStatus;
-  /**
-   * The environments are listed whole: the catalog is read and the Mates' listing is complete, or
-   * will tell no more (it failed, or is withheld) — no environment is still to be registered.
-   */
+  /** The environments are listed whole: no Mate is still to be registered (`useMatesSettled`). */
   readonly listed: boolean;
 } {
   const session = useZeropsSession();
   const signedIn = session.status === "signed-in";
   const { listing } = useZeropsCandidates();
   const environments = useAtomValue(zeropsEnvironmentsAtom);
-  const catalogReady = useAtomValue(environmentCatalog.catalogValueAtom).isReady;
   const { members, status } = useZeropsOrganizationMembersRead({
     clientId: session.activeOrganization?.id,
     enabled: signedIn,
@@ -60,11 +56,6 @@ export function useUsageEnvironmentIdentities(): {
     members: status,
     listing: listing.state,
   });
-  const listed =
-    catalogReady &&
-    (heldCandidates(listing).complete ||
-      listing.state === "failed" ||
-      listing.state === "gone" ||
-      listing.state === "withheld");
+  const listed = useMatesSettled();
   return { identities, owners, listed };
 }

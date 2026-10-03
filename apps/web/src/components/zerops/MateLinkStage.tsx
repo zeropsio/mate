@@ -178,6 +178,22 @@ function MateOpeningPage({
  * typed into, the conversation's own draft, which its composer reads as it takes over — and the
  * one opening line past its beat, or the link's own words where it has any.
  */
+/**
+ * The home's guess at where it lands — the Mate whose conversation was open last — while it works
+ * it out (`homeView`): the face, the name and the opening line, with nothing that takes input, the
+ * composer's place held empty; a wrong guess loses nothing typed, and gives way without motion.
+ */
+export function HomeOpeningView({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  return (
+    <MateLinkStage
+      composer={null}
+      environmentId={environmentId}
+      projectId={null}
+      voice={SILENT_STAGE}
+    />
+  );
+}
+
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const voice = useMateVoice();
   return (

@@ -712,7 +712,10 @@ function OpenCommandPaletteDialog(props: {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threadShells = useThreadShells();
-  const listsRead = useAllEnvironmentShellsBootstrapped();
+  // Read once is read: a reconnect's retry keeps the lists it had, so the sentence never toggles.
+  const bootstrapped = useAllEnvironmentShellsBootstrapped();
+  const [listsRead, setListsRead] = useState(bootstrapped);
+  if (bootstrapped && !listsRead) setListsRead(true);
   // Every thread link the palette offers — a thread row, a project's latest
   // thread — opens only into an environment the route gate would open, and
   // never into a crewmate's thread, which is the crew's to open.
