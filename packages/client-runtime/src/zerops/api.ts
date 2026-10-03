@@ -2260,7 +2260,7 @@ export class ZeropsApiClient {
     const keys = [
       ...new Set([
         ...(token === undefined ? [] : [token.id]),
-        ...mateAdminKeys(tokens, projectId).map((key) => key.id),
+        ...mateAdminKeys(tokens, projectId, container?.created).map((key) => key.id),
       ]),
     ];
     for (const tokenId of keys) {

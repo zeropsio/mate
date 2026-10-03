@@ -175,7 +175,7 @@ import { useMateActions } from "~/zerops/useMateActions";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
+import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
@@ -481,17 +481,25 @@ export function declaredEnvironmentSummary(
 
 /**
  * The one line a group says about itself, in its own row: that it has no name
- * yet, or that a stage or production the page repaired in the background is
- * not finished. A repair's failure is the group's to show, in the page's words
- * — the platform's own message is not the person's to read, and a line under
- * the page is nobody's.
+ * yet, or where a stage or production stands whose setup is not finished —
+ * being finished, finished in vain, or waiting for the person's *Finish setting
+ * up* (audit R2: the page never finishes one by itself). A finish's failure is
+ * the group's to show, in the page's words — the platform's own message is not
+ * the person's to read, and a line under the page is nobody's.
  */
 export function projectsGroupLine(input: {
   readonly placeholder: boolean;
+  /** Its environment whose last finish did not go through. */
   readonly unfinished: GroupEnvironmentTier | undefined;
+  /** Its environment being finished now. */
+  readonly finishing: GroupEnvironmentTier | undefined;
+  /** Its environment whose setup is not finished. */
+  readonly halfMade: GroupEnvironmentTier | undefined;
 }): string | undefined {
   if (input.placeholder) return "This project has no name yet";
+  if (input.finishing !== undefined) return `Finishing ${input.finishing}…`;
   if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
+  if (input.halfMade !== undefined) return `Setting up ${input.halfMade} isn't finished`;
   return undefined;
 }
 
@@ -823,7 +831,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
-  const { listing, isLoading, error, refresh: refreshCandidates } = useZeropsCandidates();
+  const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
   // the page's notice says so while they are not (`projectsListingNotice`).
   const observedCandidates = useMemo(() => heldCandidates(listing).rows, [listing]);
@@ -922,10 +930,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   useEffect(() => () => unmountRef.current?.abort(), []);
 
   const [toolError, setToolError] = useState<string | null>(null);
-  /** The groups whose background repair of a stage or production did not finish. */
-  const [unfinished, setUnfinished] = useState<ReadonlyMap<string, GroupEnvironmentTier>>(
-    () => new Map(),
-  );
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
   // Ticks once a second while a creation runs, so the checklist's durations
   // move; stops the moment it settles.
@@ -1923,11 +1927,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
 
   // A stage or a production whose creation lost its last writes — its attach to its application,
-  // its deploy key — or whose key HQ does not hold, or holds broken (main E07), is finished here,
-  // off the same list, once no creation is on its way in this tab
-  // (`useZeropsGroupEnvironmentReconcile`). Only an application whose environments HQ has said says
-  // what it holds: one still unsaid would read as holding nothing, and every environment in it as
-  // half-made.
+  // its deploy key — or whose key HQ does not hold, or holds broken (main E07), is said on its
+  // project's row and finished from its menu, when the person asks (`useFinishGroupEnvironment`).
+  // Only an application whose environments HQ has said says what it holds: one still unsaid would
+  // read as holding nothing, and every environment in it as half-made.
   const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
   const halfMade = useMemo(
     () =>
@@ -1942,23 +1945,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           }),
     [asker, candidates, heldEnvironments, registryState.registry],
   );
-  useZeropsGroupEnvironmentReconcile({
-    enabled: status === "signed-in" && !isLoading && !creationRunning,
-    client,
-    clientId: activeOrganization?.id,
-    hq,
-    halfMade,
-    // Not a failed creation: the project runs, and what is outstanding is
-    // said on its group's row (`projectsGroupLine`), not under the page.
-    onOutcome: (entry, outcome) => {
-      setUnfinished((current) => {
-        const next = new Map(current);
-        if (outcome.failed === undefined) next.delete(entry.groupId);
-        else next.set(entry.groupId, entry.tier);
-        return next;
-      });
-    },
-  });
+  const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
 
   // The throwaways this tab failed to delete, once they are past the door's
   // window; it lists the organization's tokens for nothing else.
@@ -2374,6 +2361,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               },
             ]
           : []),
+        // A stage or a production whose setup is not finished, finished as the person asks.
+        ...halfMade
+          .filter((entry) => entry.groupId === group.groupId)
+          .map((entry) => ({
+            id: `finish-${entry.tier}`,
+            label: `Finish setting up ${entry.tier}`,
+            disabled: creationRunning || finishing.finishing.has(group.groupId),
+            onSelect: () => {
+              finishing.finish(entry);
+            },
+          })),
         // A project with nothing in it goes, at whoever writes the structure's word.
         ...(deleteOffered(group, mayOffer(asker, "delete_app", null))
           ? [
@@ -2587,7 +2585,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         lastMerged: reads === undefined ? undefined : lastMergedCode(reads.merged),
         // Visible rather than a tooltip: it is an invitation to name the
         // project, and it disappears the moment one does.
-        line: projectsGroupLine({ placeholder, unfinished: unfinished.get(group.groupId) }),
+        line: projectsGroupLine({
+          placeholder,
+          unfinished: finishing.unfinished.get(group.groupId),
+          finishing: finishing.finishing.get(group.groupId),
+          halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
+        }),
         placeholder,
       };
     },

@@ -59,7 +59,7 @@ describe("findHeldMateKey — which tokens are a Mate's key", () => {
   });
 
   it("does not mistake a deploy token scoped to one project for a Mate's", () => {
-    // Identical by grant; only the platform's zcp- name tells them apart.
+    // Identical by grant; only the names a Mate's key comes with tell them apart.
     expect(mateKeyIn([DEPLOY_TOKEN], PROD)).toBeUndefined();
   });
 
@@ -67,9 +67,9 @@ describe("findHeldMateKey — which tokens are a Mate's key", () => {
     expect(mateKeyIn([MATE_TOKEN], PROD)).toBeUndefined();
   });
 
-  it("still finds the token after it has been widened to the group", () => {
-    // The match is "writes this project", never "grants only it" — otherwise
-    // this module could widen a token and then lose it.
+  // An earlier client's key widened to the group is left as it is: the rule takes a key whose only
+  // grant is its project, until the harden finds the key by the id its Mate enrolled with HQ.
+  it("does not take a key widened to the group for the Mate's", () => {
     const widened: ZeropsIntegrationToken = {
       ...MATE_TOKEN,
       projects: [
@@ -77,11 +77,67 @@ describe("findHeldMateKey — which tokens are a Mate's key", () => {
         { projectId: PROD, roleCode: "READ_ONLY" },
       ],
     };
-    expect(mateKeyIn([widened], DEV)?.id).toBe("tok-mate");
+    expect(mateKeyIn([widened], DEV)).toBeUndefined();
   });
 
   it("finds nothing when the account has no Mate in this project", () => {
     expect(mateKeyIn([], DEV)).toBeUndefined();
+  });
+});
+
+// Step A, A11 (the audit): a key the Zerops GUI makes with a Mate's container is named
+// `zerops-zcp-zcp`, ADMIN on that one project, and the `zcp-` matcher never found it. Until the
+// harden finds a key by the id its Mate enrolled with HQ, it takes the platform's two names, a key
+// whose only grant is this project, made before the container — never a deploy key, nor a
+// person's own token on the project.
+describe("findHeldMateKey — a key the platform made, by either of its names", () => {
+  const CONTAINER = "2026-10-01T10:05:00Z";
+  const token = (
+    id: string,
+    name: string,
+    projects: ZeropsIntegrationToken["projects"],
+    created = "2026-10-01T10:04:58Z",
+  ): ZeropsIntegrationToken => ({ id, name, roleCode: "NO_ACCESS", created, projects });
+  const only = (roleCode: "ADMIN" | "BASIC_USER") => [{ projectId: DEV, roleCode }];
+
+  it.each([
+    {
+      case: "the GUI's key, zerops-zcp-zcp, ADMIN on its one project",
+      tokens: [token("k-gui", "zerops-zcp-zcp", only("ADMIN"))],
+      want: "k-gui",
+    },
+    {
+      case: "a press's key, zcp-<project>",
+      tokens: [token("k-press", "zcp-Aurora - dev", only("BASIC_USER"))],
+      want: "k-press",
+    },
+    {
+      case: "not a deploy key on the project",
+      tokens: [token("k-deploy", "deploy-aurora - stage", only("BASIC_USER"))],
+      want: undefined,
+    },
+    {
+      case: "not a person's own token on the project",
+      tokens: [token("k-ci", "ci", only("ADMIN"))],
+      want: undefined,
+    },
+    {
+      case: "not a key that reaches another project too",
+      tokens: [
+        token("k-wide", "zerops-zcp-zcp", [
+          { projectId: DEV, roleCode: "ADMIN" },
+          { projectId: PROD, roleCode: "READ_ONLY" },
+        ]),
+      ],
+      want: undefined,
+    },
+    {
+      case: "not one made after the container",
+      tokens: [token("k-late", "zerops-zcp-zcp", only("ADMIN"), "2026-10-01T10:06:00Z")],
+      want: undefined,
+    },
+  ])("$case", ({ tokens, want }) => {
+    expect(findHeldMateKey(tokens, DEV, CONTAINER)?.id).toBe(want);
   });
 });
 

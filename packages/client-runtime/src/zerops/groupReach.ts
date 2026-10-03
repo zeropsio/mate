@@ -33,8 +33,12 @@
 /** The platform's project roles, as its own validation error enumerates them. */
 export type ZeropsProjectRole = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
 
-/** The platform names a dev container's token after the project it serves. */
-const ZCP_TOKEN_NAME_PREFIX = "zcp-";
+/**
+ * The names a Mate's key comes with: a press's, `zcp-<project>`, as the platform named the one it
+ * minted with a container; and the Zerops GUI's, `zerops-zcp-<service>` (the audit, 2026-10-03:
+ * 63 `zerops-zcp-zcp` keys on KRLS, none of which `zcp-` matched).
+ */
+const MATE_KEY_NAME_PREFIXES: ReadonlyArray<string> = ["zcp-", "zerops-zcp-"];
 
 /**
  * What a Mate holds on the project it lives in — everything zcp's bootstrap
@@ -97,21 +101,23 @@ export interface ZeropsTokenDelegation {
 }
 
 /**
- * Whether `token` is a key of the Mate whose own project is `projectId`.
+ * Whether `token` is a key of the Mate whose own project is `projectId`: one of the names a
+ * Mate's key comes with, and its only grant this project, at a Mate's own role, either one.
  *
- * Both halves of the test are needed. The name alone is not enough: it is
- * `zcp-<project name>` at mint time and a project can be renamed afterwards.
- * The grant alone is not enough either — a deploy token scoped to one project
- * looks identical by that test. Together they are unambiguous, and they stay
- * true after a key was widened *and* lowered, because the match is "writes
- * this project", never "grants only this project" and never one exact role.
+ * Both halves of the test are needed. The grant alone is not enough — a deploy key, or a person's
+ * own token scoped to the project, looks identical by it; the name alone is not either. A key
+ * widened beyond its project is not taken for one: the harden finds the key its Mate holds by its
+ * id once the Mate enrolled it with HQ, and by this rule only until then.
  */
 function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
+  const grants = token.projects ?? [];
+  const [grant] = grants;
   return (
-    token.name.startsWith(ZCP_TOKEN_NAME_PREFIX) &&
-    (token.projects ?? []).some(
-      (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
-    )
+    MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) &&
+    grants.length === 1 &&
+    grant !== undefined &&
+    grant.projectId === projectId &&
+    MATE_SELF_GRANT_ROLES.has(grant.roleCode)
   );
 }
 
@@ -129,11 +135,15 @@ function newestFirst(keys: ReadonlyArray<ZeropsIntegrationToken>): Array<ZeropsI
   });
 }
 
+/** Whether `key` was made before the container made at `container` (wall ms); any, where unknown. */
+const madeBefore = (key: ZeropsIntegrationToken, container: number): boolean =>
+  Number.isNaN(container) || createdMs(key) <= container;
+
 /**
- * The key a Mate's container holds, out of every key that is its (`isMateKeyOf`):
- * the one key, or — where a raced press or an older platform key left two — the newest made before
- * its container. A key made after it is an orphan, and keys nothing tells apart are never guessed
- * at: undefined.
+ * The key a Mate's container holds, out of every key that is its (`isMateKeyOf`): the newest made
+ * before its container — the one there is, or the newest where a raced press or an older platform
+ * key left two. A key made after it is an orphan; where the container's age is unknown, only a key
+ * that is the one there is stands, and keys nothing tells apart are never guessed at: undefined.
  */
 export function findHeldMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
@@ -141,10 +151,9 @@ export function findHeldMateKey(
   containerCreated: string | undefined,
 ): ZeropsIntegrationToken | undefined {
   const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
-  if (keys.length <= 1) return keys[0];
   const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
-  if (Number.isNaN(container)) return undefined;
-  return newestFirst(keys.filter((key) => createdMs(key) <= container))[0];
+  if (Number.isNaN(container)) return keys.length === 1 ? keys[0] : undefined;
+  return newestFirst(keys.filter((key) => madeBefore(key, container)))[0];
 }
 
 /** A key's role on its Mate's own project. */
@@ -152,22 +161,45 @@ function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | 
   return (token.projects ?? []).find((grant) => grant.projectId === projectId)?.roleCode;
 }
 
-/** Every key of a Mate still `ADMIN` on its own project: what a harden lowers. */
+/**
+ * Every key of a Mate still `ADMIN` on its own project, made before its container where its age is
+ * known: what a harden lowers.
+ */
 export function mateAdminKeys(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
   projectId: string,
+  containerCreated: string | undefined,
 ): ReadonlyArray<ZeropsIntegrationToken> {
+  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
   return tokens.filter(
-    (token) => isMateKeyOf(token, projectId) && selfRoleOf(token, projectId) === "ADMIN",
+    (token) =>
+      isMateKeyOf(token, projectId) &&
+      selfRoleOf(token, projectId) === "ADMIN" &&
+      madeBefore(token, container),
   );
 }
 
-/** The key a press reuses where no container holds one yet: the newest. */
+/** The name a press gives the key it mints with a Mate's container (`api.ts` `mateKeyName`). */
+const PRESS_KEY_NAME_PREFIX = "zcp-";
+
+/**
+ * The key a press reuses where no container holds one yet: the newest of the keys a press mints,
+ * by the name it gives them, writing this project at a Mate's own role — whatever else an earlier
+ * client let it reach, so a press never mints a second key beside one it made.
+ */
 export function newestMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
   projectId: string,
 ): ZeropsIntegrationToken | undefined {
-  return newestFirst(tokens.filter((token) => isMateKeyOf(token, projectId)))[0];
+  return newestFirst(
+    tokens.filter(
+      (token) =>
+        token.name.startsWith(PRESS_KEY_NAME_PREFIX) &&
+        (token.projects ?? []).some(
+          (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
+        ),
+    ),
+  )[0];
 }
 
 function sameGrants(

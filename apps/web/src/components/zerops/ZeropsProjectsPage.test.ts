@@ -948,11 +948,24 @@ describe("a declared environment's row", () => {
 });
 
 describe("a group's one line about itself", () => {
+  const NONE = { finishing: undefined, halfMade: undefined };
   it.each([
-    [{ placeholder: true, unfinished: "production" }, "This project has no name yet"],
-    [{ placeholder: false, unfinished: "production" }, "Couldn't finish setting up production"],
-    [{ placeholder: false, unfinished: "stage" }, "Couldn't finish setting up stage"],
-    [{ placeholder: false, unfinished: undefined }, undefined],
+    [{ ...NONE, placeholder: true, unfinished: "production" }, "This project has no name yet"],
+    [
+      { ...NONE, placeholder: false, unfinished: "production" },
+      "Couldn't finish setting up production",
+    ],
+    [{ ...NONE, placeholder: false, unfinished: "stage" }, "Couldn't finish setting up stage"],
+    [{ ...NONE, placeholder: false, unfinished: undefined }, undefined],
+    // Audit R2: a half-made environment is said, and finished only when the person asks.
+    [
+      { placeholder: false, unfinished: undefined, finishing: undefined, halfMade: "stage" },
+      "Setting up stage isn't finished",
+    ],
+    [
+      { placeholder: false, unfinished: "stage", finishing: "stage", halfMade: "stage" },
+      "Finishing stage…",
+    ],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
   });
