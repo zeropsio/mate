@@ -55,6 +55,13 @@ const FAILED_SEVERITY_MAX = 3;
 /** The newest lines shown under the build step while it runs. */
 const GLANCE_ROWS = 2;
 
+/**
+ * What a running build's room says until its first line: words, not an empty
+ * band (which read as the log being gone) and not a room that collapses (the
+ * card's height would move under the reader when the first line lands).
+ */
+const WAITING_WORDS = "Waiting for the build's first line…";
+
 /** What a log with no line to draw says in its dialog: read failed, still reading, or gone. */
 export function emptyLogWords(status: ZeropsBuildLogStatus): string {
   switch (status) {
@@ -88,6 +95,8 @@ export function ZeropsBuildLog({
   const openable = stands || lines.length > 0;
   const count = lineCount(lines.length);
   const glance = glancing ? foldBuildLogLines(lines).slice(-GLANCE_ROWS) : [];
+  // Its room never stands empty once the log answered: the build has written nothing yet.
+  const waiting = glancing && lines.length === 0 && status === "live";
   return (
     <div className="mt-1" data-zerops-build-log data-zerops-build-log-status={status}>
       {glancing ? (
@@ -96,6 +105,7 @@ export function ZeropsBuildLog({
           className="h-10 font-mono text-muted-foreground text-xs leading-5"
           data-zerops-build-log-glance
         >
+          {waiting ? <li data-zerops-build-log-waiting>{WAITING_WORDS}</li> : null}
           {glance.map((row) => (
             <li
               className={cn(
