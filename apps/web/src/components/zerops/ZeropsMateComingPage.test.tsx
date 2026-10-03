@@ -99,6 +99,7 @@ vi.mock("~/state/entities", () => ({
         ) ?? null),
   useThreadShells: () => app.threads,
   useThreadStatus: () => "live",
+  useThreadDetail: () => null,
   useProjects: () => app.projects,
 }));
 vi.mock("~/zerops/accountEnvironments", () => ({
@@ -345,7 +346,8 @@ describe("a Mate's own view while its link is made", () => {
       link: { key: undefined, environmentId: undefined, reachability: null } satisfies MateLink,
       listing: listingOf([]),
       words: "This conversation isn't in your Zerops projects.",
-      name: "This Mate",
+      // Never a placeholder name for a Mate it does not know.
+      name: undefined,
     },
   ])(
     "says why a Mate that cannot be opened is not, and stays: $case",
@@ -355,7 +357,8 @@ describe("a Mate's own view while its link is made", () => {
       openView();
       act(() => vi.advanceTimersByTime(10_000));
 
-      expect(said()).toContain(name);
+      if (name === undefined) expect(said()).not.toContain("This Mate");
+      else expect(said()).toContain(name);
       expect(said()).toContain(words);
       expect(buttons()).toEqual(["Go to projects"]);
       expect(app.connect).not.toHaveBeenCalled();
