@@ -17,8 +17,11 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatPictureBytes } from "./ComposerPictureView";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 
-/** The longest name a chip shows before it cuts it in the middle. */
+/** The longest name a sent file's chip shows before it cuts it in the middle. */
 const CHIP_NAME_CHARS = 28;
+
+/** The composer's card is narrower: its name is cut sooner, never at its end. */
+const CARD_NAME_CHARS = 19;
 
 /** What the text shows of a file: everything but its bytes. */
 export interface ComposerFileView {
@@ -51,8 +54,10 @@ export function AttachedFileFace(props: {
   readonly name: string;
   readonly detail: string;
   readonly theme: "light" | "dark";
+  /** The longest name it shows before cutting it in the middle. */
+  readonly nameChars?: number;
 }) {
-  const shown = fileChipName(props.name, CHIP_NAME_CHARS);
+  const shown = fileChipName(props.name, props.nameChars ?? CHIP_NAME_CHARS);
   return (
     <>
       <PierreEntryIcon
@@ -104,7 +109,12 @@ export function ComposerFile({ id }: { readonly id: string }) {
       aria-label={`File ${file.number}, ${file.name}, ${formatPictureBytes(file.sizeBytes)}`}
       onKeyDown={onKeyDown}
     >
-      <AttachedFileFace name={file.name} detail={detail} theme={resolvedTheme} />
+      <AttachedFileFace
+        name={file.name}
+        detail={detail}
+        theme={resolvedTheme}
+        nameChars={CARD_NAME_CHARS}
+      />
       {file.status === "failed" ? (
         <button
           type="button"
