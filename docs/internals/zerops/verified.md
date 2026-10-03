@@ -7439,12 +7439,17 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   and 08:35:08Z; none was deleted. A sampler polling every ~55 s saw KRLS's project list, member
   list and token list time out at 25 s at 08:33:38Z and 08:34:33Z, and answer in 0.3–1.4 s at
   08:35:28Z.
-- **HQ's structure socket is cut at 120 s while it is busy** — a Node client held KRLS HQ's
-  structure socket through the project's own domain (`<publicZone>`) for 5 min from 11:56Z, answering
-  every ping: sockets 1 and 2 each ended at 120.02 s with `1006`, not clean, after 5 pings; a
-  reconnect got a fresh snapshot within 15 ms; socket 3, closed by the client at 59 s, ended
-  `1000`. Which hop cuts it is not measured (HQ then ran Core `e53e911ffd`, which does not log a
-  socket's end).
+- **The project's L7 cuts every WebSocket 120 s after it opens, busy or not, with no close frame**
+  — a Node client held KRLS HQ's structure socket through the project's own domain
+  (`<publicZone>`, `*.prg1-zerops.zone`) for 5 min from 11:56Z, answering every ping: sockets 1
+  and 2 each ended at 120.02 s with `1006`, not clean, after 5 pings; a reconnect got a fresh
+  snapshot within 15 ms; socket 3, closed by the client at 59 s, ended `1000`. HQ's own log
+  (`zcli service log`) gave the same two sockets `http.span`s of 119 989 and 119 988 ms, just under
+  the client's, so the cut sits between them. Every Mate link (`/api/mate/link`) in HQ's log from
+  11:49Z to 12:01Z lasted 119 986–120 003 ms, each followed about 1 s later by the Mate's
+  link-ticket and a new link. A local Core held a socket 135 s at the same cadence. Pings every
+  20 s each way do not prevent the cut; this is not the 60 s idle cut. The L7 balancer docs name no
+  such limit.
 - **A production imported without code reads `source: NONE` only from the version list** — the
   `activeAppVersion` embedded in `POST /service-stack/search` carries `base, created, id,
 lastUpdate, os, status` only; `/app-version/search` gives the same version `source: NONE`,
