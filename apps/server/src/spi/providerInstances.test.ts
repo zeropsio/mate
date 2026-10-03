@@ -8,13 +8,17 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
+import type { ProviderInstance } from "./ProviderInstanceTest.ts";
 import {
   agentDefaultInstanceId,
   layer as providerInstancesLayer,
   ProviderInstances,
   providerAuthDisagrees,
 } from "./providerInstances.ts";
+
+const noInstances = Layer.mock(ProviderInstanceRegistry)({});
 
 describe("agentDefaultInstanceId", () => {
   it("maps claude-code to the claudeAgent driver's default instance", () => {
@@ -81,6 +85,7 @@ describe("driverKindOf", () => {
   const instances = ProviderInstances.pipe(
     Effect.provide(
       providerInstancesLayer.pipe(
+        Layer.provide(noInstances),
         Layer.provide(
           Layer.mock(ProviderRegistry)({
             getProviders: Effect.succeed([
@@ -106,6 +111,72 @@ describe("driverKindOf", () => {
   );
 });
 
+describe("agentOf", () => {
+  const live = (instanceId: string, driver: string, threadProfile?: { tools: boolean }) =>
+    ({
+      instanceId: ProviderInstanceId.make(instanceId),
+      driverKind: ProviderDriverKind.make(driver),
+      displayName: undefined,
+      adapter: {
+        capabilities: {
+          sessionModelSwitch: "in-session",
+          ...(threadProfile ? { threadProfile } : {}),
+        },
+      },
+    }) as unknown as ProviderInstance;
+  const instances = [
+    live("claudeAgent", "claudeAgent", { tools: true }),
+    live("codex", "codex", { tools: false }),
+    live("cursor", "cursor"),
+  ];
+  const run = (instanceId: string) =>
+    Effect.gen(function* () {
+      const { agentOf } = yield* ProviderInstances;
+      return yield* agentOf(instanceId);
+    }).pipe(
+      Effect.provide(
+        providerInstancesLayer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ProviderRegistry)({
+                getProviders: Effect.succeed([
+                  { instanceId: "claudeAgent", displayName: "Claude" },
+                  { instanceId: "cursor", displayName: "Cursor" },
+                ] as unknown as ReadonlyArray<ServerProvider>),
+              }),
+              Layer.mock(ProviderInstanceRegistry)({
+                getInstance: (instanceId) =>
+                  Effect.succeed(instances.find((entry) => entry.instanceId === instanceId)),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+
+  it.effect.each([
+    {
+      instanceId: "claudeAgent",
+      expected: { driver: "claudeAgent", displayName: "Claude", threadProfile: { tools: true } },
+    },
+    {
+      instanceId: "codex",
+      expected: { driver: "codex", displayName: "codex", threadProfile: { tools: false } },
+    },
+    {
+      instanceId: "cursor",
+      expected: { driver: "cursor", displayName: "Cursor", threadProfile: undefined },
+    },
+    { instanceId: "gone", expected: undefined },
+  ] as const)(
+    "reads what $instanceId's adapter does with a thread profile",
+    ({ instanceId, expected }) =>
+      Effect.gen(function* () {
+        expect(yield* run(instanceId)).toEqual(expected);
+      }),
+  );
+});
+
 describe("reconcileInstanceAuth", () => {
   const work = ProviderInstanceId.make("claudeAgent-work");
   const run = (status: ServerProviderAuthStatus, verified: ServerProviderAuthStatus) =>
@@ -114,6 +185,7 @@ describe("reconcileInstanceAuth", () => {
       const { reconcileInstanceAuth } = yield* ProviderInstances.pipe(
         Effect.provide(
           providerInstancesLayer.pipe(
+            Layer.provide(noInstances),
             Layer.provide(
               Layer.mock(ProviderRegistry)({
                 getProviders: Effect.succeed([

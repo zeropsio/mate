@@ -20,7 +20,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
+import type { ThreadProfileSupport } from "./threadToolPolicy.ts";
 
 /**
  * `ProviderDriverKind` for each agent's built-in driver
@@ -58,6 +60,18 @@ export const providerAuthDisagrees = (
   return status !== undefined && status !== "unknown" && status !== verified;
 };
 
+/** A configured instance's coding agent, as owned code needs it. */
+export interface ProviderInstanceAgent {
+  readonly driver: ProviderDriverKind;
+  /** The name every surface shows for it: its snapshot's, else its own, else its driver's kind. */
+  readonly displayName: string;
+  /**
+   * What its adapter declares it does with a thread's profile; `undefined`:
+   * it never reads one, so a profiled thread would run on it ungated.
+   */
+  readonly threadProfile: ThreadProfileSupport | undefined;
+}
+
 export class ProviderInstances extends Context.Service<
   ProviderInstances,
   {
@@ -86,6 +100,11 @@ export class ProviderInstances extends Context.Service<
      * `undefined` for an id no configured instance carries.
      */
     readonly driverKindOf: (instanceId: string) => Effect.Effect<ProviderDriverKind | undefined>;
+    /**
+     * The agent a live instance runs, read off its adapter; `undefined` for
+     * an id no live instance carries (unknown, or its driver failed).
+     */
+    readonly agentOf: (instanceId: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
     /** The configured instances as the registry holds them now (`ServerProvider` each). */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
   }
@@ -95,6 +114,7 @@ export const layer = Layer.effect(
   ProviderInstances,
   Effect.gen(function* () {
     const registry = yield* ProviderRegistry;
+    const instanceRegistry = yield* ProviderInstanceRegistry;
     const reconcileInstanceAuth = (
       instanceId: ProviderInstanceId,
       verified: ServerProviderAuthStatus,
@@ -116,6 +136,19 @@ export const layer = Layer.effect(
             (providers) => providers.find((provider) => provider.instanceId === instanceId)?.driver,
           ),
         ),
+      agentOf: (instanceId) =>
+        Effect.gen(function* () {
+          const instance = yield* instanceRegistry.getInstance(ProviderInstanceId.make(instanceId));
+          if (instance === undefined) return undefined;
+          const snapshot = (yield* registry.getProviders).find(
+            (provider) => provider.instanceId === instanceId,
+          );
+          return {
+            driver: instance.driverKind,
+            displayName: snapshot?.displayName ?? instance.displayName ?? instance.driverKind,
+            threadProfile: instance.adapter.capabilities.threadProfile,
+          };
+        }),
       providers: registry.getProviders,
     } satisfies ProviderInstances["Service"];
   }),

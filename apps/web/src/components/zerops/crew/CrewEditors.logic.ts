@@ -1,14 +1,14 @@
 /**
  * What the Crew tab's views (PRD §4.7) compute: the free tints, *Runs on*'s
  * logins, models and effort levels from the Mate's provider catalog, where a
- * builder's copy may live, and the issues a view must not save over. Phase B
- * offers the two default logins only. One Save applies at the crewmate's
+ * builder's copy may live, and the issues a view must not save over. One Save applies at the crewmate's
  * next message (§5.6, on the probe-22 fallback: in a fresh conversation).
  *
  * The crew home's format is `@t3tools/shared/crewHome`'s, and the form ↔
  * definition adapter is `zerops/crew/crewHome.ts`.
  */
 import {
+  agentIdForDriverKind,
   agentIdForProviderInstance,
   type CrewDevHost,
   type CrewLogin,
@@ -37,48 +37,54 @@ export function freeTints(
   return MATE_TINT_IDS.filter((tint) => tint !== mateTint && !taken.has(tint));
 }
 
-/** The provider instances that are Mate logins in phase B: the two defaults. */
-const DEFAULT_LOGINS: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
-  { id: "claudeAgent", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-];
+/** A login *Runs on* offers: whether its agent also hosts the crew tools. */
+export interface CrewLoginOption extends CrewLogin {
+  readonly tools: boolean;
+}
 
 /**
- * The logins a crewmate may run on. The lead needs the crew tools, which
- * only Claude hosts in phase C, so it is offered no Codex login.
+ * The logins a crewmate may run on: every installed, enabled one whose agent
+ * carries the crew's rules (`threadProfile`). The lead hands out and lands
+ * the work with the crew tools, so it is offered only an agent that hosts them.
  */
 export function crewLoginOptions(
   providers: ReadonlyArray<ServerProvider>,
   lead: boolean,
-): ReadonlyArray<CrewLogin> {
-  return DEFAULT_LOGINS.flatMap((login) => {
-    const agent = agentIdForProviderInstance(login.id);
-    const present = providers.some((provider) => provider.instanceId === login.id);
-    return present && agent !== undefined && !(lead && agent === "codex")
-      ? [{ id: login.id, label: login.label, agent }]
-      : [];
+): ReadonlyArray<CrewLoginOption> {
+  return providers.flatMap((provider) => {
+    const profile = provider.threadProfile;
+    if (!provider.enabled || !provider.installed || profile === undefined) return [];
+    if (lead && !profile.tools) return [];
+    const agent =
+      agentIdForProviderInstance(provider.instanceId) ?? agentIdForDriverKind(provider.driver);
+    return [
+      {
+        id: provider.instanceId,
+        label: provider.displayName ?? provider.instanceId,
+        ...(agent === undefined ? {} : { agent }),
+        tools: profile.tools,
+      },
+    ];
   });
 }
 
-/** A login's name: the catalog's, else — before the Mate's catalog is read — a default's own. */
+/** A login's name: the catalog's, else its id. */
 export function crewLoginLabel(logins: ReadonlyArray<CrewLogin>, loginId: string): string {
-  return (
-    logins.find((login) => login.id === loginId)?.label ??
-    DEFAULT_LOGINS.find((login) => login.id === loginId)?.label ??
-    loginId
-  );
+  return logins.find((login) => login.id === loginId)?.label ?? loginId;
 }
 
 /**
- * What *Runs on* says about the chosen login, if anything: a Codex crewmate
- * runs code-only in phase C, and only the person's *Land* completes its task.
+ * What *Runs on* says about the chosen login, if anything: on an agent that
+ * hosts no crew tools a crewmate works on code only, and only the person's
+ * *Land* completes its task.
  */
 export function crewLoginNote(
-  logins: ReadonlyArray<CrewLogin>,
+  logins: ReadonlyArray<CrewLoginOption>,
   loginId: string,
 ): string | undefined {
-  return logins.find((login) => login.id === loginId)?.agent === "codex"
-    ? "A Codex crewmate works on code only, with no Zerops tools. Its task is done when you land it."
+  const login = logins.find((candidate) => candidate.id === loginId);
+  return login !== undefined && !login.tools
+    ? `On ${login.label}, a crewmate works on code only, with no Zerops tools. Its task is done when you land it.`
     : undefined;
 }
 
@@ -113,7 +119,19 @@ export function crewRunsOn(
   return { login: crewmate.login.label, model, effort };
 }
 
-/** A model's effort levels: its `effort` (Claude) or `reasoningEffort` (Codex) choices. */
+/**
+ * The model option each agent's effort is (the one a crewmate's effort sets
+ * on the server): Claude's `effort`, Codex's and Grok's `reasoningEffort`,
+ * Cursor's `reasoning`, OpenCode's `variant`.
+ */
+const EFFORT_OPTION_IDS: ReadonlySet<string> = new Set([
+  "effort",
+  "reasoningEffort",
+  "reasoning",
+  "variant",
+]);
+
+/** A model's effort levels: the choices of its effort option. */
 export function crewEffortOptions(
   providers: ReadonlyArray<ServerProvider>,
   loginId: string,
@@ -124,9 +142,7 @@ export function crewEffortOptions(
     .find((candidate) => candidate.instanceId === loginId)
     ?.models.find((candidate) => candidate.slug === modelSlug);
   const descriptor = model?.capabilities?.optionDescriptors?.find(
-    (candidate) =>
-      candidate.type === "select" &&
-      (candidate.id === "effort" || candidate.id === "reasoningEffort"),
+    (candidate) => candidate.type === "select" && EFFORT_OPTION_IDS.has(candidate.id),
   );
   return descriptor?.type === "select"
     ? descriptor.options.map((option) => ({ id: option.id, label: option.label }))

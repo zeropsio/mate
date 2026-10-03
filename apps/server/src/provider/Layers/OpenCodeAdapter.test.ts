@@ -31,6 +31,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
+import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
@@ -106,6 +107,7 @@ const runtimeMock = {
     eventSubscribeObserved: null as (() => void) | null,
     eventStreamError: null as ((cause: unknown) => void) | null,
     permissionReplyCalls: [] as Array<{ requestID: string; reply: string }>,
+    mcpAddCalls: [] as Array<{ name: string; config: unknown }>,
     permissionReplyImplementation: null as ((signal?: AbortSignal) => Promise<void>) | null,
     permissionReplySignals: [] as AbortSignal[],
     questionReplyCalls: [] as Array<{
@@ -170,6 +172,7 @@ const runtimeMock = {
     this.state.eventSubscribeObserved = null;
     this.state.eventStreamError = null;
     this.state.permissionReplyCalls.length = 0;
+    this.state.mcpAddCalls.length = 0;
     this.state.permissionReplyImplementation = null;
     this.state.permissionReplySignals.length = 0;
     this.state.questionReplyCalls.length = 0;
@@ -500,6 +503,12 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
               }
             })(),
           };
+        },
+      },
+      mcp: {
+        add: async (body: { name: string; config: unknown }) => {
+          runtimeMock.state.mcpAddCalls.push(body);
+          return { data: {} };
         },
       },
       permission: {
@@ -2330,6 +2339,74 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(session?.activeTurnId, undefined);
       NodeAssert.equal(turn.turnId !== undefined, true);
 
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("reports the session's total cost on a completed turn", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-total-cost");
+      const sessionID = "http://127.0.0.1:9999/session";
+      const busy = promiseWithResolvers<unknown>();
+      const answer = promiseWithResolvers<unknown>();
+      const answered = promiseWithResolvers<unknown>();
+      const idle = promiseWithResolvers<unknown>();
+      runtimeMock.state.subscribedEvents = [
+        busy.promise,
+        answer.promise,
+        answered.promise,
+        idle.promise,
+      ];
+      runtimeMock.state.sessionStatusImplementation = async () => ({ data: {} });
+      const completed = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "turn.completed"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "What does it cost?",
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("opencode"),
+          "opencode/kimi-k3",
+        ),
+      });
+      busy.resolve({
+        id: "evt-cost-busy",
+        type: "session.status",
+        properties: { sessionID, status: { type: "busy" } },
+      });
+      // One assistant message, updated as it streams: its last cost counts once.
+      for (const [event, cost] of [
+        [answer, 0.02],
+        [answered, 0.05],
+      ] as const) {
+        event.resolve({
+          id: `evt-cost-${cost}`,
+          type: "message.updated",
+          properties: {
+            sessionID,
+            info: { id: "msg-assistant-cost", sessionID, role: "assistant", cost },
+          },
+        });
+      }
+      idle.resolve({
+        id: "evt-cost-idle",
+        type: "session.status",
+        properties: { sessionID, status: { type: "idle" } },
+      });
+      yield* advanceTestClock(1_000);
+      const event = Option.getOrUndefined(yield* Fiber.join(completed));
+      NodeAssert.equal(
+        event?.type === "turn.completed" ? event.payload.totalCostUsd : undefined,
+        0.05,
+      );
       yield* adapter.stopSession(threadId);
     }),
   );
@@ -7253,5 +7330,134 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(sessions[0]?.threadId, "thread-native-log-failure");
       NodeAssert.deepEqual(closeCallsDuringRun, []);
     }),
+  );
+});
+
+const CREWMATE_THREAD = asThreadId("thread-crewmate");
+
+const OpenCodeProfiledAdapterTestLayer = Layer.effect(
+  OpenCodeAdapter,
+  Effect.gen(function* () {
+    const registry = yield* ThreadToolPolicyRegistry;
+    yield* registry.install({
+      profileFor: (thread) =>
+        Effect.succeed(
+          thread.threadId === CREWMATE_THREAD
+            ? {
+                sessionContext: "You are @backend on the crew.",
+                contextWindow: 100_000,
+                decideTool: (call) =>
+                  Effect.succeed(
+                    call.toolName === "Bash" &&
+                      (call.input as { command?: string }).command === "npm test"
+                      ? { kind: "allow" as const }
+                      : { kind: "deny" as const, reason: "Not in your lane." },
+                  ),
+                tools: [
+                  {
+                    name: "crew_report",
+                    description: "Report.",
+                    inputSchema: { type: "object" },
+                    run: () => Effect.succeed({ text: "ok", isError: false }),
+                  },
+                ],
+              }
+            : undefined,
+        ),
+    });
+    return yield* makeOpenCodeAdapter(openCodeAdapterTestSettings);
+  }),
+).pipe(
+  Layer.provideMerge(ThreadToolPolicyRegistry.layer),
+  Layer.provideMerge(Layer.succeed(OpenCodeRuntime, OpenCodeRuntimeTestDouble)),
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+  Layer.provideMerge(ServerSettingsService.layerTest()),
+  Layer.provideMerge(providerSessionDirectoryTestLayer),
+  Layer.provideMerge(NodeServices.layer),
+);
+
+it.layer(OpenCodeProfiledAdapterTestLayer)("OpenCodeAdapter with a thread profile", (it) => {
+  it.effect(
+    "a crewmate's session asks for everything, serves its tools, and its gate answers each ask",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        const sessionID = "http://127.0.0.1:9999/session";
+        const toolPart = (callID: string, command: string) => ({
+          id: `evt-part-${callID}`,
+          type: "message.part.updated",
+          properties: {
+            sessionID,
+            time: 1,
+            part: {
+              id: `part-${callID}`,
+              sessionID,
+              messageID: "msg-assistant",
+              type: "tool",
+              callID,
+              tool: "bash",
+              state: { status: "running", input: { command }, title: command, time: { start: 1 } },
+            },
+          },
+        });
+        const asked = (id: string, callID: string) => ({
+          id: `evt-${id}`,
+          type: "permission.asked",
+          properties: {
+            id,
+            sessionID,
+            permission: "bash",
+            patterns: ["*"],
+            metadata: {},
+            always: ["*"],
+            tool: { messageID: "msg-assistant", callID },
+          },
+        });
+        const pushEvent = makeOpenCodeEventQueue();
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId: CREWMATE_THREAD,
+          runtimeMode: "approval-required",
+        });
+        yield* adapter.sendTurn({
+          threadId: CREWMATE_THREAD,
+          input: "Start",
+          modelSelection: createModelSelection(
+            ProviderInstanceId.make("opencode"),
+            "opencode/kimi-k3",
+          ),
+        });
+        for (const event of [
+          toolPart("call-ok", "npm test"),
+          asked("per_ok", "call-ok"),
+          toolPart("call-no", "rm -rf /"),
+          asked("per_no", "call-no"),
+        ]) {
+          pushEvent(event);
+        }
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          if (runtimeMock.state.permissionReplyCalls.length === 2) break;
+          yield* advanceTestClock(10);
+        }
+        const prompt = runtimeMock.state.promptCalls.at(-1) as { system?: string };
+        NodeAssert.deepEqual(
+          {
+            permission: runtimeMock.state.sessionCreateInputs[0]?.permission,
+            servers: runtimeMock.state.mcpAddCalls.map((call) => call.name.startsWith("crew-")),
+            replies: runtimeMock.state.permissionReplyCalls,
+            context: prompt?.system?.includes("You are @backend on the crew."),
+          },
+          {
+            permission: [{ permission: "*", pattern: "*", action: "ask" }],
+            servers: [true],
+            replies: [
+              { requestID: "per_ok", reply: "once" },
+              { requestID: "per_no", reply: "reject" },
+            ],
+            context: true,
+          },
+        );
+        yield* adapter.stopSession(CREWMATE_THREAD);
+      }),
   );
 });

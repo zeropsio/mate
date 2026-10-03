@@ -79,7 +79,8 @@ const provider = (
 const claude = provider({
   instanceId: "claudeAgent" as ServerProvider["instanceId"],
   driver: "claudeAgent" as ServerProvider["driver"],
-  displayName: "Claude Code",
+  displayName: "Claude",
+  threadProfile: { tools: true },
   models: [
     {
       slug: "claude-opus-5-5",
@@ -105,6 +106,8 @@ const claude = provider({
 const codex = provider({
   instanceId: "codex" as ServerProvider["instanceId"],
   driver: "codex" as ServerProvider["driver"],
+  displayName: "Codex",
+  threadProfile: { tools: false },
   models: [
     {
       slug: "gpt-5",
@@ -126,19 +129,48 @@ const codex = provider({
 const cursor = provider({
   instanceId: "cursor" as ServerProvider["instanceId"],
   driver: "cursor" as ServerProvider["driver"],
+  displayName: "Cursor",
 });
+const grok = provider({
+  instanceId: "grok" as ServerProvider["instanceId"],
+  driver: "grok" as ServerProvider["driver"],
+  displayName: "Grok",
+  threadProfile: { tools: true },
+});
+const claudeWork = provider({
+  instanceId: "claudeAgent_work" as ServerProvider["instanceId"],
+  driver: "claudeAgent" as ServerProvider["driver"],
+  displayName: "Claude Code · work",
+  threadProfile: { tools: true },
+});
+const uninstalledGrok = {
+  ...grok,
+  instanceId: "grok_off" as ServerProvider["instanceId"],
+  installed: false,
+};
+const disabledClaude = {
+  ...claudeWork,
+  instanceId: "claudeAgent_off" as ServerProvider["instanceId"],
+  enabled: false,
+};
 
 describe("Runs on", () => {
-  it("offers the two default logins this Mate has", () => {
-    expect(crewLoginOptions([cursor, codex, claude], false)).toEqual([
-      { id: "claudeAgent", label: "Claude Code", agent: "claude-code" },
-      { id: "codex", label: "Codex", agent: "codex" },
+  const catalog = [cursor, codex, claude, claudeWork, grok, uninstalledGrok, disabledClaude];
+
+  it("offers every installed, enabled login whose agent carries the crew's rules", () => {
+    expect(crewLoginOptions(catalog, false)).toEqual([
+      { id: "codex", label: "Codex", agent: "codex", tools: false },
+      { id: "claudeAgent", label: "Claude", agent: "claude-code", tools: true },
+      { id: "claudeAgent_work", label: "Claude Code · work", agent: "claude-code", tools: true },
+      { id: "grok", label: "Grok", tools: true },
     ]);
   });
 
-  it("offers the lead no Codex login: it needs the crew tools, which only Claude hosts", () => {
-    expect(crewLoginOptions([cursor, codex, claude], true)).toEqual([
-      { id: "claudeAgent", label: "Claude Code", agent: "claude-code" },
+  it("offers the lead only the logins whose agent hosts the crew tools", () => {
+    expect(crewLoginOptions(catalog, true).map((login) => login.id)).toEqual([
+      "claudeAgent",
+      "claudeAgent_work",
+      "grok",
     ]);
   });
 
@@ -152,24 +184,24 @@ describe("Runs on", () => {
       name: "names a crewmate's login, model and effort as the catalog does",
       model: "claude-opus-5-5",
       effort: "high",
-      runsOn: { login: "Claude Code", model: "Opus 5.5", effort: "High" },
+      runsOn: { login: "Claude", model: "Opus 5.5", effort: "High" },
     },
     {
       name: "leaves out what runs on the login's defaults",
       model: null,
       effort: null,
-      runsOn: { login: "Claude Code", model: null, effort: null },
+      runsOn: { login: "Claude", model: null, effort: null },
     },
     {
       name: "keeps a model or effort the catalog does not list as written",
       model: "claude-next",
       effort: "max",
-      runsOn: { login: "Claude Code", model: "claude-next", effort: "max" },
+      runsOn: { login: "Claude", model: "claude-next", effort: "max" },
     },
   ])("$name", ({ model, effort, runsOn }) => {
     expect(
       crewRunsOn(
-        { login: { id: "claudeAgent", label: "Claude Code", agent: "claude-code" }, model, effort },
+        { login: { id: "claudeAgent", label: "Claude", agent: "claude-code" }, model, effort },
         [claude, codex],
       ),
     ).toEqual(runsOn);
@@ -189,17 +221,42 @@ describe("Runs on", () => {
     ]);
     expect(crewEffortOptions([claude, codex], "claudeAgent", "claude-haiku")).toEqual([]);
     expect(crewEffortOptions([claude, codex], "claudeAgent", null)).toEqual([]);
+    const cursorWithReasoning = provider({
+      instanceId: "cursor" as ServerProvider["instanceId"],
+      driver: "cursor" as ServerProvider["driver"],
+      models: [
+        {
+          slug: "gpt-5.4",
+          name: "GPT-5.4",
+          isCustom: false,
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "reasoning",
+                label: "Reasoning",
+                type: "select",
+                options: [{ id: "high", label: "High" }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(crewEffortOptions([cursorWithReasoning], "cursor", "gpt-5.4")).toEqual([
+      { id: "high", label: "High" },
+    ]);
   });
 
   it.each([
     [
       "codex",
-      "A Codex crewmate works on code only, with no Zerops tools. Its task is done when you land it.",
+      "On Codex, a crewmate works on code only, with no Zerops tools. Its task is done when you land it.",
     ],
     ["claudeAgent", undefined],
+    ["grok", undefined],
     ["gone", undefined],
   ] as const)("says what the %s login means for the crewmate", (loginId, note) => {
-    expect(crewLoginNote(crewLoginOptions([claude, codex], false), loginId)).toBe(note);
+    expect(crewLoginNote(crewLoginOptions(catalog, false), loginId)).toBe(note);
   });
 });
 
@@ -294,12 +351,11 @@ describe("crewLoginLabel", () => {
   it.each([
     [
       "the catalog's name",
-      [{ id: "claudeAgent-work", label: "Work", agent: "claude-code" }],
+      [{ id: "claudeAgent-work", label: "Work", agent: "claude-code", tools: true }],
       "claudeAgent-work",
       "Work",
     ],
-    ["a default's own, before the catalog is read", [], "claudeAgent", "Claude Code"],
-    ["the id, for a login nobody names", [], "someone-else", "someone-else"],
+    ["the id, for a login the catalog doesn't offer", [], "someone-else", "someone-else"],
   ] as const)("%s", (_, logins, id, label) => {
     expect(crewLoginLabel(logins, id)).toBe(label);
   });

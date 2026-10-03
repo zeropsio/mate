@@ -18,7 +18,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { ProviderRegistryTest } from "../spi/ProviderRegistryTest.ts";
+import { ProviderInstanceRegistryTest, ProviderRegistryTest } from "../spi/ProviderRegistryTest.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLogin from "./ZeropsAgentLogin.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -106,6 +106,7 @@ const fixtureHost = (zerops: ServerConfig.ServerConfig["Service"]["zerops"]) =>
     ServerConfig.layer({ zerops } as ServerConfig.ServerConfig["Service"]),
     Layer.mock(ProjectionSnapshotQuery)({}),
     ProviderRegistryTest.empty(),
+    ProviderInstanceRegistryTest.empty(),
   );
 
 const fixtureLayer = (

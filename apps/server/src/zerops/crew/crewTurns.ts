@@ -352,6 +352,14 @@ const recordLeadText = (core: CrewCore, stint: CrewStintRow, event: SpiEvent) =>
   }
 };
 
+/**
+ * An event that can open a tool call: Claude and Codex start one with
+ * `item.started`, the ACP agents only ever update it, so their first
+ * `item.updated` is its start.
+ */
+const opensCall = (event: SpiEvent): boolean =>
+  event.type === "item.started" || event.type === "item.updated";
+
 /** A deploy's target when it replaces a service that holds lanes. */
 const deployTarget = (applied: AppliedCrew, event: SpiEvent): string | undefined => {
   const call = event.toolCall;
@@ -367,7 +375,7 @@ const deployTarget = (applied: AppliedCrew, event: SpiEvent): string | undefined
 /** The service a person's own `zerops_dev_server` call restarts; the person wins a held claim. */
 const personDevServerHost = (event: SpiEvent): string | undefined => {
   const call = event.toolCall;
-  if (event.type !== "item.started" || call?.name !== "zerops_dev_server") return undefined;
+  if (!opensCall(event) || call?.name !== "zerops_dev_server") return undefined;
   const args = call.arguments;
   const host =
     typeof args === "object" && args !== null && "hostname" in args
@@ -431,7 +439,7 @@ export const makeTurnHandler = (core: CrewCore) => {
       if (applied === undefined) return;
       const target = deployTarget(applied, event);
       if (target !== undefined && event.itemId !== undefined) {
-        if (event.type === "item.started" && !deploys.has(event.itemId)) {
+        if (opensCall(event) && !deploys.has(event.itemId)) {
           deploys.set(event.itemId, target);
           yield* freeze(applied, target);
         } else if (event.type === "item.completed" && deploys.delete(event.itemId)) {

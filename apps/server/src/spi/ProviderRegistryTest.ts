@@ -16,6 +16,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 
 export const ProviderRegistryTest = {
@@ -27,4 +28,13 @@ export const ProviderRegistryTest = {
    */
   empty: (): Layer.Layer<ProviderRegistry> =>
     Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+};
+
+/**
+ * A test-only `ProviderInstanceRegistry` with no live instance, for the same
+ * reason: `ProviderInstances` reads an instance's adapter through it.
+ */
+export const ProviderInstanceRegistryTest = {
+  empty: (): Layer.Layer<ProviderInstanceRegistry> =>
+    Layer.mock(ProviderInstanceRegistry)({ getInstance: () => Effect.undefined }),
 };
