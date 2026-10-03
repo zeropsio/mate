@@ -1,6 +1,33 @@
-import { describe, expect, it } from "vite-plus/test";
+import { act, createElement } from "react";
+import { create } from "react-test-renderer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { nextHqStanding, readBundledCore, type HqStanding } from "./accountHq";
+import { RegistryContext } from "@effect/atom-react";
+import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import {
+  AccountEpoch,
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  type AccountScope,
+  type OrganizationRef,
+} from "@t3tools/client-runtime/zerops/data";
+import { hqAnchorName } from "@t3tools/client-runtime/zerops/hq";
+import { AtomRegistry } from "effect/unstable/reactivity";
+
+import { hqStructureAtom } from "~/state/zerops";
+
+import { makeMemberCells } from "./__fixtures__/memberCells";
+import {
+  accountHqApi,
+  nextHqStanding,
+  readBundledCore,
+  useAccountHq,
+  type AccountHq,
+  type HqStanding,
+} from "./accountHq";
+import { keepHqVerdict } from "./hqVerdict";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 describe("nextHqStanding", () => {
   const healthy = { kind: "healthy", build: "b1" } as const;
@@ -83,5 +110,161 @@ describe("readBundledCore — Core as this build carries it", () => {
     const core = await readBundledCore(fetch, "/hq-core");
     expect(core.archive).toEqual(archive);
     expect(asked).toEqual(["/hq-core/core.tgz.bin", "/hq-core/zerops.yml"]);
+  });
+});
+
+// Step A, open question 1: the member list names the official HQ, and KRLS's took tens of seconds
+// to read. A browser keeps the verdict per account and organization, and reads the list again only
+// on first use, after HQ refuses as not official, or after an outage of more than ten minutes.
+describe("useAccountHq — the official HQ this browser keeps", () => {
+  const scope: AccountScope = {
+    account: {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account-a"),
+    },
+    epoch: AccountEpoch.make(1),
+  };
+  const organizationRef = (organizationId: string): OrganizationRef => ({
+    kind: "organization",
+    account: scope.account,
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+  /** The anchor an org admin minted for the HQ at `address`: what the member list names it by. */
+  const anchor = (projectId: string, address: string) =>
+    ({
+      id: `cu-${projectId}`,
+      roleCode: "ADMIN",
+      status: "ACTIVE",
+      user: { fullName: hqAnchorName(projectId, address), email: `token-${projectId}@zerops.io` },
+    }) as ZeropsOrganizationMember;
+
+  // This browser's storage, for the verdict kept between loads.
+  beforeEach(() => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * `useAccountHq` for `clientId` over an organization whose member list is `members`, counting its
+   * reads; HQ's structure stream unavailable since `unavailableSince` (wall ms) where it says.
+   */
+  async function rendered(
+    clientId: string,
+    members: ReadonlyArray<ZeropsOrganizationMember>,
+    unavailableSince: number | null = null,
+  ) {
+    const registry = AtomRegistry.make();
+    registry.set(hqStructureAtom, {
+      organizationId: clientId,
+      structure: null,
+      changes: null,
+      readAt: null,
+      current: unavailableSince === null,
+      unavailableSince,
+    });
+    let reads = 0;
+    const cells = await makeMemberCells({
+      scope,
+      organization: organizationRef(clientId),
+      members: async () => {
+        reads += 1;
+        return members;
+      },
+    });
+    const data = {
+      runtime: { scope, cells },
+      organizationRef,
+    } as unknown as ZeropsDataContextValue;
+    const seen: Array<AccountHq> = [];
+    function Probe() {
+      seen.push(useAccountHq(clientId));
+      return null;
+    }
+    await act(async () => {
+      create(
+        createElement(
+          RegistryContext.Provider,
+          { value: registry },
+          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+        ),
+      );
+    });
+    return { reads: () => reads, last: () => seen.at(-1)! };
+  }
+
+  it("a load with a kept verdict reads no member list", async () => {
+    keepHqVerdict(
+      { account: scope.account, clientId: "org-kept" },
+      {
+        projectId: "P_HQ",
+        address: "https://hq.example.test",
+      },
+    );
+    const hq = await rendered("org-kept", [anchor("P_HQ", "https://hq.example.test")]);
+    expect([hq.reads(), hq.last().status, hq.last().hq]).toEqual([
+      0,
+      "ready",
+      { kind: "official", projectId: "P_HQ", address: "https://hq.example.test" },
+    ]);
+  });
+
+  it("an HQ that refuses as not official reads the member list once", async () => {
+    const OLD = { projectId: "P_OLD", address: "https://old.example.test" };
+    keepHqVerdict({ account: scope.account, clientId: "org-moved" }, OLD);
+    // An admin moved the anchor: the member list names another HQ now.
+    const hq = await rendered("org-moved", [anchor("P_NEW", "https://new.example.test")]);
+    expect(hq.reads()).toBe(0);
+
+    // The kept HQ's door: not serving, and its health says it is not the organization's HQ.
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) =>
+      String(input).endsWith("/health")
+        ? Response.json({ state: "standby", official: "anchor_elsewhere", build: "b1" })
+        : Response.json({ code: "not_active" }, { status: 503 }),
+    );
+    const client = {
+      accountEpoch: 1,
+      mintThrowaway: async (
+        _input: unknown,
+        options: { readonly beforeMint?: () => Promise<void> },
+      ) => {
+        await options.beforeMint?.();
+        return { id: "t-1", token: "door-token", mintingToken: "minting" };
+      },
+      deleteThrowaway: async () => {},
+    } as unknown as ZeropsApiClient;
+    await act(async () => {
+      await accountHqApi(client, "org-moved", OLD)
+        .structure()
+        .catch(() => undefined);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect([hq.reads(), hq.last().hq]).toEqual([
+      1,
+      { kind: "official", projectId: "P_NEW", address: "https://new.example.test" },
+    ]);
+  });
+
+  it("an outage of more than ten minutes reads the member list once", async () => {
+    const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
+    keepHqVerdict({ account: scope.account, clientId: "org-out" }, HQ);
+    const hq = await rendered(
+      "org-out",
+      [anchor("P_HQ", "https://hq.example.test")],
+      Date.now() - 11 * 60_000,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // Read once for this outage, the same HQ kept again, and not read again while it lasts.
+    expect([hq.reads(), hq.last().hq]).toEqual([1, { kind: "official", ...HQ }]);
   });
 });
