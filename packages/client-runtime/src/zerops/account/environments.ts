@@ -955,7 +955,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           listeners.delete(listener);
         };
       },
-      connect: driver.connect,
+      // The person's Connect holds the Mate from now on.
+      connect: (key, reason) => {
+        driver.hold(key, "user");
+        return driver.connect(key, reason);
+      },
       intend: (key, intent) => {
         if (closed) return false;
         containers.intend(key, intent);

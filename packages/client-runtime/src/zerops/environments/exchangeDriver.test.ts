@@ -263,6 +263,12 @@ const mate = (id: string, options: { readonly serverVersion?: string } = {}): Fa
     ...options,
   });
 
+/** The person's Connect, as the account makes it: a user lease on the target, then the retry. */
+const connectHeld = (driver: ExchangeDriver, key: TargetKey, reason: "user") => {
+  driver.hold(key, "user");
+  return driver.connect(key, reason);
+};
+
 describe("exchange driver (DESIGN §4.4)", () => {
   it("a door 500 on reload retries and connects", async () => {
     const shop = mate("shop");
@@ -658,7 +664,10 @@ describe("exchange driver (DESIGN §4.4)", () => {
     const records = Array.from({ length: DOOR_MINT_BURST + 2 }, (_, index) => mate(`r${index}`));
     type Ask = (driver: ExchangeDriver, key: TargetKey) => void;
     const byRoute: Ask = (driver, key) => driver.setDemand("route", [key]);
-    const byConnect: Ask = (driver, key) => void driver.connect(key, "user");
+    const byConnect: Ask = (driver, key) => {
+      driver.hold(key, "user");
+      void driver.connect(key, "user");
+    };
     it.each([
       ["the route names it", byRoute],
       ["the person presses Connect", byConnect],
@@ -811,6 +820,29 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(installs).toHaveLength(1);
   });
 
+  // A9 (krok-a-hub §3): a Mate is wanted while something holds a lease on it — the route, the one
+  // left last, an action from the sidebar — and no longer once its last holder lets it go.
+  it("an action lease ends its demand when released", async () => {
+    const shop = mate("shop");
+    const { driver, start } = rig([shop], { hold: true });
+    await start({});
+    const wanted = () => driver.machine(keyOf(shop))?.guards.want;
+    expect(wanted()).toBe(false);
+
+    const first = driver.hold(keyOf(shop), "action");
+    const second = driver.hold(keyOf(shop), "action");
+    await flush();
+    expect(wanted()).toBe(true);
+
+    first();
+    first();
+    await flush();
+    expect(wanted()).toBe(true);
+    second();
+    await flush();
+    expect(wanted()).toBe(false);
+  });
+
   it("the user's Connect answers once the credential is installed, or with why it is not", async () => {
     const shop = mate("shop");
     const readOnly = mate("ro");
@@ -818,11 +850,11 @@ describe("exchange driver (DESIGN §4.4)", () => {
     const { driver, start } = rig([shop, readOnly]);
     await start({});
 
-    await expect(driver.connect(keyOf(shop), "user")).resolves.toEqual({
+    await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toEqual({
       _tag: "Connected",
       environmentId: EnvironmentId.make("env-shop"),
     });
-    await expect(driver.connect(keyOf(readOnly), "user")).resolves.toMatchObject({
+    await expect(connectHeld(driver, keyOf(readOnly), "user")).resolves.toMatchObject({
       _tag: "NotConnected",
       reachability: { kind: "refused-role" },
     });
@@ -835,7 +867,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     driver.setVisible(true);
     await flush();
 
-    await expect(driver.connect(keyOf(shop), "user")).resolves.toMatchObject({
+    await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toMatchObject({
       _tag: "NotConnected",
       reachability: { kind: "resolving" },
     });
@@ -863,7 +895,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       });
       await start({});
 
-      await expect(driver.connect(keyOf(shop), "user")).resolves.toMatchObject({
+      await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toMatchObject({
         _tag: "NotConnected",
         reachability: { kind: "retrying", last: { kind: "install" } },
       });
