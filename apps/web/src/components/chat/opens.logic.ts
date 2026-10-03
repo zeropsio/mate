@@ -24,7 +24,8 @@ export interface StepOutput {
  * What a step holds besides what its line says: what it printed or returned,
  * the files of an edit of several files, what a search or a read of the web
  * was asked past what its line names. Nothing for a call whose line is the
- * whole of it — a read, a one-file edit, a search for a pattern alone.
+ * whole of it — a read (whatever text the driver handed back), a one-file
+ * edit, a search for a pattern alone.
  */
 export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
   const blocks: StepOutput[] = [];
@@ -43,8 +44,10 @@ export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
     const detail = entry.detail?.trim();
     if (
       detail &&
+      step.kind !== "read" &&
       detail !== command &&
       !CALL_ARGUMENTS.test(detail) &&
+      !namedByTheCall(entry, detail) &&
       !(step.kind === "look" && step.images.includes(detail))
     ) {
       blocks.push({
@@ -55,6 +58,15 @@ export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
     }
   });
   return blocks;
+}
+
+/**
+ * A detail that is what the call named — an ACP agent's detail is the file,
+ * the pattern or the address its call was given, never what it returned.
+ */
+function namedByTheCall(entry: WorkLogEntry, detail: string): boolean {
+  const named = [...Object.values(entry.callInput ?? {}), ...(entry.changedFiles ?? [])];
+  return named.some((value) => value.trim() === detail);
 }
 
 function editedFiles(entry: WorkLogEntry): string[] {
