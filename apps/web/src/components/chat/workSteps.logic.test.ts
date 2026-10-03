@@ -452,6 +452,36 @@ describe("foldSteps", () => {
     });
   });
 
+  // A call still running is the live slot's: folded into the step before
+  // it, the step's row left the history while it ran (pass 35).
+  it.each([
+    {
+      name: "an edit",
+      make: (id: string, running: boolean) =>
+        entry({
+          id,
+          itemType: "file_change",
+          label: "File change",
+          detail: `Edit: {"file_path":"/var/www/app/${id}.ts"}`,
+          ...(running ? { toolLifecycleStatus: "inProgress" as const } : {}),
+        }),
+    },
+    {
+      name: "a look",
+      make: (id: string, running: boolean) =>
+        entry({
+          id,
+          itemType: "image_view",
+          label: "Image view",
+          detail: `/tmp/${id}.png`,
+          ...(running ? { toolLifecycleStatus: "inProgress" as const } : {}),
+        }),
+    },
+  ])("never folds $name still running into the step before it", ({ make }) => {
+    const steps = foldSteps([make("e1", false), make("e2", true)]);
+    expect(steps.map((step) => step.key)).toEqual(["e1", "e2"]);
+  });
+
   it("counts past three pictures", () => {
     const steps = foldSteps(
       ["a", "b", "c", "d", "e"].map((name, index) => look(`${index}`, `/tmp/${name}.png`)),

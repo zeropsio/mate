@@ -529,6 +529,7 @@ export function foldSteps(
       previous.kind === "look" &&
       step.kind === "look" &&
       previous.state !== "running" &&
+      step.state !== "running" &&
       step.state !== "failed" &&
       previous.state !== "failed"
     ) {
@@ -564,6 +565,7 @@ export function foldSteps(
       previous.kind === "edit" &&
       step.kind === "edit" &&
       previous.state === "done" &&
+      step.state !== "running" &&
       step.state !== "failed" &&
       step.words === plainWords(entry, "edit", step.state === "running") &&
       previous.entries.every((earlier) => earlier.callInput?.description === undefined)
