@@ -1,7 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Schedule from "effect/Schedule";
+import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 
 import { rowsWhere } from "../test/harness/mates.ts";
@@ -69,6 +71,40 @@ describe("MateOverviews", () => {
         assert.deepStrictEqual((yield* overviews.all).get("P")?.overview, fresh);
       }),
     ),
+  );
+
+  // F26: the Zerops L7 cuts every link at 120 s, so a Mate opens its successor before the cut and
+  // lets the old link go once HQ answered on the new one. The Mate never goes offline meanwhile.
+  it.effect(
+    "keeps a Mate online across a rotation: its successor opens before the old link goes",
+    () =>
+      Effect.gen(function* () {
+        const { saves, store } = memoryStore();
+        const overviews = yield* makeMateOverviews(store);
+        const scope = yield* Scope.make();
+        const older = yield* overviews.connect("P").pipe(Scope.provide(scope));
+        yield* overviews.report("P", older, {
+          type: "overview",
+          full: true,
+          overview: overviewOf(),
+        });
+        const before = (yield* overviews.all).get("P")?.presence;
+
+        const successor = yield* overviews.connect("P");
+        yield* overviews.report("P", successor, {
+          type: "overview",
+          full: true,
+          overview: overviewOf(),
+        });
+        yield* TestClock.adjust(Duration.seconds(1));
+        yield* Scope.close(scope, Exit.void);
+
+        const after = (yield* overviews.all).get("P")?.presence;
+        assert.deepStrictEqual(after, before);
+        assert.isTrue(after?.online);
+        // The two whole overviews are written; the old link's going writes nothing of its own.
+        assert.deepStrictEqual(yield* settled(saves), ["P", "P"]);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("writes when a thread's kind changes, not when its live step does", () =>
