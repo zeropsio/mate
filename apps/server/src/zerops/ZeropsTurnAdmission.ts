@@ -40,6 +40,7 @@
  * @module ZeropsTurnAdmission
  */
 import {
+  ProviderInstanceId,
   agentIdForDriverKind,
   agentIdForProviderInstance,
   OrchestrationDispatchCommandError,
@@ -349,16 +350,15 @@ export const make = Effect.gen(function* () {
       if (principal.kind === "session" && crewThread.archivedAt !== null) {
         return yield* refuse(CREW_THREAD_REFUSALS.retired);
       }
-      const profile = yield* threadProfileFor(policies, {
-        threadId: crewThread.id,
-        instanceId: crewThread.modelSelection.instanceId,
-      });
+      // The turn runs on the instance it names, else on its thread's.
+      const instanceId = ProviderInstanceId.make(
+        instanceIdOf(command, crewThread) ?? crewThread.modelSelection.instanceId,
+      );
+      const profile = yield* threadProfileFor(policies, { threadId: crewThread.id, instanceId });
       if (profile === undefined) return yield* refuse(CREW_THREAD_REFUSALS.notRunning);
-      const agent = yield* providerInstances.agentOf(crewThread.modelSelection.instanceId);
+      const agent = yield* providerInstances.agentOf(instanceId);
       if (agent?.threadProfile === undefined) {
-        return yield* refuse(
-          CREW_THREAD_REFUSALS.ungated(agent?.displayName ?? crewThread.modelSelection.instanceId),
-        );
+        return yield* refuse(CREW_THREAD_REFUSALS.ungated(agent?.displayName ?? instanceId));
       }
     }
     if (principal.kind === "crew") yield* refuseDepartedStarter(principal.startedBy);

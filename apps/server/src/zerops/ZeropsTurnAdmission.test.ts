@@ -644,6 +644,18 @@ describe("ZeropsTurnAdmission", () => {
       UNGATED,
     ],
     [
+      "refuses a crewmate turn that names an agent which never reads the crew's profile",
+      {
+        ...janSignedClaude,
+        drivers: { ...DEFAULT_DRIVERS, cursor: "cursor" },
+        threadInstanceId: "claudeAgent",
+        crewThread: { profile: "given" },
+      },
+      turnStart("cursor"),
+      { kind: "crew", startedBy: JAN },
+      UNGATED,
+    ],
+    [
       "admits a crewmate turn its profile gates, as its signer",
       { ...janSignedClaude, crewThread: { profile: "given" } },
       turnStart("claudeAgent"),
