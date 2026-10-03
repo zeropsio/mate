@@ -2450,6 +2450,9 @@ describe("ClaudeAdapterLive", () => {
         stream("s4", "tool-a2", { type: "message_start", message: { id: "msg-h" } }),
       );
       harness.query.emit(stream("s5", "tool-a2", toolUse(0, "tool-h1")));
+      // The Mate's own call streamed after the helper's response began is
+      // still its response's: a helper's start never names the Mate's.
+      harness.query.emit(stream("s5b", null, toolUse(2, "tool-a3")));
       harness.query.emit(stream("s6", null, { type: "message_start", message: { id: "msg-b" } }));
       harness.query.emit(stream("s7", null, toolUse(0, "tool-b1")));
       harness.query.emit({
@@ -2471,6 +2474,7 @@ describe("ClaudeAdapterLive", () => {
         ["tool-a1", "msg-a"],
         ["tool-a2", "msg-a"],
         ["tool-h1", null],
+        ["tool-a3", "msg-a"],
         ["tool-b1", "msg-b"],
       ]);
     }).pipe(
