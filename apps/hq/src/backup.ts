@@ -16,7 +16,10 @@
  * manifest last), and the newest complete one stays staged, laid out as the store keeps it: the
  * platform's own volume backup carries a set that restores as it is (`directoryStore(stagingDir)`).
  * With no store, backup is off and a set is only staged. The database's address reaches `pg_dump` in
- * libpq's own environment variables, never in its arguments, and no log carries it.
+ * libpq's own environment variables, never in its arguments, and no log carries it. A set carries
+ * every environment's deploy token only sealed, and never the key that opens it: `HQ_KEY_SECRET`
+ * lives in HQ's env (`deployKeys.ts`), so a set restored onto an HQ with another key deploys
+ * nothing with them.
  *
  * The leading Core takes a set on its own `every` after the newest staged one, at once when none
  * is staged; one set at a time. No set is taken while the database stands where the newest set
