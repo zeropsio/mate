@@ -399,9 +399,13 @@ export async function runEnvironmentCreation(
         }
         case "register": {
           const target = requireProject(projectId);
-          // A Mate's press goes on past a refused registration — its container imported, its
-          // project closed off — and leaves it bare, waiting for an owner to register it (*Finish
-          // setup*). A stage or a production has nothing else that makes it whole, and stops here.
+          // A Mate's press goes on past a registration that failed — refused, or failing after its
+          // tries — its container imported, its project closed off, and leaves the Mate in no
+          // application. The one it was meant for is not lost (audit B2): HQ holds it in the birth
+          // intent the project was created under (F6c, `mate:birth:<id>`), and *Finish setup* —
+          // offered past the press's grace, in any browser, to whoever HQ's rule lets create the
+          // Mate's record — attaches it there, closing the intent. HQ does not adopt it on its
+          // own. A stage or a production has nothing else that makes it whole, and stops here.
           const stopsHere = !input.steps.some((planned) => planned.kind === "close-off");
           try {
             await withTries(() => input.platform.register(target));

@@ -1,10 +1,12 @@
 import {
+  finishMateSetupVerb,
   PRESS_STEP_ATTEMPTS,
   type RandomBytes,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
+import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import * as Effect from "effect/Effect";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -45,6 +47,8 @@ const hq = vi.hoisted(() => ({
   calls: null as Array<string> | null,
   /** The id of the key the Mate named to HQ; none where it named none. */
   key: null as string | null,
+  /** What HQ answers every attach with, where it takes none. */
+  attachFailure: null as Error | null,
 }));
 vi.mock("./accountHq", () => ({
   accountHqApi: () => ({
@@ -58,6 +62,10 @@ vi.mock("./accountHq", () => ({
         readonly birth?: string;
       },
     ) => {
+      if (hq.attachFailure !== null) {
+        hq.calls?.push("attach failed");
+        throw hq.attachFailure;
+      }
       hq.calls?.push(
         `attach ${appId} ${attach.mate?.name ?? ""}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
       );
@@ -778,6 +786,143 @@ describe("finishMateSetup — the harden path", () => {
       "mark",
     ]);
     forgetPress("p-old");
+  });
+
+  // Audit B2: a press goes on past a registration that failed after its tries, not only one HQ
+  // refused — its container imported, its project closed off — and leaves the Mate in no
+  // application. Settled here: the application it was meant for is not lost. HQ holds it in the
+  // birth intent its project names (F6c), so another browser's Finish setup attaches it there.
+  it("a Mate whose registration failed after its tries goes into its intended application through another browser's Finish setup", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const withContainer = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            importDevelopmentContainer: () => {
+              calls.push("container");
+              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+            },
+          },
+        },
+      },
+    };
+    const HQ_ENDPOINT = { projectId: "hq-project", address: "https://hq.test" };
+    hq.calls = calls;
+    hq.attachFailure = new HqError({
+      kind: "unavailable",
+      code: "not_active",
+      status: 503,
+      message: "HQ isn't serving right now.",
+    });
+    // The first browser's press, past its project: HQ answers 503 to every try of its attach.
+    const pressed = await finishMateSetup({
+      inputs: withContainer as never,
+      projectId: "gus-project",
+      projectName: "mate-rig-e2e-g - Gus",
+      container: { agents: [] },
+      registration: {
+        hq: HQ_ENDPOINT,
+        groupId: "app-g",
+        kind: "mate",
+        mate: { name: "Gus", face: undefined },
+        standUp: false,
+        intent: "b-gus",
+      },
+      hq: HQ_ENDPOINT,
+      isCurrent: () => true,
+      harden: false,
+      locks: undefined,
+      sleep: async () => undefined,
+    });
+    expect(pressed).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      ...Array.from({ length: PRESS_STEP_ATTEMPTS }, () => "attach failed"),
+      "container",
+      "read isolation",
+      "read isolation",
+      "mark",
+    ]);
+    forgetPress("gus-project");
+
+    // Another browser, with no press of its own, once the grace a running press has is past: HQ
+    // holds no record of Gus, and still holds the birth intent no attach closed.
+    hq.attachFailure = null;
+    calls.length = 0;
+    expect(
+      finishMateSetupVerb({
+        registration: "registered",
+        containerMissing: false,
+        closedOffMissing: false,
+        pressStopped: false,
+        pastGrace: true,
+        viewerIsAdder: false,
+        hasContainer: true,
+        writer: false,
+        recordMissing: true,
+        mayCreateRecord: true,
+      }),
+    ).toBe("Finish setup");
+    const registration = mateFinishRegistration({
+      hq: HQ_ENDPOINT,
+      hqKnown: true,
+      structure: {
+        ungrouped: [],
+        apps: [
+          {
+            id: "app-g",
+            name: "mate-rig-e2e-g",
+            projects: [],
+            births: [{ id: "b-gus", name: "Gus", face: "rose:seal" }],
+          },
+        ],
+      },
+      project: {
+        id: "gus-project",
+        name: "mate-rig-e2e-g - Gus",
+        status: "ACTIVE",
+        tagList: ["mate:birth:b-gus", "mate"],
+      } as never,
+      press: undefined,
+      writer: false,
+      mayCreateRecord: true,
+      standUp: false,
+      candidates: [],
+      taken: [],
+      random: (bytes) => bytes.fill(0),
+    });
+    expect(registration).toMatchObject({ groupId: "app-g", intent: "b-gus" });
+    beginPress({
+      projectId: "gus-project",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: false,
+      finishing: true,
+    });
+    expect(
+      await finishMateSetup({
+        inputs: inputs(() => true, calls),
+        projectId: "gus-project",
+        projectName: "mate-rig-e2e-g - Gus",
+        container: null,
+        registration,
+        hq: HQ_ENDPOINT,
+        isCurrent: () => true,
+        harden: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toContain("attach app-g Gus closing b-gus");
+    forgetPress("gus-project");
   });
 
   // F6c (2026-10-03): a Mate whose project names its birth intent closes it with its attach.
