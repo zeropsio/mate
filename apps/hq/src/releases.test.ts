@@ -786,6 +786,23 @@ describe("an application's releases over HQ's API", () => {
       { timeout: 60_000 },
     );
 
+    // F22, option A (2026-10-03): while Zerops left KRLS's member list unanswered for minutes,
+    // every read past the view's 30 s waited until the read failed — 44 s in HQ's log. A read
+    // waits on Zerops 3 s, then is served the last view Zerops answered within five minutes.
+    it.effect(
+      "lists an application's releases within 5 s while Zerops's member list stalls, over a view read within the last five minutes",
+      () =>
+        Effect.gen(function* () {
+          const { fake, tags } = yield* productionApp;
+          fake.membersTake = 40_000;
+          // Past the view's 200 ms here: the last one Zerops answered is all there is.
+          yield* Effect.sleep(Duration.millis(500));
+          const [took, listed] = yield* Effect.timed(tags);
+          assert.deepStrictEqual([listed, Duration.toMillis(took) < 5000], [[], true]);
+        }),
+      { timeout: 60_000 },
+    );
+
     // F22, option A (2026-10-03): while Zerops left KRLS's member list unanswered for minutes, a
     // release waited on it for its client's whole 20 s. A write waits on Zerops 3 s, then is
     // decided over the last view Zerops answered within five minutes.

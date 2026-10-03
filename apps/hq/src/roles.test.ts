@@ -269,6 +269,34 @@ describe("a slow read, aged from its answer", () => {
         assert.strictEqual(membersRead(world) - before, 1);
       }),
   );
+
+  it.effect("serves a read the last good view once Zerops leaves a read 3 s unanswered", () =>
+    Effect.gen(function* () {
+      const world = made();
+      const roles = yield* slowRoles(world);
+      const first = yield* Effect.forkChild(roles.recent);
+      yield* TestClock.adjust("40 seconds");
+      yield* Fiber.join(first);
+      yield* TestClock.adjust("31 seconds");
+
+      // A read past the 30 s: three seconds unanswered, and it is served the last view.
+      const reading = yield* Effect.forkChild(roles.view);
+      yield* TestClock.adjust("2999 millis");
+      assert.isUndefined(reading.pollUnsafe());
+      yield* TestClock.adjust("1 millis");
+      assert.deepStrictEqual(
+        (yield* Fiber.join(reading)).members.map((row) => row.userId),
+        ["owner"],
+      );
+      // A read asked a second later waits no longer than that read already has.
+      yield* TestClock.adjust("1 seconds");
+      const next = yield* Effect.forkChild(roles.view);
+      yield* TestClock.adjust("1 millis");
+      assert.strictEqual(next.pollUnsafe()?._tag, "Success");
+      // Both took the first read's view: the second read, still under way, is the only one more.
+      assert.strictEqual(world.calls.filter((call) => call === "projects:t").length, 2);
+    }),
+  );
 });
 
 // F22 (2026-10-03): a release waited on a fresh read while KRLS's org-wide reads stalled 25 s, the
