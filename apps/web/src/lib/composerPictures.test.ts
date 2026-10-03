@@ -252,6 +252,39 @@ describe("materializePicturePrompt", () => {
   });
 });
 
+describe("materializePicturePrompt with files", () => {
+  const F = "\uFFFA";
+  it.each([
+    ["a file between words, on its own line", `See ${F} thanks`, [], 1, "See\n[File 1]\nthanks"],
+    ["files numbered in the order they sit", `${F}${F}`, [], 2, "[File 1]\n[File 2]"],
+    [
+      "pictures and files each counted on their own",
+      `a${P}b${F}c${P}d${F}`,
+      [{}, {}],
+      2,
+      "a\n[Picture 1]\nb\n[File 1]\nc\n[Picture 2]\nd\n[File 2]",
+    ],
+    ["a file place without a file says nothing", `a${F}b`, [], 0, "ab"],
+    ["a file alone", F, [], 1, "[File 1]"],
+    ["a line of theirs that reads as a file label", `[File 1]\n${F}`, [], 1, "[File 1] \n[File 1]"],
+    [
+      "words that follow a picture's notes after a file stay words",
+      `${P}${F}\n1. more`,
+      [withNotes("Logo")],
+      1,
+      "[Picture 1]\nNotes on picture 1:\n1. Logo\n[File 1]\n1. more",
+    ],
+  ])("%s", (_label, prompt, images, fileCount, expected) => {
+    expect(
+      materializePicturePrompt(
+        prompt,
+        images,
+        Array.from({ length: fileCount }, () => ({})),
+      ),
+    ).toBe(expected);
+  });
+});
+
 describe("pictureNeedsNewCopy", () => {
   const crop = { x: 0, y: 0, w: 1200, h: 800 };
   const marks = [pin("a", 10, 10, "Logo"), box("b", 20, 20, 50, 40, "Grid")];

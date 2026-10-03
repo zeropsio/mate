@@ -10,12 +10,14 @@
  */
 import {
   escapePictureWords,
+  fileLabel,
   pictureBlockText,
   readsAsPictureNote,
 } from "@t3tools/shared/composerPictures";
 
 import type { ComposerImageAttachment } from "../composerDraftStore";
 import type { ChatAttachment } from "../types";
+import { INLINE_FILE_PLACEHOLDER, countInlineFilePlaceholders } from "./composerFiles";
 
 /**
  * Not the object replacement character terminal contexts use: the two are
@@ -226,43 +228,56 @@ export function stripInlinePicturePlaceholders(prompt: string): string {
 }
 
 /**
- * The prompt with each picture's place written out as its label and notes on
- * lines of their own, numbered in the order the pictures sit. A place without
- * a picture says nothing. Terminal-context places are left for their own
- * materializer. The person's own words never read as a picture's lines.
+ * The prompt with each picture's place written out as its label and notes, and
+ * each file's as its label, on lines of their own: pictures numbered in the
+ * order they sit, files in theirs. A place without a picture or a file says
+ * nothing. Terminal-context places are left for their own materializer. The
+ * person's own words never read as a picture's or a file's lines.
  */
 export function materializePicturePrompt(
   prompt: string,
   images: ReadonlyArray<{ readonly picture?: Pick<ComposerPicture, "marks"> | undefined }>,
+  files: ReadonlyArray<unknown> = [],
 ): string {
   const placed = ensureInlinePicturePlaceholders(prompt, images.length);
-  if (countInlinePicturePlaceholders(placed) === 0) return placed;
+  if (countInlinePicturePlaceholders(placed) === 0 && countInlineFilePlaceholders(placed) === 0) {
+    return placed;
+  }
   const parts: string[] = [];
   let words = "";
-  let placeIndex = 0;
-  let pictureNumber = 0;
+  let pictureIndex = 0;
+  let fileIndex = 0;
+  let blocks = 0;
   let afterNotes = false;
   const flush = (text: string) => {
     if (text.trim().length === 0) return;
     if (afterNotes && readsAsPictureNote(text)) parts.push("");
     parts.push(escapePictureWords(text));
   };
-  for (const char of placed) {
-    if (char !== INLINE_PICTURE_PLACEHOLDER) {
-      words += char;
-      continue;
-    }
-    const image = images[placeIndex];
-    placeIndex += 1;
-    if (!image) continue;
-    flush(pictureNumber === 0 && parts.length === 0 ? words.replace(/\s+$/u, "") : trimBoth(words));
+  const place = (block: string, notes: boolean) => {
+    flush(blocks === 0 && parts.length === 0 ? words.replace(/\s+$/u, "") : trimBoth(words));
     words = "";
-    pictureNumber += 1;
-    const notes = image.picture?.marks.map((mark) => mark.note) ?? [];
-    parts.push(pictureBlockText(pictureNumber, notes));
-    afterNotes = notes.length > 0;
+    blocks += 1;
+    parts.push(block);
+    afterNotes = notes;
+  };
+  for (const char of placed) {
+    if (char === INLINE_PICTURE_PLACEHOLDER) {
+      const image = images[pictureIndex];
+      pictureIndex += 1;
+      if (!image) continue;
+      const notes = image.picture?.marks.map((mark) => mark.note) ?? [];
+      place(pictureBlockText(pictureIndex, notes), notes.length > 0);
+    } else if (char === INLINE_FILE_PLACEHOLDER) {
+      const file = files[fileIndex];
+      fileIndex += 1;
+      if (file === undefined) continue;
+      place(fileLabel(fileIndex), false);
+    } else {
+      words += char;
+    }
   }
-  flush(pictureNumber === 0 ? words : words.replace(/^\s+/u, ""));
+  flush(blocks === 0 ? words : words.replace(/^\s+/u, ""));
   return parts.join("\n");
 }
 
