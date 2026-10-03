@@ -9,10 +9,13 @@ export type ThreadFeedLiveFollowEvent =
   | {
       readonly type: "user-scroll-end";
       readonly isAtEnd: boolean;
-      /** Which way the drag and its glide carried the list, from where the drag began. */
-      readonly direction: TimelineScrollDirection;
+      /** The list's offset where the drag began (null: not read), and where the glide ended. */
+      readonly startOffset: number | null;
+      readonly endOffset: number | null;
       readonly userScrollSessionActive: boolean;
     }
+  /** The person pressed the jump-to-latest button. */
+  | { readonly type: "jump-to-latest" }
   | {
       readonly type: "scroll" | "disclosure-settled";
       readonly isAtEnd: boolean;
@@ -78,6 +81,19 @@ export function resolveThreadFeedSubmissionAnchor<AnchorId>(input: {
  * person's, every other scroll is the list's or the layout's and never
  * changes follow.
  */
+/**
+ * Which way a drag and its glide carried the list, from where the drag began:
+ * one that came back to where it began, or bounced at the end, did not leave it.
+ */
+function threadFeedDragDirection(
+  startOffset: number | null,
+  endOffset: number | null,
+): TimelineScrollDirection {
+  return startOffset === null || endOffset === null || endOffset >= startOffset
+    ? "toward-end"
+    : "away";
+}
+
 export function resolveThreadFeedLiveFollow(
   current: boolean,
   event: ThreadFeedLiveFollowEvent,
@@ -95,9 +111,11 @@ export function resolveThreadFeedLiveFollow(
             type: "position",
             atEnd: event.isAtEnd,
             byPerson: true,
-            direction: event.direction,
+            direction: threadFeedDragDirection(event.startOffset, event.endOffset),
           })
         : current;
+    case "jump-to-latest":
+      return nextTimelineFollow(current, { type: "jump-to-latest" });
     // The person's tap opened or closed a disclosure: it leaves the end when
     // it leaves them above it, and never brings follow back.
     case "disclosure-settled":

@@ -307,6 +307,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const [anchorMessageId, setAnchorMessageId] = useState<MessageId | null>(null);
   const [submittedMessageId, setSubmittedMessageId] = useState<MessageId | null>(null);
   const [endFollowEnabled, setEndFollowEnabled] = useState(true);
+  const [jumpToLatestRequest, setJumpToLatestRequest] = useState(0);
   // Android keys the safe-area padding on keyboard visibility (#5988): the
   // back gesture closes the keyboard while the editor stays focused, and a
   // focus-keyed inset would leave the toolbar under the gesture bar. iOS must
@@ -797,6 +798,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
 
   const handleScrollToEnd = useCallback(() => {
     void Haptics.selectionAsync();
+    setJumpToLatestRequest((count) => count + 1);
     void scrollMessageToEnd({ animated: true, closeKeyboard: false }).catch(() => {
       freeze.set(false);
     });
@@ -883,6 +885,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
               freeze={freeze}
               anchorMessageId={anchorMessageId}
               submittedMessageId={submittedMessageId}
+              jumpToLatestRequest={jumpToLatestRequest}
               contentInsetEndAdjustment={combinedContentInsetEndAdjustment}
               contentTopInset={0}
               contentBottomInset={
