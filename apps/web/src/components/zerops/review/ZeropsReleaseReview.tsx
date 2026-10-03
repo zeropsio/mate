@@ -18,6 +18,7 @@
  */
 import {
   cannotTellWhatRuns,
+  servicesDeploying,
   buildZeropsGroupTree,
   changesCountWords,
   holdReleaseFacts,
@@ -417,6 +418,13 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   });
   const fix = model.verdict.fix;
   const refused = press.kind === "refused" ? press.reason : undefined;
+  // While it releases, a service it redeploys is deploying: its version names what is going, or
+  // nothing yet, and is no fact to be unable to tell.
+  const deploying =
+    props.outcome.kind === "releasing"
+      ? props.untold.filter((service) => props.services.includes(service))
+      : [];
+  const untold = props.untold.filter((service) => !deploying.includes(service));
   return (
     <ZeropsReviewSurface
       consequence={refused ?? model.consequence}
@@ -461,8 +469,11 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           title="What goes out"
         >
           {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
-          {props.untold.length === 0 ? null : (
-            <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(props.untold)}.</p>
+          {deploying.length === 0 ? null : (
+            <p className="text-sm text-muted-foreground">{servicesDeploying(deploying)}.</p>
+          )}
+          {untold.length === 0 ? null : (
+            <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
           )}
         </ReviewSection>
       )}

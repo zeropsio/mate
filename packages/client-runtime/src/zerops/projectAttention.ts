@@ -157,11 +157,19 @@ export function changesCountWords(count: number, atLeast: boolean): string {
  * waiting.
  */
 export function cannotTellWhatRuns(services: ReadonlyArray<string>): string {
-  const names =
-    services.length < 2
-      ? services.join("")
-      : `${services.slice(0, -1).join(", ")} and ${services.at(-1) ?? ""}`;
-  return `Can't tell what ${names} ${services.length === 1 ? "runs" : "run"}`;
+  return `Can't tell what ${serviceNames(services)} ${services.length === 1 ? "runs" : "run"}`;
+}
+
+/** Services a release redeploys while it releases: what they ran is going, and they deploy. */
+export function servicesDeploying(services: ReadonlyArray<string>): string {
+  return `${serviceNames(services)} ${services.length === 1 ? "is" : "are"} deploying`;
+}
+
+/** `app`, `app and api`, `app, api and web`. */
+function serviceNames(services: ReadonlyArray<string>): string {
+  return services.length < 2
+    ? services.join("")
+    : `${services.slice(0, -1).join(", ")} and ${services.at(-1) ?? ""}`;
 }
 
 /**
