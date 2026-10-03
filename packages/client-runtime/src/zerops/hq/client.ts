@@ -662,9 +662,22 @@ export function makeHqApi(input: {
         signal.addEventListener("abort", stop, { once: true });
       });
     },
-    createApp: async (name) =>
-      json(
-        await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, "once"),
+    // An application has no name of HQ's to ask for before it is made: the one by this name is
+    // taken for it.
+    createApp: (name) =>
+      confirmed(
+        async () =>
+          json<{ readonly id: string; readonly name: string }>(
+            await authorized(
+              "/api/apps",
+              { method: "POST", body: JSON.stringify({ name }) },
+              "once",
+            ),
+          ),
+        async () => {
+          const made = (await structureOf()).apps.find((app) => app.name === name);
+          return made === undefined ? undefined : { id: made.id, name: made.name };
+        },
       ),
     attachProject: (appId, attach) =>
       confirmedDone(
@@ -722,9 +735,21 @@ export function makeHqApi(input: {
         "idempotent",
       );
     },
-    createMate: async (mate) => {
-      await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, "once");
-    },
+    createMate: (mate) =>
+      confirmedDone(
+        () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, "once"),
+        async () => {
+          const { ungrouped, apps } = await structureOf();
+          return (
+            ungrouped.some((held) => held.projectId === mate.projectId) ||
+            apps.some((app) =>
+              app.projects.some(
+                (project) => project.projectId === mate.projectId && project.mate !== null,
+              ),
+            )
+          );
+        },
+      ),
     change: changeOf,
     changeComments: commentsOf,
     // A comment has no name of its own: the newest said on the change, in the very words, is taken
