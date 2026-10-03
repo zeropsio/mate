@@ -2963,6 +2963,12 @@ export function makeOpenCodeAdapter(
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
         };
+        if (resumeSessionId !== undefined) {
+          // A resumed or forked session's total carries what it ran before, as
+          // Claude's does across its resumes; a crew run counts a turn's spend
+          // as what the total rose by.
+          yield* seedSessionCost(context);
+        }
         const raceWinner = sessions.get(input.threadId);
         if (raceWinner) {
           // Another start published first. A newly created remote session
@@ -3019,6 +3025,23 @@ export function makeOpenCodeAdapter(
         return context.session;
       },
     );
+
+    /** Each earlier assistant message's cost, read once when a session is resumed. */
+    const seedSessionCost = (context: OpenCodeSessionContext) =>
+      runOpenCodeSdk("session.messages", () =>
+        context.client.session.messages({ sessionID: context.openCodeSessionId }),
+      ).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.map((response) => {
+          for (const entry of response.data ?? []) {
+            const info = entry.info;
+            if (info.role === "assistant" && typeof info.cost === "number") {
+              context.costByMessageId.set(info.id, info.cost);
+            }
+          }
+        }),
+        Effect.ignore,
+      );
 
     /** A session as the MCP tab's hook sees it: sessions on one server share its connections. */
     const openCodeMcpSession = (context: OpenCodeSessionContext) => ({

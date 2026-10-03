@@ -2343,11 +2343,23 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
-  it.effect("reports the session's total cost on a completed turn", () =>
+  it.effect.each([
+    { name: "a new session", resumed: false, total: 0.05 },
+    // A resumed session's total carries the cost of what it ran before.
+    { name: "a resumed session", resumed: true, total: 0.08 },
+  ])("reports the session's total cost on a completed turn: $name", ({ resumed, total }) =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
-      const threadId = asThreadId("thread-total-cost");
-      const sessionID = "http://127.0.0.1:9999/session";
+      const threadId = asThreadId(`thread-total-cost-${resumed}`);
+      const sessionID = resumed ? "ses_persisted" : "http://127.0.0.1:9999/session";
+      if (resumed) {
+        runtimeMock.state.messages = [
+          {
+            info: { id: "msg-earlier", role: "assistant", cost: 0.03 },
+            parts: [],
+          } as unknown as MessageEntry,
+        ];
+      }
       const busy = promiseWithResolvers<unknown>();
       const answer = promiseWithResolvers<unknown>();
       const answered = promiseWithResolvers<unknown>();
@@ -2368,6 +2380,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         provider: ProviderDriverKind.make("opencode"),
         threadId,
         runtimeMode: "full-access",
+        ...(resumed ? { resumeCursor: { schemaVersion: 1, sessionId: sessionID } } : {}),
       });
       yield* adapter.sendTurn({
         threadId,
@@ -2405,7 +2418,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       const event = Option.getOrUndefined(yield* Fiber.join(completed));
       NodeAssert.equal(
         event?.type === "turn.completed" ? event.payload.totalCostUsd : undefined,
-        0.05,
+        total,
       );
       yield* adapter.stopSession(threadId);
     }),
