@@ -31,6 +31,7 @@ import {
   type ChangeRemark,
   type FlowPullRequest,
   type GroupEnvironmentTier,
+  type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
@@ -286,6 +287,7 @@ function ChangeReviewData({
       back={back}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
+      release={flow?.release.gate}
       mate={
         mate === undefined
           ? {
@@ -405,6 +407,8 @@ export interface ChangeReviewViewProps {
   readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
   /** How many changes wait for production, as the flow last read it. */
   readonly waitingForProduction: number;
+  /** The same release verdict the flow hands to the release review. */
+  readonly release: ReleaseGate | undefined;
   /** The release production runs. */
   readonly live: string | undefined;
   readonly now: number;
@@ -465,7 +469,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           : props.waitingForProduction,
       live: props.live,
     },
-    releaseOffered: downstream.production,
+    release: props.release,
     recipe:
       pull.kind === "recipe" && read !== undefined
         ? recipeReach({

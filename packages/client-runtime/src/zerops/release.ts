@@ -148,6 +148,13 @@ export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
  * where *nothing* moved is not a release.
  */
 export const RELEASE_NOTHING_NEW_ON_MAIN = "Production already runs what is merged.";
+/** The owner's nothing-to-release verdict, in its existing words, for every review surface. */
+export function releaseNothingReason(gate: ReleaseGate | undefined): string | undefined {
+  if (gate === undefined || gate.allowed) return undefined;
+  return gate.reason === RELEASE_NOTHING_MERGED || gate.reason === RELEASE_NOTHING_NEW_ON_MAIN
+    ? gate.reason
+    : undefined;
+}
 /** Who may release is not known yet: HQ's rule has nothing to be asked over. */
 export const RELEASE_CHECKING = "Checking what can be released…";
 /** What goes live could not be compared: no release is offered over a list nobody could read. */
@@ -171,7 +178,7 @@ export function releaseGate(input: {
   readonly permission: ReleaseGate | undefined;
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /**
-   * Per service, the stage against production. Omitted where production's
+   * Per service, repository `main` against production. Omitted where production's
    * side is not known — then the gate says nothing about what would move.
    */
   readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
