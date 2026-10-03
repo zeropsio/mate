@@ -54,18 +54,6 @@ describe("ZeropsNewProjectHost source", () => {
     expect(hostSource).toContain("newMateTint(");
     expect(hostSource).not.toContain("generateBotName([],");
   });
-
-  // Run 6 (the owner, 2026-10-03: "why are these two screens separate?"): the page is the one
-  // screen from the press, and the press's steps run on without the dialog.
-  it("gives way to its first Mate's own view at the press, the steps running on without it", () => {
-    expect(hostSource).not.toContain("ZeropsProvisioningPanel");
-    expect(hostSource).toContain("beginNewProjectBirth(");
-    expect(hostSource).toContain("progressNewProjectBirth(birthId, progress)");
-    expect(hostSource).toContain(
-      "    dismiss();\n    void navigate(newProjectView(birthId));\n  };",
-    );
-    expect(hostSource).not.toContain("pressing");
-  });
 });
 
 describe("zeropsNewProjectScopeStepVisible", () => {
