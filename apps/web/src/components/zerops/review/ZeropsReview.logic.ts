@@ -271,9 +271,17 @@ export function changeRunMessage<M extends { readonly role: string; readonly tex
 /** How much of what the Mate said stands in the review: four lines of it, about. */
 const RUN_WORDS_MAX = 400;
 
-/** A message's markdown read as plain sentences: no code blocks, marks, links or bullets. */
+/**
+ * A message's markdown read as plain sentences: no code blocks, marks, links, bullets or quote
+ * markers. A GitHub callout keeps its word, run into its first line as the chat draws it.
+ */
 function plainText(text: string): string {
   return text
+    .replace(/^[ \t]{0,3}(?:>[ \t]?)+/gmu, "")
+    .replace(
+      /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*$/gimu,
+      (_marker, kind: string) => `${kind[0]!.toUpperCase()}${kind.slice(1).toLowerCase()}:`,
+    )
     .replace(/```[\s\S]*?```/gu, " ")
     .replace(/!\[[^\]]*\]\([^)]*\)/gu, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")

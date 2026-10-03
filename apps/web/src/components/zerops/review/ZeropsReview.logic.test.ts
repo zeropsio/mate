@@ -263,6 +263,23 @@ describe("runWords: what it does, in the Mate's words (R3)", () => {
       "Added the route. Wrote a test for it.",
     );
   });
+
+  it("reads a quote as its words, not as its markers", () => {
+    expect(
+      runWords("Added the route.\n\n> It stays behind the sign-in.\n> > Like the rest.\n"),
+    ).toBe("Added the route. It stays behind the sign-in. Like the rest.");
+  });
+
+  // e2e 2026-10-03: "What it does" printed "> [!WARNING] > My earlier claim was incorrect…".
+  it("says a callout's word into its first line, as the chat draws it", () => {
+    expect(
+      runWords(
+        `Opened change #2 for review.\n\n> [!WARNING]\n> My earlier claim was incorrect: the scaling option supports this update.\n\n${link}`,
+      ),
+    ).toBe(
+      "Opened change #2 for review. Warning: My earlier claim was incorrect: the scaling option supports this update.",
+    );
+  });
 });
 
 describe("diffFold: a long file's diff folds, the fold opens, and past what fits it says so (D4)", () => {
