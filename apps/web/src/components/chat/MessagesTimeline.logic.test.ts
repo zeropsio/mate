@@ -793,6 +793,32 @@ describe("deriveMessagesTimelineRows", () => {
     ).toEqual(row.stale);
   });
 
+  // Two edits in a row fold into one line; while the run goes on, the line
+  // carries each edit as its own, so the slot draws the second as it ended
+  // and the history folds it in once it lands (E6).
+  it("carries each edit a live folded line holds as a line of its own", () => {
+    const edit = (id: string, minute: number) =>
+      tool(id, "t1", minute, {
+        itemType: "file_change" as never,
+        label: "File change",
+        command: undefined as never,
+        detail: `Edit: {"file_path":"/srv/app/${id}.ts"}`,
+        createdAt: at(minute),
+        startedAt: at(minute),
+        updatedAt: at(minute, 5),
+      });
+    const entries = [user("m0", 0), edit("e1", 1), edit("e2", 2)];
+    const live = recordOf(rows({ entries, live: "t1" }));
+    const folded = live?.items.find((item) => item.key === "step:e1");
+    expect(folded?.kind).toBe("step");
+    if (folded?.kind !== "step") return;
+    expect(folded.step.entries).toHaveLength(2);
+    expect(folded.parts?.map((part) => [part.key, part.step.words, part.step.state])).toEqual([
+      ["step:e1", "Edited e1.ts", "done"],
+      ["step:e2", "Edited e2.ts", "done"],
+    ]);
+  });
+
   it("keeps a bootstrap session's line where it first returned while its follow-up runs", () => {
     const entries = [
       user("m0", 0),

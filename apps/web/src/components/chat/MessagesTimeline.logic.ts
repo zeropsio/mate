@@ -691,6 +691,17 @@ export type RecordItem =
       readonly key: string;
       readonly at: string;
       readonly step: WorkStep;
+      /**
+       * While the run goes on, a line that folds calls in a row (`foldSteps`)
+       * carries each as a line of its own: the live slot draws one it still
+       * holds as it ended, and the history folds it in once it lands.
+       */
+      readonly parts?: ReadonlyArray<{
+        readonly kind: "step";
+        readonly key: string;
+        readonly at: string;
+        readonly step: WorkStep;
+      }>;
     }
   /** A stretch of thinking, however short: a bubble of its own, and how long it took. */
   | {
@@ -1442,16 +1453,25 @@ function stretchRecord(input: {
         if (stretch.live) continue;
       }
       const call = step.entries[0]!;
+      const at =
+        staleAt ??
+        joinedAt(
+          call.toolLifecycleStatus === "inProgress" ? null : (call.updatedAt ?? call.createdAt),
+          call.createdAt,
+        );
+      const parts =
+        runLive && step.entries.length > 1
+          ? step.entries.map((entry) => {
+              const part = stepOf(entry, input.tracked, false);
+              return { kind: "step" as const, key: `step:${part.key}`, at, step: part };
+            })
+          : undefined;
       push({
         kind: "step",
         key: `step:${step.key}`,
-        at:
-          staleAt ??
-          joinedAt(
-            call.toolLifecycleStatus === "inProgress" ? null : (call.updatedAt ?? call.createdAt),
-            call.createdAt,
-          ),
+        at,
         step,
+        ...(parts === undefined ? {} : { parts }),
       });
     }
   };

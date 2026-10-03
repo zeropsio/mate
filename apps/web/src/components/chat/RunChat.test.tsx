@@ -1024,6 +1024,77 @@ describe("RunChat, as the person uses it", () => {
     }
   });
 
+  // Two edits in a row fold into one line: the second stands in the slot as
+  // it ended, the first in the history on its own, and they fold once it
+  // lands (E6).
+  it("folds the second of two edits into the first only once it lands", () => {
+    vi.useFakeTimers();
+    try {
+      const edit = (id: string, running: boolean) =>
+        command(id, "", {
+          command: undefined,
+          itemType: "file_change",
+          label: "File change",
+          detail: `Edit: {"file_path":"/srv/app/${id}.ts"}`,
+          ...(running
+            ? { toolLifecycleStatus: "inProgress", sourceActivityKind: "tool.started" }
+            : {}),
+        });
+      const first = step(edit("e1", false));
+      const renderer = mount(
+        record([first], {
+          live: true,
+          status: status(),
+          now: { kind: "step", step: stepOf(edit("e2", true)) },
+        }),
+      );
+      const said = () => JSON.stringify(renderer.toJSON());
+      // It returned: the record folds it into the line before it.
+      const done = stepOf(edit("e2", false), undefined, false);
+      const folded: RecordItem = {
+        kind: "step",
+        key: "step:e1",
+        at: at(2),
+        step: {
+          ...(first.kind === "step" ? first.step : done),
+          words: "Edited e1.ts and e2.ts",
+          entries: [edit("e1", false), edit("e2", false)],
+        },
+        parts: [
+          first as Extract<RecordItem, { kind: "step" }>,
+          {
+            kind: "step",
+            key: "step:e2",
+            at: at(2),
+            step: done,
+          },
+        ],
+      };
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={record([folded], { live: true, status: status() })} />
+          </Rows>,
+        ),
+      );
+      const rows = () =>
+        renderer.root
+          .findAll((node) => node.type === "li" && node.props["data-run-key"] !== undefined)
+          .map((node) => String(node.props["data-run-key"]));
+      // Each its own line, the second as it ended: never running, never gone.
+      expect(rows().filter((key) => key.endsWith("step:e1"))).toHaveLength(1);
+      expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(1);
+      expect(said()).not.toContain("data-run-shimmer");
+      expect(said()).not.toContain("2 edits");
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // Landed, it folds in.
+      expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(0);
+      expect(said()).toContain("2 edits");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // A call that joins the slot while the person watches rises in (E5).
   it("lets a call joining the live slot rise in", () => {
     const rising = (renderer: ReactTestRenderer) =>

@@ -2972,7 +2972,14 @@ function LiveSlot({
     // A check the record drew into the row of the one before it is drawn there.
     if (item.kind !== "strip") byKey.set(key, item);
   }
-  for (const item of items) byKey.set(item.key, item);
+  for (const item of items) {
+    // A call the record folded into the line before it is drawn as it ended
+    // while it stands here (`parts`).
+    if (item.kind === "step") {
+      for (const part of item.parts ?? []) byKey.set(part.key, part);
+    }
+    byKey.set(item.key, item);
+  }
   for (const item of live) byKey.set(item.key, item);
   const shown = slot.entries.flatMap((entry) => {
     // One the record drew into another line (a check joining the row of the
@@ -3144,7 +3151,16 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       }),
     [row.now, row.answering, isCompacting, row.items],
   );
-  const recordKeys = useMemo(() => row.items.map((item) => item.key), [row.items]);
+  // A folded line's own calls are the record's too (`parts`).
+  const recordKeys = useMemo(
+    () =>
+      row.items.flatMap((item) =>
+        item.kind === "step" && item.parts !== undefined
+          ? [item.key, ...item.parts.map((part) => part.key).filter((key) => key !== item.key)]
+          : [item.key],
+      ),
+    [row.items],
+  );
   const slotRef = useRef<HTMLDivElement>(null);
   // Where each row leaving the slot stood, and each line of the history, read
   // before they move: the plop starts there, and the history glides from there.
@@ -3254,7 +3270,17 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     }
   }, [landing]);
   const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
-  const history = holds.size === 0 ? row.items : row.items.filter((item) => !holds.has(item.key));
+  // A folded line whose call the slot still holds stands unfolded, that call
+  // left out: it folds in once the call lands.
+  const history =
+    holds.size === 0
+      ? row.items
+      : row.items.flatMap((item): RecordItem[] => {
+          if (holds.has(item.key)) return [];
+          if (item.kind !== "step" || item.parts === undefined) return [item];
+          if (!item.parts.some((part) => holds.has(part.key))) return [item];
+          return item.parts.filter((part) => !holds.has(part.key));
+        });
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
   // A toggle leaves the height the work stood at: once the new fold is laid
