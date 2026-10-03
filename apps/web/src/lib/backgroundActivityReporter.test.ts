@@ -1,9 +1,11 @@
 import { EnvironmentId, WS_METHODS } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import {
   observeBackgroundActivitySubscription,
+  reportToConnected,
   retainedBackgroundScopes,
   wasRecentlyInteracted,
 } from "./backgroundActivityReporter.ts";
@@ -58,6 +60,38 @@ describe("wasRecentlyInteracted", () => {
       ]);
 
       yield* Effect.all([releaseFirst, releaseSecond]);
+    }),
+  );
+});
+
+describe("reportToConnected", () => {
+  // A9: a Mate is connected only while something holds it; a report to a parked one would wake it.
+  it.effect("reports only to connected Mates", () =>
+    Effect.gen(function* () {
+      const up = EnvironmentId.make("env-up");
+      const parked = EnvironmentId.make("env-parked");
+      const blinking = EnvironmentId.make("env-blinking");
+      const phases = new Map([
+        [up, "connected"],
+        [parked, "available"],
+        [blinking, "connecting"],
+      ]);
+      const entries = yield* SubscriptionRef.make(
+        new Map([up, parked, blinking].map((id) => [id, {}])),
+      );
+      const reported: Array<EnvironmentId> = [];
+      yield* reportToConnected(
+        {
+          entries: entries as never,
+          state: (environmentId) => Effect.succeed({ phase: phases.get(environmentId) } as never),
+          run: (environmentId) =>
+            Effect.sync(() => {
+              reported.push(environmentId);
+            }) as never,
+        },
+        (environmentId) => Effect.succeed(environmentId),
+      );
+      expect(reported).toEqual([up]);
     }),
   );
 });
