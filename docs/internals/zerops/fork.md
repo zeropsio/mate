@@ -145,6 +145,16 @@ Claude CLI × Codex CLI × Effect version × fixture set) live in `compat.md`.
     the structure
   - _Decision:_ deleted — `b04a59ac81` (A1), `61d9a5e9ba` (A2); the link's `summary` type and its
     schemas with `dd4ea18dd3` (A12)
+- Auto-connect (`packages/client-runtime/src/zerops/autoConnect.ts`) and the desktop's keep-alive
+  (`apps/web/src/components/RunningThreadKeepAlive.tsx`)
+  - _What it is:_ auto-connect wanted every ready Mate of the active organization, up to 48, beside
+    every Mate the browser remembered; the keep-alive held a detail stream open for each running
+    thread of every saved environment
+  - _Zerops path?:_ replaced by leases (step A): a Mate is connected while the route, the Mate on
+    screen, the one left last, an action or a Connect holds it, and parked otherwise; what draws a
+    Mate this tab has not opened reads HQ's overview of it
+  - _Decision:_ deleted — `90f1f5aff7` (auto-connect), `a5d8a35435` (keep-alive), with A9
+    (`2a78cb1ede`)
 
 ### 4.1 Names
 

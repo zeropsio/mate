@@ -3376,7 +3376,9 @@ no-cache`.
   text it had"). The echo stays one line (2026-09-28), now the first line of the words, never a
   picture label, with its pictures as a strip of thumbnails under it.
   - _Why:_ a message with a picture starts with its `[Picture 1]` line
-- **2026-10-01** — **A coming-up Mate hands over the moment it answers** (Vera's creating browser
+- **2026-10-01** — **Superseded 2026-10-03 in part by "A Mate is connected while something holds it"
+  below: the Mate on screen holds its own lease, and no ceiling is left to pass.**
+  **A coming-up Mate hands over the moment it answers** (Vera's creating browser
   held "Almost there" for over an hour). A registered or connected Mate always wins over a leftover
   setup record; every recorded Mate's setup record ends on load; the Mate on screen connects past
   auto-connect's ceiling, and its connect is retried by the environment machine's ladder.
@@ -3398,7 +3400,8 @@ no-cache`.
     Zerops calls on a Mate page — waited on the pace and the Zerops API to reach Mates that were up,
     and left each dropped session live on its Mate for a day, while the same storage keeps the
     Zerops token that can open every Mate
-- **2026-10-02** — **Every Mate in the menu connects on its own** (the owner, on a new Mate past the
+- **2026-10-02** — **Superseded 2026-10-03 by "A Mate is connected while something holds it" below.**
+  **Every Mate in the menu connects on its own** (the owner, on a new Mate past the
   twelfth that sat asleep and empty until clicked: "that's stupid, no?"). Auto-connect wants every
   ready Mate the roster lists, up to a bound of 48 that no account comes near (the largest has 27).
   - _Why:_ the ceiling of 12 rationed a throwaway per Mate per load; with sessions kept across loads
@@ -3475,3 +3478,15 @@ no-cache`.
   2026-10-02 _A Mate's key reaches only its own project_ row; the key's reach there stands.
   - _Why:_ the lowering read the organization's token list on every load, to find the keys only an
     adoption leaves `ADMIN`
+- **2026-10-03** — **A Mate is connected while something holds it** (step A, A9). A load connects
+  the route's Mate alone. A Mate is connected while the route names it, while it is on screen — its
+  own view, its birth — while it is the one left last, for 5 minutes, while an action from outside
+  its view holds it until the action answers, or while a Connect runs; with nothing holding it, it
+  is parked: its socket closed, its registration, kept session and cached data kept, and unparked
+  through no door. Rows, faces, notifications, the palette and the crew line read HQ's overview of
+  a Mate this tab has not opened. A command on a parked Mate is sent once it connects, or after
+  30 s regardless.
+  **Supersedes:** the 2026-10-02 _Every Mate in the menu connects on its own_ row, and the
+  auto-connect ceiling in the 2026-10-01 _A coming-up Mate hands over the moment it answers_ row.
+  - _Why:_ a load of the 20-odd-Mate account opened a socket per Mate in every tab, each through a
+    door, for surfaces HQ's overview now feeds
