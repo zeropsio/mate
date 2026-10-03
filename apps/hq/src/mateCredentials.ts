@@ -33,7 +33,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
-import { heldOf } from "./held.ts";
+import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { StructureRefused } from "./structure.ts";
@@ -52,6 +52,7 @@ export class MateRefused extends Schema.TaggedError<MateRefused>()("MateRefused"
     "not_a_mate",
     "mate_credential_required",
     "key_not_its_own",
+    "not_this_projects_mate",
   ]),
 }) {}
 
@@ -66,12 +67,14 @@ export class MateCredentials extends Context.Service<
     >;
     /**
      * The credential for the project whose env holds the nonce now; `keyTokenId`, the id of the key
-     * its container holds, as the Mate names it — else the one its credential before named.
+     * its container holds, as the Mate names it — else the one its credential before named;
+     * `serviceId`, the zcp service it runs in, which must be the one its record names
+     * ({@link enrollmentVerdict}).
      */
     readonly issue: (
       projectId: string,
       nonce: string,
-      keyTokenId?: string,
+      named?: { readonly keyTokenId?: string; readonly serviceId?: string },
     ) => Effect.Effect<
       { readonly credential: string },
       MateRefused | NotLeader | SqlError | ZeropsError
@@ -97,6 +100,33 @@ export class MateCredentials extends Context.Service<
     ) => Effect.Effect<string | null, StructureRefused | SqlError | ZeropsError>;
   }
 >()("@t3tools/hq/mateCredentials") {}
+
+/** An enrollment's verdict: issued, with the service the Mate's record names after it; or refused. */
+export type EnrollmentVerdict =
+  | { readonly kind: "issue"; readonly pin: string | null }
+  | { readonly kind: "refuse" };
+
+/**
+ * One Mate per project (audit D2): its record names its zcp service, and no other service of the
+ * project takes its credential. `pinned` is the service the record names, none before its first
+ * enrollment that names one; `claim` the service the enrolling zcp names, none from an older zcp;
+ * `holder` the service the project's live credential was issued to, null for an older zcp's and
+ * undefined when none is live; `pinnedGone`, Zerops no longer has the recorded service, whose place
+ * the enrolling one then takes. An older zcp is enrolled as before, unless it would revoke the
+ * credential of the Mate the record names.
+ */
+export function enrollmentVerdict(input: {
+  readonly pinned: string | null;
+  readonly claim: string | undefined;
+  readonly holder: string | null | undefined;
+  readonly pinnedGone: boolean;
+}): EnrollmentVerdict {
+  const { pinned, claim, holder, pinnedGone } = input;
+  if (pinned === null || claim === pinned) return { kind: "issue", pin: claim ?? pinned };
+  if (pinnedGone) return { kind: "issue", pin: claim ?? null };
+  if (claim !== undefined || holder === pinned) return { kind: "refuse" };
+  return { kind: "issue", pin: pinned };
+}
 
 const CHALLENGE_TTL = Duration.minutes(2);
 
@@ -172,6 +202,36 @@ export const mateCredentialsLayer = (options: {
             Effect.catchTag("ZeropsRefused", () => Effect.succeed(false)),
           );
         });
+      /**
+       * The Mate of the project as HQ holds it ({@link enrollmentVerdict}): the zcp service its
+       * record names, and the one its live credential was issued to.
+       */
+      const standingOf = (projectId: string) =>
+        Effect.map(
+          sql<{
+            readonly pinned: string | null;
+            readonly holder: string | null;
+            readonly live: boolean;
+          }>`
+            SELECT (SELECT service_id FROM hq_mate WHERE project_id = ${projectId}) AS pinned,
+              credential.service_id AS holder, credential.project_id IS NOT NULL AS live
+            FROM (SELECT 1) AS one
+            LEFT JOIN hq_mate_credential AS credential
+              ON credential.project_id = ${projectId} AND credential.revoked_at IS NULL`,
+          ([row]) => ({
+            pinned: row?.pinned ?? null,
+            holder: row?.live === true ? row.holder : undefined,
+          }),
+        );
+      /**
+       * Whether Zerops no longer has the service, read by its id with HQ's own credential: only
+       * its "not found" says so, and Zerops not answering is HQ's to try again.
+       */
+      const serviceGone = (serviceId: string) =>
+        Effect.flatMap(own, (credential) => api.service(serviceId)(credential)).pipe(
+          Effect.as(false),
+          Effect.catchTag("ZeropsRefused", (error) => Effect.succeed(error.reason === "not_found")),
+        );
       const keyOf = (projectId: string) =>
         Effect.map(
           sql<{ readonly key_token_id: string | null }>`
@@ -195,7 +255,7 @@ export const mateCredentialsLayer = (options: {
             );
             return { nonce, expiresIn: Duration.toSeconds(CHALLENGE_TTL) };
           }),
-        issue: (projectId, nonce, keyTokenId) =>
+        issue: (projectId, nonce, { keyTokenId, serviceId } = {}) =>
           Effect.gen(function* () {
             const nonceHash = hashOf(nonce);
             const [challenge] = yield* sql<{ readonly live: boolean }>`
@@ -208,6 +268,19 @@ export const mateCredentialsLayer = (options: {
             if (env.get(CHALLENGE_ENV) !== nonce) {
               return yield* new MateRefused({ code: "env_mismatch" });
             }
+            // Decided first on the Mate as HQ holds it, so a refusal writes nothing — and only once
+            // Zerops still has the service its record names.
+            const standing = yield* standingOf(projectId);
+            const pinnedGone =
+              standing.pinned !== null &&
+              enrollmentVerdict({ ...standing, claim: serviceId, pinnedGone: false }).kind ===
+                "refuse" &&
+              (yield* serviceGone(standing.pinned));
+            if (
+              enrollmentVerdict({ ...standing, claim: serviceId, pinnedGone }).kind === "refuse"
+            ) {
+              return yield* new MateRefused({ code: "not_this_projects_mate" });
+            }
             // A key id its Mate names is kept only where it names the Mate's own key; the
             // enrollment goes on without it otherwise, and Zerops not answering keeps none.
             const namedKey =
@@ -219,22 +292,37 @@ export const mateCredentialsLayer = (options: {
                 : undefined;
             const credential = secret();
             // The nonce is spent in the transaction that issues: of two presentations racing, one
-            // finds it already spent.
+            // finds it already spent. Enrollments of one project are decided one after another,
+            // each on the Mate as the one before left it.
             const issued = yield* leader.write(
               Effect.gen(function* () {
+                yield* lockProject(sql, projectId);
                 const spent = yield* sql`
                   UPDATE hq_mate_challenge SET used_at = now()
                   WHERE nonce_hash = ${nonceHash} AND used_at IS NULL AND expires_at > now()
                   RETURNING 1`;
                 if (spent.length === 0) return false;
+                const now = yield* standingOf(projectId);
+                const verdict = enrollmentVerdict({
+                  ...now,
+                  claim: serviceId,
+                  pinnedGone: pinnedGone && now.pinned === standing.pinned,
+                });
+                if (verdict.kind === "refuse") {
+                  return yield* new MateRefused({ code: "not_this_projects_mate" });
+                }
+                yield* sql`
+                  UPDATE hq_mate SET service_id = ${verdict.pin}
+                  WHERE project_id = ${projectId} AND service_id IS DISTINCT FROM ${verdict.pin}`;
                 const [before] = yield* sql<{ readonly key_token_id: string | null }>`
                   UPDATE hq_mate_credential SET revoked_at = now()
                   WHERE project_id = ${projectId} AND revoked_at IS NULL
                   RETURNING key_token_id`;
                 yield* sql`
-                  INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id)
+                  INSERT INTO hq_mate_credential
+                    (credential_hash, project_id, key_token_id, service_id)
                   VALUES (${hashOf(credential)}, ${projectId},
-                    ${namedKey ?? before?.key_token_id ?? null})`;
+                    ${namedKey ?? before?.key_token_id ?? null}, ${serviceId ?? null})`;
                 return true;
               }),
             );

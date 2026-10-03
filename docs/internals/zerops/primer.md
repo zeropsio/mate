@@ -155,7 +155,10 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
 - **a Mate credential** — issued by HQ for a challenge whose nonce it finds in the Mate's own
   project env (`MATE_HQ_CHALLENGE`); 256 bits, HQ keeping only the hash; one live per project, no
   expiry, revoked by the next issue or when the project goes; kept by zcp in
-  `~/.zcp/hq/enrollment.json`
+  `~/.zcp/hq/enrollment.json`. One Mate per project (D2): the Mate's record names its zcp service,
+  the first that enrolls naming itself; another zcp service of the project is refused with
+  `not_this_projects_mate` (409) and never revokes the Mate's credential, unless Zerops no longer
+  has the one named
   - _Reaches:_ the Mate's side of HQ — its repositories and changes, its recipe, `/api/mate/self`,
     the link — and git at `/git/<appId>/<repo>.git` as the user `mate`; it never leaves the
     container

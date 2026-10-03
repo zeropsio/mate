@@ -1247,6 +1247,53 @@ describe("HQ API", () => {
         }),
     );
 
+    // One Mate per project (audit D2): a zcp enrolls naming its service, the first one named becomes
+    // the Mate's, and another service of the project is refused — an HQ that does not know a field
+    // a zcp names ignores it, as this one does.
+    it.effect("refuses a zcp service other than its Mate's with 409 not_this_projects_mate", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        yield* setUpMate(call, "P_MATE");
+        for (const id of ["S1", "S2"]) {
+          fake.services.push({
+            id,
+            projectId: "P_MATE",
+            name: id.toLowerCase(),
+            status: "ACTIVE",
+            isSystem: false,
+            subdomainAccess: false,
+            http: false,
+            named: null,
+            activeVersionId: null,
+          });
+        }
+        const present = (body: Readonly<Record<string, string>>) =>
+          Effect.gen(function* () {
+            const { nonce } = (yield* call("POST", "/api/mate/challenge", {
+              body: { projectId: "P_MATE" },
+            })).body as { readonly nonce: string };
+            fake.env.set("P_MATE", [{ key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false }]);
+            const answer = yield* call("POST", "/api/mate/credential", {
+              body: { projectId: "P_MATE", nonce, ...body },
+            });
+            return [answer.status, (answer.body as { readonly code?: string }).code];
+          });
+        assert.deepStrictEqual(
+          [
+            yield* present({ serviceId: "S1", futureField: "kept out" }),
+            yield* present({ serviceId: "S2" }),
+            yield* present({ serviceId: "S1" }),
+          ],
+          [
+            [200, undefined],
+            [409, "not_this_projects_mate"],
+            [200, undefined],
+          ],
+        );
+      }),
+    );
+
     // Audit K3 and the adoption's harden: a Mate names its own key's id — an id, never a value — at
     // its enrollment and again with its credential, and HQ tells it to whoever administers the
     // Mate's project, who adopts it or deletes it; nobody else.

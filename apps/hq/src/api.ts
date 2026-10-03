@@ -23,11 +23,12 @@
  * - `POST /api/mates` `{ projectId, name, face }`, `PATCH /api/mates/:projectId` `{ name?, face? }`
  *   → `{ projectId, name, face }`: a Mate's record, in an application or not.
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
- *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce, keyTokenId? }` →
- *   `{ credential }`; `GET /api/mate/whoami` with `Authorization: Mate <credential>` →
- *   `{ projectId }`; `PUT /api/mate/key` `{ keyTokenId }`, the same → `204`: the id of the key the
- *   Mate's container holds, which `GET /api/mates/:projectId/key` → `{ keyTokenId }` tells the
- *   project's admin;
+ *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce, keyTokenId?,
+ *   serviceId? }` → `{ credential }`, refused `409 not_this_projects_mate` to a zcp service other
+ *   than the one the Mate's record names (one Mate per project, audit D2); `GET /api/mate/whoami`
+ *   with `Authorization: Mate <credential>` → `{ projectId }`; `PUT /api/mate/key` `{ keyTokenId }`,
+ *   the same → `204`: the id of the key the Mate's container holds, which `GET
+ *   /api/mates/:projectId/key` → `{ keyTokenId }` tells the project's admin;
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
  *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
  * - `POST /api/mates/:projectId/closed-off` → the Mate's state: its project closed off, recorded by
@@ -139,10 +140,13 @@ const DoorBody = Schema.Struct({ token: Schema.String });
 const ChallengeBody = Schema.Struct({ projectId: Schema.String });
 /** A Zerops token's id, as the platform spells one — never a token's value. */
 const TokenId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,64}$/u));
+/** A Zerops service's id, as the platform spells one. */
+const ServiceId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,64}$/u));
 const CredentialBody = Schema.Struct({
   projectId: Schema.String,
   nonce: Schema.String,
   keyTokenId: Schema.optionalKey(TokenId),
+  serviceId: Schema.optionalKey(ServiceId),
 });
 const KeyBody = Schema.Struct({ keyTokenId: TokenId });
 const AppBody = Schema.Struct({ name: Schema.String });
@@ -208,6 +212,7 @@ const MATE_STATUS = {
   not_a_mate: 403,
   mate_credential_required: 401,
   key_not_its_own: 409,
+  not_this_projects_mate: 409,
 } as const;
 
 const CHANGE_STATUS = {
@@ -665,8 +670,8 @@ const routes = (
       handle(
         Effect.gen(function* () {
           yield* knock("mate");
-          const { projectId, nonce, keyTokenId } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
-          return json(yield* (yield* MateCredentials).issue(projectId, nonce, keyTokenId), 200);
+          const { projectId, nonce, ...named } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
+          return json(yield* (yield* MateCredentials).issue(projectId, nonce, named), 200);
         }),
       ),
     ),

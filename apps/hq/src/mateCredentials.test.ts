@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -14,10 +15,11 @@ import {
   CHALLENGE_ENV,
   MateCredentials,
   MateRefused,
+  enrollmentVerdict,
   mateCredentialsLayer,
 } from "./mateCredentials.ts";
 import { rolesLayer } from "./roles.ts";
-import { ZeropsApi } from "./zerops/api.ts";
+import { ZeropsApi, ZeropsUnavailable } from "./zerops/api.ts";
 
 /**
  * HQ's Read only token, its project and its owner; a Mate's project, an environment, a devstage and
@@ -104,6 +106,11 @@ const withMates = <A, E>(
 
 const isMateRefused = Schema.is(MateRefused);
 
+/** The nonce the presentation running reads back from its project's env. */
+const Presenting = Context.Reference<string>("test/mateCredentials/presenting", {
+  defaultValue: () => "",
+});
+
 /** The code of `effect`'s refusal, or the tag of any other failure. */
 const refusalOf = <A, E extends { readonly _tag: string }, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.map(Effect.flip(effect), (error) => (isMateRefused(error) ? error.code : error._tag));
@@ -130,6 +137,120 @@ const keyOn = (fake: FakeWorld, id: string, ...projectIds: ReadonlyArray<string>
 /** What zcp does with its own key: writes the nonce into its project's env, unmarked. */
 const writeChallenge = (fake: FakeWorld, projectId: string, value: string, sensitive = false) =>
   fake.env.set(projectId, [{ key: CHALLENGE_ENV, value, sensitive }]);
+
+/** A zcp service of the project, as Zerops holds it. */
+const zcpIn = (fake: FakeWorld, id: string, projectId: string) =>
+  fake.services.push({
+    id,
+    projectId,
+    name: id.toLowerCase(),
+    status: "ACTIVE",
+    isSystem: false,
+    subdomainAccess: false,
+    http: false,
+    named: null,
+    activeVersionId: null,
+  });
+
+// One Mate per project (audit D2): its record names its zcp service, and an enrollment from another
+// never takes its credential. An enrollment that names no service is an older zcp's, decided as
+// before, except where it would revoke the credential of the Mate the record names.
+describe("enrollmentVerdict", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly pinned: string | null;
+    readonly claim: string | undefined;
+    readonly holder: string | null | undefined;
+    readonly pinnedGone: boolean;
+    readonly verdict: ReturnType<typeof enrollmentVerdict>;
+  }> = [
+    {
+      name: "the first enrollment that names its service records it",
+      pinned: null,
+      claim: "S1",
+      holder: undefined,
+      pinnedGone: false,
+      verdict: { kind: "issue", pin: "S1" },
+    },
+    {
+      name: "the recorded service enrolls again",
+      pinned: "S1",
+      claim: "S1",
+      holder: "S1",
+      pinnedGone: false,
+      verdict: { kind: "issue", pin: "S1" },
+    },
+    {
+      name: "another service of the project is refused",
+      pinned: "S1",
+      claim: "S2",
+      holder: "S1",
+      pinnedGone: false,
+      verdict: { kind: "refuse" },
+    },
+    {
+      name: "another service is refused with no credential live",
+      pinned: "S1",
+      claim: "S2",
+      holder: undefined,
+      pinnedGone: false,
+      verdict: { kind: "refuse" },
+    },
+    {
+      name: "the recorded service gone, the next one takes its place",
+      pinned: "S1",
+      claim: "S2",
+      holder: "S1",
+      pinnedGone: true,
+      verdict: { kind: "issue", pin: "S2" },
+    },
+    {
+      name: "an older zcp's enrollment, nothing recorded",
+      pinned: null,
+      claim: undefined,
+      holder: null,
+      pinnedGone: false,
+      verdict: { kind: "issue", pin: null },
+    },
+    {
+      name: "an older zcp's enrollment, recorded at its attach, no credential live",
+      pinned: "S1",
+      claim: undefined,
+      holder: undefined,
+      pinnedGone: false,
+      verdict: { kind: "issue", pin: "S1" },
+    },
+    {
+      name: "an older zcp's enrollment where the live credential is an older zcp's",
+      pinned: "S1",
+      claim: undefined,
+      holder: null,
+      pinnedGone: false,
+      verdict: { kind: "issue", pin: "S1" },
+    },
+    {
+      name: "an older zcp's enrollment never revokes the recorded Mate's credential",
+      pinned: "S1",
+      claim: undefined,
+      holder: "S1",
+      pinnedGone: false,
+      verdict: { kind: "refuse" },
+    },
+    {
+      name: "an older zcp's enrollment where the recorded service is gone",
+      pinned: "S1",
+      claim: undefined,
+      holder: "S1",
+      pinnedGone: true,
+      verdict: { kind: "issue", pin: null },
+    },
+  ];
+  for (const { name, verdict, ...input } of cases) {
+    it(name, () => {
+      assert.deepStrictEqual(enrollmentVerdict(input), verdict);
+    });
+  }
+});
 
 describe("mate credentials", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -244,7 +365,11 @@ describe("mate credentials", () => {
             Effect.gen(function* () {
               const { nonce } = yield* mates.challenge("P_MATE");
               writeChallenge(fake, "P_MATE", nonce);
-              return (yield* mates.issue("P_MATE", nonce, keyTokenId)).credential;
+              return (yield* mates.issue(
+                "P_MATE",
+                nonce,
+                keyTokenId === undefined ? {} : { keyTokenId },
+              )).credential;
             });
           assert.isNull(yield* mates.keyOf("P_MATE"));
           const first = yield* enroll("tok-key-1");
@@ -276,7 +401,7 @@ describe("mate credentials", () => {
           const mates = yield* MateCredentials;
           const { nonce } = yield* mates.challenge("P_MATE");
           writeChallenge(fake, "P_MATE", nonce);
-          const { credential } = yield* mates.issue("P_MATE", nonce, "tok-wide");
+          const { credential } = yield* mates.issue("P_MATE", nonce, { keyTokenId: "tok-wide" });
           assert.isNull(yield* mates.keyOf("P_MATE"));
           assert.deepStrictEqual(
             [
@@ -298,7 +423,7 @@ describe("mate credentials", () => {
           const mates = yield* MateCredentials;
           const { nonce } = yield* mates.challenge("P_MATE");
           writeChallenge(fake, "P_MATE", nonce);
-          const { credential } = yield* mates.issue("P_MATE", nonce, "tok-foreign");
+          const { credential } = yield* mates.issue("P_MATE", nonce, { keyTokenId: "tok-foreign" });
           assert.isNull(yield* mates.keyOf("P_MATE"));
           assert.strictEqual(
             yield* refusalOf(mates.keepKey(credential, "tok-foreign")),
@@ -307,6 +432,86 @@ describe("mate credentials", () => {
         }),
       ),
     );
+
+    it.effect(
+      "refuses an enrollment from another zcp service of the project, and the Mate keeps its credential",
+      () =>
+        withMates((fake) =>
+          Effect.gen(function* () {
+            zcpIn(fake, "S1", "P_MATE");
+            zcpIn(fake, "S2", "P_MATE");
+            const mates = yield* MateCredentials;
+            const enroll = (serviceId?: string) =>
+              Effect.gen(function* () {
+                const { nonce } = yield* mates.challenge("P_MATE");
+                writeChallenge(fake, "P_MATE", nonce);
+                return (yield* mates.issue(
+                  "P_MATE",
+                  nonce,
+                  serviceId === undefined ? {} : { serviceId },
+                )).credential;
+              });
+            const first = yield* enroll("S1");
+            assert.deepStrictEqual(
+              [yield* refusalOf(enroll("S2")), yield* refusalOf(enroll())],
+              ["not_this_projects_mate", "not_this_projects_mate"],
+            );
+            assert.deepStrictEqual(
+              yield* mates.whoami(first),
+              Option.some({ projectId: "P_MATE" }),
+            );
+
+            const again = yield* enroll("S1");
+            assert.deepStrictEqual(yield* mates.whoami(first), Option.none());
+            assert.deepStrictEqual(
+              yield* mates.whoami(again),
+              Option.some({ projectId: "P_MATE" }),
+            );
+          }),
+        ),
+    );
+
+    it.effect("the zcp service a Mate's record names, gone from Zerops, gives its place", () => {
+      // Zerops not answering about the service the record names refuses nothing: HQ is asked again.
+      let serviceDown = false;
+      return withMates(
+        (fake) =>
+          Effect.gen(function* () {
+            zcpIn(fake, "S1", "P_MATE");
+            zcpIn(fake, "S2", "P_MATE");
+            const mates = yield* MateCredentials;
+            const sql = yield* SqlClient.SqlClient;
+            const enroll = (serviceId: string) =>
+              Effect.gen(function* () {
+                const { nonce } = yield* mates.challenge("P_MATE");
+                writeChallenge(fake, "P_MATE", nonce);
+                return (yield* mates.issue("P_MATE", nonce, { serviceId })).credential;
+              });
+            const first = yield* enroll("S1");
+            fake.services.splice(
+              fake.services.findIndex((service) => service.id === "S1"),
+              1,
+            );
+            const next = yield* enroll("S2");
+            assert.deepStrictEqual(yield* mates.whoami(first), Option.none());
+            assert.deepStrictEqual(yield* mates.whoami(next), Option.some({ projectId: "P_MATE" }));
+            const [mate] = yield* sql<{ readonly service_id: string | null }>`
+              SELECT service_id FROM hq_mate WHERE project_id = 'P_MATE'`;
+            assert.strictEqual(mate?.service_id, "S2");
+
+            serviceDown = true;
+            assert.strictEqual(yield* refusalOf(enroll("S1")), "ZeropsUnavailable");
+            assert.deepStrictEqual(yield* mates.whoami(next), Option.some({ projectId: "P_MATE" }));
+          }),
+        (api) => ({
+          ...api,
+          service: (serviceId) => (credential) =>
+            serviceDown
+              ? Effect.fail(new ZeropsUnavailable({ operation: "service", message: "down" }))
+              : api.service(serviceId)(credential),
+        }),
+      );
+    });
 
     it.effect("a project's next credential revokes the one before", () =>
       withMates((fake) =>
@@ -394,6 +599,54 @@ describe("mate credentials", () => {
               "unknown_nonce",
               "unknown_nonce",
             ]);
+          }),
+        together,
+      );
+    });
+
+    it.effect("of two zcp services enrolling a Mate its record names none of, one is its", () => {
+      // Each presents its own nonce, and every key read waits for both: both have found the record
+      // naming no service before either issues.
+      const arrived = Deferred.makeUnsafe<void>();
+      let reads = 0;
+      const together = (api: ZeropsApi["Service"]): ZeropsApi["Service"] => ({
+        ...api,
+        projectEnv: () => () =>
+          Effect.map(Effect.service(Presenting), (nonce) => new Map([[CHALLENGE_ENV, nonce]])),
+        tokenProjects: (orgId, tokenId) => (credential) =>
+          Effect.andThen(
+            Effect.suspend(() =>
+              ++reads === 2 ? Deferred.succeed(arrived, undefined) : Effect.void,
+            ),
+            Effect.andThen(Deferred.await(arrived), api.tokenProjects(orgId, tokenId)(credential)),
+          ),
+      });
+      return withMates(
+        (fake) =>
+          Effect.gen(function* () {
+            keyOn(fake, "tok-key", "P_MATE");
+            const mates = yield* MateCredentials;
+            const sql = yield* SqlClient.SqlClient;
+            const present = (serviceId: string) =>
+              Effect.gen(function* () {
+                const { nonce } = yield* mates.challenge("P_MATE");
+                return yield* mates
+                  .issue("P_MATE", nonce, { keyTokenId: "tok-key", serviceId })
+                  .pipe(
+                    Effect.provideService(Presenting, nonce),
+                    refusalOf,
+                    Effect.orElseSucceed(() => serviceId),
+                  );
+              });
+            const answers = yield* Effect.all([present("S1"), present("S2")], {
+              concurrency: "unbounded",
+            });
+            const [mate] = yield* sql<{ readonly service_id: string }>`
+              SELECT service_id FROM hq_mate WHERE project_id = 'P_MATE'`;
+            assert.deepStrictEqual(
+              answers.toSorted(),
+              [mate!.service_id, "not_this_projects_mate"].toSorted(),
+            );
           }),
         together,
       );
