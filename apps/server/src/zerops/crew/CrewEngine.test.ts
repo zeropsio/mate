@@ -156,9 +156,7 @@ describe("CrewEngine", () => {
             transcriptPath: transcript,
           });
           assert.isTrue(packet?.startsWith("crew-state seq"));
-          yield* eventually(
-            Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active"),
-          );
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active");
           yield* command({
             _tag: "message",
             handle: "backend",
@@ -469,7 +467,7 @@ describe("CrewEngine", () => {
           "jobs/erik.md": "You write the plan.\n",
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
         const { atOnce } = yield* pressDuringTurnEnd(world, () => ({
           _tag: "tell",
@@ -734,7 +732,7 @@ describe("CrewEngine", () => {
           "jobs/erik.md": "You write the plan.\n",
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         const none = yield* Effect.flip(
           command({ _tag: "tell", text: "Everyone, go.", mentions: [] }),
         );
@@ -1305,9 +1303,7 @@ describe("CrewEngine", () => {
           write(world.root, ".crew/backend/x.txt", "x\n"),
         );
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* eventually(
-          Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1),
-        );
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
         const kept = yield* Effect.flip(
           command({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: false }),
         );
@@ -1361,7 +1357,7 @@ describe("CrewEngine", () => {
             ].join("\n"),
           });
           yield* command({ _tag: "apply" });
-          yield* eventually(Effect.map(latest, everyCopyReady));
+          yield* snapshotWhere(everyCopyReady);
           const ports = yield* command({ _tag: "addCrewPorts", host: "appdev", count: 2 });
           yield* command({ _tag: "appRun", handle: "backend" });
           const running = yield* snapshotWhere(
@@ -1542,7 +1538,7 @@ describe("CrewEngine", () => {
           ].join("\n"),
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         const thread = yield* firstTurn(world, () => undefined);
         const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
         yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1933,7 +1929,7 @@ describe("CrewEngine", () => {
             "jobs/lead.md": "Plan the work.\n",
           });
           yield* command({ _tag: "apply" });
-          yield* eventually(Effect.map(latest, everyCopyReady));
+          yield* snapshotWhere(everyCopyReady);
           yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
           const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
             (entry) => entry.crew.crewmate === "backend",

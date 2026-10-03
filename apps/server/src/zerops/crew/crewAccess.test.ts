@@ -12,12 +12,7 @@ import * as Ref from "effect/Ref";
 import type { MateLogin } from "../ZeropsLogins.ts";
 import { crewHomeChange, type CrewHomeChange } from "./crewAccess.ts";
 import { CrewEngine } from "./CrewEngine.ts";
-import {
-  eventually,
-  withCrewEngine,
-  writeCrewHome,
-  type CrewWorld,
-} from "./testing/crewEngineFixture.ts";
+import { withCrewEngine, writeCrewHome, type CrewWorld } from "./testing/crewEngineFixture.ts";
 import {
   KAREL,
   command,
@@ -156,7 +151,7 @@ describe("the crew's door", () => {
           "jobs/lead.md": "Plan the work.\n",
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         yield* command({
           _tag: "taskCreate",
           owner: "backend",
@@ -270,7 +265,7 @@ describe("the crew's door", () => {
             "jobs/lead.md": "Plan the work.\n",
           });
           yield* command({ _tag: "apply" });
-          yield* eventually(Effect.map(latest, everyCopyReady));
+          yield* snapshotWhere(everyCopyReady);
           yield* command({
             _tag: "start",
             budgetUsd: 5,
@@ -335,7 +330,7 @@ describe("the crew's door", () => {
           "jobs/lead.md": "Plan the work.\n",
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         yield* Ref.set(world.notTheirs, new Map([[EVA_LOGIN.id, EVAS]]));
         const engine = yield* CrewEngine;
         const write = (path: string, content: string) =>

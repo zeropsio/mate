@@ -438,6 +438,14 @@ export const withCrewEngines = <E>(
     );
   });
 
+/**
+ * The budget of a test that drives a live crew engine: the server suite's own (`testTimeout` in
+ * `apps/server/vite.config.ts`). A run from the repository root holds every test to the root's
+ * 60 s, with files in parallel, and an engine's work — copies, commits, a merge, a check, each a
+ * git or shell process — takes longer on a loaded machine without anything going wrong.
+ */
+export const CREW_ENGINE_TEST_TIMEOUT = 120_000;
+
 /** One engine: see {@link withCrewEngines}. */
 export const withCrewEngine = <E>(
   body: (world: CrewWorld) => Effect.Effect<void, E, CrewEngineServices>,

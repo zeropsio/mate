@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 
 import { CrewThreadDirectory, CrewToolHost, type CrewThreadMember } from "./crewSeams.ts";
 import {
+  CREW_ENGINE_TEST_TIMEOUT,
   eventually,
   spiEvent,
   withCrewEngine,
@@ -22,7 +23,6 @@ import {
   dispatchedOf,
   everyCopyReady,
   firstTurn,
-  latest,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
 import { git, write } from "./testing/crewGitFixture.ts";
@@ -58,7 +58,7 @@ const appliedRotatingAfter = (world: CrewWorld, rotateAfter: number) =>
       ].join("\n"),
     });
     yield* command({ _tag: "apply" });
-    yield* eventually(Effect.map(latest, everyCopyReady));
+    yield* snapshotWhere(everyCopyReady);
   });
 
 const sessionStarted = (
@@ -75,7 +75,7 @@ const sessionStarted = (
     });
   });
 
-describe("CrewEngine memory", () => {
+describe("CrewEngine memory", { timeout: CREW_ENGINE_TEST_TIMEOUT }, () => {
   it.live("a crewmate keeps memory: its prompt turns crew_memory on", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {

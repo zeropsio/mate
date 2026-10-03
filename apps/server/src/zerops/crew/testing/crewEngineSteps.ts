@@ -15,7 +15,7 @@ import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import type { TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { CrewEngine } from "../CrewEngine.ts";
 import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
-import { eventually, spiEvent, writeCrewHome, type CrewWorld } from "./crewEngineFixture.ts";
+import { spiEvent, writeCrewHome, type CrewWorld } from "./crewEngineFixture.ts";
 
 export const KAREL: TurnPrincipal = {
   kind: "session",
@@ -49,18 +49,22 @@ export const everyCopyReady = (snapshot: CrewSnapshot) =>
   snapshot.status === "applied" &&
   snapshot.crewmates.every((mate) => mate.readOnly || mate.lane?.state === "ready");
 
+/**
+ * The first snapshot the engine publishes that `check` holds for, the one it holds now included.
+ * It waits on the engine, not on a clock: a loaded machine makes it wait longer, and only the
+ * test's own budget ends it.
+ */
+export const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
+  Effect.flatMap(CrewEngine, (engine) =>
+    engine.snapshot.pipe(Stream.filter(check), Stream.runHead, Effect.map(Option.getOrThrow)),
+  );
+
 /** Applies the crew home and waits until every copy is ready. */
 export const applied = (world: CrewWorld) =>
   Effect.gen(function* () {
     writeCrewHome(world.workspace);
     yield* command({ _tag: "apply" });
-    yield* eventually(Effect.map(latest, everyCopyReady));
-  });
-
-export const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
-  Effect.gen(function* () {
-    yield* eventually(Effect.map(latest, check));
-    return yield* latest;
+    yield* snapshotWhere(everyCopyReady);
   });
 
 /** Opens a task with a message and starts its first turn, with `edit` made in the copy. */

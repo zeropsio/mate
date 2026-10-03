@@ -56,7 +56,7 @@ const withLead = (world: CrewWorld, check: string | null = "test -f ok.txt") =>
       "jobs/lead.md": "Plan the work.\n",
     });
     yield* command({ _tag: "apply" });
-    yield* eventually(Effect.map(latest, everyCopyReady));
+    yield* snapshotWhere(everyCopyReady);
   });
 
 const startRun = (options: Partial<CrewRunOptions> = {}) =>
