@@ -8,99 +8,79 @@
  * row as overlapping slivers of faces with a "+1", narrowing both lines.
  * Nothing at all while there is no crew.
  *
- * A reload draws the line where it stood (`menuMemory.ts`), so no row moves
- * when the crew's feed answers: the faces this browser last read, at rest —
- * which of them works or waits, and the crew's fact, are only true now and
- * wait for the feed. *Review* stands only where the task's crewmate is the
- * viewer's to run (D6, `crewAccess`); its place stays either way.
+ * Read from HQ (`useMateCrew`): the crew in its Mate's overview, for a Mate nobody opened as for
+ * the open one. While HQ's answer is not current, or the Mate sleeps, the faces stand at rest —
+ * which of them works or waits, and the crew's fact, are only true now. *Review* stands only
+ * where the task's crewmate is the viewer's to run (D6, `crewTaskReviewable`); its place stays
+ * either way.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { crewFaceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import type { CrewAttention, CrewStatus, EnvironmentId } from "@t3tools/contracts";
+import type { CrewStatus, EnvironmentId } from "@t3tools/contracts";
+import type { CrewDigest, OverviewLogins } from "@t3tools/shared/mateLink";
 import { useNavigate } from "@tanstack/react-router";
 import { UsersIcon } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import { buildThreadRouteParams } from "../../../threadRoutes";
-import { useCrew } from "../../../zerops/crew/useCrew";
-import { useCrewAccess } from "../../../zerops/crew/useCrewAccess";
-import { menuMemory, rememberedCrewOf, rememberMenu, withCrews } from "../../../zerops/menuMemory";
+import { useMateCrew } from "../../../zerops/crew/useCrew";
 import { useOpenReview } from "../../../zerops/review";
+import { useZeropsSessionOptional } from "../../../zerops/ZeropsSessionProvider";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { MateFace } from "../primitives";
-import { crewLine, type CrewLineFace, type CrewLineFact } from "./SidebarCrewLine.logic";
+import {
+  crewLine,
+  crewTaskReviewable,
+  type CrewLineFace,
+  type CrewLineFact,
+} from "./SidebarCrewLine.logic";
 
-/** What the line reads of a crew: `useCrew`'s answer, or a fixture's (a harness). */
+/**
+ * A crew handed to the menu instead of HQ's (a harness): its status for the Mate's menu, its
+ * digest for the line, and whose its logins are.
+ */
 export interface SidebarCrewRead {
   readonly status: CrewStatus | null;
-  readonly view: Pick<CrewView, "crewmates" | "tasks" | "personLands"> | null;
-  readonly attention: ReadonlyArray<CrewAttention>;
+  readonly crew: CrewDigest | null;
+  readonly logins: OverviewLogins;
 }
 
 export function SidebarCrewLine({
-  environmentId,
   projectId,
   read,
   mine,
 }: {
-  /** Its Mate's environment once connected; until then only what this browser remembers is drawn. */
-  readonly environmentId: EnvironmentId | undefined;
-  /** Its Mate's project: what the menu's memory keeps its crew under. */
+  /** Its Mate's project: what HQ holds its overview under. */
   readonly projectId: string;
-  /** A crew handed in instead of the feed's; absent, the line reads its own. */
+  /** A crew handed in instead of HQ's; absent, the line reads HQ's. */
   readonly read?: SidebarCrewRead | undefined;
   /** Its Mate is the viewer's own (`mateIsViewers`): only then does the crew need them. */
   readonly mine: boolean;
 }) {
-  const live = useCrew(environmentId ?? null);
-  // Whose the crew's logins are, for the crew the feed reads; a crew handed in reads nobody's.
-  const access = useCrewAccess(read === undefined ? (environmentId ?? null) : null, live.snapshot);
-  // What this browser last read of the crew, for the line's place on a reload.
-  const [remembered] = useState(() => menuMemory().crews[projectId]);
-  // A crew surface exists only for a crew read and applied (seam 21): not
-  // read yet, or a read that failed, draws only what was remembered.
+  const held = useMateCrew(projectId);
+  const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const crew =
-    read ??
-    (live.snapshot === null
-      ? undefined
-      : { status: live.status, view: live.view, attention: live.snapshot.attention });
-  const line =
-    crew === undefined || crew.status !== "applied" || crew.view === null
-      ? undefined
-      : crew.view.crewmates.length === 0
-        ? undefined
-        : crewLine(crew.view, crew.attention, mine);
-  // The crew as read, for the next reload to keep its place; a crew that is
-  // gone is forgotten. Not a fixture's, and not while unread.
-  const faces = line?.faces;
-  const gone = read === undefined && (live.status === "none" || live.status === "off");
-  useEffect(() => {
-    if (read !== undefined) return;
-    if (faces !== undefined) {
-      rememberMenu((memory) => withCrews(memory, { [projectId]: rememberedCrewOf(faces) }));
-    } else if (gone) {
-      rememberMenu((memory) => withCrews(memory, { [projectId]: null }));
-    }
-  }, [faces, gone, projectId, read]);
-  if (line !== undefined) {
+    read === undefined
+      ? held
+      : { crew: read.crew, logins: read.logins, current: true, environmentId: undefined };
+  if (crew.crew === null || crew.crew.crewmates.length === 0) return null;
+  const line = crewLine(crew.crew, mine);
+  if (!crew.current) {
     return (
       <CrewLineView
-        environmentId={environmentId}
-        fact={line.fact}
-        faces={line.faces}
-        known
-        reviews={(taskId) => access.reach({ kind: "tasks", taskIds: [taskId] }) === null}
+        environmentId={undefined}
+        fact={null}
+        faces={line.faces.map((face) => ({ ...face, state: "idle", threadId: null }))}
+        known={false}
       />
     );
   }
-  if (crew !== undefined || remembered === undefined) return null;
   return (
     <CrewLineView
-      environmentId={undefined}
-      fact={null}
-      faces={remembered.faces.map((face) => ({ ...face, state: "idle", threadId: null }))}
-      known={false}
+      environmentId={crew.environmentId}
+      fact={line.fact}
+      faces={line.faces}
+      known
+      reviews={crewTaskReviewable(crew.crew, crew.logins, viewerSubject)}
     />
   );
 }

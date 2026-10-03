@@ -80,7 +80,9 @@ import {
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
+import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
@@ -126,7 +128,8 @@ import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { useCrewStatus } from "~/zerops/crew/useCrew";
+import { hqMatesAtom } from "~/state/zerops";
+import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
@@ -245,6 +248,14 @@ type RosterCandidate = ZeropsCandidate & {
 };
 
 type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
+
+/**
+ * Whether a Mate is up, its face awake: this tab's socket to it is, or HQ holds one of its links
+ * open — though no socket of this tab reaches it and no chat of its says anything yet.
+ */
+function mateUp(item: ZeropsCandidate, mates: HqMates | null | undefined): boolean {
+  return item.group === "connected" || mates?.get(item.project.id)?.presence.online === true;
+}
 
 /** The set with the group collapsed or not; the same set where nothing changed. */
 function withCollapsed(
@@ -515,9 +526,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly shown?: ((candidate: T) => boolean) | undefined;
   /**
    * A Mate's crew as a fixture draws it (a harness): its crew line, and
-   * whether its menu offers *Set up a crew* or *Crew*. Absent, each connected
-   * Mate's crew line and menu read its own crew feed (`useCrew`,
-   * `useCrewStatus`).
+   * whether its menu offers *Set up a crew* or *Crew*. Absent, each Mate's
+   * crew line and menu read its crew from HQ (`useMateCrew`).
    */
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
@@ -603,6 +613,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
+  const hqMates = useAtomValue(hqMatesAtom)?.mates;
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
   // Collapsed projects survive a reload: a person who collapsed one had a
   // reason, and a menu that expands everything on every boot makes them do it
@@ -951,7 +962,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           projectName: groupName,
           environmentId: item.environmentId,
           owner: getOwner?.(item),
-          connected: item.group === "connected",
+          connected: mateUp(item, hqMates),
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
           mine: mateIsViewers(item.project, viewer),
@@ -1229,7 +1240,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             const live = getActivity?.(item);
             const coming = getComing?.(item);
             const read = mateRowReading({
-              connected: item.group === "connected",
+              connected: mateUp(item, hqMates),
               activity: live,
               reviewWaits: reviewWaits(item),
               mine: mateIsViewers(item.project, viewer),
@@ -1428,6 +1439,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   actions={getMateActions?.(item, getActivity?.(item))}
                   active={active}
                   activity={getActivity?.(item)}
+                  up={mateUp(item, hqMates)}
                   appUrl={appUrl}
                   candidate={item}
                   coming={getComing?.(item)}
@@ -1443,11 +1455,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   timestampFormat={timestampFormat}
                   {...faceOf(item.project)}
                 />
-                {/* Its crew, one line right under it, before its changes — read
-                    once its Mate is connected, and until then where this
-                    browser last saw it, so a reload moves no row. */}
+                {/* Its crew, one line right under it, before its changes — as HQ
+                    holds it, at rest while HQ's answer is not now. */}
                 <SidebarCrewLine
-                  environmentId={item.group === "connected" ? item.environmentId : undefined}
                   mine={mateIsViewers(item.project, viewer)}
                   projectId={item.project.id}
                   read={getCrew?.(item)}
@@ -2395,6 +2405,7 @@ function MateRow<T extends RosterCandidate>({
   shape,
   active,
   activity,
+  up,
   coming,
   conversationsRead = false,
   onSelect,
@@ -2415,6 +2426,8 @@ function MateRow<T extends RosterCandidate>({
   readonly shape: MateShapeId;
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
+  /** It is up, its face awake (`mateUp`): its socket, or its link to HQ. */
+  readonly up: boolean;
   /** Still coming up, or never came (`mateComing`): its one line says so. */
   readonly coming?: MateComing | undefined;
   /** Its conversations are read: none there says nothing was asked (`mateRowAskLine`). */
@@ -2457,7 +2470,7 @@ function MateRow<T extends RosterCandidate>({
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
   const read = mateRowReading({
-    connected: candidate.group === "connected",
+    connected: up,
     activity,
     reviewWaits,
     mine: mateIsViewers(candidate.project, viewer),
@@ -2541,13 +2554,11 @@ function MateRow<T extends RosterCandidate>({
     read: conversationsRead,
   });
   const warmIntent = useWarmIntent(activity?.threadKey);
-  // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
-  // a crew applied — a fixture's, or its feed's once it is connected.
-  const liveCrewStatus = useCrewStatus(
-    onOpenCrew !== undefined && crew === undefined && candidate.group === "connected"
-      ? (candidate.environmentId ?? null)
-      : null,
-  );
+  // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew
+  // applied, as HQ holds it of any Mate — or a fixture's.
+  const liveCrewStatus = useMateCrew(
+    onOpenCrew !== undefined && crew === undefined ? candidate.project.id : null,
+  ).status;
   const crewStatus = crew === undefined ? liveCrewStatus : crew.status;
   // Setting a crew up is the viewer's only on a login they may run (D6): read where it is offered.
   const setUpAccess = useCrewAccess(

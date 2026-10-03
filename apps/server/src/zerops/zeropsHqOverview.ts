@@ -16,7 +16,6 @@ import type {
   ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
-  type CrewDigest,
   MATE_CREW_BOUNDS,
   linkFrameBytes,
   MATE_LINK_FRAME_MAX,
@@ -27,6 +26,7 @@ import {
   MATE_TITLE_MAX,
   type MateOverview,
   type MateThreadKind,
+  type OverviewCrew,
   type OverviewIdentity,
   type OverviewLogins,
   type OverviewMain,
@@ -226,14 +226,19 @@ const personLands = (run: CrewSnapshot["run"]): boolean =>
 const loginKeyOf = (login: { readonly id: string; readonly agent: string }): string =>
   extraLoginAgent(login.id) === undefined ? login.agent : login.id;
 
-/** An applied crew as the sidebar draws it; none where no crew is applied. */
+/**
+ * The crew as the Mate's menu and its line read it: its status — crew mode off until the engine is
+ * heard from — and, once a crew is applied, its digest as the sidebar draws it.
+ */
 function crewOf(
   crew: CrewSnapshot | undefined,
   threads: ReadonlyArray<OrchestrationThreadShell>,
-): CrewDigest | null {
-  if (crew?.status !== "applied") return null;
+): OverviewCrew {
+  if (crew === undefined) return { status: "off" };
+  if (crew.status !== "applied") return { status: crew.status };
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
   return {
+    status: "applied",
     crewmates: crew.crewmates.slice(0, MATE_CREW_BOUNDS.crewmates).map((mate) => {
       const thread = mate.currentThreadId === null ? undefined : byId.get(mate.currentThreadId);
       return {

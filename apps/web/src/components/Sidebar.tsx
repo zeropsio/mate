@@ -247,7 +247,6 @@ import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
-import { mateDeleting, useDeletingMates } from "../zerops/deletingMates";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -269,7 +268,6 @@ import {
   rememberMenu,
   withChanges,
   withChips,
-  withCrews,
 } from "../zerops/menuMemory";
 import {
   candidatesNotice,
@@ -2344,24 +2342,17 @@ export default function Sidebar() {
   const zeropsConversationsRead = useMateConversationsRead();
   // Whether a Mate is still in its first minutes, as the projects page says it.
   const zeropsComing = useMateComingOf(zeropsCandidates);
-  // Forget whatever the listing no longer holds — and a Mate on its way off
-  // Zerops, which a reload must not paint as it stood. The Mates' rows are
-  // remembered as HQ tells them (`hqStructure.ts`).
-  const zeropsDeleting = useDeletingMates();
+  // Forget the change rows and the chips of groups the listing no longer holds.
+  // The Mates, their crews with them, are remembered as HQ tells them (`hqStructure.ts`).
   useEffect(() => {
     if (!zeropsHeld.complete) return;
-    const listed = new Set<string>();
     const groups = new Set<string>();
     for (const candidate of zeropsCandidates) {
       const { groupId } = readZeropsMembership(candidate.project);
       if (groupId !== undefined) groups.add(groupId);
-      if (mateDeleting(candidate.project, zeropsDeleting)) continue;
-      listed.add(candidate.project.id);
     }
-    rememberMenu((memory) =>
-      withCrews(withChips(withChanges(memory, {}, groups), {}, groups), {}, listed),
-    );
-  }, [zeropsCandidates, zeropsDeleting, zeropsHeld.complete]);
+    rememberMenu((memory) => withChips(withChanges(memory, {}, groups), {}, groups));
+  }, [zeropsCandidates, zeropsHeld.complete]);
   // The change rows and the chips the tree drew of what it read, for
   // the next reload to paint while HQ and the platform answer again.
   const zeropsRemembered = useMemo<SidebarRemembered>(

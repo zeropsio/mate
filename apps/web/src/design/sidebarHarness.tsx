@@ -50,13 +50,9 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import {
-  deriveCrewView,
-  type CrewShellInput,
-} from "@t3tools/client-runtime/zerops/projections/crew";
-import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
-import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
+import type { MateThreadKind } from "@t3tools/shared/mateLink";
 import { EllipsisIcon } from "lucide-react";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
@@ -874,12 +870,12 @@ const FOOT_LINES: Record<
 const FOOT_LINE = FOOT_LINES[new URLSearchParams(location.search).get("notice") ?? ""] ?? null;
 
 /**
- * A crew of four under a Mate — the lead first — built from the crew's own
- * fixture, named and tinted as the plan's menu draws them: each crewmate's
- * thread in the state given, and the board with its ready tasks.
+ * A crew of four under a Mate — the lead first — as its Mate's overview carries it to HQ, built
+ * from the crew's own fixture, named and tinted as the plan's menu draws them: each crewmate's
+ * chat in the kind given, and its ready tasks.
  */
 function harnessCrew(input: {
-  readonly states: Readonly<Record<string, ThreadStatusKind>>;
+  readonly states: Readonly<Record<string, MateThreadKind>>;
   readonly ready: ReadonlyArray<string>;
 }): SidebarCrewRead {
   const fixture = crewSnapshotFixture();
@@ -889,32 +885,29 @@ function harnessCrew(input: {
     frontend: ["Cy", "coral"],
     erik: ["Dee", "rose"],
   };
-  const snapshot: CrewSnapshot = {
-    ...fixture,
-    crewmates: fixture.crewmates.map((mate) => {
-      const [displayName, tint] = names[mate.handle] ?? [mate.displayName, mate.tint];
-      return { ...mate, displayName, tint };
-    }),
-    board: {
-      tasks: fixture.board.tasks.map((task) =>
-        input.ready.includes(task.id) ? { ...task, state: "ready" as const } : task,
-      ),
+  return {
+    status: "applied",
+    crew: {
+      crewmates: fixture.crewmates.map((mate) => {
+        const [displayName, tint] = names[mate.handle] ?? [mate.displayName, mate.tint];
+        return {
+          handle: mate.handle,
+          displayName,
+          tint,
+          lead: mate.kind === "lead",
+          threadId: mate.currentThreadId,
+          threadKind: input.states[mate.handle] ?? "idle",
+          loginKey: null,
+        };
+      }),
+      attention: [],
+      readyTasks: fixture.board.tasks
+        .filter((task) => input.ready.includes(task.id))
+        .map((task) => ({ id: task.id, owner: task.owner })),
+      personLands: true,
     },
-    attention: [],
+    logins: {},
   };
-  const shells: ReadonlyArray<CrewShellInput> = snapshot.crewmates.flatMap((mate) =>
-    mate.currentThreadId === null ? [] : [{ id: mate.currentThreadId, archivedAt: null }],
-  );
-  const view = deriveCrewView(snapshot, shells, (shell) => {
-    const handle = snapshot.crewmates.find((mate) => mate.currentThreadId === shell.id)?.handle;
-    const kind = (handle === undefined ? undefined : input.states[handle]) ?? "idle";
-    return {
-      status: { kind, toneId: "neutral" },
-      word: kind === "idle" ? null : kind,
-      working: kind === "working",
-    };
-  });
-  return { status: "applied", view, attention: snapshot.attention };
 }
 
 /**
@@ -922,9 +915,9 @@ function harnessCrew(input: {
  * Enzo with crew mode on and no crew yet, whose menu offers *Set up a crew*.
  */
 const CREWS = new Map<string, SidebarCrewRead>([
-  ["todo-fen", harnessCrew({ states: { backend: "working", erik: "done" }, ready: ["task-13"] })],
+  ["todo-fen", harnessCrew({ states: { backend: "working" }, ready: ["task-13"] })],
   ["shop-otto", harnessCrew({ states: { backend: "input", frontend: "working" }, ready: [] })],
-  ["links-enzo", { status: "none", view: null, attention: [] }],
+  ["links-enzo", { status: "none", crew: null, logins: {} }],
 ]);
 
 /** Which Mate the menu opened, and what else it was asked to do, for the audit browser. */

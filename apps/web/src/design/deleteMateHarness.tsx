@@ -165,7 +165,7 @@ const OWNERS = new Map<string, ZeropsMateOwner>([
   [ADA.project.id, NINA],
 ]);
 
-const NO_CREW = { status: "none", view: null, attention: [] } as const;
+const NO_CREW = { status: "none", crew: null, logins: {} } as const;
 
 function actionsOf(candidate: Candidate, live: ZeropsAgentActivity | undefined): MateRowActions {
   const name = candidate.project.hq?.mate?.name ?? candidate.project.name;

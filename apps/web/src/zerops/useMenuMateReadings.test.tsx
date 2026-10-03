@@ -46,7 +46,7 @@ const VERA = Schema.decodeUnknownSync(MateLiveView)({
   },
   threads: { list: [], omitted: 0 },
   logins: {},
-  crew: null,
+  crew: { status: "off" },
 });
 
 /** Vera's project, listed and not connected: this page holds no socket to her. */

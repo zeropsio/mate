@@ -102,6 +102,7 @@ const overview = {
   },
   logins: { "claude-code": { signedInBy: "U1", present: true, token: false } },
   crew: {
+    status: "applied",
     crewmates: [
       {
         handle: "fen",
@@ -129,6 +130,24 @@ describe("mateLink", () => {
     });
   });
 
+  it("carries a crew's status, and its digest only once one is applied", () => {
+    const crewOf = (crew: unknown) => {
+      const decoded = decodeUp(
+        JSON.stringify({ type: "overview", full: false, sections: { crew } }),
+      );
+      return decoded._tag === "Success" && decoded.value.type === "overview" && !decoded.value.full
+        ? decoded.value.sections.crew
+        : decoded._tag;
+    };
+    // Crew mode off, and on with no crew yet: the menu offers nothing, or *Set up a crew*.
+    expect(crewOf({ status: "off" })).toEqual({ status: "off" });
+    expect(crewOf({ status: "none" })).toEqual({ status: "none" });
+    // Applied: its digest beside its status.
+    expect(crewOf(overview.crew)).toEqual(overview.crew);
+    expect(crewOf({ status: "applied" })).toBe("Failure");
+    expect(crewOf(null)).toBe("Failure");
+  });
+
   it("reads a summary within its bounds, and refuses one past them", () => {
     expect(decodeUp(summary("Add a login page"))._tag).toBe("Success");
     expect(decodeUp(summary("x".repeat(MATE_LINK_TEXT_MAX + 1)))._tag).toBe("Failure");
@@ -139,12 +158,16 @@ describe("mateLink", () => {
 
   it("decodes a frame that names only the sections that changed", () => {
     const decoded = decodeUp(
-      JSON.stringify({ type: "overview", full: false, sections: { main: null, crew: null } }),
+      JSON.stringify({
+        type: "overview",
+        full: false,
+        sections: { main: null, crew: { status: "none" } },
+      }),
     );
     expect(decoded._tag === "Success" ? decoded.value : decoded._tag).toEqual({
       type: "overview",
       full: false,
-      sections: { main: null, crew: null },
+      sections: { main: null, crew: { status: "none" } },
     });
   });
 

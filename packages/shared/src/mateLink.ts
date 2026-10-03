@@ -273,13 +273,23 @@ export const CrewDigest = Schema.Struct({
 });
 export type CrewDigest = typeof CrewDigest.Type;
 
+/**
+ * A Mate's crew as its menu and its line read it (`CrewStatus`): crew mode off, on with no crew
+ * yet — its menu offers to set one up — or a crew applied, its digest beside its status.
+ */
+export const OverviewCrew = Schema.Union([
+  Schema.Struct({ status: Schema.Literals(["off", "none"]) }),
+  Schema.Struct({ status: Schema.Literal("applied"), ...CrewDigest.fields }),
+]);
+export type OverviewCrew = typeof OverviewCrew.Type;
+
 /** Everything a Mate tells HQ of itself, by section: a section is always replaced whole. */
 export const MateOverview = Schema.Struct({
   identity: OverviewIdentity,
   main: Schema.NullOr(OverviewMain),
   threads: OverviewThreads,
   logins: OverviewLogins,
-  crew: Schema.NullOr(CrewDigest),
+  crew: OverviewCrew,
 });
 export type MateOverview = typeof MateOverview.Type;
 

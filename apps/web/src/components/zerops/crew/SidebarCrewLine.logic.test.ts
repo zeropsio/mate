@@ -1,64 +1,63 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import {
-  deriveCrewView,
-  type CrewShellInput,
-  type CrewThreadRead,
-} from "@t3tools/client-runtime/zerops/projections/crew";
 import { ThreadId, type CrewSnapshot } from "@t3tools/contracts";
-import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
+import type { CrewDigest, LoginDigest, MateThreadKind } from "@t3tools/shared/mateLink";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewLine } from "./SidebarCrewLine.logic";
+import { crewLine, crewTaskReviewable } from "./SidebarCrewLine.logic";
 
-/** A crew whose crewmates' threads say `kinds` (by handle), and nothing else waits on you. */
-function crew(
+/**
+ * The fixture's crew as its Mate's overview carries it to HQ: each crewmate's chat in the kind
+ * `kinds` says (by handle), idle where it says none; the waiting list and the ready work as the
+ * snapshot has them; the person landing unless the run lands itself.
+ */
+function digest(
   input: {
-    readonly kinds?: Readonly<Record<string, ThreadStatusKind>>;
+    readonly kinds?: Readonly<Record<string, MateThreadKind>>;
     readonly snapshot?: Partial<CrewSnapshot>;
   } = {},
-) {
+): CrewDigest {
   const snapshot: CrewSnapshot = { ...crewSnapshotFixture(), attention: [], ...input.snapshot };
-  const kinds = input.kinds ?? {};
-  const shells: ReadonlyArray<CrewShellInput> = snapshot.crewmates.flatMap((mate) =>
-    mate.currentThreadId === null ? [] : [{ id: mate.currentThreadId, archivedAt: null }],
-  );
-  const handleOf = (id: string) =>
-    snapshot.crewmates.find((mate) => mate.currentThreadId === id)?.handle ?? "";
-  const read = (shell: CrewShellInput): CrewThreadRead => {
-    const kind = kinds[handleOf(shell.id)] ?? "idle";
-    return {
-      status: { kind, toneId: "neutral" },
-      word: kind === "idle" ? null : kind,
-      working: kind === "working",
-    };
+  return {
+    crewmates: snapshot.crewmates.map((mate) => ({
+      handle: mate.handle,
+      displayName: mate.displayName,
+      tint: mate.tint,
+      lead: mate.kind === "lead",
+      threadId: mate.currentThreadId,
+      threadKind: mate.currentThreadId === null ? null : (input.kinds?.[mate.handle] ?? "idle"),
+      loginKey: mate.login.agent,
+    })),
+    attention: snapshot.attention.map(({ id, kind, handle }) => ({ id, kind, handle })),
+    readyTasks: snapshot.board.tasks
+      .filter((task) => task.state === "ready")
+      .map((task) => ({ id: task.id, owner: task.owner })),
+    personLands: snapshot.run?.options.landing !== "lead",
   };
-  return { view: deriveCrewView(snapshot, shells, read), attention: snapshot.attention };
 }
 
-/** The fixture's board with task 13 made ready: it waits for your Land, the run on `person`. */
+/** The fixture's board with `ids` made ready: they wait for your Land. */
 const readyTasks = (ids: ReadonlyArray<string>) =>
   crewSnapshotFixture().board.tasks.map((task) =>
     ids.includes(task.id) ? { ...task, state: "ready" as const } : task,
   );
 
 describe("crewLine — the crew as one line under its Mate", () => {
-  it("draws every crewmate's face, the lead first, each in its thread's state", () => {
-    const { view, attention } = crew({ kinds: { backend: "working", frontend: "done" } });
-    expect(crewLine(view, attention, true).faces).toEqual([
+  it("draws an unopened Mate's faces from its digest, the lead first, each in its chat's kind", () => {
+    const line = crewLine(digest({ kinds: { backend: "working", frontend: "input" } }), true);
+    expect(line.faces).toEqual([
       expect.objectContaining({ handle: "lead", lead: true, state: "idle" }),
       expect.objectContaining({ handle: "backend", lead: false, state: "working" }),
-      expect.objectContaining({ handle: "frontend", lead: false, state: "done" }),
+      expect.objectContaining({ handle: "frontend", lead: false, state: "needs" }),
       expect.objectContaining({ handle: "erik", lead: false, state: "idle" }),
     ]);
-    expect(crewLine(view, attention, true).faces[1]?.threadId).toBe(
-      ThreadId.make("thread-crew-backend-2"),
-    );
+    expect(line.faces[1]?.threadId).toBe(ThreadId.make("thread-crew-backend-2"));
+    expect(line.faces[1]?.tint).toBe(crewSnapshotFixture().crewmates[1]?.tint);
   });
 
   it.each([
     { case: "nothing waits on you", input: {}, fact: null },
     {
-      case: "a crewmate's thread asks you something",
+      case: "a crewmate's chat asks you something",
       input: { kinds: { backend: "input" as const } },
       fact: { kind: "needs", words: "Backend needs you" },
     },
@@ -91,8 +90,7 @@ describe("crewLine — the crew as one line under its Mate", () => {
       fact: { kind: "needs", words: "Erik needs you" },
     },
   ])("says the one most urgent fact: $case", ({ input, fact }) => {
-    const { view, attention } = crew(input);
-    expect(crewLine(view, attention, true).fact).toEqual(fact);
+    expect(crewLine(digest(input), true).fact).toEqual(fact);
   });
 
   // Under a colleague's Mate the crew waits on its owner, never on the viewer (the owner,
@@ -117,36 +115,68 @@ describe("crewLine — the crew as one line under its Mate", () => {
       fact: { kind: "land", words: "Frontend's work is ready", taskId: "task-13" },
     },
   ])("says nobody needs the viewer under another's Mate: $case", ({ input, fact }) => {
-    const { view, attention } = crew(input);
-    const line = crewLine(view, attention, false);
+    const line = crewLine(digest(input), false);
     expect(line.fact).toEqual(fact);
     expect(line.faces.some((face) => face.state === "needs")).toBe(false);
   });
 
   it("counts no task the lead lands itself", () => {
     const fixture = crewSnapshotFixture();
-    const { view, attention } = crew({
+    const crew = digest({
       snapshot: {
         board: { tasks: readyTasks(["task-13"]) },
         run: { ...fixture.run!, options: { ...fixture.run!.options, landing: "lead" } },
       },
     });
-    expect(crewLine(view, attention, true).fact).toBeNull();
+    expect(crewLine(crew, true).fact).toBeNull();
   });
 
   it("does not count a ready-to-land row of the waiting list as somebody needing you", () => {
-    const { view } = crew({ snapshot: { board: { tasks: readyTasks(["task-13"]) } } });
-    const ready = {
-      ...crewSnapshotFixture().attention[0]!,
-      id: "ready-to-land:task-13",
-      kind: "ready-to-land" as const,
-      handle: "frontend",
-      taskId: "task-13",
-    };
-    expect(crewLine(view, [ready], true).fact).toEqual({
+    const crew = digest({ snapshot: { board: { tasks: readyTasks(["task-13"]) } } });
+    const ready = { id: "ready-to-land:task-13", kind: "ready-to-land", handle: "frontend" };
+    expect(crewLine({ ...crew, attention: [ready] }, true).fact).toEqual({
       kind: "land",
       words: "Frontend's work is ready",
       taskId: "task-13",
     });
   });
+
+  it("draws a tint this build does not know as the first one", () => {
+    const crew = digest();
+    const strange = { ...crew, crewmates: [{ ...crew.crewmates[0]!, tint: "ultraviolet" }] };
+    expect(crewLine(strange, true).faces[0]?.tint).toBe("coral");
+  });
+});
+
+describe("crewTaskReviewable — Review only where the task's crewmate is the viewer's to run (D6)", () => {
+  const crew = digest({ snapshot: { board: { tasks: readyTasks(["task-13"]) } } });
+  // Frontend owns task 13 and runs on Claude Code's login.
+  const login = (patch: Partial<LoginDigest>): Record<string, LoginDigest> => ({
+    "claude-code": { signedInBy: "ada", present: true, token: false, ...patch },
+  });
+
+  it.each([
+    { case: "signed in by the viewer", logins: login({}), viewer: "ada", reviews: true },
+    { case: "signed in by somebody else", logins: login({}), viewer: "bo", reviews: false },
+    {
+      case: "a project token's, anybody's",
+      logins: login({ token: true }),
+      viewer: "bo",
+      reviews: true,
+    },
+    {
+      case: "signed in by nobody on record",
+      logins: login({ signedInBy: null }),
+      viewer: "ada",
+      reviews: false,
+    },
+    { case: "no credential yet", logins: login({ present: false }), viewer: "bo", reviews: true },
+    { case: "a login the overview names nothing of", logins: {}, viewer: "bo", reviews: true },
+    { case: "a viewer not known yet", logins: login({}), viewer: undefined, reviews: false },
+  ])(
+    "offers Review only for a ready task the viewer may land: $case",
+    ({ logins, viewer, reviews }) => {
+      expect(crewTaskReviewable(crew, logins, viewer)("task-13")).toBe(reviews);
+    },
+  );
 });

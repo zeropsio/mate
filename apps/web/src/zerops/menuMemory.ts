@@ -8,7 +8,6 @@
  *   them at rest until HQ answers;
  * - a project's change rows, drawn without their verbs;
  * - a project's chips, production's and the stages', as they last said it;
- * - a Mate's crew, its faces, so its line keeps its place;
  * - an organization's members, whose each Mate is;
  * - an organization's structure as its HQ last told it — its applications and where each project
  *   is in them — with when, so the menu stands while HQ is read or is down, saying since when.
@@ -19,7 +18,6 @@
  */
 import type { FlowPullRequest, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
-import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import { HqMatesSnapshot, type HqPeople } from "@t3tools/shared/hqMates";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -73,22 +71,6 @@ const ChipSchema = Schema.Struct({
 const ChipsSchema = Schema.Struct({
   prod: Schema.optionalKey(ChipSchema),
   stage: Schema.optionalKey(ChipSchema),
-});
-
-/**
- * A Mate's crew as its line under the row drew it: its faces, the lead first,
- * at rest — which of them works or waits, and the crew's one fact, are only
- * true now and are read again.
- */
-const CrewSchema = Schema.Struct({
-  faces: Schema.Array(
-    Schema.Struct({
-      handle: Schema.String,
-      displayName: Schema.String,
-      tint: Schema.Literals(MATE_TINT_IDS),
-      lead: Schema.Boolean,
-    }),
-  ),
 });
 
 const MemberSchema = Schema.Struct({
@@ -149,10 +131,6 @@ const MenuMemorySchema = Schema.Struct({
   chips: Schema.Record(Schema.String, ChipsSchema).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed({})),
   ),
-  // A memory written before crews were kept reads with none.
-  crews: Schema.Record(Schema.String, CrewSchema).pipe(
-    Schema.withDecodingDefault(Effect.succeed({})),
-  ),
   members: Schema.Record(Schema.String, Schema.Array(MemberSchema)),
   // A memory written before HQ's structure was kept reads with none.
   structures: Schema.Record(Schema.String, StructureSchema).pipe(
@@ -174,7 +152,6 @@ export type RememberedChips = typeof ChipsSchema.Type;
 export type DrawnChips = {
   readonly [Label in keyof RememberedChips]?: RememberedChip | null;
 };
-export type RememberedCrew = typeof CrewSchema.Type;
 export type RememberedMember = typeof MemberSchema.Type;
 export type RememberedStructure = typeof StructureSchema.Type;
 export type MenuMemory = typeof MenuMemorySchema.Type;
@@ -182,7 +159,6 @@ export type MenuMemory = typeof MenuMemorySchema.Type;
 export const EMPTY_MENU_MEMORY: MenuMemory = {
   changes: {},
   chips: {},
-  crews: {},
   members: {},
   structures: {},
   mates: {},
@@ -278,57 +254,20 @@ export function withChips(
   return same(next, memory.chips) ? memory : { ...memory, chips: next };
 }
 
-/** A crew's faces as its line drew them, at rest: each crewmate, the lead first. */
-export function rememberedCrewOf(
-  faces: ReadonlyArray<{
-    readonly handle: string;
-    readonly displayName: string;
-    readonly tint: MateTintId;
-    readonly lead: boolean;
-  }>,
-): RememberedCrew {
-  return {
-    faces: faces.map(({ handle, displayName, tint, lead }) => ({
-      handle,
-      displayName,
-      tint,
-      lead,
-    })),
-  };
-}
-
 /**
- * Each Mate's crew as last read, `null` forgetting one that is gone, and —
- * given the listing — none for a Mate no longer listed.
- */
-export function withCrews(
-  memory: MenuMemory,
-  crews: Readonly<Record<string, RememberedCrew | null>>,
-  listed?: ReadonlySet<string>,
-): MenuMemory {
-  const next: Record<string, RememberedCrew> = {};
-  for (const [key, crew] of Object.entries(memory.crews)) {
-    if ((listed === undefined || listed.has(key)) && crews[key] !== null) next[key] = crew;
-  }
-  for (const [key, crew] of Object.entries(crews)) if (crew !== null) next[key] = crew;
-  return same(next, memory.crews) ? memory : { ...memory, crews: next };
-}
-
-/**
- * The memory with nothing of a Mate its person deleted — HQ's word of it and its crew — at once,
- * not when the listing lets it go: until then a reload would paint a Mate that is on its way off
- * Zerops as it last stood.
+ * The memory with nothing of a Mate its person deleted — HQ's word of it, its crew with it — at
+ * once, not when the listing lets it go: until then a reload would paint a Mate that is on its
+ * way off Zerops as it last stood.
  */
 export function withoutMate(memory: MenuMemory, projectId: string): MenuMemory {
   const told = Object.entries(memory.mates).filter(([, view]) => projectId in view.mates);
-  if (told.length === 0 && !(projectId in memory.crews)) return memory;
-  const { [projectId]: _crew, ...crews } = memory.crews;
+  if (told.length === 0) return memory;
   const mates = { ...memory.mates };
   for (const [clientId, view] of told) {
     const { [projectId]: _mate, ...others } = view.mates;
     mates[clientId] = { ...view, mates: others };
   }
-  return { ...memory, crews, mates };
+  return { ...memory, mates };
 }
 
 /** An organization's members as last read, what they carry beyond a member's record dropped. */

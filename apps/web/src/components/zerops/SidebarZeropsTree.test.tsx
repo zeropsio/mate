@@ -14,16 +14,19 @@ import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
-import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
@@ -63,6 +66,19 @@ vi.mock("~/zerops/useNowMs", async (original) => ({
   ...(await original<typeof import("~/zerops/useNowMs")>()),
   useNowMs: () => clock.ms ?? Date.now(),
 }));
+// The crew HQ holds of each Mate, by its project, where a test says one: none otherwise.
+const hqCrews = vi.hoisted(() => new Map<string, unknown>());
+vi.mock("~/zerops/crew/useCrew", async (original) => ({
+  ...(await original<typeof import("~/zerops/crew/useCrew")>()),
+  useMateCrew: (projectId: string | null) =>
+    (projectId === null ? undefined : hqCrews.get(projectId)) ?? {
+      status: null,
+      crew: null,
+      logins: {},
+      current: false,
+      environmentId: undefined,
+    },
+}));
 // Who is looking: nobody signed in to Zerops unless a test says whom.
 const session = vi.hoisted(() => ({ viewer: undefined as string | undefined }));
 vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
@@ -80,6 +96,7 @@ afterEach(() => {
   stored.collapsed = new Set();
   stored.written = undefined;
   session.viewer = undefined;
+  hqCrews.clear();
   vi.unstubAllGlobals();
 });
 import {
@@ -90,6 +107,8 @@ import {
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
+import { hqMatesViewAtom, zeropsSessionAtom } from "~/state/zerops";
+import { organization } from "~/zerops/__fixtures__/platformData";
 import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
@@ -281,6 +300,24 @@ function press(tree: ReactTestRenderer, name: string): void {
 /** Everything a node says, as text. */
 function text(node: ReactTestInstance): string {
   return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
+}
+
+/** A crew snapshot as HQ holds it in its Mate's overview: faces at rest, nothing waiting. */
+function crewDigestOf(snapshot: CrewSnapshot): CrewDigest {
+  return {
+    crewmates: snapshot.crewmates.map((mate) => ({
+      handle: mate.handle,
+      displayName: mate.displayName,
+      tint: mate.tint,
+      lead: mate.kind === "lead",
+      threadId: mate.currentThreadId,
+      threadKind: null,
+      loginKey: null,
+    })),
+    attention: [],
+    readyTasks: [],
+    personLands: true,
+  };
 }
 
 describe("SidebarZeropsTree", () => {
@@ -1107,6 +1144,53 @@ describe("a Mate's face follows its work in the menu", () => {
     expect(html.includes("Working on a reply")).toBe(dots);
   });
 
+  // HQ holds a Mate's link open, so it is up, though this tab holds no socket to it and no chat of
+  // its says anything yet (t12, 2026-10-03): its presence wakes its face, not a main chat.
+  it("wears an awake face for a Mate HQ holds online, before any chat of its says anything", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    const held = (online: boolean, organizationId: string = organization.organizationId) =>
+      registry.set(hqMatesViewAtom, {
+        organizationId,
+        mates: new Map<string, MateLiveView>([
+          [
+            "crm-dev",
+            {
+              presence: {
+                online,
+                since: "2026-10-03T10:00:00.000Z",
+                overview: online ? "live" : "stored",
+              },
+            },
+          ],
+        ]),
+        current: true,
+      });
+    const drawn = () =>
+      renderToStaticMarkup(
+        <RegistryContext.Provider value={registry}>
+          <SidebarZeropsTree
+            candidates={[CRM_DEV]}
+            complete
+            onBrowseProjects={() => {}}
+            onSelect={() => {}}
+          />
+        </RegistryContext.Provider>,
+      );
+    held(true);
+    expect(faceOf(drawn())).toBe("idle");
+    // Gone from HQ, and no socket either: asleep.
+    held(false);
+    expect(faceOf(drawn())).toBe("sleep");
+    // What another organization's HQ told this tab says nothing of this one's Mates.
+    held(true, "org-elsewhere");
+    expect(faceOf(drawn())).toBe("sleep");
+  });
+
   // Board D1, 2026-09-30: a new Mate's first run is the stand-up its person's sign-in sent; the
   // row says what it is doing, under the face at work, instead of the command sent for them.
   it("says a new Mate is setting up development while its stand-up runs", () => {
@@ -1374,13 +1458,11 @@ describe("the project's flow under it", () => {
 // under the pointer, while a menu of its is open and by the selected band
 // (`SidebarSelectedBand.test.tsx`), and its changes rows of their own.
 describe("a Mate and its crew, one unit in the menu", () => {
-  const crew = (): SidebarCrewRead => {
-    const fixture = crewSnapshotFixture();
-    const view = deriveCrewView(fixture, [], () => {
-      throw new Error("no shells here");
-    });
-    return { status: "applied", view, attention: [] };
-  };
+  const crew = (): SidebarCrewRead => ({
+    status: "applied",
+    crew: crewDigestOf(crewSnapshotFixture()),
+    logins: {},
+  });
   const drawn = (options: { readonly crew: boolean; readonly open?: boolean }) =>
     mount(
       <SidebarZeropsTree
@@ -3311,19 +3393,11 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
     avatarUrl: null,
     isViewer: false,
   };
-  const crew = (status: "none" | "applied"): SidebarCrewRead => {
-    const fixture = crewSnapshotFixture({ status });
-    return {
-      status,
-      view:
-        status === "none"
-          ? null
-          : deriveCrewView(fixture, [], () => {
-              throw new Error("no shells here");
-            }),
-      attention: [],
-    };
-  };
+  const crew = (status: "none" | "applied"): SidebarCrewRead => ({
+    status,
+    crew: status === "none" ? null : crewDigestOf(crewSnapshotFixture({ status })),
+    logins: {},
+  });
   const drawn = (options: {
     readonly crew: SidebarCrewRead | undefined;
     readonly owner: ZeropsMateOwner | undefined;
@@ -3371,6 +3445,33 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
     },
   ] as const)("$case: $label", ({ crew: read, owner, label }) => {
     const tree = drawn({ crew: read, owner });
+    expect(tree.root.findByType(MateMenu).props.crew?.label).toBe(label);
+  });
+
+  // HQ says each Mate's crew mode (`OverviewCrew`): the menu needs no socket to the Mate to offer it.
+  it.each([
+    { case: "crew mode on, no crew yet", status: "none", label: "Set up a crew" },
+    { case: "a crew applied", status: "applied", label: "Crew" },
+    { case: "crew mode off", status: "off", label: undefined },
+  ] as const)("reads the crew of a Mate nobody opened from HQ: $case", ({ status, label }) => {
+    hqCrews.set("crm-dev", {
+      status,
+      crew: status === "applied" ? { status, ...crewDigestOf(crewSnapshotFixture()) } : null,
+      logins: {},
+      current: true,
+      environmentId: undefined,
+    });
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        getMateActions={() => ACTIONS}
+        getOwner={() => MINE}
+        onBrowseProjects={() => {}}
+        onOpenCrew={() => {}}
+        onSelect={() => {}}
+      />,
+    );
     expect(tree.root.findByType(MateMenu).props.crew?.label).toBe(label);
   });
 
