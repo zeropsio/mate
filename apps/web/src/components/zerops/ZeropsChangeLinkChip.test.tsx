@@ -20,7 +20,11 @@ vi.mock("../../zerops/useZeropsLandedChange", () => ({
 }));
 
 // The test DOM draws no SVG; the icon says nothing the text does not.
-vi.mock("lucide-react", () => ({ GitPullRequestArrow: () => null, GitMergeIcon: () => null }));
+vi.mock("lucide-react", () => ({
+  GitPullRequestArrow: () => null,
+  GitPullRequestClosed: () => null,
+  GitMergeIcon: () => null,
+}));
 
 const HQ = "https://hq.example.test";
 const HREF = `${HQ}/changes/g1/zitdev/31`;
@@ -29,6 +33,16 @@ const LANDED = {
   number: 31,
   line: "Cache the link previews",
   merged: true,
+} as unknown as FlowPullRequest;
+/** F16 (e2e, 2026-10-03): closed without merging, its last word on main a conflict. */
+const CLOSED = {
+  repository: "zitdev",
+  number: 31,
+  line: "Cache the link previews",
+  merged: false,
+  state: "closed",
+  mergeability: "conflicting",
+  behind: false,
 } as unknown as FlowPullRequest;
 
 /** The flow as a chip reads it: the official HQ once its anchor is resolved, and `g1`'s landed. */
@@ -100,6 +114,16 @@ describe("ZeropsChangeLinkChip", () => {
       name: "a change the flow carries gives the chip its word",
       renders: [{ hqAddress: HQ, merged: [LANDED] }],
       text: "Cache the link previews, Landed",
+    },
+    {
+      name: "a change closed without merging says so, never what it last conflicted with",
+      renders: [{ hqAddress: HQ, merged: [CLOSED] }],
+      text: "Cache the link previews, Closed without merging",
+    },
+    {
+      name: "a change HQ reads closed without merging says so",
+      renders: [{ hqAddress: HQ }, { hqAddress: HQ, answer: { kind: "read", pull: CLOSED } }],
+      text: "Cache the link previews, Closed without merging",
     },
     {
       name: "a link drawn before the official HQ is known stays the link it was",

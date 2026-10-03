@@ -23,7 +23,7 @@
 import { changeState, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { parseChangeUrl } from "@t3tools/shared/hqChanges";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { GitMergeIcon, GitPullRequestArrow } from "lucide-react";
+import { GitMergeIcon, GitPullRequestArrow, GitPullRequestClosed } from "lucide-react";
 import { createContext, useContext, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -38,6 +38,9 @@ import { useZeropsLandedChange } from "../../zerops/useZeropsLandedChange";
  * landed glyph read as history, not a contradiction.
  */
 export const ChangeChipMomentContext = createContext<string | null>(null);
+
+/** A change closed without merging, as its review says it. */
+const CLOSED_WITHOUT_MERGING = "Closed without merging";
 
 const TONE_GLYPH: Record<ServiceStatusToneId, string> = {
   ok: "text-status-ok",
@@ -89,25 +92,34 @@ export function ZeropsChangeLinkChip({
   // The state is a glyph of one size, never a word of its own width: a change
   // landing reflows nothing in the sentence around it. The words are the
   // tooltip's.
-  const openState = pull === undefined || pull.merged ? undefined : changeState(pull);
+  // A change closed without merging is over: what it last conflicted with is no longer true.
+  const closed = pull !== undefined && !pull.merged && pull.state === "closed";
+  const openState = pull === undefined || pull.merged || closed ? undefined : changeState(pull);
   const state =
     pull === undefined
       ? undefined
       : pull.merged
-        ? { word: "Landed", tone: "ok" as const, merged: true }
-        : openState === undefined
-          ? undefined
-          : { word: openState.word, tone: openState.tone, merged: false };
+        ? { word: "Landed", tone: "ok" as const, kind: "landed" as const }
+        : closed
+          ? { word: CLOSED_WITHOUT_MERGING, tone: "off" as const, kind: "closed" as const }
+          : openState === undefined
+            ? undefined
+            : { word: openState.word, tone: openState.tone, kind: "open" as const };
   const landedSince =
     pull?.merged === true &&
     writtenAt !== null &&
     pull.mergedAt !== undefined &&
     Date.parse(pull.mergedAt) > Date.parse(writtenAt);
-  const Glyph = state?.merged ? GitMergeIcon : GitPullRequestArrow;
+  const Glyph =
+    state?.kind === "landed"
+      ? GitMergeIcon
+      : state?.kind === "closed"
+        ? GitPullRequestClosed
+        : GitPullRequestArrow;
   const chip = (
     <a
       className="inline-flex items-baseline gap-1 rounded-md border border-border bg-muted px-1.5 align-baseline text-sm no-underline"
-      data-zerops-change-state={state === undefined ? "reading" : state.merged ? "landed" : "open"}
+      data-zerops-change-state={state === undefined ? "reading" : state.kind}
       data-zerops-change-since={landedSince ? "landed" : undefined}
       data-zerops-change-chip={`${pull?.repository ?? link?.repo ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}
       href={href}
