@@ -190,6 +190,9 @@ describe("a backup set, restored", () => {
           );
           assert.deepStrictEqual(reconciled, [{ n: 0 }]);
         }),
+      // HQ's whole life over real git and Postgres, about 6 s alone: under a full suite's load it
+      // took past the default 60 s (2026-10-03), every wait in it on a condition, none on a clock.
+      { timeout: 180_000 },
     );
 
     it.effect(
