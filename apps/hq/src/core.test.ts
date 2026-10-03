@@ -32,6 +32,7 @@ describe("the drain", () => {
           opened: () => Effect.fail(new NotLeader({ reason: "standby" })),
           serve: () => Effect.die("no git"),
           close: note("git closed"),
+          holdingRepos: (effect) => effect,
           recorded: Stream.empty,
           pushes: yield* Queue.unbounded<PushedChange>(),
         }),

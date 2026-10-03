@@ -647,7 +647,8 @@ export const backupLayer = (
         const store = options.store;
         // A set that fails leaves nothing of itself staged: the newest staged set stays whole.
         const { manifest, cut } = yield* Effect.flatMap(
-          stage(git, id, takenAt, dir, position),
+          // No repository goes while the set takes them (`gitHost.ts` `holdingRepos`).
+          gitHost.holdingRepos(stage(git, id, takenAt, dir, position)),
           (manifest) =>
             store === null
               ? Effect.succeed({ manifest, cut: undefined })

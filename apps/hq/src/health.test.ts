@@ -74,6 +74,7 @@ const getHealth = (
                 opened: () => Effect.die("no git"),
                 serve: () => Effect.die("no git"),
                 close: Effect.void,
+                holdingRepos: (effect) => effect,
                 recorded: Stream.make(0),
                 pushes,
               }),

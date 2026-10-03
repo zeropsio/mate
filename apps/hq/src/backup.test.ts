@@ -3,10 +3,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Redacted from "effect/Redacted";
+import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 
 import { mateWithChange, rowsWhere } from "../test/harness/mates.ts";
@@ -196,6 +199,50 @@ describe("the room a set makes in its store", () => {
 
 describe("a backup set, taken", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // H4: a set's bundles are every repository its dump names. An application deleted between the
+    // two takes its repositories away only once the set has them.
+    it.effect("bundles every repository its dump names, an application deleted meanwhile too", () =>
+      Effect.gen(function* () {
+        const between = yield* Ref.make<Effect.Effect<void>>(Effect.void);
+        const a = yield* startCore(true, { afterDump: Effect.flatten(Ref.get(between)) });
+        yield* leading(a);
+        const owner = yield* sessionFor(a.call, "door-owner");
+        const made = yield* a.call("POST", "/api/apps", { session: owner, body: { name: "Gone" } });
+        const appId = (made.body as { readonly id: string }).id;
+        const deleting = yield* Ref.make<Fiber.Fiber<unknown> | undefined>(undefined);
+        yield* Ref.set(
+          between,
+          Effect.gen(function* () {
+            yield* Ref.set(
+              deleting,
+              yield* Effect.forkDetach(a.call("DELETE", `/api/apps/${appId}`, { session: owner })),
+            );
+            yield* rowsWhere(
+              a.url,
+              `SELECT 1 FROM hq_app WHERE id = '${appId}'`,
+              (rows) => rows.length === 0,
+            );
+            // Its repositories go as far as they may go within a second.
+            yield* Effect.sync(() => NodeFS.existsSync(NodePath.join(a.gitRoot, appId))).pipe(
+              Effect.filterOrFail((there) => !there),
+              Effect.retry(Schedule.spaced(Duration.millis(20))),
+              Effect.timeout(Duration.seconds(1)),
+              Effect.ignore,
+            );
+          }),
+        );
+        const manifest = yield* a.backup.take;
+        assert.include(
+          manifest.repos.map((repo) => `${repo.appId}/${repo.id}`),
+          `${appId}/${RECIPE_REPO}`,
+        );
+        // The deletion ends once the set is taken: its repositories are gone after it.
+        const answer = yield* Fiber.join((yield* Ref.get(deleting))!);
+        assert.strictEqual((answer as { readonly status: number }).status, 204);
+        assert.isFalse(NodeFS.existsSync(NodePath.join(a.gitRoot, appId)));
+      }),
+    );
+
     it.effect("is refused with a pg_dump older than the database, both versions named", () =>
       Effect.gen(function* () {
         const pgDump = NodePath.join(yield* tempDir("hq-backup-test-"), "pg_dump");
