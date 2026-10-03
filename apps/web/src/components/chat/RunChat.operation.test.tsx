@@ -367,6 +367,16 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(store.reading).toBe(true);
   });
 
+  it("opens on its build's newest lines' room before the build wrote one", () => {
+    store.logLines = [];
+    const renderer = mount(inSlot(deploy("running")));
+    const glance = () => nodes(renderer, "data-zerops-build-log-glance").length;
+    expect([glance(), count(renderer).log]).toEqual([1, 0]);
+    store.logLines = LOG_LINES;
+    redraw(renderer, inSlot(deploy("running")));
+    expect([glance(), count(renderer).log]).toEqual([1, 2]);
+  });
+
   it("says only its line while the store holds nothing of it", () => {
     store.processes = [];
     const renderer = mount(inSlot(deploy("running")));

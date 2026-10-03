@@ -881,15 +881,15 @@ describe("useOperationCard — the whole build log opens in a dialog, only when 
     expect(logOf(region)?.props.open).toBe(false);
   });
 
-  // The way to the log counts as what the card shows only where it is drawn:
-  // a running build's once it wrote a line, a settled one's at once, so the
-  // card's height is final as it lands (pass 36).
+  // The log stands as soon as the card knows the build — a running one's
+  // newest lines' room, a settled one's way to it — so the card's height is
+  // final as it opens and as it lands (pass 36).
   it.each([
     {
       name: "a running build that wrote nothing yet",
       phase: "running" as const,
       lines: 0,
-      log: false,
+      log: true,
     },
     { name: "a running build's lines", phase: "running" as const, lines: 1, log: true },
     {

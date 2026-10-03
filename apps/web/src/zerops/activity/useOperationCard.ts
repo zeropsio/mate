@@ -492,11 +492,11 @@ export function useOperationCard(
     provenance: region.provenance,
     ...(region.pipeline === undefined ? {} : { pipeline: region.pipeline }),
   };
-  // The way to the log is drawn once the build wrote a line, and for a
-  // settled build at once: its row stands before its lines are read, so the
-  // card's height is final as it lands.
+  // The log is drawn as soon as the card knows the build: a running one's
+  // newest lines' room and a settled one's way to it stand before its lines
+  // are read, so the card's height is final as it opens and as it lands.
   const stands = operation.phase !== "running";
-  if (region.buildLogQuery === undefined || (!stands && buildLog.lines.length === 0)) {
+  if (region.buildLogQuery === undefined) {
     return { observed, ...fields };
   }
 
