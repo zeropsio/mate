@@ -102,6 +102,7 @@ import { useDiffPanelStore } from "../diffPanelStore";
 import {
   collapseExpandedComposerCursor,
   type ComposerSubmissionIntent,
+  isStandaloneMcpCommand,
   parseStandaloneComposerSlashCommand,
 } from "../composer-logic";
 import {
@@ -172,6 +173,7 @@ import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { CrewPanel } from "./zerops/crew/CrewPanel";
+import { McpPanel } from "./mcp/McpPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
@@ -3805,6 +3807,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "crew");
   }, [activeThreadRef]);
+  const addMcpSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "mcp");
+  }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
       if (!activeThreadRef) return;
@@ -6286,6 +6292,18 @@ export default function ChatView(props: ChatViewProps) {
       }
       return;
     }
+    // /mcp alone is Mate's own: it opens the MCP tab, and the agent never sees it.
+    if (
+      !queuedMessage &&
+      !composerHasNonPromptContent &&
+      isStandaloneMcpCommand(promptRef.current)
+    ) {
+      addMcpSurface();
+      promptRef.current = "";
+      setComposerDraftPrompt(composerDraftTarget, "");
+      composerRef.current?.resetCursorState();
+      return;
+    }
     if (
       !activeThread ||
       isSendBusy ||
@@ -7948,6 +7966,9 @@ export default function ChatView(props: ChatViewProps) {
       case "crew":
         addCrewSurface();
         return;
+      case "mcp":
+        addMcpSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -8046,6 +8067,16 @@ export default function ChatView(props: ChatViewProps) {
                   key={activeThreadRef.environmentId}
                   onSignIn={zeropsSignInDialog.openFor}
                   threadRef={activeThreadRef}
+                />
+              );
+            case "mcp":
+              // Each dot is the conversation's own agent's state; a draft has no session to ask.
+              return (
+                <McpPanel
+                  driver={selectedProvider}
+                  environmentId={activeThreadRef.environmentId}
+                  key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
+                  threadId={isServerThread ? activeThreadRef.threadId : undefined}
                 />
               );
             case "change":
@@ -8489,6 +8520,7 @@ export default function ChatView(props: ChatViewProps) {
                                   ? openUsageLimits
                                   : undefined
                               }
+                              onMcpCommand={addMcpSurface}
                               externalDrawerAttached={externalComposerDrawerAttached}
                               environmentUnavailable={activeEnvironmentUnavailable}
                               activePendingApproval={activePendingApproval}

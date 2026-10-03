@@ -28,6 +28,24 @@ export function slashCommandItemsForPromptPosition(
   return items.filter((item) => item.type !== "provider-slash-command");
 }
 
+/**
+ * A built-in command owns its name: a provider command called the same (Claude
+ * Code's text `/mcp` beside Mate's own) leaves the menu, so one name means one
+ * thing. Skills are mentions, not commands, and stay.
+ */
+export function withoutShadowedProviderCommands(
+  items: ReadonlyArray<SlashSearchItem>,
+): SlashSearchItem[] {
+  const builtIns = new Set(
+    items.flatMap((item) => (item.type === "slash-command" ? [item.command.toLowerCase()] : [])),
+  );
+  return items.filter(
+    (item) =>
+      item.type !== "provider-slash-command" ||
+      !builtIns.has(item.command.name.trim().toLowerCase()),
+  );
+}
+
 function scoreSlashCommandItem(item: SlashSearchItem, query: string): number | null {
   if (item.type === "skill") {
     if (query === "skill") {
