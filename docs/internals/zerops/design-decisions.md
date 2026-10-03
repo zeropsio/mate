@@ -3420,3 +3420,36 @@ no-cache`.
   any other: "Coming up", Finish setup hidden, until its server answers its first probe.
   - _Why:_ a reload paints nothing it takes back, and excluding a close-off-pending Mate would bring
     the asleep row back for a normal press
+- **2026-10-03** — **A stage's first deploy that fails says so** (run 5: a group workflow's own step
+  failed, and both windows said "first deploy on its way" for 4.3 min). While a declared stage runs
+  nothing, the group's deploy reader reads `main`'s head of each repository the stage builds from,
+  and its statuses, and takes the newest status of each context. The broker's own
+  `mate/deploy/<env>/<svc>` saying `failed: …` (the job's report) is failed, with its reason, and
+  final. The same context saying `deploying` or success is not failed. The deploy workflow's own
+  context failing, whenever it was posted, is failed until the broker says `deploying`: the
+  broker's dispatched run leaves no status and runs the same workflow on the same commit. A refusal
+  the broker retries is never failed. The menu reads "Stage didn't come up · its first deploy
+  failed", the cell "First deploy failed"; a new head starts again. Reads: one a minute for 15 min
+  after the later of the stage's making and the head's newest status, one every 5 min to 35 min,
+  then none until a push; nothing for a deployed stage, production, or a group with no stage
+  declared. This supersedes the 2026-10-02 entry's "no new request" for the failure.
+  - _Why:_ the broker's pending status on the merge commit was the only thing read, and a job that
+    fails before it asks the broker for its grant never touches it; the exact signal, the broker
+    writing `failed: <step>` when the run it dispatched fails, is a gitea-mate change for later
+- **2026-10-03** — **The live card shows the moment whole, then plops it into the history** (the
+  owner: "always show the things that is happening in full, at least up to some height … when this
+  thing is done, it would animatedly 'plop' to the history"; "question what we show in the 'live'
+  field: sometimes it shows something that failed 4 iterations ago"). The one-line now line becomes
+  the live slot: what the Mate is doing, drawn as the row it becomes, with the face, a sweep and the
+  run's one clock. It holds the newest batch's open calls (a call that started after another
+  returned is a newer batch's; an older one still open is stale and closes as "No result"); else its
+  words; else what it waits on; else "Thinking", 300 ms late. An item plops once it has ended and
+  stood 800 ms, and a burst rides along with the item that stands; history and slot share
+  `min(560px, 60svh)` once full. The band holds only what runs without the Mate waiting on it, shows
+  an ending for 800 ms, then leaves; a failure is told once, in the record. A control that opens is
+  drawn only when it opens onto something not on screen.
+  - _Why:_ the slot promises that this is happening now, and one stale line breaks the promise; the
+    band kept a failed deploy until the turn ended, the line walked back to any call still marked
+    open, and a stand-up whose call had returned took the line back between steps. The batch rule
+    makes staleness follow from times alone. The board measured coalescing at 0.7 s of lag against
+    4.7 s for a queue
