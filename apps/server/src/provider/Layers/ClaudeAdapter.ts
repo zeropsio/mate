@@ -94,6 +94,7 @@ import {
   readClaudeThreadRegistries,
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
+import { claudeMcpControl, type ClaudeMcpQuery } from "../../spi/mcpLive.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
@@ -478,7 +479,7 @@ interface ClaudeSessionContext {
   stopped: boolean;
 }
 
-interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
+interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage>, ClaudeMcpQuery {
   readonly setModel: (model?: string) => Promise<void>;
   readonly setPermissionMode: (mode: PermissionMode) => Promise<void>;
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
@@ -5731,6 +5732,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    mcp: claudeMcpControl({
+      get: (threadId) => {
+        const context = sessions.get(threadId);
+        return context === undefined || context.stopped ? undefined : context.query;
+      },
+      all: () => [...sessions.values()].filter((context) => !context.stopped).map((c) => c.query),
+    }),
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);
     },

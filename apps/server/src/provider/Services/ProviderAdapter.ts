@@ -25,6 +25,8 @@ import type {
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
+import type { ProviderAdapterMcp } from "../../spi/mcpLive.ts";
+
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
 /**
@@ -145,6 +147,12 @@ export interface ProviderAdapterShape<TError> {
   readonly uploadFeedback?: (
     input: ProviderUploadFeedbackInput,
   ) => Effect.Effect<ProviderUploadFeedbackResult, TError>;
+
+  /**
+   * A running session's MCP servers, for the MCP tab — on the adapters whose
+   * agent can report and reconnect them (`spi/mcpLive.ts`).
+   */
+  readonly mcp?: ProviderAdapterMcp;
 
   /**
    * Stop all sessions owned by this adapter.

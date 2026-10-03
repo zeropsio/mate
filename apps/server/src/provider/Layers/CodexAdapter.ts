@@ -59,6 +59,7 @@ import {
   codexTurnModelSelection,
   readCodexThreadPolicies,
 } from "../../spi/codexThreadProfile.ts";
+import { codexMcpControl } from "../../spi/mcpLive.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -2175,6 +2176,13 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    mcp: codexMcpControl({
+      get: (threadId) => {
+        const session = sessions.get(threadId);
+        return session === undefined || session.stopped ? undefined : session.runtime;
+      },
+      all: () => [...sessions.values()].filter((session) => !session.stopped).map((s) => s.runtime),
+    }),
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);
     },
