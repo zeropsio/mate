@@ -34,7 +34,7 @@ import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
 import { MateCredentials } from "./mateCredentials.ts";
 import { MateOverviews } from "./mateOverviews.ts";
-import { LiveSockets } from "./stream.ts";
+import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
 
 export interface LinkOptions {
@@ -46,7 +46,10 @@ export interface LinkOptions {
 
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
-/** Serves the link of the Mate `projectId` holds `credential` for, until either side ends it. */
+/**
+ * Serves the link of the Mate `projectId` holds `credential` for, until either side ends it; says
+ * which side ended it.
+ */
 export const serveMateLink = (
   socket: Socket.Socket,
   projectId: string,
@@ -63,8 +66,7 @@ export const serveMateLink = (
       const credentials = yield* MateCredentials;
       const leader = yield* Leader;
       const pingEvery = options.pingEvery ?? Duration.seconds(20);
-      const close = (code: number, reason: string) =>
-        writer.write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore);
+      const { close, heardClose, ending } = yield* socketEnding(writer);
       yield* (yield* LiveSockets).track(close);
       const link = yield* overviews.connect(projectId);
 
@@ -103,7 +105,7 @@ export const serveMateLink = (
             }
           }
         }
-      }).pipe(Effect.ignore);
+      }).pipe(Effect.catchTag("SocketError", heardClose), Effect.ignore);
 
       const ping = Effect.gen(function* () {
         for (;;) {
@@ -126,5 +128,6 @@ export const serveMateLink = (
       }).pipe(Effect.ignore);
 
       yield* Effect.raceAll([listen, ping, states, recheck]);
+      return yield* ending;
     }),
   );
