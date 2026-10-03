@@ -11,6 +11,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { Door, doorLayer } from "./door.ts";
+import { doorRateLimitLayer } from "./rateLimit.ts";
 import { Roles, rolesLayer } from "./roles.ts";
 import { ZeropsApi, type ZeropsMember } from "./zerops/api.ts";
 
@@ -78,6 +79,7 @@ const services = (made: ReturnType<typeof emptyWorld>, membersTake?: Duration.In
     const api = fakeZeropsApi(made);
     const context = yield* Layer.build(
       Layer.provideMerge(doorLayer({ hqProjectId: HQ }), roles).pipe(
+        Layer.provide(doorRateLimitLayer),
         Layer.provide(
           Layer.succeed(
             ZeropsApi,

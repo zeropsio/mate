@@ -56,8 +56,8 @@
  * or their own) — the words for a person are the client's; a
  * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8
  * KiB at the doors, 128 KiB for a change's words, 20 MiB for its picture, 64 KiB elsewhere: `413
- * too_large`), and each door is limited per client address (`rateLimit.ts`: `429
- * too_many_requests`).
+ * too_large`), and each door is limited per client address, a person's door per person too
+ * (`rateLimit.ts`: `429 too_many_requests`).
  *
  * @module api
  */
@@ -99,7 +99,7 @@ import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
-import { DoorRateLimit } from "./rateLimit.ts";
+import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
 import { Sessions } from "./sessions.ts";
 import {
@@ -117,7 +117,9 @@ class MateCredentialRequired extends Schema.TaggedError<MateCredentialRequired>(
   {},
 ) {}
 class TooLarge extends Schema.TaggedError<TooLarge>()("TooLarge", {}) {}
-class TooManyRequests extends Schema.TaggedError<TooManyRequests>()("TooManyRequests", {}) {}
+
+/** How long an application's creation waits for git to open after a takeover. */
+const GIT_OPEN_WAIT = Duration.seconds(10);
 
 const DOOR_BODY_LIMIT = 8 * 1024;
 const BODY_LIMIT = 64 * 1024;
@@ -325,7 +327,8 @@ const knock = (door: "person" | "mate" | "git") =>
     const request = yield* HttpServerRequest.HttpServerRequest;
     const address =
       request.headers["x-real-ip"] ?? Option.getOrElse(request.remoteAddress, () => "unknown");
-    if (!(yield* (yield* DoorRateLimit).take(`${door} ${address}`))) {
+    const limit = door === "person" ? PERSON_ADDRESS_LIMIT : DOOR_LIMIT;
+    if (!(yield* (yield* DoorRateLimit).take(`${door} ${address}`, limit))) {
       return yield* new TooManyRequests();
     }
   });
@@ -750,8 +753,12 @@ const routes = (
         Effect.gen(function* () {
           const { userId } = yield* principal;
           const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
+          // Its recipe repository comes with it, and HQ answers once it is made: git, opening a
+          // moment after the lead, is waited for before anything is written (`503 not_active`
+          // past the wait, for the client to ask again). One that still fails is made on first
+          // need.
+          yield* (yield* GitHost).opened(GIT_OPEN_WAIT);
           const app = yield* (yield* Structure).createApp(userId, name);
-          // Its recipe repository comes with it; should it not now, it is made on first need.
           yield* (yield* Changes)
             .ensureGroupRepo(app.id)
             .pipe(Effect.catch((error) => Effect.logWarning("recipe repository not made", error)));

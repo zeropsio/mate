@@ -108,7 +108,6 @@ const services = (options: CoreOptions) => {
     }),
     doorLayer({ hqProjectId: options.hqProjectId }),
     mateCredentialsLayer({ credential: options.credential }),
-    doorRateLimitLayer,
     streamTicketsLayer,
     mateLinkTicketsLayer,
     liveSocketsLayer,
@@ -137,6 +136,8 @@ const services = (options: CoreOptions) => {
     ),
   ).pipe(
     Layer.provideMerge(mateLiveLayer),
+    // One set of buckets for the API's addresses and the door's people.
+    Layer.provideMerge(doorRateLimitLayer),
     Layer.provideMerge(leader),
     // Below the leader: its official check reads the org through the view every reader shares.
     Layer.provideMerge(
