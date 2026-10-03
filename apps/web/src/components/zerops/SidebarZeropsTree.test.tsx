@@ -107,7 +107,8 @@ import {
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
-import { hqMatesViewAtom } from "~/state/zerops";
+import { hqMatesViewAtom, zeropsSessionAtom } from "~/state/zerops";
+import { organization } from "~/zerops/__fixtures__/platformData";
 import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
@@ -1147,9 +1148,14 @@ describe("a Mate's face follows its work in the menu", () => {
   // its says anything yet (t12, 2026-10-03): its presence wakes its face, not a main chat.
   it("wears an awake face for a Mate HQ holds online, before any chat of its says anything", () => {
     const registry = AtomRegistry.make();
-    const held = (online: boolean) =>
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    const held = (online: boolean, organizationId: string = organization.organizationId) =>
       registry.set(hqMatesViewAtom, {
-        organizationId: "org-acme",
+        organizationId,
         mates: new Map<string, MateLiveView>([
           [
             "crm-dev",
@@ -1179,6 +1185,9 @@ describe("a Mate's face follows its work in the menu", () => {
     expect(faceOf(drawn())).toBe("idle");
     // Gone from HQ, and no socket either: asleep.
     held(false);
+    expect(faceOf(drawn())).toBe("sleep");
+    // What another organization's HQ told this tab says nothing of this one's Mates.
+    held(true, "org-elsewhere");
     expect(faceOf(drawn())).toBe("sleep");
   });
 

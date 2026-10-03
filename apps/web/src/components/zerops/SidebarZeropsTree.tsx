@@ -128,7 +128,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { hqMatesViewAtom } from "~/state/zerops";
+import { hqMatesAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -613,7 +613,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
-  const hqMates = useAtomValue(hqMatesViewAtom)?.mates;
+  const hqMates = useAtomValue(hqMatesAtom)?.mates;
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
   // Collapsed projects survive a reload: a person who collapsed one had a
   // reason, and a menu that expands everything on every boot makes them do it
