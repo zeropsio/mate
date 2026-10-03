@@ -29,6 +29,9 @@ import {
   runPress,
   settlePress,
   setUpMateRegistration,
+  PRESS_CALL_CAP_MS,
+  PRESS_CALL_SILENT,
+  pressPlatform,
   STOPPED_SHOWN_MS,
   whilePressing,
   withPressTries,
@@ -302,6 +305,101 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
 });
 
 // A pool-claimed Mate's harden ran once and was never tried again (pass 28 review).
+// F6b (e2e, 2026-10-03): Dan's press stood "pressing" for two hours, his workspace's clock running
+// on: a call of the press that never answered held it, and nothing bounded a try.
+describe("a press whose platform never answers", () => {
+  /** The account's command layer, whose container import never answers; whether it was ended. */
+  const silentImport = () => {
+    const seen = { interrupted: false };
+    const inputs = {
+      client: {} as never,
+      organizationId: "org-acme",
+      data: {
+        organizationRef: (organizationId: string) => ({ organizationId }),
+        projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
+        runtime: {
+          commands: {
+            importDevelopmentContainer: () =>
+              Effect.never.pipe(
+                Effect.onInterrupt(() =>
+                  Effect.sync(() => {
+                    seen.interrupted = true;
+                  }),
+                ),
+              ),
+          },
+        },
+      } as never,
+    };
+    return { inputs, seen };
+  };
+
+  it("gives a call a minute, then ends it where it stands and says it did not answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const { inputs, seen } = silentImport();
+      const platform = pressPlatform(inputs, {
+        register: null,
+        hq: null,
+        readObservedServices: async () => [],
+      });
+      const answer = platform
+        .importDevelopmentContainer({ projectId: "p-1", projectName: "Acme - Dan", agents: [] })
+        .then(
+          () => "answered",
+          (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
+        );
+      await vi.advanceTimersByTimeAsync(PRESS_CALL_CAP_MS - 1);
+      expect(seen.interrupted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await answer).toBe(PRESS_CALL_SILENT);
+      expect(seen.interrupted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the press at its container, for its view to say so and Finish setup to resume it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { inputs } = silentImport();
+      beginPress({
+        projectId: "p-1",
+        organizationId: "org-acme",
+        startedAt: 0,
+        placement: null,
+        container: true,
+      });
+      const outcome = runPress({
+        organizationId: "org-acme",
+        steps: [{ kind: "import-container", agents: [] }, { kind: "close-off" }],
+        platform: pressPlatform(inputs, {
+          register: null,
+          hq: null,
+          readObservedServices: async () => [],
+        }),
+        isCurrent: () => true,
+        resume: { from: 0, projectId: "p-1", projectName: "Acme - Dan" },
+        locks: undefined,
+      });
+      await vi.advanceTimersByTimeAsync(PRESS_STEP_ATTEMPTS * (PRESS_CALL_CAP_MS + 2_000));
+      expect(await outcome).toMatchObject({
+        ok: false,
+        failedStep: { kind: "import-container" },
+        error: PRESS_CALL_SILENT,
+      });
+      expect(readMatePress("p-1")?.state).toMatchObject({
+        kind: "failed",
+        step: "import-container",
+        reason: PRESS_CALL_SILENT,
+      });
+    } finally {
+      forgetPress("p-1");
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("withPressTries — the harden, tried again", () => {
   it("goes on once an attempt takes", async () => {
     let tries = 0;
