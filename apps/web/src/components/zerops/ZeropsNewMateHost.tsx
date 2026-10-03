@@ -41,6 +41,7 @@ import {
   newProjectView,
   progressNewProjectBirth,
   recipeManaged,
+  recipeRuntimes,
 } from "~/zerops/newProjectBirth";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -202,6 +203,7 @@ function NewMateDialog({
         if (activeOrganization === null) return;
         const name = choice.botName ?? choice.name;
         const face = choice.face ?? { tint: "slate", shape: "squircle" };
+        const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
         // Its own id, its view's: a random one, as a New project's group's.
         const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
         // Held from the press, its steps run on in the account's creations: the dialog gives way
@@ -220,9 +222,10 @@ function NewMateDialog({
               displayName: choice.name,
               // As the press decides it: an owner or an admin writes a Mate's registration.
               registers: accountGitea !== undefined && canWriteRegistry(activeOrganization),
-              // Named from the press, so its copy's line stands before the plan is heard.
-              managed:
-                choice.recipe.kind === "tier" ? recipeManaged(choice.recipe.yaml) : undefined,
+              // Named from the press, so its copy's and its workspace's lines stand before the
+              // plan is heard.
+              managed: tier === undefined ? undefined : recipeManaged(tier),
+              runtimes: tier === undefined ? undefined : recipeRuntimes(tier),
             },
           },
           gitea: accountGitea === undefined ? undefined : { projectId: accountGitea.projectId },

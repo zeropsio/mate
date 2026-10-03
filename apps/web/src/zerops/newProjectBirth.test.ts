@@ -1,8 +1,13 @@
-import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  birthCopyServices,
+  birthRuntimesFacts,
+  deriveBirthProgress,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { arrivalSteps } from "./mateArrival";
 import {
   beginNewProjectBirth,
   newProjectComing,
@@ -18,9 +23,12 @@ import {
   type NewProjectBirth,
   type NewProjectPatch,
   type NewProjectPorts,
+  comingPlanned,
   creationManaged,
+  creationRuntimes,
   creationSubsteps,
   recipeManaged,
+  recipeRuntimes,
   progressNewProjectBirth,
 } from "./newProjectBirth";
 
@@ -955,5 +963,118 @@ describe("creationManaged — the managed services an added Mate's copy waits on
   it("reads a tier's managed services, never its runtimes", () => {
     expect(recipeManaged(TIER)).toEqual(["db"]);
     expect(recipeManaged("services: []\n")).toBeUndefined();
+  });
+});
+
+// Run 6's review: an Add's runtimes line was drawn on its Mate's view from its press alone — none
+// on `/mate/new`, then the press's, then none again once the press was over, until the container
+// answered: the rows moved down, up and down.
+describe("creationRuntimes — the runtimes an added Mate's workspace brings, from the press", () => {
+  const TIER =
+    "services:\n  - hostname: db\n    type: postgresql@16\n  - hostname: appdev\n    type: nodejs@22\n    zeropsSetup: dev\n";
+  const APP = [{ hostname: "appdev", role: "dev" }] as const;
+  it.each([
+    { case: "a New project's first Mate brings none", made: birth(), want: undefined },
+    {
+      case: "pressed: as its recipe names them",
+      made: added({ adds: { displayName: "Acme CRM - Ida", registers: true, runtimes: APP } }),
+      want: APP,
+    },
+    {
+      case: "planned: as its plan names them",
+      made: added({
+        adds: { displayName: "Acme CRM - Ida", registers: true },
+        progress: [
+          {
+            step: {
+              kind: "import-container",
+              agents: [],
+              runtimes: { yaml: "", services: [{ hostname: "apidev", role: "dev" }] },
+            },
+            state: "queued",
+          },
+        ],
+      }),
+      want: [{ hostname: "apidev", role: "dev" }],
+    },
+  ])("$case", ({ made, want }) => {
+    expect(creationRuntimes(made)).toEqual(want);
+  });
+
+  it("reads a tier's runtimes, never its managed services", () => {
+    expect(recipeRuntimes(TIER)).toEqual(APP);
+    expect(
+      recipeRuntimes("services:\n  - hostname: db\n    type: postgresql@16\n"),
+    ).toBeUndefined();
+  });
+});
+
+describe("comingPlanned — what a Mate's view names before its project lists it", () => {
+  const made = added({
+    step: "created",
+    projectId: "p-ida",
+    adds: {
+      displayName: "Acme CRM - Ida",
+      registers: true,
+      managed: ["db"],
+      runtimes: [{ hostname: "appdev", role: "dev" }],
+    },
+  });
+  const press = { managed: ["db"], runtimes: [{ hostname: "appdev", role: "dev" as const }] };
+  it.each([
+    { case: "its press held: the press's", press, made, want: press },
+    {
+      case: "its press over, its creation held: the creation's",
+      press: undefined,
+      made,
+      want: press,
+    },
+    { case: "held by neither", press: undefined, made: undefined, want: {} },
+  ])("$case", ({ press: held, made: holding, want }) => {
+    expect(comingPlanned(held, holding)).toEqual(want);
+  });
+
+  it("keeps an added Mate's rows and their lines from the press through the hand-over and the press's end", () => {
+    const pressedAdd = added({
+      adds: {
+        displayName: "Acme CRM - Ida",
+        registers: true,
+        managed: ["db"],
+        runtimes: [{ hostname: "appdev", role: "dev" }],
+      },
+    });
+    /** Each row with what its line names: `id[name, …]`. */
+    const rows = (progress: Parameters<typeof arrivalSteps>[0]) =>
+      arrivalSteps(progress, { name: "Ida", project: "Acme CRM" }, NOW).map(
+        (step) => `${step.id}[${(step.services ?? []).map((service) => service.name).join(",")}]`,
+      );
+    const managedOf = (planned: ReadonlyArray<string> | undefined) =>
+      birthCopyServices({ planned, services: undefined });
+    // On `/mate/new`, from the press.
+    const before = rows({
+      ...newProjectProgress(pressedAdd, null, NOW),
+      managed: managedOf(creationManaged(pressedAdd)),
+    });
+    // On `/mate/$projectId`, its press held, then over.
+    const mateView = (held: typeof press | undefined) => {
+      const planned = comingPlanned(held, { ...pressedAdd, step: "created", projectId: "p-ida" });
+      return rows({
+        ...deriveBirthProgress(
+          {
+            project: { status: "ACTIVE" },
+            container: undefined,
+            processes: [],
+            health: undefined,
+            connection: "none",
+            runtimes: birthRuntimesFacts({ planned: planned.runtimes, services: undefined }),
+          },
+          NOW,
+        ),
+        managed: managedOf(planned.managed),
+      });
+    };
+    expect(before).toEqual(["copy[db]", "workspace[appdev]", "you[]"]);
+    expect(mateView(press)).toEqual(before);
+    expect(mateView(undefined)).toEqual(before);
   });
 });

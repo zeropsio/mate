@@ -54,7 +54,17 @@ const STEP: Readonly<Record<string, EnvironmentCreationStep>> = {
     kind: "import-managed",
     yaml: "services:\n  - hostname: db\n    type: postgresql@16\n  - hostname: cache\n    type: valkey@7.2\n",
   } as EnvironmentCreationStep,
-  "import-container": { kind: "import-container", agents: [] } as EnvironmentCreationStep,
+  "import-container": {
+    kind: "import-container",
+    agents: [],
+    runtimes: {
+      yaml: "",
+      services: [
+        { hostname: "appdev", role: "dev" },
+        { hostname: "appstage", role: "stage" },
+      ],
+    },
+  } as EnvironmentCreationStep,
   "close-off": { kind: "close-off" },
   register: { kind: "register" },
   "share-reach": { kind: "share-reach" },
@@ -123,6 +133,10 @@ export function beginHarnessPress(input: {
               registers: true,
               // As its recipe names them, at the press.
               managed: ["db", "cache"],
+              runtimes: [
+                { hostname: "appdev", role: "dev" },
+                { hostname: "appstage", role: "stage" },
+              ],
             },
           }
         : {}),

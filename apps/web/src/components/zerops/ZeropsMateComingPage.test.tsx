@@ -10,6 +10,8 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
+import { beginPress, forgetPress } from "~/zerops/matePress";
+import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
@@ -76,6 +78,7 @@ const app = vi.hoisted(() => ({
   remembered: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
   creations: {} as Record<string, unknown>,
   processes: [] as Array<unknown>,
+  birthProgress: false,
 }));
 vi.mock("~/zerops/menuMemory", () => ({ rememberedActivity: () => app.remembered }));
 
@@ -130,7 +133,20 @@ vi.mock("~/zerops/zeropsDataContext", () => ({
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
 }));
-vi.mock("~/zerops/useZeropsBirthProgress", () => ({ useZeropsBirthProgress: () => null }));
+// Off unless a test reads how far a birth has got: then the real derivation, at a fixed clock.
+vi.mock("~/zerops/useZeropsBirthProgress", async () => {
+  const { deriveBirthFacts } = await import("~/zerops/birthFacts");
+  const { deriveBirthProgress } = await import("@t3tools/client-runtime/zerops/birthProgress");
+  return {
+    useZeropsBirthProgress: (input: Parameters<typeof deriveBirthFacts>[0] | null) =>
+      !app.birthProgress || input === null
+        ? null
+        : {
+            progress: deriveBirthProgress(deriveBirthFacts({ ...input, processes: [] }), 0),
+            nowMs: 0,
+          },
+  };
+});
 vi.mock("~/zerops/useMateSetup", () => ({ useMateSetup: () => undefined }));
 vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
@@ -229,6 +245,7 @@ beforeEach(() => {
   app.remembered = undefined;
   app.creations = {};
   app.processes = [];
+  app.birthProgress = false;
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -812,5 +829,88 @@ describe("comingSentenceOf — the sentence over a stop", () => {
     },
   ] as const)("$case", ({ coming, press, want }) => {
     expect(comingSentenceOf({ coming, progress: progressOf(press), nowMs: 0 })).toBe(want);
+  });
+});
+
+// Run 6's review: an Add's runtimes were drawn from its press alone, so its rows moved when the
+// press ended. The creation this tab holds names them from the press until the project's own read.
+describe("an added Mate's own view, after its hand-over", () => {
+  const IDA: NewProjectBirth = {
+    id: "add-1",
+    organizationId: "org-beviro",
+    groupId: "beviro",
+    name: "Beviro",
+    botName: "Quinn",
+    face: { tint: "sky", shape: "pick" },
+    locationId: null,
+    agents: [],
+    startedAt: 0,
+    withGitea: false,
+    giteaProjectId: "gitea-1",
+    step: "created",
+    failed: null,
+    projectId: PROJECT,
+    progress: null,
+    adds: {
+      displayName: "Beviro - Quinn",
+      registers: true,
+      managed: ["db"],
+      runtimes: [{ hostname: "appdev", role: "dev" }],
+    },
+  };
+  /** Each row with its services and the steps this tab runs under it: `id[…]{…}`. */
+  const rows = () =>
+    tree?.root
+      .findAll((node) => node.props["data-arrival-step"] !== undefined)
+      .map((node) => {
+        const services = node
+          .findAll((inner) => inner.props["data-zerops-surface"] === "arrival-services")
+          .flatMap((list) => list.findAllByType("li"))
+          .map((service) => String(service.props["aria-label"]).split(":")[0]);
+        const substeps = node
+          .findAll((inner) => inner.props["data-arrival-substep"] !== undefined)
+          .map((inner) => String(inner.props["data-arrival-substep"]));
+        return `${String(node.props["data-arrival-step"])}[${services.join(",")}]{${substeps.join(",")}}`;
+      }) ?? [];
+
+  beforeEach(() => {
+    app.birthProgress = true;
+    app.listing = listingOf([]);
+    app.creations = {
+      [PROJECT]: {
+        projectId: PROJECT,
+        groupId: "beviro",
+        groupName: "Beviro",
+        botName: "Quinn",
+        face: IDA.face,
+      },
+    };
+    useNewProjectBirths.setState({ births: { [IDA.id]: IDA } });
+  });
+  afterEach(() => {
+    forgetPress(PROJECT);
+    useNewProjectBirths.setState({ births: {} });
+  });
+
+  it("draws its copy's and its workspace's lines and its steps from its press, and keeps them when the press ends", () => {
+    beginPress({
+      projectId: PROJECT,
+      organizationId: "org-beviro",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      managed: ["db"],
+      runtimes: [{ hostname: "appdev", role: "dev" }],
+    });
+    openView();
+    const held = rows();
+    expect(held).toEqual([
+      "copy[db]{created,container,closed-off,registered}",
+      "workspace[appdev]{}",
+      "you[]{}",
+    ]);
+    // Closed off and registered: the press is over (`endPress`).
+    act(() => forgetPress(PROJECT));
+    expect(rows()).toEqual(held);
   });
 });

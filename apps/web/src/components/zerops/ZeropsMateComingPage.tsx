@@ -88,6 +88,7 @@ import {
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
+  comingPlanned,
   creationSubsteps,
   newProjectBirthOf,
   newProjectProgress,
@@ -455,9 +456,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // while its card is on screen and its setup is under way — every read of an older Mate costs
   // it a tag read of its own.
   const setup = useMateSetup(arrival !== undefined ? candidate?.containerOrigin : undefined);
+  // What it brings, named before its project lists them: its press's, then its creation's — a
+  // press over never takes a line back before the project's own read or its setup answers.
+  const planned = useMemo(() => comingPlanned(press, made), [press, made]);
+  const madeSince = press?.startedAt ?? made?.startedAt;
   // How far it has got, as the projects page's card draws it.
   const progress = useZeropsBirthProgress(
-    candidate === undefined && press === undefined
+    candidate === undefined && press === undefined && made === undefined
       ? null
       : {
           candidate: candidate ?? {
@@ -466,14 +471,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               id: projectId,
               name: mate.name,
               status: "NEW",
-              ...(press === undefined ? {} : { created: new Date(press.startedAt).toISOString() }),
+              ...(madeSince === undefined ? {} : { created: new Date(madeSince).toISOString() }),
             },
             group: "provisioning",
           },
           health: containerHealth,
           connecting: candidate?.connection?.phase === "connecting",
           runtimes: birthRuntimesFacts({
-            planned: press?.runtimes,
+            planned: planned.runtimes,
             setup: setup?.runtimes,
             services: resolvedServices(inventory.services.get(projectId)),
           }),
@@ -484,10 +489,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const managed = useMemo(
     () =>
       birthCopyServices({
-        planned: press?.managed,
+        planned: planned.managed,
         services: resolvedServices(inventory.services.get(projectId)),
       }),
-    [press?.managed, inventory.services, projectId],
+    [planned.managed, inventory.services, projectId],
   );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.

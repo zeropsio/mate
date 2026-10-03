@@ -24,16 +24,21 @@
  */
 import {
   recipeTierServices,
+  splitRecipeTier,
   ZeropsApiError,
   type BirthPlacement,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
+  type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
-import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  birthRuntimesFacts,
+  deriveBirthProgress,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { create } from "zustand";
@@ -77,6 +82,8 @@ export interface NewProjectAsk {
         readonly registers: boolean;
         /** The managed services its recipe names, from the press (`recipeManaged`). */
         readonly managed?: ReadonlyArray<string> | undefined;
+        /** The runtimes its workspace brings, from the press (`recipeRuntimes`). */
+        readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined;
       }
     | undefined;
 }
@@ -236,6 +243,8 @@ export function newProjectProgress(
   nowMs: number,
 ): BirthLineProgress {
   const own = newProjectSteps(birth);
+  // An added Mate's runtimes are named from the press, as its own view names them after.
+  const runtimes = birthRuntimesFacts({ planned: creationRuntimes(birth), services: undefined });
   const theirs =
     mate ??
     deriveBirthProgress(
@@ -248,6 +257,7 @@ export function newProjectProgress(
         processes: [],
         health: undefined,
         connection: "none",
+        ...(runtimes === undefined ? {} : { runtimes }),
       },
       nowMs,
     );
@@ -266,6 +276,7 @@ export function newProjectProgress(
     total: steps.length,
     complete: steps.at(-1)?.state === "done",
     startedAt: new Date(birth.startedAt).toISOString(),
+    ...(theirs.runtimes === undefined ? {} : { runtimes: theirs.runtimes }),
   };
 }
 
@@ -530,6 +541,49 @@ export function creationManaged(birth: NewProjectBirth): ReadonlyArray<string> |
   )?.step;
   if (planned !== undefined && "yaml" in planned) return recipeManaged(planned.yaml);
   return birth.adds.managed;
+}
+
+/** The runtimes a recipe's tier brings up once its Mate is closed off: none where it names none. */
+export function recipeRuntimes(yaml: string): ReadonlyArray<RecipeRuntime> | undefined {
+  return splitRecipeTier(yaml)?.runtimes?.services;
+}
+
+/**
+ * The runtimes an added Mate's workspace brings, named from the press so its line under the
+ * workspace stands from the first frame: as its plan names them once its press is heard, as its
+ * recipe did before. A New project's first Mate has none.
+ */
+export function creationRuntimes(birth: NewProjectBirth): ReadonlyArray<RecipeRuntime> | undefined {
+  if (birth.adds === undefined) return undefined;
+  for (const entry of birth.progress ?? []) {
+    if (entry.step.kind === "import-container") return entry.step.runtimes?.services;
+  }
+  return birth.adds.runtimes;
+}
+
+/**
+ * What a Mate's view names before its project lists them — its copy's managed services, its
+ * workspace's runtimes: its press's while this tab holds it, then the creation's, which this tab
+ * holds all session; so a press over never takes back a line its view drew (run 6's review).
+ */
+export function comingPlanned(
+  press:
+    | {
+        readonly managed?: ReadonlyArray<string> | undefined;
+        readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined;
+      }
+    | undefined,
+  made: NewProjectBirth | undefined,
+): {
+  readonly managed?: ReadonlyArray<string>;
+  readonly runtimes?: ReadonlyArray<RecipeRuntime>;
+} {
+  const managed = press?.managed ?? (made === undefined ? undefined : creationManaged(made));
+  const runtimes = press?.runtimes ?? (made === undefined ? undefined : creationRuntimes(made));
+  return {
+    ...(managed === undefined ? {} : { managed }),
+    ...(runtimes === undefined ? {} : { runtimes }),
+  };
 }
 
 /** Each step of a press, by the runner's steps that make it. */
