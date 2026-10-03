@@ -467,6 +467,7 @@ import {
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
   zeropsReadOnlyFooter,
+  composerOpenFocus,
   conversationContentPending,
   localThreadErrorStanding,
   queuedSendOutcome,
@@ -4689,9 +4690,21 @@ export default function ChatView(props: ChatViewProps) {
     setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
 
+  // The conversation whose open found no composer (its room held, or a strip): its focus waits.
+  const openFocusOwedRef = useRef<string | null>(null);
+  const composerShown = zeropsFooter === "composer";
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!composerShown) {
+      openFocusOwedRef.current = routeThreadKey;
+      return;
+    }
     const frame = window.requestAnimationFrame(() => {
+      const late = openFocusOwedRef.current === routeThreadKey;
+      openFocusOwedRef.current = null;
+      const active = document.activeElement;
+      const focusElsewhere = active !== null && active !== document.body;
+      if (!composerOpenFocus({ composerShown, late, focusElsewhere })) return;
       // Handed over from its Mate's own view, what was typed there is the
       // draft: the caret stays where the person left it.
       const caret = takeHandedOverCaret(routeThreadKey, Date.now());
@@ -4701,7 +4714,14 @@ export default function ChatView(props: ChatViewProps) {
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, composerRef, focusComposer, routeThreadKey, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    composerRef,
+    composerShown,
+    focusComposer,
+    routeThreadKey,
+    terminalUiState.terminalOpen,
+  ]);
 
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The

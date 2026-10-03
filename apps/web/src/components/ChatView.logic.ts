@@ -556,6 +556,22 @@ export function resolveZeropsConversationReadOnly(input: {
   return { notice, waitingLabel: "Waiting for the agent's owner" };
 }
 
+/**
+ * Whether the composer takes the focus its conversation's open gives it. Shown as the
+ * conversation opens, it does, as ever. Its room held at the open (`conversationFooter`), the
+ * focus waits for it — and is given as it shows only where the person has not put the focus
+ * anywhere meanwhile.
+ */
+export function composerOpenFocus(input: {
+  readonly composerShown: boolean;
+  /** It shows after its room was held at the open. */
+  readonly late: boolean;
+  /** An element other than the page holds the focus. */
+  readonly focusElsewhere: boolean;
+}): boolean {
+  return input.composerShown && (!input.late || !input.focusElsewhere);
+}
+
 /** Someone else's conversation as its footer says it, before the answer is read again. */
 export const REMEMBERED_READ_ONLY: ZeropsConversationReadOnly = {
   notice: agentOwnershipComposerNotice("someone-else")!,

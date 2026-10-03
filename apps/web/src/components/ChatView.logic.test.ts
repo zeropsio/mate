@@ -54,6 +54,7 @@ import {
   resolveComposerProviderSelection,
   resolveZeropsConversationReadOnly,
   zeropsReadOnlyFooter,
+  composerOpenFocus,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
@@ -2188,6 +2189,17 @@ describe("resolveZeropsConversationReadOnly", () => {
     ["no Zerops agent at all", undefined, "someone-else", null],
   ] as const)("%s", (_label, agent, ownership, expected) => {
     expect(resolveZeropsConversationReadOnly({ agent, ownership })).toEqual(expected);
+  });
+});
+
+describe("composerOpenFocus", () => {
+  it.each([
+    ["the composer shown as the conversation opens takes the focus", true, false, true, true],
+    ["its room held, nothing takes the focus yet", false, false, false, false],
+    ["shown after its room was held, with the page holding the focus", true, true, false, true],
+    ["shown after its room was held, with the person's focus elsewhere", true, true, true, false],
+  ] as const)("%s", (_label, composerShown, late, focusElsewhere, expected) => {
+    expect(composerOpenFocus({ composerShown, late, focusElsewhere })).toBe(expected);
   });
 });
 
