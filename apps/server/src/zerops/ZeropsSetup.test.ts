@@ -82,8 +82,8 @@ const mainThread = (overrides: Partial<OrchestrationThreadShell> = {}): Orchestr
   }) as OrchestrationThreadShell;
 
 /**
- * The Mate as its HQ sends it, `standupRequestedBy` naming who asked for its stand-up, its birth
- * whole once its project is closed off (the press records the ask before the close-off).
+ * The Mate as its HQ sends it, `standupRequestedBy` naming who asked for its stand-up — from the
+ * write that made its record (audit B3) — and whether its project is closed off.
  */
 const linked = (standupRequestedBy: string | null, closedOff = true): HqStanding => ({
   kind: "linked",
@@ -188,7 +188,6 @@ const FAST: ZeropsSetupTimings = {
   poll: Duration.millis(10),
   slowPoll: Duration.millis(10),
   fastFor: Duration.minutes(30),
-  noneAfter: Duration.millis(0),
 };
 
 /** A server on `database`; a second one on the same file is the same Mate after a restart. */
@@ -383,6 +382,32 @@ describe("ZeropsSetup: the stand-up", () => {
     );
   }
 
+  // Audit B3: HQ's record of the Mate carries its ask from the write that made it, so a linked
+  // Mate naming nobody is one nobody asked for — settled at once, its project closed off or not.
+  const nobodyAsked: ReadonlyArray<[string, HqStanding]> = [
+    ["its project closed off", NOBODY_ASKED],
+    ["its project not closed off yet", linked(null, false)],
+  ];
+  for (const [name, hq] of nobodyAsked) {
+    it.live(`settles as none at once when nobody asked, ${name}`, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.hq, hq);
+        yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.gen(function* () {
+            yield* ticks;
+            assert.isFalse(yield* stillPolling(world));
+            const document = yield* setup.document;
+            assert.deepStrictEqual(
+              document.steps.find((step) => step.id === "standup"),
+              { id: "standup", state: "none", at: "" },
+            );
+          }),
+        );
+      }),
+    );
+  }
+
   // Who asked comes from HQ: until the link brings the Mate, nobody is known to have asked —
   // which is not "nobody asked", and never settles the stand-up as none.
   it.live("waits for its HQ to say who asked, however long, and never settles meanwhile", () =>
@@ -486,7 +511,7 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* Ref.set(world.dispatchHangs, false);
       // Someone else entirely holds the agent now.
       yield* Ref.set(world.signers, { "claude-code": "user-c" });
-      yield* withServer(world, database, () => ticks, { ...FAST, noneAfter: Duration.minutes(5) });
+      yield* withServer(world, database, () => ticks);
       assert.deepStrictEqual(yield* turnsOf(world), []);
       assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
     }),
@@ -548,11 +573,6 @@ describe("ZeropsSetup: why a stand-up waits", () => {
       { reason: "not_enrolled" },
     ],
     ["enrolled, HQ has not sent the Mate", { kind: "not-linked" }, { reason: "not_linked" }],
-    [
-      "HQ names nobody who asked, its birth not whole yet",
-      linked(null, false),
-      { reason: "awaiting_request" },
-    ],
     ["asked, the asker not signed in yet", ASKED, {}],
   ];
   for (const [name, hq, said] of waits) {
@@ -560,14 +580,10 @@ describe("ZeropsSetup: why a stand-up waits", () => {
       Effect.gen(function* () {
         const world = yield* makeWorld;
         yield* Ref.set(world.hq, hq);
-        const step = yield* withServer(
-          world,
-          freshDatabase(),
-          (setup) =>
-            Effect.map(setup.document, (document) =>
-              document.steps.find((entry) => entry.id === "standup"),
-            ),
-          { ...FAST, noneAfter: Duration.minutes(5) },
+        const step = yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.map(setup.document, (document) =>
+            document.steps.find((entry) => entry.id === "standup"),
+          ),
         );
         assert.deepStrictEqual(step, { id: "standup", state: "waiting", at: "", ...said });
       }),
