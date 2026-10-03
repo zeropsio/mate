@@ -4,8 +4,7 @@
  *
  * Served by the dev server at `/design-hqgate.html` (`?theme=dark`; `?state=`: `birth` — an owner's
  * first visit, HQ being born, `&step=` the step it is on (`project` … `ready`, `done`); `failed` —
- * a step stopped, Try again; `uncertain` — Zerops may have made HQ's project unseen, Try again and
- * Start over;
+ * a step stopped, Try again; `uncertain` — Zerops may have made HQ's project unseen, Again;
  * `ask` — anybody else, whom to ask; `reading` — the member list on its way; `unread` — it could not
  * be read; `unclear` — two HQs). Open it at 1786 × 1000.
  *
@@ -52,14 +51,12 @@ const BIRTH: Readonly<Record<string, HqBirthView>> = {
     kind: "failed",
     step: "deploy",
     reason: "HQ's deploy did not finish. Its build log in Zerops says why.",
-    startOver: false,
   },
   uncertain: {
     kind: "failed",
     step: "project",
     reason:
-      "Zerops did not confirm HQ's project, and its history shows no Headquarters of yours made since. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.",
-    startOver: true,
+      "Zerops did not confirm HQ's project. Press Again to check this setup's recorded handles in Zerops.",
   },
 };
 
@@ -76,7 +73,6 @@ function Harness() {
         gate={GATE[STATE] ?? { kind: "birth" }}
         birth={BIRTH[STATE]}
         onTryAgain={() => {}}
-        onStartOver={() => {}}
         onReadAgain={() => {}}
       />
     </div>

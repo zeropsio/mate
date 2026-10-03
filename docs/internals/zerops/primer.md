@@ -256,6 +256,10 @@ still to come says so.
     pending). The birth runs at an owner's or an admin's first visit, never at _New project_; a
     project is never taken for HQ by its name or tag; an HQ that does not answer is no gate but a
     line saying since when
+  - _Cross-browser birth:_ built and tested locally, not live-verified: the nascent project's
+    append-only env journal owns progress and action receipts; 90-second claims arbitrate its
+    browsers, failed steps require **Again**. Automatic admin entry stays. See
+    [HQ birth](hq-birth.md) for the claim, read lag and interrupted-request limits.
   - _Built in:_ `5c884c0176`, `ced74baea4`, `1dff2924db`, `c846f34f66`, `cbfecb6f58`
   - _Proven by:_ `hq/birth.test.ts`, `hq/anchor.test.ts`; `hqBirth.test.ts`, `hqGate.test.ts`,
     `accountHq.test.ts`, `ZeropsHqGate.test.tsx`

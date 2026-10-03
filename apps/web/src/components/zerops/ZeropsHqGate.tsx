@@ -31,22 +31,23 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const held = useHqBirths((state) => state.byOrg[clientId]);
   const { reread } = accountHq;
   const bear = useCallback(
-    (startOver: boolean) =>
+    (again: boolean) =>
       bearHq({
         clientId,
-        run: (record, moved) =>
+        run: (record, moved, manualAgain) =>
           runHqBirth({
             record,
             clientId,
             ...hqBirthSite(client),
             deps: hqBirthDeps(client),
             moved,
+            again: manualAgain,
           }),
         alreadyBorn: async () =>
           findOfficialHq(await client.listOrganizationMembers(clientId)).kind === "official",
         // Its anchor is in the member list now: the gate opens once it is read again.
         onBorn: reread,
-        startOver,
+        again,
       }),
     [client, clientId, reread],
   );
@@ -59,8 +60,7 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
       organizationName={activeOrganization?.name ?? "this organization"}
       gate={gate}
       birth={hqBirthView(held)}
-      onTryAgain={() => bear(false)}
-      onStartOver={() => bear(true)}
+      onTryAgain={() => bear(true)}
       onReadAgain={reread}
     />
   );
@@ -71,14 +71,12 @@ export function HqGateScreen({
   gate,
   birth,
   onTryAgain,
-  onStartOver,
   onReadAgain,
 }: {
   readonly organizationName: string;
   readonly gate: ClosedGate;
   readonly birth: HqBirthView | undefined;
   readonly onTryAgain: () => void;
-  readonly onStartOver: () => void;
   readonly onReadAgain: () => void;
 }) {
   return (
@@ -88,12 +86,7 @@ export function HqGateScreen({
     >
       <div className="flex w-full max-w-md flex-col gap-4">
         {gate.kind === "birth" ? (
-          <HqBirth
-            organizationName={organizationName}
-            birth={birth}
-            onTryAgain={onTryAgain}
-            onStartOver={onStartOver}
-          />
+          <HqBirth organizationName={organizationName} birth={birth} onTryAgain={onTryAgain} />
         ) : gate.kind === "reading" ? (
           gate.failed ? (
             <div className="flex flex-col items-start gap-3">
@@ -124,12 +117,10 @@ function HqBirth({
   organizationName,
   birth,
   onTryAgain,
-  onStartOver,
 }: {
   readonly organizationName: string;
   readonly birth: HqBirthView | undefined;
   readonly onTryAgain: () => void;
-  readonly onStartOver: () => void;
 }) {
   const at =
     birth === undefined ? 0 : HQ_BIRTH_STEPS.indexOf(birth.step === "done" ? "ready" : birth.step);
@@ -142,7 +133,8 @@ function HqBirth({
         </h1>
         <p className="text-sm text-muted-foreground">
           Mate keeps this organization's applications in its HQ, a project named Headquarters in
-          Zerops. Setting it up takes a few minutes; it goes on where it stopped if you leave.
+          Zerops. Setting it up takes a few minutes. Any admin can continue it from another browser;
+          if a step fails, press Again after fixing the cause.
         </p>
       </div>
       <ol className="flex flex-col gap-2">
@@ -186,13 +178,8 @@ function HqBirth({
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" onClick={onTryAgain}>
-              Try again
+              Again
             </Button>
-            {birth.startOver ? (
-              <Button size="sm" variant="ghost" onClick={onStartOver}>
-                Start over
-              </Button>
-            ) : null}
           </div>
         </div>
       ) : null}

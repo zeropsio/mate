@@ -1915,8 +1915,15 @@ export class ZeropsApiClient {
     yaml: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly projectId: string }> {
-    return this.#request<{ readonly projectId: string }>(
+  ): Promise<{
+    readonly projectId: string;
+    readonly serviceStacks?: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly processes: ReadonlyArray<{ readonly id: string }>;
+    }>;
+  }> {
+    return this.#request(
       `/client/${clientId}/project/import`,
       { method: "POST", body: JSON.stringify({ yaml }), signal: signal ?? null },
       {
@@ -2042,6 +2049,46 @@ export class ZeropsApiClient {
       // Landed or not, it may have: every reader of the organization's tokens reads them again.
       this.#tokensWritten(input.clientId);
     }
+  }
+
+  /**
+   * HQ's append-only birth journal. The direct env file reflects writes before project search
+   * (verified.md, 2026-10-02); expose only this plain metadata, never unrelated env values.
+   */
+  async readProjectBirthEnv(projectId: string): Promise<ReadonlyMap<string, string>> {
+    const response = await this.#request<{ readonly envFile: string }>(
+      `/project/${projectId}/env-file`,
+      {},
+      { operationKind: "read" },
+    );
+    const entries = new Map<string, string>();
+    for (const line of response.envFile.split("\n")) {
+      const match = /^(MATE_HQ_BIRTH_[A-Za-z0-9_]+)="((?:[^"\\]|\\.)*)"$/u.exec(line);
+      if (match?.[1] === undefined || match[2] === undefined) continue;
+      const escapes: Readonly<Record<string, string>> = { n: "\n", r: "\r", t: "\t" };
+      entries.set(
+        match[1],
+        match[2].replace(/\\(.)/gu, (_, char: string) => escapes[char] ?? char),
+      );
+    }
+    return entries;
+  }
+
+  /**
+   * A create-once slot: project env keys are unique case-insensitively. Never update or delete
+   * a birth slot. The process id is retained by the journal; it is not an env entry id.
+   */
+  async createProjectEnv(
+    projectId: string,
+    key: string,
+    content: string,
+  ): Promise<{ readonly processId: string }> {
+    const response = await this.#request<{ readonly id: string }>(
+      `/project/${projectId}/env`,
+      { method: "POST", body: JSON.stringify({ key, content, sensitive: false }) },
+      { operationKind: "project-write" },
+    );
+    return { processId: response.id };
   }
 
   /**

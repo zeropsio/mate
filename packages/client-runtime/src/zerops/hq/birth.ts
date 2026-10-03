@@ -1,55 +1,21 @@
 /**
- * The birth of an organization's HQ (SPEC §3.1, §6.2.1), run by an org Owner or Admin's client:
- * the HQ project, its anchor and working credential, and Core deployed from the build the client
- * itself came with.
- *
- * Seven steps, each reading what is there before it writes:
- *
- * 1. `project` — the HQ project from an import: `hq` (Core; never `core`, every project's reserved
- *    system service, T0 §4), `db` and `vol`, named `Headquarters` as the Gitea project was, tagged
- *    `mate:hq` and with the birth's own tag. Never while the member list names an HQ already, nor
- *    while a `mate:hq` project no anchor names stands: one is being set up elsewhere, or stopped.
- * 2. `services` — the three services up.
- * 3. `credential` — `mate-hq-org:<projectId>`, org Read only and nothing else, written as the
- *    sensitive `HQ_ORG_TOKEN` of `hq`, once the import's variables have synced; beside it the
- *    sensitive `HQ_KEY_SECRET`, 32 random bytes in base64 drawn here, the key Core seals its
- *    environments' deploy tokens with (`apps/hq/src/deployKeys.ts`), which goes nowhere else. A
- *    token's value is shown once: a token whose variable is missing is regenerated; a variable that
- *    is there is never written again — a key written anew would open none of the tokens sealed
- *    under the one before.
- * 4. `deploy` — Core's archive and `zerops.yml` (`core`), as an app version built and deployed. Core
- *    starts as a standby, its anchor missing; its deploy opens `hq`'s HTTP port, which a fresh
- *    import's `hq` does not have (measured in KRLS, 2026-10-02: a routing before it is refused,
- *    400 "ServiceStack must supported http protocol"). The version is uploaded once and kept: a
- *    build refused while the variables `credential` wrote still sync is asked again, and a step
- *    that stopped builds the same version on *Try again*.
- * 5. `domain` — HQ's address is its project's own domain (`publicZone`), the one Core names itself
- *    by: a routing of it to Core's port with SSL, the project's routings synced, and its
- *    certificate active (about ten seconds, measured on the rig 2026-10-02). An address that never
- *    serves over HTTPS stops here, with the platform's reason. A record at this step with no deploy
- *    behind it deploys first.
- * 6. `anchor` — `mate-hq:<projectId>:<address>`, org Admin, its value dropped at once: the mark
- *    that makes this HQ the official one (`anchor.ts`). Never while an anchor names another one.
- * 7. `ready` — `/health` answering `official: ok` and `state: active`, which follows the anchor
- *    within Core's 30 s recheck.
- *
- * The **record** (`HqBirthRecord`) is what a step leaves for the next, and what *Try again* — or a
- * reload, where the client keeps it — resumes from: a step that stopped runs again, the ones
- * before it do not. The import is sent at most once a birth: the birth's tag
- * (`mate:hq-birth:<id>`) is kept before the import is sent, and a birth that keeps one never sends
- * it again — whatever became of its answer, it takes up the one project carrying that tag, or stops
- * `uncertain`. Only an import Zerops refused outright made nothing, and is sent anew. No project is
- * ever taken for HQ's by its name or the `mate:hq` tag alone.
- *
- * Pure of platform globals (rule R1): the platform, Core's artifact, the health read, the clock
- * and the sleeps are passed in.
- *
- * @module hq/birth
+ * HQ starts automatically for an org admin. Its nascent project's plain env holds an append-only
+ * journal, create-once action intents/receipts and expiring claims (birthJournal.ts). A browser
+ * reads that journal before doing anything. Failed steps require Again; uncertain writes are
+ * followed through their saved handles, never automatically replayed. Credential values go only
+ * to HQ's sensitive service variables.
  */
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { RandomBytes } from "../newProject.ts";
 import { findOfficialHq, hqAnchorName, hqOrgTokenName } from "./anchor.ts";
 import type { HqEndpoint, HqHealth } from "./client.ts";
+import {
+  birthSnapshot,
+  HQ_BIRTH_RECORD_KEY,
+  HqBirthJournal,
+  HqBirthUncertain,
+  readBirthRecord,
+} from "./birthJournal.ts";
 
 export const HQ_PROJECT_NAME = "Headquarters";
 /**
@@ -71,15 +37,6 @@ const HQ_KEY_SECRET_ENV = "HQ_KEY_SECRET";
 const HQ_KEY_SECRET_BYTES = 32;
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
 const HQ_SETUP = "hq";
-/**
- * Zerops refuses a build, or a variable's write, while the service's variables sync, which a
- * variable just written starts (measured in Mate s.r.o., 2026-10-03: a build refused 400 right after
- * `HQ_ORG_TOKEN`), and the import's own `envSecrets` too.
- */
-const VARIABLES_SYNCING = "userDataSyncRunning";
-/** The longest wait between two builds refused while the variables sync. */
-const SYNC_BACKOFF_MAX_MS = 30_000;
-
 export type HqBirthStep =
   | "project"
   | "services"
@@ -128,6 +85,21 @@ export interface HqBirthRecord {
   readonly appVersionId: string | null;
   /** The deploy Zerops took, followed until it ends. */
   readonly deployProcessId: string | null;
+  readonly serviceIds?: Readonly<Record<string, string>>;
+  readonly importProcessId?: string;
+  readonly importProcesses?: Readonly<Record<string, string>>;
+  readonly orgTokenId?: string;
+  readonly anchorTokenId?: string;
+  readonly routingId?: string;
+  readonly syncProcessId?: string | null;
+  readonly archiveUploaded?: boolean;
+  readonly coreYaml?: string;
+  readonly attempt?: number;
+  readonly stopped?: {
+    readonly step: HqBirthStep;
+    readonly reason: string;
+    readonly uncertain: boolean;
+  } | null;
 }
 
 export const HQ_BIRTH_START: HqBirthRecord = {
@@ -160,6 +132,9 @@ export type HqBirthPlatform = Pick<
   | "listPublicHttpRoutings"
   | "createPublicHttpRouting"
   | "syncPublicHttpRouting"
+  | "readProjectBirthEnv"
+  | "createProjectEnv"
+  | "readProjectCreation"
 >;
 
 /** Core as this build of the app carries it (`hq-core/`). */
@@ -219,7 +194,7 @@ class BirthStopped extends Error {}
 class ImportUnanswered extends Error {}
 
 const IMPORT_UNANSWERED =
-  "Zerops did not confirm HQ's project, and lists none of this setup's. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.";
+  "Zerops did not confirm HQ's project. Press Again to find this setup's project; check Headquarters in Zerops before taking further action.";
 
 /** Zerops answered the import with a no: it made nothing. */
 const refusedOutright = (cause: unknown): boolean =>
@@ -245,6 +220,8 @@ export function hqImportYaml(input: {
     "  tags:",
     `    - ${JSON.stringify(HQ_PROJECT_TAG)}`,
     `    - ${JSON.stringify(input.birthTag)}`,
+    "  envVariables:",
+    `    ${HQ_BIRTH_RECORD_KEY}: ${JSON.stringify(birthSnapshot({ ...HQ_BIRTH_START, step: "services", importTag: input.birthTag }))}`,
     "services:",
     "  - hostname: db",
     "    type: postgresql:single@18",
@@ -277,55 +254,42 @@ export function hqImportYaml(input: {
 
 export async function runHqBirth(input: {
   readonly record: HqBirthRecord;
+  /** Explicit manual action; a fresh browser never retries a recorded failure. */
+  readonly again?: boolean;
   readonly clientId: string;
   readonly origins: ReadonlyArray<string>;
   readonly zeropsApi: string;
   readonly deps: HqBirthDeps;
-  /** Told of each step's result, so a *Try again* resumes from it. */
+  /** Told of each step's result, so an *Again* resumes from it. */
   readonly moved: (patch: Partial<HqBirthRecord>) => void;
 }): Promise<HqBirthOutcome> {
   const { clientId, deps } = input;
   const { platform } = deps;
   const waits = { ...HQ_BIRTH_WAITS, ...deps.waits };
   let record = input.record;
-  const advance = (patch: Partial<HqBirthRecord>) => {
+  let journal: HqBirthJournal | undefined;
+  let importHandles: Partial<HqBirthRecord> = {};
+  const advance = async (patch: Partial<HqBirthRecord>) => {
     record = { ...record, ...patch };
+    if (journal !== undefined) await journal.save(record);
     input.moved(patch);
   };
-  // The domain is routed to Core's HTTP port, which Core's deploy opens: a record at the domain
-  // with no deploy behind it gives Core its access and deploys it first.
-  if (record.step === "domain" && record.deployProcessId === null) advance({ step: "credential" });
-
-  /** Polls `probe` until it answers, or stops once `capMs` has passed. */
+  const effect = async (
+    action: string,
+    handles: Readonly<Record<string, string>>,
+    call: () => Promise<Readonly<Record<string, string>>>,
+  ) => {
+    if (journal === undefined) throw new Error("HQ's setup journal is missing.");
+    return journal.perform(action, record.attempt ?? 0, handles, call);
+  };
   const waitFor = async <T>(capMs: number, what: string, probe: () => Promise<T | undefined>) => {
     const startedAt = deps.now();
     for (;;) {
+      await journal?.assertOwned();
       const value = await probe();
       if (value !== undefined) return value;
       if (deps.now() - startedAt >= capMs) throw new BirthStopped(`${what} took too long.`);
       await deps.sleep(waits.pollMs);
-    }
-  };
-
-  /**
-   * `call`, again while Zerops refuses it for the service's variables still syncing: waits twice as
-   * long each time, up to {@link SYNC_BACKOFF_MAX_MS}, and stops once `capMs` has passed. Any other
-   * refusal stops at once, in its own words.
-   */
-  const afterVariablesSync = async <T>(capMs: number, call: () => Promise<T>): Promise<T> => {
-    const startedAt = deps.now();
-    let backoffMs = waits.pollMs;
-    for (;;) {
-      try {
-        return await call();
-      } catch (cause) {
-        if (!(cause instanceof ZeropsApiError && cause.code === VARIABLES_SYNCING)) throw cause;
-        if (deps.now() - startedAt >= capMs) {
-          throw new BirthStopped("Zerops was still syncing HQ's variables. Try again in a minute.");
-        }
-        await deps.sleep(backoffMs);
-        backoffMs = Math.min(backoffMs * 2, SYNC_BACKOFF_MAX_MS);
-      }
     }
   };
 
@@ -343,72 +307,166 @@ export async function runHqBirth(input: {
     }
   };
 
-  /**
-   * A `Headquarters` project no anchor names yet stops a birth from nothing: it is one being set up
-   * elsewhere, or one whose setup stopped, and a second import would make two.
-   */
-  const assertNoHqUnderway = async () => {
-    const underway = (await platform.listClientProjects(clientId)).find(
-      (project) =>
-        !GONE_PROJECT_STATUSES.has(project.status) &&
-        (project.tagList ?? []).includes(HQ_PROJECT_TAG),
-    );
-    if (underway !== undefined) {
-      throw new BirthStopped(
-        `This organization has a Headquarters project already (${underway.id}) that is not its HQ yet: HQ is being set up elsewhere, or a setup stopped. Finish it where it started, or delete that project in Zerops and try again.`,
-      );
-    }
-  };
-
   try {
-    /** The one project carrying the birth's tag `tag`; or a stop where none, or more, stand. */
-    const importedBy = async (tag: string) => {
-      const made = (await platform.listClientProjects(clientId)).filter(
+    await assertNoOtherHq(record.projectId);
+    if (record.projectId === null) {
+      const projects = (await platform.listClientProjects(clientId)).filter(
         (project) =>
           !GONE_PROJECT_STATUSES.has(project.status) &&
-          (project.tagList ?? []).includes(HQ_PROJECT_TAG) &&
-          (project.tagList ?? []).includes(tag),
+          (project.tagList ?? []).includes(HQ_PROJECT_TAG),
       );
-      if (made.length !== 1) throw new ImportUnanswered(IMPORT_UNANSWERED);
-      return made[0]!.id;
-    };
-
-    if (record.step === "project") {
-      const sent = record.importTag;
-      if (sent !== null) {
-        advance({ step: "services", projectId: await importedBy(sent) });
+      if (projects.length > 1 && record.importTag !== null)
+        throw new ImportUnanswered(IMPORT_UNANSWERED);
+      if (projects.length > 1)
+        throw new BirthStopped(
+          "More than one HQ project is being set up. Ask an organization admin to inspect Headquarters in Zerops.",
+        );
+      const underway = projects[0];
+      if (underway !== undefined) {
+        if (record.importTag !== null && !(underway.tagList ?? []).includes(record.importTag))
+          throw new ImportUnanswered(IMPORT_UNANSWERED);
+        let shared = readBirthRecord(await platform.readProjectBirthEnv(underway.id));
+        // The direct project listing can precede its import's env entries. Read for a bounded
+        // window; an absent seed is never permission to import over this project.
+        if (
+          shared === undefined &&
+          (underway.tagList ?? []).some((tag) => tag.startsWith("mate:hq-birth:"))
+        ) {
+          try {
+            shared = await waitFor(
+              Math.min(waits.servicesCapMs, 90_000),
+              "Reading HQ's setup record",
+              async () => readBirthRecord(await platform.readProjectBirthEnv(underway.id)),
+            );
+          } catch (cause) {
+            if (!(cause instanceof BirthStopped)) throw cause;
+          }
+        }
+        if (
+          shared === undefined ||
+          shared.importTag === null ||
+          !(underway.tagList ?? []).includes(shared.importTag)
+        ) {
+          throw new BirthStopped(
+            "Headquarters has no readable setup record. Ask an organization admin to inspect its project env in Zerops.",
+          );
+        }
+        record = { ...shared, projectId: underway.id };
+        input.moved(record);
+      } else if (record.importTag !== null) {
+        throw new ImportUnanswered(IMPORT_UNANSWERED);
       } else {
-        await assertNoOtherHq(null);
-        await assertNoHqUnderway();
         const tag = hqBirthTag(deps.newBirthId());
-        advance({ importTag: tag });
-        const projectId = await platform
-          .importProject(
+        await advance({ importTag: tag });
+        // The project does not yet exist: its first record is embedded in this import itself.
+        try {
+          const imported = await platform.importProject(
             clientId,
             hqImportYaml({ birthTag: tag, origins: input.origins, zeropsApi: input.zeropsApi }),
-          )
-          .then(
-            (imported) => imported.projectId,
-            (cause: unknown) => {
-              if (!refusedOutright(cause)) return importedBy(tag);
-              // Nothing was made, and Try again imports.
-              advance({ importTag: null });
-              throw cause;
-            },
           );
-        advance({ step: "services", projectId });
+          if (imported.serviceStacks !== undefined) {
+            importHandles = {
+              serviceIds: Object.fromEntries(
+                imported.serviceStacks.map((service) => [service.name, service.id]),
+              ),
+              importProcesses: Object.fromEntries(
+                imported.serviceStacks.flatMap((service) =>
+                  service.processes.map((process) => [process.id, service.id]),
+                ),
+              ),
+            };
+          }
+          await advance({ step: "services", projectId: imported.projectId, ...importHandles });
+        } catch (cause) {
+          if (refusedOutright(cause)) {
+            await advance({ importTag: null });
+            throw cause;
+          }
+          const found = (await platform.listClientProjects(clientId)).filter(
+            (project) =>
+              !GONE_PROJECT_STATUSES.has(project.status) && (project.tagList ?? []).includes(tag),
+          );
+          if (found.length !== 1) throw new ImportUnanswered(IMPORT_UNANSWERED);
+          await advance({ step: "services", projectId: found[0]!.id });
+        }
       }
     }
+    journal = new HqBirthJournal(record.projectId!, deps);
+    const project = record.projectId!;
+    record = {
+      ...(await journal.acquire((shared) => input.moved({ ...shared, projectId: project }))),
+      projectId: project,
+    };
+    if (record.stopped != null && !input.again) {
+      await journal.release();
+      return { ok: false, ...record.stopped };
+    }
+    if (input.again && record.stopped != null) {
+      await advance({
+        attempt: record.stopped.uncertain ? (record.attempt ?? 0) : (record.attempt ?? 0) + 1,
+        stopped: null,
+      });
+    }
+    await advance({ projectId: project, ...importHandles });
+    if (record.step === "domain" && record.deployProcessId === null)
+      await advance({ step: "credential" });
 
     const projectId = record.projectId!;
     if (record.step === "services") {
+      const creation = await platform.readProjectCreation({ clientId, projectId });
+      if (creation !== undefined) {
+        await advance({ importProcessId: creation.processId });
+        if (creation.status === "FAILED" || creation.status === "CANCELED") {
+          throw new BirthStopped(
+            `${creation.error?.message ?? "HQ's project creation failed"}. Inspect its creation process in Zerops, then press Again.`,
+          );
+        }
+      }
       const hq = await waitFor(waits.servicesCapMs, "Starting HQ's services", async () => {
+        if (record.importProcessId !== undefined) {
+          const status = await platform.readProcessStatus(record.importProcessId);
+          if (status === "FAILED" || status === "CANCELED") {
+            const failedCreation = await platform.readProjectCreation({ clientId, projectId });
+            const words =
+              failedCreation?.processId === record.importProcessId
+                ? failedCreation.error?.message
+                : undefined;
+            throw new BirthStopped(
+              `${words ?? "HQ's project creation failed"}. Inspect its creation process in Zerops, then press Again.`,
+            );
+          }
+        }
+        let importsFinished = true;
+        for (const processId of Object.keys(record.importProcesses ?? {})) {
+          const status = await platform.readProcessStatus(processId);
+          if (status === "FAILED" || status === "CANCELED") {
+            throw new BirthStopped(
+              `HQ's service import is ${status}. Inspect process ${processId} in Zerops, fix the cause, then press Again.`,
+            );
+          }
+          if (status !== "FINISHED") importsFinished = false;
+        }
         const services = await platform.listProjectServices(projectId);
+        const ids = Object.fromEntries(services.map((service) => [service.name, service.id]));
+        if (JSON.stringify(ids) !== JSON.stringify(record.serviceIds))
+          await advance({ serviceIds: ids });
+        const failed = services.find(
+          (service) => service.status === "FAILED" || service.status === "CANCELED",
+        );
+        if (failed !== undefined)
+          throw new BirthStopped(
+            `HQ's ${failed.name} service is ${failed.status}. Inspect its import process in Zerops, then press Again.`,
+          );
         const named = (name: string) => services.find((service) => service.name === name);
         const up = HQ_SERVICES.every((name) => named(name)?.status === "ACTIVE");
-        return up ? named(HQ_SERVICE) : undefined;
+        return up && importsFinished ? named(HQ_SERVICE) : undefined;
       });
-      advance({ step: "credential", serviceId: hq.id });
+      const services = await platform.listProjectServices(projectId);
+      await advance({
+        step: "credential",
+        serviceId: hq.id,
+        serviceIds: Object.fromEntries(services.map((service) => [service.name, service.id])),
+      });
     }
 
     const serviceId = record.serviceId!;
@@ -419,51 +477,90 @@ export async function runHqBirth(input: {
         const held = (await platform.listIntegrationTokens(clientId)).filter(
           (token) => token.name === name,
         );
-        if (held.length > 1) {
+        if (held.length > 1)
           throw new BirthStopped(`More than one token is named ${name}. Delete them in Zerops.`);
+        let content: string | undefined;
+        let tokenId = record.orgTokenId ?? held[0]?.id;
+        if (tokenId === undefined) {
+          const receipt = await effect("token", { projectId }, async () => {
+            const token = await platform.mintIntegrationToken({
+              clientId,
+              name,
+              roleCode: "READ_ONLY",
+              projects: [],
+            });
+            content = token.token;
+            return { tokenId: token.id };
+          });
+          tokenId = receipt.tokenId!;
         }
-        const content =
-          held[0] === undefined
-            ? (
-                await platform.mintIntegrationToken({
-                  clientId,
-                  name,
-                  roleCode: "READ_ONLY",
-                  projects: [],
-                })
-              ).token
-            : await platform.regenerateIntegrationToken({ clientId, tokenId: held[0].id });
-        // The import's own variables may still sync: the write waits them out with the token held.
-        await afterVariablesSync(waits.servicesCapMs, () =>
-          platform.writeServiceSecret({ serviceId, key: HQ_ORG_TOKEN_ENV, content }),
-        );
+        await advance({ orgTokenId: tokenId });
+        // A token value is one-time. After a browser closes before writing it, follow the saved
+        // token id through one recorded regeneration, never mint another working token.
+        if (content === undefined) {
+          await effect("regenerate", { tokenId }, async () => {
+            content = await platform.regenerateIntegrationToken({ clientId, tokenId });
+            return { tokenId };
+          });
+        }
+        if (content === undefined)
+          throw new BirthStopped(
+            "HQ's token value was lost before it was written. Press Again to regenerate its recorded token.",
+          );
+        const tokenValue = content;
+        await effect("org_secret", { serviceId, tokenId }, async () => {
+          await platform.writeServiceSecret({
+            serviceId,
+            key: HQ_ORG_TOKEN_ENV,
+            content: tokenValue,
+          });
+          return { serviceId, tokenId };
+        });
       }
       if (!written.includes(HQ_KEY_SECRET_ENV)) {
-        const key = deps.randomBytes(new Uint8Array(HQ_KEY_SECRET_BYTES));
-        const content = btoa(String.fromCharCode(...key));
-        await afterVariablesSync(waits.servicesCapMs, () =>
-          platform.writeServiceSecret({ serviceId, key: HQ_KEY_SECRET_ENV, content }),
-        );
+        await effect("key_secret", { serviceId }, async () => {
+          const key = deps.randomBytes(new Uint8Array(HQ_KEY_SECRET_BYTES));
+          await platform.writeServiceSecret({
+            serviceId,
+            key: HQ_KEY_SECRET_ENV,
+            content: btoa(String.fromCharCode(...key)),
+          });
+          return { serviceId };
+        });
       }
-      advance({ step: "deploy" });
+      await advance({ step: "deploy" });
     }
 
     if (record.step === "deploy") {
       if (record.deployProcessId === null) {
-        const core = await deps.core();
+        const core =
+          record.archiveUploaded !== true || record.coreYaml === undefined
+            ? await deps.core()
+            : undefined;
+        if (core !== undefined) await advance({ coreYaml: core.zeropsYaml });
         if (record.appVersionId === null) {
-          const version = await platform.createAppVersion(serviceId, "hq-core");
-          await platform.uploadAppVersionArchive(version.id, core.archive);
-          advance({ appVersionId: version.id });
+          const version = await effect("version", { serviceId }, async () => ({
+            appVersionId: (await platform.createAppVersion(serviceId, "hq-core")).id,
+          }));
+          await advance({ appVersionId: version.appVersionId! });
         }
         const appVersionId = record.appVersionId!;
-        const { processId } = await afterVariablesSync(waits.deployCapMs, () =>
-          platform.buildAndDeployAppVersion(appVersionId, {
-            zeropsYaml: core.zeropsYaml,
-            setup: HQ_SETUP,
-          }),
-        );
-        advance({ deployProcessId: processId });
+        if (record.archiveUploaded !== true) {
+          await effect("upload", { appVersionId }, async () => {
+            await platform.uploadAppVersionArchive(appVersionId, core!.archive);
+            return { appVersionId };
+          });
+          await advance({ archiveUploaded: true });
+        }
+        const deployed = await effect("deploy", { appVersionId }, async () => ({
+          processId: (
+            await platform.buildAndDeployAppVersion(appVersionId, {
+              zeropsYaml: record.coreYaml!,
+              setup: HQ_SETUP,
+            })
+          ).processId,
+        }));
+        await advance({ deployProcessId: deployed.processId! });
       }
       const processId = record.deployProcessId!;
       const status = await waitFor(waits.deployCapMs, "Deploying HQ", async () => {
@@ -471,11 +568,13 @@ export async function runHqBirth(input: {
         return read === "FINISHED" || read === "FAILED" || read === "CANCELED" ? read : undefined;
       });
       if (status !== "FINISHED") {
-        // Try again uploads and deploys anew.
-        advance({ deployProcessId: null, appVersionId: null });
-        throw new BirthStopped("HQ's deploy did not finish. Its build log in Zerops says why.");
+        // Keep the version and the failed process receipt; only manual Again sends a new build.
+        await advance({ deployProcessId: null });
+        throw new BirthStopped(
+          "HQ's deploy did not finish. Its build log in Zerops says why. Fix the cause, then press Again.",
+        );
       }
-      advance({ step: "domain" });
+      await advance({ step: "domain" });
     }
 
     if (record.step === "domain") {
@@ -493,13 +592,28 @@ export async function runHqBirth(input: {
         return undefined;
       };
       if ((await routed()) === undefined) {
-        await platform.createPublicHttpRouting(projectId, {
-          domains: [domain],
-          locations: [{ path: "/", port: HQ_PORT, serviceStackId: serviceId }],
+        await effect("routing", { projectId, serviceId, domain }, async () => {
+          await platform.createPublicHttpRouting(projectId, {
+            domains: [domain],
+            locations: [{ path: "/", port: HQ_PORT, serviceStackId: serviceId }],
+          });
+          return { projectId, serviceId, domain };
         });
       }
-      if ((await routed())?.routing.isSynced !== true) {
-        const { processId } = await platform.syncPublicHttpRouting(projectId);
+      const routing = await routed();
+      if (routing !== undefined) await advance({ routingId: routing.routing.id });
+      if (record.syncProcessId != null || routing?.routing.isSynced !== true) {
+        const receipt =
+          record.syncProcessId == null
+            ? await effect("routing_sync", { projectId }, async () => {
+                const synced = await platform.syncPublicHttpRouting(projectId);
+                return synced.processId === undefined
+                  ? { projectId }
+                  : { projectId, processId: synced.processId };
+              })
+            : { processId: record.syncProcessId };
+        const processId = receipt.processId;
+        if (processId !== undefined) await advance({ syncProcessId: processId });
         if (processId !== undefined) {
           const status = await waitFor(
             waits.domainCapMs,
@@ -512,7 +626,10 @@ export async function runHqBirth(input: {
             },
           );
           if (status !== "FINISHED") {
-            throw new BirthStopped("Zerops could not put HQ's domain in place. Try again.");
+            await advance({ syncProcessId: null });
+            throw new BirthStopped(
+              "Zerops could not put HQ's domain in place. Inspect its sync process in Zerops, then press Again.",
+            );
           }
         }
       }
@@ -526,7 +643,7 @@ export async function runHqBirth(input: {
           ? cause
           : new BirthStopped(`HQ's certificate for ${domain} is not ready: ${sslError}`);
       });
-      advance({ step: "anchor", address: `https://${domain}` });
+      await advance({ step: "anchor", address: `https://${domain}` });
     }
 
     const address = record.address!;
@@ -536,29 +653,48 @@ export async function runHqBirth(input: {
       const tokens = await platform.listIntegrationTokens(clientId);
       if (!tokens.some((token) => token.name === name)) {
         // A mark in the member list, never a credential: its value goes nowhere.
-        await platform.mintIntegrationToken({ clientId, name, roleCode: "ADMIN", projects: [] });
+        const receipt = await effect("anchor", { projectId, address }, async () => ({
+          tokenId: (
+            await platform.mintIntegrationToken({ clientId, name, roleCode: "ADMIN", projects: [] })
+          ).id,
+        }));
+        await advance({ anchorTokenId: receipt.tokenId! });
       }
-      advance({ step: "ready" });
+      await advance({ step: "ready" });
     }
 
     if (record.step === "ready") {
       await waitFor(waits.readyCapMs, "HQ answering as this organization's HQ", async () =>
         (await deps.health(address)).kind === "healthy" ? true : undefined,
       );
-      advance({ step: "done" });
+      await advance({ step: "done" });
     }
+    await journal.release();
     return { ok: true, hq: { projectId, address } };
   } catch (cause) {
     const step = record.step === "done" ? "ready" : record.step;
-    return {
-      ok: false,
-      step,
-      reason:
-        cause instanceof Error && cause.message.length > 0
-          ? cause.message
-          : "Zerops could not be reached.",
-      // Every later step reads what is there before it writes.
-      uncertain: cause instanceof ImportUnanswered,
-    };
+    const words =
+      cause instanceof Error && cause.message.length > 0
+        ? cause.message
+        : "Zerops could not be reached.";
+    const reason = /credit/iu.test(
+      `${cause instanceof ZeropsApiError ? (cause.code ?? "") : ""} ${words}`,
+    )
+      ? `${words}. Ask an organization owner to add credit in Zerops, then press Again.`
+      : cause instanceof ZeropsApiError && cause.kind === "forbidden"
+        ? `${words}. Ask an organization owner to restore your access in Zerops, then press Again.`
+        : words;
+    const uncertain =
+      cause instanceof ImportUnanswered ||
+      cause instanceof HqBirthUncertain ||
+      (cause instanceof ZeropsApiError && (cause.kind === "uncertain" || cause.kind === "network"));
+    const stopped = { step, reason, uncertain };
+    try {
+      await advance({ stopped });
+      await journal?.release();
+    } catch {
+      // Lost ownership or an unconfirmed journal write must never authorize another side effect.
+    }
+    return { ok: false, ...stopped };
   }
 }

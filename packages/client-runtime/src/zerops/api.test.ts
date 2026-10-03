@@ -2482,3 +2482,32 @@ describe("ZeropsApiClient.isZeropsMateEnabled", () => {
     await expect(client.isZeropsMateEnabled("svc-1")).resolves.toBe(false);
   });
 });
+
+describe("HQ birth project env", () => {
+  it("reads plain journal values directly without the trailing search index", async () => {
+    const http = recordingFetch(() =>
+      jsonResponse(200, {
+        envFile: 'OTHER="REDACTED"\nMATE_HQ_BIRTH_RECORD_0="{\\"version\\":1}"\n',
+      }),
+    );
+    const client = new ZeropsApiClient({ fetch: http.fetch });
+    client.restoreSession(SESSION);
+    expect(await client.readProjectBirthEnv("hq1")).toEqual(
+      new Map([["MATE_HQ_BIRTH_RECORD_0", '{"version":1}']]),
+    );
+    expect(http.requests[0]?.url).toContain("/project/hq1/env-file");
+  });
+
+  it("creates a non-sensitive create-once env slot and keeps its process handle", async () => {
+    const http = recordingFetch(() => jsonResponse(200, { id: "process-env" }));
+    const client = new ZeropsApiClient({ fetch: http.fetch });
+    client.restoreSession(SESSION);
+    expect(await client.createProjectEnv("hq1", "MATE_HQ_BIRTH_CLAIM_0", "claim")).toEqual({
+      processId: "process-env",
+    });
+    expect(http.requests[0]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ key: "MATE_HQ_BIRTH_CLAIM_0", content: "claim", sensitive: false }),
+    });
+  });
+});

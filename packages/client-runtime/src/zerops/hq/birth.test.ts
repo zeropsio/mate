@@ -56,6 +56,7 @@ function fakeZerops(
   const tokens: Token[] = [];
   const env = new Map<string, string>();
   const imports: string[] = [];
+  const projectEnv = new Map<string, string>();
   /** What an import makes: a project's three services, coming up. */
   const imported = (): ZeropsService[] => [
     { id: "svc-db", name: "db", status: "CREATING" },
@@ -95,6 +96,17 @@ function fakeZerops(
     user: { fullName: token.name, email: `token-${token.id}@zerops.io` },
   });
   const platform: HqBirthPlatform = {
+    readProjectBirthEnv: async () => new Map(projectEnv),
+    createProjectEnv: async (_projectId, key, content) => {
+      if (projectEnv.has(key))
+        throw new ZeropsApiError(
+          "Project environment variable key is not unique (case insensitive).",
+          "invalid-input",
+          400,
+        );
+      projectEnv.set(key, content);
+      return { processId: `env-${projectEnv.size}` };
+    },
     listClientProjects: async (clientId) => {
       step("projects");
       expect(clientId).toBe(ORG);
@@ -121,9 +133,17 @@ function fakeZerops(
       // The direct read lists a project before its import has answered.
       const tagList = [...yaml.matchAll(/^    - "(.+)"$/gmu)].map((tag) => tag[1]!);
       projects.push({ id: "hq1", name: "Headquarters", status: "ACTIVE", tagList });
+      for (const entry of yaml.matchAll(/^    (MATE_HQ_BIRTH_RECORD_0): (.+)$/gmu)) {
+        projectEnv.set(entry[1]!, JSON.parse(entry[2]!) as string);
+      }
       if (options.importAnswerLost !== undefined) throw options.importAnswerLost;
       return { projectId: "hq1" };
     },
+    readProjectCreation: async () => ({
+      processId: "process-import",
+      status: "FINISHED",
+      error: null,
+    }),
     listProjectServices: async () => {
       step("services");
       reads += 1;
@@ -198,6 +218,7 @@ function fakeZerops(
       return { processId: "process-1" };
     },
     readProcessStatus: async (processId) => {
+      if (processId.startsWith("env-") || processId === "process-import") return "FINISHED";
       step(`process ${processId}`);
       if (processId === "process-sync") return "FINISHED";
       processReads += 1;
@@ -254,6 +275,7 @@ function fakeZerops(
     tokens,
     env,
     imports,
+    projectEnv,
     failOnce: (call: string, cause: unknown) => failures.set(call, cause),
   };
 }
@@ -294,13 +316,18 @@ async function birth(
   record: HqBirthRecord,
   zerops: ReturnType<typeof fakeZerops>,
   d = deps(zerops),
+  again = false,
 ) {
+  if (record.projectId !== null && zerops.projectEnv.size === 0) {
+    zerops.projectEnv.set("MATE_HQ_BIRTH_RECORD_0", JSON.stringify({ version: 1, record }));
+  }
   const patches: Array<Partial<HqBirthRecord>> = [];
   let held = record;
   const outcome = await runHqBirth({
     ...INPUT,
     record,
     deps: d,
+    again,
     moved: (patch) => {
       patches.push(patch);
       held = { ...held, ...patch };
@@ -315,7 +342,7 @@ describe("runHqBirth", () => {
     const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
 
     expect(outcome).toEqual({ ok: true, hq: { projectId: "hq1", address: ADDRESS } });
-    expect(record).toEqual({
+    expect(record).toMatchObject({
       step: "done",
       importTag: "mate:hq-birth:b1",
       projectId: "hq1",
@@ -324,10 +351,11 @@ describe("runHqBirth", () => {
       appVersionId: "av-1",
       deployProcessId: "process-1",
     });
-    expect(zerops.calls).toEqual([
+    expect(zerops.calls.filter((call) => !call.startsWith("process env-"))).toEqual([
       "members",
       "projects",
       "import",
+      "services",
       "services",
       "services",
       // Core gets its access and is deployed first: it starts as a standby, its anchor missing.
@@ -386,28 +414,25 @@ describe("runHqBirth", () => {
 
   it("names the step that stopped, and Try again resumes there without making anything twice", async () => {
     const zerops = fakeZerops();
-    zerops.failOnce(
-      "deploy av-1 hq",
-      new ZeropsApiError("Network error contacting Zerops: offline", "network"),
-    );
+    zerops.failOnce("deploy av-1 hq", new ZeropsApiError("Build refused", "invalid-input", 400));
     const first = await birth(HQ_BIRTH_START, zerops);
     expect(first.outcome).toEqual({
       ok: false,
       step: "deploy",
-      reason: "Network error contacting Zerops: offline",
+      reason: "Build refused",
       uncertain: false,
     });
     expect(first.record.step).toBe("deploy");
 
     zerops.calls.length = 0;
-    const again = await birth(first.record, zerops);
+    const again = await birth(first.record, zerops, deps(zerops), true);
     expect(again.outcome).toMatchObject({ ok: true });
     // Nothing before the deploy is made again; the anchor comes after it, once.
     expect(zerops.calls.filter((call) => /^(import|mint|secret)/u.test(call))).toEqual([
       `mint mate-hq:hq1:${ADDRESS} ADMIN`,
     ]);
     // The version it uploaded is built: none is made and left behind.
-    expect(zerops.calls[0]).toBe("deploy av-1 hq");
+    expect(zerops.calls[1]).toBe("deploy av-1 hq");
     expect(zerops.calls.filter((call) => /^(app-version|upload)/u.test(call))).toEqual([]);
   });
 
@@ -446,7 +471,7 @@ describe("runHqBirth", () => {
     expect(zerops.calls).toEqual(["members"]);
   });
 
-  it("stops uncertain only when the import's answer was lost: a second one could make two projects", async () => {
+  it("stops uncertain for any unanswered write, including a credential write", async () => {
     const zerops = fakeZerops();
     zerops.failOnce(
       "import",
@@ -464,7 +489,7 @@ describe("runHqBirth", () => {
     expect((await birth(HQ_BIRTH_START, later)).outcome).toMatchObject({
       ok: false,
       step: "credential",
-      uncertain: false,
+      uncertain: true,
     });
   });
 
@@ -486,7 +511,7 @@ describe("runHqBirth", () => {
         ok: false,
         step: "project",
         reason:
-          "This organization has a Headquarters project already (CYJDpyAOQf6CCe6l9qDxkA) that is not its HQ yet: HQ is being set up elsewhere, or a setup stopped. Finish it where it started, or delete that project in Zerops and try again.",
+          "Headquarters has no readable setup record. Ask an organization admin to inspect its project env in Zerops.",
         uncertain: false,
       });
       expect(zerops.imports).toEqual([]);
@@ -505,6 +530,10 @@ describe("runHqBirth", () => {
 
   it("takes up the one project its birth's tag names, and imports nothing", async () => {
     const zerops = fakeZerops({ projects: [listed()] });
+    zerops.projectEnv.set(
+      "MATE_HQ_BIRTH_RECORD_0",
+      JSON.stringify({ version: 1, record: { ...SENT, step: "services" } }),
+    );
     const { outcome, record } = await birth(SENT, zerops);
     expect(outcome).toMatchObject({ ok: true, hq: { projectId: "hq1" } });
     expect(record).toMatchObject({ projectId: "hq1", importTag: "mate:hq-birth:b0" });
@@ -524,10 +553,10 @@ describe("runHqBirth", () => {
       ok: false,
       step: "project",
       reason:
-        "Zerops did not confirm HQ's project, and lists none of this setup's. Try again in a moment; before starting over, look for a Headquarters project in Zerops and delete it.",
+        "Zerops did not confirm HQ's project. Press Again to find this setup's project; check Headquarters in Zerops before taking further action.",
       uncertain: true,
     });
-    expect(record).toEqual(SENT);
+    expect(record).toMatchObject(SENT);
     expect(zerops.imports).toEqual([]);
   });
 
@@ -559,11 +588,15 @@ describe("runHqBirth", () => {
     expect(first.outcome).toEqual({
       ok: false,
       step: "project",
-      reason: refusal.message,
+      reason: /credit/iu.test(refusal.message)
+        ? `${refusal.message}. Ask an organization owner to add credit in Zerops, then press Again.`
+        : `${refusal.message}. Ask an organization owner to restore your access in Zerops, then press Again.`,
       uncertain: false,
     });
-    expect(first.record).toEqual(HQ_BIRTH_START);
-    expect((await birth(first.record, zerops)).outcome).toMatchObject({ ok: true });
+    expect(first.record).toMatchObject(HQ_BIRTH_START);
+    expect((await birth(first.record, zerops, deps(zerops), true)).outcome).toMatchObject({
+      ok: true,
+    });
     expect(zerops.imports).toHaveLength(1);
   });
 
@@ -603,7 +636,7 @@ describe("runHqBirth", () => {
     zerops.calls.length = 0;
     const lost = await birth(atCredential, zerops);
     expect(lost.outcome).toMatchObject({ ok: true });
-    expect(zerops.calls.slice(0, 4)).toEqual([
+    expect(zerops.calls.slice(1, 5)).toEqual([
       "env",
       "tokens",
       "regenerate t1",
@@ -613,8 +646,7 @@ describe("runHqBirth", () => {
 
     zerops.calls.length = 0;
     await birth(atCredential, zerops);
-    expect(zerops.calls[0]).toBe("env");
-    expect(zerops.calls[1]).toBe("app-version svc-hq");
+    expect(zerops.calls).toEqual(["members"]);
   });
 
   // Core seals its environments' deploy tokens under HQ_KEY_SECRET (`apps/hq/src/deployKeys.ts`):
@@ -651,20 +683,6 @@ describe("runHqBirth", () => {
 
   // Mate s.r.o., 2026-10-03: the build right after Core's token was written was refused, 400
   // userDataSyncRunning, while the service's variables synced.
-  it("waits out a variable sync its build is refused for, and builds the one version it uploaded", async () => {
-    const zerops = fakeZerops({ variablesSyncing: 2 });
-    const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
-    expect(outcome).toMatchObject({ ok: true });
-    expect(zerops.calls.filter((call) => /^(app-version|upload|deploy)/u.test(call))).toEqual([
-      "app-version svc-hq",
-      "upload av-1 7",
-      "deploy av-1 hq",
-      "deploy av-1 hq",
-      "deploy av-1 hq",
-    ]);
-    expect(record.deployProcessId).toBe("process-1");
-  });
-
   it("stops at once, in Zerops' words, where its build is refused for anything else", async () => {
     const zerops = fakeZerops();
     zerops.failOnce(
@@ -687,39 +705,6 @@ describe("runHqBirth", () => {
     expect(record.appVersionId).toBe("av-1");
   });
 
-  it("stops where the variables still sync past the deploy's wait, keeping the version it uploaded", async () => {
-    const zerops = fakeZerops({ variablesSyncing: Number.POSITIVE_INFINITY });
-    const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
-    expect(outcome).toEqual({
-      ok: false,
-      step: "deploy",
-      reason: "Zerops was still syncing HQ's variables. Try again in a minute.",
-      uncertain: false,
-    });
-    expect(record).toMatchObject({ appVersionId: "av-1", deployProcessId: null });
-    expect(zerops.calls.filter((call) => /^(app-version|upload)/u.test(call))).toEqual([
-      "app-version svc-hq",
-      "upload av-1 7",
-    ]);
-  });
-
-  // The import's own variables (its `envSecrets`) may still sync when Core's token is written.
-  it("waits out a variable sync its token's write is refused for, minting the token once", async () => {
-    const zerops = fakeZerops({ importVariablesSyncing: 2 });
-    const { outcome } = await birth(HQ_BIRTH_START, zerops);
-    expect(outcome).toMatchObject({ ok: true });
-    expect(
-      zerops.calls.filter((call) => /^(mint mate-hq-org|regenerate|secret)/u.test(call)),
-    ).toEqual([
-      "mint mate-hq-org:hq1 READ_ONLY",
-      "secret svc-hq HQ_ORG_TOKEN",
-      "secret svc-hq HQ_ORG_TOKEN",
-      "secret svc-hq HQ_ORG_TOKEN",
-      "secret svc-hq HQ_KEY_SECRET",
-    ]);
-    expect(zerops.env.get("HQ_ORG_TOKEN")).toBe("value-1");
-  });
-
   it("deploys anew on Try again after a deploy that failed", async () => {
     const zerops = fakeZerops();
     const atDeploy: HqBirthRecord = {
@@ -731,18 +716,19 @@ describe("runHqBirth", () => {
       appVersionId: null,
       deployProcessId: null,
     };
-    const failing = { ...zerops.platform, readProcessStatus: async () => "FAILED" };
+    const failing = {
+      ...zerops.platform,
+      readProcessStatus: async (id: string) => (id.startsWith("env-") ? "FINISHED" : "FAILED"),
+    };
     const first = await birth(atDeploy, zerops, { ...deps(zerops), platform: failing });
     expect(first.outcome).toMatchObject({ ok: false, step: "deploy" });
     expect(first.record.deployProcessId).toBeNull();
-    expect(first.record.appVersionId).toBeNull();
+    expect(first.record.appVersionId).toBe("av-1");
 
     zerops.calls.length = 0;
-    await birth(first.record, zerops);
-    expect(zerops.calls.slice(0, 3)).toEqual([
-      "app-version svc-hq",
-      "upload av-2 7",
-      "deploy av-2 hq",
+    await birth(first.record, zerops, deps(zerops), true);
+    expect(zerops.calls.filter((call) => /^(app-version|upload|deploy)/u.test(call))).toEqual([
+      "deploy av-1 hq",
     ]);
   });
 
@@ -814,4 +800,355 @@ describe("runHqBirth", () => {
     });
     expect(record.address).toBeNull();
   });
+});
+
+describe("HQ birth shared progress", () => {
+  const atDeploy = {
+    ...HQ_BIRTH_START,
+    step: "deploy" as const,
+    importTag: "mate:hq-birth:b1",
+    projectId: "hq1",
+    serviceId: "svc-hq",
+    appVersionId: "av-kept",
+    deployProcessId: "process-1",
+  };
+  const underway = () =>
+    fakeZerops({
+      projects: [
+        {
+          id: "hq1",
+          name: "Headquarters",
+          status: "ACTIVE",
+          tagList: ["mate:hq", "mate:hq-birth:b1"],
+        },
+      ],
+    });
+  const seed = (zerops: ReturnType<typeof fakeZerops>, record: HqBirthRecord) =>
+    zerops.projectEnv.set("MATE_HQ_BIRTH_RECORD_0", JSON.stringify({ version: 1, record }));
+
+  it("a new browser automatically follows the project's recorded deploy handle", async () => {
+    const zerops = underway();
+    seed(zerops, atDeploy);
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.outcome).toMatchObject({ ok: true });
+    expect(zerops.calls).toContain("process process-1");
+    expect(
+      zerops.calls.filter((call) => /^(import|app-version|upload|deploy)/u.test(call)),
+    ).toEqual([]);
+  });
+
+  it("records the version handle before uploading, and the deploy handle before following it", async () => {
+    const zerops = fakeZerops();
+    const snapshots = () => [...zerops.projectEnv.values()].join("\n");
+    zerops.platform.uploadAppVersionArchive = async (id) => {
+      expect(snapshots()).toContain(id);
+    };
+    const read = zerops.platform.readProcessStatus;
+    zerops.platform.readProcessStatus = async (id) => {
+      if (!id.startsWith("env-")) expect(snapshots()).toContain(id);
+      return read(id);
+    };
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.outcome.ok).toBe(true);
+  });
+
+  it("a definite credit refusal stops once, with the reason and the way on", async () => {
+    const zerops = fakeZerops();
+    zerops.failOnce(
+      "import",
+      new ZeropsApiError("Insufficient credit", "invalid-input", 400, "insufficientCredit"),
+    );
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.outcome).toMatchObject({
+      ok: false,
+      uncertain: false,
+      reason: expect.stringMatching(/Insufficient credit.*add credit/iu),
+    });
+    expect(zerops.calls.filter((call) => call === "import")).toHaveLength(1);
+  });
+
+  it("a variables-sync refusal ends visibly, without automatically sending another build", async () => {
+    const zerops = fakeZerops({ variablesSyncing: 1 });
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.outcome).toMatchObject({ ok: false, step: "deploy" });
+    expect(zerops.calls.filter((call) => call.startsWith("deploy "))).toHaveLength(1);
+  });
+
+  it("a new browser reads a recorded refusal instead of automatically trying the failed step", async () => {
+    const zerops = underway();
+    seed(zerops, {
+      ...atDeploy,
+      stopped: {
+        step: "deploy",
+        reason: "Insufficient credit. Ask an organization owner to add credit, then press Again.",
+        uncertain: false,
+      },
+    });
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.outcome).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("Insufficient credit"),
+    });
+    expect(zerops.calls.filter((call) => call.startsWith("process "))).toEqual([]);
+  });
+
+  it("an unanswered upload is not sent again by the next browser", async () => {
+    const zerops = underway();
+    seed(zerops, { ...atDeploy, appVersionId: "av-kept", deployProcessId: null });
+    zerops.projectEnv.set(
+      "MATE_HQ_BIRTH_ACTION_upload_0",
+      JSON.stringify({ state: "started", handles: { appVersionId: "av-kept" } }),
+    );
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.outcome).toMatchObject({ ok: false, step: "deploy", uncertain: true });
+    expect(zerops.calls.filter((call) => /^(app-version|upload|deploy)/u.test(call))).toEqual([]);
+  });
+});
+
+describe("HQ birth takeover", () => {
+  it("a stale claim transfers automatically, following the late receipt while only one browser sends the build", async () => {
+    const zerops = fakeZerops({
+      projects: [
+        {
+          id: "hq1",
+          name: "Headquarters",
+          status: "ACTIVE",
+          tagList: ["mate:hq", "mate:hq-birth:b1"],
+        },
+      ],
+    });
+    const record = {
+      ...HQ_BIRTH_START,
+      step: "deploy" as const,
+      importTag: "mate:hq-birth:b1",
+      projectId: "hq1",
+      serviceId: "svc-hq",
+      appVersionId: "av-kept",
+      archiveUploaded: true,
+    };
+    zerops.projectEnv.set("MATE_HQ_BIRTH_RECORD_0", JSON.stringify({ version: 1, record }));
+    const entered = Promise.withResolvers<void>();
+    const build = Promise.withResolvers<{ processId: string }>();
+    let builds = 0;
+    zerops.platform.buildAndDeployAppVersion = async () => {
+      builds++;
+      entered.resolve();
+      return build.promise;
+    };
+    const first = birth(HQ_BIRTH_START, zerops);
+    await entered.promise;
+    let now = 90_001;
+    const second = await birth(HQ_BIRTH_START, zerops, {
+      ...deps(zerops),
+      now: () => now,
+      sleep: async (ms) => {
+        now += ms;
+        build.resolve({ processId: "process-1" });
+        await Promise.resolve();
+      },
+    });
+    expect(second.outcome).toMatchObject({ ok: true });
+    expect(builds).toBe(1);
+    expect((await first).outcome).toMatchObject({ ok: false });
+  });
+
+  it("a recorded domain-sync process is followed even if the routing already reads synced", async () => {
+    const zerops = fakeZerops({ coreDeployed: true });
+    await zerops.platform.createPublicHttpRouting("hq1", {
+      domains: [PUBLIC_ZONE],
+      locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
+    });
+    await zerops.platform.syncPublicHttpRouting("hq1");
+    zerops.platform.readProcessStatus = async (id) =>
+      id.startsWith("env-") ? "FINISHED" : "FAILED";
+    const result = await birth(
+      {
+        ...HQ_BIRTH_START,
+        step: "domain",
+        projectId: "hq1",
+        serviceId: "svc-hq",
+        deployProcessId: "process-1",
+        syncProcessId: "process-sync",
+      },
+      zerops,
+    );
+    expect(result.outcome).toMatchObject({ ok: false, step: "domain" });
+  });
+
+  it("a definite permission refusal tells the person how to restore access", async () => {
+    const zerops = fakeZerops();
+    zerops.failOnce("import", new ZeropsApiError("Insufficient permissions", "forbidden", 403));
+    expect((await birth(HQ_BIRTH_START, zerops)).outcome).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(
+        /Insufficient permissions.*organization owner.*access.*Again/iu,
+      ),
+    });
+  });
+});
+
+describe("HQ import receipts", () => {
+  it("retains the import process and service ids before waiting for services to become active", async () => {
+    const zerops = fakeZerops();
+    zerops.platform.listProjectServices = async () => [
+      { id: "svc-hq", name: "hq", status: "FAILED" },
+    ];
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.record).toMatchObject({
+      importProcessId: "process-import",
+      serviceIds: { hq: "svc-hq" },
+    });
+    expect(result.outcome).toMatchObject({
+      ok: false,
+      step: "services",
+      reason: expect.stringContaining("FAILED"),
+    });
+  });
+
+  it("a definite refusal on the accepted import's process stops with its platform reason", async () => {
+    const zerops = fakeZerops();
+    zerops.platform.readProjectCreation = async () => ({
+      processId: "process-import",
+      status: "FAILED",
+      error: { code: "insufficientCredit", message: "Insufficient credit" },
+    });
+    const result = await birth(HQ_BIRTH_START, zerops);
+    expect(result.outcome).toMatchObject({
+      ok: false,
+      step: "services",
+      reason: expect.stringMatching(/Insufficient credit.*add credit/iu),
+    });
+    expect(result.record).toMatchObject({ importProcessId: "process-import" });
+  });
+});
+
+it("a new browser deploys the uploaded version with its recorded YAML even without a bundled archive", async () => {
+  const zerops = fakeZerops({
+    projects: [
+      {
+        id: "hq1",
+        name: "Headquarters",
+        status: "ACTIVE",
+        tagList: ["mate:hq", "mate:hq-birth:b1"],
+      },
+    ],
+  });
+  zerops.projectEnv.set(
+    "MATE_HQ_BIRTH_RECORD_0",
+    JSON.stringify({
+      version: 1,
+      record: {
+        ...HQ_BIRTH_START,
+        step: "deploy",
+        importTag: "mate:hq-birth:b1",
+        projectId: "hq1",
+        serviceId: "svc-hq",
+        appVersionId: "av-kept",
+        archiveUploaded: true,
+        coreYaml: "zerops:\n  - setup: hq\n",
+      },
+    }),
+  );
+  const result = await birth(HQ_BIRTH_START, zerops, {
+    ...deps(zerops),
+    core: async () => {
+      throw new Error("No bundled archive in this browser");
+    },
+  });
+  expect(result.outcome).toMatchObject({ ok: true });
+  expect(zerops.calls.filter((call) => /^(app-version|upload|deploy)/u.test(call))).toEqual([
+    "deploy av-kept hq",
+  ]);
+});
+
+it("a journal env process that fails prevents the next side effect", async () => {
+  const zerops = fakeZerops();
+  const read = zerops.platform.readProcessStatus;
+  zerops.platform.readProcessStatus = async (id) => (id.startsWith("env-") ? "FAILED" : read(id));
+  const result = await birth(HQ_BIRTH_START, zerops);
+  expect(result.outcome).toMatchObject({ ok: false });
+  expect(zerops.calls.filter((call) => /^(mint|app-version|upload|deploy)/u.test(call))).toEqual(
+    [],
+  );
+});
+
+it("waits for an imported project's initial journal to appear without importing another project", async () => {
+  const zerops = fakeZerops({
+    projects: [
+      {
+        id: "hq1",
+        name: "Headquarters",
+        status: "ACTIVE",
+        tagList: ["mate:hq", "mate:hq-birth:b1"],
+      },
+    ],
+  });
+  zerops.projectEnv.set(
+    "MATE_HQ_BIRTH_RECORD_0",
+    JSON.stringify({
+      version: 1,
+      record: {
+        ...HQ_BIRTH_START,
+        step: "deploy",
+        importTag: "mate:hq-birth:b1",
+        projectId: "hq1",
+        serviceId: "svc-hq",
+        appVersionId: "av-kept",
+        deployProcessId: "process-1",
+      },
+    }),
+  );
+  const read = zerops.platform.readProjectBirthEnv;
+  let reads = 0;
+  zerops.platform.readProjectBirthEnv = async (id) => (++reads === 1 ? new Map() : read(id));
+  const result = await birth(HQ_BIRTH_START, zerops);
+  expect(result.outcome).toMatchObject({ ok: true });
+  expect(zerops.imports).toEqual([]);
+});
+
+it("follows a creation that was running at first and later refuses the project", async () => {
+  const zerops = fakeZerops();
+  let reads = 0;
+  zerops.platform.readProjectCreation = async () =>
+    ++reads === 1
+      ? { processId: "process-import", status: "RUNNING", error: null }
+      : {
+          processId: "process-import",
+          status: "FAILED",
+          error: { code: "insufficientCredit", message: "Insufficient credit" },
+        };
+  const read = zerops.platform.readProcessStatus;
+  zerops.platform.readProcessStatus = async (id) => (id === "process-import" ? "FAILED" : read(id));
+  zerops.platform.listProjectServices = async () => [];
+  expect((await birth(HQ_BIRTH_START, zerops)).outcome).toMatchObject({
+    ok: false,
+    reason: expect.stringMatching(/Insufficient credit.*add credit/iu),
+  });
+});
+
+it("follows each recorded service-import process instead of trusting an active service listing", async () => {
+  const zerops = fakeZerops();
+  const read = zerops.platform.readProcessStatus;
+  zerops.platform.readProcessStatus = async (id) =>
+    id === "process-db-import" ? "FAILED" : read(id);
+  zerops.platform.listProjectServices = async () =>
+    ["db", "vol", "hq"].map((name) => ({ id: `svc-${name}`, name, status: "ACTIVE" }));
+  const result = await birth(
+    {
+      ...HQ_BIRTH_START,
+      step: "services",
+      importTag: "mate:hq-birth:b1",
+      projectId: "hq1",
+      importProcesses: { "process-db-import": "svc-db" },
+    },
+    zerops,
+  );
+  expect(result.outcome).toMatchObject({
+    ok: false,
+    step: "services",
+    reason: expect.stringContaining("FAILED"),
+  });
+  expect(zerops.calls.filter((call) => /^(mint|app-version|upload|deploy)/u.test(call))).toEqual(
+    [],
+  );
 });
