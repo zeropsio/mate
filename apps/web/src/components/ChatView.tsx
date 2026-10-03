@@ -462,6 +462,7 @@ import {
   conversationContentPending,
   localThreadErrorStanding,
   queuedSendOutcome,
+  sendStepAfterUploads,
   type QueuedSendFailure,
   newestPersonTurn,
   threadErrorEntryUnchanged,
@@ -6685,16 +6686,18 @@ export default function ChatView(props: ChatViewProps) {
         ...composerImagesSnapshot.map((image) => image.id),
         ...composerFilesSnapshot.map((file) => file.id),
       ]);
-      if (
-        getUploadedAttachments({
+      const step = sendStepAfterUploads({
+        uploaded: getUploadedAttachments({
           environmentId,
           images: composerImagesSnapshot,
           files: composerFilesSnapshot,
-        }) === null
-      ) {
+        }),
+        queued: queuedMessage !== undefined,
+      });
+      if (step.action !== "send") {
         sendInFlightRef.current = false;
-        if (queuedMessage) abortQueuedReplay({ kind: "upload-failed" });
-        else setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
+        if (step.action === "abort-queued") abortQueuedReplay(step.failure);
+        else setThreadError(threadIdForSend, step.message);
         return;
       }
     }
@@ -6722,10 +6725,14 @@ export default function ChatView(props: ChatViewProps) {
       attachments: crewAttachments ?? [],
     });
     if (crewMessage !== null) {
-      if (crewAttachments === null) {
+      const step = sendStepAfterUploads({
+        uploaded: crewAttachments,
+        queued: queuedMessage !== undefined,
+      });
+      if (step.action !== "send") {
         sendInFlightRef.current = false;
-        if (queuedMessage) abortQueuedReplay({ kind: "upload-failed" });
-        else setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
+        if (step.action === "abort-queued") abortQueuedReplay(step.failure);
+        else setThreadError(threadIdForSend, step.message);
         return;
       }
       setThreadError(threadIdForSend, null);

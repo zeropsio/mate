@@ -536,6 +536,10 @@ describe("attachmentUploadQueue", () => {
       TestXmlHttpRequest.requests[0]!.complete(500);
       await failed;
       expect(readAttachmentUpload(file.id)?.status).toBe("failed");
+      // A message holding the failed file has nothing to send until it is up.
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [], files: [file] }),
+      ).toBeNull();
       retryFileUpload({ environmentId: firstEnvironment, file });
       await Promise.resolve();
       const settled = awaitAttachmentUploads([file.id]);

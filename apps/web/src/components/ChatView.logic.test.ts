@@ -77,6 +77,7 @@ import {
   localThreadErrorStanding,
   newestPersonTurn,
   queuedSendOutcome,
+  sendStepAfterUploads,
   threadErrorEntryUnchanged,
 } from "./ChatView.logic";
 
@@ -2525,5 +2526,36 @@ describe("queuedSendOutcome", () => {
     },
   ] as const)("$name", ({ failure, retries, expected }) => {
     expect(queuedSendOutcome(failure, retries)).toEqual(expected);
+  });
+});
+
+describe("sendStepAfterUploads", () => {
+  const uploaded = [{ type: "file", id: "pending-spec.pdf" }];
+
+  it.each([
+    ["everything up, a queued message goes", { uploaded, queued: true }, { action: "send" }],
+    ["everything up, a live message goes", { uploaded, queued: false }, { action: "send" }],
+    ["nothing to upload, it goes", { uploaded: [], queued: true }, { action: "send" }],
+    [
+      "a queued message whose file did not upload is held, its bubble saying so",
+      { uploaded: null, queued: true },
+      { action: "abort-queued", failure: { kind: "upload-failed" } },
+    ],
+    [
+      "a live message whose file did not upload stays in the composer with the reason",
+      { uploaded: null, queued: false },
+      { action: "thread-error", message: "Retry or remove failed uploads before sending." },
+    ],
+  ] as const)("%s", (_label, input, expected) => {
+    expect(sendStepAfterUploads(input)).toEqual(expected);
+  });
+
+  it("holds a queued message with a failed upload at the front, never retrying it", () => {
+    const step = sendStepAfterUploads({ uploaded: null, queued: true });
+    if (step.action !== "abort-queued") throw new Error("the queued send was not aborted");
+    expect(queuedSendOutcome(step.failure, 0)).toEqual({
+      action: "hold",
+      reason: "An attachment didn't upload.",
+    });
   });
 });

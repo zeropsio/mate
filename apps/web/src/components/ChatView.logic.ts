@@ -1403,6 +1403,27 @@ export type QueuedSendFailure =
   | { readonly kind: "upload-failed" }
   | { readonly kind: "too-long" };
 
+/** What a send does once its uploads (files, pictures, kept originals) have settled. */
+export type SendStepAfterUploads =
+  | { readonly action: "send" }
+  | { readonly action: "abort-queued"; readonly failure: QueuedSendFailure }
+  | { readonly action: "thread-error"; readonly message: string };
+
+/**
+ * After the uploads: everything up, the message goes. Something not up, a
+ * queued message goes back to the queue's head held with its reason (its
+ * bubble says it); a live one stays in the composer and the thread says why.
+ */
+export function sendStepAfterUploads(input: {
+  readonly uploaded: ReadonlyArray<unknown> | null;
+  readonly queued: boolean;
+}): SendStepAfterUploads {
+  if (input.uploaded !== null) return { action: "send" };
+  return input.queued
+    ? { action: "abort-queued", failure: { kind: "upload-failed" } }
+    : { action: "thread-error", message: "Retry or remove failed uploads before sending." };
+}
+
 /** What becomes of it: back for the drain to send again, or held with its reason. */
 export type QueuedSendOutcome =
   | { readonly action: "requeue" }
