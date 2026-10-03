@@ -1228,7 +1228,7 @@ describe("creationEnds — a creation that stopped can end", () => {
       want: {
         startOver: {
           groupId: "g-acme",
-          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
         },
       },
     },
@@ -1282,7 +1282,7 @@ describe("creationEnds — a creation that stopped can end", () => {
       expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
       expect(useNewMate.getState().asked).toMatchObject({
         groupId: "g-acme",
-        again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+        again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
       });
     });
 

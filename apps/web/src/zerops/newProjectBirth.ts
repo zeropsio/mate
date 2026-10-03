@@ -563,6 +563,7 @@ export function creationEnds(birth: NewProjectBirth): {
         botName: birth.botName,
         name: birth.adds.displayName,
         tint: birth.face.tint,
+        shape: birth.face.shape,
       },
     },
   };

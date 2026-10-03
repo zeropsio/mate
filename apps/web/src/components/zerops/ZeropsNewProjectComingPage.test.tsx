@@ -257,7 +257,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
       then: {
         asked: expect.objectContaining({
           groupId: "g-acme",
-          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
         }),
       },
     },

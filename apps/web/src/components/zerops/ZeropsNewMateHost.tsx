@@ -202,6 +202,7 @@ function NewMateDialog({
       defaultTintFor={(name) =>
         name === again?.botName ? again.tint : newMateTint(candidates, name)
       }
+      defaultShapeFor={(name) => (name === again?.botName ? again.shape : undefined)}
       defaultWithAgent
       groupName={group.name}
       onCancel={dismiss}

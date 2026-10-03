@@ -220,9 +220,12 @@ export function newMateFace(input: {
     readonly shape?: MateShapeId | undefined;
   };
   readonly defaultTint: (name: string) => MateTintId;
+  /** The shape a name was asked with before — an Add started over — while no colour is picked. */
+  readonly defaultShape?: ((name: string) => MateShapeId | undefined) | undefined;
 }): ZeropsMateFace {
   const tint = input.picked.tint ?? input.defaultTint(input.name);
-  return { tint, shape: input.picked.shape ?? MATE_SHAPE_OF_TINT[tint] };
+  const asked = input.picked.tint === undefined ? input.defaultShape?.(input.name) : undefined;
+  return { tint, shape: input.picked.shape ?? asked ?? MATE_SHAPE_OF_TINT[tint] };
 }
 
 /** Where the project's recipe stands, as the Mate's dialog tells it. */
