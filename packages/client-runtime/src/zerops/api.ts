@@ -2239,6 +2239,8 @@ export class ZeropsApiClient {
     beforeWrite?: () => Promise<void>,
   ): Promise<{
     readonly tokenLowered: boolean;
+    /** Why a key of the Mate's could not be lowered — the platform refused this account the write. */
+    readonly keyNotLowered: string | null;
     readonly delegationsDropped: number;
     readonly isolationSteps: number;
     readonly restarted: boolean;
@@ -2250,6 +2252,7 @@ export class ZeropsApiClient {
     const token = findHeldMateKey(tokens, projectId, container?.created);
 
     let tokenLowered = false;
+    let keyNotLowered: string | null = null;
     let delegationsDropped = 0;
 
     // The key its container holds, and every other key of the Mate still ADMIN on its project —
@@ -2261,40 +2264,20 @@ export class ZeropsApiClient {
       ]),
     ];
     for (const tokenId of keys) {
-      this.#assertGeneration(generation);
-      // The write replaces the token's whole project list: it is planned from the token as read
-      // by its id under its lock — one small answer, never the organization's whole list again.
-      // Only the Mate's own grant is lowered, every other kept as it is (`planMateKey`). A key
-      // already lowered is left alone.
-      const lowered = await this.#holdToken(tokenId, async () => {
-        const current = await this.readIntegrationToken(clientId, tokenId, signal);
-        if (current === undefined) return false;
-        this.#assertGeneration(generation);
-        const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
-          grant.projectId === projectId && grant.roleCode !== MATE_SELF_PROJECT_ROLE
-            ? { ...grant, roleCode: MATE_SELF_PROJECT_ROLE }
-            : grant,
-        );
-        if (!projects.some((grant, index) => grant !== current.projects?.[index])) return false;
-        await this.setIntegrationTokenProjects(
-          { clientId, tokenId: current.id, name: current.name, projects },
-          signal,
-          beforeWrite,
-        );
-        return true;
-      });
-      tokenLowered ||= lowered;
-
-      this.#assertGeneration(generation);
-      const delegations = await this.listIntegrationTokenDelegations({ clientId, tokenId }, signal);
-      for (const delegation of delegations) {
-        this.#assertGeneration(generation);
-        await this.deleteIntegrationTokenDelegation(
-          { clientId, tokenId, delegationId: delegation.id },
-          signal,
-          beforeWrite,
-        );
-        delegationsDropped += 1;
+      // A key this account may not write — an org admin's adoption of a Mate whose key an owner
+      // made — is said and left as it is: the rest of the harden still runs.
+      try {
+        await this.#hardenKey(clientId, projectId, tokenId, generation, signal, beforeWrite, {
+          lowered: () => {
+            tokenLowered = true;
+          },
+          dropped: () => {
+            delegationsDropped += 1;
+          },
+        });
+      } catch (cause) {
+        if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
+        keyNotLowered ??= cause.message;
       }
     }
 
@@ -2308,10 +2291,58 @@ export class ZeropsApiClient {
 
     return {
       tokenLowered,
+      keyNotLowered,
       delegationsDropped,
       isolationSteps: isolation.steps,
       restarted: isolation.restarted,
     };
+  }
+
+  /** One key of a Mate lowered to its own project, and its delegations dropped. */
+  async #hardenKey(
+    clientId: string,
+    projectId: string,
+    tokenId: string,
+    generation: number,
+    signal: AbortSignal | undefined,
+    beforeWrite: (() => Promise<void>) | undefined,
+    told: { readonly lowered: () => void; readonly dropped: () => void },
+  ): Promise<void> {
+    this.#assertGeneration(generation);
+    // The write replaces the token's whole project list: it is planned from the token as read
+    // by its id under its lock — one small answer, never the organization's whole list again.
+    // Only the Mate's own grant is lowered, every other kept as it is (`planMateKey`). A key
+    // already lowered is left alone.
+    const lowered = await this.#holdToken(tokenId, async () => {
+      const current = await this.readIntegrationToken(clientId, tokenId, signal);
+      if (current === undefined) return false;
+      this.#assertGeneration(generation);
+      const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
+        grant.projectId === projectId && grant.roleCode !== MATE_SELF_PROJECT_ROLE
+          ? { ...grant, roleCode: MATE_SELF_PROJECT_ROLE }
+          : grant,
+      );
+      if (!projects.some((grant, index) => grant !== current.projects?.[index])) return false;
+      await this.setIntegrationTokenProjects(
+        { clientId, tokenId: current.id, name: current.name, projects },
+        signal,
+        beforeWrite,
+      );
+      return true;
+    });
+    if (lowered) told.lowered();
+
+    this.#assertGeneration(generation);
+    const delegations = await this.listIntegrationTokenDelegations({ clientId, tokenId }, signal);
+    for (const delegation of delegations) {
+      this.#assertGeneration(generation);
+      await this.deleteIntegrationTokenDelegation(
+        { clientId, tokenId, delegationId: delegation.id },
+        signal,
+        beforeWrite,
+      );
+      told.dropped();
+    }
   }
 
   /**

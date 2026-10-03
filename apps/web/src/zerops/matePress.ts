@@ -107,6 +107,11 @@ export interface MatePress {
   readonly finishing?: boolean;
   /** Each step's state as the press moves. */
   readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress>;
+  /**
+   * Why the harden of the Mate it adopts left its key as it was: the platform refused this account
+   * the key's write — an admin's, on a key an owner made.
+   */
+  readonly keyNotLowered?: string;
   readonly state: MatePressState;
 }
 
@@ -125,6 +130,16 @@ export function beginPress(press: Omit<MatePress, "state">): void {
   usePressStore.setState((store) => ({
     presses: { ...store.presses, [press.projectId]: { ...press, state: { kind: "pressing" } } },
   }));
+}
+
+/** The harden of a Mate a press adopts could not lower its key, for `reason`. */
+function noteKeyNotLowered(projectId: string, reason: string): void {
+  usePressStore.setState((store) => {
+    const press = store.presses[projectId];
+    return press === undefined
+      ? store
+      : { presses: { ...store.presses, [projectId]: { ...press, keyNotLowered: reason } } };
+  });
 }
 
 /** How long a Mate's row says its Finish setup stopped before the row is the Mate's again. */
@@ -416,6 +431,10 @@ const AWAITING_OWNER_LINE = "It still needs an owner to register it.";
 export const FINISHED_SETUP_LINE =
   "Its setup is finished. It comes up on its own now, with no browser needed.";
 
+/** A key the harden could not lower, and who can. */
+const keyNotLoweredLine = (reason: string) =>
+  `The Mate's key couldn't be lowered: ${reason.replace(/\.$/u, "")}; an owner can do it.`;
+
 /**
  * *Finish setup* as a Mate's own view draws it: the steps the Add dialog draws, and — once its
  * project is marked closed off — a clear end. Undefined for any other press. A step that stops is
@@ -433,13 +452,17 @@ export function finishSetupView(press: MatePress | undefined):
   const registered = progress.find((entry) => entry.step.kind === "register");
   const steps = pressSteps(progress);
   const done = press.state.kind === "pressed";
+  const finished =
+    registered?.state === "failed"
+      ? `${FINISHED_SETUP_LINE} ${AWAITING_OWNER_LINE}`
+      : FINISHED_SETUP_LINE;
   return {
     steps,
     line: !done
       ? "Finishing its setup…"
-      : registered?.state === "failed"
-        ? `${FINISHED_SETUP_LINE} ${AWAITING_OWNER_LINE}`
-        : FINISHED_SETUP_LINE,
+      : press.keyNotLowered === undefined
+        ? finished
+        : `${finished} ${keyNotLoweredLine(press.keyNotLowered)}`,
     done,
   };
 }
@@ -469,7 +492,9 @@ export function finishSetupRowLine(press: MatePress | undefined): string | undef
     case "pressing":
       return "Finishing setup…";
     case "pressed":
-      return "Setup finished";
+      return press.keyNotLowered === undefined
+        ? "Setup finished"
+        : `Setup finished. ${keyNotLoweredLine(press.keyNotLowered)}`;
     case "failed":
       return "Setup stopped";
   }
@@ -919,15 +944,22 @@ async function finishLocked(
   input: Parameters<typeof finishMateSetup>[0],
 ): Promise<EnvironmentCreationOutcome> {
   if (input.harden === true) {
+    let keyNotLowered: string | null = null;
     const hardened = await withPressTries(
       () =>
         runZeropsCommand(
           input.inputs.data.runtime.commands.isolateProjectEnv(
             input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
           ),
-        ).then(() => undefined),
+        ).then((hardened) => {
+          keyNotLowered = hardened.keyNotLowered;
+        }),
       input.sleep,
     );
+    // A key the platform refused this account is said, and the adoption goes on (step A, A11).
+    if (hardened.ok && keyNotLowered !== null && input.isCurrent()) {
+      noteKeyNotLowered(input.projectId, keyNotLowered);
+    }
     if (!hardened.ok) {
       if (input.isCurrent()) {
         settlePress(input.projectId, {
