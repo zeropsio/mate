@@ -47,6 +47,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { loadAccountRecords, memoryIntents } from "./account-ports";
 import { mobileCandidates } from "./candidate-listing";
+import { openMateRoute, openMateScreen } from "./open-mate";
 import { zeropsCandidatePresentation } from "./presentation";
 
 const SECOND = 1_000;
@@ -263,8 +264,7 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
         return () => undefined;
       },
     },
-    // The Mate is open: only a lease connects a remembered Mate (A9), and the route's holds it.
-    route: () => ENVIRONMENT_ID,
+    route: openMateRoute,
   };
   const built = yield* Effect.gen(function* () {
     const data: ManagedZeropsDataRuntime = yield* makeZeropsDataRuntime({
@@ -353,16 +353,47 @@ const ready = (initAt: string | null) => ({
 });
 
 describe("a Mate on mobile", () => {
-  it.effect("no exchange before the first grant on mobile", () =>
+  // A9 (krok-a-hub §3): a remembered Mate is parked until it is opened, on mobile too.
+  it.effect("a remembered Mate on mobile connects when its screen is opened", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
         const account = yield* openMobileAccount(clock);
         account.probe.answer = ready(null);
+        yield* account.grant.answer();
+        yield* settle;
+        yield* clock.advance(SECOND);
+        yield* settle;
+        const { environments } = yield* account.built.postGrant;
+        expect(account.exchanges).toEqual([]);
+
+        const close = openMateScreen(environments, ENVIRONMENT_ID);
+        yield* Effect.addFinalizer(() => Effect.sync(close));
+        yield* settle;
         yield* clock.advance(SECOND);
         yield* settle;
 
-        // The remembered Mate is open and on the platform; the grant's first round is still out.
+        expect(account.exchanges.map(({ key, reason }) => ({ key, reason }))).toEqual([
+          { key: KEY, reason: "restore" },
+        ]);
+        expect(environments.machines().get(KEY)?.credential.kind).toBe("held");
+      }),
+    ),
+  );
+
+  it.effect("no exchange before the first grant on mobile", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        // The app starts on the Mate's screen.
+        const close = openMateScreen(null, ENVIRONMENT_ID);
+        yield* Effect.addFinalizer(() => Effect.sync(close));
+        const account = yield* openMobileAccount(clock);
+        account.probe.answer = ready(null);
+        yield* clock.advance(SECOND);
+        yield* settle;
+
+        // The remembered Mate is on the platform; the grant's first round is still out.
         expect(account.grant.rounds()).toBe(1);
         expect(account.exchanges).toEqual([]);
 
@@ -386,6 +417,8 @@ describe("a Mate on mobile", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const close = openMateScreen(null, ENVIRONMENT_ID);
+          yield* Effect.addFinalizer(() => Effect.sync(close));
           const account = yield* openMobileAccount(clock);
           account.probe.answer = ready("2026-09-23T09:00:00Z");
           yield* account.grant.answer();

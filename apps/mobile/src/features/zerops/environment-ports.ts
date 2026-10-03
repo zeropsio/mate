@@ -54,6 +54,7 @@ import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { loadAccountRecords, memoryIntents } from "./account-ports";
 import { mateDescriptors } from "./mate-descriptors";
+import { openMateRoute } from "./open-mate";
 import { mobilePlatformSignals } from "./platform-signals";
 import { mobileZeropsStorage } from "./storage";
 
@@ -292,6 +293,8 @@ export async function mobileAccountPorts(input: {
       intents: memoryIntents(),
       records,
       catalog: catalogPort,
+      // The Mate whose screen is open as the stage starts: its target is wanted first.
+      route: openMateRoute,
     },
   };
 }
