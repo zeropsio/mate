@@ -640,8 +640,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const [trouble, setTrouble] = useState<string | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
 
-  // Each group's releases, read again when its production's deploys move: a release in flight is
-  // over when production runs it or its deploy fails.
+  const hqStructure = useAtomValue(hqStructureAtom);
+  const releaseRevisions = hqStructure?.releaseRevisions ?? null;
+  // Each group's releases, read again when HQ says its releases or repositories moved (audit R4),
+  // and when its production's deploys move: a release in flight is over when production runs it
+  // or its deploy fails. An HQ that says no revision has them read once, after the load.
   const releaseApps = useMemo(
     () =>
       new Map(
@@ -649,10 +652,16 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           const production = heldEnvironments
             ?.get(groupId)
             ?.filter((entry) => entry.tier === "production");
-          return [groupId, JSON.stringify(production?.map((entry) => entry.deploys) ?? null)];
+          return [
+            groupId,
+            JSON.stringify([
+              releaseRevisions?.get(groupId) ?? null,
+              production?.map((entry) => entry.deploys) ?? null,
+            ]),
+          ];
         }),
       ),
-    [flowGroups, heldEnvironments],
+    [flowGroups, heldEnvironments, releaseRevisions],
   );
   const {
     releases: releaseRecords,
@@ -689,7 +698,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         : null,
     [accountHq.hq, clientId, session.client],
   );
-  const hqStructure = useAtomValue(hqStructureAtom);
   const changes = useMemo(
     () =>
       hqChanges === null || hqAddress === undefined ? null : groupChangesOf(hqChanges, hqAddress),

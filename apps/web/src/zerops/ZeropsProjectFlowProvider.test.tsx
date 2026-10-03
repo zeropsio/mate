@@ -53,6 +53,8 @@ const access = vi.hoisted(() => ({
  * applications a verb asked to be read again.
  */
 const released = vi.hoisted(() => ({
+  /** What each render asked releases to be read on, by application. */
+  reasons: [] as Array<ReadonlyMap<string, string>>,
   releases: [] as ReadonlyArray<Release>,
   repos: [] as ReadonlyArray<RepoListEntry>,
   failures: new Map<string, string>(),
@@ -212,14 +214,17 @@ vi.mock("./useZeropsCompares", async () => {
   };
 });
 vi.mock("./useZeropsAppReleases", () => ({
-  useZeropsAppReleases: () => ({
-    releases: new Map([["g1", released.releases]]),
-    repos: new Map([["g1", released.repos]]),
-    failures: released.failures,
-    refresh: (appId: string) => {
-      released.refreshed.push(appId);
-    },
-  }),
+  useZeropsAppReleases: (apps: ReadonlyMap<string, string>) => {
+    released.reasons.push(apps);
+    return {
+      releases: new Map([["g1", released.releases]]),
+      repos: new Map([["g1", released.repos]]),
+      failures: released.failures,
+      refresh: (appId: string) => {
+        released.refreshed.push(appId);
+      },
+    };
+  },
 }));
 
 class TestNode {
@@ -320,6 +325,7 @@ function structureWith(environments: ReadonlyArray<HqEnvironment>): HqStructureV
       apps: [{ id: "g1", name: "Harbor", projects: [], environments }],
     },
     changes: null,
+    releaseRevisions: null,
     readAt: 1,
     current: true,
     unavailableSince: null,
@@ -334,6 +340,7 @@ describe("ZeropsProjectFlowProvider", () => {
     inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
     recipes.read = new Map();
+    released.reasons = [];
     released.releases = [];
     released.repos = [];
     released.failures = new Map();
@@ -573,6 +580,57 @@ describe("ZeropsProjectFlowProvider", () => {
       root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
     });
     expect(seen.at(-1)?.releaseFailures.size).toBe(0);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  // Audit R4: an application's releases and repositories are read again when HQ's stream says
+  // they moved — no other application's, and never on a clock.
+  it("reads an application's releases again when HQ says they moved, and no other's", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const atoms = signedInAtoms();
+    const told = (revisions: ReadonlyMap<string, string | null>): HqStructureView => ({
+      ...structureWith([]),
+      releaseRevisions: revisions,
+    });
+    atoms.set(hqStructureAtom, told(new Map([["g1", "41"]])));
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const render = () =>
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, null),
+        ),
+      );
+    await act(async () => {
+      render();
+    });
+    const reasonOf = () => released.reasons.at(-1)?.get("g1");
+    const atFirst = reasonOf();
+    expect(atFirst).toBeDefined();
+
+    // Another application's releases moved: g1's reason stands.
+    await act(async () => {
+      atoms.set(
+        hqStructureAtom,
+        told(
+          new Map([
+            ["g1", "41"],
+            ["g9", "57"],
+          ]),
+        ),
+      );
+    });
+    expect(reasonOf()).toBe(atFirst);
+
+    await act(async () => {
+      atoms.set(hqStructureAtom, told(new Map([["g1", "58"]])));
+    });
+    expect(reasonOf()).not.toBe(atFirst);
 
     await act(async () => {
       root.unmount();
@@ -1130,6 +1188,7 @@ describe("a Mate's changes in a project's flow", () => {
     organizationId: "org-1",
     structure: null,
     changes: null,
+    releaseRevisions: null,
     readAt: null,
     current: true,
     unavailableSince: null,
@@ -1194,6 +1253,7 @@ describe("merging and closing a change in HQ", () => {
     organizationId: "org-1",
     structure: null,
     changes: new Map([["g1", changes]]),
+    releaseRevisions: null,
     readAt: 1,
     current: true,
     unavailableSince: null,

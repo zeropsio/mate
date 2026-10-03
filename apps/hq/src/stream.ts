@@ -3,13 +3,16 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", ungrouped, apps, changes, mates, people }` — what `GET /api/structure`
- *   answers; beside it the changes of every application the caller may read them of, by
- *   application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`); and every Mate the caller may
- *   observe (`observe_mate`) as HQ holds it, by project, with the people the view names
- *   (`@t3tools/shared/hqMates`);
+ * - `{ type: "snapshot", ungrouped, apps, changes, releaseRevisions, mates, people }` — what
+ *   `GET /api/structure` answers; beside it the changes of every application the caller may read
+ *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
+ *   those last moved its releases or its repositories' `main` (`ReleaseRevisions`, audit R4); and
+ *   every Mate the caller may observe (`observe_mate`) as HQ holds it, by project, with the people
+ *   the view names (`@t3tools/shared/hqMates`);
  * - `{ type: "changes", appId, changes }` — one application's changes as the caller now reads them
  *   (`changes: null` once they no longer may), sent before the structure's own changes of a tick;
+ * - `{ type: "release-revision", appId, revision }` — one application's releases or repositories
+ *   moved (`revision: null` once the caller no longer reads its changes), after its changes;
  * - `{ type: "change", key, value }` — one application by id as the caller now sees it (`value:
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
@@ -22,8 +25,8 @@
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
  *
- * The view is computed again after every change of the structure, of a change or of a deploy, and
- * every 30 s; with roles at most 30 s old (`roles.ts`), a role change reaches an open socket within
+ * The view is computed again after every change of the structure, of a change, of a release or of
+ * a deploy, and every 30 s; with roles at most 30 s old (`roles.ts`), a role change reaches an open socket within
  * 60 s (SPEC §4). A Mate's overview moving reads no structure: its Mates are sent from what HQ
  * holds (`mateOverviews.ts`), to the callers whose last view lets them observe it, at most once per
  * `MATES_BATCH`. The socket closes
@@ -37,7 +40,12 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import type { ChangesMessage, ChangesSnapshot } from "@t3tools/shared/hqChanges";
+import type {
+  ChangesMessage,
+  ChangesSnapshot,
+  ReleaseRevisionMessage,
+  ReleaseRevisions,
+} from "@t3tools/shared/hqChanges";
 import type {
   HqMatesMessage,
   HqMatesSnapshot,
@@ -63,6 +71,7 @@ import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { type MateOverviewEntry, MateOverviews } from "./mateOverviews.ts";
 import { Recomputes } from "./recomputes.ts";
+import { Releases } from "./releases.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import type { ZeropsError, ZeropsMember } from "./zerops/api.ts";
@@ -78,9 +87,14 @@ export type Ending = "session" | "lead";
 type Outgoing = StructureMessage | { readonly type: "end"; readonly ending: Ending };
 
 export type StructureMessage =
-  | ({ readonly type: "snapshot"; readonly changes: ChangesSnapshot } & StructureRead &
+  | ({
+      readonly type: "snapshot";
+      readonly changes: ChangesSnapshot;
+      readonly releaseRevisions: ReleaseRevisions;
+    } & StructureRead &
       HqMatesSnapshot)
   | ChangesMessage
+  | ReleaseRevisionMessage
   | { readonly type: "change"; readonly key: string; readonly value: unknown }
   | HqMatesMessage;
 
@@ -154,6 +168,8 @@ const ownersIn = (view: StructureRead, facts: OrgView): ReadonlyArray<string> =>
 interface Sent {
   readonly structure: ReadonlyMap<string, string>;
   readonly changes: ReadonlyMap<string, string>;
+  /** Each readable application's release revision, encoded. */
+  readonly revisions: ReadonlyMap<string, string>;
   /** The Mates the caller's last view lets them observe. */
   readonly observable: ReadonlySet<string>;
   /** The people the last view's records name. */
@@ -164,8 +180,8 @@ interface Sent {
 }
 
 /**
- * The messages of `userId`'s view until `ending` says why it ends. Every change of the structure
- * and every `recheck` computes the view again; what differs from the last one sent goes out by key.
+ * The messages of `userId`'s view until `ending` says why it ends. Every change of the structure,
+ * of a change, of a release or of a deploy, and every `recheck`, computes the view again; what differs from the last one sent goes out by key.
  * A Mate's overview moving goes out from what HQ holds of it, gathered for `batch`.
  */
 export const structureMessages = <R>(
@@ -176,12 +192,13 @@ export const structureMessages = <R>(
 ): Stream.Stream<
   Outgoing,
   SqlError | ZeropsError,
-  Structure | Changes | Deploys | MateOverviews | Roles | R
+  Structure | Changes | Releases | Deploys | MateOverviews | Roles | R
 > =>
   Stream.unwrap(
     Effect.gen(function* () {
       const structure = yield* Structure;
       const changes = yield* Changes;
+      const releases = yield* Releases;
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
@@ -243,6 +260,10 @@ export const structureMessages = <R>(
         yield* (yield* Recomputes).count;
         const view = yield* structure.read(userId);
         const readable = yield* changes.readable(userId);
+        const moved = yield* changes.releaseRevisions;
+        const releaseRevisions: ReleaseRevisions = Object.fromEntries(
+          Object.keys(readable).map((appId) => [appId, moved.get(appId) ?? null]),
+        );
         const facts = yield* roles.view;
         const listed = matesIn(view);
         const observable = new Set(
@@ -269,6 +290,12 @@ export const structureMessages = <R>(
               toJson(list),
             ]),
           ),
+          revisions: new Map(
+            Object.entries(releaseRevisions).map(([appId, revision]): [string, string] => [
+              appId,
+              toJson(revision),
+            ]),
+          ),
           observable,
           named,
           mates: new Map([...mates].map(([projectId, entry]) => [projectId, encodedParts(entry)])),
@@ -281,6 +308,7 @@ export const structureMessages = <R>(
               type: "snapshot" as const,
               ...view,
               changes: readable,
+              releaseRevisions,
               mates: Object.fromEntries(
                 [...mates].map(([projectId, entry]) => [projectId, partsOf(entry)]),
               ) as HqMatesSnapshot["mates"],
@@ -293,6 +321,11 @@ export const structureMessages = <R>(
             type: "changes",
             appId,
             changes: readable[appId] ?? null,
+          })),
+          ...differing(before.revisions, now.revisions).map((appId): Outgoing => ({
+            type: "release-revision",
+            appId,
+            revision: releaseRevisions[appId] ?? null,
           })),
           ...differing(before.structure, now.structure).map((key): Outgoing => ({
             type: "change",
@@ -350,7 +383,7 @@ export const structureMessages = <R>(
 
       return Stream.merge(
         Stream.merge(
-          Stream.merge(structure.changes, changes.changes),
+          Stream.merge(structure.changes, Stream.merge(changes.changes, releases.changes)),
           Stream.merge(deploys.changes, Stream.tick(recheck)),
         ).pipe(Stream.mapEffect(() => one.withPermits(1)(structureTick))),
         overviews.changes.pipe(

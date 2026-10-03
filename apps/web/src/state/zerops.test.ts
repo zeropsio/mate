@@ -183,6 +183,7 @@ describe("the candidate rows", () => {
     registry.set(hqStructureAtom, {
       organizationId: organization.organizationId,
       changes: null,
+      releaseRevisions: null,
       structure: {
         ungrouped: [],
         apps: [
@@ -321,6 +322,7 @@ describe("the names the organization's Mates go by", () => {
     registry.set(hqStructureAtom, {
       organizationId: organization.organizationId,
       changes: null,
+      releaseRevisions: null,
       structure: STRUCTURE,
       readAt: 1_000,
       current,

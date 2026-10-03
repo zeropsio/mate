@@ -134,6 +134,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
+            releaseRevisions: null,
             structure: ACME,
             changes: new Map([["app-1", [change]]]),
             mates: null,
@@ -145,7 +146,14 @@ describe("driveHqStructure", () => {
       },
       {
         events: [
-          { kind: "snapshot", structure: ACME, changes: new Map(), mates: null, people: null },
+          {
+            kind: "snapshot",
+            releaseRevisions: null,
+            structure: ACME,
+            changes: new Map(),
+            mates: null,
+            people: null,
+          },
         ],
         end: "hang",
       },
@@ -161,11 +169,65 @@ describe("driveHqStructure", () => {
     expect(h.views.map((view) => view.changes)).toContainEqual(new Map([["app-1", [merged]]]));
   });
 
+  // Audit R4: where each application's releases and repositories last moved, from the stream, so
+  // they are read again only then; an HQ from before revisions sends none, and none is known.
+  it("carries each application's release revision from its stream, and none from an HQ that sends none", async () => {
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            releaseRevisions: new Map([["app-1", "41"]]),
+            structure: ACME,
+            changes: null,
+            mates: null,
+            people: null,
+          },
+          { kind: "release-revision", appId: "app-1", revision: "57" },
+        ],
+        end: "close",
+      },
+      {
+        events: [
+          {
+            kind: "snapshot",
+            releaseRevisions: null,
+            structure: ACME,
+            changes: null,
+            mates: null,
+            people: null,
+          },
+        ],
+        end: "hang",
+      },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(h.views).toHaveLength(4));
+    stop.abort();
+    await driving;
+
+    expect(h.views.map((view) => view.releaseRevisions)).toEqual([
+      null,
+      new Map([["app-1", "41"]]),
+      new Map([["app-1", "57"]]),
+      null,
+    ]);
+  });
+
   it("draws what is remembered at once, then HQ's snapshot and its changes, each remembered", async () => {
     const api = streamingApi([
       {
         events: [
-          { kind: "snapshot", structure: ACME, changes: null, mates: null, people: null },
+          {
+            kind: "snapshot",
+            releaseRevisions: null,
+            structure: ACME,
+            changes: null,
+            mates: null,
+            people: null,
+          },
           { kind: "change", appId: "app-2", app: BETA },
         ],
         end: "hang",
@@ -182,6 +244,7 @@ describe("driveHqStructure", () => {
       organizationId: "org-1",
       structure: { ungrouped: [], apps: [] },
       changes: null,
+      releaseRevisions: null,
       readAt: 1_000,
       current: false,
       unavailableSince: null,
@@ -203,6 +266,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
+            releaseRevisions: null,
             structure: ACME,
             changes: null,
             mates: new Map([["p1", VERA]]),
@@ -242,6 +306,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
+            releaseRevisions: null,
             structure: ACME,
             changes: null,
             mates: new Map([["p1", VERA]]),
@@ -269,7 +334,16 @@ describe("driveHqStructure", () => {
     try {
       const api = streamingApi([
         {
-          events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: ACME,
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
           end: "fail",
         },
         // HQ does not answer: the stream is given up past the heartbeats, and fails once more.
@@ -279,6 +353,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
+              releaseRevisions: null,
               structure: { ungrouped: [], apps: [BETA] },
               changes: null,
               mates: null,
@@ -314,11 +389,29 @@ describe("driveHqStructure", () => {
   it("shows no outage for a stream that breaks and answers again within the grace", async () => {
     const api = streamingApi([
       {
-        events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+        events: [
+          {
+            kind: "snapshot",
+            releaseRevisions: null,
+            structure: ACME,
+            changes: null,
+            mates: null,
+            people: null,
+          },
+        ],
         end: "fail",
       },
       {
-        events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+        events: [
+          {
+            kind: "snapshot",
+            releaseRevisions: null,
+            structure: ACME,
+            changes: null,
+            mates: null,
+            people: null,
+          },
+        ],
         end: "hang",
       },
     ]);
@@ -341,13 +434,29 @@ describe("driveHqStructure", () => {
     const api = streamingApi([
       {
         events: [
-          { kind: "snapshot", structure: ACME, changes: null, mates: null, people: null },
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: null,
+            releaseRevisions: null,
+            mates: null,
+            people: null,
+          },
           { pingAfterMs: 120_000, tick: h.tick },
         ],
         end: "cut",
       },
       {
-        events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+        events: [
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: null,
+            releaseRevisions: null,
+            mates: null,
+            people: null,
+          },
+        ],
         end: "close",
       },
       { events: [], end: "hang" },
@@ -369,7 +478,16 @@ describe("driveHqStructure", () => {
     try {
       const api = streamingApi([
         {
-          events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: ACME,
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
           end: "fail",
         },
         { events: [], end: "hang" },
@@ -404,7 +522,14 @@ describe("driveHqStructure", () => {
       const api = streamingApi([
         {
           events: [
-            { kind: "snapshot", structure: ACME, changes: null, mates: null, people: null },
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: ACME,
+              changes: null,
+              mates: null,
+              people: null,
+            },
             { pingAfterMs: 20_000, tick: h.tick },
           ],
           end: "fail",
@@ -434,11 +559,29 @@ describe("driveHqStructure", () => {
     try {
       const api = streamingApi([
         {
-          events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: ACME,
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
           end: "hang",
         },
         {
-          events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: ACME,
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
           end: "hang",
         },
       ]);
@@ -545,6 +688,7 @@ describe("hqOutageLine", () => {
     organizationId: "org-1",
     structure: ACME,
     changes: null,
+    releaseRevisions: null,
     readAt: at(13, 58),
     current: false,
     unavailableSince: at(14, 5),

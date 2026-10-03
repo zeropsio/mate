@@ -29,6 +29,7 @@ const linkedMate = (overviews: MateOverviews["Service"]) =>
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
+import { Releases } from "./releases.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import { liveSocketsLayer, serveStructureSocket, structureMessages } from "./stream.ts";
@@ -94,10 +95,16 @@ const streamFor = (
   before: (
     overviews: MateOverviews["Service"],
   ) => Effect.Effect<unknown, never, Scope.Scope> = () => Effect.void,
+  /** The applications whose changes `userId` reads, by id. */
+  readable: Readonly<Record<string, ReadonlyArray<never>>> = {},
 ) =>
   Effect.gen(function* () {
     const reads = yield* Ref.make(0);
     const version = yield* SubscriptionRef.make(0);
+    /** Where each application's releases and repositories last moved, by id. */
+    const revisions = yield* Ref.make<ReadonlyMap<string, string>>(new Map());
+    /** Ticks after a release is recorded. */
+    const released = yield* SubscriptionRef.make(0);
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
     const overviews = yield* makeMateOverviews(memoryStore().store);
     yield* before(overviews);
@@ -116,9 +123,16 @@ const streamFor = (
       Layer.succeed(
         Changes,
         Changes.of({
-          readable: () => Effect.succeed({}),
+          readable: () => Effect.succeed(readable),
+          releaseRevisions: Ref.get(revisions),
           changes: Stream.never,
         } as unknown as Changes["Service"]),
+      ),
+      Layer.succeed(
+        Releases,
+        Releases.of({
+          changes: SubscriptionRef.changes(released),
+        } as unknown as Releases["Service"]),
       ),
       Layer.succeed(
         Deploys,
@@ -136,10 +150,39 @@ const streamFor = (
     );
     yield* Effect.repeat(Effect.yieldNow, { times: 50 });
     yield* TestClock.adjust("1 millis");
-    return { sent, reads, version, view, overviews };
+    return { sent, reads, version, view, overviews, revisions, released };
   });
 
 describe("the structure stream", () => {
+  // Audit R4: every open tab read every application's releases and repositories each minute. The
+  // stream says when an application's moved instead, and only to whoever reads its changes.
+  it.effect(
+    "carries each readable application's release revision, and sends one the moment it moves",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sent, revisions, released } = yield* streamFor("owner", undefined, {
+            "app-shop": [],
+          });
+          assert.deepStrictEqual(sent[0]?.["releaseRevisions"], { "app-shop": null });
+
+          // Shop's main moves, and Team — which owner does not read the changes of — releases.
+          yield* Ref.set(
+            revisions,
+            new Map([
+              ["app-shop", "3"],
+              ["app-team", "4"],
+            ]),
+          );
+          yield* SubscriptionRef.update(released, (n) => n + 1);
+          yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+          assert.deepStrictEqual(sent.slice(1), [
+            { type: "release-revision", appId: "app-shop", revision: "3" },
+          ]);
+        }),
+      ),
+  );
+
   it.effect("an overview report runs no structure read for any open stream", () =>
     Effect.scoped(
       Effect.gen(function* () {

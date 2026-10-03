@@ -727,6 +727,7 @@ describe("HQ API", () => {
           assert.deepStrictEqual(yield* owner.next("snapshot"), {
             ...((yield* call("GET", "/api/structure", { session })).body as object),
             changes: {},
+            releaseRevisions: {},
             mates: {},
             people: {},
           });
@@ -739,6 +740,13 @@ describe("HQ API", () => {
             key: appId,
             value: { id: appId, name: "Shop", projects: [], environments: [], births: [] },
           });
+          // Audit R4: its recipe repository's `main` was made with it, and where its repositories
+          // last moved goes out on its own — null first where the view was read before the move.
+          let revised: { readonly appId?: unknown; readonly revision?: unknown } = {};
+          while (typeof revised.revision !== "string") {
+            revised = (yield* owner.next("release-revision")) as typeof revised;
+            assert.strictEqual(revised.appId, appId);
+          }
           yield* call("POST", `/api/apps/${appId}/projects`, {
             session,
             body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "sky:flower" } },
@@ -912,6 +920,7 @@ describe("HQ API", () => {
             ungrouped: [],
             apps: [],
             changes: {},
+            releaseRevisions: {},
             mates: {},
             people: {},
           });
@@ -1006,6 +1015,7 @@ describe("HQ API", () => {
           ungrouped: [],
           apps: [],
           changes: {},
+          releaseRevisions: {},
           mates: {},
           people: {},
         });
@@ -1064,10 +1074,16 @@ describe("HQ API", () => {
         const readerSocket = yield* socket(
           `/api/structure/ws?ticket=${yield* ticketFor(call, reader)}`,
         );
-        assert.deepStrictEqual(yield* readerSocket.next("snapshot"), {
+        const snapshot = yield* readerSocket.next("snapshot");
+        // The reader reads Shop's changes, so it is told where Shop's repositories last moved.
+        const shopRevision = (snapshot as { readonly releaseRevisions?: Record<string, unknown> })
+          .releaseRevisions?.[appId];
+        assert.isString(shopRevision);
+        assert.deepStrictEqual(snapshot, {
           ungrouped: [],
           apps: [{ id: appId, name: "Shop", projects: [], environments: [], births: [] }],
           changes: { [appId]: [] },
+          releaseRevisions: { [appId]: shopRevision },
           mates: {},
           people: {},
         });
@@ -1122,6 +1138,7 @@ describe("HQ API", () => {
             ungrouped: [],
             apps: [],
             changes: {},
+            releaseRevisions: {},
             mates: {},
             people: {},
           });

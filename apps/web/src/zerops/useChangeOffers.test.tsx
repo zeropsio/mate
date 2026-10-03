@@ -76,6 +76,7 @@ function answerOf<T>(input: Facts, use: () => T): T {
         ],
       },
       changes: null,
+      releaseRevisions: null,
       readAt: 1_000,
       current: true,
       unavailableSince: null,
