@@ -1280,7 +1280,8 @@ In the order the owner ranked them, then the rest:
     on a basic-auth inbox and on a dev service idling before its dev server — are the next pass's
     input.
 41. **A deploy job that fails before it reaches the broker is invisible** (run 5, 2026-10-02).
-    Closed in pass 35 (mate 0.11.88), unmeasured live until run 6: while a declared stage runs
+    Closed in pass 35 (mate 0.11.88), measured in run 6 (the menu and the cell said it on the first
+    status read that carried the failure, 21 s after the job failed): while a declared stage runs
     nothing, the group's deploy reader reads `main`'s head and its statuses — the broker's `failed: …`
     report, or the deploy workflow's own failure whenever posted, until the broker says `deploying` —
     and the menu says "Stage didn't come up · its first deploy failed", the cell "First deploy
@@ -1290,10 +1291,10 @@ In the order the owner ranked them, then the rest:
     v9.189.0: the workflow sets Node.js, Go or Java up at the dev half's version before the Test
     step; Bun, Deno, Python and PHP get a comment naming what works on the runner (it has no `unzip`
     and no hosted tool cache); a file still exactly zcp's old template is brought up to it, and a
-    file a project touched is left as it is. Open: `unzip` in the runner image and one live run per
-    runtime.
-43. **Two short blips in a stage's first deploy** (run 5). Closed in pass 35, unmeasured live until
-    run 6: a build's end holds "deploying" until its version is known or the 20 s grace ends, the
+    file a project touched is left as it is; measured for Node.js in run 6 (`actions/setup-node@v4`,
+    node 24, before Test). Open: `unzip` in the runner image and one live run per other runtime.
+43. **Two short blips in a stage's first deploy** (run 5). Closed in pass 35, measured in run 6 (no
+    step back at the build's end; the import before the runner on the menu and the card): a build's end holds "deploying" until its version is known or the 20 s grace ends, the
     grace's timer kept through a re-check of the listing; the stage's own import comes before the
     first deploy and the runner on every surface ("Setting up a stage…").
 44. **A tainted runner's replacement may register with the org's same token.** Partly closed in
@@ -1302,6 +1303,19 @@ In the order the owner ranked them, then the rest:
     which removes the tainted container's own credential and anything registered before the import.
     Open, the owner's call: a copied token still registers a new runner (deactivating it in Gitea's
     database once per taint, or the broker registering runners itself).
+45. **Idle cost grows with the account's orgs** (run 6, 2026-10-03): 22.2 and 20.3 requests a minute
+    per window against run 5's 16–18, 13.4 of them each Gitea org's repository list once a minute.
+    Open: one listing per tick, or only the orgs with something pending.
+46. **A coming-up Mate wears the asleep face** (run 6): `mateComingRowView` makes it the coming pose
+    in every window, and the coming-up page shows the same closed eyes; runs 5 and 6 expected none.
+    Open, the owner's call: keep it, or give coming up its own pose.
+47. **Two screens for one coming-up** (the owner, run 6): the "Setting up …" dialog (the steps the
+    browser runs with the person's session, "keep this open") and the coming-up page behind it.
+    Open: one screen, the browser's steps as the first row's sub-steps.
+48. **Pass 36's open ends** (mate 0.11.89). Mobile's feed reads the conversation's follow rule
+    (`thread-feed-live-follow.ts`), unmeasured on a device: a simulator look before the next mobile
+    build. A batch deploy's per-service slot lines land as one history row. A settled deploy opened
+    after a reload shows an empty detail area until the store answers.
 
 ## 8. Working on it
 
