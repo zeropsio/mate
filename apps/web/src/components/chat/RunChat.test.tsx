@@ -540,7 +540,7 @@ describe("RunChat", () => {
   it("says Show full thought on a thought past its four lines, and nothing on a short one", () => {
     const long = draw(record([thought("r1", LONG_THOUGHT)]));
     expect(long).toContain(">Show full thought<");
-    expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show the whole thought"/u);
+    expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show full thought"/u);
     const short = draw(record([thought("r1", "The route and the check disagree.")]));
     expect(short).toContain("The route and the check disagree.");
     expect(short).not.toContain("Show full thought");
@@ -555,7 +555,7 @@ describe("RunChat", () => {
       ]),
     );
     expect(markup.match(/data-chat-folded="true"/g)).toHaveLength(2);
-    expect(markup.match(/Show the whole thought"/g)).toHaveLength(1);
+    expect(markup.match(/Show full thought"/g)).toHaveLength(1);
     expect(markup.match(/>Show full message</g)).toHaveLength(1);
   });
 
@@ -1220,7 +1220,7 @@ describe("RunChat, as the person uses it", () => {
           },
         }),
       );
-      expect(focused.at(-1)).toMatch(/Show the whole thought$/u);
+      expect(focused.at(-1)).toMatch(/Show full thought$/u);
     } finally {
       (globalThis as { window?: unknown }).window = savedWindow;
     }

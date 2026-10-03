@@ -1074,7 +1074,7 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
         <button
           ref={toggleRef}
           aria-expanded={false}
-          aria-label={`${run.slice(0, 80)}… Show the whole thought`}
+          aria-label={`${run.slice(0, 80)}… Show full thought`}
           className="relative block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           data-chat-disclose
           onClick={() => toggle(true)}
