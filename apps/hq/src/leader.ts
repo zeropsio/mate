@@ -9,9 +9,11 @@
  * the official one; any failure ends the session — the connection closes, the lock is released,
  * the instance is a standby again and tries anew.
  *
- * The leader records its newest `ok` of that verdict in `hq_leader`, and a waiting instance that
- * Zerops has not answered yet takes it as its own (`Official.inherit`): a deploy's new container
- * leads within a heartbeat of the old one's release, however slow Zerops is to answer it (F18).
+ * As it gives the lead up (`release`, a deploy's SIGTERM), the leader records its newest `ok` of
+ * that verdict in `hq_leader`, and a waiting instance that Zerops has not answered yet takes it as
+ * its own (`Official.inherit`): a deploy's new container leads within a heartbeat of the old one's
+ * release, however slow Zerops is to answer it (F18). A leader that ends without releasing records
+ * nothing, and the next waits for its own verdict.
  *
  * @module leader
  */
@@ -23,7 +25,6 @@ import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
-import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -70,8 +71,9 @@ export class Leader extends Context.Service<
      * that starts after it sees the new epoch: no write of an old leader lands after a takeover.
      */
     /**
-     * Gives the lead up for good, at once — the session's connection closes, the lock with it, and
-     * the next Core takes it — and stays a standby. For shutdown (`core.ts`).
+     * Gives the lead up for good, at once — its official `ok` recorded for the next Core, the
+     * session's connection closed, the lock with it, and the next Core takes it — and stays a
+     * standby. For shutdown (`core.ts`).
      */
     readonly release: Effect.Effect<void>;
     /**
@@ -207,20 +209,20 @@ export const leaderLayer = (
       );
 
       /**
-       * The newest ok this Core holds, recorded under its epoch for the next Core whenever it is
-       * newer than the one recorded last.
+       * The newest ok this Core holds, recorded under its epoch for the next Core as it gives the
+       * lead up. Only then: any write moves the database a backup set compares (`backup.ts`), and
+       * the takeover that follows raises the epoch anyway.
        */
-      const recordOk = (epoch: number, recorded: Ref.Ref<number | undefined>) =>
-        Effect.gen(function* () {
-          const ok = yield* official.lastOk;
-          if (ok === undefined || ok.at === (yield* Ref.get(recorded))) return;
-          yield* sql`
-            UPDATE hq_leader
-            SET official_ok_at = to_timestamp(${ok.at / 1000}::float8),
-                official_ok_project = ${ok.projectId}
-            WHERE id = 1 AND epoch = ${epoch}`;
-          yield* Ref.set(recorded, ok.at);
-        }).pipe(Effect.catch((error) => Effect.logWarning("official ok not recorded", error)));
+      const recordOk = Effect.gen(function* () {
+        const { state, epoch } = yield* SubscriptionRef.get(status);
+        const ok = yield* official.lastOk;
+        if (state !== "active" || epoch === null || ok === undefined) return;
+        yield* sql`
+          UPDATE hq_leader
+          SET official_ok_at = to_timestamp(${ok.at / 1000}::float8),
+              official_ok_project = ${ok.projectId}
+          WHERE id = 1 AND epoch = ${epoch}`;
+      }).pipe(Effect.catch((error) => Effect.logWarning("official ok not recorded", error)));
 
       const readEpoch = (connection: PgConnection.PgConnection, statement: string) =>
         connection
@@ -240,7 +242,9 @@ export const leaderLayer = (
           Effect.repeat({ schedule: Schedule.spaced(heartbeat), until: (ok) => ok }),
         );
         yield* connection.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
-        // The verdict may have changed while this session waited behind another holder.
+        // The verdict may have changed while this session waited behind another holder, and the
+        // holder may have recorded a newer ok as it let go.
+        yield* inheritRecorded;
         yield* stillOfficial;
 
         // With the schema there the epoch moves first; the first boot has no table to raise yet.
@@ -267,13 +271,10 @@ export const leaderLayer = (
         const check = withinTimeout(
           readEpoch(connection, "SELECT epoch FROM hq_leader WHERE id = 1"),
         );
-        const recorded = yield* Ref.make<number | undefined>(undefined);
         return yield* Effect.andThen(
           Effect.sleep(heartbeat),
           Effect.flatMap(check, (current): Effect.Effect<void, Lost | NotOfficial> =>
-            current === epoch
-              ? Effect.andThen(stillOfficial, recordOk(epoch, recorded))
-              : Effect.fail(new Lost()),
+            current === epoch ? stillOfficial : Effect.fail(new Lost()),
           ),
         ).pipe(Effect.forever);
       }).pipe(
@@ -299,7 +300,10 @@ export const leaderLayer = (
           Stream.map(({ state, epoch }): LeaderStatus => ({ state, epoch })),
           Stream.changesWith((a, b) => a.state === b.state && a.epoch === b.epoch),
         ),
-        release: Effect.andThen(Fiber.interrupt(loop), SubscriptionRef.set(status, STANDBY)),
+        release: Effect.andThen(
+          recordOk,
+          Effect.andThen(Fiber.interrupt(loop), SubscriptionRef.set(status, STANDBY)),
+        ),
         hold: (reason) =>
           SubscriptionRef.set(status, {
             state: "failed",

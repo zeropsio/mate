@@ -367,11 +367,13 @@ describe("leaderLayer", () => {
         }),
     );
     // F18: a takeover while Zerops does not answer the next Core, whose own verdict is read only at
-    // boot here. Only the ok the leader recorded in `hq_leader` (`official.ts` `inherit`) lets it
-    // lead — the project's own, younger than the grace; a verdict of its own that refuses still
-    // stops it.
+    // boot here. Only the ok the leader recorded in `hq_leader` as it let go (`release`, a deploy's
+    // SIGTERM) lets it lead (`official.ts` `inherit`) — the project's own, younger than the grace;
+    // a verdict of its own that refuses still stops it.
     it.effect.each<{
       readonly name: string;
+      /** The next Core waits behind the leader, as a deploy's new container does. */
+      readonly behind?: true;
       /** The next Core's HQ project, P1 unless given. */
       readonly projectId?: string;
       /** Zerops answers the next Core `anchor_elsewhere` at boot, then nothing. */
@@ -380,47 +382,50 @@ describe("leaderLayer", () => {
       readonly aged?: true;
       readonly leads: boolean;
     }>([
-      { name: "Zerops silent: leads", leads: true },
+      { name: "Zerops silent: leads", behind: true, leads: true },
       { name: "another project's: waits", projectId: "P2", leads: false },
       { name: "as old as the grace: waits", aged: true, leads: false },
       { name: "its own anchor_elsewhere: waits", answered: true, leads: false },
-    ])("a takeover with the leader's recorded ok, $name", ({ projectId, answered, aged, leads }) =>
-      Effect.gen(function* () {
-        const url = yield* (yield* TempPostgres).createDatabase;
-        const old = yield* startReading(url, anchoredWorld());
-        yield* statusWhere(old.leader, (status) => status.state === "active");
-        // Read whether or not the schema has the column yet.
-        yield* old.sql<{ readonly at: string | null }>`
-          SELECT to_jsonb(hq_leader) ->> 'official_ok_at' AS at FROM hq_leader`.pipe(
-          Effect.filterOrFail(([row]) => row?.at !== null && row?.at !== undefined),
-          Effect.retry(Schedule.spaced(Duration.millis(50))),
-          Effect.timeout(Duration.seconds(10)),
-        );
-        if (aged) {
-          yield* old.sql`UPDATE hq_leader SET official_ok_at = now() - interval '10 minutes'`;
-        }
-        const world = anchoredWorld();
-        if (answered) {
-          world.members.get("ORG")!.push({
-            ...world.members.get("ORG")![1]!,
-            name: "mate-hq:P2:https://decoy.invalid",
-          });
-        } else {
-          world.down = true;
-        }
-        const next = yield* startReading(url, world, projectId);
-        yield* statusWhere(next.leader, (status) => status.state === "standby");
-        yield* old.stop;
-        if (leads) {
-          const status = yield* statusWhere(next.leader, (status) => status.state === "active");
-          assert.deepStrictEqual(status, { state: "active", epoch: 2 });
-        } else {
-          yield* Effect.sleep(Duration.seconds(1));
-          assert.deepStrictEqual(yield* statesSeen(next.leader), ["standby"]);
-        }
-        assert.strictEqual((yield* next.official.status).allowed, leads);
-        yield* next.stop;
-      }),
+    ])(
+      "a takeover with the leader's recorded ok, $name",
+      ({ behind, projectId, answered, aged, leads }) =>
+        Effect.gen(function* () {
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const old = yield* startReading(url, anchoredWorld());
+          yield* statusWhere(old.leader, (status) => status.state === "active");
+          const world = anchoredWorld();
+          if (answered) {
+            world.members.get("ORG")!.push({
+              ...world.members.get("ORG")![1]!,
+              name: "mate-hq:P2:https://decoy.invalid",
+            });
+          } else {
+            world.down = true;
+          }
+          const startNext = Effect.tap(startReading(url, world, projectId), (next) =>
+            statusWhere(next.leader, (status) => status.state === "standby"),
+          );
+          const waiting = behind ? yield* startNext : undefined;
+          // While it leads it records nothing (a backup set counts any write); it does as it lets go.
+          const [held] = yield* old.sql<{ readonly at: string | null }>`
+          SELECT official_ok_at::text AS at FROM hq_leader`;
+          assert.strictEqual(held?.at, null);
+          yield* old.leader.release;
+          if (aged) {
+            yield* old.sql`UPDATE hq_leader SET official_ok_at = now() - interval '10 minutes'`;
+          }
+          yield* old.stop;
+          const next = waiting ?? (yield* startNext);
+          if (leads) {
+            const status = yield* statusWhere(next.leader, (status) => status.state === "active");
+            assert.deepStrictEqual(status, { state: "active", epoch: 2 });
+          } else {
+            yield* Effect.sleep(Duration.seconds(1));
+            assert.deepStrictEqual(yield* statesSeen(next.leader), ["standby"]);
+          }
+          assert.strictEqual((yield* next.official.status).allowed, leads);
+          yield* next.stop;
+        }),
     );
 
     it.effect("releases the lead on shutdown at once, and never takes it again", () =>

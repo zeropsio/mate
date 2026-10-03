@@ -161,6 +161,8 @@ export const startCore = (
     /** How long after the newest set the next is due, and how often that is checked; none. */
     readonly backupEvery?: Duration.Duration;
     readonly backupCheck?: Duration.Duration;
+    /** How often the official verdict is read again; 30 s. */
+    readonly officialRecheck?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -195,6 +197,7 @@ export const startCore = (
       pingEvery: Duration.millis(300),
       importPoll: Duration.millis(100),
       ...(given.importRoot === undefined ? {} : { importRoot: given.importRoot }),
+      ...(given.officialRecheck === undefined ? {} : { officialRecheck: given.officialRecheck }),
     };
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
