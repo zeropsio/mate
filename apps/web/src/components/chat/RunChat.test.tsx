@@ -1924,6 +1924,133 @@ describe("RunChat, as the person uses it", () => {
     });
   });
 
+  // A line landing from the live slot moves the history's scroll to where
+  // the landed line ends exactly when the scroll follows its foot: a few
+  // pixels short of it still follows; one the person stopped (they opened a
+  // call in it) stays where they read.
+  describe("its scroll, as a line lands from the slot", () => {
+    const saved = { window: (globalThis as { window?: unknown }).window };
+    afterEach(() => {
+      (globalThis as { window?: unknown }).window = saved.window;
+      vi.useRealTimers();
+    });
+
+    /** A run with a line in its history and one running in its slot, its scroll at `top`. */
+    function landingRun() {
+      vi.useFakeTimers();
+      // Motion on, as on a page.
+      (globalThis as { window?: unknown }).window = {
+        matchMedia: () => ({ matches: false }),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      };
+      let renderer!: ReactTestRenderer;
+      const scroll = () =>
+        renderer.root.find(
+          (found) => found.type === "div" && found.props["data-run-scroll"] !== undefined,
+        );
+      // The landed line takes 65px once the history draws it.
+      const landed = () =>
+        scroll().findAll((found) => String(found.props["data-run-key"]).includes("w2")).length > 0;
+      const marks = new Set<string>();
+      let top = 0;
+      const box = {
+        get scrollTop() {
+          return top;
+        },
+        set scrollTop(next: number) {
+          top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        },
+        get scrollHeight() {
+          return renderer === undefined || !landed() ? 600 : 665;
+        },
+        clientHeight: 440,
+        querySelector: () => null,
+        hasAttribute: (name: string) => marks.has(name),
+        toggleAttribute: (name: string, on: boolean) => {
+          if (on) marks.add(name);
+          else marks.delete(name);
+        },
+      };
+      const above = { querySelector: () => box, querySelectorAll: () => [] };
+      const node = (element: { type: unknown; props: unknown }) => {
+        const props = element.props as Record<string, unknown>;
+        if (element.type !== "div") return {};
+        if (props.className === "run-above") return above;
+        return props["data-run-scroll"] !== undefined ? box : {};
+      };
+      const running = command("w2", "pnpm build", {
+        toolLifecycleStatus: "inProgress",
+        sourceActivityKind: "tool.started",
+      });
+      act(() => {
+        renderer = mounted(
+          <Rows>
+            <RunChat
+              row={record([step(command("h1", SCRIPT))], {
+                live: true,
+                status: status(),
+                now: { kind: "step", step: stepOf(running) },
+              })}
+            />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      return {
+        box,
+        renderer,
+        /** The running line ends, stands its minimum, and lands in the history. */
+        land: () => {
+          act(() =>
+            renderer.update(
+              <Rows>
+                <RunChat
+                  row={record([step(command("h1", SCRIPT)), step(command("w2", "pnpm build"))], {
+                    live: true,
+                    status: status(),
+                    now: null,
+                  })}
+                />
+              </Rows>,
+            ),
+          );
+          act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+          expect(landed()).toBe(true);
+        },
+        /** It moved to `top`, and was heard. */
+        scrolled: (to: number) => {
+          box.scrollTop = to;
+          act(() =>
+            scroll().props.onScroll({
+              currentTarget: {
+                scrollTop: box.scrollTop,
+                scrollHeight: box.scrollHeight,
+                clientHeight: box.clientHeight,
+              },
+            }),
+          );
+        },
+      };
+    }
+
+    it("leaves a scroll the person stopped where they read", () => {
+      const run = landingRun();
+      expect(run.box.scrollTop).toBe(160);
+      // They open a call in it, at its foot.
+      act(() => button(run.renderer, "Show all 16 lines").props.onClick({ currentTarget: null }));
+      run.land();
+      expect(run.box.scrollTop).toBe(160);
+    });
+
+    it("moves a scroll that follows from a few pixels short of its foot to the landed line's end", () => {
+      const run = landingRun();
+      run.scrolled(157);
+      run.land();
+      expect(run.box.scrollTop).toBe(225);
+    });
+  });
+
   // A row travelling into its place paints past the lines' foot for a moment;
   // the browser counts that as more to scroll to. Nothing is below the last
   // line: no fade at the bottom.

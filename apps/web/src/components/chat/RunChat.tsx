@@ -159,7 +159,6 @@ import {
   severalCallsWords,
   slotModelOf,
   type SlotFiller,
-  standsAtFoot,
   stepNowWords,
   subscribeRunFolds,
   thoughtRunText,
@@ -2836,8 +2835,6 @@ interface Landing {
   readonly slot: number | null;
   /** How tall the card's row stood: a list that follows its end moves it a frame late. */
   readonly card: number | null;
-  /** The history's scroll stood at its foot: it follows it to where the landed line ends. */
-  readonly atFoot: boolean;
   /** The history's lines by their key, by where each stood on screen. */
   readonly rows: ReadonlyMap<string, number>;
   /**
@@ -3258,21 +3255,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         rows: slotted ? painted.rows : new Map(),
         slot: slotted ? painted.slot : null,
         card: painted.card,
-        atFoot: painted.atFoot,
         staying: slotted ? painted.slotRows : new Map(),
       });
     },
   });
   /** Where the history's lines, the slot and its rows stand on screen now. */
   const paintedNow = () => {
-    const scroll = scrollIn(aboveRef.current);
     const slotTop = boxOf(slotRef.current)?.top ?? null;
     return {
       rows: lineTops(aboveRef.current),
       slot: slotTop,
       slotRows: rowTops(slotRef.current, slotTop ?? 0),
       card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
-      atFoot: scroll === null || standsAtFoot(positionOf(scroll)),
     };
   };
   const paintedRef = useRef<ReturnType<typeof paintedNow> | null>(null);
@@ -3297,7 +3291,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     }
     const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
     const scroll = scrollIn(aboveRef.current);
-    if (scroll !== null && landing.atFoot) scroll.scrollTop = footTop(positionOf(scroll));
+    // A history that follows its foot follows it to where the landed line ends.
+    if (scroll !== null && scroll.hasAttribute("data-follows")) {
+      scroll.scrollTop = footTop(positionOf(scroll));
+    }
     const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
     if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows, landing.slot);
     for (const [key, from] of landing.from) {
@@ -3702,6 +3699,8 @@ function RunScroll({
     const heard = (event: RunScrollEvent) => {
       followRef.current = followAfter(followRef.current, event);
       const { follows } = followRef.current;
+      // Said on it, for a landing to scroll exactly when it follows.
+      scrollRef.current?.toggleAttribute("data-follows", follows);
       if (event.kind !== "set" && readingRef !== undefined) readingRef.current = !follows;
     };
     return {
