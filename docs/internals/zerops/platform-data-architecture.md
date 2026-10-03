@@ -107,7 +107,9 @@ while its verified target identity is being recorded; routes still wait for that
 identity. Container health comes from one probe store, one fact per origin, that every
 surface shares: it reads an origin on the cadence its container's level asks for while
 the container comes up, restarts or updates, and once more on a push, a connect failure
-or a wake; a tab hidden for a minute probes nothing. Account closure ends the machines
+or a wake; a tab hidden for a minute probes nothing. A Mate HQ holds online is not probed,
+and under an official HQ's current word a project it does not hold online is read only
+when something waits on it (step A, A10). Account closure ends the machines
 and the probes. These web connection and probe rules also
 apply to the retained desktop wrapper; mobile lists Mates through the same candidate
 selectors and container store and keeps its own connection entry flow.
