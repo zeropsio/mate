@@ -25,19 +25,22 @@ import { toastManager } from "./ui/toast";
 import { stackedThreadToast } from "./ui/toastHelpers";
 
 /**
- * One toast per clone in flight, on every environment. The palette that
+ * One toast per clone in flight, on every connected environment: a Mate this
+ * browser holds no socket to is not woken to report one. The palette that
  * started a clone closes right away, so this is where its progress lives:
  * the toast updates in place as git reports stages, then settles into a
  * success or failure state with the matching action.
  */
 export function ProjectCloneToastCoordinator() {
   const { environments } = useEnvironments();
-  return environments.map((environment) => (
-    <EnvironmentCloneToasts
-      key={environment.environmentId}
-      environmentId={environment.environmentId}
-    />
-  ));
+  return environments
+    .filter((environment) => environment.connection.phase === "connected")
+    .map((environment) => (
+      <EnvironmentCloneToasts
+        key={environment.environmentId}
+        environmentId={environment.environmentId}
+      />
+    ));
 }
 
 interface TrackedToast {
