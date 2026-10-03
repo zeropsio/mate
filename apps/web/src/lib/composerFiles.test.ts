@@ -38,12 +38,14 @@ describe("file placeholders in the prompt", () => {
   });
 
   it.each([
-    ["at the start", "abc", 0, `${F}abc`, 1, 0],
-    ["between words", "ab", 1, `a${F}b`, 2, 0],
-    ["after another file", `a${F}b`, 3, `a${F}b${F}`, 4, 1],
-    ["before another file", `a${F}b`, 0, `${F}a${F}b`, 1, 0],
-    ["pictures do not count", `${P}${P}x`, 3, `${P}${P}x${F}`, 4, 0],
-    ["a cursor past the end lands at the end", "ab", 99, `ab${F}`, 3, 0],
+    ["at the start, the words going on below", "abc", 0, `${F}\nabc`, 2, 0],
+    ["between words", "ab", 1, `a${F}\nb`, 3, 0],
+    ["after another file", `a${F}b`, 3, `a${F}b${F}\n`, 5, 1],
+    ["before another file", `a${F}b`, 0, `${F}\na${F}b`, 2, 0],
+    ["pictures do not count", `${P}${P}x`, 3, `${P}${P}x${F}\n`, 5, 0],
+    ["a cursor past the end lands at the end", "ab", 99, `ab${F}\n`, 4, 0],
+    ["on the empty line under a row it joins the row", `${P}${F}\n`, 3, `${P}${F}${F}\n`, 4, 1],
+    ["a line break already there is kept, not doubled", "a\nb", 1, `a${F}\nb`, 3, 0],
   ])("inserts %s", (_label, prompt, cursor, expected, expectedCursor, fileIndex) => {
     expect(insertInlineFilePlaceholder(prompt, cursor)).toEqual({
       prompt: expected,
@@ -57,6 +59,8 @@ describe("file placeholders in the prompt", () => {
     ["the second", `a${F}b${F}c`, 1, `a${F}bc`, 3],
     ["one that is not there", `a${F}b`, 3, `a${F}b`, 3],
     ["past a picture", `${P}${F}`, 0, P, 1],
+    ["alone on its line, with the line", `a\n${F}\nb`, 0, "a\nb", 2],
+    ["first in the prompt and alone, with its line", `${F}\nb`, 0, "b", 0],
   ])("removes %s", (_label, prompt, index, expected, cursor) => {
     expect(removeInlineFilePlaceholder(prompt, index)).toEqual({ prompt: expected, cursor });
   });

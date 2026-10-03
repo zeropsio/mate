@@ -17,13 +17,18 @@ import {
 
 import type { ComposerImageAttachment } from "../composerDraftStore";
 import type { ChatAttachment } from "../types";
-import { INLINE_FILE_PLACEHOLDER, countInlineFilePlaceholders } from "./composerFiles";
 
 /**
  * Not the object replacement character terminal contexts use: the two are
  * matched to their own lists by order, so they cannot share one.
  */
 export const INLINE_PICTURE_PLACEHOLDER = "￻";
+
+/**
+ * A file's place (`./composerFiles`), defined here beside the picture's so a
+ * row knows both without the two modules reaching into each other.
+ */
+export const INLINE_FILE_PLACEHOLDER = "\uFFFA";
 
 export interface PictureRect {
   readonly x: number;
@@ -88,7 +93,7 @@ export function countInlinePicturePlaceholders(prompt: string): number {
 
 /** Whether a character of the prompt is the place of a picture or a file: what a row is made of. */
 export function isAttachmentPlaceholder(char: string | undefined): boolean {
-  return char === INLINE_PICTURE_PLACEHOLDER;
+  return char === INLINE_PICTURE_PLACEHOLDER || char === INLINE_FILE_PLACEHOLDER;
 }
 
 /**
@@ -240,7 +245,7 @@ export function materializePicturePrompt(
   files: ReadonlyArray<unknown> = [],
 ): string {
   const placed = ensureInlinePicturePlaceholders(prompt, images.length);
-  if (countInlinePicturePlaceholders(placed) === 0 && countInlineFilePlaceholders(placed) === 0) {
+  if (countInlinePicturePlaceholders(placed) === 0 && !placed.includes(INLINE_FILE_PLACEHOLDER)) {
     return placed;
   }
   const parts: string[] = [];

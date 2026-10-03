@@ -15,13 +15,14 @@ import {
 } from "@t3tools/contracts";
 
 import type { ChatAttachment } from "../types";
+import { INLINE_FILE_PLACEHOLDER, insertAttachmentPlaceholder } from "./composerPictures";
 import { isHeicImageFile } from "./imageCompression";
 
 /**
  * Neither the terminal contexts' object replacement character nor the
  * pictures' own: each kind is matched to its own list by order.
  */
-export const INLINE_FILE_PLACEHOLDER = "￺";
+export { INLINE_FILE_PLACEHOLDER };
 
 /** The upload a file finished, which is what a reload brings back of it. */
 export interface ComposerFileUpload {
@@ -59,19 +60,26 @@ export function countInlineFilePlaceholders(prompt: string): number {
   return count;
 }
 
-/** A file added at the caret: its place in the prompt and its index among the files. */
+/**
+ * A file added at the caret, on a row with the pictures and files written
+ * right next to it: its place in the prompt and its index among the files.
+ */
 export function insertInlineFilePlaceholder(
   prompt: string,
   cursorInput: number,
 ): { prompt: string; cursor: number; fileIndex: number } {
-  const cursor = Math.max(0, Math.min(prompt.length, Math.floor(cursorInput)));
+  const insertion = insertAttachmentPlaceholder(prompt, cursorInput, INLINE_FILE_PLACEHOLDER);
   return {
-    prompt: `${prompt.slice(0, cursor)}${INLINE_FILE_PLACEHOLDER}${prompt.slice(cursor)}`,
-    cursor: cursor + 1,
-    fileIndex: countInlineFilePlaceholders(prompt.slice(0, cursor)),
+    prompt: insertion.prompt,
+    cursor: insertion.cursor,
+    fileIndex: countInlineFilePlaceholders(prompt.slice(0, insertion.at)),
   };
 }
 
+/**
+ * A file's place taken out; alone on its line, the line goes with it, so
+ * removing what was just added leaves the words as they were.
+ */
 export function removeInlineFilePlaceholder(
   prompt: string,
   fileIndex: number,
@@ -80,7 +88,11 @@ export function removeInlineFilePlaceholder(
   for (let index = 0; index < prompt.length; index += 1) {
     if (prompt[index] !== INLINE_FILE_PLACEHOLDER) continue;
     if (seen === fileIndex) {
-      return { prompt: prompt.slice(0, index) + prompt.slice(index + 1), cursor: index };
+      const alone = (index === 0 || prompt[index - 1] === "\n") && prompt[index + 1] === "\n";
+      return {
+        prompt: prompt.slice(0, index) + prompt.slice(index + (alone ? 2 : 1)),
+        cursor: index,
+      };
     }
     seen += 1;
   }
