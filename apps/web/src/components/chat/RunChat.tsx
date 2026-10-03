@@ -3705,6 +3705,7 @@ function RunScroll({
     stood: Number.POSITIVE_INFINITY,
     opened: 0,
     resumes: false,
+    reach: null,
   });
   const follow = useMemo(() => {
     const heard = (event: RunScrollEvent) => {
@@ -3811,10 +3812,18 @@ function RunScroll({
           data-run-scroll=""
           onScroll={(event) => {
             const position = positionOf(event.currentTarget);
+            const followed = followRef.current.follows;
             follow.heard({ kind: "scrolled", position });
-            if (scrollRef.current !== null) markEdges(scrollRef.current);
+            const element = scrollRef.current;
+            if (element !== null) {
+              // Brought back to the foot it set out for, it catches up to
+              // where the foot moved on since.
+              if (!followed && followRef.current.follows) follow.putAt(element, footTop(position));
+              markEdges(element);
+            }
             drawEarlier(position);
           }}
+          onScrollEnd={() => follow.heard({ kind: "ended" })}
           role="region"
           tabIndex={0}
         >

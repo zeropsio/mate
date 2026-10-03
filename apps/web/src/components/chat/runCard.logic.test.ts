@@ -574,6 +574,7 @@ describe("followAfter", () => {
     stood,
     opened: 0,
     resumes: false,
+    reach: null,
   });
   const foot = { scrollTop: 560, scrollHeight: 1000, clientHeight: 440 };
   const nearFoot = { ...foot, scrollTop: 560 - FOLLOW_SLACK_PX };
@@ -736,6 +737,44 @@ describe("followAfter", () => {
       }
     }
     expect(state.follows).toBe(after);
+  });
+
+  // End, or a wheel run to the bottom, glides to the foot as it stood when
+  // the move began; a line arriving meanwhile moves the foot on under it.
+  describe("a move down to the foot while lines arrive", () => {
+    const read = (scrollTop: number, scrollHeight: number) => ({
+      kind: "scrolled" as const,
+      position: { scrollTop, scrollHeight, clientHeight: 440 },
+    });
+    it.each([
+      { name: "reaching the foot it set out for", to: 560, after: true },
+      { name: "its slack short of it", to: 560 - FOLLOW_SLACK_PX, after: true },
+      { name: "stopping short of it", to: 500, after: false },
+    ])("$name: follows $after", ({ to, after }) => {
+      let state = at(false, 0);
+      state = followAfter(state, read(200, 1000));
+      // A line arrives under it as it glides.
+      state = followAfter(state, read(400, 1035));
+      state = followAfter(state, read(to, 1035));
+      expect(state.follows).toBe(after);
+    });
+
+    it("sets out anew once its move ends", () => {
+      let state = at(false, 0);
+      state = followAfter(state, read(200, 1000));
+      state = followAfter(state, { kind: "ended" });
+      state = followAfter(state, read(200, 1300));
+      state = followAfter(state, read(560, 1300));
+      expect(state.follows).toBe(false);
+    });
+
+    it("sets out anew once it moved up", () => {
+      let state = at(false, 0);
+      state = followAfter(state, read(300, 1000));
+      state = followAfter(state, read(100, 1300));
+      state = followAfter(state, read(560, 1300));
+      expect(state.follows).toBe(false);
+    });
   });
 });
 

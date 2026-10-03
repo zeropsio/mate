@@ -1946,6 +1946,20 @@ describe("RunChat, as the person uses it", () => {
       expect(run.open()).toBe(true);
     });
 
+    // End glides to the foot as it stood at the press; a line arrived as it
+    // glided.
+    it("follows again once a move down reaches the foot it set out for", () => {
+      const run = liveScroll();
+      run.grow(400);
+      run.scrolled(100);
+      run.scrolled(300);
+      run.grow(35);
+      run.scrolled(560);
+      expect(run.fromFoot()).toBe(0);
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
+    });
+
     // A slow drag up while a thought streams: each wrap moves the foot on
     // between the person's moves, each a few pixels.
     it("stops following on a slow drag up between arrivals", () => {

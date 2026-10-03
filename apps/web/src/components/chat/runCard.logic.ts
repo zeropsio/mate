@@ -95,6 +95,12 @@ export interface RunScrollFollow {
   readonly opened: number;
   /** Whether closing the last of them follows again: it followed as they opened the first, and they have not moved it up since. */
   readonly resumes: boolean;
+  /**
+   * The foot as the person's move down set out for it — End, a wheel run to
+   * the bottom glides there — while that move lasts: lines arriving meanwhile
+   * move the foot on under it, and reaching where it stood reaches it.
+   */
+  readonly reach: number | null;
 }
 
 /** What happened to the run's scroll, for whether it follows its foot. */
@@ -106,7 +112,9 @@ export type RunScrollEvent =
   /** The person opened something in it: theirs to read. */
   | { readonly kind: "opened" }
   /** The person closed something in it. */
-  | { readonly kind: "closed" };
+  | { readonly kind: "closed" }
+  /** A move of the person's ended (the browser's `scrollend`). */
+  | { readonly kind: "ended" };
 
 /**
  * Whether the run's scroll follows its foot after `event`: every arrival
@@ -116,7 +124,8 @@ export type RunScrollEvent =
  * slack too — and stops it, unless it landed on the foot exactly: that is
  * the browser clamping it (a row's travel ending, the card growing taller).
  * A top that moved down onto the foot is the person's too, and follows
- * again. Opening something in it stops it; closing the last thing they
+ * again — onto the foot as it stood when that move began, too, so End
+ * reaches it though a line arrived as it glided. Opening something in it stops it; closing the last thing they
  * opened follows again, if it followed as they opened it and they have not
  * moved it up since. Nothing else changes it: an arrival grows it under its
  * top, a card below its cap stands at its foot whatever happens, and the
@@ -130,6 +139,7 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
         stood: state.stood,
         opened: state.opened + 1,
         resumes: state.opened === 0 ? state.follows : state.resumes,
+        reach: null,
       };
     case "closed": {
       const opened = Math.max(0, state.opened - 1);
@@ -139,21 +149,27 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
         stood: state.stood,
         opened,
         resumes: opened > 0 && state.resumes,
+        reach: state.reach,
       };
     }
     case "set":
-      return { ...state, stood: event.top };
+      return { ...state, stood: event.top, reach: null };
+    case "ended":
+      return state.reach === null ? state : { ...state, reach: null };
     case "scrolled": {
       const { position } = event;
       const top = position.scrollTop;
       if (top < state.stood - MOVED_PX) {
         // Onto its foot exactly: the browser clamped it there.
-        if (fromFoot(position) <= MOVED_PX) return { ...state, stood: top };
-        return { follows: false, stood: top, opened: state.opened, resumes: false };
+        if (fromFoot(position) <= MOVED_PX) return { ...state, stood: top, reach: null };
+        return { follows: false, stood: top, opened: state.opened, resumes: false, reach: null };
       }
       if (top > state.stood + MOVED_PX) {
-        if (standsAtFoot(position)) return { follows: true, stood: top, opened: 0, resumes: false };
-        return { ...state, stood: top };
+        const reach = state.reach ?? footTop(position);
+        if (standsAtFoot(position) || top >= reach - FOLLOW_SLACK_PX) {
+          return { follows: true, stood: top, opened: 0, resumes: false, reach: null };
+        }
+        return { ...state, stood: top, reach };
       }
       // Less than a move: kept from where it stood, so a slow drag adds up.
       return state;
