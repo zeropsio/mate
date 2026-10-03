@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { releaseCarriedToggleLabel, releaseDescription } from "./releaseCarried.ts";
+import {
+  releaseCarriedToggleLabel,
+  releaseDescription,
+  rolledBackDescription,
+  rolledBackTo,
+} from "./releaseCarried.ts";
 import type { Moved } from "./releaseCompare.ts";
 
 const sha = (char: string) => char.repeat(40);
@@ -74,5 +79,58 @@ describe("what a release row's chevron does, for a screen reader", () => {
     [true, "Hide what v0.1.27 carried"],
   ] as const)("open %s reads %s", (open, expected) => {
     expect(releaseCarriedToggleLabel("v0.1.27", open)).toBe(expected);
+  });
+});
+
+// e2e 2026-10-03: B's roll back to v0.1.0 made v0.1.2, whose row said only "app 30f75f9" — what it
+// carried compares v0.1.1 to v0.1.2, which goes back, and lists nothing.
+describe("the release a roll back went back to", () => {
+  const release = (tag: string, commit: string, verdict: "approved" | "refused" = "approved") => ({
+    tag,
+    verdict,
+    entries: [{ service: "app", commit: commit.repeat(40) }],
+  });
+  const releases = [
+    release("v0.1.3", "c"),
+    release("v0.1.2", "a"),
+    release("v0.1.1", "b"),
+    release("v0.1.0", "a"),
+  ];
+
+  it.each([
+    ["a release listing an earlier one's commits is that one again", "v0.1.2", "v0.1.0"],
+    ["a release of new commits went back to nothing", "v0.1.1", undefined],
+    ["the first release went back to nothing", "v0.1.0", undefined],
+    ["the newest, on new commits, went back to nothing", "v0.1.3", undefined],
+  ] as const)("%s", (_case, tag, expected) => {
+    expect(
+      rolledBackTo(
+        releases.find((entry) => entry.tag === tag)!,
+        releases,
+      ),
+    ).toBe(expected);
+  });
+
+  it("names the release that first shipped the commits, and none HQ refused", () => {
+    const again = [release("v0.1.4", "a"), ...releases];
+    expect(rolledBackTo(again[0]!, again)).toBe("v0.1.0");
+    const refused = [
+      release("v0.1.2", "a"),
+      release("v0.1.1", "b"),
+      release("v0.1.0", "a", "refused"),
+    ];
+    expect(rolledBackTo(refused[0]!, refused)).toBeUndefined();
+  });
+
+  it("says so on its row, over its shas", () => {
+    expect(rolledBackDescription("v0.1.0", "app 30f75f9")).toEqual({
+      primary: "Rolled back to v0.1.0",
+      secondary: "app 30f75f9",
+    });
+  });
+
+  it("is no roll back where the release before it lists the same commits", () => {
+    const same = [release("v0.1.1", "a"), release("v0.1.0", "a")];
+    expect(rolledBackTo(same[0]!, same)).toBeUndefined();
   });
 });

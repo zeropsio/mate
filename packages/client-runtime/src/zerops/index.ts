@@ -334,6 +334,8 @@ export {
 export {
   releaseCarriedToggleLabel,
   releaseDescription,
+  rolledBackDescription,
+  rolledBackTo,
   type ReleaseDescription,
 } from "./releaseCarried.ts";
 export {
