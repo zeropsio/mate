@@ -95,6 +95,26 @@ describe("the Mate identity memory", () => {
     expect(stopped[GITA]?.running).toBe(false);
   });
 
+  // A Mate still arriving opens wearing the pose its menu row wears, not idle until the listing.
+  it.each([
+    { case: "until when it is arriving", arrivingUntil: 1_700_000_000_000 },
+    { case: "nothing once it has arrived", arrivingUntil: undefined },
+  ])("remembers $case", ({ arrivingUntil }) => {
+    const arriving = {
+      ...identity("Gita"),
+      ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
+    };
+    const stored = withMateIdentities({}, new Map([[GITA, arriving]]));
+    expect(stored[GITA]?.arrivingUntil).toBe(arrivingUntil);
+    expect(readIdentityMemory(writeIdentityMemory(stored))[GITA]?.arrivingUntil).toBe(
+      arrivingUntil,
+    );
+    // Its arrival ending is remembered too.
+    if (arrivingUntil === undefined) return;
+    const arrived = withMateIdentities(stored, new Map([[GITA, identity("Gita")]]));
+    expect(arrived[GITA]?.arrivingUntil).toBeUndefined();
+  });
+
   it.each([
     { case: "the Mate in its project", projectId: "p-pia", found: [PIA, "Pia"] },
     { case: "nothing for a project it never knew", projectId: "p-other", found: undefined },

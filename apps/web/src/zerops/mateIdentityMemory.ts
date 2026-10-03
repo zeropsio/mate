@@ -15,7 +15,8 @@ export const MATE_IDENTITY_MEMORY_KEY = "mate:zerops:mate-identities";
 
 /**
  * Environment → the Mate that lives there, its socket never known to be up; whether its container
- * was running is kept (`running`), so its opening wears the pose it last had.
+ * was running (`running`) and until when it is arriving (`arrivingUntil`) are kept, so its
+ * opening wears the pose it last had — the one its menu row wears.
  */
 export type MateIdentityMemory = Readonly<Record<string, ZeropsMateIdentity>>;
 
@@ -26,6 +27,7 @@ const remembered = (mate: ZeropsMateIdentity): ZeropsMateIdentity => ({
   ...(mate.serviceId === undefined ? {} : { serviceId: mate.serviceId }),
   ...(mate.projectId === undefined ? {} : { projectId: mate.projectId }),
   ...(mate.running === undefined ? {} : { running: mate.running }),
+  ...(mate.arrivingUntil === undefined ? {} : { arrivingUntil: mate.arrivingUntil }),
   name: mate.name,
   tint: mate.tint,
   shape: mate.shape,
@@ -38,6 +40,7 @@ const same = (a: ZeropsMateIdentity, b: ZeropsMateIdentity): boolean =>
   a.serviceId === b.serviceId &&
   a.projectId === b.projectId &&
   a.running === b.running &&
+  a.arrivingUntil === b.arrivingUntil &&
   a.name === b.name &&
   a.tint === b.tint &&
   a.shape === b.shape &&
@@ -82,7 +85,8 @@ const readMate = (value: unknown): ZeropsMateIdentity | null => {
     (mate.project !== undefined && typeof mate.project !== "string") ||
     (mate.serviceId !== undefined && typeof mate.serviceId !== "string") ||
     (mate.projectId !== undefined && typeof mate.projectId !== "string") ||
-    (mate.running !== undefined && typeof mate.running !== "boolean")
+    (mate.running !== undefined && typeof mate.running !== "boolean") ||
+    (mate.arrivingUntil !== undefined && typeof mate.arrivingUntil !== "number")
   ) {
     return null;
   }
