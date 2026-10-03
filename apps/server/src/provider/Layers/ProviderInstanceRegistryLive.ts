@@ -205,12 +205,37 @@ const buildEntry = <R>(input: {
     return {
       kind: "live" as const,
       live: {
-        instance: createResult.success,
+        instance: withThreadProfile(createResult.success),
         scope: childScope,
         entry,
       },
     };
   });
+
+/**
+ * Every snapshot of an instance says what its adapter does with a thread's
+ * profile (`ProviderAdapterCapabilities.threadProfile`), so a client offers a
+ * crewmate only the agents that carry one. One adapter's declaration, stamped
+ * here once rather than repeated in each driver's presentation.
+ */
+const withThreadProfile = (instance: ProviderInstance): ProviderInstance => {
+  const threadProfile = instance.adapter.capabilities.threadProfile;
+  if (threadProfile === undefined) return instance;
+  const stamp = (provider: ServerProvider): ServerProvider => ({ ...provider, threadProfile });
+  const { snapshotForCwd } = instance;
+  return {
+    ...instance,
+    snapshot: {
+      ...instance.snapshot,
+      getSnapshot: Effect.map(instance.snapshot.getSnapshot, stamp),
+      refresh: Effect.map(instance.snapshot.refresh, stamp),
+      streamChanges: Stream.map(instance.snapshot.streamChanges, stamp),
+    },
+    ...(snapshotForCwd === undefined
+      ? {}
+      : { snapshotForCwd: (cwd: string) => Effect.map(snapshotForCwd(cwd), stamp) }),
+  };
+};
 
 /**
  * Reconcile-only implementation of the mutator. Exposed to the hydration
