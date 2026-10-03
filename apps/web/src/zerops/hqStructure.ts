@@ -2,7 +2,8 @@
  * The organization's structure, live from its HQ (ADR 0002, SPEC §3.5): one stream per
  * organization (`/api/structure/ws`) — the whole structure, then its changes — published
  * to `hqStructureAtom`, from which every surface places its projects (`hqPlacementsAtom`). The
- * same stream carries each application's Mates' changes (SPEC §3.2a, `hqChangesAtom`), and the
+ * same stream carries each application's Mates' changes (SPEC §3.2a, `hqChangesAtom`) and where
+ * its releases and repositories last moved (`releaseRevisions`, audit R4), and the
  * Mates the reader may observe with the people its view names (`hqMatesAtom`, `hqPeopleAtom`) —
  * in atoms of their own, since a Mate at work moves them twice a second and the structure never.
  *
@@ -18,10 +19,12 @@ import {
   applyChangesEvent,
   applyMatesEvent,
   applyPeopleEvent,
+  applyReleaseRevisionsEvent,
   applyStructureEvent,
   type HqApi,
   type HqChanges,
   type HqMates,
+  type HqReleaseRevisions,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -81,6 +84,7 @@ export async function driveHqStructure(input: {
     organizationId: input.organizationId,
     structure: input.remembered?.structure ?? null,
     changes: null,
+    releaseRevisions: null,
     readAt: input.remembered?.readAt ?? null,
     current: false,
     unavailableSince: null,
@@ -123,6 +127,7 @@ export async function driveHqStructure(input: {
     /** This stream's own structure, changes, Mates and people: a reconnect starts from its snapshot. */
     let streamed: HqStructure | null = null;
     let changes: HqChanges | null = null;
+    let releaseRevisions: HqReleaseRevisions | null = null;
     let mates: HqMates | null = null;
     let people: HqPeople | null = null;
     let rememberedAt: number | null = null;
@@ -168,6 +173,7 @@ export async function driveHqStructure(input: {
             if (event.kind === "mate" || event.kind === "people") return;
             streamed = applyStructureEvent(streamed, event);
             changes = applyChangesEvent(changes, event);
+            releaseRevisions = applyReleaseRevisionsEvent(releaseRevisions, event);
             if (streamed === null) return;
             failures = 0;
             stoppedAt = null;
@@ -178,6 +184,7 @@ export async function driveHqStructure(input: {
               ...view,
               structure: streamed,
               changes,
+              releaseRevisions,
               readAt,
               current: true,
               unavailableSince: null,
@@ -268,6 +275,7 @@ export function ZeropsHqStructure(): null {
         organizationId,
         structure: kept?.structure ?? null,
         changes: null,
+        releaseRevisions: null,
         readAt: kept?.readAt ?? null,
         current: false,
         unavailableSince: null,

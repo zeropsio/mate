@@ -569,6 +569,7 @@ describe("makeHqApi — the structure socket", () => {
     expect(stream.events).toEqual([
       {
         kind: "snapshot",
+        releaseRevisions: null,
         structure: { ungrouped: [], apps: [] },
         changes: null,
         mates: null,

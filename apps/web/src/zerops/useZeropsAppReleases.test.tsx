@@ -1,8 +1,8 @@
 /**
  * Each application's releases and the repositories a release reads, through the organization's
- * HQ: together, again every minute, again for one application whose production moved or whose
- * release was just made, and an application whose read fails keeps what it read before and says
- * why.
+ * HQ: together, each application on its own, again only for one whose reason moved — HQ saying
+ * they moved, its production moving, a release just made — never on a clock; and an application
+ * whose read fails keeps what it read before and says why.
  */
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
@@ -10,11 +10,7 @@ import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  APP_RELEASES_REFRESH_MS,
-  useZeropsAppReleases,
-  type ZeropsAppReleases,
-} from "./useZeropsAppReleases";
+import { useZeropsAppReleases, type ZeropsAppReleases } from "./useZeropsAppReleases";
 
 /**
  * The organization's official HQ — one object, as `useOfficialHq` keeps it, or `null` while it is
@@ -24,7 +20,7 @@ const hq = vi.hoisted(() => {
   const state = {
     open: true,
     asked: [] as Array<string>,
-    releases: new Map<string, ReadonlyArray<Release> | Error>(),
+    releases: new Map<string, ReadonlyArray<Release> | Error | "silent">(),
     repos: new Map<string, ReadonlyArray<RepoListEntry>>(),
   };
   const official = {
@@ -33,6 +29,8 @@ const hq = vi.hoisted(() => {
       releases: async (appId: string) => {
         state.asked.push(appId);
         const answer = state.releases.get(appId);
+        // An HQ slow to answer for this application: no answer comes.
+        if (answer === "silent") return new Promise<never>(() => undefined);
         if (answer === undefined || answer instanceof Error) {
           throw answer ?? new Error("HQ has no such project.");
         }
@@ -127,21 +125,52 @@ describe("useZeropsAppReleases", () => {
     expect(seen()?.failures).toEqual(new Map());
   });
 
-  it("reads again every minute, and keeps what an application read before when its read fails", async () => {
+  // Audit R4: every open tab read every application's releases and repositories each minute.
+  it("never reads again on a clock: only what moved is read", async () => {
     vi.useFakeTimers();
     hq.state.releases = new Map([
       ["a-todo", [RELEASE]],
       ["a-crm", []],
     ]);
     await mount(<Probe apps={TWO} />);
-    hq.state.releases = new Map<string, ReadonlyArray<Release> | Error>([
+    hq.state.asked = [];
+    await act(async () => {
+      vi.advanceTimersByTime(10 * 60_000);
+    });
+    expect(hq.state.asked).toEqual([]);
+  });
+
+  it("shows each application as it answers: one slow to answer holds no other back", async () => {
+    hq.state.releases = new Map<string, ReadonlyArray<Release> | Error | "silent">([
+      ["a-todo", [RELEASE]],
+      ["a-crm", "silent"],
+    ]);
+    await mount(<Probe apps={TWO} />);
+    expect(seen()?.releases).toEqual(new Map([["a-todo", [RELEASE]]]));
+  });
+
+  it("keeps what an application read before when its read fails", async () => {
+    hq.state.releases = new Map([
+      ["a-todo", [RELEASE]],
+      ["a-crm", []],
+    ]);
+    const tree = await mount(<Probe apps={TWO} />);
+    hq.state.releases = new Map<string, ReadonlyArray<Release> | Error | "silent">([
       ["a-todo", new Error("HQ is not answering right now.")],
       ["a-crm", []],
     ]);
     await act(async () => {
-      vi.advanceTimersByTime(APP_RELEASES_REFRESH_MS);
+      tree.update(
+        <Probe
+          apps={
+            new Map([
+              ["a-todo", "moved"],
+              ["a-crm", ""],
+            ])
+          }
+        />,
+      );
     });
-    expect(hq.state.asked.toSorted()).toEqual(["a-crm", "a-crm", "a-todo", "a-todo"]);
     expect(seen()?.releases.get("a-todo")).toEqual([RELEASE]);
     expect(seen()?.failures).toEqual(new Map([["a-todo", "HQ is not answering right now."]]));
   });

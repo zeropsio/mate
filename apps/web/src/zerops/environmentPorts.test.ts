@@ -271,6 +271,7 @@ describe("the closed-off port: HQ's record of each project", () => {
           ],
         },
         changes: null,
+        releaseRevisions: null,
         readAt: 1_000,
         current: true,
         unavailableSince: null,

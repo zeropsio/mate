@@ -4,8 +4,10 @@
  * (`@t3tools/shared/hqChanges`) — then `change` messages, `{ key: appId, value: app | null }`,
  * each the whole application as it now is, or its going; under the key `ungrouped`, the whole list
  * of the Mates in no application; and `changes` messages, an application's changes whole, or
- * `null` once the reader may no longer read them. A reconnect starts with a fresh snapshot, so
- * nothing held from before it is needed to read it right.
+ * `null` once the reader may no longer read them. The snapshot carries, too, where each of those
+ * applications last moved its releases or its repositories' `main` (audit R4), and a
+ * `release-revision` message moves one: the reader reads them again only then. A reconnect starts
+ * with a fresh snapshot, so nothing held from before it is needed to read it right.
  *
  * The same socket carries the Mates the reader may observe (`@t3tools/shared/hqMates`): the
  * snapshot holds each of them whole, with the people the view names; a `mate` message, what
@@ -19,7 +21,13 @@
  *
  * @module hq/stream
  */
-import { ChangesMessage, ChangesSnapshot, type HqChange } from "@t3tools/shared/hqChanges";
+import {
+  ChangesMessage,
+  ChangesSnapshot,
+  ReleaseRevisionMessage,
+  ReleaseRevisions,
+  type HqChange,
+} from "@t3tools/shared/hqChanges";
 import {
   HqMatesMessage,
   HqPeople,
@@ -44,12 +52,20 @@ export type HqChanges = ReadonlyMap<string, ReadonlyArray<HqChange>>;
 /** Each Mate the reader may observe, by its project: its presence, and its overview's sections. */
 export type HqMates = ReadonlyMap<string, MateLiveView>;
 
+/**
+ * Where each application whose changes the reader reads last moved its releases or its
+ * repositories' `main`, by its id: an opaque revision, `null` before anything moved.
+ */
+export type HqReleaseRevisions = ReadonlyMap<string, string | null>;
+
 export type HqStructureEvent =
   | {
       readonly kind: "snapshot";
       readonly structure: HqStructure;
       /** `null` where HQ sent none, or none this build can read. */
       readonly changes: HqChanges | null;
+      /** `null` where HQ sent none — an HQ from before them — or none this build can read. */
+      readonly releaseRevisions: HqReleaseRevisions | null;
       /** `null` where HQ sent none — an HQ from before the Mates' overviews — or none readable. */
       readonly mates: HqMates | null;
       readonly people: HqPeople | null;
@@ -68,10 +84,18 @@ export type HqStructureEvent =
       /** What changed of it, each part whole; `null` once the reader may no longer observe it. */
       readonly value: MateLiveChange | null;
     }
-  | { readonly kind: "people"; readonly people: HqPeople };
+  | { readonly kind: "people"; readonly people: HqPeople }
+  | {
+      readonly kind: "release-revision";
+      readonly appId: string;
+      /** `null` once the reader may no longer read its changes. */
+      readonly revision: string | null;
+    };
 
 const readSnapshotChanges = Schema.decodeUnknownOption(ChangesSnapshot);
 const readChangesMessage = Schema.decodeUnknownOption(ChangesMessage);
+const readReleaseRevisions = Schema.decodeUnknownOption(ReleaseRevisions);
+const readReleaseRevisionMessage = Schema.decodeUnknownOption(ReleaseRevisionMessage);
 const readMateView = Schema.decodeUnknownOption(MateLiveView);
 const readPeople = Schema.decodeUnknownOption(HqPeople);
 const readMatesMessage = Schema.decodeUnknownOption(HqMatesMessage);
@@ -142,12 +166,14 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       apps,
       ungrouped = [],
       changes,
+      releaseRevisions,
       mates,
       people,
     } = message as {
       readonly apps?: unknown;
       readonly ungrouped?: unknown;
       readonly changes?: unknown;
+      readonly releaseRevisions?: unknown;
       readonly mates?: unknown;
       readonly people?: unknown;
     };
@@ -157,6 +183,10 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       kind: "snapshot",
       structure: { ungrouped, apps: apps.map(appOf) },
       changes: Option.match(readSnapshotChanges(changes), {
+        onNone: () => null,
+        onSome: (byApp) => new Map(Object.entries(byApp)),
+      }),
+      releaseRevisions: Option.match(readReleaseRevisions(releaseRevisions), {
         onNone: () => null,
         onSome: (byApp) => new Map(Object.entries(byApp)),
       }),
@@ -177,6 +207,12 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
     return Option.match(readChangesMessage(message), {
       onNone: () => undefined,
       onSome: ({ appId, changes }) => ({ kind: "changes", appId, changes }),
+    });
+  }
+  if (type === "release-revision") {
+    return Option.match(readReleaseRevisionMessage(message), {
+      onNone: () => undefined,
+      onSome: ({ appId, revision }) => ({ kind: "release-revision", appId, revision }),
     });
   }
   if (type === "change") {
@@ -232,4 +268,17 @@ export function applyChangesEvent(
   if (event.changes === null) next.delete(event.appId);
   else next.set(event.appId, event.changes);
   return next;
+}
+
+/**
+ * The release revisions an event leaves: a snapshot replaces them; an application's message moves
+ * its own. An HQ whose snapshot carried none sends none after it: nothing is known then.
+ */
+export function applyReleaseRevisionsEvent(
+  revisions: HqReleaseRevisions | null,
+  event: HqStructureEvent,
+): HqReleaseRevisions | null {
+  if (event.kind === "snapshot") return event.releaseRevisions;
+  if (revisions === null || event.kind !== "release-revision") return revisions;
+  return new Map(revisions).set(event.appId, event.revision);
 }

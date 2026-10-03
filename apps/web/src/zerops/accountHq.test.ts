@@ -166,6 +166,7 @@ describe("useAccountHq — the official HQ this browser keeps", () => {
       organizationId: clientId,
       structure: null,
       changes: null,
+      releaseRevisions: null,
       readAt: null,
       current: unavailableSince === null,
       unavailableSince,

@@ -84,6 +84,7 @@ describe("applyMatesEvent", () => {
     ]);
     const snapshot = (mates: HqMates | null): HqStructureEvent => ({
       kind: "snapshot",
+      releaseRevisions: null,
       structure: { ungrouped: [], apps: [] },
       changes: null,
       mates,
@@ -118,6 +119,7 @@ describe("applyPeopleEvent", () => {
     const renamed = { "u-ada": { name: "Ada King" } };
     const snapshot: HqStructureEvent = {
       kind: "snapshot",
+      releaseRevisions: null,
       structure: { ungrouped: [], apps: [] },
       changes: null,
       mates: null,

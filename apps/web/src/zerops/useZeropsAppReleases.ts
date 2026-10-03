@@ -4,8 +4,11 @@
  * recipe's, which a release tags), read as the person through the organization's official HQ.
  * The one read of an application's repositories: the Git page lists them from the flow.
  *
- * An application whose read fails keeps what it read before and says why beside it, and never
- * takes another's answer with it — nor ever answers "no releases".
+ * An application is read once, and again only when its reason moves — HQ's stream saying its
+ * releases or repositories moved, its production's deploys moving, a release just made — never on
+ * a clock (audit R4). Each on its own: one HQ is slow to answer for holds no other back. One whose
+ * read fails keeps what it read before and says why beside it, and never takes another's answer
+ * with it — nor ever answers "no releases".
  */
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
@@ -25,6 +28,21 @@ export interface ZeropsAppReleases {
   readonly refresh: (appId: string) => void;
 }
 
+/** What each application was last read for at one HQ, and the reads of it still out. */
+interface Reading {
+  readonly address: string;
+  readonly reasons: Map<string, string>;
+  readonly out: Map<string, AbortController>;
+}
+
+/** One application's read: what HQ answered, or why it did not. */
+type AppAnswer =
+  | {
+      readonly releases: ReadonlyArray<Release>;
+      readonly repos: ReadonlyArray<RepoListEntry>;
+    }
+  | { readonly failure: string };
+
 /** What HQ last answered each application, for one HQ. */
 interface Held {
   readonly address: string;
@@ -33,16 +51,15 @@ interface Held {
   readonly failures: ReadonlyMap<string, string>;
 }
 
-/** How often every application's releases are read again while the app is open. */
-export const APP_RELEASES_REFRESH_MS = 60_000;
-
 export function useZeropsAppReleases(
-  /** Each application, by its id, with what its releases are read again on: its production moving. */
+  /**
+   * Each application, by its id, with what its releases are read again on: where HQ says they
+   * moved, and its production's deploys.
+   */
   apps: ReadonlyMap<string, string>,
 ): ZeropsAppReleases {
   const hq = useOfficialHq();
   const [held, setHeld] = useState<Held | null>(null);
-  const [tick, setTick] = useState(0);
   /** How many times each application was asked to be read again at once. */
   const [asked, setAsked] = useState<ReadonlyMap<string, number>>(() => new Map());
   // Each application's reason to be read now, one string for all of them, whatever order the
@@ -50,70 +67,60 @@ export function useZeropsAppReleases(
   const due = JSON.stringify(
     [...apps]
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([appId, moved]) => [
-        appId,
-        `${String(tick)}\n${String(asked.get(appId) ?? 0)}\n${moved}`,
-      ]),
+      .map(([appId, moved]) => [appId, `${String(asked.get(appId) ?? 0)}\n${moved}`]),
   );
-  /** The reason each application was last read for, at one HQ. */
-  const read = useRef<{ readonly address: string; readonly reasons: Map<string, string> }>(null);
+  /** What each application was last read for at one HQ, and the reads of it still out. */
+  const reading = useRef<Reading | null>(null);
 
+  // Another HQ, or none: the reads still out at the last one are stopped, and nothing it was read
+  // for counts at the next.
   useEffect(() => {
     if (hq === null) return;
-    const timer = setInterval(() => {
-      setTick((count) => count + 1);
-    }, APP_RELEASES_REFRESH_MS);
+    const at: Reading = { address: hq.address, reasons: new Map(), out: new Map() };
+    reading.current = at;
     return () => {
-      clearInterval(timer);
+      for (const stop of at.out.values()) stop.abort();
+      if (reading.current === at) reading.current = null;
     };
   }, [hq]);
 
   useEffect(() => {
-    if (hq === null) return;
-    if (read.current?.address !== hq.address) {
-      read.current = { address: hq.address, reasons: new Map() };
-    }
-    const { reasons } = read.current;
-    const reading = (JSON.parse(due) as Array<[string, string]>).filter(
-      ([appId, reason]) => reasons.get(appId) !== reason,
-    );
-    if (reading.length === 0) return;
-    for (const [appId, reason] of reading) reasons.set(appId, reason);
-    const stop = new AbortController();
-    let answered = false;
-    void Promise.allSettled(
-      reading.map(([appId]) =>
-        Promise.all([hq.api.releases(appId, stop.signal), hq.api.appRepos(appId, stop.signal)]),
-      ),
-    ).then((answers) => {
-      if (stop.signal.aborted) return;
-      answered = true;
-      setHeld((last) => {
-        const kept = last?.address === hq.address ? last : undefined;
-        const releases = new Map(kept?.releases);
-        const repos = new Map(kept?.repos);
-        const failures = new Map(kept?.failures);
-        answers.forEach((answer, index) => {
-          const appId = reading[index]?.[0];
-          if (appId === undefined) return;
-          if (answer.status === "fulfilled") {
-            releases.set(appId, answer.value[0]);
-            repos.set(appId, answer.value[1]);
-            failures.delete(appId);
+    const at = reading.current;
+    if (hq === null || at === null || at.address !== hq.address) return;
+    for (const [appId, reason] of JSON.parse(due) as Array<[string, string]>) {
+      if (at.reasons.get(appId) === reason) continue;
+      at.reasons.set(appId, reason);
+      // A read for an older reason answers nothing now.
+      at.out.get(appId)?.abort();
+      const stop = new AbortController();
+      at.out.set(appId, stop);
+      // Each application on its own: one HQ is slow to answer for holds no other back.
+      const settle = (answer: AppAnswer) => {
+        if (stop.signal.aborted) return;
+        at.out.delete(appId);
+        setHeld((last) => {
+          const kept = last?.address === at.address ? last : undefined;
+          const releases = new Map(kept?.releases);
+          const repos = new Map(kept?.repos);
+          const failures = new Map(kept?.failures);
+          if ("failure" in answer) {
+            failures.set(appId, answer.failure);
           } else {
-            failures.set(appId, zeropsErrorMessage(answer.reason));
+            releases.set(appId, answer.releases);
+            repos.set(appId, answer.repos);
+            failures.delete(appId);
           }
+          return { address: at.address, releases, repos, failures };
         });
-        return { address: hq.address, releases, repos, failures };
-      });
-    });
-    return () => {
-      stop.abort();
-      // A read cut short answered nothing: its applications are read again.
-      if (answered) return;
-      for (const [appId, reason] of reading)
-        if (reasons.get(appId) === reason) reasons.delete(appId);
-    };
+      };
+      void Promise.all([
+        hq.api.releases(appId, stop.signal),
+        hq.api.appRepos(appId, stop.signal),
+      ]).then(
+        ([releases, repos]) => settle({ releases, repos }),
+        (cause: unknown) => settle({ failure: zeropsErrorMessage(cause) }),
+      );
+    }
   }, [hq, due]);
 
   const refresh = useCallback((appId: string) => {
