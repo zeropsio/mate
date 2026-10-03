@@ -3146,7 +3146,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Whether the person reads the work this moment — scrolled up in it, or
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
-  const { fold, foldNow } = useRunFold({
+  const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
@@ -3345,7 +3345,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         data-run-fold={settled ? fold : undefined}
         // The shared height holds through the settle's fold: dropped in the
         // commit the fold measures, the history jumped to its own height first.
-        data-run-live={slotted || fold === "folding" ? "" : undefined}
+        data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
         style={
           { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
         }
@@ -3468,11 +3468,15 @@ function useRunFold({
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
-}): { readonly fold: RunFold; readonly foldNow: () => void } {
+}): { readonly fold: RunFold; readonly foldNow: () => void; readonly settling: boolean } {
   const read = () => runFoldOf(conversation, run);
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
   const fold = live ? "watched" : stored;
   const wasLiveRef = useRef(live);
+  // The draw where the run settled, before its fold is measured: the card
+  // holds its live height through it, or it jumps first.
+  const [drawnLive, setDrawnLive] = useState(live);
+  const settling = !live && drawnLive && stored === "watched";
   // Where the line's words stood as the run settled: the fold starts there.
   const settledAtRef = useRef<number | null>(null);
   // It folds from where its line's words stand now, easing the work shut
@@ -3487,6 +3491,7 @@ function useRunFold({
   useLayoutEffect(() => {
     const wasLive = wasLiveRef.current;
     wasLiveRef.current = live;
+    setDrawnLive(live);
     if (live) {
       setRunFold(conversation, run, "watched");
       return;
@@ -3513,7 +3518,7 @@ function useRunFold({
     }
     return foldAway(above, from - words.getBoundingClientRect().top, done);
   }, [conversation, run, fold, aboveRef, rootRef]);
-  return { fold, foldNow };
+  return { fold, foldNow, settling };
 }
 
 /** The now line's words in a run's chat: where the line stands. */
