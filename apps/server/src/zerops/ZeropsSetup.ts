@@ -57,7 +57,6 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
@@ -473,11 +472,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           interactionMode: main?.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
           createdAt: now,
         } satisfies OrchestrationCommand;
-        // As the person: their session's subject, the one their own send carries (D6).
-        const principal: TurnPrincipal = {
-          kind: "session",
-          subject: `${ZEROPS_SUBJECT_PREFIX}${decision.userId}`,
-        };
+        // For the person who asked, with no session of theirs behind it: admitted while this
+        // project opens for them, on an agent they signed in (D6, X3).
+        const principal: TurnPrincipal = { kind: "standup", startedBy: decision.userId };
         const admitted = yield* admission.admit({ command: turn, principal }).pipe(
           Effect.as(true),
           Effect.catch((error) =>

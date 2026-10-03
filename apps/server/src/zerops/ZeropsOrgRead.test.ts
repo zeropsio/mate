@@ -125,7 +125,7 @@ describe("the org, as this Mate reads it", () => {
         yield* verifyThrowawayCaller({ environment, token: PRESENTED });
         const watched = yield* readProjectMembership({ environment });
         assert.isTrue(watched.ok);
-        assert.isTrue(yield* signers.isActiveMember(USER_ID));
+        assert.isTrue(yield* signers.hasProjectAccess(USER_ID));
         assert.strictEqual(zerops.count("/user/list"), 1);
       }).pipe(Effect.scoped, Effect.provide(zerops.layer));
     },
@@ -137,7 +137,7 @@ describe("the org, as this Mate reads it", () => {
       const signers = yield* signersGate;
       yield* verifyThrowawayCaller({ environment, token: PRESENTED });
       yield* readProjectMembership({ environment });
-      yield* signers.isActiveMember(USER_ID);
+      yield* signers.hasProjectAccess(USER_ID);
       assert.strictEqual(zerops.count(`/project/${PROJECT_ID}`), 1);
     }).pipe(Effect.scoped, Effect.provide(zerops.layer));
   });

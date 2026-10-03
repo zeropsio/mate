@@ -79,7 +79,8 @@ interface World {
   /** The answered question's latest activity; absent means none was found. */
   readonly question?: Pick<OrchestrationThreadActivity, "kind" | "payload"> | "unreadable";
   /** User → whether the org lists them ACTIVE; `undefined` is an unreadable list. */
-  readonly members?: Readonly<Record<string, boolean | undefined>>;
+  /** Whether this project opens for each person, as `hasProjectAccess` answers. */
+  readonly access?: Readonly<Record<string, boolean | undefined>>;
   /** Configured instance → driver kind; the two default instances when absent. */
   readonly drivers?: Readonly<Record<string, string>>;
   /**
@@ -195,7 +196,7 @@ const admission = (world: World) =>
                 }),
               ),
             ),
-          isActiveMember: (userId) => Effect.succeed(world.members?.[userId]),
+          hasProjectAccess: (userId) => Effect.succeed(world.access?.[userId]),
         }),
         world.crewThread === undefined || world.crewThread.profile === "no-registry"
           ? Layer.empty
@@ -223,6 +224,10 @@ const admitted = (
     Effect.flatMap((service) => service.admit({ command, principal })),
     Effect.match({ onFailure: (error) => error.message, onSuccess: () => undefined }),
   );
+
+const NO_ACCESS = "The person this turn runs for no longer has access to this project.";
+const ACCESS_UNCONFIRMED =
+  "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.";
 
 const SOMEONE_ELSE =
   "This agent was signed in by another project member — only they can run it. Sign in with your own account first.";
@@ -263,7 +268,7 @@ const NOT_RUNNING =
 const janSignedClaude: World = {
   agents: [signedIn("claude-code")],
   signers: { "claude-code": JAN },
-  members: { [JAN]: true, [EVA]: true },
+  access: { [JAN]: true, [EVA]: true },
 };
 
 /** Jan signed Claude Code in; Eva signed in a second Claude account, `work`. */
@@ -523,19 +528,41 @@ describe("ZeropsTurnAdmission", () => {
       { kind: "crew", startedBy: EVA },
       SOMEONE_ELSE,
     ],
+    // X3: a turn no session stands behind follows project access, as a session does.
     [
-      "refuses a crew turn whose starter has left the organization",
-      { ...janSignedClaude, members: { [JAN]: false } },
+      "refuses a crew turn whose starter this project no longer opens for",
+      { ...janSignedClaude, access: { [JAN]: false } },
       turnStart("claudeAgent"),
       { kind: "crew", startedBy: JAN },
-      "The person this turn runs for is no longer an active member of this Zerops organization.",
+      NO_ACCESS,
     ],
     [
-      "refuses a crew turn whose starter's membership cannot be read",
-      { ...janSignedClaude, members: {} },
+      "refuses a crew turn whose starter's access cannot be confirmed",
+      { ...janSignedClaude, access: {} },
       turnStart("opencode"),
       { kind: "crew", startedBy: JAN },
-      "Could not confirm that the person this turn runs for is still a member of this Zerops organization. Try again in a moment.",
+      ACCESS_UNCONFIRMED,
+    ],
+    [
+      "admits a stand-up its starter signed the agent in for and may still use",
+      janSignedClaude,
+      turnStart("claudeAgent"),
+      { kind: "standup", startedBy: JAN },
+      undefined,
+    ],
+    [
+      "refuses a stand-up whose starter this project no longer opens for",
+      { ...janSignedClaude, access: { [JAN]: false } },
+      turnStart("claudeAgent"),
+      { kind: "standup", startedBy: JAN },
+      NO_ACCESS,
+    ],
+    [
+      "refuses a stand-up on an agent somebody else signed in",
+      janSignedClaude,
+      turnStart("claudeAgent"),
+      { kind: "standup", startedBy: EVA },
+      SOMEONE_ELSE,
     ],
     ...(["thread.archive", "thread.unarchive", "thread.delete"] as const).map(
       (type) =>
@@ -584,7 +611,7 @@ describe("ZeropsTurnAdmission", () => {
     ],
     [
       "leaves a person's own session to the membership watch",
-      { ...janSignedClaude, members: { [JAN]: false } },
+      { ...janSignedClaude, access: { [JAN]: false } },
       turnStart("claudeAgent"),
       session(JAN),
       undefined,

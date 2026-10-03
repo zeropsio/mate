@@ -32,7 +32,6 @@ import {
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import { ORG_READ_MAX_AGE } from "./ZeropsOrgRead.ts";
 import {
   isMemberListComplete,
   loginTurnRefusal,
@@ -690,28 +689,22 @@ describe("the turn gate", () => {
   });
 });
 
-describe("isActiveMember", () => {
-  /**
-   * The service over an org whose member list the test changes between
-   * calls, counting every member-list read. No signer is recorded, so the
-   * leave check never reads the member list on its own.
-   */
-  const members = (initial: unknown, initialStatus = 200) =>
+// X3, D7: a turn no live session stands behind — the crew's, the stand-up's — is admitted by the
+// same answer that keeps a session open: this project's door, by the person's role here.
+describe("hasProjectAccess", () => {
+  /** The service over this project and the org's member list, both of which the test changes. */
+  const access = (initial: { readonly project: unknown; readonly members: unknown }) =>
     Effect.gen(function* () {
-      let body = initial;
-      let status = initialStatus;
-      let memberReads = 0;
+      let project = initial.project;
+      let members = initial.members;
+      let status = 200;
       const signIns = yield* memorySignInStore();
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
           Layer.mergeAll(
-            httpLayer((url) => {
-              if (!url.endsWith("/user/list")) {
-                return json({ id: PROJECT_ID, clientId: CLIENT_ID });
-              }
-              memberReads += 1;
-              return json(body, status);
-            }).layer,
+            httpLayer((url) =>
+              url.endsWith("/user/list") ? json(members, status) : json(project, status),
+            ).layer,
             ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
             NodeServices.layer,
             Layer.succeed(ZeropsSignIns, signIns),
@@ -721,53 +714,82 @@ describe("isActiveMember", () => {
       yield* TestClock.adjust(Duration.zero);
       return {
         signers,
-        setMembers: (next: unknown, nextStatus = 200) => {
-          body = next;
-          status = nextStatus;
+        set: (next: {
+          readonly project?: unknown;
+          readonly members?: unknown;
+          status?: number;
+        }) => {
+          project = next.project ?? project;
+          members = next.members ?? members;
+          status = next.status ?? status;
         },
-        reads: () => memberReads,
       };
     });
 
-  const janActive = { clientUserList: [{ id: "cu-jan", userId: JAN, status: "ACTIVE" }] };
+  const member = (userId: string, roleCode: string, status = "ACTIVE") => ({
+    id: `cu-${userId}`,
+    userId,
+    roleCode,
+    status,
+  });
+  const projectWith = (userRoles: ReadonlyArray<{ clientUserId: string; roleCode: string }>) => ({
+    id: PROJECT_ID,
+    clientId: CLIENT_ID,
+    userRoles,
+  });
 
-  it.effect("answers yes for an ACTIVE member and no for anybody else", () =>
+  for (const [name, roleCode, override, status, expected] of [
+    ["an org member who builds", "BASIC_USER", undefined, "ACTIVE", true],
+    // Kept in the org, taken out of this project: their crew stops with their session (X3).
+    ["an org member this project shuts out", "BASIC_USER", "NO_ACCESS", "ACTIVE", false],
+    ["a member let in here alone", "NO_ACCESS", "BASIC_USER", "ACTIVE", true],
+    ["a read-only member", "READ_ONLY", undefined, "ACTIVE", false],
+    ["an admin who is not active", "ADMIN", undefined, "WAITING_AUTHORIZATION", false],
+  ] as const) {
+    it.effect(`answers by this project's door: ${name}, ${String(expected)}`, () =>
+      Effect.gen(function* () {
+        const { signers } = yield* access({
+          project: projectWith(
+            override === undefined ? [] : [{ clientUserId: `cu-${JAN}`, roleCode: override }],
+          ),
+          members: { clientUserList: [member(JAN, roleCode, status), member(EVA, "OWNER")] },
+        });
+        assert.strictEqual(yield* signers.hasProjectAccess(JAN), expected);
+      }).pipe(Effect.scoped),
+    );
+  }
+
+  it.effect("answers no for somebody the org does not list", () =>
     Effect.gen(function* () {
-      const { signers } = yield* members(janActive);
-      assert.isTrue(yield* signers.isActiveMember(JAN));
-      assert.isFalse(yield* signers.isActiveMember(EVA));
+      const { signers } = yield* access({
+        project: projectWith([]),
+        members: { clientUserList: [member(EVA, "OWNER")] },
+      });
+      assert.isFalse(yield* signers.hasProjectAccess(JAN));
     }).pipe(Effect.scoped),
   );
 
-  // "Cannot read" is neither answer: the caller refuses on it, and says why.
-  it.effect("answers nothing when the member list cannot be read and nothing was known", () =>
+  // D7: while reads fail, the last answer holds five minutes from its read, then nothing does.
+  it.effect("answers from the last read for five minutes while reads fail, then nothing", () =>
     Effect.gen(function* () {
-      const { signers } = yield* members({ message: "down" }, 500);
-      assert.isUndefined(yield* signers.isActiveMember(JAN));
+      const { signers, set } = yield* access({
+        project: projectWith([]),
+        members: { clientUserList: [member(JAN, "BASIC_USER")] },
+      });
+      assert.isTrue(yield* signers.hasProjectAccess(JAN));
+      set({ status: 500 });
+      yield* TestClock.adjust(Duration.minutes(5));
+      assert.isTrue(yield* signers.hasProjectAccess(JAN));
+      yield* TestClock.adjust(Duration.seconds(1));
+      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
     }).pipe(Effect.scoped),
   );
 
-  it.effect("reads the member list once per cache lifetime", () =>
+  it.effect("answers nothing when nothing could be read", () =>
     Effect.gen(function* () {
-      const { signers, reads } = yield* members(janActive);
-      yield* signers.isActiveMember(JAN);
-      yield* TestClock.adjust(Duration.seconds(5));
-      yield* signers.isActiveMember(EVA);
-      assert.strictEqual(reads(), 1);
-      yield* TestClock.adjust(ORG_READ_MAX_AGE);
-      yield* signers.isActiveMember(JAN);
-      assert.strictEqual(reads(), 2);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("a failed re-read answers from the last list read", () =>
-    Effect.gen(function* () {
-      const { signers, setMembers, reads } = yield* members(janActive);
-      assert.isTrue(yield* signers.isActiveMember(JAN));
-      setMembers({ message: "down" }, 500);
-      yield* TestClock.adjust(ORG_READ_MAX_AGE);
-      assert.isTrue(yield* signers.isActiveMember(JAN));
-      assert.strictEqual(reads(), 2);
+      const { signers, set } = yield* access({ project: projectWith([]), members: {} });
+      set({ status: 500 });
+      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
     }).pipe(Effect.scoped),
   );
 });

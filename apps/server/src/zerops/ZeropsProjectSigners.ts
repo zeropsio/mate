@@ -63,8 +63,14 @@ import * as ServerConfig from "../config.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 import { readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
-import { readProjectRoles } from "./ZeropsMembershipWatch.ts";
+import { opensForOf, readProjectRoles } from "./ZeropsMembershipWatch.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
+
+/**
+ * How long the last answer to "may this person use this Mate" holds while reads fail (D7): a
+ * person whose access went keeps running turns no longer than this, as HQ's own view (X7).
+ */
+export const ACCESS_HOLDS = Duration.minutes(5);
 
 /** The agents this build knows how to record a signer for. */
 const KNOWN_AGENT_IDS: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
@@ -232,12 +238,13 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
-     * Whether the org lists `userId` as an `ACTIVE` member, from a read no
-     * older than `ORG_READ_MAX_AGE` (`ZeropsOrgRead`); `undefined` when the
-     * member list cannot be read and nothing was known before. A read that
-     * fails answers from the last list read.
+     * Whether this project opens for `userId` — the door's own rule, over the project's roles and
+     * the org's member list, the answer that keeps a session open (`ZeropsMembershipWatch`) — from
+     * a read no older than `ORG_READ_MAX_AGE` (`ZeropsOrgRead`). What admits a turn no session
+     * stands behind: the crew's, the stand-up's (X3). While reads fail, the last answer holds
+     * {@link ACCESS_HOLDS} from its read; past that, or with none, `undefined`.
      */
-    readonly isActiveMember: (userId: string) => Effect.Effect<boolean | undefined>;
+    readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
     /** Runs one leave check now and answers how many agents it signed out. */
     readonly checkLeaversNow: Effect.Effect<number>;
   }
@@ -294,6 +301,27 @@ export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")
   );
 });
 
+/**
+ * Every Zerops user this project opens for (`opensForOf`), or `undefined` when the project or
+ * the member list is no usable answer — unreadable, empty, or a partial page (S6).
+ */
+const readProjectAccess = Effect.fn("ZeropsProjectSigners.readAccess")(function* (input: {
+  readonly environment: ZeropsEnvironment;
+}) {
+  const { apiBaseUrl, projectId } = input.environment;
+  const orgRead = yield* ZeropsOrgRead;
+  const own = yield* orgRead.project({ apiBaseUrl, projectId });
+  if (own.kind !== "answered" || own.status !== 200) return undefined;
+  const project = readProjectRoles(own.body);
+  if (project === null) return undefined;
+  const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
+  if (members.kind !== "answered" || members.status !== 200) return undefined;
+  const entries = readMemberEntries(members.body);
+  if (entries === null || entries.length === 0) return undefined;
+  if (!isMemberListComplete(members.body, entries.length)) return undefined;
+  return opensForOf(projectId, project, entries);
+});
+
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const environment = config.zerops;
@@ -305,29 +333,32 @@ export const make = Effect.gen(function* () {
   // and the watch — provided by the layer this service's own layer composes
   // above (`zeropsFeedsLayer.ts`).
   const orgRead = yield* ZeropsOrgRead;
-  /** The org's active members as last read: a read that fails answers from it. */
-  const lastRead = yield* Ref.make<ReadonlySet<string> | undefined>(undefined);
+  /** Whom this project opened for at the last read that answered, and when that was. */
+  const lastAccess = yield* Ref.make<
+    { readonly opensFor: ReadonlySet<string>; readonly atMs: number } | undefined
+  >(undefined);
 
-  /** The org's active members, read through the shared read and kept on success. */
+  /** The org's active members, through the shared read. */
   const readMembersThrough = (environment: ZeropsEnvironment) =>
-    Effect.gen(function* () {
-      const read = yield* readActiveMemberIds({ environment }).pipe(
-        Effect.provideService(ZeropsOrgRead, orgRead),
-      );
-      if (read !== undefined) yield* Ref.set(lastRead, read);
-      return read;
-    });
+    readActiveMemberIds({ environment }).pipe(Effect.provideService(ZeropsOrgRead, orgRead));
 
-  const isActiveMember: ZeropsProjectSigners["Service"]["isActiveMember"] = (userId) =>
+  const hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"] = (userId) =>
     environment === undefined
       ? Effect.succeed(undefined)
-      : readMembersThrough(environment).pipe(
-          Effect.flatMap((read) =>
-            read === undefined
-              ? Ref.get(lastRead).pipe(Effect.map((last) => last?.has(userId)))
-              : Effect.succeed(read.has(userId)),
-          ),
-        );
+      : Effect.gen(function* () {
+          const read = yield* readProjectAccess({ environment }).pipe(
+            Effect.provideService(ZeropsOrgRead, orgRead),
+          );
+          const now = yield* Clock.currentTimeMillis;
+          if (read !== undefined) {
+            yield* Ref.set(lastAccess, { opensFor: read, atMs: now });
+            return read.has(userId);
+          }
+          const last = yield* Ref.get(lastAccess);
+          return last !== undefined && now - last.atMs <= Duration.toMillis(ACCESS_HOLDS)
+            ? last.opensFor.has(userId)
+            : undefined;
+        });
 
   const signers: ZeropsProjectSigners["Service"]["signers"] = signIns.load.pipe(
     Effect.map(signersOf),
@@ -437,7 +468,7 @@ export const make = Effect.gen(function* () {
     signers,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
-    isActiveMember,
+    hasProjectAccess,
     checkLeaversNow,
   });
 });
