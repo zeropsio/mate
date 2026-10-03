@@ -40,7 +40,7 @@ import * as Stream from "effect/Stream";
 import { ServerConfig } from "../../config.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { type ProviderInstanceAgent, ProviderInstances } from "../../spi/providerInstances.ts";
+import { ProviderInstances } from "../../spi/providerInstances.ts";
 import { ZeropsLogins } from "../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../ZeropsRepositorySource.ts";
 import {
@@ -86,12 +86,6 @@ export interface AppliedCrew {
   readonly stints: ReadonlyArray<CrewStintRow>;
   /** The verified repository of every writer's host. */
   readonly repositories: ReadonlyMap<string, ZeropsRepository>;
-  /**
-   * Each crewmate's login's coding agent, `undefined` for a login this Mate
-   * has no live instance of; one whose adapter serves no profile tools hosts
-   * no crew tools (PRD §2.3).
-   */
-  readonly agents: ReadonlyMap<string, ProviderInstanceAgent | undefined>;
   /** The crew's latest run in any state; `undefined` before its first. */
   readonly run: CrewRunRow | undefined;
 }
@@ -379,12 +373,7 @@ export const makeCrewCore = Effect.gen(function* () {
       const repository = yield* Effect.option(shell.repository(host));
       if (Option.isSome(repository)) known.set(host, repository.value);
     }
-    const agents = new Map<string, ProviderInstanceAgent | undefined>();
-    for (const member of members.values()) {
-      agents.set(member.handle, yield* agentOf(member.login ?? DEFAULT_CREW_LOGIN));
-    }
     yield* Ref.set(cache, {
-      agents,
       definition,
       briefVersion: row.value.briefVersion,
       seq: row.value.seq,
