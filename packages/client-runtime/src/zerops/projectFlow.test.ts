@@ -25,6 +25,7 @@ import {
   sidebarChangeLabel,
   type FlowPullRequest,
   changeLandedEvents,
+  agentLastSpokeAt,
   agentTurnNotes,
   type ChangeLandedEvent,
 } from "./projectFlow.ts";
@@ -844,6 +845,39 @@ describe("agentTurnNotes", () => {
     const notes = agentTurnNotes(many, "2026-09-20T09:00:00Z");
     expect(notes).toHaveLength(5);
     expect(notes[4]).toContain("#9");
+  });
+});
+
+describe("agentLastSpokeAt", () => {
+  const user = (text: string, createdAt: string) => ({ role: "user", text, createdAt });
+  const agent = (createdAt: string) => ({ role: "assistant", text: "…", createdAt });
+
+  it.each([
+    { name: "nothing before the agent spoke", messages: [user("hi", "T1")], expected: undefined },
+    {
+      name: "the agent's last reply",
+      messages: [user("hi", "T1"), agent("T2"), user("and?", "T3"), agent("T4")],
+      expected: "T4",
+    },
+    {
+      // A command's turn carries no notes, so its reply is not the agent
+      // hearing them: what landed before it is still news.
+      name: "the reply before a slash command's answer",
+      messages: [user("hi", "T1"), agent("T2"), user("/context", "T3"), agent("T4")],
+      expected: "T2",
+    },
+    {
+      name: "nothing when only commands were answered",
+      messages: [user("/mcp", "T1"), agent("T2")],
+      expected: undefined,
+    },
+    {
+      name: "a reply to a message opening with a path",
+      messages: [user("/var/www/app.ts is broken", "T1"), agent("T2")],
+      expected: "T2",
+    },
+  ])("is $name", ({ messages, expected }) => {
+    expect(agentLastSpokeAt(messages)).toBe(expected);
   });
 });
 

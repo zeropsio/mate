@@ -205,7 +205,7 @@ import {
   useZeropsChangeLandedEvents,
   useZeropsConversationLandings,
 } from "../zerops/useZeropsChangeLandedEvents";
-import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
+import { agentLastSpokeAt, agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
@@ -2952,16 +2952,10 @@ export default function ChatView(props: ChatViewProps) {
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
-  const agentLastSpokeAt = useMemo(() => {
-    for (let index = timelineMessages.length - 1; index >= 0; index -= 1) {
-      const candidate = timelineMessages[index];
-      if (candidate?.role === "assistant") return candidate.createdAt;
-    }
-    return undefined;
-  }, [timelineMessages]);
+  const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
   const agentNotes = useMemo(
-    () => agentTurnNotes(changeLandedEvents, agentLastSpokeAt),
-    [agentLastSpokeAt, changeLandedEvents],
+    () => agentTurnNotes(changeLandedEvents, agentSpokeAt),
+    [agentSpokeAt, changeLandedEvents],
   );
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(

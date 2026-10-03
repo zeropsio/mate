@@ -31,6 +31,7 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { isSlashCommand } from "@t3tools/shared/userAsk";
 
 import {
   checkDotTone,
@@ -291,6 +292,32 @@ export function changeNamesRepository(
       : `mate:${entry.mateProjectId}`;
   const owner = whose(pull);
   return among.some((entry) => whose(entry) === owner && entry.repository !== pull.repository);
+}
+
+/**
+ * When the agent last spoke in a turn that told it something — the `since`
+ * of `agentTurnNotes`, read from the conversation's messages.
+ *
+ * A slash command's turn carries no notes (the server keeps them off it, or
+ * the agent would not run the command), so its reply is not the agent hearing
+ * them: what landed before it is still news for the next message.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function agentLastSpokeAt(
+  messages: ReadonlyArray<{
+    readonly role: string;
+    readonly text: string;
+    readonly createdAt: string;
+  }>,
+): string | undefined {
+  let answersCommand = false;
+  let spokeAt: string | undefined;
+  for (const message of messages) {
+    if (message.role === "user") answersCommand = isSlashCommand(message.text);
+    else if (message.role === "assistant" && !answersCommand) spokeAt = message.createdAt;
+  }
+  return spokeAt;
 }
 
 /**
