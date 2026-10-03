@@ -7,33 +7,59 @@
  */
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 
-import { slotDue, slotOffer, slotSettle, slotStart, type LiveSlot } from "./liveSlot.logic";
+import {
+  slotDue,
+  slotOffer,
+  slotResync,
+  slotSettle,
+  slotStart,
+  type LiveSlot,
+} from "./liveSlot.logic";
 
 export function useLiveSlot({
   live,
   record,
   final,
+  syncing = false,
   onChange,
 }: {
   readonly live: ReadonlyArray<string>;
   readonly record: ReadonlyArray<string>;
   /** The run is over: everything is history at once. */
   readonly final: boolean;
-  readonly onChange?: (from: LiveSlot, to: LiveSlot) => void;
+  /**
+   * The thread catches up after a reload or a reconnect: what it brings is
+   * history at once, never an arrival that stands or plops (`slotResync`).
+   */
+  readonly syncing?: boolean;
+  /**
+   * Hears a change before it is drawn. `redrawn`: heard right after a draw of
+   * the card, which may have moved things already — where they stood is what
+   * was painted before it.
+   */
+  readonly onChange?: (from: LiveSlot, to: LiveSlot, redrawn: boolean) => void;
 }): LiveSlot {
   const [slot, setSlot] = useState(() => slotStart({ live, record, at: Date.now() }));
   const slotRef = useRef(slot);
-  const move = (next: LiveSlot) => {
+  const move = (next: LiveSlot, redrawn: boolean) => {
     const from = slotRef.current;
     if (next === from) return;
-    onChange?.(from, next);
+    onChange?.(from, next, redrawn);
     slotRef.current = next;
     setSlot(next);
   };
-  const offer = useEffectEvent(() =>
-    move(slotOffer(slotRef.current, { live, record, at: Date.now(), final })),
-  );
-  const settle = useEffectEvent(() => move(slotSettle(slotRef.current, Date.now())));
+  const offer = useEffectEvent(() => {
+    if (syncing && !final) {
+      // Nobody watched it: no landing to draw.
+      const next = slotResync(slotRef.current, { live, record, at: Date.now() });
+      if (next === slotRef.current) return;
+      slotRef.current = next;
+      setSlot(next);
+      return;
+    }
+    move(slotOffer(slotRef.current, { live, record, at: Date.now(), final }), true);
+  });
+  const settle = useEffectEvent(() => move(slotSettle(slotRef.current, Date.now()), false));
   // Offered on every draw: an offer that changes nothing returns the slot it was given.
   useLayoutEffect(() => offer());
   const due = slotDue(slot);

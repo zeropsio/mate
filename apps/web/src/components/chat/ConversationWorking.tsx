@@ -262,18 +262,32 @@ function useDeployReading(operation: ZeropsOperation, environmentId: Environment
   return { regions, words, bar, running, failed };
 }
 
+/**
+ * A bar whose control stopped opening — its rows dropped to none — is shut,
+ * not left open behind it: when it opens again it starts closed, never
+ * springing open by itself.
+ */
+function useShutWhenItStopsOpening(open: boolean, opens: boolean, onShut: () => void) {
+  useLayoutEffect(() => {
+    if (open && !opens) onShut();
+  });
+}
+
 /** A deploy's status bar: its service, its pipeline, the step running now, how long. */
 function DeployInstrument({
   operation,
   environmentId,
   open,
   onToggle,
+  onShut,
   detail,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly open: boolean;
   readonly onToggle: () => void;
+  /** Its control stopped opening: it is shut. */
+  readonly onShut: () => void;
   /** What it opens to, under it. */
   readonly detail: ReactNode;
 }) {
@@ -296,6 +310,7 @@ function DeployInstrument({
       : Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
   // Open only while it opens onto something: rows that dropped to none close it.
   const shown = standsOpen(open, opens);
+  useShutWhenItStopsOpening(open, opens, onShut);
   return (
     <>
       <Instrument
@@ -330,12 +345,15 @@ function StandupInstrument({
   environmentId,
   open,
   onToggle,
+  onShut,
   detail,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly open: boolean;
   readonly onToggle: () => void;
+  /** Its control stopped opening: it is shut. */
+  readonly onShut: () => void;
   /** What it opens to, under it. */
   readonly detail: ReactNode;
 }) {
@@ -349,6 +367,7 @@ function StandupInstrument({
     reasonCut: false,
   });
   const shown = standsOpen(open, opens);
+  useShutWhenItStopsOpening(open, opens, onShut);
   return (
     <>
       <Instrument
@@ -397,6 +416,15 @@ function roomOf(panel: HTMLElement): HTMLElement {
   return panel.closest<HTMLElement>(".run-tray-middle") ?? panel;
 }
 
+/** The person asked for reduced motion; a page with no media queries asked for nothing. */
+function asksForNoMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /**
  * The room of what runs alongside, in its card: it follows its bars up at
  * once — an arriving bar opens its own (`Arriving`) — and gives back the room
@@ -434,8 +462,9 @@ function usePanelRoom({
     }
     closing?.stop();
     closingRef.current = null;
-    if (holds >= stood - 0.5) {
-      // It grew, or holds the same: the room follows at once.
+    // It grew, or holds the same — or the person asked for no motion — the
+    // room follows at once.
+    if (holds >= stood - 0.5 || asksForNoMotion()) {
       stoodRef.current = holds;
       if (closing !== null) onRoom?.(null);
       return;
@@ -531,6 +560,14 @@ function Instruments({
 }) {
   const hold = useHoldReading();
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  // A bar whose control stopped opening is shut (`useShutWhenItStopsOpening`).
+  const shut = (key: string) =>
+    setOpen((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
   useLayoutEffect(() => onDrawn?.());
   // A service the platform works on this moment says nothing stale of itself.
   const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
@@ -552,6 +589,7 @@ function Instruments({
   const backgroundOpens =
     background !== null && opensOnto({ control: "background-bar", tasks: background.tasks.length });
   const backgroundShown = standsOpen(open.has("background"), backgroundOpens);
+  if (open.has("background") && !backgroundOpens) shut("background");
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
     // following its end, so the bar they pressed stays where it is (K12).
@@ -589,6 +627,7 @@ function Instruments({
               <StandupInstrument
                 detail={detail}
                 environmentId={environmentId}
+                onShut={() => shut(operation.key)}
                 onToggle={() => toggle(operation.key)}
                 open={open.has(operation.key)}
                 operation={operation}
@@ -597,6 +636,7 @@ function Instruments({
               <DeployInstrument
                 detail={detail}
                 environmentId={environmentId}
+                onShut={() => shut(operation.key)}
                 onToggle={() => toggle(operation.key)}
                 open={open.has(operation.key)}
                 operation={operation}

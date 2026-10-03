@@ -108,22 +108,33 @@ describe("opens — a control is drawn only when it opens onto something not on 
     // 6. A helper's report.
     {
       name: "a helper whose report is its state word",
-      opener: { control: "helper", report: "Done.", state: "Done" },
+      opener: { control: "helper", report: "Done.", state: "Done", previewCut: false },
       opens: false,
     },
     {
       name: "a helper's one short line stands whole under its title",
-      opener: { control: "helper", report: "Wrote three tests", state: "Done" },
+      opener: { control: "helper", report: "Wrote three tests", state: "Done", previewCut: false },
       opens: false,
     },
     {
+      // Measured, not counted: a short line on a narrow card is cut too.
+      name: "a helper's one line cut short at the card's width opens onto the rest",
+      opener: { control: "helper", report: "Wrote three tests", state: "Done", previewCut: true },
+      opens: true,
+    },
+    {
       name: "a helper's report of several lines opens onto them",
-      opener: { control: "helper", report: "Wrote three tests\nAll pass", state: "Done" },
+      opener: {
+        control: "helper",
+        report: "Wrote three tests\nAll pass",
+        state: "Done",
+        previewCut: false,
+      },
       opens: true,
     },
     {
       name: "a helper with no report",
-      opener: { control: "helper", report: null, state: "Working" },
+      opener: { control: "helper", report: null, state: "Working", previewCut: false },
       opens: false,
     },
     // 7. A step.
@@ -200,12 +211,6 @@ describe("opens — a control is drawn only when it opens onto something not on 
       opener: { control: "thought", pastCap: true },
       opens: true,
     },
-    // 11. The live slot.
-    {
-      name: "the live slot shows the thing in full up to its cap: no chevron",
-      opener: { control: "live" },
-      opens: false,
-    },
   ])("$name", ({ opener, opens: expected }) => {
     expect(opensOnto(opener)).toBe(expected);
   });
@@ -226,5 +231,34 @@ describe("opens — a control is drawn only when it opens onto something not on 
     expect(stepOutput(search({ pattern: "uptime", path: "src", glob: "*.ts" }))).toEqual([
       { key: "0:asked", label: "Asked", text: "glob     *.ts\nin       src" },
     ]);
+  });
+
+  // A read of the web names its host and path; an address that says more —
+  // its query, its fragment — opens onto the whole of it.
+  it.each([
+    {
+      name: "a page by host and path: its line says it all",
+      url: "https://docs.example.dev/start",
+      asked: [],
+    },
+    {
+      name: "an address with a query: the whole address",
+      url: "https://search.example.dev/find?q=hono+routes&page=2",
+      asked: [
+        {
+          key: "0:asked",
+          label: "Asked",
+          text: "address  https://search.example.dev/find?q=hono+routes&page=2",
+        },
+      ],
+    },
+  ])("says what a read of the web was asked: $name", ({ url, asked }) => {
+    const web = step({
+      itemType: "dynamic_tool_call",
+      detail: `WebFetch: ${JSON.stringify({ url })}`,
+      callInput: { url },
+    });
+    expect(web.kind).toBe("web");
+    expect(stepOutput(web)).toEqual(asked);
   });
 });

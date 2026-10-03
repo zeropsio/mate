@@ -237,9 +237,29 @@ describe("the live slot's model", () => {
       now: {
         kind: "step",
         step: command("w2", "pnpm test"),
-        others: [read("w1", "index.ts")],
+        others: [{ kind: "step", step: read("w1", "index.ts") }],
       },
       live: ["step:w1", "step:w2"],
+      filler: "thinking",
+    },
+    {
+      name: "a deploy and a command at once: a row each, the operation's too",
+      now: {
+        kind: "step",
+        step: command("w2", "pnpm test"),
+        others: [{ kind: "operation", operation: deploy }],
+      },
+      live: ["operation:op:d1", "step:w2"],
+      filler: "thinking",
+    },
+    {
+      name: "a command and a check in the browser at once: the step's row, then the takes",
+      now: {
+        kind: "operation",
+        operation: browser,
+        others: [{ kind: "step", step: command("w1", "pnpm build") }],
+      },
+      live: ["step:w1", "operation:op:b1"],
       filler: "thinking",
     },
     {
@@ -252,6 +272,16 @@ describe("the live slot's model", () => {
       name: "a check in the browser: the row of takes it becomes",
       now: { kind: "operation", operation: browser },
       live: ["operation:op:b1"],
+      filler: "thinking",
+    },
+    {
+      name: "an approval: what it asks stands in the slot",
+      now: {
+        kind: "waiting",
+        on: "approval",
+        asked: [{ kind: "step", step: command("w1", "pnpm build") }],
+      },
+      live: ["step:w1"],
       filler: "thinking",
     },
     {
@@ -327,9 +357,22 @@ describe("the now line", () => {
       now: {
         kind: "step",
         step: command("w3", "pnpm lint"),
-        others: [command("w1", "pnpm build"), command("w2", "pnpm test")],
+        others: [
+          { kind: "step", step: command("w1", "pnpm build") },
+          { kind: "step", step: command("w2", "pnpm test") },
+        ],
       },
       words: "Running 3 commands",
+      face: { state: "working" },
+    },
+    {
+      name: "a command beside a deploy",
+      now: {
+        kind: "operation",
+        operation: deploy,
+        others: [{ kind: "step", step: command("w1", "pnpm build") }],
+      },
+      words: "Running 2 steps",
       face: { state: "working" },
     },
     {

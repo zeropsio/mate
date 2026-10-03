@@ -229,22 +229,37 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     first line (turning, looking up while it thinks and down while it writes, its "o" while it waits
     on the person); a call's words carry a sweep while it runs; the run's one clock stands on the
     first line's right edge, m:ss in ink (K3, S3), still while it waits on the person — a row gets
-    its time when it lands, and the slot wears no chevron: it shows the thing in full up to its cap.
-    What it holds is the newest batch's open calls (`stretchBatch`, the batch rule: a call started
-    after another returned belongs to a newer batch, and one an older batch left open is stale,
-    never shown); else the Mate's words as they stream (a thought as the thought, its newest four
-    lines with a fade at the top; its answer as "Writing"); else what it waits on from the person (a
-    question in its own words, the answer rising in under it; "Waiting for your approval"); else
-    "Thinking", muted, its word 300 ms late so a quick gap never flashes it. Several at once are a
-    row each, three at most, then "+N more running". An operation stands here only while its call
-    is open: a stand-up whose call returned runs on in the band. An item leaves as it ends once
+    its time when it lands, and the slot wears no chevron; a row it cuts draws "Show all N lines" or
+    "Show full message" as the history does (a command that says nothing of itself stands open to
+    its four-line cap), and what the person opened is kept by the line's key, so the row lands as it
+    stood. What it holds is the newest batch's open calls, operations among them (`stretchBatch`,
+    the batch rule over the whole run: a batch is one model response, named on each call's start
+    (`responseId`); a call of a newer response puts an older response's open call behind it, stale,
+    never shown; where calls name no response, a call started after another returned opens the
+    newer batch, and a call seen only as it ended opens none); else the Mate's words as they stream
+    (a thought as the thought, its newest four lines with a fade at the top; its answer as
+    "Writing"); else what it waits on from the person (a question in its own words, the answer
+    rising in under it; for an approval, the call it asks to run, the controls staying in the
+    composer); else "Thinking", muted, its word 300 ms late — never on the slot's first draw — so a
+    quick gap never flashes it. Several at once are a row each, three at most, then "+N more
+    running", counting what runs past the rows drawn. An operation stands here only while the call
+    that started it is open: a stand-up whose call returned runs on in the band while its report
+    says a service builds, until the store reads them done (`standupRunsOn`, `useStandupsDone`); a
+    bootstrap session's line stays where it first returned while a follow-up call runs. What enters
+    after the slot's first draw rises in, and the history glides as the slot grows; the face and
+    the clock follow the first line only once placed. An item leaves as it ends once
     shown 800 ms (a question 800 ms after its answer), and plops into the history: a translate on
     the strong ease-out with a 1.5 px settle over 340 ms, its kind's mark fading in where the face
     stood, the history's lines in view gliding where it moved them; under reduced motion it fades
     in, in place. What starts and ends while an ended item stands never takes the slot: it joins
     the history in that item's plop, so the slot is never more than 800 ms behind the Mate (the
     board measured 0.7 s, against 4.7 s for a queue). What the record held when the slot was first
-    drawn is history at once: a reload never plops. One status span tells a screen reader its
+    drawn is history at once, and so is what a resync brings (`slotResync`): a reload never plops.
+    A landing starts where things showed — a plop or a glide in flight is taken over from where it
+    shows, a row that stays in the slot keeps its place in it, and one heard right after a draw
+    starts from what was painted before it. Once full the card's outer box stands still; on a
+    short page it holds the slot whole once the history has no room left. One status span tells a
+    screen reader its
     words. Every state plays in the harness at `/design-live.html` (`?script=main|burst|stale|band|long`,
     `?at=<s>`, `?speed=<x>`, `?theme=dark`)
   - _States:_ a call · several calls · an operation it waits on · a thought streaming · a question
@@ -361,7 +376,9 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     one-file edit and a command that printed nothing are the whole of themselves (`stepOutput`); an
     edit of several files opens onto them, a search in a folder onto where it looked. A call that
     never returned — its completion lost, a newer batch started — joins the record where it went
-    stale, with no time, and says "No result" once the run settles (`noResult`). In the history a
+    stale, with no time, in the past tense, and says "No result" once the run settles
+    (`noResult`); a stale operation joins where it went stale too. A call still running never folds
+    into the step before it. In the history a
     step still running says "Running" where its time will stand; the slot holds the one clock. A command the runtime tracks as a task is that step — the task lends it its words and its
     end and is no bubble or bar of its own; looks at pictures and edits one after another fold into
     one step ("4 edits")

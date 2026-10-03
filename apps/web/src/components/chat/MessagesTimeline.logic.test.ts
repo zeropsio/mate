@@ -493,7 +493,27 @@ describe("deriveMessagesTimelineRows", () => {
         }),
         approvalOf("p1", 2, "approval.requested"),
       ],
-      now: { kind: "waiting", on: "approval" },
+      // What it asks to run stands in the slot; the controls are the composer's.
+      now: { kind: "waiting", on: "approval", asked: [{ kind: "step", step: { key: "w1" } }] },
+    },
+    {
+      name: "an approval asked for a command not started yet: the approval says what it asks",
+      entries: [
+        tool("p1", "t1", 2, {
+          tone: "info",
+          label: "Command approval requested",
+          command: "rm -rf dist",
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          requestKind: "command",
+          sourceActivityKind: "approval.requested",
+        }),
+      ],
+      now: {
+        kind: "waiting",
+        on: "approval",
+        asked: [{ kind: "step", step: { key: "p1", code: "rm -rf dist" } }],
+      },
     },
     {
       name: "an approval given: back to the step",
@@ -519,18 +539,27 @@ describe("deriveMessagesTimelineRows", () => {
   // to a newer batch, and one still marked open from an older batch is stale
   // (pass 35, the owner: "sometimes it shows something that failed 4
   // iterations ago").
-  const open = (id: string, minute: number, second = 0) =>
+  const open = (id: string, minute: number, second = 0, responseId?: string) =>
     tool(id, "t1", minute, {
       createdAt: at(minute, second),
       startedAt: at(minute, second),
       toolLifecycleStatus: "inProgress",
       sourceActivityKind: "tool.started",
+      ...(responseId === undefined ? {} : { responseId }),
     });
-  const returned = (id: string, minute: number, second: number, back: number, backSecond = 0) => ({
+  const returned = (
+    id: string,
+    minute: number,
+    second: number,
+    back: number,
+    backSecond = 0,
+    responseId?: string,
+  ) => ({
     ...tool(id, "t1", minute, {
       createdAt: at(minute, second),
       startedAt: at(minute, second),
       updatedAt: at(back, backSecond),
+      ...(responseId === undefined ? {} : { responseId }),
     }),
     createdAt: at(minute, second),
   });
@@ -546,31 +575,29 @@ describe("deriveMessagesTimelineRows", () => {
       now: { kind: "thinking", key: null, messages: [] },
     },
     {
-      name: "a completion filed apart from its start closes it",
+      // Claude files a result as an update and a completion; filed under
+      // another turn, it never merged with its start.
+      name: "a completion filed under another turn closes its start",
       entries: [
-        tool("w1", "t1", 1, {
-          turnId: null,
-          toolLifecycleStatus: "inProgress",
-          sourceActivityKind: "tool.started",
+        open("w1", 1, 0, "r1"),
+        tool("w1-done", "t2", 1, {
+          createdAt: at(1, 30),
+          startedAt: at(1, 30),
+          updatedAt: at(1, 31),
+          toolCallId: "call-w1",
         }),
-        tool("w1-done", "t1", 1, { createdAt: at(1, 30), toolCallId: "call-w1" }),
       ],
       now: { kind: "thinking", key: null, messages: [] },
     },
     {
-      // Its own only activity, the completion carries the time it arrived as
-      // its start: it is no call started after the others returned.
-      name: "a completion filed apart from its start opens no newer batch for the calls beside it",
+      name: "a completion filed under another turn opens no newer batch for the calls beside it",
       entries: [
-        tool("w1", "t1", 1, {
-          turnId: null,
-          toolLifecycleStatus: "inProgress",
-          sourceActivityKind: "tool.started",
-        }),
-        open("w2", 1, 10),
-        tool("w1-done", "t1", 1, {
+        open("w1", 1, 0, "r1"),
+        open("w2", 1, 10, "r1"),
+        tool("w1-done", "t2", 1, {
           createdAt: at(1, 30),
           startedAt: at(1, 30),
+          updatedAt: at(1, 31),
           toolCallId: "call-w1",
         }),
       ],
@@ -579,12 +606,19 @@ describe("deriveMessagesTimelineRows", () => {
     {
       name: "two batches with no thought between: the newer batch only",
       entries: [open("w1", 1), returned("w2", 1, 10, 2), open("w3", 3), open("w4", 3, 5)],
-      now: { kind: "step", step: { key: "w4" }, others: [{ key: "w3" }] },
+      now: { kind: "step", step: { key: "w4" }, others: [{ kind: "step", step: { key: "w3" } }] },
     },
     {
       name: "parallel calls in one batch: the open ones, oldest first under the newest",
       entries: [open("w1", 1), open("w2", 1, 5), open("w3", 1, 10)],
-      now: { kind: "step", step: { key: "w3" }, others: [{ key: "w1" }, { key: "w2" }] },
+      now: {
+        kind: "step",
+        step: { key: "w3" },
+        others: [
+          { kind: "step", step: { key: "w1" } },
+          { kind: "step", step: { key: "w2" } },
+        ],
+      },
     },
     {
       name: "a call of the batch returned first: the one still open",
@@ -612,12 +646,190 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       now: { kind: "operation", operation: { key: "op:d1" } },
     },
+    // A batch is one model response (C1): Claude Code runs a response's early
+    // calls while the model still writes the later ones.
+    {
+      name: "a streamed response: a call returned before a later one of its response started",
+      entries: [open("w1", 1, 0, "r1"), returned("w2", 1, 5, 1, 10, "r1"), open("w3", 1, 20, "r1")],
+      now: { kind: "step", step: { key: "w3" }, others: [{ kind: "step", step: { key: "w1" } }] },
+    },
+    {
+      name: "a call of a newer response puts the older response's open call behind it",
+      entries: [open("w1", 1, 0, "r1"), returned("w2", 1, 5, 1, 10, "r1"), open("w3", 2, 0, "r2")],
+      now: { kind: "step", step: { key: "w3" } },
+    },
+    {
+      // Claude files a result as an update and a completion: merged, with no
+      // start, it tells a return, never a newer batch.
+      name: "a completion with no start of its own opens no newer batch",
+      entries: [
+        open("w1", 1, 0, "r1"),
+        tool("w2", "t1", 1, { createdAt: at(1, 30), startedAt: at(1, 30), updatedAt: at(1, 31) }),
+        open("w3", 1, 40, "r1"),
+      ],
+      now: { kind: "step", step: { key: "w3" }, others: [{ kind: "step", step: { key: "w1" } }] },
+    },
+    {
+      // A session's follow-up call: the Mate waits on it, and the session's
+      // line stands where it first returned.
+      name: "a bootstrap session's open follow-up is never stale, and its line stays",
+      entries: [
+        operation("bs1", "t1", 1, {
+          kind: "bootstrap",
+          phase: "running",
+          hasResult: false,
+          returnedAt: at(1, 30),
+          openedAt: at(3, 0),
+          responseId: "r3",
+        }),
+        returned("w2", 2, 0, 2, 5, "r2"),
+        open("w4", 3, 5, "r3"),
+      ],
+      now: { kind: "step", step: { key: "w4" } },
+    },
+    {
+      name: "a deploy and a command in one batch: both, the deploy under the command",
+      entries: [
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 0),
+        }),
+        open("w2", 1, 5),
+      ],
+      now: {
+        kind: "step",
+        step: { key: "w2" },
+        others: [{ kind: "operation", operation: { key: "op:d1" } }],
+      },
+    },
+    {
+      name: "a command and a deploy in one batch: both, the command under the deploy",
+      entries: [
+        open("w0", 1),
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 5),
+        }),
+      ],
+      now: {
+        kind: "operation",
+        operation: { key: "op:d1" },
+        others: [{ kind: "step", step: { key: "w0" } }],
+      },
+    },
+    {
+      name: "two deploys in one batch: both",
+      entries: [
+        operation("d1", "t1", 1, {
+          kind: "deploy",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 0),
+        }),
+        operation("d2", "t1", 1, {
+          kind: "deploy",
+          subject: "apistage",
+          phase: "running",
+          hasResult: false,
+          anchorAt: at(1, 5),
+        }),
+      ],
+      now: {
+        kind: "operation",
+        operation: { key: "op:d2" },
+        others: [{ kind: "operation", operation: { key: "op:d1" } }],
+      },
+    },
   ])("reads the live field from the newest batch: $name", ({ entries, now }) => {
-    const record = recordOf(rows({ entries: [user("m0", 0), ...entries], live: "t1" }));
+    // The live run's record: a completion filed under another turn draws its own.
+    const record = rows({ entries: [user("m0", 0), ...entries], live: "t1" }).find(
+      (row): row is Extract<MessagesTimelineRow, { kind: "record" }> =>
+        row.kind === "record" && row.live,
+    );
     expect(record?.now).toMatchObject(now);
-    if (now.kind === "step" && !("others" in now)) {
+    if (!("others" in now)) {
       expect(record?.now).not.toHaveProperty("others");
     }
+  });
+
+  it("keeps a bootstrap session's line where it first returned while its follow-up runs", () => {
+    const entries = [
+      user("m0", 0),
+      operation("bs1", "t1", 1, {
+        kind: "bootstrap",
+        phase: "running",
+        hasResult: false,
+        returnedAt: at(1, 30),
+        openedAt: at(3, 0),
+        responseId: "r3",
+      }),
+      returned("w2", 2, 0, 2, 5, "r2"),
+    ];
+    const live = recordOf(rows({ entries, live: "t1" }));
+    expect(live?.items.map((item) => item.key)).toEqual(["operation:op:bs1", "step:w2"]);
+    expect(live?.now).toMatchObject({ kind: "thinking" });
+  });
+
+  it("lands a stale operation in the record where it went stale", () => {
+    const entries = [
+      user("m0", 0),
+      operation("d1", "t1", 1, {
+        kind: "deploy",
+        phase: "running",
+        hasResult: false,
+        anchorAt: at(1, 0),
+        responseId: "r1",
+      }),
+      returned("w2", 1, 10, 1, 20, "r1"),
+      open("w3", 2, 0, "r2"),
+    ];
+    const live = recordOf(rows({ entries, live: "t1" }));
+    expect(live?.now).toMatchObject({ kind: "step", step: { key: "w3" } });
+    expect(live?.items.map((item) => [item.key, item.at])).toEqual([
+      ["step:w2", at(1, 20)],
+      ["operation:op:d1", at(2, 0)],
+    ]);
+  });
+
+  it("says a stale step in the past tense", () => {
+    const read = (id: string, minute: number, responseId: string) =>
+      tool(id, "t1", minute, {
+        label: "Read file",
+        itemType: "file_read" as never,
+        command: undefined as never,
+        detail: `Read: {"file_path":"/srv/app/${id}.ts"}`,
+        createdAt: at(minute),
+        startedAt: at(minute),
+        toolLifecycleStatus: "inProgress",
+        sourceActivityKind: "tool.started",
+        responseId,
+      });
+    const entries = [user("m0", 0), read("w1", 1, "r1"), open("w2", 2, 0, "r2")];
+    const stale = recordOf(rows({ entries, live: "t1" }))?.items.find(
+      (item) => item.key === "step:w1",
+    );
+    expect(stale?.kind).toBe("step");
+    if (stale?.kind !== "step") return;
+    expect(stale.step.noResult).toBe("stale");
+    expect(stale.step.words ?? "").not.toMatch(/^Reading/u);
+  });
+
+  it("puts a call left open before the person wrote into the run behind a newer batch", () => {
+    const entries = [
+      user("m0", 0),
+      open("w1", 1, 0, "r1"),
+      user("m1", 2, "and the footer"),
+      open("w2", 3, 0, "r2"),
+    ];
+    const live = recordOf(rows({ entries, live: "t1" }));
+    expect(live?.now).toMatchObject({ kind: "step", step: { key: "w2" } });
+    expect(live?.items.find((item) => item.key === "step:w1")).toMatchObject({
+      step: { noResult: "stale" },
+    });
   });
 
   it("lands a stand-up in the record where its call returned, while its builds run on in the band", () => {
@@ -1412,7 +1624,10 @@ describe("deriveMessagesTimelineRows", () => {
     expect(now?.kind).toBe("step");
     if (now?.kind !== "step") return;
     expect(now.step.code).toBe("pnpm lint");
-    expect(now.others?.map((step) => step.code)).toEqual(["pnpm build", "pnpm test"]);
+    expect(now.others?.map((call) => call.kind === "step" && call.step.code)).toEqual([
+      "pnpm build",
+      "pnpm test",
+    ]);
     expect(recordOf(live)?.items).toEqual([]);
   });
 

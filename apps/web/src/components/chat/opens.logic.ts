@@ -8,7 +8,7 @@
  * One function, a case per control, so one table-driven test holds the card.
  */
 import type { WorkLogEntry } from "../../session-logic";
-import type { WorkStep } from "./workSteps.logic";
+import { webTarget, type WorkStep } from "./workSteps.logic";
 
 /** The runtime's `Name: {json}` detail of a call: its arguments, never output to show. */
 const CALL_ARGUMENTS = /^[A-Za-z][\w-]*:\s*[{[]/;
@@ -74,23 +74,33 @@ function editedFiles(entry: WorkLogEntry): string[] {
 function askedPastTheLine(entry: WorkLogEntry, kind: WorkStep["kind"]): string[] {
   if (kind !== "search" && kind !== "web") return [];
   const input = entry.callInput;
+  // The line names a page by its host and path: an address that says more is asked.
+  const url = input?.url;
+  const address =
+    url !== undefined && url.replace(/^https?:\/\//u, "").replace(/\/$/u, "") !== webTarget(url)
+      ? `address  ${url}`
+      : null;
   return [
+    address,
     input?.glob && input.glob !== input.pattern ? `glob     ${input.glob}` : null,
     input?.path ? `in       ${input.path}` : null,
   ].filter((line): line is string => line !== null);
 }
 
-/** Whether a helper's report says more than its line: its state word, its first line under it. */
-function helperReportAdds(report: string | null, state: string): boolean {
+/**
+ * Whether a helper's report says more than its line: its state word, its
+ * first line under it — cut short at the card's width (`previewCut`, measured).
+ */
+function helperReportAdds(report: string | null, state: string, previewCut: boolean): boolean {
   const said = report?.trim() ?? "";
   if (said.length === 0) return false;
   const lines = said.split("\n").filter((line) => line.trim().length > 0);
   if (lines.length > 1) return true;
   if (said.replace(/[.!]$/u, "").toLowerCase() === state.toLowerCase()) return false;
-  return said.length > HELPER_LINE_CHARS;
+  return previewCut;
 }
 
-/** How long a helper's one line of report stands whole under its title, at the card's width. */
+/** How long a helper's one line of report is guessed to stand whole, before it is measured. */
 export const HELPER_LINE_CHARS = 72;
 
 /**
@@ -129,8 +139,13 @@ export type Opener =
       /** Takes with a picture, a read of the page or a reason it failed. */
       readonly shown: number;
     }
-  /** A helper's report, under its title and state. */
-  | { readonly control: "helper"; readonly report: string | null; readonly state: string }
+  /** A helper's report, under its title and state; its first line cut short at the card's width. */
+  | {
+      readonly control: "helper";
+      readonly report: string | null;
+      readonly state: string;
+      readonly previewCut: boolean;
+    }
   /** A step: what it printed, past its code's four lines. */
   | { readonly control: "step"; readonly step: WorkStep; readonly codeCut: boolean }
   /** A thought: past its four lines. */
@@ -138,9 +153,7 @@ export type Opener =
   /** "Show work" on a settled run's line: the scroll of what the run shows. */
   | { readonly control: "work"; readonly lines: number }
   /** A picture of the result: the viewer, onto a file still there or the pictures past it. */
-  | { readonly control: "picture"; readonly gone: boolean; readonly more: number }
-  /** The live slot: the thing in full up to its cap — never a chevron. */
-  | { readonly control: "live" };
+  | { readonly control: "picture"; readonly gone: boolean; readonly more: number };
 
 /** Whether a control opens onto something not already on screen: else it is not drawn. */
 export function opensOnto(opener: Opener): boolean {
@@ -159,7 +172,7 @@ export function opensOnto(opener: Opener): boolean {
     case "checks":
       return opener.checks > 1 || opener.shown > 0;
     case "helper":
-      return helperReportAdds(opener.report, opener.state);
+      return helperReportAdds(opener.report, opener.state, opener.previewCut);
     case "step":
       return opener.codeCut || stepOutput(opener.step).length > 0;
     case "thought":
@@ -168,8 +181,6 @@ export function opensOnto(opener: Opener): boolean {
       return opener.lines > 0;
     case "picture":
       return !opener.gone || opener.more > 0;
-    case "live":
-      return false;
   }
 }
 

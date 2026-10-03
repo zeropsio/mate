@@ -21,7 +21,11 @@ import {
 import { standupReadingFromProgress } from "@t3tools/client-runtime/zerops/activity/standupProgress";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
-import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  standupRunsOn,
+  standupStepRole,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import { createContext, use, useMemo } from "react";
 
 import { useNowMs } from "../useNowMs";
@@ -96,6 +100,86 @@ export function standupExpected(operation: ZeropsOperation): ReadonlyArray<strin
   return next.length === 0 ? undefined : next.map((step) => step.label);
 }
 
+/** The services of its own a returned call's report said still build. */
+function stillBuilding(operation: ZeropsOperation): ReadonlyArray<string> {
+  return operation.steps
+    .filter((step) => step.state === "running" && standupStepRole(step) === "own")
+    .map((step) => step.label);
+}
+
+/**
+ * A call that returned while its builds run on (`standupRunsOn`), read from
+ * the project as it stands: the services its report said still build, and
+ * what their builds have come to since. Null before the project is read.
+ */
+function ranOnReading(
+  operation: ZeropsOperation,
+  read: {
+    readonly services?: ReadonlyArray<StandupService>;
+    readonly processes?: ReadonlyArray<ActivityProcess>;
+    readonly nowMs: number;
+  },
+): StandupReading | null {
+  if (read.services === undefined || read.processes === undefined) return null;
+  return readStandup({
+    half: halfOf(operation),
+    expected: stillBuilding(operation),
+    services: read.services,
+    processes: read.processes,
+    since: operation.anchorAt,
+    nowMs: read.nowMs,
+  });
+}
+
+/**
+ * Whether the builds a returned call ran on with are done, as the project
+ * stands: each service its report said still builds has a build that ended.
+ * Not read yet, or a build not seen yet, is not done.
+ */
+export function standupBuildsDone(
+  operation: ZeropsOperation,
+  read: {
+    readonly services?: ReadonlyArray<StandupService>;
+    readonly processes?: ReadonlyArray<ActivityProcess>;
+    readonly nowMs: number;
+  },
+): boolean {
+  const reading = ranOnReading(operation, read);
+  if (reading === null) return false;
+  return stillBuilding(operation).every((hostname) => {
+    const row = reading.rows.find((candidate) => candidate.hostname === hostname);
+    return row !== undefined && row.state !== "building" && row.state !== "waits";
+  });
+}
+
+/**
+ * The stand-ups of `operations` whose builds ran on after their call returned
+ * and that the project, as it stands, says are done (`standupBuildsDone`), by
+ * key. It reads the project only while such a stand-up runs on.
+ */
+export function useStandupsDone(
+  operations: ReadonlyArray<ZeropsOperation>,
+  environmentId: EnvironmentId | null,
+): ReadonlySet<string> {
+  const ranOn = useMemo(() => operations.filter(standupRunsOn), [operations]);
+  const topology = useZeropsTopology(ranOn.length > 0 ? environmentId : null);
+  const { processes } = useProjectActivity(
+    ranOn.length > 0 ? (topology?.project.id ?? null) : null,
+  );
+  return useMemo(() => {
+    if (ranOn.length === 0 || topology === undefined || processes === undefined) return NONE;
+    const services = standupServices(topology.services);
+    const nowMs = Date.now();
+    return new Set(
+      ranOn
+        .filter((operation) => standupBuildsDone(operation, { services, processes, nowMs }))
+        .map((operation) => operation.key),
+    );
+  }, [processes, ranOn, topology]);
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
 /**
  * A call's reading: a running one from the project as it stands (not read
  * yet: null — the bar says it is getting ready); a settled one as the call
@@ -109,7 +193,14 @@ export function standupReadingFor(
     readonly nowMs: number;
   },
 ): StandupReading | null {
-  if (operation.phase !== "running") return settledStandupReading(operation, read.services);
+  if (operation.phase !== "running") {
+    // Its builds run on after its call returned: read as they stand.
+    if (standupRunsOn(operation)) {
+      const reading = ranOnReading(operation, read);
+      if (reading !== null) return reading;
+    }
+    return settledStandupReading(operation, read.services);
+  }
   // zcp's own word, relayed by its Mate, before anything pieced together here.
   if (operation.standUpProgress !== undefined) {
     return standupReadingFromProgress(operation.standUpProgress, {
@@ -134,7 +225,7 @@ export function useStandupReading(
   environmentId: EnvironmentId | null,
 ): StandupReading | null {
   const fixtures = use(StandupReadings);
-  const running = operation.phase === "running";
+  const running = operation.phase === "running" || standupRunsOn(operation);
   const topology = useZeropsTopology(environmentId);
   const { processes } = useProjectActivity(running ? (topology?.project.id ?? null) : null);
   const nowMs = useNowMs();

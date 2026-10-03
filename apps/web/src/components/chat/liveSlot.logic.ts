@@ -92,6 +92,29 @@ export function slotStart(offer: Omit<SlotOffer, "final">): LiveSlot {
   };
 }
 
+/**
+ * The slot as a resync leaves it: what the catch-up brought is history at
+ * once — nobody watched it happen, so nothing stands or plops — and what is
+ * live shows, what already stood staying where it stood.
+ */
+export function slotResync(slot: LiveSlot, offer: Omit<SlotOffer, "final">): LiveSlot {
+  const live = new Set(offer.live);
+  const kept = slot.entries.filter((entry) => entry.endedAt === null && live.has(entry.key));
+  const entries = admit(
+    kept.map((entry) => (entry.riders.length === 0 ? entry : { ...entry, riders: [] })),
+    offer.live,
+    offer.at,
+  );
+  const seen = new Set([...slot.seen, ...offer.record]);
+  const same =
+    entries.length === slot.entries.length &&
+    entries.every((entry, index) => entry === slot.entries[index]) &&
+    offer.live.length === slot.live.length &&
+    offer.live.every((key, index) => slot.live[index] === key) &&
+    seen.size === slot.seen.size;
+  return same ? slot : { entries, live: offer.live, seen };
+}
+
 /** Plops what has ended and stood its minimum, and lets in what waited. */
 export function slotSettle(slot: LiveSlot, at: number): LiveSlot {
   const plopping = slot.entries.filter((entry) => {
@@ -152,6 +175,19 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
     },
     offer.at,
   );
+}
+
+/**
+ * How many entries run past the rows the slot draws (`SLOT_MAX_ROWS`), as
+ * "+N more running": `rows` are the rows it would draw, in order, each with
+ * its entry — a question and the answer under it are two rows of one.
+ */
+export function slotRunningPast(rows: ReadonlyArray<{ readonly entry: SlotEntry }>): number {
+  const drawn = new Set(rows.slice(0, SLOT_MAX_ROWS).map((row) => row.entry));
+  const past = new Set(
+    rows.map((row) => row.entry).filter((entry) => !drawn.has(entry) && entry.endedAt === null),
+  );
+  return past.size;
 }
 
 /** When the slot next changes on its own — an ended item's plop — or null. */

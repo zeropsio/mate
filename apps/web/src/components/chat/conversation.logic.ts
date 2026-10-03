@@ -1161,9 +1161,7 @@ export type WorkLineFace = "working" | "idle" | "produced" | "failed" | "paused"
 export function operationLineWords(operation: ZeropsOperation): string {
   const voice = operation.voice.replace(/\.$/, "");
   const { subject, statusWord } = operation;
-  // A stand-up whose call returned says what it stood up while its builds run on.
-  const runsOn = operation.kind === "standup" && operation.returnedAt !== undefined;
-  if (operation.kind === "error" || (operation.phase === "running" && !runsOn)) return voice;
+  if (operation.kind === "error" || operation.phase === "running") return voice;
   const failed = operation.phase === "failed";
   switch (operation.kind) {
     case "verify": {
@@ -1223,7 +1221,9 @@ export function operationLineWords(operation: ZeropsOperation): string {
     // "Complete app" read oddly too: a set-up session stands its services up.
     case "bootstrap":
       if (failed) return `${subject}: ${statusWord.toLowerCase()}`;
-      return statusWord === "Complete" ? `Stood ${subject} up` : `${statusWord} ${subject}`;
+      if (statusWord !== "Complete") return `${statusWord} ${subject}`;
+      // An adopt-route session took over what stood already (its kicker, "Adopt · …").
+      return operation.kicker.startsWith("Adopt ·") ? `Adopted ${subject}` : `Stood ${subject} up`;
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.

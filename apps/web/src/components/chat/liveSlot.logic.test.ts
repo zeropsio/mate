@@ -6,6 +6,8 @@ import {
   slotHolds,
   slotHoldsIn,
   slotOffer,
+  slotResync,
+  slotRunningPast,
   slotSettle,
   slotStart,
   type LiveSlot,
@@ -175,6 +177,68 @@ describe("the live slot's schedule", () => {
     expect(slotOffer(slot, { at: 10, live: ["c3"], record: ["c1", "c2"], final: false })).toBe(
       slot,
     );
+  });
+
+  // A running thread opened from a cached copy catches up as it resyncs:
+  // what it brings is history at once, and only what is live stands.
+  it.each([
+    {
+      name: "five record items catch up: none stands, none plops",
+      before: { live: ["c1"], record: [] as string[] },
+      after: { live: ["c6"], record: ["c1", "c2", "c3", "c4", "c5"] },
+      entries: ["c6"],
+    },
+    {
+      name: "what still runs stays where it stood",
+      before: { live: ["c1"], record: [] as string[] },
+      after: { live: ["c1"], record: ["c0"] },
+      entries: ["c1"],
+    },
+    {
+      name: "nothing live: the slot empties at once",
+      before: { live: ["c1"], record: [] as string[] },
+      after: { live: [] as string[], record: ["c1"] },
+      entries: [] as string[],
+    },
+  ])("resyncs without a plop: $name", ({ before, after, entries }) => {
+    const slot = slotStart({ at: 0, ...before });
+    const synced = slotResync(slot, { at: 100, ...after });
+    expect(synced.entries.map((entry) => entry.key)).toEqual(entries);
+    expect(synced.entries.every((entry) => entry.endedAt === null)).toBe(true);
+    expect(
+      [...slotHoldsIn(synced, after.record)].filter((key) => after.record.includes(key)),
+    ).toEqual(after.record.filter((key) => after.live.includes(key)));
+    expect(slotDue(synced)).toBeNull();
+    // Once synced, an unchanged offer changes nothing.
+    expect(slotOffer(synced, { at: 200, ...after, final: false })).toBe(synced);
+  });
+
+  // "+N more running" counts what runs past the rows drawn, not past the
+  // slot's first entries: an entry drawn in another line, or a question and
+  // the answer under it, shift what is drawn (pass 35).
+  it.each([
+    { name: "four running: one more", rows: ["a", "b", "c", "d"], ended: [], more: 1 },
+    { name: "three running: none more", rows: ["a", "b", "c"], ended: [], more: 0 },
+    {
+      name: "an ended entry past the three is no more running",
+      rows: ["a", "b", "c", "d", "e"],
+      ended: ["d"],
+      more: 1,
+    },
+    {
+      name: "a question and its answer are two rows of one entry",
+      rows: ["q", "q", "b", "c"],
+      ended: [],
+      more: 1,
+    },
+  ])("counts what runs past the rows drawn: $name", ({ rows, ended, more }) => {
+    const entries = new Map(
+      rows.map((key) => [
+        key,
+        { key, shownAt: 0, endedAt: ended.includes(key) ? 10 : null, riders: [] },
+      ]),
+    );
+    expect(slotRunningPast(rows.map((key) => ({ entry: entries.get(key)! })))).toBe(more);
   });
 
   it("leaves out of the history what arrived since the slot last heard, before it places it", () => {

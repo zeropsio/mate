@@ -4323,6 +4323,11 @@ code {
   top: var(--run-slot-line, 26px);
   translate: 0 -50%;
   z-index: 1;
+}
+/* They follow the first line once placed, never from where a first paint
+   guessed it. */
+.run-slot[data-placed] > .run-slot-face,
+.run-slot[data-placed] > .run-slot-clock {
   transition: top 240ms var(--ease-out-strong);
 }
 .run-slot-face {
@@ -4345,11 +4350,12 @@ code {
 }
 /* A thought keeps the clock's room on its right, live and in the history
    alike, so its plop never rewraps it — and "Show full thought" stands there.
-   Words to the person keep it on their first line only, while live. */
+   Words to the person keep it on their first line only, while live — inside
+   what holds the words, so a fold that clips them never narrows them all. */
 [data-run-chat] [data-chat-bubble="thought"] {
   padding-right: 52px;
 }
-.run-slot [data-chat-bubble="speech"]::before {
+.run-slot [data-chat-bubble="speech"] > :first-child::before {
   content: "";
   float: right;
   width: 40px;
@@ -4382,8 +4388,8 @@ code {
   color: var(--color-muted-foreground);
 }
 @media (prefers-reduced-motion: reduce) {
-  .run-slot-face,
-  .run-slot-clock {
+  .run-slot[data-placed] > .run-slot-face,
+  .run-slot[data-placed] > .run-slot-clock {
     transition: none;
   }
 }
@@ -4423,7 +4429,8 @@ code {
    grows takes its room from the history, never from the page. */
 [data-run-chat][data-run-live] {
   display: flex;
-  max-height: min(560px, 60svh);
+  /* On a short page the slot alone can pass the cap: the card holds it whole. */
+  max-height: max(min(560px, 60svh), var(--run-slot-room, 0px));
   flex-direction: column;
 }
 [data-run-chat][data-run-live] > .run-above {

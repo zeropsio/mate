@@ -242,6 +242,50 @@ describe("what runs alongside the Mate", () => {
     }
   });
 
+  // A bar closes with its chevron when its rows drop to one, and stays closed
+  // when they come back: it never springs open by itself (pass 35).
+  it("never springs a bar open by itself after its rows dropped and came back", () => {
+    const observers = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    const task = (id: string) => ({ ...DOCK.background!.tasks[0]!, id, title: `Task ${id}` });
+    const withTasks = (ids: ReadonlyArray<string>): DockModel => ({
+      ...DOCK,
+      background: { tasks: ids.map(task), running: ids.length, done: 0, failed: 0 },
+    });
+    const draw = (dock: DockModel) => (
+      <ConversationWorking
+        dock={dock}
+        environmentId={null}
+        incidents={[]}
+        onOpenAgents={() => undefined}
+        threadRef={null}
+      />
+    );
+    try {
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(draw(withTasks(["b1", "b2"])));
+      });
+      const bar = () =>
+        renderer.root.findAll(
+          (node) =>
+            node.type === "button" && String(node.props["aria-label"]).includes("Background"),
+        );
+      act(() => bar()[0]!.props.onClick());
+      expect(bar()[0]!.props["aria-expanded"]).toBe(true);
+      act(() => renderer.update(draw(withTasks(["b2"]))));
+      expect(bar()).toHaveLength(0);
+      act(() => renderer.update(draw(withTasks(["b2", "b3"]))));
+      expect(bar()[0]!.props["aria-expanded"]).toBe(false);
+    } finally {
+      globalThis.ResizeObserver = observers;
+    }
+  });
+
   // A bar that leaves gives its room back (the owner, 2026-09-30, of a
   // finished deploy's room kept under a live line: "what's up with the big
   // space … at the bottom"): the room is held where it stood and closes from
@@ -296,6 +340,55 @@ describe("what runs alongside the Mate", () => {
       expect(rooms).toEqual([96, null]);
     } finally {
       globalThis.ResizeObserver = observers;
+    }
+  });
+
+  // Under reduced motion a bar that leaves gives its room back at once.
+  it("gives back the room of a bar that leaves at once under reduced motion", () => {
+    const observers = globalThis.ResizeObserver;
+    const savedWindow = (globalThis as { window?: unknown }).window;
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    (globalThis as { window?: unknown }).window = {
+      matchMedia: (query: string) => ({ matches: query.includes("reduce") }),
+    };
+    closings.length = 0;
+    try {
+      let bars = 96;
+      const panel = {
+        style: { height: "" },
+        closest: () => null,
+        getBoundingClientRect: () => ({
+          height: panel.style.height === "" ? bars : Number.parseFloat(panel.style.height),
+        }),
+      };
+      const draw = (dock: DockModel | null) => (
+        <ConversationWorking
+          dock={dock}
+          environmentId={null}
+          incidents={[]}
+          onOpenAgents={() => undefined}
+          threadRef={null}
+        />
+      );
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(draw(DOCK), {
+          createNodeMock: (element) =>
+            (element.props as Record<string, unknown>)["data-conversation-working"] === undefined
+              ? {}
+              : panel,
+        });
+      });
+      bars = 0;
+      act(() => renderer.update(draw(null)));
+      expect(closings).toHaveLength(0);
+    } finally {
+      globalThis.ResizeObserver = observers;
+      (globalThis as { window?: unknown }).window = savedWindow;
     }
   });
 

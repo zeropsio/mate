@@ -371,7 +371,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
 }: MessagesTimelineProps) {
   // What runs alongside, a bar that ended showing its ending a moment (pass 35).
-  const working = useEndingsHeld(workingNow);
+  const working = useEndingsHeld(workingNow, syncing);
   // The timeline mounts once per thread; a thread left mid-read comes back at
   // the same row.
   const rememberedPosition = useMemo(() => readTimelinePosition(routeThreadKey), [routeThreadKey]);

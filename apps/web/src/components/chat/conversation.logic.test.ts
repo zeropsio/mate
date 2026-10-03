@@ -2559,6 +2559,15 @@ describe("operationLineWords", () => {
       statusWord: "Complete",
       words: "Stood app up",
     },
+    // An adopt-route session took over what stood already.
+    {
+      kind: "bootstrap",
+      phase: "done",
+      voice: "Adopting app.",
+      kicker: "Adopt · app",
+      statusWord: "Complete",
+      words: "Adopted app",
+    },
   ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
   });
@@ -2655,7 +2664,7 @@ describe("operationLineWords — a stand-up call, by what its report said", () =
       name: "the development call returned, its builds running on",
       fields: {
         subject: "development",
-        phase: "running",
+        phase: "done",
         voice: "Standing development up.",
         returnedAt: "2026-09-24T20:01:05.000Z",
         steps: [building("apidev"), building("db")],

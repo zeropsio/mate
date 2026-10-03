@@ -322,6 +322,16 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     }
   }
 
+  // The start says the response it was written in; its other rows never do.
+  let responseId: string | undefined;
+  for (const row of rows) {
+    const named = row.payload.responseId;
+    if (typeof named === "string" && named.trim().length > 0) {
+      responseId = named;
+      break;
+    }
+  }
+
   return {
     id: group.toolCallId ?? group.id,
     turnId,
@@ -336,5 +346,6 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     ...(settledRow !== undefined ? { settledAt: settledRow.createdAt } : {}),
     rowIds: new Set(rows.map((row) => row.id)),
     agentInternal,
+    ...(responseId !== undefined ? { responseId } : {}),
   };
 }

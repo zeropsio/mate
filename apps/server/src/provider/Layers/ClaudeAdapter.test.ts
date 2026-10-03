@@ -2331,6 +2331,154 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Block indexes count per response, and a helper's response streams
+  // beside its parent's: a helper's call at the same index as the parent's
+  // Task call must not take its place, or one result never closes its call.
+  it.effect("keeps a parent's call and a helper's call at the same block index apart", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "delegate", attachments: [] });
+      const toolStart = (
+        uuid: string,
+        parent: string | null,
+        id: string,
+        name: string,
+        input: Record<string, unknown>,
+      ) =>
+        ({
+          type: "stream_event",
+          session_id: "sdk-session-index",
+          uuid,
+          parent_tool_use_id: parent,
+          event: {
+            type: "content_block_start",
+            index: 1,
+            content_block: { type: "tool_use", id, name, input },
+          },
+        }) as unknown as SDKMessage;
+      const toolResult = (uuid: string, parent: string | null, id: string, content: string) =>
+        ({
+          type: "user",
+          session_id: "sdk-session-index",
+          uuid,
+          parent_tool_use_id: parent,
+          message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content }] },
+        }) as unknown as SDKMessage;
+      harness.query.emit(
+        toolStart("stream-parent", null, "tool-task-p", "Task", {
+          description: "Check the schema",
+          prompt: "Check the schema",
+          subagent_type: "general-purpose",
+        }),
+      );
+      harness.query.emit(
+        toolStart("stream-helper", "tool-task-p", "tool-read-h", "Read", {
+          file_path: "/srv/app/schema.sql",
+        }),
+      );
+      harness.query.emit(toolResult("user-helper", "tool-task-p", "tool-read-h", "create table"));
+      harness.query.emit(toolResult("user-parent", null, "tool-task-p", "The schema is fine"));
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-index",
+        uuid: "result-index",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const completed = events.flatMap((event) =>
+        event.type === "item.completed" && event.itemId !== undefined ? [String(event.itemId)] : [],
+      );
+      assert.deepStrictEqual(
+        completed.filter((id) => id === "tool-task-p" || id === "tool-read-h"),
+        ["tool-read-h", "tool-task-p"],
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // The calls of one model response are one batch: the live slot tells a
+  // newer batch by the response a call was written in.
+  it.effect("stamps each call with the model response it was written in", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "look", attachments: [] });
+      const stream = (uuid: string, parent: string | null, event: Record<string, unknown>) =>
+        ({
+          type: "stream_event",
+          session_id: "sdk-session-response",
+          uuid,
+          parent_tool_use_id: parent,
+          event,
+        }) as unknown as SDKMessage;
+      const toolUse = (index: number, id: string) => ({
+        type: "content_block_start",
+        index,
+        content_block: { type: "tool_use", id, name: "Read", input: { file_path: `/srv/${id}` } },
+      });
+      harness.query.emit(stream("s1", null, { type: "message_start", message: { id: "msg-a" } }));
+      harness.query.emit(stream("s2", null, toolUse(0, "tool-a1")));
+      harness.query.emit(stream("s3", null, toolUse(1, "tool-a2")));
+      // A helper's response streams between: it is no response of the Mate's.
+      harness.query.emit(
+        stream("s4", "tool-a2", { type: "message_start", message: { id: "msg-h" } }),
+      );
+      harness.query.emit(stream("s5", "tool-a2", toolUse(0, "tool-h1")));
+      harness.query.emit(stream("s6", null, { type: "message_start", message: { id: "msg-b" } }));
+      harness.query.emit(stream("s7", null, toolUse(0, "tool-b1")));
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-response",
+        uuid: "result-response",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const started = events.flatMap((event) =>
+        event.type === "item.started" && event.itemId !== undefined
+          ? [[String(event.itemId), event.payload.responseId ?? null] as const]
+          : [],
+      );
+      assert.deepStrictEqual(started, [
+        ["tool-a1", "msg-a"],
+        ["tool-a2", "msg-a"],
+        ["tool-h1", null],
+        ["tool-b1", "msg-b"],
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("treats user-aborted Claude results as interrupted without a runtime error", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

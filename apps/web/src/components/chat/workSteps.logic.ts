@@ -301,7 +301,8 @@ const ZEROPS_WORDS: Readonly<Record<string, readonly [running: string, done: str
   zerops_events: ["Reading the project's events", "Read the project's events"],
 };
 
-function webTarget(url: string): string {
+/** A page as a line names it: its host and its path. */
+export function webTarget(url: string): string {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname === "/" ? "" : parsed.pathname;
@@ -529,29 +530,20 @@ export function foldSteps(
       previous.kind === "look" &&
       step.kind === "look" &&
       previous.state !== "running" &&
+      step.state !== "running" &&
       step.state !== "failed" &&
       previous.state !== "failed"
     ) {
+      // A look still running is the slot's, never folded: these ended.
       const images = [...previous.images, ...step.images];
-      const running = step.state === "running";
       const names = images.map(basename);
       steps[steps.length - 1] = {
         ...previous,
-        words:
-          names.length === 0
-            ? running
-              ? "Looking at pictures"
-              : "Looked at pictures"
-            : `${running ? "Looking at" : "Looked at"} ${listed(names)}`,
+        words: names.length === 0 ? "Looked at pictures" : `Looked at ${listed(names)}`,
         phrase:
           names.length === 0
-            ? {
-                verb: running ? "Looking at pictures" : "Looked at pictures",
-                targets: [],
-                more: 0,
-                code: false,
-              }
-            : phraseOf(running ? "Looking at" : "Looked at", names),
+            ? { verb: "Looked at pictures", targets: [], more: 0, code: false }
+            : phraseOf("Looked at", names),
         state: step.state,
         endedAt: step.endedAt,
         entries: [...previous.entries, entry],
@@ -564,15 +556,16 @@ export function foldSteps(
       previous.kind === "edit" &&
       step.kind === "edit" &&
       previous.state === "done" &&
+      step.state !== "running" &&
       step.state !== "failed" &&
-      step.words === plainWords(entry, "edit", step.state === "running") &&
+      step.words === plainWords(entry, "edit", false) &&
       previous.entries.every((earlier) => earlier.callInput?.description === undefined)
     ) {
       const merged = [...previous.entries, entry];
       steps[steps.length - 1] = {
         ...previous,
-        words: editWords(merged, step.state === "running"),
-        phrase: editPhrase(merged, step.state === "running"),
+        words: editWords(merged, false),
+        phrase: editPhrase(merged, false),
         state: step.state,
         endedAt: step.endedAt,
         entries: merged,
