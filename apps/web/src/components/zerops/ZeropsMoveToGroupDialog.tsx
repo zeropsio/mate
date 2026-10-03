@@ -31,14 +31,15 @@ import {
 } from "./ZeropsMoveToGroupDialog.logic";
 
 export function ZeropsMoveToGroupForm({
-  projectName,
+  name,
   choices,
   currentGroupId,
   currentRole,
   onCancel,
   onSubmit,
 }: {
-  readonly projectName: string;
+  /** The Mate's name, as its row in the left menu draws it. */
+  readonly name: string;
   readonly choices: MoveChoices;
   readonly currentGroupId: string | undefined;
   readonly currentRole: ZeropsEnvironmentRole | undefined;
@@ -69,7 +70,7 @@ export function ZeropsMoveToGroupForm({
       }}
     >
       <DialogHeader>
-        <DialogTitle>Move {projectName}</DialogTitle>
+        <DialogTitle>Move {name}</DialogTitle>
         <DialogDescription>
           A group is what you call the application; its environments are the projects in it.
         </DialogDescription>

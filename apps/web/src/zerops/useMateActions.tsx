@@ -1092,7 +1092,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             move(candidate, membership);
           }}
           open
-          projectName={dialog.candidate.project.name}
+          name={mateName(dialog.candidate)}
         />
       ) : null}
       {dialog?.kind === "delete" ? (

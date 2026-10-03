@@ -76,6 +76,7 @@ const mock = vi.hoisted(() => ({
   /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
   moveDialog: {
     current: null as {
+      readonly name: string;
       readonly choices: {
         readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
       };
@@ -1029,6 +1030,17 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
     expect(mock.moveDialog.current?.choices.apps.map((app) => app.name)).toContain(
       "mate-rig-e2e-g",
     );
+  });
+
+  it("names the Mate as its row in the left menu does", () => {
+    mount();
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "move")!
+        .onSelect();
+    });
+
+    expect(mock.moveDialog.current?.name).toBe("Fen");
   });
 });
 
