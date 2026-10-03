@@ -120,10 +120,13 @@ export class HqError extends Error {
   readonly kind: "unavailable" | "refused" | "uncertain";
   /** HQ's code (`forbidden`, `conflict`, `not_active`, …), or `network`. */
   readonly code: string;
+  /** HQ's reason code beside it, where it named one (`tag_taken`, `change_not_open`, …). */
+  readonly reason: string | undefined;
   readonly status: number | undefined;
   constructor(input: {
     readonly kind: HqError["kind"];
     readonly code: string;
+    readonly reason?: string | undefined;
     readonly status?: number | undefined;
     readonly message: string;
   }) {
@@ -131,6 +134,7 @@ export class HqError extends Error {
     this.name = "HqError";
     this.kind = input.kind;
     this.code = input.code;
+    this.reason = input.reason;
     this.status = input.status;
   }
 }
@@ -317,14 +321,13 @@ async function errorOf(response: Response): Promise<HqError> {
       message: "HQ is not answering right now.",
     });
   }
+  const reason = typeof body.reason === "string" ? body.reason : undefined;
   return new HqError({
     kind: "refused",
     code,
+    reason,
     status: response.status,
-    message: hqRefusalWords({
-      code,
-      reason: typeof body.reason === "string" ? body.reason : undefined,
-    }),
+    message: hqRefusalWords({ code, reason }),
   });
 }
 
@@ -438,6 +441,16 @@ const readAppRepos = decoded(RepoListResponse);
 const readCompare = decoded(CompareResponse);
 const readReleases = decoded(ReleaseListResponse);
 const readRelease = decoded(Release);
+
+/** Whether two releases put the same commits live: each service at the same commit. */
+const sameEntries = (
+  made: ReadonlyArray<{ readonly service: string; readonly sha: string }>,
+  asked: ReadonlyArray<{ readonly service: string; readonly sha: string }>,
+): boolean =>
+  made.length === asked.length &&
+  asked.every((entry) =>
+    made.some((other) => other.service === entry.service && other.sha === entry.sha),
+  );
 
 /** An application's releases' path at HQ's API. */
 const releasesPath = (appId: string): string => `/api/apps/${encodeURIComponent(appId)}/releases`;
@@ -555,20 +568,31 @@ export function makeHqApi(input: {
    * A write whose answer was lost, decided by what HQ holds now: `holds` reads it back — what the
    * write would have answered, or `undefined` while HQ holds nothing of it. Nothing held, or no
    * answer to the read either, leaves it uncertain.
+   *
+   * HQ finishes a write whose client went away (F22), so one pressed again can meet itself: a
+   * refusal for one of `itself` — HQ's reasons that may be this very write made already — is read
+   * back the same way, and stands where HQ holds nothing of it.
    */
   const confirmed = async <T>(
     write: () => Promise<T>,
     holds: () => Promise<T | undefined>,
+    itself: ReadonlyArray<string> = [],
   ): Promise<T> => {
     try {
       return await write();
     } catch (cause) {
-      if (!(cause instanceof HqError && cause.kind === "uncertain")) throw cause;
+      const lost = cause instanceof HqError && cause.kind === "uncertain";
+      const met =
+        cause instanceof HqError &&
+        cause.kind === "refused" &&
+        cause.reason !== undefined &&
+        itself.includes(cause.reason);
+      if (!lost && !met) throw cause;
       let held: T | undefined;
       try {
         held = await holds();
       } catch {
-        // No answer to the read either: the write stays as uncertain as it was.
+        // No answer to the read either: the write stays as it was answered.
         throw cause;
       }
       if (held === undefined) throw cause;
@@ -780,12 +804,14 @@ export function makeHqApi(input: {
             ),
           ),
         () => changeIn(link, "merged"),
+        ["already_merged", "change_not_open"],
       ),
     closeChange: (link) =>
       confirmed(
         async () =>
           readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, "once")),
         () => changeIn(link, "closed"),
+        ["change_not_open"],
       ),
     changeAttachment: async (link, signal) =>
       (
@@ -808,7 +834,8 @@ export function makeHqApi(input: {
         await authorized(comparePath(appId, repo, query), signal === undefined ? {} : { signal }),
       ),
     releases: releasesOf,
-    // A release is named by its tag, which HQ gives no second one.
+    // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
+    // this one where it tags the same `main` with the same commits.
     release: (appId, request) =>
       confirmed(
         async () =>
@@ -819,7 +846,14 @@ export function makeHqApi(input: {
               "once",
             ),
           ),
-        async () => (await releasesOf(appId)).find((made) => made.tag === request.tag),
+        async () =>
+          (await releasesOf(appId)).find(
+            (made) =>
+              made.tag === request.tag &&
+              made.sha === request.groupHead &&
+              sameEntries(made.entries, request.entries),
+          ),
+        ["tag_taken"],
       ),
     // A roll back is a new release HQ names: the newest, rolling back to `tag` at the same `main`,
     // is taken for it.

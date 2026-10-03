@@ -1006,6 +1006,106 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ).toHaveLength(1);
   });
 
+  // HQ finishes a write whose client went away (F22): pressed again, it can meet itself as a refusal.
+  it.each<{
+    readonly name: string;
+    readonly write: { readonly method: string; readonly path: string };
+    readonly reason: string;
+    readonly holds: (seen: Seen) => Response | undefined;
+    readonly ask: (hqApi: HqApi) => Promise<unknown>;
+    readonly made: unknown;
+  }>([
+    {
+      name: "a release whose tag HQ holds at the same main and commits",
+      write: { method: "POST", path: "/api/apps/app-1/releases" },
+      reason: "tag_taken",
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/releases" ? json(200, { releases: [RELEASE] }) : undefined,
+      ask: (hqApi) =>
+        hqApi.release("app-1", { tag: RELEASE.tag, groupHead: SHA, entries: RELEASE.entries }),
+      made: RELEASE,
+    },
+    {
+      name: "a merge of a change HQ holds merged",
+      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/merge" },
+      reason: "already_merged",
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3"
+          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+          : undefined,
+      ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
+      made: { ...CHANGE, state: "merged" },
+    },
+    {
+      name: "a merge of a change no longer open, HQ holding it merged",
+      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/merge" },
+      reason: "change_not_open",
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3"
+          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+          : undefined,
+      ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
+      made: { ...CHANGE, state: "merged" },
+    },
+    {
+      name: "a close of a change no longer open, HQ holding it closed",
+      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/close" },
+      reason: "change_not_open",
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3"
+          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "closed" } })
+          : undefined,
+      ask: (hqApi) => hqApi.closeChange(LINK),
+      made: { ...CHANGE, state: "closed" },
+    },
+    {
+      name: "a release whose tag HQ holds at another main",
+      write: { method: "POST", path: "/api/apps/app-1/releases" },
+      reason: "tag_taken",
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/releases"
+          ? json(200, { releases: [{ ...RELEASE, sha: "c".repeat(40) }] })
+          : undefined,
+      ask: (hqApi) =>
+        hqApi.release("app-1", { tag: RELEASE.tag, groupHead: SHA, entries: RELEASE.entries }),
+      made: "refused",
+    },
+    {
+      name: "a close of a change HQ holds merged",
+      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/close" },
+      reason: "change_not_open",
+      holds: (seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3"
+          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+          : undefined,
+      ask: (hqApi) => hqApi.closeChange(LINK),
+      made: "refused",
+    },
+    {
+      name: "an application whose name HQ holds",
+      write: { method: "POST", path: "/api/apps" },
+      reason: "app_name_taken",
+      holds: (seen) =>
+        seen.path === "/api/structure" ? json(200, { ungrouped: [], apps: [HARBOR] }) : undefined,
+      ask: (hqApi) => hqApi.createApp("Harbor"),
+      made: "refused",
+    },
+  ])(
+    "refused as $name, takes it for made only where HQ holds it so",
+    async ({ write, reason, holds, ask, made }) => {
+      const { api: hqApi } = api((seen) =>
+        seen.method === write.method && seen.path === write.path
+          ? json(409, { code: "conflict", reason })
+          : holds(seen),
+      );
+      if (made === "refused") {
+        await expect(ask(hqApi)).rejects.toMatchObject({ kind: "refused", code: "conflict" });
+      } else {
+        await expect(ask(hqApi)).resolves.toEqual(made);
+      }
+    },
+  );
+
   it("says to check the project when HQ still holds the change open after its merge was lost", async () => {
     const { api: hqApi } = api((seen) => {
       if (seen.path.endsWith("/merge")) throw new TypeError("Failed to fetch");
