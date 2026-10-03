@@ -265,6 +265,15 @@ export class PgDumpOlder extends Schema.TaggedError<PgDumpOlder>()("PgDumpOlder"
   server: Schema.Number,
 }) {}
 
+/**
+ * A set that cannot take a repository git quarantined (`gitHost.ts`): `repo` (`<appId>/<repo>`), and
+ * why it is withheld. Without it the set would lack what its dump names.
+ */
+export class RepoQuarantined extends Schema.TaggedError<RepoQuarantined>()("RepoQuarantined", {
+  repo: Schema.String,
+  why: Schema.String,
+}) {}
+
 /** A set refused for want of room: the store holds `used` bytes it may not lose, the set `needed`. */
 export class BucketFull extends Schema.TaggedError<BucketFull>()("BucketFull", {
   used: Schema.Number,
@@ -287,7 +296,14 @@ export const pgDumpFits = (pgDump: string, url: Redacted.Redacted, serverVersion
     if (client < server) return yield* new PgDumpOlder({ pgDump: client, server });
   });
 
-type TakeError = BackupError | PgDumpOlder | BucketFull | GitError | NotLeader | SqlError;
+type TakeError =
+  | BackupError
+  | PgDumpOlder
+  | BucketFull
+  | RepoQuarantined
+  | GitError
+  | NotLeader
+  | SqlError;
 
 /** The store's bytes after a set's room was made, the set's own, and the quota. */
 interface Usage {
@@ -314,6 +330,7 @@ export type BackupStatus =
       readonly pgDump: number;
       readonly server: number;
     }
+  | { readonly state: "failed"; readonly reason: "repo_quarantined"; readonly repo: string }
   | {
       readonly state: "failed";
       readonly reason: BackupError["reason"] | "git" | "database" | "defect";
@@ -339,6 +356,8 @@ const failedOf = (error: Exclude<TakeError, NotLeader> | undefined): BackupStatu
       };
     case "BackupError":
       return { state: "failed", reason: error.reason };
+    case "RepoQuarantined":
+      return { state: "failed", reason: "repo_quarantined", repo: error.repo };
     case "GitError":
       return { state: "failed", reason: "git" };
     case "SqlError":
@@ -552,7 +571,15 @@ export const backupLayer = (
             const file = `git/${repo.appId}/${repo.id}.bundle`;
             const path = NodePath.join(dir, ...file.split("/"));
             yield* io("stage", () => NodeFSP.mkdir(NodePath.dirname(path), { recursive: true }));
-            const { refs } = yield* git.bundle(repo, path);
+            const { refs } = yield* git.bundle(repo, path).pipe(
+              Effect.catchIf(
+                (error) => error.reason === "unavailable",
+                (error) =>
+                  Effect.fail(
+                    new RepoQuarantined({ repo: `${repo.appId}/${repo.id}`, why: error.message }),
+                  ),
+              ),
+            );
             repos.push(
               refs.length === 0
                 ? { appId: repo.appId, id: repo.id, file: null, size: 0, sha256: null, refs }
