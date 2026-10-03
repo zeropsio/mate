@@ -13,7 +13,10 @@ import {
   MENU_SKELETON_MAX_ORGANIZATIONS,
   MENU_SKELETON_MAX_ROWS,
   MENU_SKELETON_STORAGE_KEY,
+  MENU_SKELETON_VISIT_MS,
   menuRowsOf,
+  projectOpenedIn,
+  rememberedMenuProjectOpenedIn,
   rememberedMenuCandidates,
   rememberMenuCandidates,
   skeletonRowOf,
@@ -42,6 +45,7 @@ const mate = (id: string, overrides: Partial<CandidateRow> = {}): CandidateRow =
 });
 
 const NOVA = mate("nova");
+const { environmentId: _novaLinked, ...UNLINKED_NOVA } = NOVA;
 const { environmentId: _linked, ...UNLINKED } = mate("kai");
 const KAI: CandidateRow = { ...UNLINKED, group: "ready" };
 const PROD: CandidateRow = {
@@ -78,10 +82,28 @@ const heldOf = (
   complete,
 });
 const NOTHING_HELD = heldOf([], false);
+interface DrawCase {
+  readonly name: string;
+  readonly listing: unknown;
+  readonly held?: HeldCandidates<CandidateRow>;
+  readonly memory?: ReadonlyArray<CandidateRow> | null;
+  readonly current?: boolean;
+  readonly graceOver?: boolean;
+  readonly rows: ReadonlyArray<CandidateRow>;
+  readonly complete?: boolean;
+  readonly fromMemory?: boolean;
+  readonly toRemember?: ReadonlyArray<CandidateRow> | null;
+}
+const asRemembered = (row: CandidateRow) => candidateOfSkeleton(skeletonRowOf(row));
 
 describe("a remembered row", () => {
+  // A Mate linked when it was drawn is remembered as one whose link is not made yet: whether it
+  // is linked now is its socket's to say, never the memory's.
+  it("remembers a connected Mate as not linked yet", () => {
+    expect(candidateOfSkeleton(skeletonRowOf(NOVA))).toEqual({ ...UNLINKED_NOVA, group: "ready" });
+  });
+
   it.each([
-    { name: "a connected Mate", row: NOVA },
     { name: "a Mate not linked yet", row: KAI },
     { name: "a stop without a container, its roles read", row: PROD },
     {
@@ -120,6 +142,34 @@ describe("the remembered tree, bounded", () => {
       PROD.key,
     ]);
     expect(withOrganizationSkeleton(first, ORG, [NOVA, KAI, PROD], 2)).toBe(first);
+  });
+
+  it("rewrites nothing when only a Mate's link came or went", () => {
+    const first = withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [NOVA, KAI], 1);
+    const unlinked = { ...UNLINKED_NOVA, group: "ready" as const };
+    expect(withOrganizationSkeleton(first, ORG, [unlinked, KAI], 2)).toBe(first);
+  });
+
+  // Which Mate a conversation is open in is kept, only to say which row is open: the open row
+  // keeps its highlight through a reload, whether or not its link was made when it was drawn.
+  it("knows which remembered Mate an environment opened, after its link went too", () => {
+    const first = withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [NOVA, KAI], 1);
+    const unlinked = { ...UNLINKED_NOVA, group: "ready" as const };
+    const after = withOrganizationSkeleton(first, ORG, [unlinked, KAI], 2);
+    expect(projectOpenedIn(after, ORG, EnvironmentId.make("env-nova"))).toBe("nova");
+    expect(projectOpenedIn(after, ORG, EnvironmentId.make("env-kai"))).toBeUndefined();
+    expect(projectOpenedIn(after, OTHER_ORG, EnvironmentId.make("env-nova"))).toBeUndefined();
+  });
+
+  // An organization visited every day is never the oldest: its visit keeps it, rows unchanged.
+  it("marks an organization visited when its tree is drawn again a while later", () => {
+    const first = withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [NOVA], 1);
+    expect(withOrganizationSkeleton(first, ORG, [NOVA], 1 + MENU_SKELETON_VISIT_MS / 2)).toBe(
+      first,
+    );
+    const later = withOrganizationSkeleton(first, ORG, [NOVA], 1 + MENU_SKELETON_VISIT_MS);
+    expect(later.organizations[ORG]?.at).toBe(1 + MENU_SKELETON_VISIT_MS);
+    expect(later.organizations[ORG]?.rows).toBe(first.organizations[ORG]?.rows);
   });
 
   it("keeps the first rows up to its cap", () => {
@@ -174,167 +224,214 @@ describe("the remembered tree, bounded", () => {
 });
 
 describe("the rows the menu draws while it reads", () => {
-  const REMEMBERED = [NOVA, KAI, PROD];
+  const remembered = (row: CandidateRow) => candidateOfSkeleton(skeletonRowOf(row));
+  const [R_NOVA, R_KAI, R_PROD] = [NOVA, KAI, PROD].map(remembered) as [
+    CandidateRow,
+    CandidateRow,
+    CandidateRow,
+  ];
+  const REMEMBERED = [R_NOVA, R_KAI, R_PROD];
+  const LUNA = mate("luna", { group: "ready" });
   const unknownKai: CandidateRow = {
     key: "kai",
     group: "unavailable",
     presence: "unknown",
     project: KAI.project,
   };
+  const READING = { state: "reading", sinceMs: 0, attempt: 1 };
+  const FAILED = {
+    state: "failed",
+    failure: { kind: "offline" },
+    atMs: 0,
+    attempt: 1,
+    retryAtMs: 2_000,
+  };
 
-  it.each([
+  const DRAWS: ReadonlyArray<DrawCase> = [
     {
       name: "unread, a tree remembered: the tree",
       listing: { state: "unread", waitingFor: null },
-      held: NOTHING_HELD,
-      remembered: REMEMBERED,
       rows: REMEMBERED,
-      complete: false,
       fromMemory: true,
-      settled: false,
     },
-    {
-      name: "being read, a tree remembered: the tree",
-      listing: { state: "reading", sinceMs: 0, attempt: 1 },
-      held: NOTHING_HELD,
-      remembered: REMEMBERED,
-      rows: REMEMBERED,
-      complete: false,
-      fromMemory: true,
-      settled: false,
-    },
+    { name: "being read, a tree remembered: the tree", listing: READING, rows: REMEMBERED },
     {
       name: "waiting on the Zerops session, a tree remembered: the tree",
       listing: { state: "unread", waitingFor: "zerops-session" },
-      held: NOTHING_HELD,
-      remembered: REMEMBERED,
       rows: REMEMBERED,
-      complete: false,
-      fromMemory: true,
-      settled: false,
     },
     {
       name: "its access not verified yet, a tree remembered: the tree",
       listing: { state: "withheld", reason: "access-unverified", cause: null },
-      held: NOTHING_HELD,
-      remembered: REMEMBERED,
       rows: REMEMBERED,
-      complete: false,
-      fromMemory: true,
-      settled: false,
+    },
+    // A first read that keeps failing never takes the tree back between its retries: its notice
+    // stands under the rows instead.
+    {
+      name: "its read failed, a tree remembered: the tree still",
+      listing: FAILED,
+      rows: REMEMBERED,
     },
     {
       name: "being read, nothing remembered: nothing, as before",
-      listing: { state: "reading", sinceMs: 0, attempt: 1 },
-      held: NOTHING_HELD,
-      remembered: undefined,
+      listing: READING,
+      memory: null,
       rows: [],
-      complete: false,
       fromMemory: false,
-      settled: false,
     },
     {
       name: "being read, an empty tree remembered: nothing",
-      listing: { state: "reading", sinceMs: 0, attempt: 1 },
-      held: NOTHING_HELD,
-      remembered: [],
+      listing: READING,
+      memory: [],
       rows: [],
-      complete: false,
       fromMemory: false,
-      settled: false,
+    },
+    {
+      name: "its access lapsed: as before, the app's banner speaks",
+      listing: { state: "withheld", reason: "access-lapsed", cause: null },
+      rows: [],
+      fromMemory: false,
     },
     {
       name: "known and whole: the listing's own rows, the memory replaced",
       listing: known([NOVA, PROD], "complete"),
       held: heldOf([NOVA, PROD], true),
-      remembered: REMEMBERED,
       rows: [NOVA, PROD],
       complete: true,
       fromMemory: false,
-      settled: true,
+      toRemember: [NOVA, PROD],
+    },
+    {
+      name: "known whole, a container not read yet: that row as remembered",
+      listing: known([NOVA, unknownKai], "complete"),
+      held: heldOf([NOVA, unknownKai], false),
+      rows: [NOVA, R_KAI],
+      toRemember: [NOVA, R_KAI],
+    },
+    {
+      name: "known whole, a container never read past its grace: its own row, the rest remembered",
+      listing: known([NOVA, unknownKai], "complete"),
+      held: heldOf([NOVA, unknownKai], false),
+      graceOver: true,
+      rows: [NOVA, unknownKai],
+      fromMemory: false,
+      toRemember: [NOVA, R_KAI],
+    },
+    {
+      name: "known whole, a container not read and not remembered: its own row, not remembered",
+      listing: known([NOVA, unknownKai], "complete"),
+      held: heldOf([NOVA, unknownKai], false),
+      memory: [remembered(NOVA)],
+      rows: [NOVA, unknownKai],
+      fromMemory: false,
+      toRemember: [NOVA],
+    },
+    {
+      name: "known whole: a project it lacks is gone, never filled from memory",
+      listing: known([NOVA], "complete"),
+      held: heldOf([NOVA], true),
+      rows: [NOVA],
+      complete: true,
+      fromMemory: false,
+      toRemember: [NOVA],
+    },
+    // Known in part: what it holds, and the projects it does not hold yet as remembered — none
+    // vanishes to come back — and nothing remembered of a part.
+    {
+      name: "known in part, every row it holds read: its rows and the rest remembered",
+      listing: known([NOVA, LUNA], "partial"),
+      held: heldOf([NOVA, LUNA], false),
+      rows: [NOVA, LUNA, R_KAI, R_PROD],
     },
     {
       name: "known in part, a container not read yet: that row as remembered",
       listing: known([NOVA, unknownKai], "partial"),
       held: heldOf([NOVA, unknownKai], false),
-      remembered: REMEMBERED,
-      rows: [NOVA, KAI],
-      complete: false,
-      fromMemory: true,
-      settled: false,
+      rows: [NOVA, R_KAI, R_PROD],
     },
     {
-      name: "known in part, every row read: the listing's own rows",
-      listing: known([NOVA], "partial"),
-      held: heldOf([NOVA], false),
-      remembered: REMEMBERED,
-      rows: [NOVA],
-      complete: false,
-      fromMemory: false,
-      settled: true,
-    },
-    {
-      name: "known in part, a container not read and not remembered: the listing's row",
-      listing: known([unknownKai], "partial"),
-      held: heldOf([unknownKai], false),
-      remembered: [NOVA],
-      rows: [unknownKai],
-      complete: false,
-      fromMemory: false,
-      settled: false,
-    },
-    {
-      name: "known in part with no row yet, a tree remembered: the tree",
+      name: "known in part with no row yet: the tree",
       listing: known([], "partial"),
       held: heldOf([], false),
-      remembered: REMEMBERED,
       rows: REMEMBERED,
-      complete: false,
-      fromMemory: true,
-      settled: false,
     },
+    // Past its grace a part is what there is: a project withheld for good, or never read, is not
+    // painted from memory for ever.
     {
-      name: "known in part, a container not read and nothing remembered: not to remember",
-      listing: known([unknownKai], "partial"),
-      held: heldOf([unknownKai], false),
-      remembered: undefined,
-      rows: [unknownKai],
-      complete: false,
-      fromMemory: false,
-      settled: false,
-    },
-    {
-      name: "a failed read: as before, its notice speaks",
-      listing: {
-        state: "failed",
-        failure: { kind: "offline" },
-        atMs: 0,
-        attempt: 1,
-        retryAtMs: null,
-      },
-      held: NOTHING_HELD,
-      remembered: REMEMBERED,
+      name: "known in part with no row past its grace: nothing",
+      listing: known([], "partial"),
+      held: heldOf([], false),
+      graceOver: true,
       rows: [],
-      complete: false,
       fromMemory: false,
-      settled: false,
     },
     {
-      name: "its access lapsed: as before, the app's banner speaks",
-      listing: { state: "withheld", reason: "access-lapsed", cause: null },
-      held: NOTHING_HELD,
-      remembered: REMEMBERED,
-      rows: [],
-      complete: false,
+      name: "known in part past its grace: its own rows only",
+      listing: known([NOVA, unknownKai], "partial"),
+      held: heldOf([NOVA, unknownKai], false),
+      graceOver: true,
+      rows: [NOVA, unknownKai],
       fromMemory: false,
-      settled: false,
     },
-  ])("$name", ({ listing, held, remembered, rows, complete, fromMemory, settled }) => {
-    const drawn = menuRowsOf(listing as Shown<ReadonlyArray<CandidateRow>>, held, remembered);
-    expect(drawn.rows).toEqual(rows);
-    expect(drawn.complete).toBe(complete);
-    expect(drawn.fromMemory).toBe(fromMemory);
-    expect(drawn.settled).toBe(settled);
+    // An organization just switched to: the listing still holds the last one's rows for a
+    // moment. They are neither drawn as its nor remembered under it.
+    {
+      name: "the listing still the last organization's: this one's tree, nothing remembered",
+      listing: known([LUNA], "complete"),
+      held: heldOf([LUNA], true),
+      current: false,
+      rows: REMEMBERED,
+    },
+    {
+      name: "the listing still the last organization's, nothing remembered: nothing of it",
+      listing: known([LUNA], "complete"),
+      held: heldOf([LUNA], true),
+      current: false,
+      memory: null,
+      rows: [],
+      fromMemory: false,
+    },
+  ];
+
+  it.each(DRAWS)(
+    "$name",
+    ({
+      listing,
+      held = NOTHING_HELD,
+      memory = REMEMBERED,
+      current = true,
+      graceOver = false,
+      rows,
+      complete = false,
+      fromMemory = true,
+      toRemember = null,
+    }) => {
+      const drawn = menuRowsOf({
+        listing: listing as Shown<ReadonlyArray<CandidateRow>>,
+        held,
+        remembered: memory ?? undefined,
+        current,
+        graceOver,
+      });
+      expect(drawn.rows).toEqual(rows);
+      expect(drawn.complete).toBe(complete);
+      expect(drawn.fromMemory).toBe(fromMemory);
+      expect(drawn.toRemember).toEqual(toRemember);
+    },
+  );
+
+  it("holds the same rows through a failing first read's retries", () => {
+    const draws = [FAILED, READING, FAILED, READING].map(
+      (listing) =>
+        menuRowsOf({
+          listing: listing as Shown<ReadonlyArray<CandidateRow>>,
+          held: NOTHING_HELD,
+          remembered: REMEMBERED,
+          current: true,
+          graceOver: false,
+        }).rows,
+    );
+    for (const rows of draws) expect(rows).toBe(REMEMBERED);
   });
 });
 
@@ -367,7 +464,7 @@ describe("the tree in this browser", () => {
     expect(stored.size).toBe(0);
     vi.advanceTimersByTime(400);
     expect(stored.has(keyOf("user-ida"))).toBe(true);
-    expect(rememberedMenuCandidates(ORG)).toEqual([NOVA, KAI, PROD]);
+    expect(rememberedMenuCandidates(ORG)).toEqual([NOVA, KAI, PROD].map(asRemembered));
     expect(rememberedMenuCandidates(OTHER_ORG)).toBeUndefined();
     expect(rememberedMenuCandidates(undefined)).toBeUndefined();
   });
@@ -378,9 +475,36 @@ describe("the tree in this browser", () => {
       encodeMenuSkeleton(withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [NOVA, PROD], 1)) ?? "",
     );
     openAccountLifetime("user-ida");
-    expect(rememberedMenuCandidates(ORG)).toEqual([NOVA, PROD]);
+    expect(rememberedMenuCandidates(ORG)).toEqual([NOVA, PROD].map(asRemembered));
     // The same rows each draw: nothing re-renders for a memory that did not change.
     expect(rememberedMenuCandidates(ORG)).toBe(rememberedMenuCandidates(ORG));
+  });
+
+  it("knows which remembered Mate an environment opened", () => {
+    openAccountLifetime("user-ida");
+    rememberMenuCandidates(ORG, [NOVA, KAI]);
+    expect(rememberedMenuProjectOpenedIn(ORG, EnvironmentId.make("env-nova"))).toBe("nova");
+    expect(rememberedMenuProjectOpenedIn(OTHER_ORG, EnvironmentId.make("env-nova"))).toBe(
+      undefined,
+    );
+  });
+
+  // Two tabs of one account, each in its own organization: neither writes the other's tree away.
+  it("keeps what another tab remembered meanwhile, replacing only its own organization", () => {
+    openAccountLifetime("user-ida");
+    rememberMenuCandidates(ORG, [NOVA]);
+    vi.advanceTimersByTime(400);
+    // The other tab, in the other organization, writes its tree after this one read the memory.
+    const theirs = decodeMenuSkeleton(stored.get(keyOf("user-ida")) ?? null);
+    stored.set(
+      keyOf("user-ida"),
+      encodeMenuSkeleton(withOrganizationSkeleton(theirs, OTHER_ORG, [KAI], 2)) ?? "",
+    );
+    rememberMenuCandidates(ORG, [NOVA, PROD]);
+    vi.advanceTimersByTime(400);
+    const both = decodeMenuSkeleton(stored.get(keyOf("user-ida")) ?? null);
+    expect(both.organizations[ORG]?.rows.map((row) => row.key)).toEqual([NOVA.key, PROD.key]);
+    expect(both.organizations[OTHER_ORG]?.rows.map((row) => row.key)).toEqual([KAI.key]);
   });
 
   it("reads nothing another person remembered on this browser", () => {
@@ -399,7 +523,7 @@ describe("the tree in this browser", () => {
     );
     expect(rememberedMenuCandidates(ORG)).toBeUndefined();
     openAccountLifetime("user-ida");
-    expect(rememberedMenuCandidates(ORG)).toEqual([NOVA]);
+    expect(rememberedMenuCandidates(ORG)).toEqual([asRemembered(NOVA)]);
   });
 
   it("reads nothing from a corrupt entry", () => {

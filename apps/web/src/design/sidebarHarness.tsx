@@ -1022,15 +1022,19 @@ function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
             freshness: { kind: "live" },
           }
         : { state: "reading", sinceMs: 0, attempt: 1 }
-    ) as Parameters<typeof menuRowsOf<(typeof rows)[number]>>[0];
-    return menuRowsOf(
+    ) as Parameters<typeof menuRowsOf<(typeof rows)[number]>>[0]["listing"];
+    return menuRowsOf({
       listing,
-      { rows: landed ? rows : [], complete: landed },
-      rememberedMenuCandidates(ORGANIZATION.id),
-    );
+      held: { rows: landed ? rows : [], complete: landed },
+      remembered: rememberedMenuCandidates(ORGANIZATION.id),
+      current: true,
+      graceOver: false,
+    });
   }, [candidates, landed]);
   useEffect(() => {
-    if (RELOAD_MS !== null && menu.settled) rememberMenuCandidates(ORGANIZATION.id, menu.rows);
+    if (RELOAD_MS !== null && menu.toRemember !== null) {
+      rememberMenuCandidates(ORGANIZATION.id, menu.toRemember);
+    }
   }, [menu]);
   useLayoutEffect(() => {
     if (RELOAD_MS === null) return;
