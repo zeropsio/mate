@@ -630,10 +630,11 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
       "This project's changes couldn't be read",
     ],
     [
-      "no read sent: signing in to Gitea",
+      // The app fetches its own Gitea session: nothing waits on the person, so no sign-in words.
+      "no read sent: the app is fetching its own Gitea session",
       { read: { kind: "idle" }, readable: false },
       "quiet",
-      "Waiting for Gitea's sign-in",
+      "Reading this change",
     ],
     [
       "no read sent: the project's Gitea is not known",
