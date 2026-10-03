@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Redacted from "effect/Redacted";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
@@ -385,11 +386,13 @@ describe("GET /health", () => {
             (rows) => rows.length === 1,
           );
         }
-        const health = yield* call("GET", "/health");
-        assert.deepStrictEqual(
-          [health.status, (health.body as { readonly keys: string }).keys],
-          [200, keys],
+        // Active is ready once git is open: HQ's key never holds that back.
+        const health = yield* call("GET", "/health").pipe(
+          Effect.filterOrFail((response) => response.status === 200),
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
         );
+        assert.strictEqual((health.body as { readonly keys: string }).keys, keys);
       }),
     );
 
