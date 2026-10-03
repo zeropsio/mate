@@ -661,6 +661,11 @@ function FoldToggle({
 // What a bubble holds, opened in place
 // ---------------------------------------------------------------------------
 
+/** Only an open the person made rises; a carried, a first or a landing one is simply there. */
+function rises(made: boolean): string | false {
+  return made && "animate-detail-in motion-reduce:animate-none";
+}
+
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
 function useDisclosure(initial = false, part = "open", follows = false, shut = false) {
   const hold = useHoldReading();
@@ -1516,8 +1521,9 @@ function StepBubble({
       <StepPictures paths={step.images} />
       {disclosure.open && outputs.length > 0 ? (
         <div
-          className="grid animate-detail-in gap-2 px-3 pb-2 motion-reduce:animate-none"
+          className={cn("grid gap-2 px-3 pb-2", rises(disclosure.made))}
           data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
           {outputs.map((output) => (
             <OutputBlock key={output.key} label={output.label} text={output.text} />
@@ -1818,7 +1824,7 @@ function OperationLine({
           className={cn(
             "px-3 pb-2",
             // Only an open the person made moves; a carried or a landing one is simply there.
-            disclosure.made && "animate-detail-in motion-reduce:animate-none",
+            rises(disclosure.made),
           )}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
@@ -1946,7 +1952,11 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         </div>
       )}
       {opens && disclosure.open ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <BrowserStrip
             bare
             environmentId={ctx.activeThreadEnvironmentId}
@@ -2146,8 +2156,9 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
       {opens && disclosure.open ? (
         // Its helpers' words on the bubble's text edge: 8 px in, and their own 6.
         <div
-          className="grid animate-detail-in gap-2 px-2 pb-2.5 motion-reduce:animate-none"
+          className={cn("grid gap-2 px-2 pb-2.5", rises(disclosure.made))}
           data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
           <ul className="grid gap-0.5">
             {agents.map((agent) => (
@@ -2225,7 +2236,11 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
         <div className={CALL_PAD}>{line}</div>
       )}
       {disclosure.open ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <TaskReport entry={entry} />
         </div>
       ) : null}
@@ -2267,7 +2282,11 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
         <div className={CALL_PAD}>{head}</div>
       )}
       {opens && disclosure.open ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <PlanSteps steps={steps} />
         </div>
       ) : null}
@@ -2308,7 +2327,11 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
         </DisclosureButton>
       )}
       {disclosure.open && more !== null ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <OutputBlock text={more} />
         </div>
       ) : null}

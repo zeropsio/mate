@@ -6,9 +6,11 @@ import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import type { WorkLogEntry } from "../../session-logic";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { RunChat } from "./RunChat";
 import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
+import { stepOf } from "./workSteps.logic";
 import { at as fixtureAt, operation } from "./conversationFixtures";
 import {
   TimelineRowActivityCtx,
@@ -472,6 +474,43 @@ describe("RunChat — an operation's card, read from the account store", () => {
     act(() => opener(renderer)[0]!.props.onClick());
     return renderer;
   };
+
+  // Only an open the person made rises: a command's output that stood open
+  // in the slot lands as it stood (pass 36).
+  it("a bare command's output that stood open in the slot lands without rising", () => {
+    const entry = (running: boolean): WorkLogEntry => ({
+      id: "c1",
+      createdAt: at(2),
+      startedAt: at(2),
+      updatedAt: at(9),
+      label: "Command run",
+      tone: "tool",
+      itemType: "command_execution",
+      command: "pnpm install\npnpm build",
+      detail: "built in 4s",
+      sourceActivityKind: running ? "tool.updated" : "tool.completed",
+      toolLifecycleStatus: running ? "inProgress" : "completed",
+    });
+    const landed = (live: boolean): RecordItem => ({
+      kind: "step",
+      key: "step:c1",
+      at: at(9),
+      step: stepOf(entry(false), undefined, live),
+    });
+    const renderer = mount(record([], { now: { kind: "step", step: stepOf(entry(true)) } }));
+    plop(renderer, record([landed(true)]));
+    expect(nodes(renderer, "data-chat-detail").length).toBeGreaterThan(0);
+    expect(nodes(renderer, "data-chat-detail-rises")).toHaveLength(0);
+
+    const fresh = mount(record([landed(false)], { live: false, status: null }));
+    const shows = fresh.root.findAll(
+      (node) =>
+        node.type === "button" &&
+        String(node.props["aria-label"] ?? "").includes("Show what it returned"),
+    );
+    act(() => shows[0]!.props.onClick());
+    expect(nodes(fresh, "data-chat-detail-rises").length).toBeGreaterThan(0);
+  });
 
   it("opened after a reload, a settled deploy reads its details from the store by its id", () => {
     // Its own build, and a later deploy of the same service beside it.
