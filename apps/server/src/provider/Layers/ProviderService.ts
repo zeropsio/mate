@@ -46,6 +46,7 @@ import * as Stream from "effect/Stream";
 import { appendUserInputAttachmentPaths } from "../userInputAttachments.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { attachmentPathLine } from "../../providerPictures.ts";
+import { makeSendLanes } from "../../sendLanes.ts";
 import { keepSentFiles } from "../../uploadsFolder.ts";
 import * as ServerConfig from "../../config.ts";
 import {
@@ -837,6 +838,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
+  const sendLanes = makeSendLanes();
   const sendTurn: ProviderServiceMethod<"sendTurn"> = Effect.fn("sendTurn")(function* (rawInput) {
     const parsed = yield* decodeInputOrValidationError({
       operation: "ProviderService.sendTurn",
@@ -859,9 +861,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     // on the path line for everything else. Folded clipboard text remains
     // path-only everywhere: eagerly embedding it would spend the same context
     // the client deliberately preserved by folding it. A sent file's path is
-    // its own copy in the Mate's uploads folder, made before the turn starts
-    // (asynchronously, bounded). Unresolvable ids are skipped
-    // here and surface as adapter errors when the file is read.
+    // its own copy in the Mate's uploads folder, made once the turn is
+    // validated and routed (asynchronously, bounded). Unresolvable ids are
+    // skipped here and surface as adapter errors when the file is read.
     const resolvedAttachments = attachments.flatMap((attachment) => {
       const storedPath = resolveAttachmentPath({
         attachmentsDir: serverConfig.attachmentsDir,
@@ -869,95 +871,104 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       });
       return storedPath === null ? [] : [{ attachment, storedPath }];
     });
-    const agentPlaces = yield* keepSentFiles({
-      uploadsDir: serverConfig.uploadsDir,
-      indexDir: serverConfig.uploadsIndexDir,
-      items: resolvedAttachments,
-    });
-    const attachmentPathLines = resolvedAttachments.map(({ attachment }, index) => {
-      const place = agentPlaces[index] ?? { path: resolvedAttachments[index]!.storedPath };
-      return attachmentPathLine(
-        attachment,
-        place.path,
-        { text: parsed.input ?? "", attachments },
-        place.note,
-      );
-    });
-    const inputTextWithAttachmentPaths =
-      attachmentPathLines.length === 0
+    const inputWithPaths = (places: ReadonlyArray<{ path: string; note?: string }>) => {
+      const attachmentPathLines = resolvedAttachments.map(({ attachment, storedPath }, index) => {
+        const place = places[index] ?? { path: storedPath };
+        return attachmentPathLine(
+          attachment,
+          place.path,
+          { text: parsed.input ?? "", attachments },
+          place.note,
+        );
+      });
+      return attachmentPathLines.length === 0
         ? parsed.input
         : [parsed.input, attachmentPathLines.join("\n")]
             .filter((part): part is string => typeof part === "string" && part.length > 0)
             .join("\n\n");
-    if (
-      inputTextWithAttachmentPaths !== undefined &&
-      inputTextWithAttachmentPaths.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS &&
+    };
+    const pastedTextOverLimit = (text: string | undefined) =>
+      text !== undefined &&
+      text.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS &&
       attachments.some(
         (attachment) =>
           attachment.type === "file" &&
           "source" in attachment &&
           attachment.source?._tag === "pasted-text",
-      )
-    ) {
-      return yield* toValidationError(
-        "ProviderService.sendTurn",
-        `Input plus pasted-text attachment context exceeds the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS} character limit`,
       );
-    }
+    const overLimit = toValidationError(
+      "ProviderService.sendTurn",
+      `Input plus pasted-text attachment context exceeds the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS} character limit`,
+    );
+    if (pastedTextOverLimit(inputWithPaths([]))) return yield* overLimit;
 
-    const input = {
-      ...parsed,
-      ...(inputTextWithAttachmentPaths !== undefined
-        ? { input: inputTextWithAttachmentPaths }
-        : {}),
-    };
     yield* Effect.annotateCurrentSpan({
       "provider.operation": "send-turn",
-      "provider.thread_id": input.threadId,
-      "provider.interaction_mode": input.interactionMode,
+      "provider.thread_id": parsed.threadId,
+      "provider.interaction_mode": parsed.interactionMode,
       "provider.attachment_count": attachments.length,
     });
     let metricProvider = "unknown";
-    let metricModel = input.modelSelection?.model;
-    return yield* Effect.gen(function* () {
-      const routed = yield* resolveRoutableSession({
-        threadId: input.threadId,
-        operation: "ProviderService.sendTurn",
-        allowRecovery: true,
-      });
-      metricProvider = routed.adapter.provider;
-      metricModel = input.modelSelection?.model;
-      yield* Effect.annotateCurrentSpan({
-        "provider.kind": routed.adapter.provider,
-        ...(input.modelSelection?.model ? { "provider.model": input.modelSelection.model } : {}),
-      });
-      const turn = yield* routed.adapter.sendTurn(input);
-      yield* directory.upsert({
-        threadId: input.threadId,
-        provider: routed.adapter.provider,
-        providerInstanceId: routed.instanceId,
-        status: "running",
-        ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
-        runtimePayload: {
-          ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
-          activeTurnId: turn.turnId,
-          lastRuntimeEvent: "provider.sendTurn",
-          lastRuntimeEventAt: yield* nowIso,
-        },
-      });
-      yield* analytics.record("provider.turn.sent", {
-        provider: routed.adapter.provider,
-        model: input.modelSelection?.model,
-        interactionMode: input.interactionMode,
-        // Session-start events alone skew runtime mode toward users who toggle
-        // often, since every toggle restarts the session. Recording it per turn
-        // gives a usage-weighted view and lets it cross with interactionMode.
-        runtimeMode: routed.runtimeMode,
-        attachmentCount: attachments.length,
-        hasInput: typeof input.input === "string" && input.input.trim().length > 0,
-      });
-      return turn;
-    }).pipe(
+    let metricModel = parsed.modelSelection?.model;
+    // One send at a time per thread, routing to adapter: a message waiting for
+    // its files' copies is never overtaken by a later one without files.
+    return yield* sendLanes(
+      parsed.threadId,
+      Effect.gen(function* () {
+        const routed = yield* resolveRoutableSession({
+          threadId: parsed.threadId,
+          operation: "ProviderService.sendTurn",
+          allowRecovery: true,
+        });
+        metricProvider = routed.adapter.provider;
+        metricModel = parsed.modelSelection?.model;
+        yield* Effect.annotateCurrentSpan({
+          "provider.kind": routed.adapter.provider,
+          ...(parsed.modelSelection?.model
+            ? { "provider.model": parsed.modelSelection.model }
+            : {}),
+        });
+        const places = yield* keepSentFiles({
+          uploadsDir: serverConfig.uploadsDir,
+          indexDir: serverConfig.uploadsIndexDir,
+          items: resolvedAttachments,
+        });
+        const inputTextWithAttachmentPaths = inputWithPaths(places);
+        if (pastedTextOverLimit(inputTextWithAttachmentPaths)) return yield* overLimit;
+        const input = {
+          ...parsed,
+          ...(inputTextWithAttachmentPaths !== undefined
+            ? { input: inputTextWithAttachmentPaths }
+            : {}),
+        };
+        const turn = yield* routed.adapter.sendTurn(input);
+        yield* directory.upsert({
+          threadId: input.threadId,
+          provider: routed.adapter.provider,
+          providerInstanceId: routed.instanceId,
+          status: "running",
+          ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
+          runtimePayload: {
+            ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
+            activeTurnId: turn.turnId,
+            lastRuntimeEvent: "provider.sendTurn",
+            lastRuntimeEventAt: yield* nowIso,
+          },
+        });
+        yield* analytics.record("provider.turn.sent", {
+          provider: routed.adapter.provider,
+          model: input.modelSelection?.model,
+          interactionMode: input.interactionMode,
+          // Session-start events alone skew runtime mode toward users who toggle
+          // often, since every toggle restarts the session. Recording it per turn
+          // gives a usage-weighted view and lets it cross with interactionMode.
+          runtimeMode: routed.runtimeMode,
+          attachmentCount: attachments.length,
+          hasInput: typeof input.input === "string" && input.input.trim().length > 0,
+        });
+        return turn;
+      }),
+    ).pipe(
       withMetrics({
         counter: providerTurnsTotal,
         timer: providerTurnDuration,
