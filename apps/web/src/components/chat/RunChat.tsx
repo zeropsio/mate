@@ -2834,6 +2834,18 @@ function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
 const THINKING_WORD_DELAY_MS = 300;
 
 /**
+ * A line the slot drew live that ended with no line of its own in the record:
+ * said over, never still running — a step in its settled words.
+ */
+function endedLine(item: RecordItem): RecordItem {
+  if (item.kind !== "step" || item.step.state !== "running") return item;
+  const last = item.step.entries.at(-1);
+  if (last === undefined) return item;
+  const over = stepOf({ ...last, toolLifecycleStatus: "completed" }, undefined, false);
+  return { ...item, step: { ...over, key: item.step.key } };
+}
+
+/**
  * Places the live slot's face and clock on its first line, and says the room
  * the slot takes, its gap above it included: on a short page the card holds
  * it whole once the history has none left to give.
@@ -2970,7 +2982,7 @@ function LiveSlot({
   const byKey = new Map<string, RecordItem>();
   for (const [key, item] of lastLive) {
     // A check the record drew into the row of the one before it is drawn there.
-    if (item.kind !== "strip") byKey.set(key, item);
+    if (item.kind !== "strip") byKey.set(key, live.includes(item) ? item : endedLine(item));
   }
   for (const item of items) {
     // A call the record folded into the line before it is drawn as it ended

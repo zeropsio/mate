@@ -1457,7 +1457,7 @@ describe("RunChat, as the person uses it", () => {
   // An entry that ended with no line of its own in the record yet — a call
   // the record folds or files elsewhere — stands its minimum as it last
   // showed, never a gap that blocks what comes next (pass 35).
-  it("draws a slot entry that ended with no record line as it last showed", () => {
+  it("draws a slot entry that ended with no record line as it ended", () => {
     vi.useFakeTimers();
     try {
       const running = stepOf(
@@ -1482,6 +1482,8 @@ describe("RunChat, as the person uses it", () => {
         ),
       );
       expect(commands()).toHaveLength(1);
+      // Ended, never still running (E17).
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("data-run-shimmer");
       act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
       expect(commands()).toHaveLength(0);
     } finally {
