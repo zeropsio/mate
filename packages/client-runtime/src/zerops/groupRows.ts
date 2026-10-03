@@ -39,9 +39,10 @@ export interface EnvironmentRow {
   /** What that deploy is called, the commit being only the fallback. */
   readonly version: DeployedVersion;
   /**
-   * The repository the named version was built from, as the tier's
-   * `buildFromGit` names it — never guessed from the hostname, because an
-   * address built on a guess is a link that 404s.
+   * The repository the named version was built from — or, while none is
+   * named, the first service's by hostname that its tier builds — as the
+   * tier's `buildFromGit` names it; never guessed from the hostname, because
+   * an address built on a guess is a link that 404s.
    */
   readonly versionRepository: string | undefined;
   readonly line: string;
@@ -237,8 +238,10 @@ export function environmentRow(input: {
   // monorepo they all carry the same release, and in a split one the row has
   // width for one answer. First by hostname, as the platform's answer for the
   // stop is (`stopDeploymentOf`): the two are compared, so they name one service.
-  const named = [...input.services]
-    .sort((left, right) => left.hostname.localeCompare(right.hostname))
+  const byHostname = [...input.services].sort((left, right) =>
+    left.hostname.localeCompare(right.hostname),
+  );
+  const named = byHostname
     .map((service) => ({ service, version: deployedVersion(service.appVersionName) }))
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
@@ -254,8 +257,12 @@ export function environmentRow(input: {
     // Only what the recipe names. The hostname is the fallback a *status*
     // read uses, and reading by it answered 404 for every stage and production
     // of the owner's 2026-09-17 run — a link built on that guess goes nowhere,
-    // which is worse than the plain text it replaced.
-    versionRepository: named?.service.repository,
+    // which is worse than the plain text it replaced. The tier declares it
+    // whether or not a version is named yet: a stop whose store had not named
+    // what it runs read "No repository is declared" (F13, 2026-10-03).
+    versionRepository:
+      named?.service.repository ??
+      byHostname.find((service) => service.repository !== undefined)?.repository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
     deploys: input.services.flatMap(({ deploy }) => (deploy === undefined ? [] : [deploy.latest])),
