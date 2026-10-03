@@ -26,6 +26,7 @@ import { GitHost, gitHostLayer, mainOf } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { ReleaseRefused, Releases, releasesLayer } from "./releases.ts";
 import { Roles } from "./roles.ts";
+import { rolloutsLayer } from "./rollouts.ts";
 import type { ZeropsMember } from "./zerops/api.ts";
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
@@ -132,6 +133,7 @@ const withReleases = <A, E>(
     const context = yield* Layer.build(
       releasesLayer.pipe(
         Layer.provideMerge(gitHostLayer({ rootDir: root })),
+        Layer.provideMerge(rolloutsLayer),
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(
           Layer.succeed(Roles, {
@@ -555,7 +557,7 @@ const productionApp = Effect.gen(function* () {
     session: owner,
     body: { token: "key-prod" },
   });
-  assert.strictEqual(kept.status, 204);
+  assert.strictEqual(kept.status, 200);
   fake.services.push({
     id: "S-app-prod",
     projectId: "P_PROD",
@@ -598,12 +600,18 @@ const productionApp = Effect.gen(function* () {
   yield* group.push("P_MATE", number);
   yield* stateBecomes(call, owner, appId, number, "merged");
   const groupHead = yield* group.main;
+  /** The owner's POST, timed, and the states of the deploys it answers. */
   const timed = (path: string, body: unknown) =>
     Effect.map(
       Effect.timed(call("POST", `/api/apps/${appId}${path}`, { session: owner, body })),
       ([took, answer]) => ({
         status: answer.status,
         inTime: Duration.toMillis(took) < 5000,
+        deploys: (
+          answer.body as {
+            readonly deploys?: { readonly jobs: ReadonlyArray<{ readonly state: string }> };
+          }
+        ).deploys?.jobs.map((job) => job.state),
       }),
     );
   const tags = Effect.map(
@@ -671,8 +679,11 @@ describe("an application's releases over HQ's API", () => {
             entries: [{ service: "app", sha: app }],
           });
           assert.strictEqual(made.status, 201);
+          const { deploys, ...madeRelease } = made.body as Record<string, unknown> & {
+            readonly deploys: { readonly jobs: ReadonlyArray<Record<string, unknown>> };
+          };
           assert.deepStrictEqual(
-            { ...(made.body as Record<string, unknown>), at: "at" },
+            { ...madeRelease, at: "at" },
             {
               tag: "v0.1.0",
               sha: groupHead,
@@ -683,6 +694,17 @@ describe("an application's releases over HQ's API", () => {
               reason: null,
               rollbackOf: null,
             },
+          );
+          // The release answers where production's deploy of it stands: appdev's commit carries no
+          // zerops.yaml here, so HQ skips it, saying why.
+          assert.deepStrictEqual(
+            deploys.jobs.map(({ environment, service, state, reason }) => [
+              environment,
+              service,
+              state,
+              reason,
+            ]),
+            [["production", "app", "skipped", `appdev has no zerops.yaml at ${app?.slice(0, 7)}`]],
           );
           const back = yield* call("POST", `/api/apps/${appId}/releases/v0.1.0/rollback`, {
             session: owner,
@@ -736,8 +758,8 @@ describe("an application's releases over HQ's API", () => {
         }),
     );
 
-    // F22 (2026-10-03): a release whose client gave up at 20 s. Production's deploy is the deploy
-    // pass's, never the release's: a release, its rollback and a redeploy answer while a build runs.
+    // F22 (2026-10-03): a release whose client gave up at 20 s. A release, its rollback and a
+    // redeploy answer once they submitted what they could — never waiting for a build to end.
     it.effect(
       "answers a release, a rollback and a redeploy within 5 s while production's build runs",
       () =>
@@ -751,7 +773,11 @@ describe("an application's releases over HQ's API", () => {
             groupHead,
             entries: [{ service: "app", sha: app }],
           });
-          assert.deepStrictEqual([first, yield* tags], [{ status: 201, inTime: true }, ["v0.1.0"]]);
+          // Submitted before it answers: production's app building.
+          assert.deepStrictEqual(
+            [first, yield* tags],
+            [{ status: 201, inTime: true, deploys: ["building"] }, ["v0.1.0"]],
+          );
           yield* Effect.sync(() => fake.calls.includes("buildAndDeploy:key-prod")).pipe(
             Effect.filterOrFail((building) => building),
             Effect.retry(Schedule.spaced(Duration.millis(20))),
@@ -761,8 +787,11 @@ describe("an application's releases over HQ's API", () => {
           const failed = "a".repeat(40);
           yield* rowsWhere(
             url,
-            `INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message)
-             VALUES ('P_PROD', 'app', '${failed}', 'appdev', 'failed', 'job', 'failed: Build failed')
+            `INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+               reason, ended_at)
+             SELECT id, 'deploy', 'P_PROD', 'app', 'appdev', '${failed}', 'failed',
+               'failed: Build failed', now()
+             FROM hq_rollout ORDER BY id LIMIT 1
              RETURNING 1`,
             (rows) => rows.length === 1,
           );
@@ -777,10 +806,12 @@ describe("an application's releases over HQ's API", () => {
               yield* timed("/environments/production/redeploy", { service: "app", sha: failed }),
               yield* tags,
             ],
+            // The release and the rollback list the commit already building: skipped, saying so;
+            // the failed commit, asked again, waits behind the build — one at a time.
             [
-              { status: 201, inTime: true },
-              { status: 201, inTime: true },
-              { status: 202, inTime: true },
+              { status: 201, inTime: true, deploys: ["skipped"] },
+              { status: 201, inTime: true, deploys: ["skipped"] },
+              { status: 200, inTime: true, deploys: ["queued"] },
               ["v0.2.1", "v0.2.0", "v0.1.0"],
             ],
           );
@@ -822,7 +853,7 @@ describe("an application's releases over HQ's API", () => {
               groupHead,
               entries: [{ service: "app", sha: app }],
             }),
-            { status: 201, inTime: true },
+            { status: 201, inTime: true, deploys: ["building"] },
           );
         }),
       { timeout: 60_000 },

@@ -346,17 +346,21 @@ describe("the migration's import", () => {
         );
         yield* Effect.sleep(Duration.millis(500));
         assert.deepStrictEqual([fake.imports, fake.appVersions.size], [[], 0]);
+        // Each service's newest job: what the hold left it.
         const records = yield* rowsWhere(
           url,
-          "SELECT service, state, failure FROM hq_deploy ORDER BY service",
+          `SELECT service, state FROM (
+             SELECT DISTINCT ON (project_id, service) service, state FROM hq_deploy_job
+             WHERE kind = 'deploy' ORDER BY project_id, service, id DESC
+           ) newest ORDER BY service`,
           () => true,
         );
         assert.deepStrictEqual(
           records.map((row) => Object.values(row)),
           [
-            ["app", "live", null],
-            ["appstage", "live", null],
-            ["workerstage", "failed", "job"],
+            ["app", "live"],
+            ["appstage", "live"],
+            ["workerstage", "failed"],
           ],
         );
 

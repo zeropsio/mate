@@ -666,7 +666,7 @@ describe("a backup set, restored", () => {
             session: owner,
             body: { token: VALUE },
           });
-          assert.strictEqual(kept.status, 204);
+          assert.strictEqual(kept.status, 200);
           // The stage's tier builds `app` from appdev, whose main carries no zerops.yaml yet.
           yield* a.call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
           const number = yield* propose(a.call, auth);
@@ -708,12 +708,11 @@ describe("a backup set, restored", () => {
           assert.notInclude(dump, TEST_KEY_SECRET);
 
           for (const [keySecret, keys, outcome] of [
-            [TEST_KEY_SECRET, "ok", ["live", null, null]],
+            [TEST_KEY_SECRET, "ok", ["live", null]],
             [
               OTHER_KEY_SECRET,
               "other_secret",
               [
-                "failed",
                 "refused",
                 "stage's deploy token does not open with HQ's key: HQ deploys again once HQ_KEY_SECRET is the key it was sealed under, or once an admin who opens the projects page in Zerops Mate mints a new one",
               ],
@@ -747,12 +746,12 @@ describe("a backup set, restored", () => {
             });
             const [deployed] = yield* rowsWhere(
               url,
-              "SELECT state, failure, message FROM hq_deploy",
+              "SELECT state, reason FROM hq_deploy_job WHERE kind = 'deploy'",
               (rows) =>
-                rows.length === 1 && ["live", "failed"].includes(String(rows[0]?.["state"])),
+                rows.length === 1 && ["live", "refused"].includes(String(rows[0]?.["state"])),
             );
             assert.deepStrictEqual<ReadonlyArray<unknown>>(
-              [deployed?.["state"], deployed?.["failure"], deployed?.["message"]],
+              [deployed?.["state"], deployed?.["reason"]],
               outcome,
             );
             yield* b.stop;

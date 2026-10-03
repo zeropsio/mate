@@ -57,6 +57,7 @@ import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { madeRepo } from "./reconcile.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
+import { addRollout } from "./rollouts.ts";
 import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -641,6 +642,14 @@ export const changesLayer: Layer.Layer<
                     mergeability = 'already_merged', behind = false
                 WHERE app_id = ${at.appId}::uuid AND repo = ${at.id} AND number = ${number}
                 RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+              // The merge asks for its deploys in its own write (`rollouts.ts`): the request that
+              // merged runs them; the main move git reports names the same rollout.
+              yield* addRollout(sql, {
+                cause: "merge",
+                appId: at.appId,
+                repo: at.id,
+                sha: mergedSha,
+              });
               yield* appendEvent(sql, {
                 kind: "merged",
                 appId: at.appId,

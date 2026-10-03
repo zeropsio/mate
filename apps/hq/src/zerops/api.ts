@@ -139,7 +139,7 @@ export class ZeropsApi extends Context.Service<
  * An environment's deploy, with its own deploy token: an app version named for the commit, the
  * commit's archive uploaded to it, then built and deployed with the tier's setup; the job read
  * until it ends; the subdomain turned on after. A write is asked once: a retry could make a second
- * version, and HQ's own pass asks again.
+ * version; an answer lost is read back from the version HQ made (`deploys.ts`).
  */
 export class ZeropsDeploy extends Context.Service<
   ZeropsDeploy,
@@ -167,11 +167,17 @@ export class ZeropsDeploy extends Context.Service<
     /**
      * `POST /project/{id}/service-stack/import` `{ yaml }`: services added to the project — what a
      * recipe delta imports (main D15); an environment's Basic user token may, as measured. The
-     * services it made, by hostname.
+     * services it made, by hostname, each with the processes bringing it up (measured
+     * 2026-09-05): the handles its import is followed by.
      */
     readonly importServices: (
       projectId: string,
       yaml: string,
-    ) => Write<{ readonly services: ReadonlyArray<string> }>;
+    ) => Write<{
+      readonly services: ReadonlyArray<{
+        readonly name: string;
+        readonly processes: ReadonlyArray<string>;
+      }>;
+    }>;
   }
 >()("@t3tools/hq/zerops/api/ZeropsDeploy") {}

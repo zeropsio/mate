@@ -53,6 +53,8 @@ interface FakeJob {
   failure: string | null;
   /** The version a deploy's job builds; none for a subdomain's. */
   readonly appVersionId: string | undefined;
+  /** The services an import's process brings up; none for any other. */
+  readonly imports?: ReadonlyArray<string>;
 }
 
 export interface FakeWorld {
@@ -78,13 +80,15 @@ export interface FakeWorld {
   jobs: Map<string, FakeJob>;
   /** How a version's deploy ends; `ACTIVE` unless it says otherwise. */
   outcome: (version: FakeAppVersion) => FakeOutcome;
+  /** How an import's process ends at its next read: its services up, failed, or still running. */
+  importOutcome: () => "FINISHED" | "FAILED" | "RUNNING";
   /** Every services import, as asked. */
   imports: Array<{ readonly projectId: string; readonly yaml: string }>;
   /**
    * Deploy writes whose next answer is lost on its way back: the platform does it, and the caller
    * hears Zerops not answering — what no idempotency key guards against (audit H6).
    */
-  lost: Set<"createAppVersion" | "upload" | "buildAndDeploy">;
+  lost: Set<"createAppVersion" | "upload" | "buildAndDeploy" | "importServices">;
   /** Operations Zerops does not answer while they are named here, as `down` does every one. */
   unanswered: Set<string>;
 }
@@ -102,6 +106,7 @@ export const emptyWorld = (): FakeWorld => ({
   appVersions: new Map(),
   jobs: new Map(),
   outcome: () => "ACTIVE",
+  importOutcome: () => "FINISHED",
   imports: [],
   lost: new Set(),
   unanswered: new Set(),
@@ -283,7 +288,7 @@ const deployedBy = (
 /** A deploy write's answer, unless the world loses it once (`lost`). */
 const answered = <A>(
   world: FakeWorld,
-  operation: "createAppVersion" | "upload" | "buildAndDeploy",
+  operation: "createAppVersion" | "upload" | "buildAndDeploy" | "importServices",
   value: A,
 ) =>
   world.lost.delete(operation)
@@ -303,8 +308,19 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
       }),
       (version) => Effect.as(deployedBy(world, operation, credential, version.serviceId), version),
     );
-  /** A running job, read: it ends as `outcome` says, or runs on. */
+  /** A running job, read: it ends as `outcome` says — an import's as `importOutcome` — or runs on. */
   const advance = (job: FakeJob) => {
+    if (job.status === "RUNNING" && job.imports !== undefined) {
+      const ended = world.importOutcome();
+      if (ended === "RUNNING") return;
+      job.status = ended;
+      if (ended === "FAILED") job.failure = "Import failed: the service could not be created";
+      for (const service of world.services) {
+        if (job.imports.includes(service.id))
+          service.status = ended === "FINISHED" ? "ACTIVE" : "ACTION_FAILED";
+      }
+      return;
+    }
     const version =
       job.appVersionId === undefined ? undefined : world.appVersions.get(job.appVersionId);
     if (job.status !== "RUNNING" || version === undefined) return;
@@ -383,43 +399,68 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
         return { status: version.status };
       }),
     importServices: (projectId, yaml) => (credential) =>
-      Effect.flatMap(tokenOf(world, "importServices", credential), (token) => {
-        const project = world.projects.find((candidate) => candidate.id === projectId);
-        if (project === undefined)
-          return Effect.fail(notFound("importServices", "projectNotFound"));
-        const grant = token.projects.find((entry) => entry.projectId === projectId);
-        if (
-          project.orgId !== token.orgId ||
-          !(roleAtLeast(token.roleCode, "BASIC_USER") || roleAtLeast(grant?.roleCode, "BASIC_USER"))
-        ) {
-          return Effect.fail(
-            new ZeropsRefused({
-              operation: "importServices",
-              reason: "forbidden",
-              status: 403,
-              code: "insufficientPermissions",
-            }),
+      Effect.flatMap(
+        tokenOf(world, "importServices", credential),
+        (
+          token,
+        ): Effect.Effect<
+          {
+            readonly services: ReadonlyArray<{
+              readonly name: string;
+              readonly processes: ReadonlyArray<string>;
+            }>;
+          },
+          ZeropsError
+        > => {
+          const project = world.projects.find((candidate) => candidate.id === projectId);
+          if (project === undefined)
+            return Effect.fail(notFound("importServices", "projectNotFound"));
+          const grant = token.projects.find((entry) => entry.projectId === projectId);
+          if (
+            project.orgId !== token.orgId ||
+            !(
+              roleAtLeast(token.roleCode, "BASIC_USER") ||
+              roleAtLeast(grant?.roleCode, "BASIC_USER")
+            )
+          ) {
+            return Effect.fail(
+              new ZeropsRefused({
+                operation: "importServices",
+                reason: "forbidden",
+                status: 403,
+                code: "insufficientPermissions",
+              }),
+            );
+          }
+          world.imports.push({ projectId, yaml });
+          const hostnames = [...yaml.matchAll(/^\s*-\s+hostname:\s*(\S+)\s*$/gmu)].map(
+            (match) => match[1] ?? "",
           );
-        }
-        world.imports.push({ projectId, yaml });
-        const hostnames = [...yaml.matchAll(/^\s*-\s+hostname:\s*(\S+)\s*$/gmu)].map(
-          (match) => match[1] ?? "",
-        );
-        for (const name of hostnames) {
-          world.services.push({
-            id: id("S"),
-            projectId,
-            name,
-            status: "ACTIVE",
-            isSystem: false,
-            subdomainAccess: false,
-            http: false,
-            named: null,
-            activeVersionId: null,
+          const services = hostnames.map((name) => {
+            const serviceId = id("S");
+            world.services.push({
+              id: serviceId,
+              projectId,
+              name,
+              status: "CREATING",
+              isSystem: false,
+              subdomainAccess: false,
+              http: false,
+              named: null,
+              activeVersionId: null,
+            });
+            const processId = id("process");
+            world.jobs.set(processId, {
+              status: "RUNNING",
+              failure: null,
+              appVersionId: undefined,
+              imports: [serviceId],
+            });
+            return { name, processes: [processId] };
           });
-        }
-        return Effect.succeed({ services: hostnames });
-      }),
+          return answered(world, "importServices", { services });
+        },
+      ),
     enableSubdomainAccess: (serviceId) => (credential) =>
       Effect.map(deployedBy(world, "enableSubdomainAccess", credential, serviceId), (service) => {
         service.subdomainAccess = true;

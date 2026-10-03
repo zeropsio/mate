@@ -16,6 +16,7 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { Changes, changesLayer } from "./changes.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { Roles } from "./roles.ts";
+import { rolloutsLayer } from "./rollouts.ts";
 import type { ZeropsMember, ZeropsProject } from "./zerops/api.ts";
 
 const owner: ZeropsMember = {
@@ -91,6 +92,7 @@ const withMovingMain = (moves: number) =>
       changesLayer.pipe(
         Layer.provideMerge(seamed),
         Layer.provideMerge(roles),
+        Layer.provideMerge(rolloutsLayer),
         Layer.provideMerge(activeCoreLayer(url)),
       ),
     );

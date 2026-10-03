@@ -67,10 +67,20 @@ const read = (url: string, read: "members" | "project") =>
     );
   });
 
+// Karel (2026-10-03): nothing is tried twice — a read too. One that does not answer is the caller's
+// answer; HQ reads a handle again on its own cadence, never here.
 describe("makeZeropsApiHttp", () => {
-  it.live("reads the member list through user/list's spurious 400 userNotFound", () =>
+  it.live("answers user/list's spurious 400 userNotFound as unavailable, asking once", () =>
     Effect.gen(function* () {
-      const api = yield* stub(2, 400, "userNotFound");
+      const api = yield* stub(1, 400, "userNotFound");
+      assert.strictEqual(yield* read(api.url, "members"), "ZeropsUnavailable");
+      assert.strictEqual(api.requests(), 1);
+    }),
+  );
+
+  it.live("reads the member list in one ask", () =>
+    Effect.gen(function* () {
+      const api = yield* stub(0, 200, "");
       assert.deepStrictEqual(yield* read(api.url, "members"), [
         {
           name: "mate-hq-org:P1",
@@ -82,23 +92,15 @@ describe("makeZeropsApiHttp", () => {
           canCreateProjects: false,
         },
       ]);
-      assert.strictEqual(api.requests(), 3);
+      assert.strictEqual(api.requests(), 1);
     }),
   );
 
-  it.live("gives up after four tries as unavailable, never as an empty list", () =>
-    Effect.gen(function* () {
-      const api = yield* stub(100, 400, "userNotFound");
-      assert.strictEqual(yield* read(api.url, "members"), "ZeropsUnavailable");
-      assert.strictEqual(api.requests(), 4);
-    }),
-  );
-
-  it.live("retries a 503, and never retries a verdict such as projectNotFound", () =>
+  it.live("answers a 503 as unavailable, asking once, and a verdict such as projectNotFound", () =>
     Effect.gen(function* () {
       const flaky = yield* stub(1, 503, "");
-      assert.lengthOf((yield* read(flaky.url, "members")) as ReadonlyArray<unknown>, 1);
-      assert.strictEqual(flaky.requests(), 2);
+      assert.strictEqual(yield* read(flaky.url, "members"), "ZeropsUnavailable");
+      assert.strictEqual(flaky.requests(), 1);
       const missing = yield* stub(100, 400, "projectNotFound");
       assert.strictEqual(yield* read(missing.url, "project"), "not_found");
       assert.strictEqual(missing.requests(), 1);
@@ -214,16 +216,29 @@ describe("makeZeropsDeployHttp", () => {
   // A recipe delta (main D15): services added to the environment's project.
   it.live("imports services into a project as the probe lib does", () =>
     Effect.gen(function* () {
+      // As measured (2026-09-05): each service with the processes bringing it up.
       const api = yield* recording(() => [
         200,
-        { projectId: "P1", serviceStacks: [{ id: "S1", name: "api", processes: [] }] },
+        {
+          projectId: "P1",
+          projectName: "Shop - stage",
+          serviceStacks: [
+            { id: "S1", name: "api", processes: [{ id: "PR-1" }, { id: "PR-2" }] },
+            { id: "S2", name: "cache" },
+          ],
+        },
       ]);
       const deploy = yield* deployOver(api.url);
       const imported = yield* deploy.importServices(
         "P1",
-        "services:\n  - hostname: api\n",
+        "services:\n  - hostname: api\n  - hostname: cache\n",
       )(Redacted.make("env-key"));
-      assert.deepStrictEqual(imported, { services: ["api"] });
+      assert.deepStrictEqual(imported, {
+        services: [
+          { name: "api", processes: ["PR-1", "PR-2"] },
+          { name: "cache", processes: [] },
+        ],
+      });
       assert.deepStrictEqual(
         api.heard.map(({ method, path, contentType, body }) => ({
           method,
@@ -236,7 +251,7 @@ describe("makeZeropsDeployHttp", () => {
             method: "POST",
             path: "/project/P1/service-stack/import",
             contentType: "application/json",
-            body: '{"yaml":"services:\\n  - hostname: api\\n"}',
+            body: '{"yaml":"services:\\n  - hostname: api\\n  - hostname: cache\\n"}',
           },
         ],
       );

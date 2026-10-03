@@ -5,6 +5,9 @@
  * - `DELETE /api/session`: revokes the presented session.
  * - `POST /api/apps` `{ name }` → the application; `DELETE /api/apps/:id` → `204`, only one that
  *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it.
+ * - Every event that asks for deploys answers, beside its own, `deploys`: where each job it asked
+ *   for stands once HQ submitted it (`@t3tools/shared/hqDeploys`, `deploys.ts`); a deploy that did
+ *   not go through never undoes the event.
  * - `POST /api/apps/:id/projects` `{ projectId, kind, mate?, environment?, created? }`: attaches a
  *   project, a Mate's record naming its zcp service where `mate.serviceId` does; a stage or a production is its application's environment, named `environment.name` or
  *   after its project (`environments.ts`); `created` says the person's client made it for HQ to
@@ -16,11 +19,15 @@
  * - `PATCH /api/apps/:id` `{ name }` → the application.
  * - `PUT /api/projects/:projectId/app` `{ appId | null, kind }` → `{ projectId, appId, kind }`:
  *   moves a project into an application, or out of any.
- * - `PUT /api/apps/:appId/environments/:name/deploy-token` `{ token }` → `204`: the environment's
- *   deploy token, minted by the client of whoever attaches it, kept sealed under HQ's key
- *   (`deployKeys.ts`; without one `409 conflict` `no_key_secret`); the structure says only `keyHeld`.
- * - `POST /api/apps/:appId/environments/:name/redeploy` `{ service, sha }` → `202`: a person's "Run
- *   again" of the environment's newest deploy of that service, failed (`deploys.ts`).
+ * - `PUT /api/apps/:appId/environments/:name/deploy-token` `{ token }` → `{ deploys }`: the
+ *   environment's deploy token, minted by the client of whoever attaches it, kept sealed under
+ *   HQ's key (`deployKeys.ts`; without one `409 conflict` `no_key_secret`); the structure says only
+ *   `keyHeld`.
+ * - `POST /api/apps/:appId/environments/:name/redeploy` `{ service, sha }` → `{ deploys }`: a
+ *   person's "Run again" of the environment's newest deploy of that service, ended (`deploys.ts`).
+ * - `POST /api/apps/:appId/environments/:name/services` `{ service }` → `{ deploys }`: a person's
+ *   "Add <service>", one its tier declares and its project lacks (`409 conflict`
+ *   `service_not_declared` for one it does not declare).
  * - `POST /api/mates` `{ projectId, face, standUp?, serviceId? }`, `PATCH /api/mates/:projectId`
  *   `{ face }` → `{ projectId, face }`: a Mate's record, in an application or not, naming its zcp
  *   service where its client knows it (one Mate per project); its name is its project's in Zerops
@@ -99,6 +106,7 @@ import {
 
 import { ChangeRefused, Changes } from "./changes.ts";
 import { RecipeTier } from "@t3tools/shared/hqRecipe";
+import { NO_DEPLOYS } from "@t3tools/shared/hqDeploys";
 import { CreateReleaseRequest, RollbackRequest } from "@t3tools/shared/hqRelease";
 
 import { DeployRefused, Deploys } from "./deploys.ts";
@@ -111,6 +119,7 @@ import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
 import { Writes } from "./writes.ts";
 import { Roles } from "./roles.ts";
+import type { RolloutCause } from "./rollouts.ts";
 import { Sessions } from "./sessions.ts";
 import {
   MateLinkTickets,
@@ -190,6 +199,7 @@ const BirthBody = Schema.Struct({
  * header, so a character no header may carry is refused here, never by the HTTP client later.
  */
 const RedeployBody = Schema.Struct({ service: Schema.String, sha: Sha });
+const AddServiceBody = Schema.Struct({ service: Schema.String });
 const DeployTokenBody = Schema.Struct({
   token: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._~+/=-]{1,512}$/u)),
 });
@@ -376,6 +386,22 @@ const outliving = <A, E, R>(write: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     return yield* (yield* Writes).outliving(write);
   });
+
+/**
+ * The deploys an event its write made asks for, run (`Deploys.runOf`): an event done stays done,
+ * so a run HQ could not finish answers why, and its jobs wait for the leading Core.
+ */
+const deploysOf = (event: RolloutCause) =>
+  Effect.gen(function* () {
+    return yield* (yield* Deploys).runOf(event);
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.as(Effect.logWarning("an event's deploys not run", { event, error }), {
+        jobs: [],
+        note: `HQ could not submit the deploys now (${error._tag}); they wait for the leading HQ`,
+      }),
+    ),
+  );
 
 /** A token of the client address's bucket at `door`; none left is `429`. */
 const knock = (door: "person" | "mate" | "git") =>
@@ -594,10 +620,18 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const { appId, repo, number } = yield* appChangePath;
-              return json(
-                yield* (yield* Changes).mergeChange(userId, appId, repo, number, expectedHead),
-                200,
+              const change = yield* (yield* Changes).mergeChange(
+                userId,
+                appId,
+                repo,
+                number,
+                expectedHead,
               );
+              const deploys =
+                change.mergedSha === null
+                  ? NO_DEPLOYS
+                  : yield* deploysOf({ cause: "merge", appId, repo, sha: change.mergedSha });
+              return json({ ...change, deploys }, 200);
             }),
           );
         }),
@@ -908,7 +942,11 @@ const routes = (
               const { userId } = yield* principal;
               const appId = (yield* HttpRouter.params)["id"] ?? "";
               yield* (yield* Structure).attachProject(userId, appId, input);
-              return json({ appId, projectId: input.projectId, kind: input.kind }, 201);
+              const deploys =
+                input.kind === "stage" || input.kind === "production"
+                  ? yield* deploysOf({ cause: "env_added", projectId: input.projectId, by: userId })
+                  : NO_DEPLOYS;
+              return json({ appId, projectId: input.projectId, kind: input.kind, deploys }, 201);
             }),
           );
         }),
@@ -980,14 +1018,36 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const params = yield* HttpRouter.params;
-              yield* (yield* Deploys).redeploy(
+              const deploys = yield* (yield* Deploys).redeploy(
                 userId,
                 params["appId"] ?? "",
                 params["name"] ?? "",
                 service,
                 sha,
               );
-              return HttpServerResponse.empty({ status: 202 });
+              return json({ deploys }, 200);
+            }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/environments/:name/services",
+      handle(
+        Effect.gen(function* () {
+          const { service } = yield* jsonBody(AddServiceBody, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const params = yield* HttpRouter.params;
+              const deploys = yield* (yield* Deploys).addService(
+                userId,
+                params["appId"] ?? "",
+                params["name"] ?? "",
+                service,
+              );
+              return json({ deploys }, 200);
             }),
           );
         }),
@@ -1047,7 +1107,14 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const appId = (yield* HttpRouter.params)["appId"] ?? "";
-              return json(yield* (yield* Releases).release(userId, appId, request), 201);
+              const release = yield* (yield* Releases).release(userId, appId, request);
+              const deploys = yield* deploysOf({
+                cause: "release",
+                appId,
+                tag: release.tag,
+                by: userId,
+              });
+              return json({ ...release, deploys }, 201);
             }),
           );
         }),
@@ -1063,15 +1130,20 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const params = yield* HttpRouter.params;
-              return json(
-                yield* (yield* Releases).rollback(
-                  userId,
-                  params["appId"] ?? "",
-                  params["tag"] ?? "",
-                  request,
-                ),
-                201,
+              const appId = params["appId"] ?? "";
+              const release = yield* (yield* Releases).rollback(
+                userId,
+                appId,
+                params["tag"] ?? "",
+                request,
               );
+              const deploys = yield* deploysOf({
+                cause: "release",
+                appId,
+                tag: release.tag,
+                by: userId,
+              });
+              return json({ ...release, deploys }, 201);
             }),
           );
         }),
@@ -1087,13 +1159,14 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const params = yield* HttpRouter.params;
-              yield* (yield* Structure).keepDeployToken(
+              const { projectId } = yield* (yield* Structure).keepDeployToken(
                 userId,
                 params["appId"] ?? "",
                 params["name"] ?? "",
                 Redacted.make(token),
               );
-              return HttpServerResponse.empty();
+              const deploys = yield* deploysOf({ cause: "key_kept", projectId, by: userId });
+              return json({ deploys }, 200);
             }),
           );
         }),

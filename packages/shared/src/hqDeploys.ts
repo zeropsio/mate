@@ -1,16 +1,71 @@
 /**
- * HQ's words for a deploy it refused and asks again on its next pass because Zerops did not
- * answer (`apps/hq/src/deploys.ts`): written into the deploy's record, and read back by the client,
- * which says a stage's first deploy waits on Zerops (`stopComing.ts`).
+ * What an event that asks for deploys is answered with (the deploy-jobs design,
+ * `apps/hq/src/deploys.ts`): HQ submits each of its environments' jobs in the request that asked —
+ * a merge, a release, a Run again, an Add service, an environment attached, a deploy key kept — and
+ * answers where each stands once it did. A deploy that did not go through never undoes the event:
+ * the merge stays merged, the release made.
  *
  * @module hqDeploys
  */
+import * as Schema from "effect/Schema";
 
 const ZEROPS_DID_NOT_ANSWER = "Zerops did not answer";
 
-/** The refusal's message, with what Zerops failed at. */
+/** HQ's words for a deploy Zerops did not answer, with what Zerops failed at. */
 export const zeropsDidNotAnswer = (detail: string): string => `${ZEROPS_DID_NOT_ANSWER}: ${detail}`;
 
-/** Whether a deploy's message is that refusal. */
+/** Whether a deploy's words are that refusal: the client's held first deploy, until it reads jobs. */
 export const saysZeropsDidNotAnswer = (message: string | null): boolean =>
   message?.startsWith(`${ZEROPS_DID_NOT_ANSWER}:`) === true;
+
+/**
+ * One job the event asked for, in one environment, as it stands once HQ submitted what it could:
+ * `building` (its build's process), `submitting` (Zerops' answer lost: HQ reads the version it
+ * made), `queued` behind the job its environment builds (`behind`), or ended — `live` (the service
+ * runs it already), `failed`, `refused` or `skipped`, HQ's words why. A service HQ asked nothing
+ * for is `skipped` too: it runs the commit, or a job of it is under way (`job`, else none).
+ */
+export const HqDeployOutcome = Schema.Struct({
+  /** The environment's name. */
+  environment: Schema.String,
+  kind: Schema.Literals(["deploy", "delta"]),
+  service: Schema.NullOr(Schema.String),
+  sha: Schema.NullOr(Schema.String),
+  job: Schema.NullOr(Schema.String),
+  state: Schema.Literals([
+    "queued",
+    "submitting",
+    "building",
+    "live",
+    "failed",
+    "refused",
+    "skipped",
+    "superseded",
+  ]),
+  processId: Schema.NullOr(Schema.String),
+  /** The job it waits behind, while queued. */
+  behind: Schema.NullOr(Schema.String),
+  reason: Schema.NullOr(Schema.String),
+});
+export type HqDeployOutcome = typeof HqDeployOutcome.Type;
+
+/**
+ * Every job an event asked for, and what HQ left out of it, in its words: what the event's own
+ * answer carries as `deploys`.
+ */
+export const HqDeployAnswer = Schema.Struct({
+  jobs: Schema.Array(HqDeployOutcome),
+  note: Schema.NullOr(Schema.String),
+});
+export type HqDeployAnswer = typeof HqDeployAnswer.Type;
+
+/** An event that asked for no deploy. */
+export const NO_DEPLOYS: HqDeployAnswer = { jobs: [], note: null };
+
+/**
+ * What every answer of an event that asks for deploys carries beside its own — a change merged, a
+ * release made, an environment attached, a key kept — and all a Run again or an Add service
+ * answers.
+ */
+export const WithDeploys = Schema.Struct({ deploys: HqDeployAnswer });
+export type WithDeploys = typeof WithDeploys.Type;

@@ -39,6 +39,7 @@ import { officialLayer } from "./official.ts";
 import { recomputesLayer } from "./recomputes.ts";
 import { recipeTiersLayer } from "./recipeTiers.ts";
 import { releasesLayer } from "./releases.ts";
+import { rolloutsLayer } from "./rollouts.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
 import { writesLayer } from "./writes.ts";
 import { rolesLayer } from "./roles.ts";
@@ -155,6 +156,7 @@ const services = (options: CoreOptions) => {
     Layer.provideMerge(doorRateLimitLayer),
     Layer.provideMerge(leader),
     Layer.provideMerge(deployKeysLayer(keySecret)),
+    Layer.provideMerge(rolloutsLayer),
     // Below the leader: its official check reads the org through the view every reader shares.
     Layer.provideMerge(
       rolesLayer({
