@@ -69,7 +69,14 @@ import {
   type SidebarProjectSnapshot,
 } from "../../sidebarProjectGrouping";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
-import { useProjects, useServerConfigs, useThreadShells } from "../../state/entities";
+import {
+  useAllEnvironmentProjectSnapshotsReady,
+  useProjects,
+  useServerConfigs,
+  useThreadShells,
+} from "../../state/entities";
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../../zerops/waitLine.logic";
+import { PageWaitLine } from "../zerops/WaitLine";
 import { projectEnvironment } from "../../state/projects";
 import { primaryServerProvidersAtom, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -114,7 +121,7 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { ProjectFaviconPickerDialog } from "./ProjectFaviconPickerDialog";
-import { projectGroupTitleNeedsUpdate } from "./ProjectSettingsPanel.logic";
+import { projectGroupTitleNeedsUpdate, projectSettingsState } from "./ProjectSettingsPanel.logic";
 
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -183,6 +190,7 @@ export function ProjectSettingsPage({ projectKey }: { projectKey: string }) {
 
 function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
   const groups = useSettingsProjectGroups();
+  const projectsRead = useAllEnvironmentProjectSnapshotsReady();
   const navigate = useNavigate();
   const selected = groups.find((group) => group.projectKey === projectKey) ?? null;
   const openProjectMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -226,9 +234,9 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
               className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/project-title:opacity-100 group-focus-visible/project-title:opacity-100"
             />
           </button>
-        ) : (
+        ) : projectsRead ? (
           <span className="truncate text-muted-foreground">Unavailable project</span>
-        )}
+        ) : null}
       </WorkspaceBreadcrumbItem>
     </WorkspaceBreadcrumb>
   );
@@ -236,6 +244,7 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
 
 export function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
   const groups = useSettingsProjectGroups();
+  const projectsRead = useAllEnvironmentProjectSnapshotsReady();
   const navigate = useNavigate();
 
   const selected = groups.find((group) => group.projectKey === projectKey) ?? null;
@@ -270,10 +279,18 @@ export function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
     }
   }, [groups, navigate, projectKey, selected]);
 
+  const state = projectSettingsState({
+    found: selected !== null,
+    read: projectsRead,
+    count: groups.length,
+  });
+  if (state === "reading") {
+    return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
+  }
   if (!selected) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
-        {groups.length === 0
+        {state === "no-projects"
           ? "Add a project from the sidebar to configure it here."
           : "This project is no longer available."}
       </div>

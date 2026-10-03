@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildProviderEnvironmentOptions,
   classifyProviderEnvironmentAccess,
+  providerEditorEmpty,
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
@@ -256,5 +257,28 @@ describe("remote operate access", () => {
         hasError: false,
       }),
     ).toBe("granted");
+  });
+});
+
+describe("providerEditorEmpty: no answer about providers before the device's are read", () => {
+  it.each([
+    [
+      "the providers not read yet",
+      { providersRead: false, targetInstanceMissing: false },
+      "reading",
+    ],
+    [
+      "the providers not read yet, a provider asked for",
+      { providersRead: false, targetInstanceMissing: true },
+      "reading",
+    ],
+    [
+      "read, the provider asked for is not there",
+      { providersRead: true, targetInstanceMissing: true },
+      "missing",
+    ],
+    ["read, none configured", { providersRead: true, targetInstanceMissing: false }, "none"],
+  ] as const)("%s", (_case, input, empty) => {
+    expect(providerEditorEmpty(input)).toBe(empty);
   });
 });

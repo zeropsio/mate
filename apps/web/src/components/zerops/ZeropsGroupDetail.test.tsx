@@ -23,7 +23,12 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
-import { serviceBuildRequest, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
+import {
+  detailTrail,
+  serviceBuildRequest,
+  ZeropsGroupPane,
+  ZeropsStopPane,
+} from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -82,7 +87,7 @@ function render(
   who: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
     "mates" | "matesNotice" | "onMatesNoticeAct"
-  > = {
+  > & { readonly name?: string | undefined } = {
     mates: [
       mate("theo", "Theo", "Cache the link previews"),
       mate("iris", "Iris", "Split the checkout"),
@@ -100,10 +105,10 @@ function render(
       attention={[]}
       commits={{ kind: "no-gitea" }}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
-      groupId="shop"
+      groupId="grp7Kq2"
+      name="Shop"
       {...who}
       {...stops}
-      name="Shop"
       names={{ mateNames: new Map(), groupName: "Shop" }}
       onAct={() => {}}
       onAddMate={() => {}}
@@ -163,6 +168,15 @@ describe("ZeropsGroupPane", () => {
         projectId === "stage" ? { kind: "runner", why: "waking" } : undefined,
     });
     expect(markup).toContain("Waiting for the runner · it’s waking up");
+  });
+
+  it("holds its title's line while the listing has not named the project: no id, no placeholder", () => {
+    const markup = render({ mates: [], name: undefined });
+    const title = markup.slice(markup.indexOf("<h1"), markup.indexOf("</h1>"));
+
+    expect(title).not.toContain("grp7Kq2");
+    expect(title).not.toContain("Project");
+    expect(title.replace(/<[^>]*>/gu, "")).toBe("\u00a0");
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
@@ -826,5 +840,16 @@ describe("serviceBuildRequest", () => {
 
   it("reads nothing for a service with nothing deployed", () => {
     expect(serviceBuildRequest({ repository: "apidev", sha: undefined }, forge)).toBeNull();
+  });
+});
+
+describe("detailTrail: where a detail page sits", () => {
+  it.each([
+    ["the projects page", undefined, ["Projects"]],
+    ["a project whose name is known", { groupId: "grp7Kq2", name: "Shop" }, ["Projects", "Shop"]],
+    // Before the listing is read the project's crumb waits: its id is never a name.
+    ["a project whose name is not read yet", { groupId: "grp7Kq2", name: undefined }, ["Projects"]],
+  ] as const)("%s", (_case, inside, labels) => {
+    expect(detailTrail(inside).map((crumb) => crumb.label)).toEqual(labels);
   });
 });

@@ -11,21 +11,22 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
-  collectLimitAccounts,
-  collectLimitSources,
+  type collectLimitSources,
   elapsedShare,
   formatDuration,
   formatResetsIn,
   type LimitAccount,
   limitsNotice,
   limitsNoticeLine,
+  LIMITS_READ_DEADLINE_MS,
+  limitsPage,
   type LimitPace,
   paceOf,
   providerLimitsLabel,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { environmentPresentations } from "../../state/presentation";
@@ -51,6 +52,9 @@ import {
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Avatar } from "../zerops/primitives";
+import { PageWaitLine, WaitLine } from "../zerops/WaitLine";
+import { useWaitLine } from "~/zerops/useWaitLine";
+import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
 
 const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof GaugeIcon }> = {
@@ -517,26 +521,41 @@ function SourceLimits({ source, now }: { readonly source: LimitsSource; readonly
   );
 }
 
+/** What the limits say while an environment's read is still on its way. */
+export const READING_LIMITS_LINE = "Reading subscription limits…";
+
 /**
  * Subscription quota windows from every connected environment's providers.
  * The page advances `now` on explicit refresh rather than ticking: a live
- * clock would repaint the page for no decision-changing gain.
+ * clock would repaint the page for no decision-changing gain. The cards are
+ * painted once (`limitsPage`): when every environment has answered, or
+ * `LIMITS_READ_DEADLINE_MS` after the section opened, least quota left first;
+ * then they stand as painted, a late answer joining at the end, the reading
+ * line under them while one is still on its way.
  */
 export function UsageLimitsSection({
   now,
   identities,
+  listed,
 }: {
   readonly now: number;
   readonly identities: UsageEnvironmentIdentities;
+  /** The environments are listed whole: none is still to be registered. */
+  readonly listed: boolean;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const { accounts, notices } = collectLimitAccounts(presentations);
-  const sources = collectLimitSources(presentations);
-  const tellApart =
-    new Set([
-      ...accounts.flatMap((account) => account.environmentIds),
-      ...notices.flatMap((group) => group.environmentIds),
-    ]).size > 1;
+  const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
+  const placed = useRef<readonly string[]>([]);
+  const page = limitsPage({ listed, presentations, deadlinePassed, placed: placed.current });
+  const { state, reading, accounts, notices, sources, tellApart } = page;
+  useLayoutEffect(() => {
+    placed.current = page.placed;
+  });
+  // One beat from the section's mount for the whole reading, the page's line and the cards' alike.
+  const readingLine = useWaitLine(reading ? READING_LIMITS_LINE : null, {
+    delayMs: BOOT_WAIT_LINE_MS,
+    from: "mount",
+  });
   const placesOf = (environmentIds: readonly EnvironmentId[]): readonly LimitsPlace[] =>
     environmentIds.map((environmentId) => ({
       environmentId,
@@ -548,16 +567,21 @@ export function UsageLimitsSection({
       owner: identities.get(environmentId)?.owner ?? null,
     }));
 
-  return (
-    <div className="flex flex-col gap-8">
-      {accounts.length === 0 && notices.length === 0 && sources.length === 0 ? (
+  if (state === "wait") {
+    return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_LIMITS_LINE} />;
+  }
+  if (state === "none") {
+    return (
+      <div className="flex flex-col gap-8">
         <p className="text-sm text-muted-foreground">
           No provider on a connected environment reports subscription limits.
         </p>
-      ) : null}
-      {sources.map((source) => (
-        <SourceLimits key={source.key} source={source} now={now} />
-      ))}
+        {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-8">
       {accounts.map((account) => (
         <AccountLimits
           key={account.key}
@@ -565,6 +589,9 @@ export function UsageLimitsSection({
           places={tellApart ? placesOf(account.environmentIds) : null}
           now={now}
         />
+      ))}
+      {sources.map((source) => (
+        <SourceLimits key={source.key} source={source} now={now} />
       ))}
       {notices.length > 0 ? (
         <div className="flex flex-col gap-1">
@@ -579,6 +606,18 @@ export function UsageLimitsSection({
           ))}
         </div>
       ) : null}
+      {/* Under the cards while more are on their way: a late answer joins above it, at the end. */}
+      {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
     </div>
   );
+}
+
+/** Whether `ms` has passed since this mounted: false, then true for good. */
+function useDeadlinePassed(ms: number): boolean {
+  const [passed, setPassed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setPassed(true), ms);
+    return () => clearTimeout(timer);
+  }, [ms]);
+  return passed;
 }

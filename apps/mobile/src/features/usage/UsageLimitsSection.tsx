@@ -11,21 +11,24 @@ import type {
   UsageProviderKind,
 } from "@t3tools/contracts";
 import {
-  collectLimitSources,
   collectLimitsGroups,
   elapsedShare,
   formatDuration,
   formatResetsIn,
+  keepPlaced,
+  LIMITS_READ_DEADLINE_MS,
   limitsNotice,
+  limitsPage,
   paceOf,
   providerLimitsLabel,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { type ReactNode, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
+import { environmentCatalog } from "../../connection/catalog";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -387,14 +390,43 @@ export function UsageLimitsSection(props: {
 }) {
   const { now } = props;
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const groups = collectLimitsGroups(presentations);
-  const sources = collectLimitSources(presentations);
+  const listed = useAtomValue(environmentCatalog.catalogValueAtom).isReady;
+  // Painted once, when every environment has answered or the deadline passed (`limitsPage`, as
+  // the web's); then each group stands where it was painted, a late one joining at the end.
+  const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
+  const painted = useRef<{
+    readonly accounts: readonly string[];
+    readonly groups: readonly string[];
+  }>({ accounts: [], groups: [] });
+  const { state, reading, shown, sources, placed } = limitsPage({
+    listed,
+    presentations,
+    deadlinePassed,
+    placed: painted.current.accounts,
+  });
+  // Mobile draws a group per environment: the groups keep their painted order as the cards do.
+  const groups = keepPlaced(painted.current.groups, collectLimitsGroups(shown), (group) =>
+    String(group.environmentId),
+  );
+  useLayoutEffect(() => {
+    painted.current = {
+      accounts: placed,
+      groups: groups.map((group) => String(group.environmentId)),
+    };
+  });
+  const readingLine = useReadingLine(reading);
 
-  if (groups.length === 0 && sources.length === 0) {
+  if (state === "wait") {
+    return <View className="py-16">{readingLine}</View>;
+  }
+  if (state === "none") {
     return (
-      <Text className="py-16 text-center text-base text-foreground-muted">
-        No provider on a connected environment reports subscription limits.
-      </Text>
+      <>
+        <Text className="py-16 text-center text-base text-foreground-muted">
+          No provider on a connected environment reports subscription limits.
+        </Text>
+        {readingLine}
+      </>
     );
   }
 
@@ -447,6 +479,37 @@ export function UsageLimitsSection(props: {
           )}
         </SettingsSection>
       ))}
+      {reading ? readingLine : null}
     </>
+  );
+}
+
+/** Whether `ms` has passed since this mounted: false, then true for good. */
+function useDeadlinePassed(ms: number): boolean {
+  const [passed, setPassed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setPassed(true), ms);
+    return () => clearTimeout(timer);
+  }, [ms]);
+  return passed;
+}
+
+/** The wait's beat before its line, as the web's (`BOOT_WAIT_LINE_MS`). */
+const READING_LINE_MS = 600;
+
+/** "Reading subscription limits…" past the wait's beat, while an environment's read is out. */
+function useReadingLine(reading: boolean): ReactNode {
+  const [due, setDue] = useState(false);
+  useEffect(() => {
+    if (!reading || due) return;
+    const timer = setTimeout(() => setDue(true), READING_LINE_MS);
+    return () => clearTimeout(timer);
+  }, [due, reading]);
+  if (!reading || !due) return null;
+  return (
+    <View className="flex-row items-center justify-center gap-2">
+      <ActivityIndicator size="small" />
+      <Text className="text-sm text-foreground-muted">Reading subscription limits…</Text>
+    </View>
   );
 }

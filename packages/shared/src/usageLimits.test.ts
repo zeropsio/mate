@@ -20,6 +20,7 @@ import {
   formatResetsIn,
   limitsNotice,
   limitsNoticeLine,
+  limitsPage,
   paceOf,
   providersWithLimits,
   remainingPercent,
@@ -786,5 +787,165 @@ describe("remainingPercent", () => {
     expect(remainingPercent({ ...window, usedPercent: 0 })).toBe(100);
     expect(remainingPercent({ ...window, usedPercent: 100 })).toBe(0);
     expect(remainingPercent({ ...window, usedPercent: 33.4 })).toBe(67);
+  });
+});
+
+describe("limitsPage: painted once, least quota first, never none before it is known", () => {
+  const claude = ProviderDriverKind.make("claudeAgent");
+  const limited = (email: string, usedPercent = 40): ServerProvider =>
+    provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claude"),
+      auth: { status: "authenticated", email },
+      usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [{ ...window, usedPercent }] },
+    });
+  const unreadable = provider({
+    usageLimits: {
+      checkedAt: "2026-09-03T11:00:00.000Z",
+      windows: [],
+      unavailable: { reason: "probeFailed" },
+    },
+  });
+  type Phase = "available" | "offline" | "connecting" | "reconnecting" | "connected" | "error";
+  /** One environment: its connection, and its config once it has answered. */
+  const at = (
+    phase: Phase,
+    providers: readonly ServerProvider[] | null = null,
+    error: string | null = null,
+  ) => ({
+    entry: { target: { label: "node-id-1.runtime.zcp.zerops" } },
+    connection: { phase, error },
+    serverConfig: providers === null ? null : { providers },
+  });
+  const page = (
+    options: {
+      readonly listed?: boolean;
+      readonly deadlinePassed?: boolean;
+      readonly placed?: readonly string[];
+    },
+    ...environments: ReadonlyArray<readonly [string, ReturnType<typeof at>]>
+  ) =>
+    limitsPage({
+      listed: options.listed ?? true,
+      deadlinePassed: options.deadlinePassed ?? false,
+      placed: options.placed ?? [],
+      presentations: new Map(environments.map(([id, entry]) => [EnvironmentId.make(id), entry])),
+    });
+  const seen = (result: ReturnType<typeof page>) => ({
+    state: result.state,
+    reading: result.reading,
+    accounts: result.accounts.map((account) => account.key.replace("claudeAgent:", "")),
+    notices: result.notices.length,
+  });
+  const roomy = limited("roomy@example.com", 20);
+  const tight = limited("tight@example.com", 90);
+  const middle = limited("middle@example.com", 50);
+
+  it.each([
+    [
+      "every environment settled: the cards, least quota left first",
+      page({}, ["a", at("connected", [roomy])], ["b", at("connected", [tight])]),
+      { state: "shown", reading: false, accounts: ["tight@example.com", "roomy@example.com"] },
+    ],
+    [
+      "a failed, a blocked and an offline environment are settled too",
+      page(
+        {},
+        ["a", at("reconnecting", null, "refused")],
+        ["b", at("error", null, "gone")],
+        ["c", at("offline")],
+        ["d", at("connected", [roomy])],
+      ),
+      { state: "shown", reading: false, accounts: ["roomy@example.com"] },
+    ],
+    [
+      "one still on its way before the deadline: the reading line alone",
+      page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]),
+      { state: "wait", reading: true, accounts: [] },
+    ],
+    [
+      "the list not whole before the deadline: the reading line alone",
+      page({ listed: false }, ["a", at("connected", [roomy])]),
+      { state: "wait", reading: true, accounts: [] },
+    ],
+    [
+      "one still on its way past the deadline: the others least quota first, the line under them",
+      page(
+        { deadlinePassed: true },
+        ["a", at("connected", [roomy])],
+        ["b", at("available")],
+        ["c", at("connected", [tight])],
+      ),
+      { state: "shown", reading: true, accounts: ["tight@example.com", "roomy@example.com"] },
+    ],
+    [
+      "a late answer joins at the end, whatever it has left",
+      page(
+        {
+          deadlinePassed: true,
+          placed: ["claudeAgent:middle@example.com", "claudeAgent:roomy@example.com"],
+        },
+        ["a", at("connected", [roomy])],
+        ["b", at("connected", [tight])],
+        ["c", at("connected", [middle])],
+      ),
+      {
+        state: "shown",
+        reading: false,
+        accounts: ["middle@example.com", "roomy@example.com", "tight@example.com"],
+      },
+    ],
+    [
+      "painted once, a refreshed read moves nothing",
+      page(
+        { placed: ["claudeAgent:roomy@example.com", "claudeAgent:tight@example.com"] },
+        ["a", at("connected", [roomy])],
+        ["b", at("connected", [tight])],
+      ),
+      { state: "shown", reading: false, accounts: ["roomy@example.com", "tight@example.com"] },
+    ],
+    [
+      "every environment settled, none reports limits",
+      page({}, ["a", at("connected", [])], ["b", at("error", null, "gone")]),
+      { state: "none", reading: false, accounts: [] },
+    ],
+    [
+      "the deadline passed with nothing reporting",
+      page({ deadlinePassed: true }, ["a", at("connecting")]),
+      { state: "none", reading: true, accounts: [] },
+    ],
+    [
+      "no environment and the list not whole",
+      page({ listed: false }),
+      { state: "wait", reading: true, accounts: [] },
+    ],
+    ["no environment, the list whole", page({}), { state: "none", reading: false, accounts: [] }],
+  ] as const)("%s", (_case, result, expected) => {
+    const { notices: _notices, ...rest } = seen(result);
+    expect(rest).toEqual(expected);
+  });
+
+  it("says what could not be read once the cards are painted", () => {
+    const result = page({}, ["a", at("connected", [unreadable])], ["b", at("connected", [roomy])]);
+    expect(seen(result)).toEqual({
+      state: "shown",
+      reading: false,
+      accounts: ["roomy@example.com"],
+      notices: 1,
+    });
+  });
+
+  it("hands back the order it painted, for the next read to keep", () => {
+    const result = page({}, ["a", at("connected", [roomy])], ["b", at("connected", [tight])]);
+    expect(result.placed).toEqual([
+      "claudeAgent:tight@example.com",
+      "claudeAgent:roomy@example.com",
+    ]);
+  });
+
+  it("tells environments apart by the list, known up front, never by which reads are in", () => {
+    const one = page({ listed: false }, ["a", at("connected", [roomy])]);
+    const two = page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]);
+    expect([one.tellApart, two.tellApart]).toEqual([false, true]);
   });
 });
