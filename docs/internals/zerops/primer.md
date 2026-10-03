@@ -288,7 +288,7 @@ still to come says so.
     zcp, once
   - _Built in:_ `c199e51eef`, `14369a03c6`, `71258784ef`, `d168c83f84`, `2b022c8341`; zcp
     `abd07e960`, `9f800923f`
-  - _Proven by:_ `ZeropsHqLink.test.ts`, `zeropsHqSummary.test.ts`, `zeropsSignIns.test.ts`,
+  - _Proven by:_ `ZeropsHqLink.test.ts`, `zeropsHqOverview.test.ts`, `zeropsSignIns.test.ts`,
     `ZeropsProjectSigners.test.ts` ("signs out the agent whose signer the org no longer knows"),
     `ZeropsSetup.test.ts`, `hqMateBirth.test.ts`; zcp `internal/mate/signins_test.go`
 - **T7a** — A Mate's changes in HQ: the contract, git in Core, records, events

@@ -19,6 +19,7 @@ import { ServerConfig } from "../config.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { CrewEngine } from "./crew/CrewEngine.ts";
 import { crewLayer } from "./crew/crewLayer.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
@@ -68,11 +69,42 @@ const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
 );
 
 /**
- * The Mate's one link to its HQ (SPEC §3.4): its summary up, its state down. The setup reads the
- * state it brings, and the merge below runs it — the same instance, memoized by reference.
+ * Crew mode (`zerops/crew`, reached only from here and ws.ts): inert unless this is a Zerops
+ * project with T3CODE_ZEROPS_CREW on, and even then it opens no ssh and installs no thread policy
+ * until a crew is applied. It admits its turns through the same gate instance. One value, so the
+ * link below reads the very engine the merge runs.
  */
-const ZeropsHqLinkLive = ZeropsHqLinkModule.layer.pipe(
+const ZeropsCrewLive = crewLayer.pipe(
+  Layer.provide(ZeropsTurnAdmissionLive),
+  Layer.provide(ZeropsAgentAuthLive),
+  Layer.provide(ZeropsLoginsLive),
   Layer.provide(ZeropsProjectSignersModule.layer),
+  Layer.provide(providerInstancesLayer),
+  Layer.provide(ProcessRunner.layer),
+);
+
+/** The Mate's update line (spec-mate §2.9): read by the descriptor and followed by the link. */
+const ZeropsMateUpdateLive = ZeropsMateUpdateModule.layer.pipe(
+  Layer.provideMerge(ZeropsCliModule.layer),
+);
+
+/**
+ * The Mate's one link to its HQ (SPEC §3.4): its overview up — its chats, its logins as the
+ * agent-auth feed reads them, its crew and its update line, each the same instance the merge below
+ * runs, memoized by reference — and its state down. The setup reads the state it brings. The crew
+ * engine is handed to it here, so only this wiring reaches into `zerops/crew`.
+ */
+const ZeropsHqLinkLive = Layer.unwrap(
+  Effect.gen(function* () {
+    return ZeropsHqLinkModule.layer(yield* CrewEngine);
+  }),
+).pipe(
+  Layer.provide(ZeropsCrewLive),
+  Layer.provide(ZeropsAgentLoginModule.layer),
+  Layer.provide(ZeropsAgentAuthLive),
+  Layer.provide(ZeropsLoginsLive),
+  Layer.provide(ZeropsProjectSignersModule.layer),
+  Layer.provide(ZeropsMateUpdateLive),
 );
 
 const liveLayer = Layer.mergeAll(
@@ -111,18 +143,7 @@ const liveLayer = Layer.mergeAll(
     Layer.provide(ZeropsProjectSignersModule.layer),
   ),
   ZeropsTurnAdmissionLive,
-  // Crew mode (`zerops/crew`, reached only from here and ws.ts): inert unless
-  // this is a Zerops project with T3CODE_ZEROPS_CREW on, and even then it
-  // opens no ssh and installs no thread policy until a crew is applied. It
-  // admits its turns through the same gate instance.
-  crewLayer.pipe(
-    Layer.provide(ZeropsTurnAdmissionLive),
-    Layer.provide(ZeropsAgentAuthLive),
-    Layer.provide(ZeropsLoginsLive),
-    Layer.provide(ZeropsProjectSignersModule.layer),
-    Layer.provide(providerInstancesLayer),
-    Layer.provide(ProcessRunner.layer),
-  ),
+  ZeropsCrewLive,
   // A new Mate's setup, reported at `/setup.json`, and its stand-up started
   // here once its asker signed an agent in — admitted through the same gate.
   // …and a running stand-up's progress, relayed from zcp's status file to its run card.
@@ -141,7 +162,7 @@ const liveLayer = Layer.mergeAll(
   ),
   ZeropsHqLinkLive,
   ZeropsBrowserStreamModule.layer,
-  ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),
+  ZeropsMateUpdateLive,
   ZeropsDataConsoleModule.layer,
   ZeropsGitRemoteProbeModule.layer,
   // Not a feed: the loop that ends a session whose person's role changed. It
