@@ -15,13 +15,15 @@ import {
   elapsedShare,
   formatDuration,
   formatResetsIn,
+  keepPlaced,
+  LIMITS_READ_DEADLINE_MS,
   limitsNotice,
   limitsPage,
   paceOf,
   providerLimitsLabel,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
@@ -389,10 +391,29 @@ export function UsageLimitsSection(props: {
   const { now } = props;
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const listed = useAtomValue(environmentCatalog.catalogValueAtom).isReady;
-  // Never none before every environment answered; groups in the environments' order, a late
-  // read filling its own place (`limitsPage`, as the web's).
-  const { state, reading, shown, sources } = limitsPage({ listed, presentations });
-  const groups = collectLimitsGroups(shown);
+  // Painted once, when every environment has answered or the deadline passed (`limitsPage`, as
+  // the web's); then each group stands where it was painted, a late one joining at the end.
+  const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
+  const painted = useRef<{
+    readonly accounts: readonly string[];
+    readonly groups: readonly string[];
+  }>({ accounts: [], groups: [] });
+  const { state, reading, shown, sources, placed } = limitsPage({
+    listed,
+    presentations,
+    deadlinePassed,
+    placed: painted.current.accounts,
+  });
+  // Mobile draws a group per environment: the groups keep their painted order as the cards do.
+  const groups = keepPlaced(painted.current.groups, collectLimitsGroups(shown), (group) =>
+    String(group.environmentId),
+  );
+  useLayoutEffect(() => {
+    painted.current = {
+      accounts: placed,
+      groups: groups.map((group) => String(group.environmentId)),
+    };
+  });
   const readingLine = useReadingLine(reading);
 
   if (state === "wait") {
@@ -400,9 +421,12 @@ export function UsageLimitsSection(props: {
   }
   if (state === "none") {
     return (
-      <Text className="py-16 text-center text-base text-foreground-muted">
-        No provider on a connected environment reports subscription limits.
-      </Text>
+      <>
+        <Text className="py-16 text-center text-base text-foreground-muted">
+          No provider on a connected environment reports subscription limits.
+        </Text>
+        {readingLine}
+      </>
     );
   }
 
@@ -458,6 +482,16 @@ export function UsageLimitsSection(props: {
       {reading ? readingLine : null}
     </>
   );
+}
+
+/** Whether `ms` has passed since this mounted: false, then true for good. */
+function useDeadlinePassed(ms: number): boolean {
+  const [passed, setPassed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setPassed(true), ms);
+    return () => clearTimeout(timer);
+  }, [ms]);
+  return passed;
 }
 
 /** The wait's beat before its line, as the web's (`BOOT_WAIT_LINE_MS`). */
