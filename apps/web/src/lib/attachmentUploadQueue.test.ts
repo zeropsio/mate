@@ -548,17 +548,25 @@ describe("attachmentUploadQueue", () => {
       expect(readAttachmentUpload(file.id)?.status).toBe("ready");
     });
 
+    const HOUR_MS = 60 * 60 * 1000;
     it.each([
-      ["in its own environment it stands uploaded", firstEnvironment, "ready"],
-      ["in another it cannot go", secondEnvironment, "failed"],
-    ])("restored after a reload: %s", (_label, environmentId, status) => {
+      ["in its own environment it stands uploaded", firstEnvironment, HOUR_MS, "ready"],
+      ["in another it cannot go", secondEnvironment, HOUR_MS, "failed"],
+      ["a day after its upload it expired", firstEnvironment, 24 * HOUR_MS, "failed"],
+    ])("restored after a reload: %s", (_label, environmentId, ageMs, status) => {
       const file = makeFile("kept", {
         file: null,
-        uploaded: { environmentId: firstEnvironment, attachmentId: "att-kept" },
+        uploaded: {
+          environmentId: firstEnvironment,
+          attachmentId: "att-kept",
+          uploadedAt: Date.now() - ageMs,
+        },
       });
       startFileUpload({ environmentId, file });
       expect(TestXmlHttpRequest.requests).toHaveLength(0);
       expect(readAttachmentUpload(file.id)?.status).toBe(status);
+      const upload = readAttachmentUpload(file.id);
+      if (upload?.status === "failed") expect(upload.reason).toMatch(/attach the file again/iu);
       expect(
         getUploadedAttachments({ environmentId, images: [], files: [file] })?.[0]?.id ?? null,
       ).toBe(status === "ready" ? "att-kept" : null);

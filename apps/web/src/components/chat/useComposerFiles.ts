@@ -228,7 +228,11 @@ export function useComposerFiles(input: ComposerFilesInput): ComposerFiles {
       }
       updateFile(input.draftTarget, {
         ...file,
-        uploaded: { environmentId: upload.environmentId, attachmentId: upload.attachmentId },
+        uploaded: {
+          environmentId: upload.environmentId,
+          attachmentId: upload.attachmentId,
+          uploadedAt: Date.now(),
+        },
       });
     }
   }, [input.draftTarget, input.files, input.uploadsByImageId, updateFile]);

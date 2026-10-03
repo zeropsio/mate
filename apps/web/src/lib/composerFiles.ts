@@ -28,6 +28,16 @@ export { INLINE_FILE_PLACEHOLDER };
 export interface ComposerFileUpload {
   readonly environmentId: string;
   readonly attachmentId: string;
+  /** When it finished (epoch ms): the server lets an unsent upload go a day later. */
+  readonly uploadedAt: number;
+}
+
+/** How long the server keeps an upload no message claimed (`attachmentStore.ts`). */
+export const COMPOSER_UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Whether a finished upload is past the day the server keeps it, at `nowMs`. */
+export function composerUploadExpired(upload: ComposerFileUpload, nowMs: number): boolean {
+  return nowMs - upload.uploadedAt >= COMPOSER_UPLOAD_MAX_AGE_MS;
 }
 
 export interface ComposerFileAttachment {
@@ -50,6 +60,7 @@ export interface PersistedComposerFileAttachment {
   readonly sizeBytes: number;
   readonly environmentId: string;
   readonly attachmentId: string;
+  readonly uploadedAt: number;
 }
 
 export function countInlineFilePlaceholders(prompt: string): number {
@@ -231,6 +242,7 @@ export function persistedComposerFiles(
             sizeBytes: entry.sizeBytes,
             environmentId: entry.uploaded.environmentId,
             attachmentId: entry.uploaded.attachmentId,
+            uploadedAt: entry.uploaded.uploadedAt,
           },
         ],
   );
@@ -240,10 +252,8 @@ export function normalizePersistedComposerFile(
   value: unknown,
 ): PersistedComposerFileAttachment | null {
   if (!value || typeof value !== "object") return null;
-  const { id, name, mimeType, sizeBytes, environmentId, attachmentId } = value as Record<
-    string,
-    unknown
-  >;
+  const { id, name, mimeType, sizeBytes, environmentId, attachmentId, uploadedAt } =
+    value as Record<string, unknown>;
   if (
     typeof id !== "string" ||
     id.length === 0 ||
@@ -258,11 +268,23 @@ export function normalizePersistedComposerFile(
   ) {
     return null;
   }
-  return { id, name, mimeType, sizeBytes, environmentId, attachmentId };
+  // A file saved without its upload's time reads as long expired.
+  return {
+    id,
+    name,
+    mimeType,
+    sizeBytes,
+    environmentId,
+    attachmentId,
+    uploadedAt: typeof uploadedAt === "number" && Number.isFinite(uploadedAt) ? uploadedAt : 0,
+  };
 }
 
+/** The files a draft saved, back in the composer; one saved without its upload's time as long expired. */
 export function hydrateComposerFiles(
-  files: ReadonlyArray<PersistedComposerFileAttachment>,
+  files: ReadonlyArray<
+    Omit<PersistedComposerFileAttachment, "uploadedAt"> & { readonly uploadedAt?: number }
+  >,
 ): ComposerFileAttachment[] {
   return files.map((entry) => ({
     type: "file",
@@ -271,6 +293,10 @@ export function hydrateComposerFiles(
     mimeType: entry.mimeType,
     sizeBytes: entry.sizeBytes,
     file: null,
-    uploaded: { environmentId: entry.environmentId, attachmentId: entry.attachmentId },
+    uploaded: {
+      environmentId: entry.environmentId,
+      attachmentId: entry.attachmentId,
+      uploadedAt: entry.uploadedAt ?? 0,
+    },
   }));
 }

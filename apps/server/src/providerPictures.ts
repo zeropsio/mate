@@ -145,24 +145,27 @@ type MessageAttachment = PictureAttachment & {
   readonly source?: { readonly _tag: string } | undefined;
 };
 
-// Characters a name must not carry raw into the line: brackets end or fake
-// one, and controls, separators and bidi marks break it or reorder what it
-// shows (a right-to-left override disguises "exe" as "txt").
-const LINE_UNSAFE = /[[\]\u0080-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu;
+// Characters a name, path or note must not carry raw into the line: brackets
+// end or fake one, and controls, separators, bidi marks and tag characters
+// break it, reorder what it shows (a right-to-left override disguises "exe" as
+// "txt") or hide words in it.
+const LINE_UNSAFE =
+  /[[\]\u0080-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\u{E0000}-\u{E007F}]/gu;
 
-/** A name as a JSON string the line cannot be broken or disguised by. */
-function quotedName(name: string): string {
-  return JSON.stringify(name).replace(
-    LINE_UNSAFE,
-    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+const escapeUnit = (unit: string) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`;
+
+/** Text as a JSON string the line cannot be broken or disguised by. */
+function quoted(text: string): string {
+  return JSON.stringify(text).replace(LINE_UNSAFE, (character) =>
+    Array.from({ length: character.length }, (_, index) => escapeUnit(character[index]!)).join(""),
   );
 }
 
 /**
  * The line that tells an agent where an attachment is saved: a picture by its
  * label, a kept original as its picture's, a placed file by its label,
- * everything else as before. Every name is quoted as JSON; a note says why a
- * file is not where it should be.
+ * everything else as before. Every name, path and note is quoted as JSON; a
+ * note says why a file is not where it should be.
  */
 export function attachmentPathLine(
   attachment: MessageAttachment,
@@ -170,8 +173,8 @@ export function attachmentPathLine(
   message: { readonly text: string; readonly attachments: ReadonlyArray<MessageAttachment> },
   note?: string,
 ): string {
-  const at = note === undefined ? path : `${path} (${note})`;
-  const name = quotedName(attachment.name);
+  const at = note === undefined ? quoted(path) : `${quoted(path)} (${quoted(note)})`;
+  const name = quoted(attachment.name);
   const pictures = messagePictures(message.text, message.attachments);
   const picture = pictures.find((entry) => entry.image === attachment);
   if (picture) return `[Picture ${picture.n} is saved at: ${at}]`;

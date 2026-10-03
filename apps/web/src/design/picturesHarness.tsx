@@ -563,10 +563,10 @@ function Harness() {
   const placed = made ? placeMessagePictures(text, attachments) : null;
   const pathLines = made
     ? [
-        "[Picture 1 is saved at: /home/zerops/.t3/userdata/attachments/thread-1-8f2c.png]",
+        '[Picture 1 is saved at: "/home/zerops/.t3/userdata/attachments/thread-1-8f2c.png"]',
         ...(made.image.picture.keepOriginal
           ? [
-              '[Picture 1\'s original, "home-page.png", is saved at: /home/zerops/.t3/userdata/attachments/thread-1-a91d.png]',
+              '[Picture 1\'s original, "home-page.png", is saved at: "/home/zerops/.t3/userdata/attachments/thread-1-a91d.png"]',
             ]
           : []),
       ]

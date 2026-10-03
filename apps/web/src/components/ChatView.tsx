@@ -294,7 +294,7 @@ import {
   type DraftId,
 } from "../composerDraftStore";
 import { materializePicturePrompt, optimisticPictureAttachments } from "../lib/composerPictures";
-import { optimisticFileAttachments } from "../lib/composerFiles";
+import { composerAttachmentCount, optimisticFileAttachments } from "../lib/composerFiles";
 import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
@@ -6206,9 +6206,10 @@ export default function ChatView(props: ChatViewProps) {
   restoreQueuedMessagesRef.current = (messages) => restoreQueuedMessagesToComposer(messages);
   const restoreQueuedMessagesToComposer = (messages: ReadonlyArray<QueuedComposerMessage>) => {
     if (messages.length === 0) return;
-    // The draft holds at most the per-turn cap of pictures. The overflow goes
-    // back into the queue so nothing is lost, its places out of the text; the
-    // user can send the first batch and the rest follows as a queued message.
+    // The draft holds at most the per-turn cap of attachments. The pictures'
+    // overflow goes back into the queue so nothing is lost, its places out of
+    // the text; the user can send the first batch and the rest follows as a
+    // queued message.
     const heldFiles =
       useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.files ?? [];
     const {
@@ -6220,6 +6221,8 @@ export default function ChatView(props: ChatViewProps) {
       prompt: promptRef.current,
       imageCount: composerImagesRef.current.length,
       fileCount: heldFiles.length,
+      heldAttachments: composerAttachmentCount(composerImagesRef.current, heldFiles),
+      weigh: (image) => composerAttachmentCount([image], []),
       messages,
     });
     promptRef.current = nextPrompt;

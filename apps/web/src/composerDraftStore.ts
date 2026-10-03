@@ -215,6 +215,7 @@ const PersistedComposerFileAttachment = Schema.Struct({
   sizeBytes: Schema.Number,
   environmentId: Schema.String,
   attachmentId: Schema.String,
+  uploadedAt: Schema.optionalKey(Schema.Number),
 });
 
 const PersistedComposerThreadDraftState = Schema.Struct({
