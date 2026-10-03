@@ -474,6 +474,14 @@ describe("what each production service runs, as a comparison starts from it", ()
       stated: named(null),
       run: { kind: "untold" },
     },
+    {
+      // F10 (e2e, 2026-10-03): a production the import made runs its no-code version, active and
+      // sourced NONE (z3-eval's `s3git1`, xyz's `app`) — it runs nothing, and its first release
+      // puts the whole of `main` live.
+      name: "the import's no-code version runs nothing",
+      stated: known({ activeId: "v-import", source: "NONE", name: null }),
+      run: { kind: "nothing" },
+    },
   ])("$name", ({ stated, deploys, releases, run }) => {
     expect(
       productionRuns({

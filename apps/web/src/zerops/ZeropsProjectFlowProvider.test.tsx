@@ -161,12 +161,15 @@ vi.mock("./zeropsDataContext", async (importOriginal) => ({
 /** What HQ compares for each read a release asks: the commits listed here, every time. */
 const compares = vi.hoisted(() => ({
   commits: [] as ReadonlyArray<{ readonly sha: string; readonly subject: string }>,
+  /** Every read asked of HQ, by application, as last asked. */
+  asked: new Map<string, ReadonlyArray<CompareRead>>(),
 }));
 vi.mock("./useZeropsCompares", async () => {
   const { compareReadKey } = await import("@t3tools/client-runtime/zerops");
   return {
-    useZeropsCompares: (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) =>
-      new Map(
+    useZeropsCompares: (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) => {
+      for (const [appId, reads] of asks) compares.asked.set(appId, reads);
+      return new Map(
         [...asks].map(([appId, reads]) => [
           appId,
           {
@@ -190,7 +193,8 @@ vi.mock("./useZeropsCompares", async () => {
             failures: new Map(),
           },
         ]),
-      ),
+      );
+    },
   };
 });
 vi.mock("./useZeropsAppReleases", () => ({
@@ -322,6 +326,7 @@ describe("ZeropsProjectFlowProvider", () => {
     released.refreshed = [];
     permission.gate = { allowed: true };
     compares.commits = [];
+    compares.asked.clear();
     versions.stated = new Map();
     hq.asked = [];
     hq.answer = () => Promise.resolve({});
@@ -734,6 +739,29 @@ describe("ZeropsProjectFlowProvider", () => {
       await render();
       return { seen, render, root };
     }
+
+    // F10 (e2e, 2026-10-03): Bea's production, made by the import, runs its no-code version and HQ
+    // recorded no deploy; main holds two changes. The release door never showed, and the client
+    // never asked HQ to compare.
+    it("offers a first release over the import's no-code version: the whole of main, compared", async () => {
+      const importVersion = {
+        ...RUNS_NOTHING,
+        value: { activeId: "v-import", source: "NONE", name: null },
+      };
+      const { seen, root } = await mountRelease([APP], new Map([["s-app", importVersion]]));
+      expect(compares.asked.get("g1")).toEqual([
+        { repository: "appdev", query: { head: MERGED }, services: ["app"] },
+      ]);
+      const release = seen.at(-1)?.flows.get("g1")?.release;
+      expect(release?.gate).toEqual({ allowed: true });
+      expect(release?.untold).toEqual([]);
+      expect(
+        release?.contents.flatMap(({ commits }) => commits.map(({ subject }) => subject)),
+      ).toEqual(["Quicker gallery"]);
+      await act(async () => {
+        root.unmount();
+      });
+    });
 
     it("offers what HQ compared it would put live", async () => {
       const { seen, root } = await mountRelease();
