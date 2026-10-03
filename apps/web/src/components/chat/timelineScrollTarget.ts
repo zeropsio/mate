@@ -15,10 +15,12 @@ export function isTimelineScrollTarget(
     const style = getComputedStyle(element);
     if (style.overflowY !== "auto" && style.overflowY !== "scroll") continue;
 
+    // A scroller pinned to its foot at a fractional pixel ratio stands a
+    // fraction short of it (the live card counts itself there within 1 px).
     const canScroll =
       deltaY < 0
         ? element.scrollTop > 0
-        : element.scrollTop < element.scrollHeight - element.clientHeight;
+        : element.scrollTop < element.scrollHeight - element.clientHeight - 1;
     if (
       canScroll ||
       style.overscrollBehaviorY === "contain" ||

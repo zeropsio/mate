@@ -81,6 +81,8 @@ describe("timeline scroll targets", () => {
   it.each([
     { scrollTop: 0, deltaY: -30 },
     { scrollTop: 200, deltaY: 30 },
+    // A scroller pinned to its foot at a fractional pixel ratio stands short of it by a fraction.
+    { scrollTop: 199.5, deltaY: 30 },
   ])("allows chaining only past the matching edge: %j", ({ scrollTop, deltaY }) => {
     const { timeline, group, content } = setup();
     group.scrollTop = scrollTop;
