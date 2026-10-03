@@ -846,7 +846,7 @@ function Headline({
   if (use(InSlotContext)) {
     return (
       <span className={cn("flex min-w-0 items-start gap-2", META)}>
-        <span className="min-w-0 flex-1" data-run-shimmer={running ? "" : undefined}>
+        <span className="min-w-0 flex-1 break-words" data-run-shimmer={running ? "" : undefined}>
           {children}
         </span>
         <span aria-hidden="true" className="run-slot-clock-room" />
@@ -855,7 +855,7 @@ function Headline({
   }
   return (
     <span className={cn("flex min-w-0 items-start gap-2", META)}>
-      <span className="min-w-0 flex-1" data-run-shimmer={running ? "" : undefined}>
+      <span className="min-w-0 flex-1 break-words" data-run-shimmer={running ? "" : undefined}>
         {children}
       </span>
       {time !== null || opens || column ? (

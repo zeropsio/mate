@@ -4530,11 +4530,14 @@ button.run-bar:focus-visible {
    as a run's usual stretch before it scrolls. Its lines' outlines are drawn
    outside their boxes, so it keeps the 2 px they paint into. Room for its bar
    is kept whether or not it shows, so nothing rewraps as the run outgrows it,
-   and it keeps its own place as earlier lines are drawn above. */
+   and it keeps its own place as earlier lines are drawn above. It scrolls up
+   and down only: a line too long for it wraps, and the run never slides
+   sideways under a trackpad. */
 .run-scroll {
   max-height: min(560px, 60svh);
   margin: -2px;
   padding: 2px;
+  overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
   scrollbar-width: thin;
