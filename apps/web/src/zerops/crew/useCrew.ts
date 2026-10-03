@@ -19,6 +19,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections/crew";
 import { statusLabel } from "@t3tools/client-runtime/zerops/statusPresentation";
 import type { CrewSnapshot, CrewStatus, EnvironmentId } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { CrewDigest, OverviewLogins } from "@t3tools/shared/mateLink";
 import {
   mateMarkStateForThreadStatus,
@@ -72,33 +73,6 @@ export function useCrew(environmentId: EnvironmentId | null): CrewRead {
   return { status, snapshot, view, current };
 }
 
-/**
- * A Mate's door to its crew, for its menu: an applied crew from its overview in HQ, for any Mate;
- * crew mode on with no crew yet (`none`), or off, only from the open Mate's own feed — HQ's
- * overview carries a crew once one is applied and says nothing of crew mode. `null` where neither
- * says.
- */
-export function crewStatusOf(crew: CrewDigest | null, feed: CrewStatus | null): CrewStatus | null {
-  return crew === null ? feed : "applied";
-}
-
-/**
- * The crew status of the Mate in `projectId` for its menu (`crewStatusOf`): HQ's, and the feed of
- * `environmentId` — its open Mate's — where HQ holds no crew. `null` for no project.
- */
-export function useCrewStatus(
-  projectId: string | null,
-  environmentId: EnvironmentId | null,
-): CrewStatus | null {
-  const { crew } = useMateCrew(projectId);
-  const read = useAtomValue(
-    environmentId === null || crew !== null
-      ? NO_CREW_ATOM
-      : zeropsFeeds.crew({ environmentId, input: {} }),
-  );
-  return crewStatusOf(crew, crewFeedRead(read).status);
-}
-
 /** Whether the environment has a crew surface: a crew applied, or none yet to set up. */
 export function hasCrewSurface(status: CrewStatus | null): status is "none" | "applied" {
   return status === "none" || status === "applied";
@@ -106,13 +80,18 @@ export function hasCrewSurface(status: CrewStatus | null): status is "none" | "a
 
 /** A Mate's crew as HQ holds it in the Mate's overview (`@t3tools/shared/mateLink`). */
 export interface MateCrewRead {
+  /**
+   * Its crew's status — crew mode off, on with no crew yet, or a crew applied — for its menu's door
+   * to it (`mateCrewItem`); `null` where HQ holds no overview of the Mate.
+   */
+  readonly status: CrewStatus | null;
   /** Its applied crew; `null` where none is applied, or HQ holds no overview of it. */
-  readonly crew: CrewDigest | null;
+  readonly crew: (CrewDigest & { readonly status: "applied" }) | null;
   /** Whose each of its logins is, for what a crewmate's login lets the viewer do. */
   readonly logins: OverviewLogins;
   /**
-   * HQ's answer now, of a Mate that is up: what its crew does is true now. Otherwise the crew is
-   * as last known, at rest — HQ not answering, or the Mate asleep.
+   * HQ's answer now, of a Mate whose overview is live: what its crew does is true now. Otherwise
+   * the crew is as last known, at rest — HQ not answering, or the Mate asleep.
    */
   readonly current: boolean;
   /** The Mate's environment, as its overview names it: where a crewmate's chat opens. */
@@ -121,18 +100,22 @@ export interface MateCrewRead {
 
 const NO_LOGINS: OverviewLogins = {};
 
+/** A Mate's crew in HQ's view of it, `current` whether that view is HQ's answer now. */
+export function mateCrewOf(mate: MateLiveView | undefined, current: boolean): MateCrewRead {
+  const crew = mate?.crew;
+  return {
+    status: crew?.status ?? null,
+    crew: crew?.status === "applied" ? crew : null,
+    logins: mate?.logins ?? NO_LOGINS,
+    current: current && mate?.presence.overview === "live",
+    environmentId: mate?.identity?.environmentId,
+  };
+}
+
 /** The crew of the Mate in `projectId`, as HQ last told this tab of it; none for no project. */
 export function useMateCrew(projectId: string | null): MateCrewRead {
   const view = useAtomValue(hqMatesViewAtom);
   const mate = projectId === null ? undefined : view?.mates?.get(projectId);
-  const current = view?.current === true && mate?.presence.online === true;
-  return useMemo(
-    () => ({
-      crew: mate?.crew?.status === "applied" ? mate.crew : null,
-      logins: mate?.logins ?? NO_LOGINS,
-      current,
-      environmentId: mate?.identity?.environmentId,
-    }),
-    [current, mate],
-  );
+  const current = view?.current === true;
+  return useMemo(() => mateCrewOf(mate, current), [current, mate]);
 }

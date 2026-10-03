@@ -63,6 +63,19 @@ vi.mock("~/zerops/useNowMs", async (original) => ({
   ...(await original<typeof import("~/zerops/useNowMs")>()),
   useNowMs: () => clock.ms ?? Date.now(),
 }));
+// The crew HQ holds of each Mate, by its project, where a test says one: none otherwise.
+const hqCrews = vi.hoisted(() => new Map<string, unknown>());
+vi.mock("~/zerops/crew/useCrew", async (original) => ({
+  ...(await original<typeof import("~/zerops/crew/useCrew")>()),
+  useMateCrew: (projectId: string | null) =>
+    (projectId === null ? undefined : hqCrews.get(projectId)) ?? {
+      status: null,
+      crew: null,
+      logins: {},
+      current: false,
+      environmentId: undefined,
+    },
+}));
 // Who is looking: nobody signed in to Zerops unless a test says whom.
 const session = vi.hoisted(() => ({ viewer: undefined as string | undefined }));
 vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
@@ -80,6 +93,7 @@ afterEach(() => {
   stored.collapsed = new Set();
   stored.written = undefined;
   session.viewer = undefined;
+  hqCrews.clear();
   vi.unstubAllGlobals();
 });
 import {
@@ -3379,6 +3393,33 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
     },
   ] as const)("$case: $label", ({ crew: read, owner, label }) => {
     const tree = drawn({ crew: read, owner });
+    expect(tree.root.findByType(MateMenu).props.crew?.label).toBe(label);
+  });
+
+  // HQ says each Mate's crew mode (`OverviewCrew`): the menu needs no socket to the Mate to offer it.
+  it.each([
+    { case: "crew mode on, no crew yet", status: "none", label: "Set up a crew" },
+    { case: "a crew applied", status: "applied", label: "Crew" },
+    { case: "crew mode off", status: "off", label: undefined },
+  ] as const)("reads the crew of a Mate nobody opened from HQ: $case", ({ status, label }) => {
+    hqCrews.set("crm-dev", {
+      status,
+      crew: status === "applied" ? { status, ...crewDigestOf(crewSnapshotFixture()) } : null,
+      logins: {},
+      current: true,
+      environmentId: undefined,
+    });
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        getMateActions={() => ACTIONS}
+        getOwner={() => MINE}
+        onBrowseProjects={() => {}}
+        onOpenCrew={() => {}}
+        onSelect={() => {}}
+      />,
+    );
     expect(tree.root.findByType(MateMenu).props.crew?.label).toBe(label);
   });
 

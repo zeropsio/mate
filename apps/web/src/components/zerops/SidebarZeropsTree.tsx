@@ -126,7 +126,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { useCrewStatus } from "~/zerops/crew/useCrew";
+import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
@@ -516,8 +516,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   /**
    * A Mate's crew as a fixture draws it (a harness): its crew line, and
    * whether its menu offers *Set up a crew* or *Crew*. Absent, each Mate's
-   * crew line and menu read its crew from HQ (`useMateCrew`, `useCrewStatus`),
-   * the open Mate's menu its own feed for a crew not set up yet.
+   * crew line and menu read its crew from HQ (`useMateCrew`).
    */
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
@@ -2539,13 +2538,11 @@ function MateRow<T extends RosterCandidate>({
     read: conversationsRead,
   });
   const warmIntent = useWarmIntent(activity?.threadKey);
-  // Its menu's door to its crew (`mateCrewItem`): a crew applied, as HQ holds it,
-  // or crew mode on with none yet, as the open Mate's feed says — or a fixture's.
-  const reads = onOpenCrew !== undefined && crew === undefined;
-  const liveCrewStatus = useCrewStatus(
-    reads ? candidate.project.id : null,
-    reads && candidate.group === "connected" ? (candidate.environmentId ?? null) : null,
-  );
+  // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew
+  // applied, as HQ holds it of any Mate — or a fixture's.
+  const liveCrewStatus = useMateCrew(
+    onOpenCrew !== undefined && crew === undefined ? candidate.project.id : null,
+  ).status;
   const crewStatus = crew === undefined ? liveCrewStatus : crew.status;
   // Setting a crew up is the viewer's only on a login they may run (D6): read where it is offered.
   const setUpAccess = useCrewAccess(

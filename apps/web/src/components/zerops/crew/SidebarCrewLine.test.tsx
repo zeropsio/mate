@@ -35,7 +35,8 @@ function hqCrew(
   read: Partial<MateCrewRead> = {},
 ): MateCrewRead {
   const fixture = crewSnapshotFixture();
-  const crew: CrewDigest = {
+  const crew: CrewDigest & { readonly status: "applied" } = {
+    status: "applied",
     crewmates: fixture.crewmates.map((mate) => ({
       handle: mate.handle,
       displayName: mate.displayName,
@@ -55,7 +56,7 @@ function hqCrew(
   const logins: OverviewLogins = {
     "claude-code": { signedInBy: "ada", present: true, token: false },
   };
-  return { crew, logins, current: true, environmentId: ENVIRONMENT, ...read };
+  return { status: "applied", crew, logins, current: true, environmentId: ENVIRONMENT, ...read };
 }
 
 describe("SidebarCrewLine", () => {
