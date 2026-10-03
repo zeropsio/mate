@@ -401,9 +401,15 @@ describe("HQ's reads of Zerops, a minute at a time", () => {
       );
       const service = Context.get(context, Official);
       const roles = Context.get(context, Roles);
-      // Structure's reconcile, every minute, reading the org as it does (`structure.test.ts`).
+      // Structure's reconcile, every minute, reading the org as it does (`structure.test.ts`) —
+      // drifted 40 s off the official check, as two loops of their own come to be. Two loops of
+      // one minute are never more than 30 s apart one way round: whichever comes second shares
+      // the other's read, so their drift costs nothing.
       yield* Effect.forkChild(
-        Effect.forever(Effect.andThen(Effect.sleep("60 seconds"), Effect.ignore(roles.recent))),
+        Effect.andThen(
+          Effect.sleep("40 seconds"),
+          Effect.forever(Effect.andThen(Effect.ignore(roles.recent), Effect.sleep("60 seconds"))),
+        ),
       );
       yield* Effect.yieldNow;
       assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
