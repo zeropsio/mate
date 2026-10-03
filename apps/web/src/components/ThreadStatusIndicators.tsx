@@ -4,7 +4,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import type { ThreadLinkedPullRequest, VcsStatusResult } from "@t3tools/contracts";
-import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import { resolveThreadStatus, type ThreadStatus } from "@t3tools/shared/threadStatus";
 import { Atom } from "effect/unstable/reactivity";
 import { CloudIcon, FolderGit2Icon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { useMemo, type AnimationEvent, type MouseEventHandler, type ReactNode } from "react";
@@ -485,8 +485,11 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   const gitCwd = thread.worktreePath ?? threadProjectCwd;
   const linkedPullRequest =
     thread.linkedPullRequest == null ? null : linkedPullRequestIndicator(thread.linkedPullRequest);
+  // A Mate this browser holds no socket to is not woken for a badge.
+  const connected = useEnvironment(thread.environmentId)?.connection.phase === "connected";
   const gitStatus = useEnvironmentQuery(
-    thread.linkedPullRequest == null &&
+    connected &&
+      thread.linkedPullRequest == null &&
       (thread.branch != null || thread.worktreePath !== null) &&
       gitCwd !== null
       ? vcsEnvironment.status({
@@ -547,16 +550,30 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
 }
 
 /**
+ * A status resolved without the thread at hand — a chat HQ lists of a Mate this browser holds no
+ * socket to — drawn as {@link ThreadRowLeadingStatus} draws its own.
+ */
+export function ThreadRowResolvedStatus({ status }: { status: ThreadStatus }) {
+  const pill = threadStatusPill(status);
+  return pill === null ? null : (
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <ThreadStatusLabel status={pill} />
+    </span>
+  );
+}
+
+/**
  * Non-interactive trailing status icons for a thread row in compact contexts
  * like the command palette. Shows a terminal-running indicator and a remote
  * environment indicator, matching the sidebar's trailing indicators.
  */
 export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSummary }) {
+  const environment = useEnvironment(thread.environmentId);
+  // A Mate this browser holds no socket to is not woken for a badge.
   const runningTerminalIds = useThreadRunningTerminalIds({
-    environmentId: thread.environmentId,
+    environmentId: environment?.connection.phase === "connected" ? thread.environmentId : null,
     threadId: thread.id,
   });
-  const environment = useEnvironment(thread.environmentId);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const isRemoteThread =
     primaryEnvironmentId !== null && thread.environmentId !== primaryEnvironmentId;

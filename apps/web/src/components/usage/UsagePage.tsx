@@ -430,6 +430,7 @@ export function UsagePage({
 
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
+            <p className="text-xs text-muted-foreground">Only Mates the app is connected to.</p>
             {!showingLimits ? (
               <div className="flex justify-end">
                 <UsagePriceOverrides usage={environments} />

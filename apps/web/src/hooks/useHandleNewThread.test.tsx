@@ -36,9 +36,12 @@ vi.mock("../state/entities", () => ({
   useProjects: () => [],
 }));
 
-vi.mock("../state/server", async () => {
+vi.mock("../state/server", async (importOriginal) => {
   const { Atom } = await import("effect/unstable/reactivity");
-  return { primaryServerSettingsAtom: Atom.make(DEFAULT_SERVER_SETTINGS) };
+  return {
+    ...(await importOriginal<typeof import("../state/server")>()),
+    primaryServerSettingsAtom: Atom.make(DEFAULT_SERVER_SETTINGS),
+  };
 });
 
 vi.mock("../state/zerops", () => ({}));

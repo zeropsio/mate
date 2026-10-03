@@ -757,6 +757,9 @@ export function DiagnosticsSettingsPanel() {
   const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
   const primaryEnvironment = usePrimaryEnvironment();
   const environmentId = primaryEnvironment?.environmentId ?? null;
+  // Read only over a socket that is open: the page never wakes a Mate to report.
+  const readEnvironmentId =
+    primaryEnvironment?.connection.phase === "connected" ? environmentId : null;
   const signalServerProcess = useAtomCommand(serverEnvironment.signalProcess, {
     reportFailure: false,
   });
@@ -768,9 +771,9 @@ export function DiagnosticsSettingsPanel() {
     RESOURCE_HISTORY_WINDOWS.find((option) => option.windowMs === resourceWindowMs) ??
     RESOURCE_HISTORY_WINDOWS[1];
   const { data, error, isPending, refresh } = useEnvironmentQuery(
-    environmentId === null
+    readEnvironmentId === null
       ? null
-      : serverEnvironment.traceDiagnostics({ environmentId, input: {} }),
+      : serverEnvironment.traceDiagnostics({ environmentId: readEnvironmentId, input: {} }),
   );
   const {
     data: processData,
@@ -778,9 +781,9 @@ export function DiagnosticsSettingsPanel() {
     isPending: isProcessPending,
     refresh: refreshProcesses,
   } = useEnvironmentQuery(
-    environmentId === null
+    readEnvironmentId === null
       ? null
-      : serverEnvironment.processDiagnostics({ environmentId, input: {} }),
+      : serverEnvironment.processDiagnostics({ environmentId: readEnvironmentId, input: {} }),
   );
   const {
     data: resourceData,
@@ -788,10 +791,10 @@ export function DiagnosticsSettingsPanel() {
     isPending: isResourcePending,
     refresh: refreshResources,
   } = useEnvironmentQuery(
-    environmentId === null
+    readEnvironmentId === null
       ? null
       : serverEnvironment.processResourceHistory({
-          environmentId,
+          environmentId: readEnvironmentId,
           input: {
             windowMs: selectedResourceWindow.windowMs,
             bucketMs: selectedResourceWindow.bucketMs,
@@ -937,7 +940,7 @@ export function DiagnosticsSettingsPanel() {
 
   return (
     <SettingsPageContainer width="expanded" className="gap-10">
-      <ResourceTelemetryDiagnostics />
+      {readEnvironmentId === null ? null : <ResourceTelemetryDiagnostics />}
 
       <SettingsSection
         title="Live Processes"

@@ -1,6 +1,10 @@
 "use client";
 
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import {
   canCreateProjectInEnvironment,
   getCloneDestinationBrowsePath,
@@ -84,6 +88,7 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
+import { hqMatesAtom, hqPlacementsAtom } from "../state/zerops";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -112,6 +117,7 @@ import {
   buildThreadActionItems,
   enumerateCommandPaletteItems,
   type CommandPaletteActionItem,
+  type CommandPaletteHqThreads,
   type CommandPaletteOpenIntent,
   type CommandPaletteSubmenuItem,
   type CommandPaletteView,
@@ -138,7 +144,11 @@ import {
   CommandPaletteMetaDot,
   ThreadCommandSubtitle,
 } from "./ThreadCommandSubtitle";
-import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
+import {
+  ThreadRowLeadingStatus,
+  ThreadRowResolvedStatus,
+  ThreadRowTrailingStatus,
+} from "./ThreadStatusIndicators";
 import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
 import { useSidebarJump } from "../zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
@@ -759,10 +769,7 @@ function OpenCommandPaletteDialog(props: {
   const [viewStack, setViewStack] = useState<CommandPaletteView[]>([]);
   const currentView = viewStack.at(-1) ?? null;
   const environmentIds = useMemo(
-    () =>
-      environments
-        .filter((environment) => environment.connection.phase === "connected")
-        .map((environment) => environment.environmentId),
+    () => environments.map((environment) => environment.environmentId),
     [environments],
   );
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
@@ -1188,10 +1195,32 @@ function OpenCommandPaletteDialog(props: {
     ],
   );
 
+  const hqMates = useAtomValue(hqMatesAtom);
+  const hqPlacements = useAtomValue(hqPlacementsAtom);
+  const threadLastVisitedAtById = useUiStateStore((store) => store.threadLastVisitedAtById);
+  // Every Mate's chats HQ lists, of those this browser holds no socket to: titles and status only.
+  const hqThreads = useMemo((): CommandPaletteHqThreads => {
+    const connected = new Set(
+      environments
+        .filter((environment) => environment.connection.phase === "connected")
+        .map((environment) => environment.environmentId),
+    );
+    return {
+      mates: hqMates?.mates ?? null,
+      current: hqMates?.current === true,
+      connected: (environmentId) => connected.has(environmentId),
+      linkable,
+      lastVisitedAt: (environmentId, threadId) =>
+        threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
+      mateName: (projectId) => hqPlacements?.get(projectId)?.mate?.name,
+      renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
+    };
+  }, [environments, hqMates, hqPlacements, linkable, threadLastVisitedAtById]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({
         threads,
+        hq: hqThreads,
         ...(activeThreadId ? { activeThreadId } : {}),
         projectTitleById,
         sortOrder: clientSettings.sidebarThreadSortOrder,
@@ -1246,6 +1275,7 @@ function OpenCommandPaletteDialog(props: {
     [
       activeThreadId,
       clientSettings.sidebarThreadSortOrder,
+      hqThreads,
       navigate,
       projectCwdById,
       projectFaviconPathById,

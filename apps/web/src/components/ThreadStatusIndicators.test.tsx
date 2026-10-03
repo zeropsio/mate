@@ -4,10 +4,61 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { SidebarThreadSummary } from "../types";
-import { ThreadRowLeadingStatus, ThreadWorktreeIndicator } from "./ThreadStatusIndicators";
+import {
+  ThreadRowLeadingStatus,
+  ThreadRowResolvedStatus,
+  ThreadRowTrailingStatus,
+  ThreadWorktreeIndicator,
+} from "./ThreadStatusIndicators";
+
+const reads = vi.hoisted(() => ({
+  phase: "connected" as string,
+  queries: [] as unknown[],
+  terminals: [] as Array<{ environmentId: unknown }>,
+}));
 
 vi.mock("../state/entities", () => ({ useProject: () => null }));
-vi.mock("../state/query", () => ({ useEnvironmentQuery: () => ({ data: null }) }));
+vi.mock("../state/query", () => ({
+  useEnvironmentQuery: (atom: unknown) => {
+    reads.queries.push(atom);
+    return { data: null };
+  },
+}));
+vi.mock("../state/terminalSessions", () => ({
+  useThreadRunningTerminalIds: (input: { environmentId: unknown }) => {
+    reads.terminals.push(input);
+    // As the real hook: no environment, no metadata read, no terminal.
+    return input.environmentId === null ? [] : ["terminal-1"];
+  },
+}));
+vi.mock("../state/environments", () => ({
+  useEnvironment: () => ({ label: "Fen", connection: { phase: reads.phase } }),
+  usePrimaryEnvironmentId: () => null,
+}));
+
+const branchThread = {
+  environmentId: EnvironmentId.make("environment-1"),
+  id: ThreadId.make("thread-1"),
+  projectId: ProjectId.make("project-1"),
+  title: "Branch thread",
+  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+  runtimeMode: "full-access",
+  branch: "feature/palette",
+  worktreePath: "/workspace/palette",
+  linkedPullRequest: null,
+  createdAt: "2026-08-30T10:00:00.000Z",
+  updatedAt: "2026-08-30T12:00:00.000Z",
+  archivedAt: null,
+  settledOverride: null,
+  settledAt: null,
+  latestUserMessageAt: null,
+  interactionMode: "default",
+  session: null,
+  latestTurn: null,
+  hasPendingApprovals: false,
+  hasPendingUserInput: false,
+  hasActionableProposedPlan: false,
+} satisfies SidebarThreadSummary;
 
 describe("ThreadRowLeadingStatus", () => {
   it("renders Failed for a failed leading status vector", () => {
@@ -36,6 +87,55 @@ describe("ThreadRowLeadingStatus", () => {
 
     expect(markup).toContain('aria-label="Failed"');
     expect(markup).toContain(">Failed<");
+  });
+});
+
+describe("ThreadRowLeadingStatus — change status", () => {
+  it.each([
+    { phase: "connected", reads: true },
+    { phase: "available", reads: false },
+    { phase: "reconnecting", reads: false },
+  ])(
+    "reads a branch's change status only from a connected Mate ($phase)",
+    ({ phase, reads: expected }) => {
+      reads.phase = phase;
+      reads.queries = [];
+
+      renderToStaticMarkup(<ThreadRowLeadingStatus thread={branchThread} />);
+
+      expect(reads.queries).toHaveLength(1);
+      expect(reads.queries[0] !== null).toBe(expected);
+    },
+  );
+});
+
+describe("ThreadRowResolvedStatus", () => {
+  it("draws a status resolved without the thread as a row draws its own", () => {
+    expect(
+      renderToStaticMarkup(
+        <ThreadRowResolvedStatus status={{ kind: "failed", toneId: "danger" }} />,
+      ),
+    ).toContain('aria-label="Failed"');
+    expect(
+      renderToStaticMarkup(
+        <ThreadRowResolvedStatus status={{ kind: "idle", toneId: "neutral" }} />,
+      ),
+    ).toBe("");
+  });
+});
+
+describe("ThreadRowTrailingStatus — running terminal", () => {
+  it.each([
+    { phase: "connected", shown: true },
+    { phase: "available", shown: false },
+  ])("shows a running terminal only for a connected Mate ($phase)", ({ phase, shown }) => {
+    reads.phase = phase;
+    reads.terminals = [];
+
+    const markup = renderToStaticMarkup(<ThreadRowTrailingStatus thread={branchThread} />);
+
+    expect(reads.terminals.map((input) => input.environmentId !== null)).toEqual([shown]);
+    expect(markup.includes('aria-label="Terminal process running"')).toBe(shown);
   });
 });
 

@@ -1,7 +1,7 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { areProjectPathSearchTargetsEqual } from "./queries";
+import { areProjectPathSearchTargetsEqual, connectedEnvironmentIds } from "./queries";
 
 describe("areProjectPathSearchTargetsEqual", () => {
   const target = {
@@ -22,5 +22,21 @@ describe("areProjectPathSearchTargetsEqual", () => {
     expect(areProjectPathSearchTargetsEqual(target, { ...target, query: "readme" })).toBe(false);
     expect(areProjectPathSearchTargetsEqual(target, { ...target, kind: "file" })).toBe(false);
     expect(areProjectPathSearchTargetsEqual(target, { ...target, imageOnly: true })).toBe(false);
+  });
+});
+
+describe("connectedEnvironmentIds", () => {
+  const OPEN = EnvironmentId.make("open-mate");
+  const PARKED = EnvironmentId.make("parked-mate");
+  const COMING = EnvironmentId.make("coming-mate");
+  const UNKNOWN = EnvironmentId.make("unknown-mate");
+  const presentations = new Map([
+    [OPEN, { connection: { phase: "connected" as const } }],
+    [PARKED, { connection: { phase: "available" as const } }],
+    [COMING, { connection: { phase: "connecting" as const } }],
+  ]);
+
+  it("searches only connected Mates", () => {
+    expect(connectedEnvironmentIds([PARKED, OPEN, COMING, UNKNOWN], presentations)).toEqual([OPEN]);
   });
 });
