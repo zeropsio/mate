@@ -12,6 +12,7 @@ import {
   PICTURE_MAX_BYTES,
   PICTURE_MAX_EDGE,
   interleavePictures,
+  messageFiles,
   messagePictures,
 } from "@t3tools/shared/composerPictures";
 
@@ -140,26 +141,52 @@ export function turnPictureError(
   return claudePictureErrorMessage(turnPictures.get(turn) ?? []);
 }
 
+type MessageAttachment = PictureAttachment & {
+  readonly source?: { readonly _tag: string } | undefined;
+};
+
+// Characters a name must not carry raw into the line: brackets end or fake
+// one, and controls, separators and bidi marks break it or reorder what it
+// shows (a right-to-left override disguises "exe" as "txt").
+const LINE_UNSAFE = /[[\]\u0080-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu;
+
+/** A name as a JSON string the line cannot be broken or disguised by. */
+function quotedName(name: string): string {
+  return JSON.stringify(name).replace(
+    LINE_UNSAFE,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+}
+
 /**
  * The line that tells an agent where an attachment is saved: a picture by its
- * label and a kept original as its picture's, everything else as before.
+ * label, a kept original as its picture's, a placed file by its label,
+ * everything else as before. Every name is quoted as JSON; a note says why a
+ * file is not where it should be.
  */
 export function attachmentPathLine(
-  attachment: PictureAttachment & { readonly source?: { readonly _tag: string } | undefined },
+  attachment: MessageAttachment,
   path: string,
-  message: { readonly text: string; readonly attachments: ReadonlyArray<PictureAttachment> },
+  message: { readonly text: string; readonly attachments: ReadonlyArray<MessageAttachment> },
+  note?: string,
 ): string {
+  const at = note === undefined ? path : `${path} (${note})`;
+  const name = quotedName(attachment.name);
   const pictures = messagePictures(message.text, message.attachments);
   const picture = pictures.find((entry) => entry.image === attachment);
-  if (picture) return `[Picture ${picture.n} is saved at: ${path}]`;
+  if (picture) return `[Picture ${picture.n} is saved at: ${at}]`;
   const original = pictures.find((entry) => entry.original === attachment);
   if (original) {
-    return `[Picture ${original.n}'s original, "${attachment.name}", is saved at: ${path}]`;
+    return `[Picture ${original.n}'s original, ${name}, is saved at: ${at}]`;
   }
+  const file = messageFiles(message.text, message.attachments).find(
+    (entry) => entry.file === attachment,
+  );
+  if (file?.placed) return `[File ${file.n}, ${name}, is saved at: ${at}]`;
   if (attachment.type === "file" && attachment.source?._tag === "pasted-text") {
-    return `[Pasted text "${attachment.name}" is saved at: ${path}. Inspect it as needed.]`;
+    return `[Pasted text ${name} is saved at: ${at}. Inspect it as needed.]`;
   }
-  return `[Attached ${attachment.type} "${attachment.name}" is saved at: ${path}]`;
+  return `[Attached ${attachment.type} ${name} is saved at: ${at}]`;
 }
 
 /**

@@ -3,9 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ChatAttachment } from "~/types";
 import {
   echoOfMessage,
+  GALLERY_PICTURE_MAX_HEIGHT,
+  messagePictureRows,
   placeMessagePictures,
   reservedPictureBox,
   terminalContextsBySegment,
+  unplacedMessageFiles,
 } from "./messagePictures.logic";
 
 const image = (id: string): ChatAttachment => ({
@@ -51,7 +54,7 @@ describe("placeMessagePictures", () => {
     const placed = placeMessagePictures(text, attachments);
     expect(
       placed?.segments.map((segment) =>
-        segment.kind === "text"
+        segment.kind !== "picture"
           ? segment
           : {
               kind: segment.kind,
@@ -63,6 +66,107 @@ describe("placeMessagePictures", () => {
       ),
     ).toEqual(segments);
     expect(placed?.unplaced.map((entry) => entry.id)).toEqual(unplaced);
+  });
+});
+
+describe("files in a sent message", () => {
+  const pdf = (id: string): ChatAttachment => ({
+    type: "file",
+    id,
+    name: `${id}.pdf`,
+    mimeType: "application/pdf",
+    sizeBytes: 4096,
+  });
+  const shape = (text: string, attachments: ReadonlyArray<ChatAttachment>) => {
+    const placed = placeMessagePictures(text, attachments);
+    return placed
+      ? {
+          segments: placed.segments.map((segment) =>
+            segment.kind === "text"
+              ? segment
+              : segment.kind === "file"
+                ? { kind: "file", n: segment.n, file: segment.file.id }
+                : { kind: "picture", n: segment.n, image: segment.image.id },
+          ),
+          unplaced: placed.unplaced.map((entry) => entry.id),
+          unplacedFiles: placed.unplacedFiles.map((entry) => entry.id),
+        }
+      : null;
+  };
+
+  it.each([
+    [
+      "a placed file stands where its label does",
+      "Read this:\n[File 1]\nthanks",
+      [pdf("spec")],
+      {
+        segments: [
+          { kind: "text", after: 0, text: "Read this:" },
+          { kind: "file", n: 1, file: "spec" },
+          { kind: "text", after: 1, text: "thanks" },
+        ],
+        unplaced: [],
+        unplacedFiles: [],
+      },
+    ],
+    [
+      "files and pictures keep their own numbers, files sent first",
+      "a\n[Picture 1]\n[File 1]\nb\n[File 2]",
+      [pdf("x"), pdf("y"), image("p")],
+      {
+        segments: [
+          { kind: "text", after: 0, text: "a" },
+          { kind: "picture", n: 1, image: "p" },
+          { kind: "file", n: 1, file: "x" },
+          { kind: "text", after: 2, text: "b" },
+          { kind: "file", n: 2, file: "y" },
+        ],
+        unplaced: [],
+        unplacedFiles: [],
+      },
+    ],
+    [
+      "a file sent before a picture is no kept original of it",
+      "[Picture 1]\n[File 1]",
+      [file("logo.svg", "image/svg+xml"), image("p")],
+      {
+        segments: [
+          { kind: "picture", n: 1, image: "p" },
+          { kind: "file", n: 1, file: "logo.svg" },
+        ],
+        unplaced: [],
+        unplacedFiles: [],
+      },
+    ],
+    [
+      "a file whose label the text lacks stands by the words",
+      "[File 1]\nwords",
+      [pdf("a"), pdf("b")],
+      {
+        segments: [
+          { kind: "file", n: 1, file: "a" },
+          { kind: "text", after: 1, text: "words" },
+        ],
+        unplaced: [],
+        unplacedFiles: ["b"],
+      },
+    ],
+    ["a person's own escaped label stays words", "[File 1] \nwords", [pdf("a")], null],
+  ])("%s", (_label, text, attachments, expected) => {
+    expect(shape(text, attachments)).toEqual(expected);
+  });
+
+  it.each([
+    ["a phone's files, with no labels", "Here you go", [pdf("a"), pdf("b")], ["a", "b"]],
+    [
+      "a picture's kept original is no file of its own",
+      "[Picture 1]\nLook",
+      [image("p"), file("p-o")],
+      [],
+    ],
+    ["no files", "Look", [image("p")], []],
+  ])("unplacedMessageFiles: %s", (_label, text, attachments, expected) => {
+    expect(unplacedMessageFiles(text, attachments).map((entry) => entry.id)).toEqual(expected);
   });
 });
 
@@ -186,5 +290,41 @@ describe("echoOfMessage — the person's message as the run's card repeats it", 
     const echo = echoOfMessage(text, attachments);
     expect(echo.line).toBe(line);
     expect(echo.pictures.map((picture) => picture.id)).toEqual(pictures);
+  });
+});
+
+describe("reservedPictureBox in a gallery", () => {
+  it("holds a picture side by side with others to the gallery's height", () => {
+    expect(
+      reservedPictureBox({ width: 2000, height: 1000 }, undefined, GALLERY_PICTURE_MAX_HEIGHT),
+    ).toEqual({
+      width: `min(100%, ${GALLERY_PICTURE_MAX_HEIGHT * 2}px)`,
+      aspectRatio: "2000 / 1000",
+    });
+  });
+});
+
+describe("messagePictureRows", () => {
+  type Segment = { readonly kind: string; readonly n: number };
+  const words = (after: number): Segment => ({ kind: "text", n: after });
+  const picture = (n: number): Segment => ({ kind: "picture", n });
+  const shape = (rows: ReturnType<typeof messagePictureRows<Segment>>) =>
+    rows.map((row) => (row.kind === "row" ? row.items.map((item) => item.n) : "words"));
+
+  it.each([
+    ["one picture is a row of its own", [words(0), picture(1), words(1)], ["words", [1], "words"]],
+    [
+      "pictures written one after another share a row",
+      [words(0), picture(1), picture(2), picture(3)],
+      ["words", [1, 2, 3]],
+    ],
+    [
+      "words between pictures part them",
+      [picture(1), words(1), picture(2), picture(3)],
+      [[1], "words", [2, 3]],
+    ],
+    ["only words, no rows", [words(0)], ["words"]],
+  ])("%s", (_label, segments, expected) => {
+    expect(shape(messagePictureRows(segments))).toEqual(expected);
   });
 });

@@ -24,26 +24,46 @@ export type AttachmentUploadState =
 
 export function attachmentUploadBlockReason(input: {
   readonly imageIds: ReadonlyArray<string>;
+  /** The draft's files, which upload beside its pictures. */
+  readonly fileIds?: ReadonlyArray<string>;
   readonly uploadsByImageId: Readonly<Record<string, AttachmentUploadState>>;
   readonly environmentId: EnvironmentId;
 }): string | null {
-  let pending = 0;
-  let failed = 0;
-
-  for (const imageId of input.imageIds) {
-    const upload = input.uploadsByImageId[imageId];
-    if (upload?.status === "failed" && upload.environmentId === input.environmentId) {
-      failed += 1;
-    } else if (upload?.status !== "ready" || upload.environmentId !== input.environmentId) {
-      pending += 1;
+  const count = (ids: ReadonlyArray<string>) => {
+    let pending = 0;
+    let failed = 0;
+    for (const id of ids) {
+      const upload = input.uploadsByImageId[id];
+      if (upload?.status === "failed" && upload.environmentId === input.environmentId) {
+        failed += 1;
+      } else if (upload?.status !== "ready" || upload.environmentId !== input.environmentId) {
+        pending += 1;
+      }
     }
-  }
+    return { pending, failed };
+  };
+  const images = count(input.imageIds);
+  const files = count(input.fileIds ?? []);
+  // What is held up, in its own word: images, files, or both as attachments.
+  const noun = (imageCount: number, fileCount: number, one: boolean) =>
+    imageCount > 0 && fileCount > 0
+      ? "attachments"
+      : fileCount > 0
+        ? one
+          ? "file"
+          : "files"
+        : one
+          ? "image"
+          : "images";
 
+  const failed = images.failed + files.failed;
   if (failed > 0) {
-    return failed === 1 ? "Retry or remove the failed image" : "Retry or remove the failed images";
+    return `Retry or remove the failed ${noun(images.failed, files.failed, failed === 1)}`;
   }
+  const pending = images.pending + files.pending;
   if (pending > 0) {
-    return pending === 1 ? "Image still uploading" : "Images still uploading";
+    const word = noun(images.pending, files.pending, pending === 1);
+    return `${word.charAt(0).toUpperCase()}${word.slice(1)} still uploading`;
   }
   return null;
 }

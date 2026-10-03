@@ -62,6 +62,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   COMPOSER_DRAFT_STORAGE_KEY,
   clearComposerDraftsEnvironment,
+  composerDraftHasUserContent,
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
   type ComposerImageAttachment,
@@ -79,6 +80,7 @@ import {
   type TerminalContextDraft,
 } from "./lib/terminalContext";
 import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
+import { INLINE_FILE_PLACEHOLDER, type ComposerFileAttachment } from "./lib/composerFiles";
 import { createDeferredStorage } from "./lib/storage";
 import { closeAccountLifetime, openAccountLifetime } from "./zerops/accountLifetime";
 
@@ -430,6 +432,143 @@ describe("pictures across a reload", () => {
     });
     expect(draft?.prompt).toBe(`a${P}bc${P}`);
     expect(draft?.images.map((image) => image.id)).toEqual(["one", "three"]);
+  });
+});
+
+describe("files in a draft", () => {
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-files"));
+  const threadKey = threadKeyFor(threadRef.threadId, TEST_ENVIRONMENT_ID);
+  const F = INLINE_FILE_PLACEHOLDER;
+  const uploaded = { environmentId: TEST_ENVIRONMENT_ID, attachmentId: "att" };
+  const makeFile = (id: string, extra: Partial<ComposerFileAttachment> = {}) =>
+    ({
+      type: "file",
+      id,
+      name: `${id}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: 5,
+      file: new File([new Uint8Array(5)], `${id}.pdf`),
+      uploaded: null,
+      ...extra,
+    }) satisfies ComposerFileAttachment;
+  const files = () => draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.files.map((f) => f.id);
+  const merge = (draft: Record<string, unknown>) =>
+    (
+      useComposerDraftStore.persist as unknown as {
+        getOptions: () => {
+          merge: (
+            persistedState: unknown,
+            currentState: ReturnType<typeof useComposerDraftStore.getState>,
+          ) => ReturnType<typeof useComposerDraftStore.getState>;
+        };
+      }
+    )
+      .getOptions()
+      .merge(
+        {
+          draftsByThreadKey: { [threadKey]: draft },
+          draftThreadsByThreadKey: {},
+          logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+        },
+        useComposerDraftStore.getInitialState(),
+      ).draftsByThreadKey[threadKey];
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("a file lands at its index among the files, with its place", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertFile(threadRef, `a${F}`, makeFile("one"), 0);
+    store.insertFile(threadRef, `${F}a${F}`, makeFile("two"), 0);
+    expect(files()).toEqual(["two", "one"]);
+    expect(draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(`${F}a${F}`);
+  });
+
+  it("follows the text's order, and a file the text no longer holds goes", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertFile(threadRef, `${F}`, makeFile("one"), 0);
+    store.insertFile(threadRef, `${F}${F}`, makeFile("two"), 1);
+    store.syncFiles(threadRef, ["two", "one"]);
+    expect(files()).toEqual(["two", "one"]);
+    store.syncFiles(threadRef, ["one"]);
+    expect(files()).toEqual(["one"]);
+    store.syncFiles(threadRef, ["back", "one"], [makeFile("back")]);
+    expect(files()).toEqual(["back", "one"]);
+  });
+
+  it("a finished upload is kept on the file", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertFile(threadRef, F, makeFile("one"), 0);
+    store.updateFile(threadRef, makeFile("one", { uploaded }));
+    expect(draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.files[0]?.uploaded).toEqual(uploaded);
+  });
+
+  it("a draft holding only a file has content, and clearing it takes the file", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertFile(threadRef, F, makeFile("one"), 0);
+    expect(composerDraftHasUserContent(draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID))).toBe(
+      true,
+    );
+    store.clearComposerContent(threadRef);
+    expect(files() ?? []).toEqual([]);
+  });
+
+  it("clearing words and pictures for the stash keeps the files in their places", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertFile(threadRef, `words ${F}\n`, makeFile("one"), 0);
+    store.clearComposerPromptAndImages(threadRef);
+    expect(files()).toEqual(["one"]);
+    expect(draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(F);
+  });
+
+  it("saves every file's place and only the uploaded files, never their bytes", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertFile(threadRef, F, makeFile("one", { uploaded }), 0);
+    store.insertFile(threadRef, `${F}${F}`, makeFile("two"), 1);
+    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState())
+      .draftsByThreadKey[threadKey];
+    expect(persisted?.fileIds).toEqual(["one", "two"]);
+    expect(persisted?.files).toEqual([
+      {
+        id: "one",
+        name: "one.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 5,
+        environmentId: TEST_ENVIRONMENT_ID,
+        attachmentId: "att",
+      },
+    ]);
+  });
+
+  it("a reload brings the uploaded files back, and a file that was still uploading leaves its place", () => {
+    const draft = merge({
+      prompt: `a${F}b${F}c`,
+      attachments: [],
+      fileIds: ["one", "two"],
+      files: [
+        {
+          id: "two",
+          name: "two.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 5,
+          environmentId: TEST_ENVIRONMENT_ID,
+          attachmentId: "att-two",
+        },
+      ],
+    });
+    expect(draft?.prompt).toBe(`ab${F}c`);
+    expect(draft?.files).toEqual([
+      {
+        type: "file",
+        id: "two",
+        name: "two.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 5,
+        file: null,
+        uploaded: { environmentId: TEST_ENVIRONMENT_ID, attachmentId: "att-two" },
+      },
+    ]);
   });
 });
 

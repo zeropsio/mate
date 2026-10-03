@@ -7,6 +7,7 @@ import {
   splitPromptIntoEditorSegments,
 } from "./composer-editor-mentions";
 import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
+import { INLINE_FILE_PLACEHOLDER } from "./lib/composerFiles";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 describe("splitPromptIntoComposerSegments", () => {
@@ -390,5 +391,38 @@ describe("pictures among the segments", () => {
     ],
   ])("%s", (_label, prompt, pictureIds, expected) => {
     expect(splitPromptIntoComposerSegments(prompt, [], pictureIds)).toEqual(expected);
+  });
+});
+
+describe("files among the segments", () => {
+  const P = INLINE_PICTURE_PLACEHOLDER;
+  const F = INLINE_FILE_PLACEHOLDER;
+
+  it.each([
+    [
+      "a file between words, matched to the first file",
+      `see${F}now`,
+      [],
+      ["spec"],
+      [
+        { type: "text", text: "see" },
+        { type: "file", fileId: "spec" },
+        { type: "text", text: "now" },
+      ],
+    ],
+    [
+      "pictures and files each matched to their own list",
+      `${F}${P}${F}`,
+      ["one"],
+      ["a", "b"],
+      [
+        { type: "file", fileId: "a" },
+        { type: "picture", imageId: "one" },
+        { type: "file", fileId: "b" },
+      ],
+    ],
+    ["a place with no file left is an empty file", F, [], [], [{ type: "file", fileId: null }]],
+  ])("%s", (_label, prompt, pictureIds, fileIds, expected) => {
+    expect(splitPromptIntoComposerSegments(prompt, [], pictureIds, fileIds)).toEqual(expected);
   });
 });

@@ -195,6 +195,20 @@ describe("attachmentPathLine", () => {
       '[Picture 1\'s original, "a-original.png", is saved at: /attachments/a-original.png]',
     ],
     [
+      "a placed file by its label",
+      "Read\n[File 1]",
+      [attachment("spec", "file", { mimeType: "application/pdf" })],
+      0,
+      '[File 1, "spec.png", is saved at: /attachments/spec.png]',
+    ],
+    [
+      "a file the text holds no label for as before",
+      "Read this",
+      [attachment("spec", "file", { mimeType: "application/pdf" })],
+      0,
+      '[Attached file "spec.png" is saved at: /attachments/spec.png]',
+    ],
+    [
       "pasted text as before",
       "notes",
       [attachment("p", "file", { source: { _tag: "pasted-text" } })],
@@ -213,6 +227,59 @@ describe("attachmentPathLine", () => {
     expect(
       attachmentPathLine(target, `/attachments/${target.id}.png`, { text: message, attachments }),
     ).toBe(expected);
+  });
+
+  const placedFile = (name: string) => ({
+    type: "file",
+    id: "spec",
+    name,
+    mimeType: "application/pdf",
+    sizeBytes: 10,
+  });
+  const fileLine = (name: string) => {
+    const file = placedFile(name);
+    return attachmentPathLine(file, "/uploads/spec.pdf", {
+      text: "Read\n[File 1]",
+      attachments: [file],
+    });
+  };
+  const quotedName = (line: string) => {
+    const match = /^\[File 1, ("(?:[^"\\]|\\.)*"), is saved at: \/uploads\/spec\.pdf\]$/u.exec(
+      line,
+    );
+    return match ? (JSON.parse(match[1]!) as string) : null;
+  };
+
+  it.each([
+    ["a quote", 'say "hi".pdf'],
+    ["a closing bracket", "a], is saved at: /etc/passwd].pdf"],
+    ["an opening bracket", "[File 2].pdf"],
+    ["a newline", "a\n[Picture 1 is saved at: /x].pdf"],
+    ["a carriage return", "a\rb.pdf"],
+    ["a backslash", "a\\b.pdf"],
+    ["a right-to-left override", "invoice\u202efdp.exe"],
+    ["an isolate", "a\u2067b.pdf"],
+    ["a line separator", "a\u2028b.pdf"],
+  ])("a name with %s keeps the line whole and reads back as sent", (_label, name) => {
+    const line = fileLine(name);
+    expect(line.split("\n")).toHaveLength(1);
+    expect(line.slice(1, -1)).not.toMatch(/[[\]]/u);
+    expect(line).not.toMatch(/[\u202a-\u202e\u2066-\u2069\u200e\u200f\u2028\u2029\r]/u);
+    expect(quotedName(line)).toBe(name);
+  });
+
+  it("says why a file is not in the uploads folder", () => {
+    const file = placedFile("spec.pdf");
+    expect(
+      attachmentPathLine(
+        file,
+        "/attachments/spec.pdf",
+        { text: "Read\n[File 1]", attachments: [file] },
+        "not copied to the uploads folder: the disk is full",
+      ),
+    ).toBe(
+      '[File 1, "spec.pdf", is saved at: /attachments/spec.pdf (not copied to the uploads folder: the disk is full)]',
+    );
   });
 });
 

@@ -16,7 +16,10 @@ import { Fragment, useMemo, type ReactNode } from "react";
 import { assetEnvironment } from "~/state/assets";
 import type { ChatImageAttachment } from "~/types";
 import { formatPictureBytes } from "./ComposerPictureView";
+import { MessageFile } from "./MessageFiles";
 import {
+  GALLERY_PICTURE_MAX_HEIGHT,
+  messagePictureRows,
   reservedPictureBox,
   type MessagePictureSegment,
   type PictureSize,
@@ -47,22 +50,43 @@ export function MessagePictureBody(props: {
   readonly segments: ReadonlyArray<MessagePictureSegment>;
   readonly dimensions: ReadonlyMap<string, PictureSize>;
   readonly onOpen: (image: ChatImageAttachment) => void;
+  /** Each placed file's address, by its id, once the server gives one. */
+  readonly fileUrls?: ReadonlyMap<string, string> | undefined;
   readonly renderText: (segment: Extract<MessagePictureSegment, { kind: "text" }>) => ReactNode;
 }) {
   return (
     <div className="message-pictures">
-      {props.segments.map((segment) =>
-        segment.kind === "text" ? (
-          <Fragment key={`words-after-${segment.after}`}>{props.renderText(segment)}</Fragment>
-        ) : (
-          <MessagePicture
-            key={`picture:${segment.n}`}
-            segment={segment}
-            dimensions={props.dimensions.get(segment.image.id)}
-            onOpen={props.onOpen}
-          />
-        ),
-      )}
+      {messagePictureRows(props.segments).map((row) => {
+        if (row.kind === "text") {
+          return <Fragment key={`words-after-${row.after}`}>{props.renderText(row)}</Fragment>;
+        }
+        const gallery = row.items.length > 1;
+        return (
+          <div
+            key={`attachments:${row.items.map((item) => `${item.kind}${item.kind === "text" ? "" : item.n}`).join()}`}
+            className="message-picture-row"
+            data-gallery={gallery ? "" : undefined}
+          >
+            {row.items.map((segment) =>
+              segment.kind === "picture" ? (
+                <MessagePicture
+                  key={`picture:${segment.n}`}
+                  segment={segment}
+                  dimensions={props.dimensions.get(segment.image.id)}
+                  maxHeight={gallery ? GALLERY_PICTURE_MAX_HEIGHT : undefined}
+                  onOpen={props.onOpen}
+                />
+              ) : segment.kind === "file" ? (
+                <MessageFile
+                  key={`file:${segment.n}`}
+                  file={segment.file}
+                  url={props.fileUrls?.get(segment.file.id) ?? null}
+                />
+              ) : null,
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -70,10 +94,11 @@ export function MessagePictureBody(props: {
 function MessagePicture(props: {
   readonly segment: Extract<MessagePictureSegment, { kind: "picture" }>;
   readonly dimensions: PictureSize | undefined;
+  readonly maxHeight: number | undefined;
   readonly onOpen: (image: ChatImageAttachment) => void;
 }) {
   const { segment, dimensions } = props;
-  const box = reservedPictureBox(segment.image, dimensions);
+  const box = reservedPictureBox(segment.image, dimensions, props.maxHeight);
   return (
     <figure className="message-picture">
       {segment.image.previewUrl ? (

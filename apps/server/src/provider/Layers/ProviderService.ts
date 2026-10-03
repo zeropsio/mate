@@ -46,6 +46,7 @@ import * as Stream from "effect/Stream";
 import { appendUserInputAttachmentPaths } from "../userInputAttachments.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { attachmentPathLine } from "../../providerPictures.ts";
+import { keepSentFiles } from "../../uploadsFolder.ts";
 import * as ServerConfig from "../../config.ts";
 import {
   increment,
@@ -857,17 +858,30 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     // sends generic files as file parts, the others send images only and rely
     // on the path line for everything else. Folded clipboard text remains
     // path-only everywhere: eagerly embedding it would spend the same context
-    // the client deliberately preserved by folding it. Unresolvable ids are
-    // skipped here and surface as adapter errors when the file is read.
-    const attachmentPathLines = attachments.flatMap((attachment) => {
-      const attachmentPath = resolveAttachmentPath({
+    // the client deliberately preserved by folding it. A sent file's path is
+    // its own copy in the Mate's uploads folder, made before the turn starts
+    // (asynchronously, bounded). Unresolvable ids are skipped
+    // here and surface as adapter errors when the file is read.
+    const resolvedAttachments = attachments.flatMap((attachment) => {
+      const storedPath = resolveAttachmentPath({
         attachmentsDir: serverConfig.attachmentsDir,
         attachment,
       });
-      if (attachmentPath === null) return [];
-      return [
-        attachmentPathLine(attachment, attachmentPath, { text: parsed.input ?? "", attachments }),
-      ];
+      return storedPath === null ? [] : [{ attachment, storedPath }];
+    });
+    const agentPlaces = yield* keepSentFiles({
+      uploadsDir: serverConfig.uploadsDir,
+      indexDir: serverConfig.uploadsIndexDir,
+      items: resolvedAttachments,
+    });
+    const attachmentPathLines = resolvedAttachments.map(({ attachment }, index) => {
+      const place = agentPlaces[index] ?? { path: resolvedAttachments[index]!.storedPath };
+      return attachmentPathLine(
+        attachment,
+        place.path,
+        { text: parsed.input ?? "", attachments },
+        place.note,
+      );
     });
     const inputTextWithAttachmentPaths =
       attachmentPathLines.length === 0
