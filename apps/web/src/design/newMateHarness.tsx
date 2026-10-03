@@ -143,6 +143,8 @@ function Harness() {
         defaultTintFor={(name) => newMateTint(MATES, name)}
         defaultWithAgent={role === "dev"}
         groupName="Acme Docs"
+        // As the app's host: Add lands on the new Mate's page, which takes the focus.
+        landsElsewhere
         onCancel={() => {}}
         onCreate={(choice) => {
           created.push(choice);
