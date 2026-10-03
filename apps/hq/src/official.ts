@@ -9,13 +9,17 @@
  * calls and git pushes reach it through the project's own balancer, not the shared `zerops.app`
  * one with its 50 MB body cap (T3c).
  *
- * The verdict is read at boot and every 30 s. A read the platform could not answer is `unknown`:
- * it keeps an `ok` for at most ten minutes after that `ok` was read, and never allows otherwise.
+ * The verdict is read at boot and every 30 s, and each change of it is logged. A read the platform
+ * could not answer is `unknown`: it keeps an `ok` for at most ten minutes after that `ok` was
+ * read, and never allows otherwise. Until the platform first answers this Core, the `ok` the Core
+ * that led before held counts as its own (`inherit`, recorded in `hq_leader` by `leader.ts`): a
+ * takeover does not wait on a Zerops that is slow to answer the new container (F18).
  *
  * @module official
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -78,9 +82,24 @@ export interface OfficialStatus {
   readonly allowed: boolean;
 }
 
+/** An `ok` read: when, and of which HQ project. */
+export interface OfficialOk {
+  readonly at: number;
+  readonly projectId: string;
+}
+
 export class Official extends Context.Service<
   Official,
-  { readonly status: Effect.Effect<OfficialStatus> }
+  {
+    readonly status: Effect.Effect<OfficialStatus>;
+    /** The newest `ok` this Core holds, read or inherited: what the leader records for the next. */
+    readonly lastOk: Effect.Effect<OfficialOk | undefined>;
+    /**
+     * The `ok` the Core that led before read (`leader.ts` records it): this Core's own until it
+     * has an answer of its own.
+     */
+    readonly inherit: (ok: OfficialOk) => Effect.Effect<void>;
+  }
 >()("@t3tools/hq/official") {}
 
 export interface OfficialOptions {
@@ -102,7 +121,9 @@ export const officialLayer = (options: OfficialOptions): Layer.Layer<Official, n
         readonly official: OfficialStatus["official"];
         /** When the last verdict was read, if it was `ok`. */
         readonly okAt: number | undefined;
-      }>({ official: "unknown", okAt: undefined });
+        /** Whether the platform has answered this Core: from then on its own verdicts rule. */
+        readonly answered: boolean;
+      }>({ official: "unknown", okAt: undefined, answered: false });
 
       /** The verdict; a refusal of any read is the credential's fault, an unanswered read none. */
       const read = Effect.gen(function* () {
@@ -125,14 +146,37 @@ export const officialLayer = (options: OfficialOptions): Layer.Layer<Official, n
       const check = Effect.gen(function* () {
         const official = yield* read;
         const now = yield* Clock.currentTimeMillis;
-        yield* Ref.update(state, (current) => ({
+        const was = yield* Ref.getAndUpdate(state, (current) => ({
           official,
           okAt: official === "ok" ? now : official === "unknown" ? current.okAt : undefined,
+          answered: current.answered || official !== "unknown",
         }));
+        if (was.official !== official) {
+          yield* Effect.logInfo("official verdict changed", { from: was.official, to: official });
+        }
       });
       yield* Effect.forkScoped(Effect.repeat(check, Schedule.spaced(recheck)));
 
       return Official.of({
+        lastOk: Effect.map(Ref.get(state), ({ okAt }) =>
+          okAt === undefined ? undefined : { at: okAt, projectId: options.projectId },
+        ),
+        inherit: (ok) =>
+          ok.projectId !== options.projectId
+            ? Effect.void
+            : Effect.flatMap(
+                Ref.modify(state, (current) =>
+                  current.answered || (current.okAt !== undefined && current.okAt >= ok.at)
+                    ? [false, current]
+                    : [true, { ...current, okAt: ok.at }],
+                ),
+                (taken) =>
+                  taken
+                    ? Effect.logInfo("official ok taken from the Core that led before", {
+                        readAt: DateTime.formatIso(DateTime.makeUnsafe(ok.at)),
+                      })
+                    : Effect.void,
+              ),
         status: Effect.gen(function* () {
           const { official, okAt } = yield* Ref.get(state);
           const now = yield* Clock.currentTimeMillis;
