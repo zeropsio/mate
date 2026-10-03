@@ -11,6 +11,7 @@ import {
   KEPT_SESSION_LEAD_MS,
   KEPT_SESSIONS_KEY,
   makeKeptSessions,
+  MATE_SESSIONS,
   type KeptSessionStorage,
 } from "./keptSessions.ts";
 
@@ -57,7 +58,7 @@ function memoryStorage(): KeptSessionStorage & { readonly items: Map<string, str
 }
 
 const kept = (storage: KeptSessionStorage = memoryStorage()) =>
-  makeKeptSessions(storage, () => NOW);
+  makeKeptSessions(storage, () => NOW, MATE_SESSIONS);
 
 describe("kept sessions", () => {
   it("answers a session for the target it was kept for, and for no other", () => {

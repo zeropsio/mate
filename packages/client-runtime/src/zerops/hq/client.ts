@@ -3,9 +3,9 @@
  *
  * A person enters HQ as they enter a Mate: the app mints a throwaway named for HQ's project
  * (`mate-door:<hqProjectId>:<nonce>`), presents it once at `POST /api/door`, and deletes it
- * (`withThrowaway`). HQ answers a session of its own, which this client keeps in memory and sends
- * as `Authorization: Bearer` until HQ stops taking it; then it comes through the door once more.
- * Nothing of it is stored anywhere else.
+ * (`withThrowaway`). HQ answers a session of its own, which this client sends as `Authorization:
+ * Bearer` until HQ stops taking it; then it comes through the door once more. Where the account
+ * keeps it (`kept`, audit K7), a load presents the kept session before any door.
  *
  * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or is not
  * serving (`503 not_active`, a standby or an HQ that is not the official one), `refused` when it
@@ -551,15 +551,40 @@ export function makeHqApi(input: {
   /** Mints a throwaway for HQ's door, hands its value to `use` alone, and deletes it. */
   readonly throughDoor: <T>(use: (token: string) => Promise<T>) => Promise<T>;
   readonly openSocket: OpenHqSocket;
+  /**
+   * HQ's session as the account keeps it for this organization and HQ across loads (audit K7):
+   * the first call presents the kept one before any door, every session the door opens is kept,
+   * and one HQ no longer takes is forgotten. Absent: the session lives in this page only.
+   */
+  readonly kept?: {
+    /** The kept session's token; null when none is kept, or it ends too soon to present. */
+    readonly read: () => string | null;
+    readonly keep: (session: { readonly token: string; readonly expiresAt: string }) => void;
+    readonly forget: (token: string) => void;
+  };
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
   /** The session HQ issued, or the door exchange under way that will issue it. */
   let session: Promise<string> | null = null;
 
+  /** The session the account kept, presented before any door; null when it keeps none. */
+  const restore = (): Promise<string> | null => {
+    const token = input.kept?.read() ?? null;
+    if (token === null) return null;
+    session = Promise.resolve(token);
+    return session;
+  };
+
+  /** HQ no longer takes this session: it is dropped here, and forgotten where it was kept. */
+  const drop = (held: Promise<string> | null, token: string) => {
+    if (session === held) session = null;
+    input.kept?.forget(token);
+  };
+
   const enter = () => {
     const entering = input
       .throughDoor(async (token) =>
-        json<{ readonly session: string }>(
+        json<{ readonly session: string; readonly expiresAt: string }>(
           await send(input.fetch, `${origin}/api/door`, {
             method: "POST",
             body: JSON.stringify({ token }),
@@ -567,7 +592,10 @@ export function makeHqApi(input: {
           }),
         ),
       )
-      .then((answer) => answer.session);
+      .then((answer) => {
+        input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
+        return answer.session;
+      });
     // A door that refused is not a session: the next call asks again.
     entering.catch(() => {
       if (session === entering) session = null;
@@ -576,14 +604,17 @@ export function makeHqApi(input: {
     return entering;
   };
 
-  /** A call as the session's holder; a session HQ no longer takes is replaced once. */
+  /**
+   * A call as the session's holder; a session HQ no longer takes is replaced once — by one another
+   * tab kept meanwhile, else through the door.
+   */
   const authorized = async (
     path: string,
     init: RequestInit = {},
     write?: Write,
   ): Promise<Response> => {
     for (let attempt = 0; ; attempt += 1) {
-      const held = session ?? enter();
+      const held = session ?? restore() ?? enter();
       const token = await held;
       try {
         return await send(
@@ -595,7 +626,7 @@ export function makeHqApi(input: {
       } catch (cause) {
         const stale = cause instanceof HqError && cause.code === "session_required";
         if (!stale || attempt > 0) throw cause;
-        if (session === held) session = null;
+        drop(held, token);
       }
     }
   };
@@ -681,6 +712,7 @@ export function makeHqApi(input: {
       );
       /** The session the ticket was minted for. */
       const held = session;
+      const token = held === null ? null : await held;
       const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
       await new Promise<void>((resolve, reject) => {
         const socket = input.openSocket(url, {
@@ -703,7 +735,7 @@ export function makeHqApi(input: {
             signal.removeEventListener("abort", stop);
             if (code === SOCKET_CLOSE.sessionEnded) {
               // The next call enters the door again, the next socket with it.
-              if (session === held) session = null;
+              if (token !== null) drop(held, token);
               resolve();
             } else if (code === SOCKET_CLOSE.goingAway) {
               resolve();

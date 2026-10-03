@@ -60,7 +60,12 @@ function fakeHq(answer: (seen: Seen) => Response | undefined = () => undefined) 
     if (request.path === "/api/apps") return json(201, { id: "app-1", name: "Acme" });
     return json(201, {});
   };
-  return { fetch, seen, expire: () => live.clear() };
+  return {
+    fetch,
+    seen,
+    expire: () => live.clear(),
+    revoke: (session: string) => void live.delete(session),
+  };
 }
 
 function doors() {
@@ -168,6 +173,105 @@ describe("makeHqApi", () => {
       ["POST", "/api/apps", "Bearer session-1"],
     ]);
     expect(hq.seen[0]?.body).toEqual({ token: "door-1" });
+  });
+
+  // Audit K7: the account keeps HQ's session across loads, as it keeps the Mates'.
+  describe("a kept session", () => {
+    /** The account's kept session for this HQ: what it holds, and what it was told. */
+    const keptStore = (held: string | null) => {
+      let token = held;
+      const told: Array<string> = [];
+      return {
+        told,
+        /** Another tab keeps its own session meanwhile. */
+        replace: (next: string) => {
+          token = next;
+        },
+        port: {
+          read: () => token,
+          keep: (session: { readonly token: string; readonly expiresAt: string }) => {
+            told.push(`keep ${session.token} until ${session.expiresAt}`);
+            token = session.token;
+          },
+          forget: (forgotten: string) => {
+            told.push(`forget ${forgotten}`);
+            if (token === forgotten) token = null;
+          },
+        },
+      };
+    };
+
+    it("is presented before any door, and the door's session is kept", async () => {
+      const hq = fakeHq();
+      const door = doors();
+      const kept = keptStore(null);
+      await makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: door.throughDoor,
+        openSocket: NO_SOCKET,
+        kept: kept.port,
+      }).structure();
+      expect(kept.told).toEqual(["keep session-1 until 2026-10-02T20:00:00.000Z"]);
+
+      // The next load presents it, through no door.
+      const reloaded = doors();
+      await makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: reloaded.throughDoor,
+        openSocket: NO_SOCKET,
+        kept: kept.port,
+      }).structure();
+      expect(reloaded.minted).toEqual([]);
+      expect(hq.seen.at(-1)?.authorization).toBe("Bearer session-1");
+    });
+
+    it("HQ no longer takes is forgotten, and the door's new one kept", async () => {
+      const hq = fakeHq();
+      const kept = keptStore("revoked");
+      const door = doors();
+      await makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: door.throughDoor,
+        openSocket: NO_SOCKET,
+        kept: kept.port,
+      }).structure();
+      expect(door.minted).toEqual(["door-1"]);
+      expect(kept.told).toEqual([
+        "forget revoked",
+        "keep session-1 until 2026-10-02T20:00:00.000Z",
+      ]);
+    });
+
+    it("another tab kept meanwhile replaces one HQ no longer takes, through no door", async () => {
+      const hq = fakeHq();
+      const door = doors();
+      const kept = keptStore(null);
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: door.throughDoor,
+        openSocket: NO_SOCKET,
+        kept: kept.port,
+      });
+      await api.structure();
+      // Another tab came through the door at the same time, and its session displaced this one,
+      // revoked at HQ.
+      await makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: doors().throughDoor,
+        openSocket: NO_SOCKET,
+      }).structure();
+      kept.replace("session-2");
+      hq.revoke("session-1");
+
+      await api.structure();
+      expect(door.minted).toEqual(["door-1"]);
+      expect(hq.seen.at(-1)?.authorization).toBe("Bearer session-2");
+    });
   });
 
   // Key by id (audit K3): the id of the key a Mate's container holds, as the Mate named it to HQ.
@@ -518,6 +622,37 @@ describe("makeHqApi — the structure socket", () => {
       path: "/api/stream-ticket",
       authorization: "Bearer session-2",
     });
+  });
+
+  // Audit K7: the session HQ ended over the socket is not presented again by the next load.
+  it("forgets the kept session HQ ended over the socket (4401)", async () => {
+    let kept: string | null = null;
+    const door = doors();
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: ticketing().fetch,
+      throughDoor: door.throughDoor,
+      openSocket: sockets.openSocket,
+      kept: {
+        read: () => kept,
+        keep: (session) => {
+          kept = session.token;
+        },
+        forget: (token) => {
+          if (kept === token) kept = null;
+        },
+      },
+    });
+    const first = streaming(api);
+    (await sockets.next()).on.close(4401);
+    await first.done;
+    expect(kept).toBeNull();
+
+    streaming(api);
+    await sockets.next();
+    expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(kept).toBe("session-2");
   });
 
   it("closes its socket when the reader stops", async () => {
