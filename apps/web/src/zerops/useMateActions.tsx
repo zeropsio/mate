@@ -74,7 +74,6 @@ import {
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
   mateRowCan,
-  setUpMateRecord,
   type ZeropsRowInput,
 } from "../components/zerops/ZeropsProjectRow.logic";
 import type { ZeropsMenuEntry } from "../components/zerops/ZeropsProjectMenu";
@@ -131,7 +130,7 @@ import {
   finishMateSetup,
   forgetPress,
   matePressPlacement,
-  placedMateRegistration,
+  mateFinishRegistration,
   readMatePress,
   useInterruptedPresses,
   useMatePresses,
@@ -590,9 +589,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   const finishSetup = useCallback(
-    (candidate: ZeropsCandidatePresentation, tags: ZeropsMembership) => {
+    (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
-      const groupId = tags.groupId;
       const organizationId = activeOrganization.id;
       const projectId = candidate.project.id;
       const press = readMatePress(projectId);
@@ -602,31 +600,30 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const whole =
         finishMateSetupScope(canWriteRegistry(sessionOfferViewer(user, activeOrganization))) ===
         "whole";
-      // A Mate HQ holds no record of whose press this tab still holds: the press knows its
-      // application, its name and its face, and it is finished into that application under them —
-      // never written as a new Mate in none (F6b, 2026-10-03).
-      const placed =
-        recordMissing(candidate) && (whole || mayCreateRecord(candidate))
-          ? matePressPlacement(press)
-          : undefined;
       const hardenable = mateHardenableBy(listedTokens, projectId, {
         userId: user?.id,
         roleCode: activeOrganization.roleCode,
       });
       const harden = hardenable || (whole && !mateNeedsHarden(listedTokens, projectId));
-      // Its record in HQ where it has none, a name nobody goes by and its face: written after the
-      // close-off, with its birth — the stand-up asked by whoever finishes a Mate its press made.
-      const record =
-        placed === undefined && recordMissing(candidate) && mayCreateRecord(candidate)
-          ? setUpMateRecord({
-              project: candidate.project,
-              candidates,
-              taken: taken.names,
-              random: (bytes) => crypto.getRandomValues(bytes),
-            })
-          : undefined;
+      // What it registers, by the rule Set up Mate registers by: in the application HQ or the
+      // press this tab holds places it in, under that name and face; a new Mate in no application
+      // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
+      const registration = mateFinishRegistration({
+        hq: officialHq(accountHq),
+        hqKnown,
+        project: candidate.project,
+        press,
+        writer: whole,
+        mayCreateRecord: mayCreateRecord(candidate),
+        standUp: candidate.service !== undefined && interrupted.has(candidate.service.id),
+        candidates,
+        taken: taken.names,
+        random: (bytes) => crypto.getRandomValues(bytes),
+      });
       // A close-off alone has nothing to finish on a Mate with no container.
-      if (!whole && !hardenable && record === undefined && candidate.service === undefined) return;
+      if (!whole && !hardenable && registration === null && candidate.service === undefined) {
+        return;
+      }
       // A container only where its project has none and no press elsewhere may still be importing
       // one (`finishSetupContainer`).
       const container = whole
@@ -657,36 +654,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             container,
             // A Mate made before the press: its key lowered from ADMIN.
             harden,
-            // A Mate HQ holds no record of has it written; a Mate in no group, its record there,
-            // is hardened and closed off, no more.
-            registration:
-              record !== undefined
-                ? {
-                    hq: officialHq(accountHq),
-                    kind: "mate-record",
-                    record,
-                    birth: {
-                      standUp:
-                        candidate.service !== undefined && interrupted.has(candidate.service.id),
-                    },
-                  }
-                : placed !== undefined
-                  ? placedMateRegistration(officialHq(accountHq), placed)
-                  : !whole || groupId === undefined
-                    ? null
-                    : {
-                        hq: officialHq(accountHq),
-                        groupId,
-                        kind: "mate",
-                        mate: {
-                          name: tags.bot ?? candidate.project.name,
-                          face:
-                            tags.face?.tint === undefined || tags.face.shape === undefined
-                              ? undefined
-                              : { tint: tags.face.tint, shape: tags.face.shape },
-                        },
-                        birth: { standUp: false },
-                      },
+            registration,
             hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),
           });
@@ -700,12 +668,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       activeOrganization,
       candidates,
       client,
+      hqKnown,
       interrupted,
       listedTokens,
       mayCreateRecord,
       organizationRef,
       projectRef,
-      recordMissing,
       refresh,
       registry,
       runtime,
@@ -917,7 +885,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                   finishSetupRunning(
                     presses.find((press) => press.projectId === candidate.project.id),
                   ),
-                onSelect: () => finishSetup(candidate, tags),
+                onSelect: () => finishSetup(candidate),
               },
             ]),
         ...(platformVerbs.assign

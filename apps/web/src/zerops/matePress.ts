@@ -34,6 +34,8 @@ import {
   type ZeropsApiClient,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
+  heldOf,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
@@ -323,25 +325,58 @@ export function placedMateRegistration(
 }
 
 /**
- * What *Set up Mate* registers for a Mate project with no container: into the application the
- * press this tab still holds placed it in, where it did; else, where HQ holds no record of it, a
- * new Mate in no application (`setUpMateRecord`); else nothing, its record standing.
+ * What *Finish setup* and *Set up Mate* register for a Mate, by one rule, so neither mints a new
+ * Mate where HQ holds one or may yet (F6b, 2026-10-03):
+ *
+ * - HQ's structure not read: nothing — a project it places nowhere has no record only once it is;
+ * - HQ holds it in its application: there again, under HQ's name and face, by a registry writer —
+ *   an attach that finds it there writes nothing; nothing for anyone else;
+ * - HQ holds it in no application: nothing, its record standing;
+ * - HQ holds no record of it: into the application the press this tab still holds placed it in,
+ *   under its name and face; else, for whoever HQ's rule lets write one, a new Mate in no
+ *   application (`setUpMateRecord`) — what a refused attach leaves; else nothing.
  */
-export function setUpMateRegistration(input: {
+export function mateFinishRegistration(input: {
   readonly hq: HqEndpoint;
-  readonly press: MatePress | undefined;
+  /** HQ's structure is known: only then does a project it places nowhere have no record. */
+  readonly hqKnown: boolean;
   readonly project: ZeropsCandidate["project"];
+  readonly press: MatePress | undefined;
+  /** The viewer writes the registry: an owner or an admin (`canWriteRegistry`). */
+  readonly writer: boolean;
+  /** HQ's rule lets the viewer write the record of a Mate it holds none of (`create_mate_record`). */
+  readonly mayCreateRecord: boolean;
+  /** The stand-up a new record asks for. */
+  readonly standUp: boolean;
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly taken: ReadonlyArray<string>;
   readonly random: RandomBytes;
 }): PressRegistration | null {
-  if (input.project.hq?.mate != null) return null;
+  if (!input.hqKnown) return null;
+  if (heldOf(input.project) !== "none") {
+    const { groupId, bot, face } = readZeropsMembership(input.project);
+    if (groupId === undefined || !input.writer) return null;
+    return {
+      hq: input.hq,
+      groupId,
+      kind: "mate",
+      mate: {
+        name: bot ?? input.project.name,
+        face:
+          face?.tint === undefined || face.shape === undefined
+            ? undefined
+            : { tint: face.tint, shape: face.shape },
+      },
+      birth: { standUp: false },
+    };
+  }
   const placed = matePressPlacement(input.press);
   if (placed !== undefined) return placedMateRegistration(input.hq, placed);
+  if (!input.mayCreateRecord) return null;
   const record = setUpMateRecord(input);
   return record === undefined
     ? null
-    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: false } };
+    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: input.standUp } };
 }
 
 /** The project is gone: nothing more is said of it. */

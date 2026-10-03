@@ -28,7 +28,7 @@ import {
   readMatePress,
   runPress,
   settlePress,
-  setUpMateRegistration,
+  mateFinishRegistration,
   PRESS_CALL_CAP_MS,
   PRESS_CALL_SILENT,
   pressPlatform,
@@ -843,9 +843,10 @@ describe("finishMateSetup — the harden path", () => {
 });
 
 // A press or a harden this tab runs holds its Mate back from auto-connect (pass 28 review).
-// F6b (e2e, 2026-10-03): *Set up Mate* on Dan — a Mate project its press for mate-rig-e2e-d left
-// with no container and no record, that press still held here — wrote "Asha" in no application.
-describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of", () => {
+// F6b (e2e, 2026-10-03): *Set up Mate* and *Finish setup* on Dan — a Mate project its press for
+// mate-rig-e2e-d left with no container — wrote "Asha" in no application. Both verbs now register by
+// one rule, and neither mints a new Mate where HQ holds one, or may yet.
+describe("mateFinishRegistration — what Finish setup and Set up Mate register", () => {
   const HQ = { kind: "official", projectId: "p-hq", address: "https://hq.example.test" } as const;
   const FACE = { tint: "coral", shape: "gem" } as const;
   const DAN = {
@@ -854,11 +855,21 @@ describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of"
     status: "ACTIVE",
     tagList: ["mate"],
   } as const;
-  const pressOf = (container: boolean, kind: "mate" | "stage"): MatePress => ({
+  /** Dan as HQ holds him: in `appId`, or in no application. */
+  const held = (appId: string | null) => ({
+    ...DAN,
+    hq: {
+      appId,
+      appName: appId === null ? null : "mate-rig-e2e-d",
+      kind: "mate",
+      mate: { name: "Dan", face: "coral:gem" },
+    },
+  });
+  const pressOf = (kind: "mate" | "stage"): MatePress => ({
     projectId: DAN.id,
     organizationId: "org-acme",
     startedAt: 0,
-    container,
+    container: kind === "mate",
     placement: {
       groupId: "app-d",
       groupName: "mate-rig-e2e-d",
@@ -871,56 +882,61 @@ describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of"
   });
   // Bytes that pick the first free name.
   const first: RandomBytes = (bytes) => bytes.fill(0);
+  const BASE = { hqKnown: true, writer: true, mayCreateRecord: true, press: undefined };
 
   it.each([
     {
-      name: "into the application its press here placed it in, under its name and face",
-      press: pressOf(true, "mate"),
-      project: DAN,
-      expected: {
-        kind: "mate",
-        groupId: "app-d",
-        mate: { name: "Dan", face: FACE },
-        birth: { standUp: false },
-      },
+      name: "HQ holds it in its application: there, under HQ's name and face",
+      input: { ...BASE, project: held("app-d") },
+      expected: { kind: "mate", groupId: "app-d", mate: { name: "Dan", face: FACE } },
     },
     {
-      name: "as a new Mate in no application where no press here placed it",
-      press: undefined,
-      project: DAN,
-      expected: { kind: "mate-record", birth: { standUp: false } },
+      name: "HQ holds it in its application, for someone who does not write the registry: nothing",
+      input: { ...BASE, writer: false, project: held("app-d") },
+      expected: null,
     },
     {
-      name: "as a new Mate in no application where the press here made a stage",
-      press: pressOf(false, "stage"),
-      project: DAN,
+      name: "HQ holds it in no application: nothing, its record standing",
+      input: { ...BASE, project: held(null) },
+      expected: null,
+    },
+    {
+      name: "HQ's structure not read yet: nothing, however recordless it looks",
+      input: { ...BASE, hqKnown: false, project: DAN },
+      expected: null,
+    },
+    {
+      name: "no record, a press here placed it: into that application, under its name and face",
+      input: { ...BASE, press: pressOf("mate"), project: DAN },
+      expected: { kind: "mate", groupId: "app-d", mate: { name: "Dan", face: FACE } },
+    },
+    {
+      name: "no record and no press here: a new Mate in no application, for who may write it",
+      input: { ...BASE, project: DAN },
       expected: { kind: "mate-record" },
     },
     {
-      name: "not at all where HQ holds the Mate already",
-      press: pressOf(true, "mate"),
-      project: {
-        ...DAN,
-        hq: {
-          appId: "app-d",
-          appName: "mate-rig-e2e-d",
-          kind: "mate",
-          mate: { name: "Dan", face: "coral:gem" },
-        },
-      },
+      name: "no record, the press here made a stage: a new Mate in no application",
+      input: { ...BASE, press: pressOf("stage"), project: DAN },
+      expected: { kind: "mate-record" },
+    },
+    {
+      name: "no record, for someone HQ's rule does not let write one: nothing",
+      input: { ...BASE, mayCreateRecord: false, project: DAN },
       expected: null,
     },
-  ] as const)("registers it $name", ({ press, project, expected }) => {
-    const registration = setUpMateRegistration({
+  ] as const)("$name", ({ input, expected }) => {
+    const registration = mateFinishRegistration({
+      ...input,
       hq: HQ,
-      press,
-      project: project as never,
+      project: input.project as never,
+      standUp: false,
       candidates: [],
       taken: [],
       random: first,
     });
     if (expected === null) expect(registration).toBeNull();
-    else expect(registration).toMatchObject({ hq: HQ, ...expected });
+    else expect(registration).toMatchObject({ hq: HQ, birth: { standUp: false }, ...expected });
   });
 });
 

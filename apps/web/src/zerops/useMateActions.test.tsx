@@ -673,6 +673,78 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
   });
 });
 
+// F6b (2026-10-03): its record in its application before its container, so a press whose container
+// never came leaves a Mate HQ holds there — finished from HQ's record in any browser, under HQ's
+// name, never as a new Mate.
+describe("useMateActions — Finish setup on a Mate HQ holds in its application, its container never come", () => {
+  const IVO = (() => {
+    const { service: _none, ...base } = mate("Ivo", "coral:gem");
+    return {
+      ...base,
+      group: "ready",
+      project: { ...base.project, created: "2026-09-01T10:00:00Z" },
+    } as ZeropsCandidatePresentation;
+  })();
+  const known = () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
+    registry.set(hqStructureAtom, {
+      organizationId: "org-acme",
+      structure: {
+        ungrouped: [],
+        apps: [
+          {
+            id: "acme",
+            name: "Acme Docs",
+            projects: [
+              {
+                projectId: IVO.project.id,
+                kind: "mate",
+                mate: { name: "Ivo", face: "coral:gem" },
+              },
+            ],
+          },
+        ],
+      },
+      changes: null,
+      readAt: 1_000,
+      current: true,
+      unavailableSince: null,
+    } as never);
+    return registry;
+  };
+
+  it("registers it there again under HQ's name and face, writing no new Mate", async () => {
+    mock.finishMateSetup.mockResolvedValue({ ok: true });
+    mock.listing.current = {
+      state: "known",
+      value: [IVO],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount(known());
+    const finish = verbs(IVO).find((verb) => verb.id === "finish-setup");
+    expect(finish?.label).toBe("Finish setup");
+    await act(async () => {
+      finish!.onSelect();
+    });
+    expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
+      projectId: IVO.project.id,
+      container: { agents: [] },
+      registration: {
+        kind: "mate",
+        groupId: "acme",
+        mate: { name: "Ivo", face: { tint: "coral", shape: "gem" } },
+      },
+    });
+  });
+});
+
 describe("useMateActions — a Mate's own verbs, where its door opens for this person", () => {
   const STOPPED = {
     ...FEN,
