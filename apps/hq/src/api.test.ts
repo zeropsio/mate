@@ -1170,6 +1170,52 @@ describe("HQ API", () => {
         }),
     );
 
+    // Audit K3 and the adoption's harden: a Mate names its own key's id — an id, never a value — at
+    // its enrollment and again with its credential, and HQ tells it to whoever administers the
+    // Mate's project, who adopts it or deletes it; nobody else.
+    it.effect("a Mate names its key's id, and HQ tells it to its project's admin alone", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* setUpMate(call, "P_MATE");
+        const { nonce } = (yield* call("POST", "/api/mate/challenge", {
+          body: { projectId: "P_MATE" },
+        })).body as { readonly nonce: string };
+        fake.env.set("P_MATE", [{ key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false }]);
+        const issued = yield* call("POST", "/api/mate/credential", {
+          body: { projectId: "P_MATE", nonce, keyTokenId: "tok-key-1" },
+        });
+        const { credential } = issued.body as { readonly credential: string };
+        const dev = yield* sessionFor(call, "door-dev");
+        const keyAs = (session: string) =>
+          Effect.map(call("GET", "/api/mates/P_MATE/key", { session }), (answer) => [
+            answer.status,
+            answer.body,
+          ]);
+        assert.deepStrictEqual(yield* keyAs(owner), [200, { keyTokenId: "tok-key-1" }]);
+
+        const named = (authorization: string) =>
+          Effect.map(
+            call("PUT", "/api/mate/key", {
+              headers: { authorization },
+              body: { keyTokenId: "tok-key-2" },
+            }),
+            (answer) => answer.status,
+          );
+        assert.deepStrictEqual(
+          [yield* named(`Mate ${credential}`), yield* named(`Mate ${credential}x`)],
+          [204, 401],
+        );
+        assert.deepStrictEqual(
+          [yield* keyAs(owner), yield* keyAs(dev)],
+          [
+            [200, { keyTokenId: "tok-key-2" }],
+            [403, { code: "forbidden", reason: "not_project_admin" }],
+          ],
+        );
+      }),
+    );
+
     it.effect(
       "answers each refusal of a Mate's proof with its code, and limits the Mate's door per address",
       () =>
