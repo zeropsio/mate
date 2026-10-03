@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { rolledBackTo } from "./release.ts";
 import {
   releaseCarriedToggleLabel,
   releaseDescription,
   rolledBackDescription,
-  rolledBackTo,
 } from "./releaseCarried.ts";
 import type { Moved } from "./releaseCompare.ts";
 

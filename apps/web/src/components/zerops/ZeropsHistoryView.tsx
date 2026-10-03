@@ -56,8 +56,8 @@ export function ZeropsHistoryView({
 }: {
   readonly request: ZeropsHistoryRequest;
   readonly history: ZeropsHistoryState;
-  /** `full sha → the release that shipped it` (`releaseTagsByCommit`). */
-  readonly tags: ReadonlyMap<string, string>;
+  /** `full sha → the releases that shipped it` (`releaseTagsByCommit`). */
+  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
   readonly names?: HistoryNames;
   /**
    * The stop this history is drawn on, by its environment name: the commit it runs reads

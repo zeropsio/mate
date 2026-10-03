@@ -159,7 +159,7 @@ const HISTORY: ZeropsHistoryState = {
   ],
 };
 /** What v1.4.0 shipped, as HQ's release records name it. */
-const TAGS: ReadonlyMap<string, string> = new Map([[sha("3f9c1b2e"), "v1.4.0"]]);
+const TAGS: ReadonlyMap<string, ReadonlyArray<string>> = new Map([[sha("3f9c1b2e"), ["v1.4.0"]]]);
 
 function environment(over: Partial<EnvironmentRow> = {}): EnvironmentRow {
   return {

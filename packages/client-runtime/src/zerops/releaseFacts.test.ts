@@ -297,20 +297,16 @@ describe("a held release's changes follow the stage as it stands now", () => {
   const OLDER = HEAD.replace(/^5e1d/u, "0b2c");
   const stage = (over: Partial<StageStandings>): StageStandings => ({
     runs: new Map([["app", OLDER]]),
-    deploying: undefined,
-    failed: new Set(),
+    deploying: new Map(),
+    failed: new Map(),
     ...over,
   });
 
   it.each<[string, StageStandings | undefined, string]>([
     ["no stage", undefined, "none"],
-    ["the stage deploys it", stage({ deploying: HEAD }), "deploying-on-stage"],
+    ["the stage deploys it", stage({ deploying: new Map([["app", HEAD]]) }), "deploying-on-stage"],
     ["the stage runs it", stage({ runs: new Map([["app", HEAD]]) }), "on-stage"],
-    [
-      "its stage deploy failed",
-      stage({ runs: new Map([["app", HEAD]]), failed: new Set(["app"]) }),
-      "failed-on-stage",
-    ],
+    ["its stage deploy failed", stage({ failed: new Map([["app", HEAD]]) }), "failed-on-stage"],
   ])("released, %s: %s", (_name, standing, mark) => {
     if (released === undefined) throw new Error("no released step");
     expect(released.model.verdict.state).toBe("released");

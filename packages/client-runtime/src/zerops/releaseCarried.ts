@@ -10,10 +10,8 @@
  * @module releaseCarried
  */
 
-import { compareReleaseTags } from "@t3tools/shared/hqRelease";
-
 import { historyLine } from "./groupHistory.ts";
-import { shortCommit, type FlowRelease } from "./release.ts";
+import { shortCommit } from "./release.ts";
 import { movedCount, type Moved } from "./releaseCompare.ts";
 
 /** A release row's two lines: what it carried, over who, when and the shas. */
@@ -71,40 +69,6 @@ export function releaseDescription(
 /** What a release row's chevron does, for a screen reader. */
 export function releaseCarriedToggleLabel(tag: string, open: boolean): string {
   return `${open ? "Hide" : "Show"} what ${tag} carried`;
-}
-
-/** A release as far as telling what it went back to needs. */
-type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
-
-/** Whether two releases list the same commits, service by service. */
-function sameEntries(left: ReleaseListing, right: ReleaseListing): boolean {
-  const commits = (release: ReleaseListing) =>
-    release.entries
-      .map(({ service, commit }) => `${service}=${commit.toLowerCase()}`)
-      .sort()
-      .join(",");
-  return left.entries.length > 0 && commits(left) === commits(right);
-}
-
-/**
- * The release a roll back went back to: a roll back is a new tag listing an earlier release's
- * commits (`rollBack`), so a release listing exactly an earlier one's — the one that first shipped
- * them, HQ refused none — is that one again. What it carried, compared from the release before it,
- * goes back and lists nothing, so its row says this instead. `undefined` for any other release, and
- * for one listing what the release just before it listed: nothing went back.
- */
-export function rolledBackTo(
-  release: ReleaseListing,
-  releases: ReadonlyArray<ReleaseListing>,
-): string | undefined {
-  const earlier = releases
-    .filter(
-      (entry) => entry.verdict !== "refused" && compareReleaseTags(entry.tag, release.tag) < 0,
-    )
-    .sort((left, right) => compareReleaseTags(left.tag, right.tag));
-  const previous = earlier.at(-1);
-  if (previous === undefined || sameEntries(previous, release)) return undefined;
-  return earlier.find((entry) => sameEntries(entry, release))?.tag;
 }
 
 /** A roll back's row: the release it went back to, over its shas. */

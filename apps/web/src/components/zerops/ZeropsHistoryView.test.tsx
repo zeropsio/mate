@@ -27,6 +27,7 @@ const render = (
   here: string | undefined,
   history: ZeropsHistoryState = HISTORY,
   onOpenChange?: () => void,
+  tags: ReadonlyArray<string> = ["v0.1.13"],
 ) =>
   renderToStaticMarkup(
     <ZeropsHistoryView
@@ -34,7 +35,7 @@ const render = (
       history={history}
       onOpenChange={onOpenChange}
       request={{ repo: "appdev", deployed: new Map([["stage", SHA]]) }}
-      tags={new Map([[SHA, "v0.1.13"]])}
+      tags={new Map([[SHA, tags]])}
     />,
   );
 
@@ -53,6 +54,12 @@ describe("ZeropsHistoryView's release tag", () => {
     expect(markup).toContain("zerops-status-ok-surface");
     expect(markup).toContain(">v0.1.13<");
     expect(markup).not.toContain(">release<");
+  });
+
+  // A roll back brought the commit back: it names both releases that put it live.
+  it("names every release that put the commit live, the first one first", () => {
+    const markup = render(undefined, HISTORY, undefined, ["v0.1.0", "v0.1.2"]);
+    expect(markup).toMatch(/>v0\.1\.0<[^]*>v0\.1\.2</u);
   });
 });
 

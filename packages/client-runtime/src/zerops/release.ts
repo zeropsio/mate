@@ -38,7 +38,7 @@
 
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import { nextPatch, type Release } from "@t3tools/shared/hqRelease";
+import { compareReleaseTags, nextPatch, type Release } from "@t3tools/shared/hqRelease";
 
 import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
@@ -497,4 +497,35 @@ export function releaseRow(
     word: releaseWord(release.verdict),
     rollBack: index > 0 && release.verdict === "approved" && !runsAll(release, deploys.production),
   };
+}
+
+/** Whether two releases list the same commits, service by service. */
+function sameEntries(left: ReleaseListing, right: ReleaseListing): boolean {
+  const commits = (release: ReleaseListing) =>
+    release.entries
+      .map(({ service, commit }) => `${service}=${commit.toLowerCase()}`)
+      .sort()
+      .join(",");
+  return left.entries.length > 0 && commits(left) === commits(right);
+}
+
+/**
+ * The release a roll back went back to: a roll back is a new tag listing an earlier release's
+ * commits (`rollBack`), so a release listing exactly an earlier one's — the one that first shipped
+ * them, HQ refused none — is that one again. What it carried, compared from the release before it,
+ * goes back and lists nothing, so its row says this instead. `undefined` for any other release, and
+ * for one listing what the release just before it listed: nothing went back.
+ */
+export function rolledBackTo(
+  release: ReleaseListing,
+  releases: ReadonlyArray<ReleaseListing>,
+): string | undefined {
+  const earlier = releases
+    .filter(
+      (entry) => entry.verdict !== "refused" && compareReleaseTags(entry.tag, release.tag) < 0,
+    )
+    .sort((left, right) => compareReleaseTags(left.tag, right.tag));
+  const previous = earlier.at(-1);
+  if (previous === undefined || sameEntries(previous, release)) return undefined;
+  return earlier.find((entry) => sameEntries(entry, release))?.tag;
 }

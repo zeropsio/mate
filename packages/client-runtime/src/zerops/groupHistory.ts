@@ -25,7 +25,7 @@ import { COMPARE_COUNT_MAX, type CompareCommit } from "@t3tools/shared/hqChanges
 import { compareReleaseTags } from "@t3tools/shared/hqRelease";
 
 import { environmentNameUnderGroup } from "./groupRows.ts";
-import { shortCommit, type FlowRelease } from "./release.ts";
+import { rolledBackTo, shortCommit, type FlowRelease } from "./release.ts";
 import { resolveCommit } from "./versionName.ts";
 
 /** One commit on the branch, and what reached it. */
@@ -44,7 +44,7 @@ export interface HistoryEntry {
    * which is the file's order, stage before production (`groupDeploys.ts`).
    */
   readonly deployedTo: ReadonlyArray<string>;
-  /** The release that shipped it, where one has — at most one, and its name. */
+  /** The releases that shipped it — the first, then the roll backs that brought it back. */
   readonly tags: ReadonlyArray<string>;
 }
 
@@ -63,8 +63,8 @@ export function groupHistory(input: {
   readonly commits: ReadonlyArray<CompareCommit>;
   /** `environment name → the sha it runs`, whole or short as its version name spells it. */
   readonly deployed: ReadonlyMap<string, string>;
-  /** `full sha → the release that shipped it` ({@link releaseTagsByCommit}). */
-  readonly tags: ReadonlyMap<string, string>;
+  /** `full sha → the releases that shipped it` ({@link releaseTagsByCommit}). */
+  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
 }): ReadonlyArray<HistoryEntry> {
   const deployedBySha = new Map<string, Array<string>>();
   const branch = input.commits.map((commit) => commit.sha);
@@ -83,10 +83,7 @@ export function groupHistory(input: {
     at: commit.at,
     change: commit.change,
     deployedTo: deployedBySha.get(commit.sha.toLowerCase()) ?? [],
-    tags: (() => {
-      const tag = input.tags.get(commit.sha);
-      return tag === undefined ? [] : [tag];
-    })(),
+    tags: input.tags.get(commit.sha) ?? [],
   }));
 }
 
@@ -171,7 +168,8 @@ export function historyEarlier(shown: number, total: number): string | undefined
 }
 
 /**
- * `sha → the release that first put it in front of people`, for any repository.
+ * `sha → the releases that put it in front of people`, for any repository: the one that first did,
+ * and every roll back that brought it back (`rolledBackTo`).
  *
  * A release lists every service's commit, whole, and a sha is unique across every repository of
  * the application: a sha a release lists that also appears in this repository's commits *is* this
@@ -179,19 +177,30 @@ export function historyEarlier(shown: number, total: number): string | undefined
  *
  * A commit stays listed by every release made while it is still deployed, so the lowest version
  * that names it is the one that shipped it — the release a person means by "when did this go
- * live". A release HQ refused never went live, and names nothing.
+ * live". A roll back put back what an earlier release shipped: it names the commits it brought
+ * back — those the release just before it did not list for their service — and no other (e2e
+ * 2026-10-03: after B rolled back to v0.1.0, History named 30f75f9 v0.1.0 alone). A release HQ
+ * refused never went live, and names nothing. Oldest first.
  */
 export function releaseTagsByCommit(
   releases: ReadonlyArray<Pick<FlowRelease, "tag" | "entries" | "verdict">>,
-): ReadonlyMap<string, string> {
-  const byCommit = new Map<string, string>();
+): ReadonlyMap<string, ReadonlyArray<string>> {
+  const byCommit = new Map<string, Array<string>>();
   const oldestFirst = releases
     .filter((release) => release.verdict !== "refused")
-    .toSorted((left, right) => compareReleaseTags(left.tag, right.tag));
-  for (const release of oldestFirst) {
+    .sort((left, right) => compareReleaseTags(left.tag, right.tag));
+  oldestFirst.forEach((release, index) => {
+    const previous = oldestFirst[index - 1];
+    const back = rolledBackTo(release, oldestFirst) !== undefined;
     for (const entry of release.entries) {
-      if (!byCommit.has(entry.commit)) byCommit.set(entry.commit, release.tag);
+      const named = byCommit.get(entry.commit);
+      if (named === undefined) {
+        byCommit.set(entry.commit, [release.tag]);
+        continue;
+      }
+      const before = previous?.entries.find(({ service }) => service === entry.service)?.commit;
+      if (back && before !== entry.commit) named.push(release.tag);
     }
-  }
+  });
   return byCommit;
 }
