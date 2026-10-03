@@ -2,7 +2,7 @@ import { DateTime } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { GiteaRepository } from "../giteaClient.ts";
-import { createForgeReads, GATE_FRESH_MS } from "./forgeReads.ts";
+import { createForgeReads, GATE_FRESH_MS, type RepositoryLists } from "./forgeReads.ts";
 import {
   createPullWatch,
   FORGE_REFRESH_MS,
@@ -38,11 +38,21 @@ function rig(orgs: Record<string, Array<GiteaRepository>>) {
     listings.push(owner);
     return state.orgs[owner] ?? [];
   };
-  // An account listing that names no org: each org is listed on its own, and counted.
-  const lists = { listUserRepositories: async () => [], listOrganizationRepositories: load };
+  // What the group readers list: the person's whole account, counted as one listing.
+  const lists: RepositoryLists = {
+    currentUser: async () => ({ id: 9, login: "u-person" }),
+    listAccountRepositories: async () => {
+      listings.push("account");
+      const repositories = Object.entries(state.orgs).flatMap(([owner, listed]) =>
+        listed.map((each) => ({ ...each, full_name: `${owner}/${each.name}` })),
+      );
+      return { repositories, counts: [repositories.length] };
+    },
+    listOrganizationRepositories: load,
+  };
   const watch = createPullWatch({
     reads,
-    lists,
+    list: load,
     moved: (groupId, repository) => moved.push(`${groupId} ${repository}`),
     now: () => clock,
   });
@@ -51,8 +61,13 @@ function rig(orgs: Record<string, Array<GiteaRepository>>) {
     listings,
     moved,
     watch,
-    /** The forge pass's own minute tick: the shared listing at its usual freshness. */
+    /** The forge pass's read of one org: the shared listing at its usual freshness. */
     pass: (owner: string) => reads.repositories(owner, lists),
+    /** The readers' minute tick: every org read again. */
+    refresh: (owners: ReadonlyArray<string>) => {
+      reads.tick();
+      return Promise.all(owners.map((owner) => reads.repositories(owner, lists)));
+    },
     advance: (ms: number) => {
       clock += ms;
     },
@@ -160,6 +175,38 @@ describe("createPullWatch", () => {
     },
   );
 
+  it("lists its one org on its own, never the whole account", async () => {
+    const slugs = Array.from({ length: 14 }, (_, at) => `org${at}`);
+    const org = rig(Object.fromEntries(slugs.map((slug) => [slug, [repo("appdev", 1)]])));
+    await org.refresh(slugs);
+    org.listings.splice(0);
+    for (let elapsed = 0; elapsed < FORGE_REFRESH_MS; elapsed += PULL_WATCH_MS) {
+      org.advance(PULL_WATCH_MS);
+      await org.watch.tick([group("org3", 1)]);
+    }
+    expect(org.listings).toEqual(["org3", "org3", "org3", "org3"]);
+  });
+
+  it.each([
+    { name: "another org's", opens: "beta" },
+    { name: "the watched org's", opens: "acme" },
+  ])(
+    "shows $name pull request opened after the watch looked on that org's next tick",
+    async ({ opens }) => {
+      const org = rig({ acme: [repo("group", 1), repo("app", 0)], beta: [repo("group", 0)] });
+      await org.refresh(["acme", "beta"]);
+      org.advance(45_000);
+      await org.watch.tick([group("acme", 1)]);
+      org.advance(5_000);
+      const listed = org.state.orgs[opens] ?? [];
+      org.state.orgs[opens] = listed.map((each) => ({ ...each, open_pr_counter: 2 }));
+      org.advance(10_000);
+      const [acme, beta] = await org.refresh(["acme", "beta"]);
+      const seen = opens === "acme" ? acme : beta;
+      expect(seen?.map((each) => each.open_pr_counter)).toEqual(listed.map(() => 2));
+    },
+  );
+
   it("shares the minute's listing: the pass asks nothing the watch just listed", async () => {
     const org = rig({ quill: [repo("appdev", 1)] });
     for (let elapsed = 0; elapsed < 10 * 60_000; elapsed += PULL_WATCH_MS) {
@@ -248,10 +295,7 @@ describe("createPullWatch", () => {
     const moved: string[] = [];
     const failing = createPullWatch({
       reads: createForgeReads({ now: () => NOW }),
-      lists: {
-        listUserRepositories: () => Promise.reject(new Error("offline")),
-        listOrganizationRepositories: () => Promise.reject(new Error("offline")),
-      },
+      list: () => Promise.reject(new Error("offline")),
       moved: (groupId, repository) => moved.push(`${groupId} ${repository}`),
       now: () => NOW,
     });

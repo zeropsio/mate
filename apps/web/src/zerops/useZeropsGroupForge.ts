@@ -175,6 +175,7 @@ export function useZeropsGroupForge(input: {
     refreshMs: GROUP_FORGE_REFRESH_MS,
     keyOf: (group) => group.slug,
     unauthorizedReads: reads.unauthorized,
+    tick: reads.tick,
     read: (client, group, scope) => readForge(client, group.slug, scope, mergeability, reads),
     // A release changes the group repo's tags and what their commits are told; a group read again
     // whole forgets all. A repository read again — a merge, or Gitea saying "checking" after a
@@ -212,16 +213,13 @@ export function useZeropsGroupForge(input: {
   const { enabled, giteaOrigin, readable } = input;
   useEffect(() => {
     if (!watching || !enabled || !readable || giteaOrigin === undefined) return;
-    const withClient = <T>(read: (client: GiteaClient) => Promise<T>): Promise<T> => {
-      const client = giteaClientFor(giteaOrigin);
-      return client === null ? Promise.reject(new Error("No Gitea session")) : read(client);
-    };
     const watch = createPullWatch({
       reads,
-      lists: {
-        listUserRepositories: () => withClient((client) => client.listUserRepositories()),
-        listOrganizationRepositories: (owner) =>
-          withClient((client) => client.listOrganizationRepositories(owner)),
+      list: (owner) => {
+        const client = giteaClientFor(giteaOrigin);
+        return client === null
+          ? Promise.reject(new Error("No Gitea session"))
+          : client.listOrganizationRepositories(owner);
       },
       moved: (groupId, repository) => invalidate(groupId, { kind: "repository", repository }),
     });
@@ -274,6 +272,11 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
   readonly forget?: (group: Group, scope: Scope | "group") => void;
   /** How many shared reads met a 401 no token recovered (`ForgeReads.unauthorized`). */
   readonly unauthorizedReads: () => number;
+  /**
+   * Told on each tick of the clock, before the groups are read again: both passes tick the shared
+   * reads, so the orgs of one refresh share one account listing (`ForgeReads.tick`).
+   */
+  readonly tick?: (() => void) | undefined;
 }): {
   readonly answers: ReadonlyMap<string, Answer>;
   readonly failures: ReadonlyMap<string, string>;
@@ -368,7 +371,13 @@ export function useGroupAnswers<Group extends { readonly groupId: string }, Scop
     });
     driver.current = answers;
     answers.setGroups(latest.current.input.groups);
-    const stopClock = startRefreshClock({ refresh: answers.refresh, everyMs: refreshMs });
+    const stopClock = startRefreshClock({
+      refresh: () => {
+        latest.current.input.tick?.();
+        answers.refresh();
+      },
+      everyMs: refreshMs,
+    });
     return () => {
       stopClock();
       answers.dispose();

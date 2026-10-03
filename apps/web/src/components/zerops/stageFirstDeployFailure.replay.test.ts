@@ -78,7 +78,6 @@ const STAGE_TIER = `services:
 /** The group's Gitea as the run read it: each read answers what was posted by then, newest first. */
 function lanternGitea(posted: ReadonlyArray<GiteaCommitStatus>) {
   return {
-    listUserRepositories: async () => [],
     listOrganizationRepositories: async () => [
       { name: "group", default_branch: "main", updated_at: iso(857.9), open_pr_counter: 0 },
       { name: "appdev", default_branch: "main", updated_at: iso(823.9), open_pr_counter: 0 },

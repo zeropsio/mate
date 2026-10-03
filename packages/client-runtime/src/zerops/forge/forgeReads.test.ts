@@ -16,6 +16,7 @@ import {
   type ForgePart,
   type ForgeReads,
   type OrgGate,
+  splitAccountListing,
   type RepositoryLists,
 } from "./forgeReads.ts";
 
@@ -47,17 +48,18 @@ const EVERYTHING: ReadonlyArray<ForgePart> = ["code", "pulls", "statuses"];
 
 type Listing = () => Promise<ReadonlyArray<GiteaRepository>>;
 
-/** Both listings answered by one load. */
+/** Both listings answered by one load: the account's and the org's own. */
 const everywhere = (load: Listing): RepositoryLists => ({
-  listUserRepositories: load,
+  currentUser: async () => ({ id: 9, login: "u-person" }),
+  listAccountRepositories: async () => {
+    const repositories = await load();
+    return { repositories, counts: [repositories.length] };
+  },
   listOrganizationRepositories: load,
 });
 
-/** An account listing that names no org, so each org is answered by its own listing. */
-const orgOnly = (load: Listing): RepositoryLists => ({
-  listUserRepositories: async () => [],
-  listOrganizationRepositories: load,
-});
+/** The org's own listing alone. */
+const orgOnly = (load: Listing): RepositoryLists => ({ listOrganizationRepositories: load });
 
 describe("planGateReads", () => {
   const before = [repo("appdev"), repo("group", { open_pr_counter: 1 })];
@@ -129,16 +131,13 @@ function org(listed: Array<GiteaRepository>) {
   let clock = NOW;
   const reads = createForgeReads({ now: () => clock });
   const list = () =>
-    reads.repositories("acme", {
-      listUserRepositories: async () => {
+    reads.repositories(
+      "acme",
+      orgOnly(async () => {
         calls.push("repos");
         return state.listed;
-      },
-      listOrganizationRepositories: async () => {
-        calls.push("org repos");
-        return state.listed;
-      },
-    });
+      }),
+    );
   const pulls = (name: string) =>
     reads.read({ owner: "acme", repo: name, part: "pulls", key: "pulls?state=open" }, async () => {
       calls.push(`pulls ${name}`);
@@ -387,25 +386,64 @@ describe("createForgeReads — whether a group's Gitea org is made", () => {
   });
 });
 
-/** A Gitea serving each org's listing and the person's, page by page; every request counted. */
-function gitea(orgs: Record<string, ReadonlyArray<string>>, own: ReadonlyArray<string> = []) {
-  const state = { orgs, own };
+/**
+ * A Gitea serving each org's listing and the person's, page by page; every request counted. As
+ * Gitea 1.27.2 does, `/user/repos` orders by name — and equal names come back in another order on
+ * every request, as a database may answer them — while `/repos/search?sort=id` orders by id, unless
+ * `sortsById` is off.
+ */
+function gitea(
+  orgs: Record<string, ReadonlyArray<string>>,
+  own: ReadonlyArray<string> = [],
+  options: { readonly sortsById?: boolean } = {},
+) {
+  const state = {
+    orgs,
+    own,
+    /** Open pull requests by `owner/name`. */
+    pulls: {} as Record<string, number>,
+    /** What the account listings answer instead, while set. */
+    refusing: undefined as number | "offline" | undefined,
+  };
   const requests: string[] = [];
+  const ids = new Map<string, number>();
+  const idOf = (fullName: string) => {
+    const held = ids.get(fullName);
+    if (held !== undefined) return held;
+    ids.set(fullName, ids.size + 1);
+    return ids.size;
+  };
   const repository = (owner: string, name: string): GiteaRepository => ({
-    ...repo(name),
+    ...repo(name, { open_pr_counter: state.pulls[`${owner}/${name}`] ?? 0 }),
+    id: idOf(`${owner}/${name}`),
     full_name: `${owner}/${name}`,
     owner: { login: owner },
   });
+  const everything = () => [
+    ...Object.entries(state.orgs).flatMap(([owner, names]) =>
+      names.map((name) => repository(owner, name)),
+    ),
+    ...state.own.map((name) => repository("person", name)),
+  ];
+  let asked = 0;
+  const byName = () => {
+    asked += 1;
+    const flip = asked % 2 === 0 ? -1 : 1;
+    return everything().toSorted((a, b) => a.name.localeCompare(b.name) || flip * (a.id - b.id));
+  };
   const page = (all: ReadonlyArray<GiteaRepository>, url: URL) => {
     const limit = Number(url.searchParams.get("limit"));
     const at = (Number(url.searchParams.get("page")) - 1) * limit;
     return all.slice(at, at + limit);
   };
-  const answer = (body: unknown, status = 200) =>
+  const answer = (body: unknown, status = 200, count?: number) =>
     Promise.resolve(
       new Response(JSON.stringify(body), {
         status,
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(count === undefined ? {} : { "x-total-count": String(count) }),
+        },
       }),
     );
   const client = createGiteaClient({
@@ -413,8 +451,9 @@ function gitea(orgs: Record<string, ReadonlyArray<string>>, own: ReadonlyArray<s
     token: ["tok", "en"].join(""),
     fetch: (input) => {
       const url = new URL(String(input));
-      requests.push(url.pathname.replace("/api/v1", ""));
-      const org = /^\/api\/v1\/orgs\/([^/]+)\/repos$/u.exec(url.pathname)?.[1];
+      const path = url.pathname.replace("/api/v1", "");
+      requests.push(path);
+      const org = /^\/orgs\/([^/]+)\/repos$/u.exec(path)?.[1];
       if (org !== undefined) {
         const names = state.orgs[org];
         if (names === undefined) return answer({ message: "not found" }, 404);
@@ -425,13 +464,14 @@ function gitea(orgs: Record<string, ReadonlyArray<string>>, own: ReadonlyArray<s
           ),
         );
       }
-      const everything = [
-        ...Object.entries(state.orgs).flatMap(([owner, names]) =>
-          names.map((name) => repository(owner, name)),
-        ),
-        ...state.own.map((name) => repository("person", name)),
-      ];
-      return answer(page(everything, url));
+      if (path === "/user") return answer({ id: 9, login: "u-person" });
+      if (state.refusing === "offline") return Promise.reject(new TypeError("Failed to fetch"));
+      if (state.refusing !== undefined) return answer({ message: "no" }, state.refusing);
+      const total = everything().length;
+      if (path === "/user/repos") return answer(page(byName(), url), 200, total);
+      const all =
+        options.sortsById === false ? byName() : everything().toSorted((a, b) => a.id - b.id);
+      return answer({ ok: true, data: page(all, url) }, 200, total);
     },
   });
   return { client, state, requests, take: () => requests.splice(0) };
@@ -443,14 +483,15 @@ const names = (listed: ReadonlyArray<GiteaRepository>) =>
 
 describe("createForgeReads — one listing for the whole account", () => {
   it.each([
-    { orgs: 1, each: 2, requests: ["/user/repos"] },
-    { orgs: 14, each: 2, requests: ["/user/repos"] },
-    { orgs: 14, each: 4, requests: ["/user/repos", "/user/repos"] },
-    { orgs: 25, each: 2, requests: ["/user/repos", "/user/repos"] },
-    { orgs: 30, each: 3, requests: ["/user/repos", "/user/repos"] },
+    { orgs: 1, each: 2, pages: 1 },
+    { orgs: 14, each: 2, pages: 1 },
+    { orgs: 14, each: 4, pages: 2 },
+    // Exactly a page: the count says it is all, and no empty page is asked for.
+    { orgs: 25, each: 2, pages: 1 },
+    { orgs: 30, each: 3, pages: 2 },
   ])(
-    "$orgs orgs of $each repositories cost $requests.length requests a refresh",
-    async ({ orgs, each, requests }) => {
+    "$orgs orgs of $each repositories cost $pages listing pages a refresh",
+    async ({ orgs, each, pages }) => {
       const server = gitea(
         Object.fromEntries(
           orgNames(orgs).map((slug) => [slug, Array.from({ length: each }, (_, at) => `r${at}`)]),
@@ -459,18 +500,22 @@ describe("createForgeReads — one listing for the whole account", () => {
       let clock = NOW;
       const reads = createForgeReads({ now: () => clock });
       // Each group's two readers (the forge and the deploys) list it on the same refresh.
-      const refresh = () =>
-        Promise.all(
+      const refresh = () => {
+        reads.tick();
+        return Promise.all(
           orgNames(orgs).flatMap((slug) => [
             reads.repositories(slug, server.client),
             reads.repositories(slug, server.client),
           ]),
         );
+      };
+      const listing = Array.from({ length: pages }, () => "/repos/search");
       for (const listed of await refresh()) expect(listed).toHaveLength(each);
-      expect(server.take()).toEqual(requests);
+      // Who the person is, once: the listing asks by their id.
+      expect(server.take()).toEqual(["/user", ...listing]);
       clock += 60_000;
       await refresh();
-      expect(server.take()).toEqual(requests);
+      expect(server.take()).toEqual(listing);
     },
   );
 
@@ -479,7 +524,7 @@ describe("createForgeReads — one listing for the whole account", () => {
     const reads = createForgeReads({ now: () => NOW });
     expect(names(await reads.repositories("acme", server.client))).toEqual(["appdev", "group"]);
     expect(names(await reads.repositories("beta", server.client))).toEqual(["group"]);
-    expect(server.take()).toEqual(["/user/repos"]);
+    expect(server.take()).toEqual(["/user", "/repos/search"]);
     expect(reads.organizations()).toEqual(
       new Map([
         ["acme", true],
@@ -492,9 +537,11 @@ describe("createForgeReads — one listing for the whole account", () => {
     const server = gitea({ acme: ["appdev", "apidev"], beta: ["group"] });
     let clock = NOW;
     const reads = createForgeReads({ now: () => clock });
+    reads.tick();
     await reads.repositories("acme", server.client);
     await reads.repositories("beta", server.client);
     clock += 60_000;
+    reads.tick();
     // apidev moved to beta, webdev is new in acme.
     server.state.orgs = { acme: ["appdev", "webdev"], beta: ["group", "apidev"] };
     const moved: Record<string, ReadonlyArray<string>> = {};
@@ -510,45 +557,213 @@ describe("createForgeReads — one listing for the whole account", () => {
     }
     expect(listed).toEqual({ acme: ["appdev", "webdev"], beta: ["group", "apidev"] });
     expect(moved).toEqual({ acme: ["apidev", "webdev"], beta: ["apidev"] });
-    expect(server.take()).toEqual(["/user/repos", "/user/repos"]);
+    expect(server.take()).toEqual(["/user", "/repos/search", "/repos/search"]);
   });
 
   it("reads an org the listing does not name on its own, until the listing names it", async () => {
     const server = gitea({ acme: ["group"] });
     let clock = NOW;
     const reads = createForgeReads({ now: () => clock });
-    const both = () =>
-      Promise.all([
+    const both = () => {
+      reads.tick();
+      return Promise.all([
         reads.repositories("acme", server.client),
         reads.repositories("quay", server.client).catch(() => null),
       ]);
+    };
     await both();
-    expect(server.take()).toEqual(["/user/repos", "/orgs/quay/repos"]);
+    expect(server.take()).toEqual(["/user", "/repos/search", "/orgs/quay/repos"]);
     expect(reads.organizations().get("quay")).toBe(false);
     clock += 60_000;
     server.state.orgs = { acme: ["group"], quay: ["group"] };
     const [, quay] = await both();
     expect(names(quay ?? [])).toEqual(["group"]);
-    expect(server.take()).toEqual(["/user/repos"]);
+    expect(server.take()).toEqual(["/repos/search"]);
     expect(reads.organizations().get("quay")).toBe(true);
   });
 
-  it("reads each org on its own when the listing stops at the page limit", async () => {
-    const full = Array.from({ length: GITEA_LIST_LIMIT }, (_, at) => repo(`r${at}`));
-    const asked: string[] = [];
+  // Every group has a repository named `group`: a listing by name pages through 30 equal names.
+  it.each([
+    { name: "Gitea orders the listing by id", sortsById: true },
+    { name: "pages of equal names drop and repeat rows", sortsById: false },
+  ])("drops and doubles no repository when $name", async ({ sortsById }) => {
+    const slugs = orgNames(30);
+    const server = gitea(Object.fromEntries(slugs.map((slug) => [slug, ["app", "group"]])), [], {
+      sortsById,
+    });
     const reads = createForgeReads({ now: () => NOW });
+    reads.tick();
+    for (const slug of slugs) {
+      expect(names(await reads.repositories(slug, server.client)).toSorted()).toEqual([
+        "app",
+        "group",
+      ]);
+    }
+    const asked = server.take();
+    expect(asked.filter((path) => path === "/repos/search")).toHaveLength(2);
+    expect(asked.filter((path) => path.startsWith("/orgs/")).length).toBe(
+      sortsById ? 0 : slugs.length,
+    );
+  });
+
+  it.each([
+    { name: "a 500", refusing: 500 },
+    { name: "a lost connection", refusing: "offline" as const },
+  ])("reads each org on its own when the account listing meets $name", async ({ refusing }) => {
+    const server = gitea({ acme: ["appdev", "group"], beta: ["group"] });
+    const reads = createForgeReads({ now: () => NOW });
+    server.state.refusing = refusing;
+    reads.tick();
+    const [acme, beta, quay] = await Promise.all([
+      reads.repositories("acme", server.client),
+      reads.repositories("beta", server.client),
+      reads.repositories("quay", server.client).catch((cause: unknown) => cause),
+    ]);
+    expect(names(acme)).toEqual(["appdev", "group"]);
+    expect(names(beta)).toEqual(["group"]);
+    // A group the broker is still making is being set up, not failing.
+    expect(quay).toBeInstanceOf(GiteaApiError);
+    expect(reads.organizations().get("quay")).toBe(false);
+    expect(server.take().toSorted()).toEqual([
+      "/orgs/acme/repos",
+      "/orgs/beta/repos",
+      "/orgs/quay/repos",
+      "/repos/search",
+      "/user",
+    ]);
+  });
+
+  it("answers every org with the session's 401 when the account listing meets one", async () => {
+    const server = gitea({ acme: ["group"], beta: ["group"] });
+    const reads = createForgeReads({ now: () => NOW });
+    server.state.refusing = 401;
+    const answers = await Promise.allSettled([
+      reads.repositories("acme", server.client),
+      reads.repositories("beta", server.client),
+    ]);
+    expect(answers.map((answer) => answer.status)).toEqual(["rejected", "rejected"]);
+    expect(server.take()).toEqual(["/user", "/repos/search"]);
+  });
+
+  it.each([
+    { name: "another org's read off its tick", watched: false },
+    { name: "the pull watch's look at another org", watched: true },
+  ])("shows an org's new pull request on its next tick after $name", async ({ watched }) => {
+    const server = gitea({ acme: ["group"], beta: ["group"] });
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
+    const tick = () => {
+      reads.tick();
+      return Promise.all([
+        reads.repositories("acme", server.client),
+        reads.repositories("beta", server.client),
+      ]);
+    };
+    await tick();
+    clock += 45_000;
+    await (watched
+      ? reads.repositories(
+          "acme",
+          { listOrganizationRepositories: server.client.listOrganizationRepositories },
+          { maxAgeMs: 13_000 },
+        )
+      : reads.repositories("acme", server.client));
+    clock += 5_000;
+    server.state.pulls = { "beta/group": 1 };
+    clock += 10_000;
+    const [, beta] = await tick();
+    expect(beta[0]?.open_pr_counter).toBe(1);
+  });
+
+  it("shares one listing between the two readers' ticks a moment apart", async () => {
+    const server = gitea({ acme: ["group"], beta: ["group"] });
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
+    reads.tick();
+    await reads.repositories("acme", server.client);
+    clock += 1_000;
+    reads.tick();
+    await reads.repositories("beta", server.client);
+    expect(server.take()).toEqual(["/user", "/repos/search"]);
+  });
+
+  it.each([
+    {
+      name: "stops at the page limit",
+      listed: () => Array.from({ length: GITEA_LIST_LIMIT }, (_, at) => repo(`r${at}`)),
+    },
+    {
+      name: "names none of the orgs asked of it",
+      listed: () => [{ ...repo("notes"), full_name: "person/notes", owner: { login: "person" } }],
+    },
+  ])("reads each org on its own for ten minutes after a listing that $name", async ({ listed }) => {
+    const asked: string[] = [];
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
     const lists: RepositoryLists = {
-      listUserRepositories: async () => {
+      currentUser: async () => ({ id: 9, login: "u-person" }),
+      listAccountRepositories: async () => {
         asked.push("account");
-        return full;
+        const repositories = listed();
+        return { repositories, counts: [repositories.length] };
       },
       listOrganizationRepositories: async (owner) => {
         asked.push(owner);
         return [repo("group")];
       },
     };
-    expect(names(await reads.repositories("acme", lists))).toEqual(["group"]);
-    expect(names(await reads.repositories("beta", lists))).toEqual(["group"]);
-    expect(asked).toEqual(["account", "acme", "beta"]);
+    const refresh = async () => {
+      reads.tick();
+      expect(names(await reads.repositories("acme", lists))).toEqual(["group"]);
+      expect(names(await reads.repositories("beta", lists))).toEqual(["group"]);
+      clock += 60_000;
+      return asked.splice(0);
+    };
+    expect(await refresh()).toEqual(["account", "acme", "beta"]);
+    const skipped: Array<ReadonlyArray<string>> = [];
+    for (let minute = 1; minute < 10; minute += 1) skipped.push(await refresh());
+    expect(new Set(skipped.map((each) => each.join(" ")))).toEqual(new Set(["acme beta"]));
+    expect(await refresh()).toEqual(["account", "acme", "beta"]);
+  });
+});
+
+describe("splitAccountListing", () => {
+  const at = (owner: string, name: string, id: number): GiteaRepository => ({
+    ...repo(name),
+    id,
+    full_name: `${owner}/${name}`,
+    owner: { login: owner },
+  });
+  const acme = at("acme", "group", 1);
+  const beta = at("Beta", "group", 2);
+
+  it.each([
+    {
+      name: "cuts each owner's part",
+      repositories: [acme, beta],
+      counts: [2],
+      split: { acme: ["group"], beta: ["group"] },
+    },
+    { name: "says nothing of a repeated row", repositories: [acme, acme], counts: [2] },
+    { name: "says nothing short of the count", repositories: [acme], counts: [2] },
+    { name: "says nothing when the pages disagree", repositories: [acme, beta], counts: [3, 2] },
+    {
+      name: "trusts pages that sent no count",
+      repositories: [acme, beta],
+      counts: [undefined],
+      split: { acme: ["group"], beta: ["group"] },
+    },
+  ])("$name", ({ repositories, counts, split }) => {
+    const answer = splitAccountListing({ repositories, counts });
+    expect(
+      answer.kind === "split"
+        ? Object.fromEntries([...answer.byOwner].map(([owner, part]) => [owner, names(part)]))
+        : answer.kind,
+    ).toEqual(split ?? "unsure");
+  });
+
+  it("is capped at the client's page limit", () => {
+    const full = Array.from({ length: GITEA_LIST_LIMIT }, (_, id) => at("acme", `r${id}`, id));
+    expect(splitAccountListing({ repositories: full, counts: [] }).kind).toBe("capped");
   });
 });

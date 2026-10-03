@@ -207,6 +207,7 @@ export function useZeropsGroupDeploys(input: {
     refreshMs: GROUP_DEPLOYS_REFRESH_MS,
     keyOf: deployGroupKey,
     unauthorizedReads: reads.unauthorized,
+    tick: reads.tick,
     read: (client, group, scope, signal, held) =>
       readGroupDeploys({
         client,

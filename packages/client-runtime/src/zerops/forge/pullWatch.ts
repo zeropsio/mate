@@ -11,15 +11,16 @@
  * `open_pr_counter` moves when a pull request opens, closes or merges, its `updated_at` with
  * every push (`forge/forgeReads.ts`).
  *
- * So every {@link PULL_WATCH_MS} the watch looks at one org, through the account listing every
- * group's readers share: of the groups with an open pull request updated in the last {@link PULL_WATCH_QUIET_MS},
- * the one looked at longest ago, the most recently updated first. What that listing drops of a
- * repository's pull requests is read again at once (`moved`).
+ * So every {@link PULL_WATCH_MS} the watch lists one org on its own (`GET /orgs/{o}/repos`): of the
+ * groups with an open pull request updated in the last {@link PULL_WATCH_QUIET_MS}, the one looked
+ * at longest ago, the most recently updated first. What that listing drops of a repository's pull
+ * requests is read again at once (`moved`). Never the person's whole account, a page per 50
+ * repositories every few seconds; and no org's next minute tick takes the watch's listing for its
+ * own (`forge/forgeReads.ts`).
  *
- * The cost is one listing a tick whatever the count — at most four a minute per window, part of
- * which the minute's own listing of that org would have been — and nothing while no group has
- * one open and moving: a pull request left waiting for half an hour is back on the minute's
- * clock. A merge reaches a window within 15 s with one group watched, 30 s with two, and never
+ * The cost is one listing of one org a tick whatever the count — at most four a minute per window —
+ * and nothing while no group has one open and moving: a pull request left waiting for half an hour
+ * is back on the minute's clock. A merge reaches a window within 15 s with one group watched, 30 s with two, and never
  * later than the minute's refresh. The pull requests a merge moved are read twice in the window
  * that merged it — by the verb, and again once the listing shows the merge — as the minute's
  * listing made them before; the watch only makes that read come sooner.
@@ -30,7 +31,7 @@
  * @module forge/pullWatch
  */
 import type { GiteaRepository } from "../giteaClient.ts";
-import type { ForgeReads, RepositoryLists } from "./forgeReads.ts";
+import type { ForgeReads } from "./forgeReads.ts";
 
 /** How often the forge is read again while nothing is watched: the group readers' own clock. */
 export const FORGE_REFRESH_MS = 60_000;
@@ -111,7 +112,8 @@ export interface PullWatch {
 
 export function createPullWatch(options: {
   readonly reads: ForgeReads;
-  readonly lists: RepositoryLists;
+  /** One org's own listing (`GET /orgs/{o}/repos`). */
+  readonly list: (owner: string) => Promise<ReadonlyArray<GiteaRepository>>;
   /** A repository's pull requests moved: read them again now. */
   readonly moved: (groupId: string, repository: string) => void;
   readonly now?: () => number;
@@ -139,7 +141,8 @@ export function createPullWatch(options: {
     const dropped: Array<string> = [];
     let listed: ReadonlyArray<GiteaRepository>;
     try {
-      listed = await options.reads.repositories(group.slug, options.lists, {
+      const lists = { listOrganizationRepositories: options.list };
+      listed = await options.reads.repositories(group.slug, lists, {
         maxAgeMs: PULL_WATCH_LISTING_MAX_AGE_MS,
         moved: (reread) => {
           for (const [repository, parts] of reread)

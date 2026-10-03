@@ -303,7 +303,6 @@ describe("ZeropsProjectFlowProvider", () => {
       act(async () => {
         await reads
           .repositories("quay", {
-            listUserRepositories: async () => [],
             listOrganizationRepositories: answer,
           })
           .catch(() => undefined);
