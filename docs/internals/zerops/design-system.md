@@ -235,7 +235,10 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     stood. What it holds is the newest batch's open calls, operations among them (`stretchBatch`,
     the batch rule over the whole run: a batch is one model response, named on each call's start
     (`responseId`); a call of a newer response puts an older response's open call behind it, stale,
-    never shown; where calls name no response, a call started after another returned opens the
+    never shown, and closed as "No result" — never as done — when the run is over, even where the
+    turn's end closed it (`unreturned`); the thread's provider says how a call that names no
+    response reads: Claude's (an older server, a helper's call) never goes stale, a provider that
+    never names one (Codex) keeps the timing rule — a call started after another returned opens the
     newer batch, and a call seen only as it ended opens none); else the Mate's words as they stream
     (a thought as the thought, its newest four lines with a fade at the top; its answer as
     "Writing"); else what it waits on from the person (a question in its own words, the answer
@@ -244,8 +247,12 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     quick gap never flashes it. Several at once are a row each, three at most, then "+N more
     running", counting what runs past the rows drawn. An operation stands here only while the call
     that started it is open: a stand-up whose call returned runs on in the band while its report
-    says a service builds, until the store reads them done (`standupRunsOn`, `useStandupsDone`); a
-    bootstrap session's line stays where it first returned while a follow-up call runs. What enters
+    says a service builds — counting only builds made before its call returned, read only while its
+    turn runs, joining the band only once its project is read — until the store reads them done
+    (`standupRunsOn`, `useStandupsDone`); a bootstrap session's line stays where it first returned,
+    and the follow-up call it waits on stands in the slot as a line of its own. Two calls that fold
+    into one line (edits in a row) fold only once the second lands: until then the slot draws it as
+    it ended and the history the first alone. What a resync brings never rises in. What enters
     after the slot's first draw rises in, and the history glides as the slot grows; the face and
     the clock follow the first line only once placed. An item leaves as it ends once
     shown 800 ms (a question 800 ms after its answer), and plops into the history: a translate on
