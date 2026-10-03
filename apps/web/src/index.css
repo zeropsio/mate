@@ -5069,6 +5069,117 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
+/*
+ * Full screen (`fullComposer.logic.ts`): the composer's text grows over the
+ * conversation to a measured height, the conversation behind a backdrop, and
+ * goes back the same way. Its toggle sits in the text's top corner, shown
+ * with the composer's hover or focus.
+ */
+.composer-full-toggle {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--color-muted-foreground);
+  opacity: 0;
+  cursor: pointer;
+  outline: none;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.composer-full-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+[data-chat-composer-surface]:hover .composer-full-toggle,
+[data-chat-composer-surface]:focus-within .composer-full-toggle,
+[data-composer-full="on"] .composer-full-toggle,
+.composer-full-toggle:focus-visible {
+  opacity: 1;
+}
+
+.composer-full-toggle:hover {
+  color: var(--color-foreground);
+  background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+}
+
+.composer-full-toggle:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+@media (hover: none) {
+  .composer-full-toggle {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 40rem) {
+  [data-chat-composer-form] [data-testid="composer-editor"] {
+    padding-inline-end: 28px;
+  }
+}
+
+[data-chat-composer-form] [data-testid="composer-editor"] {
+  transition:
+    min-height 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    max-height 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+[data-chat-composer-form][data-composer-full="on"] [data-testid="composer-editor"] {
+  min-height: var(--composer-full-height, 4.375rem);
+  max-height: var(--composer-full-height, 12.5rem);
+}
+
+/* Docked at the column's foot, the overlay takes the whole column and keeps the composer at its foot. */
+[data-chat-composer-overlay]:not([data-chat-composer-hero]):has([data-composer-full]) {
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+[data-chat-composer-overlay]:has([data-composer-full])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--background);
+  pointer-events: auto;
+  animation: composer-full-backdrop 200ms ease-out;
+  transition: opacity 200ms ease-out;
+}
+
+[data-chat-composer-overlay]:has([data-composer-full="leaving"])::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes composer-full-backdrop {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-composer-form] [data-testid="composer-editor"] {
+    transition: none;
+  }
+
+  [data-chat-composer-overlay]:has([data-composer-full])::before {
+    animation: none;
+    transition: none;
+  }
+}
+
 .composer-review-button:focus-visible {
   box-shadow:
     0 0 0 2px var(--card),

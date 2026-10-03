@@ -91,6 +91,7 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
+import { FULL_COMPOSER_MS, fullComposerGrowth } from "./fullComposer.logic";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerTriggerState } from "./useComposerTriggerState";
 import {
@@ -275,7 +276,7 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
-import { CircleAlertIcon } from "lucide-react";
+import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import {
@@ -1108,6 +1109,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  // Full screen (`fullComposer.logic.ts`): grown over the conversation, or on its way back.
+  // It belongs to the conversation it was opened in: another opens at its own size.
+  const [fullComposerAt, setFullComposerAt] = useState<{
+    readonly threadId: typeof activeThreadId;
+    readonly state: "on" | "leaving";
+  } | null>(null);
+  const fullComposer =
+    fullComposerAt !== null && fullComposerAt.threadId === activeThreadId
+      ? fullComposerAt.state
+      : "off";
   const [composerSubmissionError, setComposerSubmissionError] = useState<string | null>(null);
   const [providerInputSubmissionError, setProviderInputSubmissionError] = useState<string | null>(
     null,
@@ -1131,6 +1142,39 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerSurfaceRef = useRef<HTMLDivElement>(null);
   const providerInputRejectedRef = useRef(false);
+
+  const leaveFullComposer = useCallback(() => {
+    setFullComposerAt((current) =>
+      current?.state === "on" ? { ...current, state: "leaving" } : current,
+    );
+  }, []);
+  useEffect(() => {
+    if (fullComposer !== "leaving") return;
+    const timer = window.setTimeout(() => setFullComposerAt(null), FULL_COMPOSER_MS);
+    return () => window.clearTimeout(timer);
+  }, [fullComposer]);
+  // Its height is measured, not guessed: the chat column, and what stands with
+  // the composer in it, decide how far it grows.
+  useLayoutEffect(() => {
+    if (fullComposer !== "on") return;
+    const form = composerFormRef.current;
+    const editor = form?.querySelector<HTMLElement>('[data-testid="composer-editor"]');
+    const overlay = form?.closest<HTMLElement>('[data-chat-composer-overlay="true"]');
+    const column = overlay?.parentElement;
+    const stack = overlay?.firstElementChild;
+    if (!form || !editor || !column || !(stack instanceof HTMLElement)) return;
+    const fit = () => {
+      const growth = fullComposerGrowth(
+        column.getBoundingClientRect(),
+        stack.getBoundingClientRect(),
+      );
+      form.style.setProperty("--composer-full-height", `${editor.offsetHeight + growth}px`);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, [fullComposer]);
   const composerSelectLockRef = useRef(false);
   const composerMenuOpenRef = useRef(false);
   const composerMenuItemsRef = useRef<ComposerCommandItem[]>([]);
@@ -2250,6 +2294,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       });
       setComposerSubmissionError(submission.validationMessage);
       if (!submission.didDispatch) return;
+      leaveFullComposer();
       if (shouldBlurMobileComposerOnSubmit()) {
         blurMobileComposerAfterSend();
       }
@@ -2259,6 +2304,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activePendingProgress,
       blurMobileComposerAfterSend,
       isSendDisabled,
+      leaveFullComposer,
       noProviderAvailable,
       onSend,
       promptRef,
@@ -2409,7 +2455,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive = composerMenuOpenRef.current || trigger !== null;
     if (key === "Escape") {
-      if (!menuIsActive || event.isComposing || event.keyCode === 229) return false;
+      if (event.isComposing || event.keyCode === 229) return false;
+      if (!menuIsActive) {
+        // A menu closes first; then Esc takes a full-screen composer back.
+        if (fullComposer !== "on") return false;
+        leaveFullComposer();
+        return true;
+      }
       dismissComposerTrigger(trigger);
       composerMenuOpenRef.current = false;
       return true;
@@ -3205,6 +3257,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onDropCapture={composerMentionDragHandlers.onDrop}
         className={cn("mx-auto w-full min-w-0 max-w-3xl", hasShoulderTab && "pt-7")}
         data-chat-composer-form="true"
+        data-composer-full={fullComposer === "off" ? undefined : fullComposer}
       >
         {showComposerTopDrawer && (!isTasksDrawerOpen || hasBlockingComposerTopDrawer) ? (
           <div
@@ -3534,6 +3587,39 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       isChoiceOnlyPendingQuestion
                     }
                   />
+                  {isMobileViewport || isComposerApprovalState ? null : (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="composer-full-toggle"
+                            aria-label={
+                              fullComposer === "on" ? "Back to the conversation" : "Full screen"
+                            }
+                            aria-pressed={fullComposer === "on"}
+                            // The caret stays where it was in the text.
+                            onPointerDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              if (fullComposer === "on") leaveFullComposer();
+                              else setFullComposerAt({ threadId: activeThreadId, state: "on" });
+                            }}
+                          >
+                            {fullComposer === "on" ? (
+                              <Minimize2Icon aria-hidden="true" />
+                            ) : (
+                              <Maximize2Icon aria-hidden="true" />
+                            )}
+                          </button>
+                        }
+                      />
+                      <TooltipPopup side="top">
+                        {fullComposer === "on"
+                          ? "Back to the conversation (Esc)"
+                          : "Write in full screen"}
+                      </TooltipPopup>
+                    </Tooltip>
+                  )}
                   {composerPictures.view}
                   {showMobilePendingAnswerActions ? (
                     <div
