@@ -810,6 +810,7 @@ describe("limitsPage: painted once, least quota first, never none before it is k
     id: UsageLimitSourceId.make("hub-1"),
     kind: "cliproxy",
     label: "Team hub",
+    checkedAt: "2026-09-03T11:00:00.000Z",
     accounts: [],
   } as const;
   type Phase = "available" | "offline" | "connecting" | "reconnecting" | "connected" | "error";
