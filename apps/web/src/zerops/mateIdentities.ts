@@ -131,6 +131,23 @@ export function mateOpeningAwake(mate: Pick<ZeropsMateIdentity, "connected" | "r
   return mate.connected || mate.running === true;
 }
 
+/**
+ * Whether a Mate's own page (`/mate/$projectId`) wears it awake: linked, or — while the page only
+ * waits on its link — where its container runs (`mateOpeningAwake`). Asleep where the page speaks
+ * of the link (a restart, a container that is not running, one that cannot be opened); a new Mate
+ * arriving wears what its board says instead.
+ */
+export function mateStageAwake(input: {
+  readonly linked: boolean;
+  readonly arriving: boolean;
+  readonly speaks: boolean;
+  readonly mate: Pick<ZeropsMateIdentity, "connected" | "running">;
+}): boolean {
+  if (input.linked) return true;
+  if (input.arriving || input.speaks) return false;
+  return mateOpeningAwake(input.mate);
+}
+
 /** Who lives in one environment: its Mate, nobody, or not known yet. */
 export type ZeropsMateAt =
   | { readonly kind: "mate"; readonly mate: ZeropsMateIdentity }

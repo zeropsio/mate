@@ -8,6 +8,7 @@ import {
   knownMate,
   mateOpeningAwake,
   mateQuestion,
+  mateStageAwake,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
   zeropsMateDecisions,
@@ -315,5 +316,45 @@ describe("whether a Mate's opening wears it awake", () => {
   ])("carries its project, and its container running when $case", ({ group, running }) => {
     const mate = zeropsMateIdentities([{ ...FEN_DEV, group }]).get(FEN);
     expect(mate).toMatchObject({ projectId: "acme-docs-dev", running });
+  });
+});
+
+// A Mate's own page wears it as its opening does: awake while its container runs and the page
+// only waits; asleep where the page speaks of its link, and as its arrival says while it arrives.
+describe("whether a Mate's own page wears it awake", () => {
+  const RUNNING = { connected: false, running: true } as const;
+  const STOPPED = { connected: false, running: false } as const;
+  it.each<{
+    readonly case: string;
+    readonly input: Parameters<typeof mateStageAwake>[0];
+    readonly awake: boolean;
+  }>([
+    {
+      case: "linked",
+      input: { linked: true, arriving: false, speaks: false, mate: STOPPED },
+      awake: true,
+    },
+    {
+      case: "its container running, the page only waiting",
+      input: { linked: false, arriving: false, speaks: false, mate: RUNNING },
+      awake: true,
+    },
+    {
+      case: "its container stopped",
+      input: { linked: false, arriving: false, speaks: false, mate: STOPPED },
+      awake: false,
+    },
+    {
+      case: "the page speaking of its link",
+      input: { linked: false, arriving: false, speaks: true, mate: RUNNING },
+      awake: false,
+    },
+    {
+      case: "a new Mate arriving, whose board says its face",
+      input: { linked: false, arriving: true, speaks: false, mate: RUNNING },
+      awake: false,
+    },
+  ])("$case", ({ input, awake }) => {
+    expect(mateStageAwake(input)).toBe(awake);
   });
 });
