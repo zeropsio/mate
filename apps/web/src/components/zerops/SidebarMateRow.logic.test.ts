@@ -140,6 +140,14 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       line: LINE,
     },
     {
+      case: "its roles not read, nobody signed in: a neutral seat, never nobody's, and the line",
+      owner: undefined,
+      records: { named: undefined, signedIn: false },
+      asked: false,
+      seat: "unnamed",
+      line: LINE,
+    },
+    {
       case: "an owner not named yet, nobody signed in: a neutral seat and the line",
       owner: undefined,
       records: OWNED_UNSIGNED,

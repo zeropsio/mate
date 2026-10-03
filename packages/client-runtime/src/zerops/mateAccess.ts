@@ -312,14 +312,18 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
  * credential nobody recorded is refused a turn (`unrecorded`).
  */
 export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "userRoles">): {
-  readonly named: boolean;
+  /**
+   * `undefined` while its roles are not read (a project without `userRoles`, as the account's
+   * store holds every project) and no signer names anybody: unknown, never nobody's.
+   */
+  readonly named: boolean | undefined;
   readonly signedIn: boolean;
   /** The Zerops user id its signer tag names, where somebody signed its agent in. */
   readonly signer: string | undefined;
 } {
   const { signedIn, signer } = mateOwnerSigner(project.tagList);
-  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
-  return { named: owned || signedIn, signedIn, signer };
+  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER");
+  return { named: signedIn || owned, signedIn, signer };
 }
 
 /**
