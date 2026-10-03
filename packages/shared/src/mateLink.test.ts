@@ -7,13 +7,13 @@ import {
   MateLinkDown,
   MateLinkUp,
   linkFrameBytes,
-  linkText,
   readLinkUp,
 } from "./mateLink.ts";
 
 const decodeUp = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkUp));
 const decodeDown = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkDown));
 
+/** The summary a Mate from before the overview sent. */
 const summary = (lastRequest: string) =>
   JSON.stringify({
     type: "summary",
@@ -148,14 +148,6 @@ describe("mateLink", () => {
     expect(crewOf(null)).toBe("Failure");
   });
 
-  it("reads a summary within its bounds, and refuses one past them", () => {
-    expect(decodeUp(summary("Add a login page"))._tag).toBe("Success");
-    expect(decodeUp(summary("x".repeat(MATE_LINK_TEXT_MAX + 1)))._tag).toBe("Failure");
-    expect(decodeUp(JSON.stringify({ type: "summary", summary: { running: -1 } }))._tag).toBe(
-      "Failure",
-    );
-  });
-
   it("decodes a frame that names only the sections that changed", () => {
     const decoded = decodeUp(
       JSON.stringify({
@@ -182,6 +174,15 @@ describe("mateLink", () => {
     });
   });
 
+  // A Mate from before the overview sends its summary: HQ passes it by and keeps the link.
+  it("passes by an older Mate's summary as a type this build does not know", () => {
+    expect(readLinkUp(summary("Add a login page"))).toEqual({ kind: "unknown", type: "summary" });
+    expect(readLinkUp(JSON.stringify({ type: "summary", summary: { running: -1 } }))).toEqual({
+      kind: "unknown",
+      type: "summary",
+    });
+  });
+
   it("refuses a known type whose body does not decode", () => {
     const long = { ...overview, main: { ...overview.main, title: "x".repeat(121) } };
     const { crew: _crew, ...partial } = overview;
@@ -189,7 +190,6 @@ describe("mateLink", () => {
       JSON.stringify({ type: "overview", full: true, overview: long }),
       JSON.stringify({ type: "overview", full: true, overview: partial }),
       JSON.stringify({ type: "overview", full: false, overview }),
-      JSON.stringify({ type: "summary", summary: { running: -1 } }),
       JSON.stringify({ kind: "overview" }),
       JSON.stringify(["pong"]),
       "not a frame",
@@ -296,12 +296,5 @@ describe("mateLink", () => {
     ]);
     expect(titles({})).toEqual([null]);
     expect(titles({ title: 7 })).toBe("Failure");
-  });
-
-  it("cuts a text to what a summary carries", () => {
-    expect(linkText("short")).toBe("short");
-    const cut = linkText("y".repeat(MATE_LINK_TEXT_MAX + 50));
-    expect(cut.length).toBe(MATE_LINK_TEXT_MAX);
-    expect(cut.endsWith("…")).toBe(true);
   });
 });

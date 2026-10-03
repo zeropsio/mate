@@ -532,7 +532,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
         if (result.nextPhase === "succeeded" && signIns !== undefined) {
           // Kept before anything else hears of the success: the gate, the rows and the Mate's
-          // summary go by it, and it outlives this process (`zeropsSignIns`).
+          // overview go by it, and it outlives this process (`zeropsSignIns`).
           yield* signIns.save(key, {
             by: session.startedBy,
             at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
