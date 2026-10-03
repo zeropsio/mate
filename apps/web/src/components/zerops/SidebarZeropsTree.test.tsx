@@ -18,11 +18,14 @@ import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/conta
 import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -104,6 +107,7 @@ import {
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
+import { hqMatesViewAtom } from "~/state/zerops";
 import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
@@ -1137,6 +1141,45 @@ describe("a Mate's face follows its work in the menu", () => {
     });
     expect(faceOf(html)).toBe(face);
     expect(html.includes("Working on a reply")).toBe(dots);
+  });
+
+  // HQ holds a Mate's link open, so it is up, though this tab holds no socket to it and no chat of
+  // its says anything yet (t12, 2026-10-03): its presence wakes its face, not a main chat.
+  it("wears an awake face for a Mate HQ holds online, before any chat of its says anything", () => {
+    const registry = AtomRegistry.make();
+    const held = (online: boolean) =>
+      registry.set(hqMatesViewAtom, {
+        organizationId: "org-acme",
+        mates: new Map<string, MateLiveView>([
+          [
+            "crm-dev",
+            {
+              presence: {
+                online,
+                since: "2026-10-03T10:00:00.000Z",
+                overview: online ? "live" : "stored",
+              },
+            },
+          ],
+        ]),
+        current: true,
+      });
+    const drawn = () =>
+      renderToStaticMarkup(
+        <RegistryContext.Provider value={registry}>
+          <SidebarZeropsTree
+            candidates={[CRM_DEV]}
+            complete
+            onBrowseProjects={() => {}}
+            onSelect={() => {}}
+          />
+        </RegistryContext.Provider>,
+      );
+    held(true);
+    expect(faceOf(drawn())).toBe("idle");
+    // Gone from HQ, and no socket either: asleep.
+    held(false);
+    expect(faceOf(drawn())).toBe("sleep");
   });
 
   // Board D1, 2026-09-30: a new Mate's first run is the stand-up its person's sign-in sent; the
