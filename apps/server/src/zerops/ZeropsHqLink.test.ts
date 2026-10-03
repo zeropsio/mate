@@ -1,4 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
+import type {
+  CrewSnapshot,
+  ExecutionEnvironmentUpdate,
+  ZeropsAgentAuthSnapshot,
+} from "@t3tools/contracts";
 import type { MateOverview, MateState } from "@t3tools/shared/mateLink";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -8,14 +13,18 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import {
   type HqEnrollment,
   type HqOutcome,
   type LinkSocket,
   makeZeropsHqLink,
+  mateOverviewFeed,
+  type OverviewSources,
 } from "./ZeropsHqLink.ts";
 
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -98,6 +107,8 @@ const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number }
     );
     const outcome = yield* Ref.make<Option.Option<HqOutcome>>(Option.none());
     const current = yield* Ref.make(overview("Add a login page"));
+    /** How often the link read the overview. */
+    const reads = { count: 0 };
     const changes = yield* PubSub.unbounded<void>();
     const sockets: Array<FakeSocket> = [];
     const asked: Array<string | undefined> = [];
@@ -126,7 +137,9 @@ const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number }
         sockets.push(socket);
         return socket;
       },
-      overview: Effect.map(Ref.get(current), Option.some),
+      overview: Effect.sync(() => {
+        reads.count += 1;
+      }).pipe(Effect.andThen(Ref.get(current)), Effect.map(Option.some)),
       changes: Stream.fromPubSub(changes),
       reconnectDelaysMs: [20],
       ...(options.everyMs === undefined ? {} : { overviewEveryMs: options.everyMs }),
@@ -141,7 +154,7 @@ const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number }
         Effect.timeout(Duration.seconds(3)),
         Effect.orDie,
       );
-    return { link, enrollment, outcome, current, changes, sockets, asked, hq, until };
+    return { link, enrollment, outcome, current, changes, sockets, asked, hq, until, reads };
   });
 
 describe("ZeropsHqLink", () => {
@@ -336,12 +349,127 @@ describe("ZeropsHqLink", () => {
   it.effect("sends nothing on a quiet link", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { sockets, changes } = yield* rig({ enrolled: true });
+        const { sockets, changes, reads } = yield* rig({ enrolled: true });
         const socket = yield* opened(sockets, 0);
         // A change heard that changed nothing sends nothing either.
         yield* PubSub.publish(changes, undefined);
+        yield* TestClock.adjust(Duration.seconds(1));
+        const read = reads.count;
+        // Nothing heard, nothing read: no timer looks at the overview again.
         yield* TestClock.adjust(Duration.minutes(2));
         assert.strictEqual(socket.sent.length, 1);
+        assert.strictEqual(reads.count, read);
+      }),
+    ),
+  );
+});
+
+describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
+  const NO_AUTH: ZeropsAgentAuthSnapshot = { available: true, agents: [] };
+  const CLAUDE = {
+    agentId: "claude-code",
+    credPresent: true,
+    flagOAuth: true,
+    flagToken: false,
+    providerAuth: "authenticated",
+    state: "authorized",
+  } as const;
+  const APPLIED: CrewSnapshot = { ...CREW_OFF_SNAPSHOT, status: "applied" };
+
+  /** A link over HQ whose overview is read from feeds the test moves, on the test's clock. */
+  const feedRig = Effect.gen(function* () {
+    const crew = yield* SubscriptionRef.make<CrewSnapshot>(CREW_OFF_SNAPSHOT);
+    const auth = yield* SubscriptionRef.make<ZeropsAgentAuthSnapshot>(NO_AUTH);
+    const update = yield* SubscriptionRef.make<ExecutionEnvironmentUpdate | undefined>(undefined);
+    const feed = yield* mateOverviewFeed({
+      environmentId: "env-1" as OverviewSources["environmentId"],
+      serverVersion: "0.11.90",
+      threads: Effect.succeed([]),
+      crew: { snapshot: SubscriptionRef.changes(crew) },
+      // A feed's `changes` tells of a change, never of where it stands as it is subscribed to.
+      agentAuth: {
+        latest: SubscriptionRef.get(auth),
+        changes: SubscriptionRef.changes(auth).pipe(Stream.drop(1)),
+      },
+      agentLogin: { latest: Effect.succeed({}), changes: Stream.never },
+      logins: { latest: Effect.succeed([]), changes: Stream.never },
+      update: {
+        current: SubscriptionRef.get(update),
+        changes: SubscriptionRef.changes(update).pipe(Stream.drop(1)),
+      },
+      domainEvents: Stream.never,
+    });
+    const sockets: Array<FakeSocket> = [];
+    const http = HttpClient.make((request) =>
+      Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ ticket: "t1" }))),
+    );
+    yield* makeZeropsHqLink({
+      readEnrollment: Effect.succeed(Option.some({ hq: "https://hq.test", credential: "cred" })),
+      readOutcome: Effect.succeed(Option.none()),
+      connect: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+      ...feed,
+    }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+    yield* TestClock.adjust(Duration.zero);
+    const socket = sockets[0];
+    if (socket === undefined) return yield* Effect.die("no socket");
+    socket.emit("open");
+    // Settled: whatever the feeds said as the link subscribed has been looked at, and was sent.
+    yield* TestClock.adjust(Duration.seconds(1));
+    return { socket, crew, auth, update };
+  });
+
+  /** The sections of every frame after the first, whole. */
+  const sectionsSent = (socket: FakeSocket) =>
+    socket.sent.slice(1).map((frame) => frame["sections"]);
+
+  it.effect("sends again when the crew's snapshot moves", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { socket, crew } = yield* feedRig;
+        yield* SubscriptionRef.set(crew, APPLIED);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.deepStrictEqual(sectionsSent(socket), [
+          { crew: { crewmates: [], attention: [], readyTasks: [], personLands: true } },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("sends again when a login's signer changes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { socket, auth } = yield* feedRig;
+        yield* SubscriptionRef.set(auth, {
+          available: true,
+          agents: [{ ...CLAUDE, authorizedBy: { subject: "user-ada" } }],
+        });
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.deepStrictEqual(sectionsSent(socket), [
+          { logins: { "claude-code": { signedInBy: "user-ada", present: true, token: false } } },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("sends again when the Mate's update line changes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { socket, update } = yield* feedRig;
+        const line: ExecutionEnvironmentUpdate = {
+          installed: "0.11.90",
+          latest: "0.11.91",
+          available: true,
+          checkedAt: "2026-10-03T10:00:00Z",
+        };
+        yield* SubscriptionRef.set(update, line);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.deepStrictEqual(sectionsSent(socket), [
+          { identity: { environmentId: "env-1", serverVersion: "0.11.90", update: line } },
+        ]);
       }),
     ),
   );

@@ -11,8 +11,9 @@
  *   (`POST /api/mate/link-ticket`), then `wss://<hq>/api/mate/link?ticket=`. A refused ticket
  *   opens nothing and is asked for again later — zcp enrolls anew meanwhile.
  * - **Up:** the Mate's overview (`zeropsHqOverview.ts`): the whole of it first on every link, then
- *   only the sections that changed, at most once per `MATE_SUMMARY_EVERY_MS`; `pong` to each of
- *   HQ's pings.
+ *   only the sections that changed, at most once per `MATE_SUMMARY_EVERY_MS`, looked at again when
+ *   something it is made of moves — a domain event, the crew's snapshot, a login, the update line —
+ *   and never on a timer; `pong` to each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks.
  *
  * A link that closes or never opens is tried again after a growing wait.
@@ -33,6 +34,7 @@ import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
@@ -106,8 +108,6 @@ export interface ZeropsHqLinkOptions {
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
   /** The least time between two frames of the overview (`MATE_SUMMARY_EVERY_MS`). */
   readonly overviewEveryMs?: number;
-  /** How often the overview is looked at with no change heard (the clock moves a live step). */
-  readonly refreshEveryMs?: number;
 }
 
 export class ZeropsHqLink extends Context.Service<
@@ -162,7 +162,6 @@ export const makeZeropsHqLink = (
     const state = yield* SubscriptionRef.make<Option.Option<MateState>>(Option.none());
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_SUMMARY_EVERY_MS);
-    const refreshEvery = Duration.millis(options.refreshEveryMs ?? 30_000);
 
     /** A ticket for the link, minted with the Mate's credential; none when HQ refuses or is away. */
     const ticketFor = (enrollment: HqEnrollment) =>
@@ -234,9 +233,6 @@ export const makeZeropsHqLink = (
           }),
         );
         const heard = Stream.runForEach(options.changes, () => Ref.set(dirty, true));
-        const refresh = Effect.forever(
-          Effect.andThen(Effect.sleep(refreshEvery), Ref.set(dirty, true)),
-        );
         const relay = Stream.fromQueue(events).pipe(
           Stream.takeWhile((event) => event._tag === "message"),
           Stream.runForEach((event) => {
@@ -248,7 +244,7 @@ export const makeZeropsHqLink = (
               : SubscriptionRef.set(state, Option.some(message.value.mate));
           }),
         );
-        yield* Effect.raceFirst(relay, Effect.all([overviews, heard, refresh], { concurrency: 3 }));
+        yield* Effect.raceFirst(relay, Effect.all([overviews, heard], { concurrency: 2 }));
         yield* quit;
         return true;
       });
@@ -301,10 +297,12 @@ export interface OverviewSources {
   >;
   /** The crew engine's snapshot now, then one per change (`CrewEngine`). */
   readonly crew: { readonly snapshot: Stream.Stream<CrewSnapshot> };
-  readonly agentAuth: Pick<ZeropsAgentAuth["Service"], "latest">;
-  readonly agentLogin: Pick<ZeropsAgentLogin["Service"], "latest">;
-  readonly logins: Pick<ZeropsLogins["Service"], "latest">;
-  readonly update: Pick<ZeropsMateUpdate["Service"], "current">;
+  /** The three feeds the client's agent-auth stream combines: who signed each login in, too. */
+  readonly agentAuth: Pick<ZeropsAgentAuth["Service"], "latest" | "changes">;
+  readonly agentLogin: Pick<ZeropsAgentLogin["Service"], "latest" | "changes">;
+  readonly logins: Pick<ZeropsLogins["Service"], "latest" | "changes">;
+  /** The update line, and when it moves (`ZeropsMateUpdate`). */
+  readonly update: Pick<ZeropsMateUpdate["Service"], "current" | "changes">;
   /** Every orchestration domain event. */
   readonly domainEvents: Stream.Stream<unknown>;
 }
@@ -319,8 +317,12 @@ export const mateOverviewFeed = (
 ): Effect.Effect<Pick<ZeropsHqLinkOptions, "overview" | "changes">, never, Scope.Scope> =>
   Effect.gen(function* () {
     const crew = yield* Ref.make<CrewSnapshot | undefined>(undefined);
+    // Told only once the snapshot is held, so the overview it wakes reads it.
+    const crewMoved = yield* PubSub.unbounded<void>();
     yield* Effect.forkScoped(
-      Stream.runForEach(sources.crew.snapshot, (snapshot) => Ref.set(crew, snapshot)),
+      Stream.runForEach(sources.crew.snapshot, (snapshot) =>
+        Ref.set(crew, snapshot).pipe(Effect.andThen(PubSub.publish(crewMoved, undefined))),
+      ),
     );
     const overview = Effect.gen(function* () {
       const [snapshot, extras, logins] = yield* Effect.all([
@@ -339,13 +341,26 @@ export const mateOverviewFeed = (
         crew: yield* Ref.get(crew),
       });
     }).pipe(Effect.option);
-    return { overview, changes: sources.domainEvents };
+    return {
+      overview,
+      changes: Stream.mergeAll(
+        [
+          sources.domainEvents,
+          Stream.fromPubSub(crewMoved),
+          sources.agentAuth.changes,
+          sources.agentLogin.changes,
+          sources.logins.changes,
+          sources.update.changes,
+        ],
+        { concurrency: "unbounded" },
+      ),
+    };
   });
 
 /**
  * The link inside a Zerops container whose zcp keeps an enrollment; elsewhere, none: the Mate's
  * state stays unknown. The overview is of the project at the workspace root (the threads the
- * stand-up and every client open the Mate to), looked at again after every domain event. The crew
+ * stand-up and every client open the Mate to), looked at again whenever one of its feeds moves. The crew
  * engine's snapshot is handed in by the layer that composes crew mode (`zeropsFeedsLayer.ts`): only
  * the wiring reaches into `zerops/crew`.
  */
