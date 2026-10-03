@@ -2835,6 +2835,41 @@ function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
 const THINKING_WORD_DELAY_MS = 300;
 
 /**
+ * Places the live slot's face and clock on its first line, and says the room
+ * the slot takes, its gap above it included: on a short page the card holds
+ * it whole once the history has none left to give.
+ */
+function placeSlot(list: HTMLOListElement | null): void {
+  // Drawn outside a page (a test's renderer), it has no layout to read.
+  if (typeof list?.querySelector !== "function") return;
+  const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
+  const slotBox = list.parentElement;
+  if (slotBox === null) return;
+  const line = mark?.getBoundingClientRect();
+  const top = slotBox.getBoundingClientRect().top;
+  const y = line === undefined ? null : line.top + line.height / 2 - top;
+  if (y === null) slotBox.style.removeProperty("--run-slot-line");
+  else slotBox.style.setProperty("--run-slot-line", `${y}px`);
+  // The room the slot takes, its gap above it included: on a short page
+  // the card holds it whole once the history has none left to give.
+  const chat = slotBox.parentElement;
+  if (chat !== null) {
+    const above = slotBox.previousElementSibling ?? null;
+    const from =
+      above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+    chat.style.setProperty(
+      "--run-slot-room",
+      `${Math.ceil(slotBox.getBoundingClientRect().bottom - from)}px`,
+    );
+  }
+  // They move with the first line only once placed: a first paint, a
+  // thread opened or a card scrolled back to never slides them in.
+  if (!slotBox.hasAttribute("data-placed")) {
+    requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
+  }
+}
+
+/**
  * What the slot says when no item stands in it: "Thinking" — muted, its word
  * a moment late, so a quick gap between two steps never flashes it — its
  * words on their way, a wait on the person, the context condensing.
@@ -2973,36 +3008,18 @@ function LiveSlot({
   }, []);
   // The face and the clock stand on the first line, whatever bubble it is in.
   useLayoutEffect(() => {
-    const list = listRef.current;
-    // Drawn outside a page (a test's renderer), it has no layout to read.
-    if (typeof list?.querySelector !== "function") return;
-    const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
-    const slotBox = list.parentElement;
-    if (slotBox === null) return;
-    const line = mark?.getBoundingClientRect();
-    const top = slotBox.getBoundingClientRect().top;
-    const y = line === undefined ? null : line.top + line.height / 2 - top;
-    if (y === null) slotBox.style.removeProperty("--run-slot-line");
-    else slotBox.style.setProperty("--run-slot-line", `${y}px`);
-    // The room the slot takes, its gap above it included: on a short page
-    // the card holds it whole once the history has none left to give.
-    const chat = slotBox.parentElement;
-    if (chat !== null) {
-      const above = slotBox.previousElementSibling ?? null;
-      const from =
-        above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
-      chat.style.setProperty(
-        "--run-slot-room",
-        `${Math.ceil(slotBox.getBoundingClientRect().bottom - from)}px`,
-      );
-    }
-    // They move with the first line only once placed: a first paint, a
-    // thread opened or a card scrolled back to never slides them in.
-    if (!slotBox.hasAttribute("data-placed")) {
-      requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
-    }
-    // Read only when what it shows changed, never on every draw.
+    placeSlot(listRef.current);
+    // Read when what it shows changed, never on every draw.
   }, [slot, live, items, filler, lines.length]);
+  // A row opened or shut in place, or the page resized: the room it takes
+  // changes with no change of what it shows.
+  useEffect(() => {
+    const slotBox = listRef.current?.parentElement;
+    if (slotBox === null || slotBox === undefined || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => placeSlot(listRef.current));
+    observer.observe(slotBox);
+    return () => observer.disconnect();
+  }, []);
   return (
     <div
       ref={ref}
