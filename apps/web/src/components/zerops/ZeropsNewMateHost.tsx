@@ -37,6 +37,7 @@ import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
 import { useNewMate } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import {
+  addCreateProject,
   beginNewProjectBirth,
   newProjectView,
   progressNewProjectBirth,
@@ -236,31 +237,17 @@ function NewMateDialog({
             // Taken once the platform takes its project; the press runs on after it, and a stop
             // after that is its press's to say (`matePress.ts`).
             createProject: () =>
-              new Promise((resolve, reject) => {
-                let accepted: string | undefined;
-                void create({
-                  group,
-                  environments,
-                  role: "dev",
-                  choice,
-                  onAccepted: (projectId) => {
-                    accepted = projectId;
-                    resolve({ project: { id: projectId } });
-                  },
-                  onProgress: (progress) => progressNewProjectBirth(id, progress),
-                }).then((run) => {
-                  const error =
-                    run.kind === "refused"
-                      ? (run.reason ?? "It could not be added.")
-                      : run.outcome.ok
-                        ? undefined
-                        : run.outcome.error;
-                  if (accepted === undefined) {
-                    reject(new Error(error ?? "It could not be added."));
-                    return;
-                  }
-                  if (error !== undefined) settled(accepted, error);
-                });
+              addCreateProject({
+                run: (onAccepted) =>
+                  create({
+                    group,
+                    environments,
+                    role: "dev",
+                    choice,
+                    onAccepted,
+                    onProgress: (progress) => progressNewProjectBirth(id, progress),
+                  }),
+                settled,
               }),
             accepted: (projectId) => {
               created({

@@ -27,6 +27,7 @@ import {
   splitRecipeTier,
   ZeropsApiError,
   type BirthPlacement,
+  type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   type RecipeRuntime,
@@ -40,7 +41,10 @@ import {
   deriveBirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import {
+  isUncertainZeropsFailure,
+  zeropsErrorMessage,
+} from "@t3tools/client-runtime/zerops/errors";
 import { create } from "zustand";
 
 import type {
@@ -316,18 +320,6 @@ export function newProjectHandOver(
 
 // ── Running it ───────────────────────────────────────────────────────────────────────────────
 
-function isUncertain(cause: unknown): boolean {
-  if (cause instanceof ZeropsApiError) return cause.kind === "uncertain";
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "_tag" in cause &&
-    cause._tag === "ZeropsDataAdapterError" &&
-    "kind" in cause &&
-    cause.kind === "uncertain"
-  );
-}
-
 /**
  * Runs a New project's creation from the step it stands on until the platform takes its first
  * Mate's project, or until a step stops it — telling `moved` of each step it reaches.
@@ -395,7 +387,7 @@ export async function runNewProjectBirth(
     });
     projectId = created.project.id;
   } catch (cause) {
-    stop(zeropsErrorMessage(cause), isUncertain(cause));
+    stop(zeropsErrorMessage(cause), isUncertainZeropsFailure(cause));
     return;
   }
   // Its birth begins, and its view moves to it, in one breath: the menu draws its row from one or
@@ -403,6 +395,56 @@ export async function runNewProjectBirth(
   ports.accepted(projectId, giteaProjectId, birth.startedAt);
   moved({ step: "created", projectId });
 }
+
+/** What an Add's press answers once it is over (`useEnvironmentCreation`). */
+export type AddRun =
+  | { readonly kind: "refused"; readonly reason: string | null }
+  | { readonly kind: "ran"; readonly outcome: EnvironmentCreationOutcome };
+
+/**
+ * An Add's press as its creation's `createProject`: taken the moment the platform takes its
+ * project, the press running on after it. A stop before that rejects with why — uncertain where
+ * Zerops may have made it anyway, so no *Try again* makes a second — and one after it, a throw
+ * included, is its press's to say on the Mate's own view (`settled`).
+ */
+export function addCreateProject(input: {
+  readonly run: (onAccepted: (projectId: string) => void) => Promise<AddRun>;
+  readonly settled: (projectId: string, error: string) => void;
+}): Promise<{ readonly project: { readonly id: string } }> {
+  return new Promise((resolve, reject) => {
+    let accepted: string | undefined;
+    const stopped = (error: string, uncertain: boolean) => {
+      if (accepted !== undefined) {
+        input.settled(accepted, error);
+        return;
+      }
+      reject(uncertain ? new ZeropsApiError(error, "uncertain") : new Error(error));
+    };
+    input
+      .run((projectId) => {
+        accepted = projectId;
+        resolve({ project: { id: projectId } });
+      })
+      .then(
+        (run) => {
+          if (run.kind === "refused") {
+            stopped(run.reason ?? ADD_REFUSED, false);
+            return;
+          }
+          if (run.outcome.ok) {
+            if (accepted === undefined) stopped(ADD_REFUSED, false);
+            return;
+          }
+          stopped(run.outcome.error, run.outcome.uncertain === true);
+        },
+        (cause: unknown) => {
+          stopped(zeropsErrorMessage(cause), isUncertainZeropsFailure(cause));
+        },
+      );
+  });
+}
+
+const ADD_REFUSED = "It could not be added.";
 
 // ── The creations this tab holds ─────────────────────────────────────────────────────────────
 

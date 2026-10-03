@@ -6,6 +6,8 @@ import {
 import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { isUncertainZeropsFailure } from "@t3tools/client-runtime/zerops/errors";
+
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { arrivalSteps } from "./mateArrival";
 import {
@@ -23,6 +25,7 @@ import {
   type NewProjectBirth,
   type NewProjectPatch,
   type NewProjectPorts,
+  addCreateProject,
   comingPlanned,
   creationManaged,
   creationRuntimes,
@@ -1076,5 +1079,134 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     expect(before).toEqual(["copy[db]", "workspace[appdev]", "you[]"]);
     expect(mateView(press)).toEqual(before);
     expect(mateView(undefined)).toEqual(before);
+  });
+});
+
+// Run 6's review: an Add's port flattened its stop to a string, so one Zerops may have made
+// offered Try again, which made a second; and a run that threw left Created spinning for good.
+describe("addCreateProject — an Add's press as its creation's port", () => {
+  const STEP = { kind: "create-project", name: "Acme CRM - Ida", tagList: [] } as never;
+  type Script = (onAccepted: (projectId: string) => void) => Promise<never> | Promise<unknown>;
+  const portOf = (script: Script) => {
+    const settled = vi.fn();
+    const created = addCreateProject({
+      run: (onAccepted) => script(onAccepted) as never,
+      settled,
+    }).then(
+      (made) => ({ resolved: made.project.id }),
+      (cause: unknown) => ({
+        rejected: (cause as Error).message,
+        uncertain: isUncertainZeropsFailure(cause),
+      }),
+    );
+    return { created, settled };
+  };
+
+  it.each<{
+    readonly case: string;
+    readonly script: Script;
+    readonly want: object;
+    readonly settled?: ReadonlyArray<string>;
+  }>([
+    {
+      case: "taken, then through: its project",
+      script: async (accepted) => {
+        accepted("p-ida");
+        return { kind: "ran", outcome: { ok: true, projectId: "p-ida" } };
+      },
+      want: { resolved: "p-ida" },
+    },
+    {
+      case: "taken, then stopped: its project, and the stop is its press's to say",
+      script: async (accepted) => {
+        accepted("p-ida");
+        return {
+          kind: "ran",
+          outcome: { ok: false, projectId: "p-ida", failedStep: STEP, error: "Not closed off." },
+        };
+      },
+      want: { resolved: "p-ida" },
+      settled: ["p-ida", "Not closed off."],
+    },
+    {
+      case: "refused before anything was asked: why, certain",
+      script: async () => ({ kind: "refused", reason: "This project has no recipe merged yet." }),
+      want: { rejected: "This project has no recipe merged yet.", uncertain: false },
+    },
+    {
+      case: "stopped before the platform took it: why, certain",
+      script: async () => ({
+        kind: "ran",
+        outcome: { ok: false, projectId: undefined, failedStep: STEP, error: "No room." },
+      }),
+      want: { rejected: "No room.", uncertain: false },
+    },
+    {
+      case: "stopped where Zerops may have made it: why, uncertain",
+      script: async () => ({
+        kind: "ran",
+        outcome: {
+          ok: false,
+          projectId: undefined,
+          failedStep: STEP,
+          error: "Zerops may have created it.",
+          uncertain: true,
+        },
+      }),
+      want: { rejected: "Zerops may have created it.", uncertain: true },
+    },
+    {
+      case: "a run that threw before the platform took it: why",
+      script: () => Promise.reject(new Error("The press could not start.")),
+      want: { rejected: "The press could not start.", uncertain: false },
+    },
+    {
+      case: "a run that threw after: its project, and the stop is its press's to say",
+      script: (accepted) => {
+        accepted("p-ida");
+        return Promise.reject(new Error("The press could not finish."));
+      },
+      want: { resolved: "p-ida" },
+      settled: ["p-ida", "The press could not finish."],
+    },
+  ])("$case", async ({ script, want, settled: stop }) => {
+    const { created, settled } = portOf(script);
+    expect(await created).toEqual(want);
+    if (stop === undefined) expect(settled).not.toHaveBeenCalled();
+    else expect(settled).toHaveBeenCalledWith(...stop);
+  });
+
+  it("never offers Try again on an added Mate Zerops may have made", async () => {
+    openAccountLifetime("u-ada");
+    useNewProjectBirths.setState({ births: {} });
+    const run = vi.fn(async () => ({
+      kind: "ran" as const,
+      outcome: {
+        ok: false as const,
+        projectId: undefined,
+        failedStep: STEP,
+        error: "Zerops may have created it.",
+        uncertain: true as const,
+      },
+    }));
+    beginNewProjectBirth({
+      id: "add-1",
+      ask: { ...ASK, botName: "Ida", adds: { displayName: "Acme CRM - Ida", registers: true } },
+      gitea: { projectId: "gitea-1" },
+      now: 0,
+      ports: {
+        ensureGitea: () => Promise.reject(new Error("not asked")),
+        registerGroup: () => Promise.reject(new Error("not asked")),
+        createProject: () => addCreateProject({ run, settled: () => undefined }),
+        accepted: () => undefined,
+      },
+    });
+    const held = () => useNewProjectBirths.getState().births["add-1"];
+    await vi.waitFor(() => expect(held()?.failed).not.toBeNull());
+    expect(held()?.failed).toEqual({ reason: "Zerops may have created it.", uncertain: true });
+    expect(newProjectComing(held()!)).toMatchObject({ kind: "failed", verb: "go-to-projects" });
+    retryNewProjectBirth("add-1");
+    expect(run).toHaveBeenCalledTimes(1);
+    closeAccountLifetime();
   });
 });
