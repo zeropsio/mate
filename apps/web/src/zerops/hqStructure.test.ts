@@ -15,6 +15,7 @@ import type { HqMatesView, HqPeopleView, HqStructureView } from "../state/zerops
 import {
   driveHqStructure,
   HQ_OUTAGE_GRACE_MS,
+  HQ_STREAM_ROTATE_MS,
   HQ_STREAM_SILENCE_MS,
   hqOfficialOf,
   hqOutageLine,
@@ -39,8 +40,11 @@ type Ping = { readonly pingAfterMs: number; readonly tick: (ms: number) => void 
 /** One stream attempt: the events (and pings) it sends, then how it ends. */
 type Attempt = {
   readonly events: ReadonlyArray<HqStructureEvent | Ping>;
-  /** `cut`: the socket closed on its way, as the browser saw it (`1006`). */
-  readonly end: "close" | "fail" | "cut" | "hang";
+  /**
+   * `cut`: the socket closed on its way, as the browser saw it (`1006`); `cutAfterMs`: so after
+   * that long on the timers, as the Zerops L7 does at 120 s.
+   */
+  readonly end: "close" | "fail" | "cut" | "hang" | { readonly cutAfterMs: number };
 };
 
 function streamingApi(attempts: ReadonlyArray<Attempt>) {
@@ -58,6 +62,18 @@ function streamingApi(attempts: ReadonlyArray<Attempt>) {
       handlers.onEvent(event);
     }
     if (attempt.end === "fail") throw new Error("HQ could not be reached.");
+    if (typeof attempt.end === "object") {
+      const { cutAfterMs } = attempt.end;
+      await new Promise<void>((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("aborted")));
+        setTimeout(resolve, cutAfterMs);
+      });
+      throw new HqError({
+        kind: "unavailable",
+        code: "socket_1006",
+        message: "HQ's stream broke.",
+      });
+    }
     if (attempt.end === "cut") {
       throw new HqError({
         kind: "unavailable",
@@ -471,6 +487,119 @@ describe("driveHqStructure", () => {
       "HQ's structure stream broke after 120000 ms: socket_1006",
       "HQ's structure stream ended after 0 ms",
     ]);
+  });
+
+  // F26: the Zerops L7 cuts every stream at 120 s. A successor opens before that, and the old stream
+  // goes only once the successor's snapshot came: no outage, and nothing goes stale meanwhile.
+  it("rotates to a successor before the cut: no outage, and HQ's word stays current", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = streamingApi([
+        {
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: ACME,
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
+          end: { cutAfterMs: 120_000 },
+        },
+        {
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: { ungrouped: [], apps: [BETA] },
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
+          end: { cutAfterMs: 120_000 },
+        },
+      ]);
+      const h = harness();
+      const stop = new AbortController();
+      const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal, silenceMs: 1e9 });
+      await vi.advanceTimersByTimeAsync(HQ_STREAM_ROTATE_MS - 1);
+      expect(api.attempts()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(api.attempts()).toBe(2);
+      // Past the old stream's cut and the grace: the successor holds, nothing else opened.
+      await vi.advanceTimersByTimeAsync(HQ_OUTAGE_GRACE_MS + 30_000);
+      expect(api.attempts()).toBe(2);
+      stop.abort();
+      await driving;
+
+      const answered = h.views.findIndex((view) => view.current);
+      expect(h.views.slice(answered).every((view) => view.current)).toBe(true);
+      expect(h.views.filter((view) => view.unavailableSince !== null)).toEqual([]);
+      expect(h.views.at(-1)?.structure).toEqual({ ungrouped: [], apps: [BETA] });
+      const live = h.mates.findIndex((view) => view.current);
+      expect(h.mates.slice(live).every((view) => view.current)).toBe(true);
+      expect(h.logged).toEqual(["HQ's structure stream rotated after 0 ms"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the old stream when its successor fails, and reads again as ever at its cut", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = streamingApi([
+        {
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: ACME,
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
+          end: { cutAfterMs: 120_000 },
+        },
+        { events: [], end: "fail" },
+        {
+          events: [
+            {
+              kind: "snapshot",
+              releaseRevisions: null,
+              structure: { ungrouped: [], apps: [BETA] },
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
+          end: "hang",
+        },
+      ]);
+      const h = harness();
+      const stop = new AbortController();
+      const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal, silenceMs: 1e9 });
+      await vi.advanceTimersByTimeAsync(HQ_STREAM_ROTATE_MS);
+      expect(api.attempts()).toBe(2);
+      expect(h.views.at(-1)).toMatchObject({ structure: ACME, current: true });
+
+      await vi.advanceTimersByTimeAsync(120_000 - HQ_STREAM_ROTATE_MS);
+      expect(api.attempts()).toBe(3);
+      stop.abort();
+      await driving;
+
+      expect(h.views.filter((view) => view.unavailableSince !== null)).toEqual([]);
+      expect(h.views.at(-1)).toMatchObject({
+        structure: { ungrouped: [], apps: [BETA] },
+        current: true,
+      });
+      expect(h.logged).toEqual(["HQ's structure stream broke after 0 ms: socket_1006"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says since when HQ stopped answering once it has not answered for the grace", async () => {

@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
  * The Mate's link to its HQ (SPEC §3.4, `@t3tools/shared/mateLink`): one outbound WebSocket, kept
  * open for as long as this server runs.
@@ -17,10 +18,18 @@
  * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks;
  *   and who its project lets in (`access`), handed on to `ZeropsProjectAccess` with its age.
  *
- * A link that closes or never opens is tried again after a growing wait.
+ * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
+ * where it answers there ({@link HQ_LINK_ADDRESS_ORDER}): the Zerops L7 cuts a WebSocket on a
+ * project's shared IPv4 at 120 s, and not one on its IPv6. A link that went over anything but IPv6
+ * is replaced before that cut ({@link MATE_LINK_ROTATE_MS}): its successor opens beside it, and the
+ * old one closes only once HQ answered on the new one, so HQ never holds the Mate without a link.
  *
  * @module ZeropsHqLink
  */
+import * as NodeDns from "node:dns";
+import type * as NodeNet from "node:net";
+
+import { NodeWS } from "@effect/platform-node/NodeSocket";
 import type { CrewSnapshot, OrchestrationThreadShell } from "@t3tools/contracts";
 import {
   MATE_OVERVIEW_EVERY_MS,
@@ -31,9 +40,12 @@ import {
   type MateState,
   type OverviewIdentity,
 } from "@t3tools/shared/mateLink";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -65,6 +77,11 @@ import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 export interface LinkSocket {
   send(data: string): void;
   close(): void;
+  /**
+   * The address family it went over, once open. Unknown is taken as a path the L7 may cut at 120 s
+   * ({@link MATE_LINK_ROTATE_MS}).
+   */
+  family?(): "IPv4" | "IPv6" | undefined;
   addEventListener(type: "open" | "close" | "error", listener: () => void): void;
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
 }
@@ -124,6 +141,43 @@ export class ZeropsHqLink extends Context.Service<
 
 const DEFAULT_RECONNECT_DELAYS_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 10_000, 30_000];
 
+/**
+ * The order the link resolves HQ's addresses in. The Zerops L7 cuts a WebSocket on a project's shared
+ * IPv4 120 s after it opened, and not one on the project's IPv6 (verified.md, 2026-10-03): a Mate
+ * container has IPv6, so its link normally holds and never rotates. IPv4 is still tried should IPv6
+ * not answer (Node's `autoSelectFamily`, on by default), and rotation covers that case.
+ */
+export const HQ_LINK_ADDRESS_ORDER = "ipv6first";
+
+/** `lookup`, resolving in {@link HQ_LINK_ADDRESS_ORDER} whatever else a connection asks of it. */
+export const preferringIpv6 =
+  (lookup: NodeNet.LookupFunction): NodeNet.LookupFunction =>
+  (hostname, options, callback) =>
+    lookup(hostname, { ...options, order: HQ_LINK_ADDRESS_ORDER }, callback);
+
+/**
+ * The link's socket (`ws`): HQ resolved {@link HQ_LINK_ADDRESS_ORDER}, and the family it went over
+ * said once it opened.
+ */
+export const connectLinkSocket: ConnectLinkSocket = (url) => {
+  const socket = new NodeWS.WebSocket(url, { lookup: preferringIpv6(NodeDns.lookup) });
+  let family: string | undefined;
+  socket.once("upgrade", (response) => {
+    family = response.socket.remoteFamily;
+  });
+  return Object.assign(socket, {
+    family: () => (family === "IPv4" || family === "IPv6" ? family : undefined),
+  }) as unknown as LinkSocket;
+};
+
+/**
+ * How long a link that did not go over IPv6 is kept before its successor opens. The Zerops L7
+ * closes a WebSocket on a project's shared IPv4 120 s after it opened, with no close frame,
+ * whatever passes over it (measured on KRLS's HQ, F26, 2026-10-03): 100 s leaves the successor
+ * 20 s to open and be answered.
+ */
+export const MATE_LINK_ROTATE_MS = 100_000;
+
 const decodeDown = Schema.decodeUnknownOption(Schema.fromJsonString(MateLinkDown));
 const encodeUp = Schema.encodeSync(Schema.fromJsonString(MateLinkUp));
 
@@ -180,11 +234,16 @@ export const makeZeropsHqLink = (
         return Option.some(body.ticket);
       }).pipe(Effect.catch(() => Effect.succeed(Option.none<string>())));
 
-    /** One link: open, relayed until it closes. Whether it opened. */
-    const runOnce = (enrollment: HqEnrollment) =>
+    /**
+     * One link opened with a fresh ticket, then relayed in the scope's lifetime until it closes: the
+     * overview up, pongs and HQ's state down. `answered` completes on HQ's first state over it — HQ
+     * counts the link from before it sends one; `stop` closes it. None when there is no ticket or
+     * the socket never opened.
+     */
+    const openLink = (enrollment: HqEnrollment) =>
       Effect.gen(function* () {
         const ticket = yield* ticketFor(enrollment);
-        if (Option.isNone(ticket)) return false;
+        if (Option.isNone(ticket)) return Option.none();
         const url = `${enrollment.hq.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link?ticket=${encodeURIComponent(ticket.value)}`;
         const events = yield* Queue.unbounded<SocketEvent>();
         const socket = options.connect(url);
@@ -212,9 +271,12 @@ export const makeZeropsHqLink = (
         const first = yield* Queue.take(events);
         if (first._tag !== "open") {
           yield* quit;
-          return false;
+          return Option.none();
         }
 
+        const openedAt = yield* Clock.currentTimeMillis;
+        const family = socket.family?.();
+        const answered = yield* Deferred.make<void>();
         const dirty = yield* Ref.make(true);
         // What this link sent of each section, as JSON: a new link starts with nothing sent.
         const sent = new Map<string, string>();
@@ -247,7 +309,9 @@ export const makeZeropsHqLink = (
               case "ping":
                 return send({ type: "pong" });
               case "state":
-                return SubscriptionRef.set(state, Option.some(message.value.mate));
+                return SubscriptionRef.set(state, Option.some(message.value.mate)).pipe(
+                  Effect.andThen(Deferred.succeed(answered, undefined)),
+                );
               case "access":
                 return options.relayAccess({
                   members: message.value.members,
@@ -256,10 +320,60 @@ export const makeZeropsHqLink = (
             }
           }),
         );
-        yield* Effect.raceFirst(relay, Effect.all([overviews, heard], { concurrency: 2 }));
-        yield* quit;
-        return true;
+        const relayed = yield* Effect.forkScoped(
+          Effect.raceFirst(relay, Effect.all([overviews, heard], { concurrency: 2 })).pipe(
+            Effect.ensuring(quit),
+          ),
+        );
+        return Option.some({
+          openedAt,
+          family,
+          answered,
+          closed: Fiber.join(relayed),
+          stop: Fiber.interrupt(relayed),
+        });
       });
+
+    /**
+     * Links, and keeps the Mate linked: each link is replaced by a successor before the L7's cut,
+     * the old one closed once HQ answered on the new. A successor that does not open or is not
+     * answered is let go, and the old link kept until it closes. Whether a link opened.
+     */
+    const runOnce = (enrollment: HqEnrollment) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const opened = yield* openLink(enrollment);
+          if (Option.isNone(opened)) return false;
+          let current = opened.value;
+          for (;;) {
+            // Only the shared IPv4 is cut at 120 s: a link over IPv6 is kept as it is.
+            if (current.family === "IPv6") {
+              yield* current.closed;
+              return true;
+            }
+            const rotateAt = current.openedAt + MATE_LINK_ROTATE_MS;
+            const successor = Effect.gen(function* () {
+              yield* Effect.sleep(Duration.millis(rotateAt - (yield* Clock.currentTimeMillis)));
+              const now = yield* options.readEnrollment;
+              const next = Option.isSome(now) ? yield* openLink(now.value) : Option.none();
+              if (Option.isNone(next)) return yield* Effect.never;
+              const answered = yield* Effect.raceFirst(
+                Deferred.await(next.value.answered).pipe(Effect.as(true)),
+                next.value.closed.pipe(Effect.as(false)),
+              );
+              if (!answered) return yield* Effect.never;
+              return next.value;
+            });
+            const ended = yield* Effect.raceFirst(
+              current.closed.pipe(Effect.as(Option.none())),
+              successor.pipe(Effect.map(Option.some)),
+            );
+            if (Option.isNone(ended)) return true;
+            yield* current.stop;
+            current = ended.value;
+          }
+        }),
+      );
 
     yield* Effect.forkScoped(
       Effect.gen(function* () {
@@ -419,7 +533,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         readOutcome: fs
           .readFileString(paths.join(paths.dirname(path), "outcome.json"))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
-        connect: (url) => new WebSocket(url) as unknown as LinkSocket,
+        connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
         ...feed,
       });

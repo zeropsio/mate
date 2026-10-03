@@ -22,8 +22,11 @@ import {
   type HqEnrollment,
   type HqOutcome,
   type LinkSocket,
+  HQ_LINK_ADDRESS_ORDER,
   makeZeropsHqLink,
+  MATE_LINK_ROTATE_MS,
   mateOverviewFeed,
+  preferringIpv6,
   type OverviewSources,
 } from "./ZeropsHqLink.ts";
 
@@ -37,6 +40,11 @@ class FakeSocket implements LinkSocket {
   readonly sent: Array<Sent> = [];
   readonly listeners = new Map<string, Array<(event: { readonly data: unknown }) => void>>();
   closed = false;
+  /** The address family it went over; unknown unless a test says. */
+  over: "IPv4" | "IPv6" | undefined = undefined;
+  family() {
+    return this.over;
+  }
   constructor(url: string) {
     this.url = url;
   }
@@ -380,6 +388,88 @@ describe("ZeropsHqLink", () => {
     ),
   );
 
+  // F26: the Zerops L7 cuts every link at 120 s. A Mate opens its successor before that, and lets
+  // the old link go only once HQ answered on the new one: HQ never sees it without a link.
+  it.effect("rotates to a successor before the cut, and closes the old link once HQ answered", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, relayed } = yield* rig({ enrolled: true });
+        const first = yield* opened(sockets, 0);
+        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS - 1));
+        assert.strictEqual(sockets.length, 1);
+        yield* TestClock.adjust(Duration.millis(1));
+        const successor = yield* opened(sockets, 1);
+        assert.strictEqual(successor.url, "wss://hq.test/api/mate/link?ticket=t2");
+        assert.deepStrictEqual(successor.sent, [
+          { type: "overview", full: true, overview: overview("Add a login page") },
+        ]);
+        // Until HQ answers on it, the old link stays and still answers HQ.
+        first.hear({ type: "ping" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(first.sent.at(-1), { type: "pong" });
+        assert.isFalse(first.closed);
+
+        successor.hear({ type: "state", mate: STATE });
+        yield* TestClock.adjust(Duration.zero);
+        assert.isTrue(first.closed);
+        assert.isFalse(successor.closed);
+        successor.hear({ type: "ping" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(successor.sent.at(-1), { type: "pong" });
+        // It hands on the access HQ relays, as the old link did (R6).
+        const members = [{ userId: "owner", role: "OWNER", visibility: "open" }];
+        successor.hear({ type: "access", ageMs: 500, members });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(relayed, [{ members, ageMs: 500 }]);
+
+        // The successor rotates in its turn, counted from its own opening.
+        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
+        yield* opened(sockets, 2);
+        assert.strictEqual(sockets.length, 3);
+      }),
+    ),
+  );
+
+  // Only the shared IPv4 is cut at 120 s: a link that went over IPv6 is kept as it is.
+  it.effect("never rotates a link that went over IPv6", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig({ enrolled: true });
+        yield* TestClock.adjust(Duration.zero);
+        sockets[0]!.over = "IPv6";
+        const first = yield* opened(sockets, 0);
+        yield* TestClock.adjust(Duration.millis(3 * MATE_LINK_ROTATE_MS));
+        assert.strictEqual(sockets.length, 1);
+        assert.isFalse(first.closed);
+      }),
+    ),
+  );
+
+  it.effect(
+    "keeps the old link when its successor never answers, and links again as ever once it closes",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets } = yield* rig({ enrolled: true });
+          const first = yield* opened(sockets, 0);
+          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
+          const successor = yield* opened(sockets, 1);
+          yield* TestClock.adjust(Duration.seconds(19));
+          assert.isFalse(first.closed);
+
+          // The L7's cut: the old link closes, the successor that never answered goes with it.
+          first.emit("close");
+          yield* TestClock.adjust(Duration.zero);
+          assert.isTrue(successor.closed);
+          yield* TestClock.adjust(Duration.millis(30));
+          const next = yield* opened(sockets, 2);
+          assert.deepStrictEqual(next.sent, [
+            { type: "overview", full: true, overview: overview("Add a login page") },
+          ]);
+        }),
+      ),
+  );
+
   it.effect("sends nothing on a quiet link", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -396,6 +486,27 @@ describe("ZeropsHqLink", () => {
       }),
     ),
   );
+});
+
+// The 120 s cut is the shared IPv4's: a WebSocket over the project's IPv6 holds (verified.md,
+// 2026-10-03). A Mate container has IPv6, so its link asks for HQ's addresses IPv6 first.
+describe("ZeropsHqLink's addresses", () => {
+  it("resolves HQ IPv6 first, whatever else the connection asks", () => {
+    const asked: Array<unknown> = [];
+    const lookup = preferringIpv6((hostname, options, callback) => {
+      asked.push({ hostname, options });
+      callback(null, [{ address: "2001:db8::1", family: 6 }]);
+    });
+    let answered: unknown;
+    lookup("hq.example", { all: true, hints: 0 }, (_error, addresses) => {
+      answered = addresses;
+    });
+    assert.strictEqual(HQ_LINK_ADDRESS_ORDER, "ipv6first");
+    assert.deepStrictEqual(asked, [
+      { hostname: "hq.example", options: { all: true, hints: 0, order: "ipv6first" } },
+    ]);
+    assert.deepStrictEqual(answered, [{ address: "2001:db8::1", family: 6 }]);
+  });
 });
 
 describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
