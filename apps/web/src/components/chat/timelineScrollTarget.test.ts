@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   isTimelineScrollTarget,
+  isVerticalWheel,
   latchWheelGesture,
   resolveTimelineKeyTarget,
   timelineScrollKeyDirection,
@@ -343,5 +344,18 @@ describe("latchWheelGesture", () => {
     expect(latch.targetsList).toBe(false);
     latch = latchWheelGesture(latch, { at: 1_032, direction: "down" }, () => targetsList);
     expect(latch.targetsList).toBe(true);
+  });
+});
+
+describe("a wheel's axis", () => {
+  it.each([
+    { deltaX: 0, deltaY: 40, vertical: true },
+    { deltaX: 3, deltaY: -40, vertical: true },
+    // A sideways swipe over a wide code block carries a pixel or two of vertical travel.
+    { deltaX: 60, deltaY: 2, vertical: false },
+    { deltaX: -30, deltaY: -30, vertical: false },
+    { deltaX: 0, deltaY: 0, vertical: false },
+  ])("reads $deltaX, $deltaY as vertical: $vertical", ({ deltaX, deltaY, vertical }) => {
+    expect(isVerticalWheel(deltaX, deltaY)).toBe(vertical);
   });
 });

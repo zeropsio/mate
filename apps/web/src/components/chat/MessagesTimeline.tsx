@@ -110,6 +110,7 @@ import {
 } from "./timelineScrollAnchoring";
 import {
   isTimelineScrollTarget,
+  isVerticalWheel,
   latchWheelGesture,
   timelineScrollKeyInput,
   type WheelGestureLatch,
@@ -756,7 +757,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     let wheelLatch: WheelGestureLatch | null = null;
     const onWheel = (event: WheelEvent) => {
       const node = scrollNode();
-      if (!node || event.ctrlKey || event.deltaY === 0) return;
+      if (!node || event.ctrlKey || !isVerticalWheel(event.deltaX, event.deltaY)) return;
       // Whatever it scrolls, the wheel is the person's: should the browser
       // hand the rest of a gesture to the list, the list's move is theirs.
       notePersonSession({ type: "input", at: performance.now() });

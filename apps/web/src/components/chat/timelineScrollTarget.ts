@@ -102,6 +102,15 @@ export function timelineScrollKeyInput(input: {
 }
 
 /** How long the wheel rests before its next event starts a new gesture. */
+/**
+ * Whether a wheel turn scrolls up or down at all: a sideways swipe over a wide
+ * code block carries a pixel or two of vertical travel, which is no move of
+ * the list's.
+ */
+export function isVerticalWheel(deltaX: number, deltaY: number): boolean {
+  return deltaY !== 0 && Math.abs(deltaY) > Math.abs(deltaX);
+}
+
 export const WHEEL_GESTURE_IDLE_MS = 100;
 
 export interface WheelGestureLatch {
