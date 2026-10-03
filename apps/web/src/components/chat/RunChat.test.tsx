@@ -1813,7 +1813,7 @@ describe("RunChat, as the person uses it", () => {
         toggleAttribute: () => undefined,
       };
       const node = (element: { type: unknown }) =>
-        element.type === "ol" ? list : element.type === "div" ? box : {};
+        element.type === "ol" ? list : element.type === "div" ? box : null;
       let renderer!: ReactTestRenderer;
       act(() => {
         renderer = mounted(
@@ -1846,14 +1846,23 @@ describe("RunChat, as the person uses it", () => {
           box.scrollHeight += by;
           for (const callback of heard) callback();
         },
-        /** The person presses the button that says `words` in it. */
-        press: (words: string) => {
-          // Pressed in no page: nothing to keep in place.
+        /**
+         * The person presses the button that says `words` in it; what it
+         * closes above it rises it by `rises`, and the scroll keeps it under
+         * their pointer (`keepInPlace`).
+         */
+        press: (words: string, rises = 0) => {
+          let reads = 0;
           const pressed = {
             closest: () => null,
-            isConnected: false,
+            isConnected: true,
             parentElement: null,
-            getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+            ownerDocument: { scrollingElement: box },
+            getBoundingClientRect: () => {
+              const top = reads === 0 ? 0 : -rises;
+              reads += 1;
+              return { top, bottom: top };
+            },
           };
           act(() => button(renderer, words).props.onClick({ currentTarget: pressed }));
         },
@@ -2060,6 +2069,37 @@ describe("RunChat, as the person uses it", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    // Folding what they opened inside the call keeps the press under the
+    // pointer: the scroll that keeping makes is the page's, not their move up.
+    it("follows again once the person closes their call, though a fold inside it kept its place", async () => {
+      const printed = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n");
+      const run = liveScroll({
+        items: [
+          step(
+            command("w1", "npm test", {
+              callInput: { description: "Run the tests" },
+              detail: printed,
+            }),
+          ),
+        ],
+      });
+      run.grow(400);
+      run.press("Run the tests");
+      run.grow(300);
+      run.press("Show all 40 lines");
+      run.grow(400);
+      run.box.scrollHeight -= 400;
+      run.press("Show less", 400);
+      await Promise.resolve();
+      run.grow(0);
+      run.heard();
+      run.press("Run the tests");
+      await Promise.resolve();
+      expect(run.fromFoot()).toBe(0);
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
     });
 
     it("stays where the person scrolled after opening a call, once they close it", () => {

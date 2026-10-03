@@ -3751,15 +3751,20 @@ function RunScroll({
       putAt,
       keep,
       hold: (key: string, opens: boolean) => {
+        const element = scrollRef.current;
+        // A move of theirs not heard yet is theirs, before the press counts.
+        if (element !== null) heard({ kind: "scrolled", position: positionOf(element) });
         heard({ kind: opens ? "opened" : "closed", key });
-        if (opens || !followRef.current.follows) return;
-        // Closing the last thing they opened, it catches up to its foot —
-        // once the press has kept itself in place (`collapseInPlace`), so
-        // that keeping is not read as their move up.
+        if (opens) return;
+        // Once the press has kept itself in place (`collapseInPlace`), that
+        // keeping is the page's move, never read as their move up: closing
+        // the last thing they opened, it catches up to its foot; else it
+        // stands where the keeping put it.
         queueMicrotask(() => {
           const element = scrollRef.current;
-          if (element === null || !followRef.current.follows) return;
-          putAt(element, footTop(positionOf(element)));
+          if (element === null) return;
+          if (followRef.current.follows) putAt(element, footTop(positionOf(element)));
+          else heard({ kind: "set", top: element.scrollTop });
           markEdges(element);
         });
       },
