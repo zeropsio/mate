@@ -3921,7 +3921,8 @@ export default function ChatView(props: ChatViewProps) {
   );
   const zeropsShownReadOnly =
     zeropsFooter === "read-only" ? (zeropsReadOnly ?? REMEMBERED_READ_ONLY) : null;
-  const zeropsKnownWriter = rememberableWriter(zeropsWriter);
+  const zeropsWriterKind = zeropsWriter.kind;
+  const zeropsKnownWriter = rememberableWriter(zeropsWriter, zeropsAgentAuthRead);
   useEffect(() => {
     if (zeropsKnownWriter === undefined || activeThreadEnvironmentId === null) return;
     rememberWriter(activeThreadEnvironmentId, zeropsKnownWriter);
@@ -5315,7 +5316,7 @@ export default function ChatView(props: ChatViewProps) {
   const agentOwnershipBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (zeropsOwnedAgent === undefined) return null;
     // Said only on a known answer: "nobody can run it" is not what loading looks like.
-    if (zeropsKnownWriter === undefined) return null;
+    if (zeropsWriterKind === "unknown") return null;
     // A token-authorized agent is nobody's personal login: an API key belongs
     // to the project, so nothing is said about it.
     if (zeropsOwnedAgent.flagToken) return null;
@@ -5337,7 +5338,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     openAgentAuthDialog,
     zeropsAgentOwnership,
-    zeropsKnownWriter,
+    zeropsWriterKind,
     zeropsOwnedAgent,
     zeropsReadOnly,
   ]);

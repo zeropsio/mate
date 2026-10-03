@@ -86,9 +86,17 @@ export function resolveConversationWriter(input: ConversationWriterInput): Conve
 /** A known answer, as this browser keeps it for the next time it is not known yet. */
 export type RememberedWriter = Exclude<ConversationWriter["kind"], "unknown">;
 
-/** What a known answer leaves to remember; nothing for an unknown one. */
-export function rememberableWriter(writer: ConversationWriter): RememberedWriter | undefined {
-  return writer.kind === "unknown" ? undefined : writer.kind;
+/**
+ * What an answer leaves to remember: only one a read snapshot gave. An unknown answer leaves
+ * nothing, and so does a read that failed — its "nobody yet" is no answer, and must not overwrite
+ * the one this browser knew.
+ */
+export function rememberableWriter(
+  writer: ConversationWriter,
+  feed: ConversationWriterInput["feed"],
+): RememberedWriter | undefined {
+  if (feed?.state !== "known" || writer.kind === "unknown") return undefined;
+  return writer.kind;
 }
 
 /**
