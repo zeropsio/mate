@@ -705,3 +705,69 @@ describe("a tool call's own words survive every route to the client", () => {
     expect(inputOf(projected)).toEqual({ description: "Screenshot the home page" });
   });
 });
+
+/**
+ * A reload paints what the live run painted. An ACP call never starts: its
+ * first `tool.updated` is where the run first saw it, so its step starts and
+ * stands there; once completed, the updates between say nothing more.
+ */
+describe("a reopened thread keeps where each call started", () => {
+  const row = (
+    id: string,
+    kind: string,
+    toolCallId: string,
+    createdAt: string,
+  ): OrchestrationThreadActivity =>
+    ({
+      id,
+      tone: "tool",
+      kind,
+      summary: "Read file",
+      payload: { itemType: "dynamic_tool_call", toolCallId, status: "inProgress" },
+      turnId: "turn-1",
+      createdAt,
+    }) as unknown as OrchestrationThreadActivity;
+
+  const keptIds = (activities: ReadonlyArray<OrchestrationThreadActivity>) =>
+    (
+      projectThreadDetailSnapshot({
+        thread: { messages: [], activities },
+      } as unknown as OrchestrationThreadDetailSnapshot) as unknown as {
+        thread: { activities: OrchestrationThreadActivity[] };
+      }
+    ).thread.activities.map((activity) => activity.id);
+
+  it.each([
+    {
+      name: "a call seen first as an update keeps that update",
+      activities: [
+        row("u1", "tool.updated", "call-1", "2026-10-03T10:00:00.000Z"),
+        row("u2", "tool.updated", "call-1", "2026-10-03T10:00:04.000Z"),
+        row("c1", "tool.completed", "call-1", "2026-10-03T10:00:09.000Z"),
+      ],
+      kept: ["u1", "c1"],
+    },
+    {
+      name: "a call that started drops every update",
+      activities: [
+        row("s1", "tool.started", "call-1", "2026-10-03T10:00:00.000Z"),
+        row("u1", "tool.updated", "call-1", "2026-10-03T10:00:01.000Z"),
+        row("c1", "tool.completed", "call-1", "2026-10-03T10:00:09.000Z"),
+      ],
+      kept: ["s1", "c1"],
+    },
+    {
+      name: "interleaved calls each keep their first sight",
+      activities: [
+        row("a1", "tool.updated", "call-a", "2026-10-03T10:00:00.000Z"),
+        row("b1", "tool.updated", "call-b", "2026-10-03T10:00:01.000Z"),
+        row("a2", "tool.updated", "call-a", "2026-10-03T10:00:02.000Z"),
+        row("ac", "tool.completed", "call-a", "2026-10-03T10:00:03.000Z"),
+        row("bc", "tool.completed", "call-b", "2026-10-03T10:00:04.000Z"),
+      ],
+      kept: ["a1", "b1", "ac", "bc"],
+    },
+  ])("$name", ({ activities, kept }) => {
+    expect(keptIds(activities)).toEqual(kept);
+  });
+});

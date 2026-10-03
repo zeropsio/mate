@@ -614,7 +614,8 @@ function toolLifecycleIdentity(activity: OrchestrationThreadActivity): string | 
 }
 
 /**
- * Drops `tool.updated` rows a `tool.completed` row already supersedes. An
+ * Drops `tool.updated` rows a `tool.completed` row already supersedes —
+ * except a call's first sight, where it has no `tool.started` before it. An
  * update is the in-flight snapshot of a call; once the call completes, the
  * completion carries the final state and the clients fold every matching
  * update into it, so shipping the updates buys nothing — 47k such rows exist
@@ -666,15 +667,26 @@ function dropSupersededToolUpdatedActivities(
     return activities;
   }
 
+  // A call's first sight: where the live run started its step and stood it.
+  // An ACP call never sends a start — its first update is its first sight —
+  // so that update stays, or a reload would start the step at its end.
+  const seen = new Set<string>();
   return activities.filter((activity, index) => {
-    if (activity.kind !== "tool.updated") {
-      return true;
-    }
-    const identity = toolLifecycleIdentity(activity);
+    const lifecycle =
+      activity.kind === "tool.started" ||
+      activity.kind === "tool.updated" ||
+      activity.kind === "tool.completed";
+    const identity = lifecycle ? toolLifecycleIdentity(activity) : null;
     if (!identity) {
       return true;
     }
-    const indices = completionIndicesByKey.get(`${activity.turnId ?? ""}\u0000${identity}`);
+    const key = `${activity.turnId ?? ""}\u0000${identity}`;
+    const firstSight = !seen.has(key);
+    seen.add(key);
+    if (activity.kind !== "tool.updated" || firstSight) {
+      return true;
+    }
+    const indices = completionIndicesByKey.get(key);
     return !indices?.some((completionIndex) => completionIndex > index);
   });
 }
