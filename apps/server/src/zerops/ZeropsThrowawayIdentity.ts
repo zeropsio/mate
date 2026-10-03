@@ -76,7 +76,7 @@ import * as Schema from "effect/Schema";
 
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
-import { requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
+import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { readMemberEntries, ZeropsOrgRead, type OwnKeyRead } from "./ZeropsOrgRead.ts";
 import {
   readJson,
@@ -105,7 +105,7 @@ export const DOOR_THROWAWAY_MAX_AGE_MS = 5 * 60 * 1000;
  * very next call was `200`. Before this retry, that flake turned into a 500
  * at the door for whoever's throwaway happened to land on it. `401`/`403`
  * are never worth a second attempt here — they already get their own
- * re-resolve-and-retry-once in {@link requestWithMateKey}.
+ * re-resolve-and-retry-once in `requestWithMateKey` (`ZeropsMateKey.ts`).
  */
 export const DOOR_MEMBER_LIST_RETRY_ATTEMPTS = 3;
 
@@ -333,22 +333,23 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   const identityStatus = yield* ZeropsIdentityStatus;
 
   // 0. Our own project, with our own key: which org we belong to, and what
-  //    this project says about people. A `401`/`403` here re-resolves the
-  //    key once before giving up — the platform may have moved it since this
-  //    Mate started (spec-mate.md §2 root cause 4). This is also the read the
+  //    this project says about people — read once for the door, the watch and
+  //    the signers (`ZeropsOrgRead`). A `401`/`403` there re-resolves the key
+  //    once before giving up — the platform may have moved it since this Mate
+  //    started (spec-mate.md §2 root cause 4). This is also the read the
   //    descriptor's `identity` field reports (S4): whatever this call decides,
   //    `ZeropsIdentityStatus` learns it too.
-  const { response: projectResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
-  );
+  const orgRead = yield* ZeropsOrgRead;
+  const own = yield* orgRead.project({ apiBaseUrl, projectId });
   yield* identityStatus.record({
-    ok: projectResponse?.status === 200,
+    ok: own.kind === "answered" && own.status === 200,
     keySource: yield* mateKey.lastSource,
   });
-  if (projectResponse === undefined) {
+  if (own.kind === "no-key") {
     return yield* unavailable("This Mate has no Zerops key of its own to check a caller with.");
   }
-  switch (projectResponse.status) {
+  if (own.kind === "unreachable") return yield* unavailable(own.reason);
+  switch (own.status) {
     case 200:
       break;
     case 400:
@@ -356,11 +357,10 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
       return yield* new ZeropsProjectNotFoundError({});
     default:
       return yield* unavailable(
-        `The Zerops API answered ${String(projectResponse.status)} for this Mate's own project.`,
+        `The Zerops API answered ${String(own.status)} for this Mate's own project.`,
       );
   }
-  const project = yield* readJson(projectResponse).pipe(
-    Effect.flatMap((body) => decodeProject(body)),
+  const project = yield* decodeProject(own.body).pipe(
     Effect.catchTag("SchemaError", () =>
       Effect.fail(unavailable("This Mate's own project read carried no clientId.")),
     ),
@@ -442,7 +442,7 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   //    DOOR_MEMBER_LIST_RETRY_ATTEMPTS). A failed read is never kept, so each
   //    asking reads again.
   if (record.createdByUser.length === 0) return yield* refused("not_member");
-  const readMembers = (yield* ZeropsOrgRead).members({ apiBaseUrl, clientId: project.clientId });
+  const readMembers = orgRead.members({ apiBaseUrl, clientId: project.clientId });
   let members = yield* readMembers;
   for (
     let attempt = 2;

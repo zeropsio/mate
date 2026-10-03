@@ -113,22 +113,36 @@ const signersGate = Effect.gen(function* () {
   );
 });
 
-describe("the org's member list, as this Mate reads it", () => {
+describe("the org, as this Mate reads it", () => {
   // KRLS's list carries every integration token as a member (181 rows, 2026-10-03), and a slow
   // Zerops took up to 35 s to answer it: read once for all three.
-  it.effect("is read once for a door, the membership watch and a signer check within 30 s", () => {
+  it.effect(
+    "reads the member list once for a door, the membership watch and a signer check within 30 s",
+    () => {
+      const zerops = platform();
+      return Effect.gen(function* () {
+        const signers = yield* signersGate;
+        yield* verifyThrowawayCaller({ environment, token: PRESENTED });
+        const watched = yield* readProjectMembership({ environment });
+        assert.isTrue(watched.ok);
+        assert.isTrue(yield* signers.isActiveMember(USER_ID));
+        assert.strictEqual(zerops.count("/user/list"), 1);
+      }).pipe(Effect.scoped, Effect.provide(zerops.layer));
+    },
+  );
+
+  it.effect("reads this Mate's own project once for all three as well", () => {
     const zerops = platform();
     return Effect.gen(function* () {
       const signers = yield* signersGate;
       yield* verifyThrowawayCaller({ environment, token: PRESENTED });
-      const watched = yield* readProjectMembership({ environment });
-      assert.isTrue(watched.ok);
-      assert.isTrue(yield* signers.isActiveMember(USER_ID));
-      assert.strictEqual(zerops.count("/user/list"), 1);
+      yield* readProjectMembership({ environment });
+      yield* signers.isActiveMember(USER_ID);
+      assert.strictEqual(zerops.count(`/project/${PROJECT_ID}`), 1);
     }).pipe(Effect.scoped, Effect.provide(zerops.layer));
   });
 
-  it.effect("is read again once the answer it kept is 30 s old", () => {
+  it.effect("reads again once the answer it kept is 30 s old", () => {
     const zerops = platform();
     return Effect.gen(function* () {
       yield* verifyThrowawayCaller({ environment, token: PRESENTED });
@@ -141,7 +155,7 @@ describe("the org's member list, as this Mate reads it", () => {
     }).pipe(Effect.provide(zerops.layer));
   });
 
-  it.effect("is joined while a read of it is under way, not asked again", () =>
+  it.effect("joins a read under way rather than asking again", () =>
     Effect.gen(function* () {
       const held = yield* Deferred.make<void>();
       const zerops = platform(held);

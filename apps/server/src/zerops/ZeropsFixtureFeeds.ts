@@ -583,11 +583,15 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
     ),
-    // The member list the door would read with that key answers the same,
-    // and reaches for no platform: there is no key to read it with.
+    // The project and the member list the door would read with that key
+    // answer the same, and reach for no platform: there is no key to read
+    // them with.
     Layer.succeed(
       ZeropsOrgReadModule.ZeropsOrgRead,
-      ZeropsOrgReadModule.ZeropsOrgRead.of({ members: () => Effect.succeed({ kind: "no-key" }) }),
+      ZeropsOrgReadModule.ZeropsOrgRead.of({
+        project: () => Effect.succeed({ kind: "no-key" }),
+        members: () => Effect.succeed({ kind: "no-key" }),
+      }),
     ),
   );
 };

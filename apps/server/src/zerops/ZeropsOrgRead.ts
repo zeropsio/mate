@@ -1,17 +1,20 @@
 /**
- * ZeropsOrgRead — the org's member list, read once for everything in this Mate that asks.
+ * ZeropsOrgRead — this Mate's own project and its org's member list, read once for everything in
+ * this Mate that asks.
  *
  * The door (`ZeropsThrowawayIdentity`), the membership watch (`ZeropsMembershipWatch`) and the
- * signers' checks (`ZeropsProjectSigners`) each need the org's member list, read with the Mate's
- * own key. Read apart, that was three reads of one document, each on its own timer — and the
- * document lists every integration token of the org as a member: 181 rows on KRLS
- * (2026-10-03), which a slow Zerops took up to 35 s to answer.
+ * signers' checks (`ZeropsProjectSigners`) each read the same two documents with the Mate's own
+ * key: the project, for its org and what it says about people, and the org's member list. Read
+ * apart, that was three reads of each, on timers of their own — and the member list carries every
+ * integration token of the org as a member: 181 rows on KRLS (2026-10-03), which a slow Zerops
+ * took up to 35 s to answer.
  *
- * So it is read once for all of them. An answer at most {@link ORG_READ_MAX_AGE} old is the
+ * So each is read once for all of them. An answer at most {@link ORG_READ_MAX_AGE} old is the
  * answer, and a read already under way is joined rather than asked again. Only an answer the
- * callers can use is kept: an org always has a member, so an empty list is an outage dressed as
- * an answer, never kept. A failure goes to whoever joined that read, and the next asker reads
- * again. Each caller still reads the answer by its own rules.
+ * callers can use is kept: a project that names its org, a member list that names somebody (an
+ * org always has a member, so an empty list is an outage dressed as an answer). A failure goes to
+ * whoever joined that read, and the next asker reads again. Each caller still reads the answer by
+ * its own rules.
  *
  * @module ZeropsOrgRead
  */
@@ -51,6 +54,14 @@ export function readMemberEntries(body: unknown): ReadonlyArray<unknown> | null 
   return Array.isArray(rows) ? rows : null;
 }
 
+/** A project read worth keeping: one that names the org it belongs to. */
+const namesItsOrg = (read: OwnKeyRead): boolean => {
+  if (read.kind !== "answered" || read.status !== 200) return false;
+  if (typeof read.body !== "object" || read.body === null) return false;
+  const clientId = (read.body as Record<string, unknown>)["clientId"];
+  return typeof clientId === "string" && clientId.length > 0;
+};
+
 /** A member list worth keeping: one that lists somebody. */
 const listsMembers = (read: OwnKeyRead): boolean =>
   read.kind === "answered" &&
@@ -60,6 +71,11 @@ const listsMembers = (read: OwnKeyRead): boolean =>
 export class ZeropsOrgRead extends Context.Service<
   ZeropsOrgRead,
   {
+    /** `GET /project/{projectId}` with the Mate's own key, shared as the module says. */
+    readonly project: (input: {
+      readonly apiBaseUrl: string;
+      readonly projectId: string;
+    }) => Effect.Effect<OwnKeyRead>;
     /** `GET /client/{clientId}/user/list` with the Mate's own key, shared as the module says. */
     readonly members: (input: {
       readonly apiBaseUrl: string;
@@ -149,6 +165,8 @@ export const make = Effect.gen(function* () {
     });
 
   return ZeropsOrgRead.of({
+    project: ({ apiBaseUrl, projectId }) =>
+      read(`${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, namesItsOrg),
     members: ({ apiBaseUrl, clientId }) =>
       read(`${apiBaseUrl}/client/${encodeURIComponent(clientId)}/user/list`, listsMembers),
   });
