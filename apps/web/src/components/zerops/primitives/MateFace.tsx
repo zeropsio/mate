@@ -117,7 +117,7 @@ function useArrived(state: MateMarkState, known: boolean): MateMarkState | undef
  * A Mate's face: its eyes on its shape, in its colour — the shape it chose,
  * else its colour's own (`MATE_SHAPE_OF_TINT`) — wearing the state the live mark would — open when idle, narrowed and
  * dropped when working, wide with an "o" when it needs you, happy when done,
- * shut when asleep.
+ * shut when asleep or waking.
  *
  * Every pose is the same drawing: the eyes, the arcs and the mouth are always
  * there and a state only moves them, so a change of state morphs (the eyes
@@ -125,7 +125,8 @@ function useArrived(state: MateMarkState, known: boolean): MateMarkState | undef
  * swapping one picture for another. The motion itself is the stylesheet's
  * (`[data-mate-face-*]` in index.css): at work the shape turns a notch at a
  * time and the eyes glance about; starting to need you, it hops three times;
- * done while you watch, it pops once. Idle and asleep it is still, and with
+ * done while you watch, it pops once; waking, on its way up, it breathes over
+ * asleep's closed eyes (`matePose`). Idle and asleep it is still, and with
  * reduced motion only the morph remains. Decorative on its own — the name and the state are always
  * written beside it — so it carries no accessible name.
  */

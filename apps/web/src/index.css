@@ -2719,10 +2719,10 @@ code {
    belongs to the state: at work the shape turns a notch at a time (its own
    symmetry, so it never looks like somebody else) and the eyes glance about;
    as it starts to need you, it hops; done after work while you watch, it pops
-   once. Idle and asleep it is still: a menu of faces must not fidget. Its own
-   motion is transform and opacity (the morph eases the eyes' and the mouth's
-   geometry), each Mate on its own beat (`--mate-face-phase`) so a menu of them
-   never ticks in unison. */
+   once. Idle and asleep it is still: a menu of faces must not fidget; waking,
+   on its way up, it breathes, slow and low. Its own motion is transform and
+   opacity (the morph eases the eyes' and the mouth's geometry), each Mate on
+   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison. */
 :root {
   /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
   --ease-spring: linear(
@@ -2835,6 +2835,19 @@ code {
     translate: 0 -5px;
   }
 
+  /* Waking — on its way up, its agent not answering yet — it breathes: asleep's closed eyes over
+     a slow swell, the eyes rising with it, once every three seconds. With reduced motion it stands
+     still, and its words say it is coming up. */
+  [data-mate-face-state="waking"] [data-mate-face-body] {
+    animation: mate-face-breathe 3s ease-in-out infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
+  }
+
+  [data-mate-face-state="waking"] [data-mate-face-glance] {
+    animation: mate-face-breathe-eyes 3s ease-in-out infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
+  }
+
   [data-zerops-surface="sidebar-mate"] [data-mate-face-hop] {
     transition: scale 220ms var(--ease-spring);
   }
@@ -2875,6 +2888,26 @@ code {
   86%,
   100% {
     translate: 0 0;
+  }
+}
+
+@keyframes mate-face-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.05;
+  }
+}
+
+@keyframes mate-face-breathe-eyes {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -1.5px;
   }
 }
 
