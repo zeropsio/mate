@@ -508,7 +508,13 @@ export function projectActivityPayload(
     (activity.kind === "tool.started"
       ? activity.summary.replace(/ started$/u, "")
       : activity.summary);
-  const sniffed = sniffToolCallShape(data, title, payload.status);
+  // A title that is only the item type is a placeholder, not the agent's
+  // own title: it names no call.
+  const sniffed = sniffToolCallShape(
+    data,
+    title === payload.itemType ? undefined : title,
+    payload.status,
+  );
   const call = sniffed.kind === "toolCall" ? sniffed.call : undefined;
   const zeropsCall = call !== undefined && isZeropsToolName(call.name) ? call : undefined;
   const zerops = readStoredZeropsResult(data.zerops) ?? projectZeropsToolCall(zeropsCall);
