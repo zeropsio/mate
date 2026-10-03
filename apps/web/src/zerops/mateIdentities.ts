@@ -37,6 +37,8 @@ import { rowEnvironment } from "./environmentOrigins";
 export interface ZeropsMateIdentity {
   /** The exact container behind this environment; absent for a row that names no service. */
   readonly serviceId?: string | undefined;
+  /** The Mate's own project; absent where only its creation knew it. */
+  readonly projectId?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
   /** The shape its person picked (`mate:face:`), else its tint's own — `mateShapeOf`. */
@@ -52,6 +54,12 @@ export interface ZeropsMateIdentity {
    * it is awake.
    */
   readonly connected: boolean;
+  /**
+   * Whether the account's listing has its container running (socket up or not); absent where
+   * the listing never said. What its face wears while its conversation opens
+   * (`mateOpeningAwake`).
+   */
+  readonly running?: boolean | undefined;
   /**
    * Who asked for the project's development to be stood up (`mate:standup:`), while the ask
    * waits for their first sign-in: their empty conversation says so and sends it (`mateStandUp.ts`).
@@ -101,16 +109,26 @@ export function zeropsMateIdentityOf(
   const arrivingUntil = mateArrivingUntil(candidate);
   return {
     serviceId: candidate.service?.id,
+    projectId: candidate.project.id,
     name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
     tint,
     shape: mateShapeOf(candidate.project.tagList, tint),
     project: tags.label,
     projectUrl: zeropsProjectUrl(candidate.project.id),
     connected: candidate.group === "connected",
+    running: candidate.group === "connected" || candidate.group === "ready",
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
     ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
   };
+}
+
+/**
+ * Whether a Mate's opening wears its face awake: the account's listing has its container up — its
+ * socket not open yet is this page's wait, not the Mate's sleep.
+ */
+export function mateOpeningAwake(mate: Pick<ZeropsMateIdentity, "connected" | "running">): boolean {
+  return mate.connected || mate.running === true;
 }
 
 /** Who lives in one environment: its Mate, nobody, or not known yet. */

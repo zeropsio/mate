@@ -1,10 +1,10 @@
 /**
  * A Mate's page while its conversation cannot show yet (a reload before the catalog names its
  * thread, the route's link being made, the Mate down): its header — the face and the name — from
- * the first frame, as its conversation will draw it. Opening, the page under it is quiet, with one
- * line where the messages will land past its beat; where the link has words of its own (a
- * restart, a reconnect, a container that is not running) the Mate's face stands asleep over its
- * name with them, on one axis (`stageSpeaks`).
+ * the first frame, as its conversation will draw it, awake where its container runs. Opening, the
+ * page under it is quiet, with one line where the messages will land past its beat; where the link
+ * has words of its own (a restart, a reconnect, a container that is not running) the Mate's face
+ * stands asleep over its name with them, on one axis (`stageSpeaks`).
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import { environmentCatalog } from "~/connection/catalog";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
-import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
+import { mateOpeningAwake, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -111,7 +111,9 @@ function MateLinkStageOf({
           </>
         }
         composer={composer}
-        mate={mate}
+        // Opening, it wears the pose its container has — awake where the listing has it running,
+        // as it was last known before that is read — not asleep for this page's own wait.
+        mate={{ ...known, connected: mateOpeningAwake(known) }}
       />
     );
   }

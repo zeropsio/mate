@@ -8276,6 +8276,12 @@ button.rv-relrow:hover .rv-relrow-go {
   opacity: 0;
 }
 
+/* The composer's room while who writes in the conversation is not known (`ComposerRoomHeld`):
+   kept at its size, unseen, and shown in the frame the answer comes — nothing fades in. */
+[data-slot="composer-shell"][data-room-held] {
+  visibility: hidden;
+}
+
 /* ==== end of the arrival ==== */
 
 /* ==== Pass 18 · motion ==== */

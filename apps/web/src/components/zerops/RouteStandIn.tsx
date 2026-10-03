@@ -3,6 +3,10 @@
  * gate's stage, the chat layout's pending view, the conversation route's opening view — typing
  * into the conversation's own draft. Each phase draws its own, so where it was left travels in
  * `standInMemory`: the next one takes the caret, and the focus when it was handed over at once.
+ *
+ * Only where this browser last knew the conversation as the viewer's: before its agents' sign-in
+ * is read, anything else stands in with someone else's strip or the composer's room held
+ * (`ConversationFooterStandIn`) — never a field that may turn out to be someone else's.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -13,6 +17,7 @@ import { standInForConversation } from "~/zerops/mateHandOver";
 import { standInToRestore, withStandIn, type StandInMemory } from "~/zerops/standInMemory";
 import { ComposerStandIn } from "../chat/ComposerStandIn";
 import { composerThreadControlKey, rememberedComposerControl } from "../chat/composerControlMemory";
+import { ConversationFooterStandIn, standInFooter } from "./ConversationFooterStandIn";
 
 let memory: StandInMemory = new Map();
 const remember = (key: string, patch: Parameters<typeof withStandIn>[2]) => {
@@ -20,6 +25,15 @@ const remember = (key: string, patch: Parameters<typeof withStandIn>[2]) => {
 };
 
 export function RouteStandIn({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  return (
+    <ConversationFooterStandIn
+      composer={<RouteComposerStandIn threadRef={threadRef} />}
+      footer={standInFooter(threadRef.environmentId)}
+    />
+  );
+}
+
+function RouteComposerStandIn({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const key = scopedThreadKey(threadRef);
   const draft = useComposerDraftStore((state) => state.getComposerDraft(threadRef)?.prompt ?? "");
   const [restore] = useState(() => standInToRestore(memory, key, Date.now()));

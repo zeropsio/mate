@@ -13,7 +13,10 @@ import type { ZeropsMateDirectory, ZeropsMateIdentity } from "./mateIdentities";
 
 export const MATE_IDENTITY_MEMORY_KEY = "mate:zerops:mate-identities";
 
-/** Environment → the Mate that lives there, asleep: a remembered Mate is never known to be up. */
+/**
+ * Environment → the Mate that lives there, its socket never known to be up; whether its container
+ * was running is kept (`running`), so its opening wears the pose it last had.
+ */
 export type MateIdentityMemory = Readonly<Record<string, ZeropsMateIdentity>>;
 
 const TINTS: ReadonlySet<string> = new Set(MATE_TINT_IDS);
@@ -21,6 +24,8 @@ const SHAPES: ReadonlySet<string> = new Set(MATE_SHAPE_IDS);
 
 const remembered = (mate: ZeropsMateIdentity): ZeropsMateIdentity => ({
   ...(mate.serviceId === undefined ? {} : { serviceId: mate.serviceId }),
+  ...(mate.projectId === undefined ? {} : { projectId: mate.projectId }),
+  ...(mate.running === undefined ? {} : { running: mate.running }),
   name: mate.name,
   tint: mate.tint,
   shape: mate.shape,
@@ -31,6 +36,8 @@ const remembered = (mate: ZeropsMateIdentity): ZeropsMateIdentity => ({
 
 const same = (a: ZeropsMateIdentity, b: ZeropsMateIdentity): boolean =>
   a.serviceId === b.serviceId &&
+  a.projectId === b.projectId &&
+  a.running === b.running &&
   a.name === b.name &&
   a.tint === b.tint &&
   a.shape === b.shape &&
@@ -73,7 +80,9 @@ const readMate = (value: unknown): ZeropsMateIdentity | null => {
     !SHAPES.has(mate.shape) ||
     typeof mate.projectUrl !== "string" ||
     (mate.project !== undefined && typeof mate.project !== "string") ||
-    (mate.serviceId !== undefined && typeof mate.serviceId !== "string")
+    (mate.serviceId !== undefined && typeof mate.serviceId !== "string") ||
+    (mate.projectId !== undefined && typeof mate.projectId !== "string") ||
+    (mate.running !== undefined && typeof mate.running !== "boolean")
   ) {
     return null;
   }
@@ -132,6 +141,24 @@ export function rememberedMateIdentity(
   environmentId: EnvironmentId,
 ): ZeropsMateIdentity | undefined {
   return memoryNow()[environmentId];
+}
+
+/** The Mate this memory knows in `projectId`, and the environment it lives in. */
+export function mateOfProject(
+  memory: MateIdentityMemory,
+  projectId: string,
+): { readonly environmentId: EnvironmentId; readonly mate: ZeropsMateIdentity } | undefined {
+  for (const [environmentId, mate] of Object.entries(memory)) {
+    if (mate.projectId === projectId) {
+      return { environmentId: environmentId as EnvironmentId, mate };
+    }
+  }
+  return undefined;
+}
+
+/** The Mate this browser last knew in `projectId` (a Mate's own page has only its project). */
+export function rememberedMateOfProject(projectId: string): ReturnType<typeof mateOfProject> {
+  return mateOfProject(memoryNow(), projectId);
 }
 
 /** Remembers what the directory decides, written at once only when it changed something. */

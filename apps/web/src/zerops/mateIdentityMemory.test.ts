@@ -1,7 +1,12 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { readIdentityMemory, withMateIdentities, writeIdentityMemory } from "./mateIdentityMemory";
+import {
+  mateOfProject,
+  readIdentityMemory,
+  withMateIdentities,
+  writeIdentityMemory,
+} from "./mateIdentityMemory";
 import type { ZeropsMateIdentity } from "./mateIdentities";
 
 const GITA = EnvironmentId.make("env-gita");
@@ -74,5 +79,34 @@ describe("the Mate identity memory", () => {
     { case: "not JSON", text: "{", names: [] },
   ])("reads $case", ({ text, names }) => {
     expect(Object.values(readIdentityMemory(text)).map((mate) => mate.name)).toEqual(names);
+  });
+
+  // A Mate's own page has only its project, and paints its name and its pose from the first frame.
+  it("remembers its project and whether its container was running", () => {
+    const awake = { ...identity("Gita"), projectId: "p-gita", running: true };
+    const stored = withMateIdentities({}, new Map([[GITA, awake]]));
+    expect(stored[GITA]).toMatchObject({ projectId: "p-gita", running: true, connected: false });
+    expect(readIdentityMemory(writeIdentityMemory(stored))[GITA]).toMatchObject({
+      projectId: "p-gita",
+      running: true,
+    });
+    // Its container stopping since is remembered too.
+    const stopped = withMateIdentities(stored, new Map([[GITA, { ...awake, running: false }]]));
+    expect(stopped[GITA]?.running).toBe(false);
+  });
+
+  it.each([
+    { case: "the Mate in its project", projectId: "p-pia", found: [PIA, "Pia"] },
+    { case: "nothing for a project it never knew", projectId: "p-other", found: undefined },
+  ])("finds $case", ({ projectId, found }) => {
+    const memory = withMateIdentities(
+      {},
+      new Map([
+        [GITA, { ...identity("Gita"), projectId: "p-gita" }],
+        [PIA, { ...identity("Pia"), projectId: "p-pia" }],
+      ]),
+    );
+    const mate = mateOfProject(memory, projectId);
+    expect(mate === undefined ? undefined : [mate.environmentId, mate.mate.name]).toEqual(found);
   });
 });
