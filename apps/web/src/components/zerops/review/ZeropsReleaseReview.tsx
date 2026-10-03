@@ -290,16 +290,11 @@ function ReleaseData({
       }),
   });
   if (keep !== held) setHeld(keep);
-  // The changes are the release's; where each stands on the stage is read as it stands now.
+  // The changes are the release's; where each stands on the stage is read as it stands now, from
+  // HQ's deploys, the same for everyone who sees the application.
   const stage = useMemo(
-    () =>
-      mainStage === undefined
-        ? undefined
-        : stageStandings({
-            environment: mainStage,
-            deployment: flowValue?.deployments.get(mainStage.projectId),
-          }),
-    [flowValue?.deployments, mainStage],
+    () => (mainStage === undefined ? undefined : stageStandings(mainStage)),
+    [mainStage],
   );
   // A stage on a repository's `main` head runs every change the release carries from it.
   const mainHeads = useMemo(
@@ -342,7 +337,7 @@ function ReleaseData({
       fixer={fixer?.name}
       gate={flow.release.gate}
       permission={flow.release.permission}
-      // A stage that says nothing it runs — one the viewer may not read — counts nothing.
+      // A stage HQ never put anything live on counts nothing: no "0 of N".
       hasStage={stage !== undefined && stageRead(stage)}
       name={name}
       now={now}
