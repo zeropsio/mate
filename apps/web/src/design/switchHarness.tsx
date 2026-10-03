@@ -20,8 +20,9 @@
  * `window.__switchHarness
  * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
  * a switch it started itself, `.say("mira", text)` lands a message at a
- * conversation's end, and `.probeFollow("nova")` measures what a person
- * reading it meets as messages land.
+ * conversation's end, `.probeFollow("nova")` measures what a person
+ * reading it meets as messages land, and `.follows()` says whether the shown
+ * conversation follows its end.
  *
  * Fixtures only. Nothing here ships — `design-switch.html` is not
  * `index.html`, and no route imports this module.
@@ -529,18 +530,23 @@ function say(key: string, text: string) {
  * B — ~600 px up, a row lands; C — the person's smooth scroll back to the
  * end, a row lands; D — following, a control in the live card's scroller
  * focused, ArrowUp and PageUp, rows land; E — ~300 px up, back to the end in
- * 20 px steps while rows stream in, a row lands. Each reports the row under
+ * 40 px steps while rows stream in, a row lands. Each reports the row under
  * the reading line's move (0: held) and how far the list ends from its end.
  */
+/** Whether the shown conversation follows its end, as the pane last decided. */
+let shownFollows = true;
+
 async function probeFollow(key: string) {
   const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   const node = [...document.querySelectorAll<HTMLElement>("div")]
     .filter((element) => {
       const style = getComputedStyle(element);
+      // The shown conversation's list: a kept one stands inert beside it.
       return (
         (style.overflowY === "auto" || style.overflowY === "scroll") &&
-        element.scrollHeight > element.clientHeight + 50
+        element.scrollHeight > element.clientHeight + 50 &&
+        !element.closest("[inert]")
       );
     })
     .sort((a, b) => b.clientHeight - a.clientHeight)[0];
@@ -618,7 +624,11 @@ async function probeFollow(key: string) {
   if (card && card.scrollHeight > card.clientHeight) {
     await toEnd();
     card.scrollTop = Math.round((card.scrollHeight - card.clientHeight) / 2);
-    const control = card.querySelector<HTMLElement>("button") ?? card;
+    // The fixture's card holds no disclosure: one stands in for it.
+    const stand = card.querySelector("button")
+      ? null
+      : card.appendChild(Object.assign(document.createElement("button"), { textContent: "…" }));
+    const control = card.querySelector<HTMLElement>("button")!;
     control.focus();
     for (const keyName of ["ArrowUp", "PageUp"]) {
       control.dispatchEvent(new KeyboardEvent("keydown", { key: keyName, bubbles: true }));
@@ -628,18 +638,20 @@ async function probeFollow(key: string) {
     land();
     await wait(500);
     out.D_cardKeysFromEnd = fromEnd();
+    out.D_follows = Number(shownFollows);
     control.blur();
+    stand?.remove();
   }
 
-  // E — ~300 px up, the person scrolls back down in 20 px steps while rows
-  // stream in every 60 ms; then a row lands.
+  // E — ~300 px up, the person scrolls back down in 40 px steps while rows
+  // stream in every 120 ms; then a row lands.
   wheel(-100);
   node.scrollTop -= 300;
   await wait(400);
-  lander = setInterval(land, 60);
-  for (let step = 0; step < 60 && fromEnd() > 0; step++) {
-    wheel(20);
-    node.scrollTop += 20;
+  lander = setInterval(land, 120);
+  for (let step = 0; step < 120 && fromEnd() > 0; step++) {
+    wheel(40);
+    node.scrollTop += 40;
     await frame();
   }
   clearInterval(lander);
@@ -647,6 +659,7 @@ async function probeFollow(key: string) {
   land();
   await wait(600);
   out.E_backInStepsFromEnd = fromEnd();
+  out.E_follows = Number(shownFollows);
   return out;
 }
 
@@ -724,6 +737,9 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
     setFollow({ key: routeThreadKey, enabled: atEnd, atEnd });
   }
   const liveFollowEnabled = follow.enabled;
+  useEffect(() => {
+    shownFollows = follow.enabled;
+  }, [follow.enabled]);
   const onIsAtEndChange = useCallback<TimelineProps["onIsAtEndChange"]>((isAtEnd, scroll) => {
     setFollow((current) => {
       const enabled = nextTimelineFollow(current.enabled, {
@@ -893,6 +909,7 @@ function Harness() {
       switchTo: (key: string) => setCurrent(key),
       say,
       probeFollow,
+      follows: () => shownFollows,
       threads: THREADS.map((thread) => thread.key),
     };
   }, []);
