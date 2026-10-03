@@ -10,7 +10,7 @@ import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
 
 import type { ComposerImageAttachment } from "../composerDraftStore";
-import type { ComposerFileAttachment } from "./composerFiles";
+import { composerUploadExpired, type ComposerFileAttachment } from "./composerFiles";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentCatalog } from "../connection/catalog";
 import { attachmentEnvironment } from "../state/attachments";
@@ -498,8 +498,9 @@ function fileUploadItem(file: ComposerFileAttachment, bytes: File): UploadItem {
 
 /**
  * Starts a file's upload. A file a reload brought back has no bytes, only
- * the upload it finished: it stands uploaded where it went, and elsewhere it
- * cannot go (the person attaches it again).
+ * the upload it finished: it stands uploaded where it went for a day (the
+ * server lets an unsent upload go then), and elsewhere or later it cannot go
+ * (the person attaches it again).
  */
 export function startFileUpload(input: {
   readonly environmentId: EnvironmentId;
@@ -512,11 +513,14 @@ export function startFileUpload(input: {
   }
   const existing = readAttachmentUpload(file.id);
   if (existing?.environmentId === environmentId) return;
+  const uploaded = file.uploaded;
   setUploadState(
     file.id,
-    file.uploaded?.environmentId === environmentId
-      ? { status: "ready", environmentId, attachmentId: file.uploaded.attachmentId }
-      : { status: "failed", environmentId, reason: "Attach the file again to send it here" },
+    uploaded?.environmentId !== environmentId
+      ? { status: "failed", environmentId, reason: "Attach the file again to send it here" }
+      : composerUploadExpired(uploaded, Date.now())
+        ? { status: "failed", environmentId, reason: "Its upload expired. Attach the file again" }
+        : { status: "ready", environmentId, attachmentId: uploaded.attachmentId },
   );
 }
 

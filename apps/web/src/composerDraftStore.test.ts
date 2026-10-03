@@ -439,7 +439,7 @@ describe("files in a draft", () => {
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-files"));
   const threadKey = threadKeyFor(threadRef.threadId, TEST_ENVIRONMENT_ID);
   const F = INLINE_FILE_PLACEHOLDER;
-  const uploaded = { environmentId: TEST_ENVIRONMENT_ID, attachmentId: "att" };
+  const uploaded = { environmentId: TEST_ENVIRONMENT_ID, attachmentId: "att", uploadedAt: 1_000 };
   const makeFile = (id: string, extra: Partial<ComposerFileAttachment> = {}) =>
     ({
       type: "file",
@@ -537,6 +537,7 @@ describe("files in a draft", () => {
         sizeBytes: 5,
         environmentId: TEST_ENVIRONMENT_ID,
         attachmentId: "att",
+        uploadedAt: 1_000,
       },
     ]);
   });
@@ -554,6 +555,7 @@ describe("files in a draft", () => {
           sizeBytes: 5,
           environmentId: TEST_ENVIRONMENT_ID,
           attachmentId: "att-two",
+          uploadedAt: 2_000,
         },
       ],
     });
@@ -566,7 +568,11 @@ describe("files in a draft", () => {
         mimeType: "application/pdf",
         sizeBytes: 5,
         file: null,
-        uploaded: { environmentId: TEST_ENVIRONMENT_ID, attachmentId: "att-two" },
+        uploaded: {
+          environmentId: TEST_ENVIRONMENT_ID,
+          attachmentId: "att-two",
+          uploadedAt: 2_000,
+        },
       },
     ]);
   });

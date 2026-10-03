@@ -181,7 +181,7 @@ describe("files in a sent message", () => {
 });
 
 describe("files a draft keeps for a reload", () => {
-  const uploaded = { environmentId: "env-1", attachmentId: "att-1" };
+  const uploaded = { environmentId: "env-1", attachmentId: "att-1", uploadedAt: 1_000 };
 
   it("keeps only the uploaded files, never their bytes", () => {
     const bytes = new File(["x"], "a.pdf");
@@ -195,6 +195,7 @@ describe("files a draft keeps for a reload", () => {
         sizeBytes: 2048,
         environmentId: "env-1",
         attachmentId: "att-1",
+        uploadedAt: 1_000,
       },
     ]);
   });
@@ -216,5 +217,13 @@ describe("files a draft keeps for a reload", () => {
     ["not an object", "a", false],
   ])("reads %s", (_label, value, kept) => {
     expect(normalizePersistedComposerFile(value) !== null).toBe(kept);
+  });
+
+  it("reads a file saved without its upload's time as long expired", () => {
+    const { uploadedAt: _uploadedAt, ...untimed } = uploaded;
+    expect(
+      normalizePersistedComposerFile({ ...untimed, id: "a", name: "a", mimeType: "", sizeBytes: 1 })
+        ?.uploadedAt,
+    ).toBe(0);
   });
 });
