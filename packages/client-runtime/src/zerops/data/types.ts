@@ -1427,6 +1427,20 @@ export interface ProjectEffectiveAccess {
   readonly project: ProjectRef;
   readonly role: ProjectAccessRole;
   readonly mutationsAllowed: boolean;
+  /**
+   * The project's own grants, every member's, as the read that verified it carried them (its
+   * `userRoles`): what HQ's rule weighs above the org role, and who its `OWNER` is. Absent where no
+   * read said — access the runtime holds for a project it made itself — and empty for one hidden
+   * from the viewer, whose grants are not theirs to know.
+   */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
+}
+
+/** One member's grant on a project, as its `userRoles` names it. */
+export interface ProjectGrant {
+  /** The `clientUser` id: the member row the grant names. */
+  readonly clientUserId: string;
+  readonly roleCode: string;
 }
 
 export interface OrganizationEffectiveAccess {

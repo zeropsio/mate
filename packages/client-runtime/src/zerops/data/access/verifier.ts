@@ -162,8 +162,13 @@ const projectOutcome = (
     kind: "verified",
     access:
       access === null
-        ? { project, role: "NO_ACCESS", mutationsAllowed: false }
-        : { project, role: access.role, mutationsAllowed: access.visibility === "open" },
+        ? { project, role: "NO_ACCESS", mutationsAllowed: false, userRoles: [] }
+        : {
+            project,
+            role: access.role,
+            mutationsAllowed: access.visibility === "open",
+            userRoles: row.userRoles ?? [],
+          },
   };
 };
 

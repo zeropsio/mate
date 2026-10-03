@@ -517,6 +517,12 @@ export {
   type OfferViewer,
 } from "./offers.ts";
 export {
+  grantListing,
+  projectGrantsOf,
+  withProjectGrants,
+  type ProjectGrants,
+} from "./projectGrants.ts";
+export {
   canWriteRegistry,
   onlyTheseCanAddAProject,
   FINISH_MATE_SETUP_VERB,
