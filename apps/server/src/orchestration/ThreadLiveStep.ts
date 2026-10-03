@@ -25,8 +25,9 @@
  * and the next response starts only once every call of the one before has
  * returned, so a call of a newer response opens a newer batch, and a call an
  * older batch left running lost its completion — it is dropped, never
- * "Running" until the next thought. Where calls name no response, a call that
- * starts after another returned opens the newer batch.
+ * "Running" until the next thought. Where the provider never names a response
+ * (Codex, `batchesByTiming`), a call that starts after another returned opens
+ * the newer batch; a Claude call that names none never opens one by timing.
  *
  * @module ThreadLiveStepService
  */
@@ -43,8 +44,12 @@ import * as Layer from "effect/Layer";
 import { projectActivityPayload } from "./ActivityPayloadProjection.ts";
 
 export type LiveStepObservation =
-  /** The turn started: nothing done yet, so it thinks. */
-  | { readonly type: "turn-started"; readonly at: string }
+  /**
+   * The turn started: nothing done yet, so it thinks. Whether a call that
+   * names no response opens a newer batch by timing: its provider never
+   * names one (`batchesByTiming`).
+   */
+  | { readonly type: "turn-started"; readonly at: string; readonly byTiming: boolean }
   /**
    * A call started, or told more of itself while it runs; on its start, the
    * model response it was written in, where the provider names one.
@@ -79,6 +84,8 @@ interface LiveState {
   readonly calls: ReadonlyArray<ThreadLiveCall>;
   /** What it does while none runs. */
   readonly between: "thinking" | "writing";
+  /** A call that names no response opens a newer batch by timing (`batchesByTiming`). */
+  readonly byTiming: boolean;
   /**
    * A call returned since the newest one started: for calls that name no
    * response, the next call opens a newer batch.
@@ -107,14 +114,15 @@ function stateOf(
   calls: ReadonlyArray<ThreadLiveCall>,
   between: LiveState["between"],
   since: string,
+  byTiming: boolean,
 ): LiveState {
-  return { calls, between, since, returned: false, step: stepOf(calls, between, since) };
+  return { calls, between, since, byTiming, returned: false, step: stepOf(calls, between, since) };
 }
 
 /** It turns to thinking or writing: a change of what it is on only if it was on something else. */
 function turnTo(state: LiveState, between: LiveState["between"], at: string): LiveState {
   if (state.calls.length === 0 && state.between === between) return state;
-  return stateOf([], between, at);
+  return stateOf([], between, at, state.byTiming);
 }
 
 function sameStrings(
@@ -154,23 +162,31 @@ export function nextLiveState(
   state: LiveState | undefined,
   observation: LiveStepObservation,
 ): LiveState | undefined {
-  if (observation.type === "turn-started") return stateOf([], "thinking", observation.at);
+  if (observation.type === "turn-started") {
+    return stateOf([], "thinking", observation.at, observation.byTiming);
+  }
   // What arrives while no turn runs is a finished turn's late word.
   if (state === undefined) return undefined;
   switch (observation.type) {
     case "call-running": {
       const index = state.calls.findIndex((call) => call.id === observation.call.id);
       if (index === -1) {
-        // A call of a newer response — or, where calls name none, a call
-        // after a return — opens a newer batch: what the older left running
-        // lost its completion.
-        const { response } = observation;
+        // A call of a newer response — or, where the provider names none, a
+        // call after a return — opens a newer batch: what the older left
+        // running lost its completion. A call that names no response keeps
+        // the batch's.
         const newer =
-          response !== undefined && state.response !== undefined
-            ? response !== state.response
-            : state.returned;
+          observation.response !== undefined && state.response !== undefined
+            ? observation.response !== state.response
+            : state.byTiming && state.returned;
         const batch = newer ? [] : state.calls;
-        const next = stateOf([...batch, observation.call], state.between, state.since);
+        const next = stateOf(
+          [...batch, observation.call],
+          state.between,
+          state.since,
+          state.byTiming,
+        );
+        const response = observation.response ?? (newer ? undefined : state.response);
         return response === undefined ? next : { ...next, response };
       }
       const known = state.calls[index]!;
@@ -187,9 +203,9 @@ export function nextLiveState(
       const calls = state.calls.filter((call) => call.id !== observation.callId);
       // The last call it was on ended: it thinks, from now.
       return calls.length === 0
-        ? { ...stateOf([], "thinking", observation.at), response: state.response }
+        ? { ...stateOf([], "thinking", observation.at, state.byTiming), response: state.response }
         : {
-            ...stateOf(calls, state.between, state.since),
+            ...stateOf(calls, state.between, state.since, state.byTiming),
             returned: true,
             response: state.response,
           };
@@ -200,7 +216,7 @@ export function nextLiveState(
       return turnTo(state, "writing", observation.at);
     case "words-ended":
       return state.calls.length === 0 && state.between === "writing"
-        ? stateOf([], "thinking", observation.at)
+        ? stateOf([], "thinking", observation.at, state.byTiming)
         : state;
   }
 }

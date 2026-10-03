@@ -30,6 +30,7 @@ import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
+import { batchesByTiming } from "@t3tools/shared/liveBatch";
 import { formatTokens } from "@t3tools/shared/usageFormat";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -1913,7 +1914,11 @@ const make = Effect.gen(function* () {
           if (nextActiveTurnId === null) {
             threadLiveStep.clearThread(thread.id);
           } else if (event.type === "turn.started") {
-            threadLiveStep.observe(thread.id, { type: "turn-started", at: now });
+            threadLiveStep.observe(thread.id, {
+              type: "turn-started",
+              at: now,
+              byTiming: batchesByTiming(event.provider),
+            });
           }
           if (event.type === "turn.started" && acceptedTurnStartedSourcePlan !== null) {
             yield* markSourceProposedPlanImplemented(
