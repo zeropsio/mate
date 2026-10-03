@@ -39,7 +39,8 @@ export interface RecipeOption {
  * created and could not build.
  *
  * A project with no merged recipe is offered only the second, and the option
- * says why rather than leaving a list of one that reads like a stub.
+ * says why rather than leaving a list of one that reads like a stub — only where HQ answered that
+ * there is none: a recipe still being read, or one that could not be read, is not a missing one.
  */
 export function recipeOptions(input: {
   /** The word for what is being added, as the dialog says it: "Mate", "stage", "production". */
@@ -48,6 +49,8 @@ export function recipeOptions(input: {
   readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
   /** Every service that tier declares, for the line under it. */
   readonly services: ReadonlyArray<string>;
+  /** Where the recipe stands (`creationRecipe`). */
+  readonly recipe: CreationRecipe;
 }): ReadonlyArray<RecipeOption> {
   const options: Array<RecipeOption> = [];
   if (input.tier !== undefined) {
@@ -68,7 +71,7 @@ export function recipeOptions(input: {
     id: "none",
     label: "Nothing yet",
     detail:
-      options.length === 0
+      options.length === 0 && input.recipe === "absent"
         ? "This project has no recipe on main yet. The agent sets the application up."
         : "The agent sets the application up.",
     choice: { kind: "none" },
@@ -144,6 +147,8 @@ export function validateCreationForm(
   context: {
     readonly takenBotNames: TakenBotNames;
     readonly options: ReadonlyArray<RecipeOption>;
+    /** Where the recipe stands (`creationRecipe`). */
+    readonly recipe: CreationRecipe;
   },
 ): CreationFormErrors {
   const errors: { name?: string; botName?: string; recipe?: string } = {};
@@ -154,17 +159,42 @@ export function validateCreationForm(
     if (botError !== undefined) errors.botName = botError;
   }
 
+  // What is created comes from this read: a recipe not read yet, or not read at all, holds it.
+  const held = creationRecipeHold(context.recipe);
   const option = context.options.find((entry) => entry.id === form.recipeId);
-  if (option === undefined) errors.recipe = "Choose what goes in the environment.";
+  if (held !== undefined) errors.recipe = held;
+  else if (option === undefined) errors.recipe = "Choose what goes in the environment.";
   else if (option.choice.kind === "none" && !form.withAgent) {
     // Name the way out, not just the rule. With no recipe on `main` the fix is
     // not in this dialog at all — it is a pull request on the group repo.
-    const noRecipe = context.options.every((entry) => entry.choice.kind === "none");
-    errors.recipe = noRecipe
-      ? "This project has no recipe on main yet. Merge one first, or switch the agent on."
-      : "Take the project's recipe, or switch the agent on to have one set up.";
+    errors.recipe =
+      context.recipe === "absent"
+        ? "This project has no recipe on main yet. Merge one first, or switch the agent on."
+        : "Take the project's recipe, or switch the agent on to have one set up.";
   }
   return errors;
+}
+
+/**
+ * Where the project's recipe stands for the creation forms: being read — no answer this time yet,
+ * whatever the last read said (`useZeropsGroupRecipe`'s `loading`) — or what HQ answered: a recipe,
+ * none on `main`, or a read that failed.
+ */
+export type CreationRecipe = "reading" | "present" | "absent" | "unreadable";
+
+export function creationRecipe(read: {
+  readonly state: NewMateRecipeRead;
+  readonly loading: boolean;
+}): CreationRecipe {
+  return read.loading || read.state === "loading" ? "reading" : read.state;
+}
+
+const RECIPE_UNREADABLE = "The project's recipe can't be read right now.";
+
+/** What holds a stage's or a production's form: its recipe still being read, or not readable. */
+export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
+  if (recipe === "reading") return READING_RECIPE;
+  return recipe === "unreadable" ? RECIPE_UNREADABLE : undefined;
 }
 
 export function hasCreationErrors(errors: CreationFormErrors): boolean {

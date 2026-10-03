@@ -172,7 +172,7 @@ function Harness() {
         role={role}
         takenBotNames={{ names: ["Fen", "Ada", "Nova"], complete: true }}
         tier={loaded ? TIER : undefined}
-        tierLoading={!read}
+        recipe={!read ? "reading" : loaded ? "present" : "absent"}
         tierServices={loaded ? SERVICES : []}
       />
     </div>

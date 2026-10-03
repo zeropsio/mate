@@ -24,12 +24,19 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
           tier: "stage",
           yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
         }}
-        tierLoading={false}
+        recipe="present"
         tierServices={["app", "db"]}
         {...props}
       />
     </Dialog>,
   );
+}
+
+/** Whether the form's submit button is disabled, as the markup draws it. */
+function submitDisabled(html: string): boolean {
+  const button = html.match(/<button[^>]*type="submit"[^>]*>/u)?.[0];
+  if (button === undefined) throw new Error("no submit button");
+  return /\sdisabled(=""|\s|>)/u.test(button);
 }
 
 describe("ZeropsEnvironmentCreationForm", () => {
@@ -62,16 +69,33 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).toContain("Nothing yet");
   });
 
-  it("offers only an empty environment when nothing is merged on main", () => {
-    const html = render({ tier: undefined, tierServices: [] });
+  it("offers only an empty environment when HQ says nothing is merged on main", () => {
+    const html = render({ tier: undefined, tierServices: [], recipe: "absent" });
     expect(html).not.toContain("stage recipe");
     expect(html).toContain("no recipe on main yet");
+    expect(submitDisabled(html)).toBe(false);
   });
 
-  it("says it is still reading the recipe", () => {
-    expect(render({ tier: undefined, tierServices: [], tierLoading: true })).toContain(
-      "Reading the project&#x27;s recipe",
-    );
+  // F9 (e2e, 2026-10-03): for a minute after the page opened, Add production said "no recipe on
+  // main yet" and refused a press, then switched to the recipe by itself.
+  it("says it is still reading the recipe, never that there is none, and waits for it", () => {
+    const html = render({ tier: undefined, tierServices: [], recipe: "reading" });
+    expect(html).toContain("Reading the project&#x27;s recipe…");
+    expect(html).not.toContain("no recipe on main yet");
+    expect(submitDisabled(html)).toBe(true);
+  });
+
+  it("says a recipe it could not read, offers to read it again, and waits for it", () => {
+    const html = render({
+      tier: undefined,
+      tierServices: [],
+      recipe: "unreadable",
+      onRecipeRetry: () => {},
+    });
+    expect(html).toContain("The project&#x27;s recipe can&#x27;t be read right now.");
+    expect(html).toContain("Try again");
+    expect(html).not.toContain("no recipe on main yet");
+    expect(submitDisabled(html)).toBe(true);
   });
 
   it("hides the agent's name when production runs without one", () => {

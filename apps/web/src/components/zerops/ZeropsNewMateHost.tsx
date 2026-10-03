@@ -47,6 +47,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import {
   landedRecipeProposal,
+  creationRecipe,
   newMateDoor,
   newMateDoorMates,
   newMateRecipeChange,
@@ -321,7 +322,7 @@ function NewMateDialog({
       role="dev"
       takenBotNames={taken}
       tier={recipe.tier}
-      tierLoading={recipe.loading}
+      recipe={creationRecipe(recipe)}
       tierServices={recipe.services}
     />
   );

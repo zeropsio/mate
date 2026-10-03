@@ -13,6 +13,7 @@ import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  creationRecipe,
   faceName,
   hasCreationErrors,
   landedRecipeProposal,
@@ -52,6 +53,7 @@ describe("recipeOptions", () => {
       roleLabel: "stage",
       tier: TIER,
       services: ["app", "db"],
+      recipe: "present",
     });
     expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
     expect(options[0]?.label).toBe("The project's stage recipe");
@@ -64,20 +66,49 @@ describe("recipeOptions", () => {
    * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
    */
   it("says the services arrive without code", () => {
-    const options = recipeOptions({ roleLabel: "stage", tier: TIER, services: ["app", "db"] });
+    const options = recipeOptions({
+      roleLabel: "stage",
+      tier: TIER,
+      services: ["app", "db"],
+      recipe: "present",
+    });
     expect(options[0]?.detail).toBe("app, db · imported without code; the first deploy fills them");
   });
 
   it("explains a project with no recipe rather than showing a lone option", () => {
-    const options = recipeOptions({ roleLabel: "Mate", tier: undefined, services: [] });
+    const options = recipeOptions({
+      roleLabel: "Mate",
+      tier: undefined,
+      services: [],
+      recipe: "absent",
+    });
     expect(options.map((option) => option.id)).toEqual(["none"]);
     expect(options[0]?.detail).toBe(
       "This project has no recipe on main yet. The agent sets the application up.",
     );
   });
 
+  // F9 (e2e, 2026-10-03): a recipe not read yet read as a missing one for a minute.
+  it.each(["reading", "unreadable"] as const)(
+    "never says there is no recipe while it is %s",
+    (recipe) => {
+      const options = recipeOptions({
+        roleLabel: "production",
+        tier: undefined,
+        services: [],
+        recipe,
+      });
+      expect(options[0]?.detail).toBe("The agent sets the application up.");
+    },
+  );
+
   it("still names the recipe when the tier declares no services", () => {
-    const options = recipeOptions({ roleLabel: "Mate", tier: TIER, services: [] });
+    const options = recipeOptions({
+      roleLabel: "Mate",
+      tier: TIER,
+      services: [],
+      recipe: "present",
+    });
     expect(options[0]?.detail).toBe("From the project's repository, on main.");
   });
 });
@@ -137,6 +168,7 @@ describe("validateCreationForm", () => {
     roleLabel: "stage",
     tier: TIER,
     services: ["app"],
+    recipe: "present",
   });
   const valid = {
     name: "Acme Docs - stage",
@@ -147,30 +179,39 @@ describe("validateCreationForm", () => {
 
   it("accepts a complete form", () => {
     expect(
-      hasCreationErrors(validateCreationForm(valid, { takenBotNames: FEN_TAKEN, options })),
+      hasCreationErrors(
+        validateCreationForm(valid, { takenBotNames: FEN_TAKEN, options, recipe: "present" }),
+      ),
     ).toBe(false);
   });
 
   it("wants a name for the environment", () => {
     expect(
-      validateCreationForm({ ...valid, name: " " }, { takenBotNames: NONE_TAKEN, options }).name,
+      validateCreationForm(
+        { ...valid, name: " " },
+        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
+      ).name,
     ).toBe("Give the environment a name.");
   });
 
   it("wants a name for the agent, short and unused", () => {
     expect(
-      validateCreationForm({ ...valid, botName: "" }, { takenBotNames: NONE_TAKEN, options })
-        .botName,
+      validateCreationForm(
+        { ...valid, botName: "" },
+        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
+      ).botName,
     ).toBe("Give the agent a name.");
     expect(
       validateCreationForm(
         { ...valid, botName: "x".repeat(25) },
-        { takenBotNames: NONE_TAKEN, options },
+        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
       ).botName,
     ).toContain("24");
     expect(
-      validateCreationForm({ ...valid, botName: "fen" }, { takenBotNames: FEN_TAKEN, options })
-        .botName,
+      validateCreationForm(
+        { ...valid, botName: "fen" },
+        { takenBotNames: FEN_TAKEN, options, recipe: "present" },
+      ).botName,
     ).toContain("already");
   });
 
@@ -179,6 +220,7 @@ describe("validateCreationForm", () => {
       validateCreationForm(valid, {
         takenBotNames: { names: ["Fen"], complete: false },
         options,
+        recipe: "present",
       }).botName,
     ).toBe("Checking which names are taken…");
   });
@@ -186,7 +228,7 @@ describe("validateCreationForm", () => {
   it("does not care about the agent's name when there is no agent", () => {
     const errors = validateCreationForm(
       { ...valid, withAgent: false, botName: "" },
-      { takenBotNames: NONE_TAKEN, options },
+      { takenBotNames: NONE_TAKEN, options, recipe: "present" },
     );
     expect(errors.botName).toBeUndefined();
   });
@@ -194,15 +236,17 @@ describe("validateCreationForm", () => {
   it("refuses nothing yet without an agent, and names a way out", () => {
     const errors = validateCreationForm(
       { ...valid, withAgent: false, recipeId: "none" },
-      { takenBotNames: NONE_TAKEN, options },
+      { takenBotNames: NONE_TAKEN, options, recipe: "present" },
     );
     expect(errors.recipe).toContain("switch the agent on");
   });
 
   it("refuses an option that is not on offer", () => {
     expect(
-      validateCreationForm({ ...valid, recipeId: "store" }, { takenBotNames: NONE_TAKEN, options })
-        .recipe,
+      validateCreationForm(
+        { ...valid, recipeId: "store" },
+        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
+      ).recipe,
     ).toBe("Choose what goes in the environment.");
   });
 });
@@ -213,24 +257,66 @@ describe("validateCreationForm, on an environment with no agent", () => {
    * pull request on the group repo. The old message stated the rule and left
    * the reader to deduce the order.
    */
-  it("says to merge a recipe first when the project has none", () => {
-    const options = recipeOptions({ roleLabel: "Prod", tier: undefined, services: [] });
-    expect(
-      validateCreationForm(
-        { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
-        { takenBotNames: NONE_TAKEN, options },
-      ).recipe,
-    ).toBe("This project has no recipe on main yet. Merge one first, or switch the agent on.");
-  });
+  // F9: only HQ answering "none" says there is no recipe; a read not back yet, or one that failed,
+  // says so, and holds the form whatever is chosen.
+  it.each([
+    {
+      recipe: "absent",
+      withAgent: false,
+      says: "This project has no recipe on main yet. Merge one first, or switch the agent on.",
+    },
+    { recipe: "reading", withAgent: false, says: "Reading the project's recipe…" },
+    { recipe: "reading", withAgent: true, says: "Reading the project's recipe…" },
+    {
+      recipe: "unreadable",
+      withAgent: false,
+      says: "The project's recipe can't be read right now.",
+    },
+    {
+      recipe: "unreadable",
+      withAgent: true,
+      says: "The project's recipe can't be read right now.",
+    },
+  ] as const)(
+    "with the recipe $recipe, the agent $withAgent: $says",
+    ({ recipe, withAgent, says }) => {
+      const options = recipeOptions({ roleLabel: "Prod", tier: undefined, services: [], recipe });
+      expect(
+        validateCreationForm(
+          { name: "Acme - production", withAgent, botName: "Otto", recipeId: "none" },
+          { takenBotNames: NONE_TAKEN, options, recipe },
+        ).recipe,
+      ).toBe(says);
+    },
+  );
 
   it("says to take the recipe when there is one", () => {
-    const options = recipeOptions({ roleLabel: "Prod", tier: TIER, services: ["app"] });
+    const options = recipeOptions({
+      roleLabel: "Prod",
+      tier: TIER,
+      services: ["app"],
+      recipe: "present",
+    });
     expect(
       validateCreationForm(
         { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
-        { takenBotNames: NONE_TAKEN, options },
+        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
       ).recipe,
     ).toBe("Take the project's recipe, or switch the agent on to have one set up.");
+  });
+});
+
+describe("creationRecipe — where the project's recipe stands for the creation forms", () => {
+  it.each([
+    { state: "loading", loading: true, recipe: "reading" },
+    // A dialog opened again says what the last read said, and waits for this one.
+    { state: "present", loading: true, recipe: "reading" },
+    { state: "absent", loading: true, recipe: "reading" },
+    { state: "present", loading: false, recipe: "present" },
+    { state: "absent", loading: false, recipe: "absent" },
+    { state: "unreadable", loading: false, recipe: "unreadable" },
+  ] as const)("$state, loading $loading: $recipe", ({ state, loading, recipe }) => {
+    expect(creationRecipe({ state, loading })).toBe(recipe);
   });
 });
 
