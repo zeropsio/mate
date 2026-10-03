@@ -358,14 +358,16 @@ function useArrivedLive(): boolean {
   return arrived;
 }
 
-/** Whether a bubble rises in as it arrives: not in the slot, and not one landing by a plop. */
+/**
+ * Whether a bubble rises in as it arrives — in the history or in the slot,
+ * once it was first drawn — never one landing by a plop.
+ */
 function useRisesIn(): boolean {
   const arrived = useArrivedLive();
-  const inSlot = use(InSlotContext);
   // As it mounted: a line that landed by a plop never rises in later.
   const plopping = use(PlopsContext);
   const [plops] = useState(plopping);
-  return arrived && !inSlot && !plops;
+  return arrived && !plops;
 }
 
 const HOLD_NOTHING = () => {};
@@ -2228,6 +2230,17 @@ function gatherCalls(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
 }
 
 /**
+ * The slot's rows: a card of calls keyed by which card of calls it is, not by
+ * its first call, so one whose first call leaves stays the same card.
+ */
+function slotEntries(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
+  let cards = 0;
+  return gatherCalls(lines).map((entry) =>
+    "calls" in entry ? { ...entry, key: `calls#${cards++}` } : entry,
+  );
+}
+
+/**
  * Where the person's words reached the Mate, on their side, in their bubble:
  * an answer to its question whole — it stands nowhere else; a message they
  * sent into the run in short, one line — the message itself stands on the
@@ -2733,6 +2746,11 @@ interface Landing {
   readonly atFoot: boolean;
   /** The history's lines by their key, by where each stood on screen. */
   readonly rows: ReadonlyMap<string, number>;
+  /**
+   * The slot's rows, by where each stood in it (from the slot's top): one that
+   * stays keeps its place in the slot as a row above it leaves.
+   */
+  readonly staying: ReadonlyMap<string, number>;
 }
 
 /** Where each of the chat's lines under `root` stands on screen, by its key. */
@@ -2741,6 +2759,19 @@ function lineTops(root: HTMLElement | null): ReadonlyMap<string, number> {
   if (typeof root?.querySelectorAll !== "function") return tops;
   for (const line of root.querySelectorAll<HTMLElement>("li[data-chat-row][data-run-key]")) {
     tops.set(line.dataset.runKey!, line.getBoundingClientRect().top);
+  }
+  return tops;
+}
+
+/**
+ * Where each row under `root` stands — a card of calls and each call in it —
+ * by its key, from `from` (the root's top on screen).
+ */
+function rowTops(root: HTMLElement | null, from: number): ReadonlyMap<string, number> {
+  const tops = new Map<string, number>();
+  if (typeof root?.querySelectorAll !== "function") return tops;
+  for (const row of root.querySelectorAll<HTMLElement>("[data-chat-row][data-run-key]")) {
+    tops.set(row.dataset.runKey!, row.getBoundingClientRect().top - from);
   }
   return tops;
 }
@@ -2763,15 +2794,19 @@ const THINKING_WORD_DELAY_MS = 300;
  * words on their way, a wait on the person, the context condensing.
  */
 function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
+  // On the slot's first draw it is simply there: a page opening never waits for it.
+  const late = useArrivedLive();
   switch (filler.kind) {
     case "thinking":
-      return (
+      return late ? (
         <span
           className="run-slot-word run-slot-later"
           style={{ animationDelay: `${THINKING_WORD_DELAY_MS}ms` }}
         >
           Thinking
         </span>
+      ) : (
+        <span className="run-slot-word">Thinking</span>
       );
     case "writing":
       return (
@@ -2885,6 +2920,11 @@ function LiveSlot({
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
     );
   const listRef = useRef<HTMLOListElement>(null);
+  // What enters after the slot's first draw arrived while the person watched.
+  const shownRef = useRef(false);
+  useLayoutEffect(() => {
+    shownRef.current = true;
+  }, []);
   // The face and the clock stand on the first line, whatever bubble it is in.
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -2898,7 +2938,25 @@ function LiveSlot({
     const y = line === undefined ? null : line.top + line.height / 2 - top;
     if (y === null) slotBox.style.removeProperty("--run-slot-line");
     else slotBox.style.setProperty("--run-slot-line", `${y}px`);
-  });
+    // The room the slot takes, its gap above it included: on a short page
+    // the card holds it whole once the history has none left to give.
+    const chat = slotBox.parentElement;
+    if (chat !== null) {
+      const above = slotBox.previousElementSibling ?? null;
+      const from =
+        above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+      chat.style.setProperty(
+        "--run-slot-room",
+        `${Math.ceil(slotBox.getBoundingClientRect().bottom - from)}px`,
+      );
+    }
+    // They move with the first line only once placed: a first paint, a
+    // thread opened or a card scrolled back to never slides them in.
+    if (!slotBox.hasAttribute("data-placed")) {
+      requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
+    }
+    // Read only when what it shows changed, never on every draw.
+  }, [slot, live, items, filler, lines.length]);
   return (
     <div
       ref={ref}
@@ -2919,45 +2977,47 @@ function LiveSlot({
         />
       </span>
       <InSlotContext value>
-        <ol ref={listRef} className="run-slot-list">
-          {lines.length === 0 ? (
-            <li key={`filler:${filler.kind}`} className="run-slot-filler">
-              <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
-                <span className="flex h-[1lh] items-center" />
-              </span>
-              <span className="run-now-words">
-                <SlotFillerWords filler={filler} />
-              </span>
-            </li>
-          ) : (
-            gatherCalls(lines).map((entry) =>
-              "calls" in entry ? (
-                <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
-                  <CallGroup>
-                    {entry.calls.map((line) => (
-                      <ChatLineContext key={line.key} value={line.key}>
-                        {line.bubble}
-                      </ChatLineContext>
-                    ))}
-                  </CallGroup>
-                </ChatRow>
-              ) : (
-                <ChatRow
-                  key={entry.key}
-                  across={entry.across === true}
-                  lineKey={entry.key}
-                  mark={entry.mark}
-                  markLine={entry.markLine}
-                  pairs={entry.pairs === true}
-                  theirs={entry.theirs === true}
-                >
-                  {entry.bubble}
-                </ChatRow>
-              ),
-            )
-          )}
-          {more > 0 ? <li className="run-slot-more">{`+${more} more running`}</li> : null}
-        </ol>
+        <ChatShownContext value={shownRef}>
+          <ol ref={listRef} className="run-slot-list">
+            {lines.length === 0 ? (
+              <li key={`filler:${filler.kind}`} className="run-slot-filler">
+                <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
+                  <span className="flex h-[1lh] items-center" />
+                </span>
+                <span className="run-now-words">
+                  <SlotFillerWords filler={filler} />
+                </span>
+              </li>
+            ) : (
+              slotEntries(lines).map((entry) =>
+                "calls" in entry ? (
+                  <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
+                    <CallGroup>
+                      {entry.calls.map((line) => (
+                        <ChatLineContext key={line.key} value={line.key}>
+                          {line.bubble}
+                        </ChatLineContext>
+                      ))}
+                    </CallGroup>
+                  </ChatRow>
+                ) : (
+                  <ChatRow
+                    key={entry.key}
+                    across={entry.across === true}
+                    lineKey={entry.key}
+                    mark={entry.mark}
+                    markLine={entry.markLine}
+                    pairs={entry.pairs === true}
+                    theirs={entry.theirs === true}
+                  >
+                    {entry.bubble}
+                  </ChatRow>
+                ),
+              )
+            )}
+            {more > 0 ? <li className="run-slot-more">{`+${more} more running`}</li> : null}
+          </ol>
+        </ChatShownContext>
       </InSlotContext>
       <span className="run-slot-clock">
         <RunTicker status={status} />
@@ -3032,24 +3092,51 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     record: recordKeys,
     final: !slotted,
     syncing: ctx.syncing,
-    onChange: (from, to) => {
+    onChange: (from, to, redrawn) => {
       const after = slotHolds(to);
-      const leaving = [...slotHolds(from)].filter((key) => !after.has(key));
-      if (leaving.length === 0) return;
+      const before = slotHolds(from);
+      const leaving = [...before].filter((key) => !after.has(key));
+      // What enters makes its room too: the history glides as the slot grows.
+      const entering = to.entries.some((entry) => !before.has(entry.key));
+      if (leaving.length === 0 && !entering) return;
+      // Where things stood as last painted: a change heard right after a draw
+      // that already moved them (a check that ended as it was due, drawn as
+      // it settled) starts from what the person saw, never from that draw.
+      // On its own clock nothing was drawn since: what shows now, a glide in
+      // flight included.
+      const painted = (redrawn ? paintedRef.current : null) ?? paintedNow();
       const stood = new Map<string, number>();
       for (const key of leaving) {
-        const row = rowByKey(slotRef.current, key);
-        stood.set(key, row === null || !slotted ? Number.NaN : row.getBoundingClientRect().top);
+        const top = painted.slotRows.get(key);
+        stood.set(key, top === undefined || !slotted ? Number.NaN : top + (painted.slot ?? 0));
       }
-      const scroll = scrollIn(aboveRef.current);
       setLanding({
         from: stood,
-        rows: slotted ? lineTops(aboveRef.current) : new Map(),
-        slot: slotted ? (boxOf(slotRef.current)?.top ?? null) : null,
-        card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
-        atFoot: scroll === null || standsAtFoot(scroll),
+        rows: slotted ? painted.rows : new Map(),
+        slot: slotted ? painted.slot : null,
+        card: painted.card,
+        atFoot: painted.atFoot,
+        staying: slotted ? painted.slotRows : new Map(),
       });
     },
+  });
+  /** Where the history's lines, the slot and its rows stand on screen now. */
+  const paintedNow = () => {
+    const scroll = scrollIn(aboveRef.current);
+    const slotTop = boxOf(slotRef.current)?.top ?? null;
+    return {
+      rows: lineTops(aboveRef.current),
+      slot: slotTop,
+      slotRows: rowTops(slotRef.current, slotTop ?? 0),
+      card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
+      atFoot: scroll === null || standsAtFoot(scroll),
+    };
+  };
+  const paintedRef = useRef<ReturnType<typeof paintedNow> | null>(null);
+  // Read after each draw of a live run's card, once its landing glides
+  // started: the next change starts from here.
+  useLayoutEffect(() => {
+    paintedRef.current = slotted ? paintedNow() : null;
   });
   // What left the slot lands: the history at its foot, its lines gliding
   // where the landing moved them, each landed line plopping from where it
@@ -3072,8 +3159,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     const scroll = scrollIn(aboveRef.current);
     if (scroll !== null && landing.atFoot) scroll.scrollTop = scroll.scrollHeight;
     const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
-    if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows);
+    if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows, landing.slot);
     for (const [key, from] of landing.from) {
+      // One that rode along unseen rises in as it arrives (`useRisesIn`).
+      if (!Number.isFinite(from)) continue;
       const line = rowByKey(list, key);
       if (line === null) continue;
       // A call that opened a card of its own lands with its card.
@@ -3082,10 +3171,25 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       plop(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line, from);
     }
     const element = slotRef.current;
-    const box = boxOf(element);
-    if (landing.slot === null || landing.card === null || element === null || box === null) return;
-    if (grew > 0.5) return;
-    glide(element, landing.slot - box.top);
+    if (landing.slot === null || landing.card === null || element === null) return;
+    // Growing, the card grows at its bottom, and the list moves the slot.
+    if (grew <= 0.5) glideFrom(element, landing.slot);
+    // A row that stays in the slot keeps its place in it as a row above it
+    // leaves, and travels to its new one on the same curve: read from what
+    // holds it — the slot, or its card of calls — so the slot's own move, a
+    // glide or the list's, is never added to it.
+    const rowSelector = "[data-chat-row][data-run-key]";
+    for (const row of element.querySelectorAll<HTMLElement>(rowSelector)) {
+      const stood = landing.staying.get(row.dataset.runKey!);
+      if (stood === undefined) continue;
+      const holder = row.parentElement?.closest<HTMLElement>(rowSelector) ?? null;
+      const inHolder = holder !== null && element.contains(holder) ? holder : null;
+      const holderStood = inHolder === null ? 0 : landing.staying.get(inHolder.dataset.runKey!);
+      if (holderStood === undefined) continue;
+      stopGliding(row);
+      const base = (inHolder ?? element).getBoundingClientRect().top;
+      glideBy(row, stood - holderStood - (row.getBoundingClientRect().top - base));
+    }
   }, [landing]);
   const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
   const history = holds.size === 0 ? row.items : row.items.filter((item) => !holds.has(item.key));
@@ -3122,7 +3226,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         className="@container/chat min-w-0"
         data-run-chat
         data-run-fold={settled ? fold : undefined}
-        data-run-live={slotted ? "" : undefined}
+        // The shared height holds through the settle's fold: dropped in the
+        // commit the fold measures, the history jumped to its own height first.
+        data-run-live={slotted || fold === "folding" ? "" : undefined}
         style={
           { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
         }
@@ -3488,15 +3594,7 @@ function RunScroll({
           <ol ref={listRef} className="flex min-w-0 flex-col gap-3">
             {shown.map((entry) =>
               "calls" in entry ? (
-                <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
-                  <CallGroup>
-                    {entry.calls.map((line) => (
-                      <ChatLineContext key={line.key} value={line.key}>
-                        <PlopsContext value={line.plops === true}>{line.bubble}</PlopsContext>
-                      </ChatLineContext>
-                    ))}
-                  </CallGroup>
-                </ChatRow>
+                <CallsCard key={entry.key} entry={entry} />
               ) : (
                 <PlopsContext key={entry.key} value={entry.plops === true}>
                   <ChatRow
@@ -3538,13 +3636,42 @@ function cardRowOf(chat: HTMLElement | null): HTMLElement | null {
   return chat.closest<HTMLElement>("[data-card-slice]");
 }
 
+/**
+ * Stops what moves an element by a translate — a plop or a glide in flight —
+ * so its place is read where the layout has it: a new move starts from where
+ * it shows, never from a place the one it replaces held it off.
+ */
+function stopGliding(element: HTMLElement): void {
+  if (typeof element.getAnimations !== "function") return;
+  for (const animation of element.getAnimations()) {
+    const effect = animation.effect;
+    if (
+      effect instanceof KeyframeEffect &&
+      effect.getKeyframes().some((frame) => "translate" in frame)
+    ) {
+      animation.cancel();
+    }
+  }
+}
+
+/**
+ * An element gliding to its place from where it showed (`stood`, its top on
+ * screen) on the plop's curve; how far it glides. One in flight is taken over
+ * from where it shows.
+ */
+function glideFrom(element: HTMLElement, stood: number): number {
+  stopGliding(element);
+  return glideBy(element, stood - element.getBoundingClientRect().top);
+}
+
 /** An element gliding from `moved` px off its place to it, on the plop's curve. */
-function glide(element: HTMLElement, moved: number): void {
-  if (Math.abs(moved) < 0.5) return;
+function glideBy(element: HTMLElement, moved: number): number {
+  if (Math.abs(moved) < 0.5) return 0;
   element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
     duration: PLOP_MS,
     easing: "cubic-bezier(0.23, 1, 0.32, 1)",
   }).currentTime = 0;
+  return moved;
 }
 
 /**
@@ -3556,20 +3683,45 @@ function glideLines(
   scroll: HTMLElement,
   list: HTMLElement,
   before: ReadonlyMap<string, number>,
+  /** Where the view ended before: a slot that grew took room a line stood in. */
+  stoodBottom: number | null = null,
 ): void {
   if (before.size === 0 || prefersReducedMotion()) return;
-  const view = scroll.getBoundingClientRect();
+  const shown = scroll.getBoundingClientRect();
+  const view = { top: shown.top, bottom: Math.max(shown.bottom, stoodBottom ?? shown.bottom) };
   for (const line of list.children) {
     if (!(line instanceof HTMLElement)) continue;
     const stood = line.dataset.runKey === undefined ? undefined : before.get(line.dataset.runKey);
     if (stood === undefined) continue;
+    stopGliding(line);
     const box = line.getBoundingClientRect();
     const moved = stood - box.top;
     if (Math.abs(moved) < 0.5 || box.bottom + moved < view.top || box.top + moved > view.bottom) {
       continue;
     }
-    glide(line, moved);
+    glideFrom(line, stood);
   }
+}
+
+/**
+ * A card of calls in the history. One that a call starting it lands with
+ * plops as that call does, and never rises in on top of the plop.
+ */
+function CallsCard({ entry }: { readonly entry: Extract<ChatEntry, { calls: unknown }> }) {
+  const plops = entry.calls.some((line) => line.plops === true);
+  return (
+    <PlopsContext value={plops}>
+      <ChatRow across={false} lineKey={entry.key} theirs={false}>
+        <CallGroup>
+          {entry.calls.map((line) => (
+            <ChatLineContext key={line.key} value={line.key}>
+              <PlopsContext value={line.plops === true}>{line.bubble}</PlopsContext>
+            </ChatLineContext>
+          ))}
+        </CallGroup>
+      </ChatRow>
+    </PlopsContext>
+  );
 }
 
 /** Whether a line lands by a plop: it stood in the slot (a rider rises in on its own). */
@@ -3616,6 +3768,7 @@ function plop(row: HTMLElement, from: number) {
     }).currentTime = 0;
     return;
   }
+  stopGliding(row);
   const travel = from - row.getBoundingClientRect().top;
   if (Math.abs(travel) < 0.5) {
     mark?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease" });

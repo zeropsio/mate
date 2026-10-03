@@ -4323,6 +4323,11 @@ code {
   top: var(--run-slot-line, 26px);
   translate: 0 -50%;
   z-index: 1;
+}
+/* They follow the first line once placed, never from where a first paint
+   guessed it. */
+.run-slot[data-placed] > .run-slot-face,
+.run-slot[data-placed] > .run-slot-clock {
   transition: top 240ms var(--ease-out-strong);
 }
 .run-slot-face {
@@ -4383,8 +4388,8 @@ code {
   color: var(--color-muted-foreground);
 }
 @media (prefers-reduced-motion: reduce) {
-  .run-slot-face,
-  .run-slot-clock {
+  .run-slot[data-placed] > .run-slot-face,
+  .run-slot[data-placed] > .run-slot-clock {
     transition: none;
   }
 }
@@ -4424,7 +4429,8 @@ code {
    grows takes its room from the history, never from the page. */
 [data-run-chat][data-run-live] {
   display: flex;
-  max-height: min(560px, 60svh);
+  /* On a short page the slot alone can pass the cap: the card holds it whole. */
+  max-height: max(min(560px, 60svh), var(--run-slot-room, 0px));
   flex-direction: column;
 }
 [data-run-chat][data-run-live] > .run-above {

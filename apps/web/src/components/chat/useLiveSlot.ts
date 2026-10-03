@@ -32,14 +32,19 @@ export function useLiveSlot({
    * history at once, never an arrival that stands or plops (`slotResync`).
    */
   readonly syncing?: boolean;
-  readonly onChange?: (from: LiveSlot, to: LiveSlot) => void;
+  /**
+   * Hears a change before it is drawn. `redrawn`: heard right after a draw of
+   * the card, which may have moved things already — where they stood is what
+   * was painted before it.
+   */
+  readonly onChange?: (from: LiveSlot, to: LiveSlot, redrawn: boolean) => void;
 }): LiveSlot {
   const [slot, setSlot] = useState(() => slotStart({ live, record, at: Date.now() }));
   const slotRef = useRef(slot);
-  const move = (next: LiveSlot) => {
+  const move = (next: LiveSlot, redrawn: boolean) => {
     const from = slotRef.current;
     if (next === from) return;
-    onChange?.(from, next);
+    onChange?.(from, next, redrawn);
     slotRef.current = next;
     setSlot(next);
   };
@@ -52,9 +57,9 @@ export function useLiveSlot({
       setSlot(next);
       return;
     }
-    move(slotOffer(slotRef.current, { live, record, at: Date.now(), final }));
+    move(slotOffer(slotRef.current, { live, record, at: Date.now(), final }), true);
   });
-  const settle = useEffectEvent(() => move(slotSettle(slotRef.current, Date.now())));
+  const settle = useEffectEvent(() => move(slotSettle(slotRef.current, Date.now()), false));
   // Offered on every draw: an offer that changes nothing returns the slot it was given.
   useLayoutEffect(() => offer());
   const due = slotDue(slot);
