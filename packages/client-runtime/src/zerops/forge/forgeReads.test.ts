@@ -749,6 +749,61 @@ describe("createForgeReads — one listing for the whole account", () => {
     expect(new Set(skipped.map((each) => each.join(" ")))).toEqual(new Set(["acme beta"]));
     expect(await refresh()).toEqual(["account", "acme", "beta"]);
   });
+
+  // The reviewer's repro (pass 37): an org read between two ticks once listed the whole account,
+  // and the org it named nothing of then turned the account listing off for ten minutes.
+  it.each([
+    {
+      name: "a group created a moment ago, its org not made yet",
+      between: "fresh",
+      created: ["fresh"],
+      minute: ["/orgs/fresh/repos", "/repos/search"],
+    },
+    {
+      name: "an org read again off its tick (a deploy key changed)",
+      between: "group3",
+      created: [],
+      minute: ["/repos/search"],
+    },
+  ])("lists only the org read between ticks: $name", async ({ between, created, minute }) => {
+    const slugs = orgNames(14);
+    const server = gitea(Object.fromEntries(slugs.map((slug) => [slug, ["app", "group"]])));
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
+    const refresh = async (owners: ReadonlyArray<string>) => {
+      reads.tick();
+      await Promise.allSettled(owners.map((owner) => reads.repositories(owner, server.client)));
+      return server.take().toSorted();
+    };
+    expect(await refresh(slugs)).toEqual(["/repos/search", "/user"]);
+    clock = NOW + 40_000;
+    await reads.repositories(between, server.client).catch(() => null);
+    expect(server.take()).toEqual([`/orgs/${between}/repos`]);
+    const minutes: Array<ReadonlyArray<string>> = [];
+    for (let at = 1; at <= 11; at += 1) {
+      clock = NOW + at * 60_000;
+      minutes.push(await refresh([...slugs, ...created]));
+    }
+    expect(minutes).toEqual(Array.from({ length: 11 }, () => minute));
+  });
+
+  it("counts an org whose listing answers 404 as no miss: the account is listed again", async () => {
+    const server = gitea({}, ["notes"]);
+    let clock = NOW;
+    const reads = createForgeReads({ now: () => clock });
+    const refresh = async () => {
+      reads.tick();
+      await reads.repositories("fresh", server.client).catch(() => null);
+      return server.take().toSorted();
+    };
+    expect(await refresh()).toEqual(["/orgs/fresh/repos", "/repos/search", "/user"]);
+    clock += 60_000;
+    expect(await refresh()).toEqual(["/orgs/fresh/repos", "/repos/search"]);
+    server.state.orgs = { fresh: ["group"] };
+    clock += 60_000;
+    expect(await refresh()).toEqual(["/repos/search"]);
+    expect(reads.organizations().get("fresh")).toBe(true);
+  });
 });
 
 describe("splitAccountListing", () => {

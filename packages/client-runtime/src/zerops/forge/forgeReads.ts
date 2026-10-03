@@ -25,9 +25,10 @@
  *
  * A refresh is a burst: the readers' clocks tick together ({@link ForgeReads.tick}), and every org
  * read until the next tick shares the account listing made after it, while it is
- * {@link GATE_FRESH_MS} old. An org's listing is never older than its own tick, whoever listed the
- * account or the org before it: neither another org's read between two ticks nor the pull watch's
- * look answers the next tick. The pull watch, which looks at one org every few seconds, lists that
+ * {@link GATE_FRESH_MS} old; an org read after that and before the next tick — a group created a
+ * moment ago, a deploy key that changed — lists itself, never the whole account again. An org's
+ * listing is never older than its own tick, whoever listed the account or the org before it:
+ * neither another org's read between two ticks nor the pull watch's look answers the next tick. The pull watch, which looks at one org every few seconds, lists that
  * org on its own (`forge/pullWatch.ts`).
  *
  * The account listing names every repository of an org the person is on a team of (gitea-mate's
@@ -36,10 +37,10 @@
  * team of — is listed on its own as before; so is every org on a refresh whose account listing
  * failed (other than with the session's 401) or does not add up ({@link splitAccountListing}), and
  * for {@link ACCOUNT_SKIP_MS} after one that stopped at the client's page limit or named none of
- * the orgs asked of it. That own listing is also the one answer to whether the broker has made a
- * group's org yet: a `404` is "not made yet" ({@link ForgeReads.organizations}), kept like a
- * listing — never past the next tick — and the next refresh's `200`, or the account listing naming
- * it, is "made". A group created a moment ago is a real state its row says out loud while
+ * the orgs asked of it that are there (an org whose own listing answers `404` is no miss). That own
+ * listing is also the one answer to whether the broker has made a group's org yet: a `404` is "not
+ * made yet" ({@link ForgeReads.organizations}), kept like a listing — never past the next tick —
+ * and the next refresh's `200`, or the account listing naming it, is "made". A group created a moment ago is a real state its row says out loud while
  * the broker builds it (30–80 s), and the reader's own clock takes the line away on any screen, in
  * any tab — no page asks `GET /orgs/{o}` of its own.
  *
@@ -419,9 +420,14 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
     if (currentUser === undefined || listAccountRepositories === undefined || at < skipUntilMs) {
       return Promise.resolve(undefined);
     }
-    const ofThisRefresh = (atMs: number) => atMs >= burstMs && at - atMs < freshMs;
-    if (account !== undefined && ofThisRefresh(account.atMs)) return Promise.resolve(account);
-    if (accountRead !== undefined && ofThisRefresh(accountRead.atMs)) return accountRead.read;
+    // This refresh's listing while it is fresh; after that, an org read before the next tick — a
+    // group created a moment ago, a deploy key that changed — lists itself, never the account.
+    if (accountRead !== undefined && accountRead.atMs >= burstMs) {
+      return at - accountRead.atMs < freshMs ? accountRead.read : Promise.resolve(undefined);
+    }
+    if (account !== undefined && account.atMs >= burstMs) {
+      return Promise.resolve(at - account.atMs < freshMs ? account : undefined);
+    }
     // The last one named none of the orgs asked of it: the person is on no group's team.
     if (account?.byOwner !== undefined && account.served === 0 && account.missed > 0) {
       skipUntilMs = account.atMs + ACCOUNT_SKIP_MS;
@@ -528,8 +534,11 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
           if (whole?.byOwner === undefined) return ownListing();
           const named = whole.byOwner.get(ownerKey(owner));
           if (named === undefined) {
-            whole.missed += 1;
-            return ownListing();
+            // A miss only when the org is there: a 404 is one the broker has not made yet.
+            return ownListing().then((repositories) => {
+              whole.missed += 1;
+              return repositories;
+            });
           }
           whole.served += 1;
           const current = listings.get(owner);
