@@ -375,6 +375,9 @@ function useCarried(
 /** Whether the line lands by a plop from the live slot: then it never rises in on its own. */
 const PlopsContext = createContext(false);
 
+/** A call riding in a new card that lands by a plop: it rises in, the card plops. */
+const RidesContext = createContext(false);
+
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
   const shown = use(ChatShownContext);
@@ -1306,7 +1309,9 @@ function CallRow({
   const group = use(CallGroupContext);
   // A call a resync brings is simply there.
   const { syncing } = use(TimelineRowCtx);
-  const [joined] = useState(() => (group?.current ?? false) && !syncing);
+  // One riding in a card that plops rises in, though its card is new.
+  const rides = use(RidesContext);
+  const [joined] = useState(() => ((group?.current ?? false) || rides) && !syncing);
   const lineKey = use(ChatLineContext);
   // As it mounted: a call that landed by a plop never rises in later.
   const plopping = use(PlopsContext);
@@ -3853,7 +3858,9 @@ function CallsCard({ entry }: { readonly entry: Extract<ChatEntry, { calls: unkn
         <CallGroup>
           {entry.calls.map((line) => (
             <ChatLineContext key={line.key} value={line.key}>
-              <PlopsContext value={line.plops === true}>{line.bubble}</PlopsContext>
+              <PlopsContext value={line.plops === true}>
+                <RidesContext value={plops && line.plops !== true}>{line.bubble}</RidesContext>
+              </PlopsContext>
             </ChatLineContext>
           ))}
         </CallGroup>
