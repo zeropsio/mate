@@ -2033,6 +2033,43 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  // E2E 2026-10-03: the first write after a fresh load failed while auto-connect minted and
+  // deleted throwaways on the token list the press reads. A press in flight holds the background.
+  it.effect("auto-connect mints nothing while a press is in flight, and goes on once it ends", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let pressing = true;
+        const heard = { listener: (): void => undefined };
+        const { clock, rig, environments } = yield* granted(
+          [],
+          [CLOSED_OFF_MATE],
+          platformAdapter([CLOSED_OFF_MATE]),
+          [CLOSED_OFF_MATE],
+          {
+            ...HQ_CLOSED_OFF,
+            pressInFlight: {
+              read: () => pressing,
+              subscribe: (listener) => {
+                heard.listener = listener;
+                return () => undefined;
+              },
+            },
+          },
+        );
+        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+        environments.setActiveOrganization("org-1");
+        yield* clock.advance(30 * SECOND);
+        yield* settle;
+        expect(autoConnected(rig)).toBe(0);
+
+        pressing = false;
+        heard.listener();
+        yield* settle;
+        expect(autoConnected(rig)).toBe(1);
+      }),
+    ),
+  );
+
   // Its ⋯ menu offers its harden; auto-connect does not wait for it (pass 28 review).
   it.effect("an older Mate whose keys are all still ADMIN connects", () =>
     Effect.scoped(

@@ -8,6 +8,8 @@ import { descriptorFacts, exchangeAtDoor } from "../identityExchange.ts";
 import { makeFakeMate, type FakeMate, type FakeMateCredential } from "../testing/fakeMate.ts";
 import {
   AUTH_LOOP_REJECTIONS,
+  CAPPED_RETRY_MS,
+  RETRY_CAP,
   type ContainerVerdict,
   type EnvironmentDiagnostic,
   type Presence,
@@ -131,6 +133,8 @@ function rig(
     readonly throttledMints?: number;
     /** The targets whose session an earlier load kept, and their Mates still hold. */
     readonly kept?: ReadonlySet<TargetKey>;
+    /** Each target's backoff cap as loads keep it, wall ms: read and written by the driver. */
+    readonly capped?: Map<TargetKey, number>;
   } = {},
 ): Rig {
   const platform = platformThrottling(options.throttledMints ?? 0);
@@ -173,6 +177,17 @@ function rig(
       );
     },
     kept: (key) => options.kept?.has(key) ?? false,
+    ...(options.capped === undefined
+      ? {}
+      : {
+          capped: {
+            until: (key: TargetKey) => options.capped!.get(key) ?? null,
+            remember: (key: TargetKey, until: number | null) => {
+              if (until === null) options.capped!.delete(key);
+              else options.capped!.set(key, until);
+            },
+          },
+        }),
     install: async ({ key, environmentId, credential }) => {
       installs.push({ key, credential });
       const failure = failedInstalls.shift();
@@ -551,6 +566,92 @@ describe("exchange driver (DESIGN §4.4)", () => {
     driver.setDemand("auto-connect", fresh.map(keyOf));
     await flush();
     expect(exchanges).toHaveLength(restored.length + DOOR_MINT_BURST);
+  });
+
+  // E2E 2026-10-03: an old Mate whose door answered 500 cost five exchanges in each load's first
+  // minute — the ladder starts over with every load. Its cap is kept across loads, by target.
+  describe("a Mate's backoff cap outlives the load that reached it", () => {
+    const WALL = 1_800_000_000_000;
+
+    it("waits out a cap an earlier load kept before the background asks it again", async () => {
+      const old = mate("old");
+      const capped = new Map([[keyOf(old), WALL + 60_000]]);
+      const { clock, exchanges, start } = rig([old], { capped });
+      await start({ demand: { reason: "auto-connect", mates: [old] } });
+      expect(exchanges).toHaveLength(0);
+
+      await clock.advance(59_999);
+      expect(exchanges).toHaveLength(0);
+      await clock.advance(1);
+      expect(exchanges).toHaveLength(1);
+    });
+
+    it("asks the Mate the route names at once, whatever an earlier load kept", async () => {
+      const old = mate("old");
+      const { exchanges, start } = rig([old], {
+        capped: new Map([[keyOf(old), WALL + 60_000]]),
+      });
+      await start({ route: old });
+      expect(exchanges).toHaveLength(1);
+    });
+
+    it("keeps the cap its ladder reaches, and forgets it once the Mate connects", async () => {
+      const old = mate("old");
+      old.scriptDoor(...Array.from({ length: RETRY_CAP }, () => "500" as const));
+      const capped = new Map<TargetKey, number>();
+      const { clock, driver, exchanges, start } = rig([old], { capped });
+      await start({ demand: { reason: "auto-connect", mates: [old] } });
+      await clock.advance(2_000 + 4_000 + 8_000 + 15_000);
+      expect(exchanges).toHaveLength(RETRY_CAP);
+      const capAt = clock.now().wall + CAPPED_RETRY_MS;
+      expect(capped.get(keyOf(old))).toBe(capAt);
+
+      await clock.advance(CAPPED_RETRY_MS);
+      expect(exchanges).toHaveLength(RETRY_CAP + 1);
+      expect(driver.machine(keyOf(old))?.credential).toMatchObject({ kind: "held" });
+      expect(capped.has(keyOf(old))).toBe(false);
+    });
+
+    it("caps again at once a Mate whose kept cap ended and whose door still fails", async () => {
+      const old = mate("old");
+      old.scriptDoor("500", "500");
+      const capped = new Map([[keyOf(old), WALL + 1_000]]);
+      const { clock, exchanges, start } = rig([old], { capped });
+      await start({ demand: { reason: "auto-connect", mates: [old] } });
+      await clock.advance(1_000);
+      expect(exchanges).toHaveLength(1);
+      expect(capped.get(keyOf(old))).toBe(WALL + 1_000 + CAPPED_RETRY_MS);
+
+      // The ladder's two seconds are not the background's: the cap holds it.
+      await clock.advance(CAPPED_RETRY_MS - 1);
+      expect(exchanges).toHaveLength(1);
+      await clock.advance(1);
+      expect(exchanges).toHaveLength(2);
+    });
+  });
+
+  // E2E 2026-10-03: the first write after a fresh load failed while auto-connect minted and
+  // deleted throwaways on the same token list the press reads.
+  it("holds the background's mints while a press is in flight, never the person's or a kept one", async () => {
+    const background = mate("bg");
+    const routed = mate("route");
+    const restored = mate("kept");
+    const { driver, exchanges, start } = rig([background, routed, restored], {
+      kept: new Set([keyOf(restored)]),
+    });
+    driver.holdBackground(true);
+    await start({
+      records: [restored],
+      route: routed,
+      demand: { reason: "auto-connect", mates: [background] },
+    });
+    expect(exchanges.map((request) => request.key).sort()).toEqual(
+      [keyOf(restored), keyOf(routed)].sort(),
+    );
+
+    driver.holdBackground(false);
+    await flush();
+    expect(exchanges.map((request) => request.key)).toContain(keyOf(background));
   });
 
   describe("a Mate the person asks for never waits on the mint budget", () => {

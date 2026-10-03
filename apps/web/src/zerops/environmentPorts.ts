@@ -60,7 +60,8 @@ import { hqPlacementsAtom } from "~/state/zerops";
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
-import { pressingProjects } from "./matePress";
+import { makeDoorCaps } from "./doorCaps";
+import { pressesInFlight, pressingProjects } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -104,6 +105,9 @@ const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
 });
 
 const quiet = { reportFailure: false } as const;
+
+/** Each Mate's backoff cap, kept across loads under the account's storage (`doorCaps.ts`). */
+const doorCaps = makeDoorCaps(accountLocalStorage, () => Date.now());
 
 const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath() });
 
@@ -418,6 +422,8 @@ export function webEnvironmentPorts(input: {
       },
       // A kept session its Mate gave no word on mints next time: that exchange waits on the pace.
       kept: presentsKept,
+      // A Mate's backoff cap outlives the load that reached it.
+      capped: doorCaps,
       readDescriptor: async (origin, signal) =>
         descriptorFacts(
           await mateDescriptors.descriptor(zeropsMateBaseUrl(origin, servedApp()), signal),
@@ -448,6 +454,8 @@ export function webEnvironmentPorts(input: {
     admission: connectionAdmission,
     // A press or a harden this tab is running: its Mate is not connected meanwhile.
     pressing: pressingProjects,
+    // Any press in flight: the background mints no throwaway meanwhile.
+    pressInFlight: pressesInFlight,
     // A Mate its press marked waits for HQ to say its project is closed off.
     closedOff: closedOffPort(registry),
   };

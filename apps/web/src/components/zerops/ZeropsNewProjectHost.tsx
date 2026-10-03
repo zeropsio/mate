@@ -73,7 +73,13 @@ import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import { beginPress, finishMateSetup, useMatePress, type MatePress } from "~/zerops/matePress";
+import {
+  beginPress,
+  finishMateSetup,
+  useMatePress,
+  whilePressing,
+  type MatePress,
+} from "~/zerops/matePress";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -265,8 +271,11 @@ function NewProjectDialog() {
         registerGroup: async ({ hq, name: groupName }) => ({
           appId: (await accountHqApi(client, organizationId, hq).createApp(groupName)).id,
         }),
+        // In flight as a press: the background mints no throwaway while it reads the token list.
         createProject: (creation) =>
-          runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
+          whilePressing(() =>
+            runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
+          ),
         accepted: (projectId, { hq, appId }, startedAt, containerImported) => {
           // The press goes on: the project closed off and the Mate attached to its application in
           // HQ. The listing is read again so the project's group catches

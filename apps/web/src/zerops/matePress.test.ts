@@ -22,11 +22,13 @@ import {
   finishMateSetup,
   pressComingInput,
   pressDoneAt,
+  pressesInFlight,
   pressingProjects,
   readMatePress,
   runPress,
   settlePress,
   STOPPED_SHOWN_MS,
+  whilePressing,
   withPressTries,
   type MatePress,
   type MatePressState,
@@ -696,6 +698,60 @@ describe("pressingProjects", () => {
     expect([...pressingProjects.read()]).toEqual([]);
     expect(heard).toBe(2);
     stop();
+  });
+});
+
+// E2E 2026-10-03: the first write after a fresh load failed while auto-connect minted and deleted
+// throwaways on the token list the press reads. The background holds while any press is in
+// flight, from before the platform takes its project to its end.
+describe("pressesInFlight", () => {
+  it("says a press is in flight from its first step to its end", async () => {
+    const seen: Array<boolean> = [];
+    const stop = pressesInFlight.subscribe(() => seen.push(pressesInFlight.read()));
+    let during: boolean | undefined;
+    const platform = {
+      markClosedOff: async () => {
+        during = pressesInFlight.read();
+      },
+    } as unknown as EnvironmentCreationPlatform;
+    expect(pressesInFlight.read()).toBe(false);
+    await runPress({
+      organizationId: "org-acme",
+      steps: [{ kind: "close-off", isolated: true }],
+      platform,
+      isCurrent: () => true,
+      resume: { from: 0, projectId: "p-flight", projectName: "Acme - Ada" },
+      locks: undefined,
+      sleep: async () => undefined,
+    });
+    forgetPress("p-flight");
+    expect({ during, after: pressesInFlight.read(), seen }).toEqual({
+      during: true,
+      after: false,
+      seen: [true, false],
+    });
+    stop();
+  });
+
+  it("counts a New project's creation before its project exists, and two until both end", async () => {
+    let finishFirst = (): void => undefined;
+    const first = whilePressing(
+      () =>
+        new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        }),
+    );
+    await whilePressing(async () => {
+      expect(pressesInFlight.read()).toBe(true);
+    });
+    expect(pressesInFlight.read()).toBe(true);
+    finishFirst();
+    await first;
+    expect(pressesInFlight.read()).toBe(false);
+    await expect(whilePressing(() => Promise.reject(new Error("refused")))).rejects.toThrow(
+      "refused",
+    );
+    expect(pressesInFlight.read()).toBe(false);
   });
 });
 

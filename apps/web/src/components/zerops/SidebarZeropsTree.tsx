@@ -2485,20 +2485,21 @@ function MateRow<T extends RosterCandidate>({
     // It waits on the viewer once its page can show the sign-in: its link made.
     linked: candidate.group === "connected",
   });
+  // A Mate with no container the listing has read — none in its project, or its services not
+  // read yet — has nothing to sign in, and says nothing of it: no sign-in line, no empty seat.
+  const containerless = candidate.service === undefined;
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
-  // added it, that it waits on them — with the amber dot of what needs them. A Mate with no
-  // container the listing has read — none in its project, or its services not read yet — has
-  // nothing to sign in, and says nothing of it.
+  // added it, that it waits on them — with the amber dot of what needs them.
   const signIn =
-    deleting ||
-    finishing !== undefined ||
-    view.coming !== undefined ||
-    candidate.service === undefined
+    deleting || finishing !== undefined || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
   const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
-  const badge = ownerBadge(seated.seat, owner?.isViewer === true);
+  const badge =
+    containerless && seated.seat.kind === "nobody"
+      ? null
+      : ownerBadge(seated.seat, owner?.isViewer === true);
   const notYours = mateNotYours({
     seat: seated.seat,
     isViewer: owner?.isViewer === true,

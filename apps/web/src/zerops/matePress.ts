@@ -257,6 +257,37 @@ export const pressingProjects = {
   subscribe: (listener: () => void): (() => void) => usePressStore.subscribe(listener),
 };
 
+/** The presses in flight in this browser, their project made or not (`whilePressing`). */
+let inFlight = 0;
+const inFlightListeners = new Set<() => void>();
+
+/**
+ * Runs a press — any press's steps, or a New project's creation before them — counted in flight
+ * until it ends: the background mints no throwaway meanwhile (`pressesInFlight`), as the press
+ * reads the token list each throwaway is written to (E2E 2026-10-03).
+ */
+export async function whilePressing<T>(run: () => Promise<T>): Promise<T> {
+  inFlight += 1;
+  if (inFlight === 1) for (const listener of inFlightListeners) listener();
+  try {
+    return await run();
+  } finally {
+    inFlight -= 1;
+    if (inFlight === 0) for (const listener of inFlightListeners) listener();
+  }
+}
+
+/** Whether a press is in flight in this browser (`environments.ts`'s `pressInFlight` port). */
+export const pressesInFlight = {
+  read: (): boolean => inFlight > 0,
+  subscribe: (listener: () => void): (() => void) => {
+    inFlightListeners.add(listener);
+    return () => {
+      inFlightListeners.delete(listener);
+    };
+  },
+};
+
 /** The press this tab holds for a project, read outside a render. */
 export function readMatePress(projectId: string): MatePress | undefined {
   return usePressStore.getState().presses[projectId];
@@ -640,33 +671,35 @@ async function pressRun(
   const end = new Promise<void>((resolve) => {
     ended = resolve;
   });
-  const outcome = await runEnvironmentCreation({
-    clientId: input.organizationId,
-    steps: input.steps,
-    platform: input.platform,
-    isCurrent: input.isCurrent,
-    describeError: zeropsErrorMessage,
-    sleep: input.sleep ?? sleep,
-    ...(input.resume === undefined ? {} : { resume: input.resume }),
-    onProjectAccepted: (projectId) => {
-      accepted = projectId;
-      if (input.heldLock !== true) {
-        void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
-      }
-      input.onProjectAccepted?.(projectId, projectName);
-    },
-    onProgress: (progress) => {
-      if (accepted !== undefined && input.isCurrent()) {
-        const held = readMatePress(accepted);
-        progressPress(accepted, progress);
-        // Closed off and registered: the Mate needs no browser, and its press record goes —
-        // Finish setup's once its view has said so.
-        if (held !== undefined && pressDoneAt(progress))
-          endPress(accepted, held.finishing === true);
-      }
-      input.onProgress?.(progress);
-    },
-  }).finally(ended);
+  const outcome = await whilePressing(() =>
+    runEnvironmentCreation({
+      clientId: input.organizationId,
+      steps: input.steps,
+      platform: input.platform,
+      isCurrent: input.isCurrent,
+      describeError: zeropsErrorMessage,
+      sleep: input.sleep ?? sleep,
+      ...(input.resume === undefined ? {} : { resume: input.resume }),
+      onProjectAccepted: (projectId) => {
+        accepted = projectId;
+        if (input.heldLock !== true) {
+          void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
+        }
+        input.onProjectAccepted?.(projectId, projectName);
+      },
+      onProgress: (progress) => {
+        if (accepted !== undefined && input.isCurrent()) {
+          const held = readMatePress(accepted);
+          progressPress(accepted, progress);
+          // Closed off and registered: the Mate needs no browser, and its press record goes —
+          // Finish setup's once its view has said so.
+          if (held !== undefined && pressDoneAt(progress))
+            endPress(accepted, held.finishing === true);
+        }
+        input.onProgress?.(progress);
+      },
+    }),
+  ).finally(ended);
   const projectId = outcome.projectId;
   if (projectId === undefined || !input.isCurrent()) return outcome;
   if (outcome.ok) {

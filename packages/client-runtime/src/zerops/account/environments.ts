@@ -143,6 +143,11 @@ export interface AccountEnvironmentPorts {
      * (`keptSessions.ts`): it starts past the mint pace and spends none of it. Absent: none is.
      */
     readonly kept?: (key: TargetKey) => boolean;
+    /**
+     * Each Mate's backoff cap as loads keep it (`doorCaps.ts`). Absent: every load starts each
+     * ladder over.
+     */
+    readonly capped?: ExchangeDriverPorts<DoorCredential>["capped"];
     /** The supervisor's `retryNow` for a link in backoff. */
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
@@ -172,6 +177,15 @@ export interface AccountEnvironmentPorts {
    */
   readonly pressing?: {
     readonly read: () => ReadonlySet<string>;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
+  /**
+   * Whether a press is in flight in this browser, its project made or not: the background mints
+   * no throwaway meanwhile (`holdBackground`), as the press reads the token list they are written
+   * to. A surface with no press of its own leaves it out.
+   */
+  readonly pressInFlight?: {
+    readonly read: () => boolean;
     readonly subscribe: (listener: () => void) => () => void;
   };
   /**
@@ -497,6 +511,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     install,
     readDescriptor: ports.door.readDescriptor,
     ...(ports.door.kept === undefined ? {} : { kept: ports.door.kept }),
+    ...(ports.door.capped === undefined ? {} : { capped: ports.door.capped }),
     retryLink: ports.door.retryLink,
     // The inventory of the organization that lists the target's project, or of the active one
     // when nothing names it (§6.2).
@@ -878,6 +893,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const stops: Array<() => void> = [];
     driver.setVisible(!options.hidden);
     containers.setVisible(!options.hidden);
+    const holdBackground = () => driver.holdBackground(ports.pressInFlight?.read() ?? false);
+    holdBackground();
     stops.push(
       bindContainerStore(containers, driver),
       containers.subscribe(() => {
@@ -896,6 +913,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       ports.records.listen(registrationsChanged),
       ports.pressing?.subscribe(updateAutoConnect) ?? (() => undefined),
+      ports.pressInFlight?.subscribe(holdBackground) ?? (() => undefined),
       ports.closedOff?.subscribe(updateAutoConnect) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {

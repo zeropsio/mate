@@ -754,6 +754,20 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html).not.toContain("sidebar-mate-sign-in");
   });
 
+  // The lead, 2026-10-03: nor does its face wear the empty seat — "No owner yet. Whoever signs in
+  // its coding agent owns it." is the same claim of a sign-in nobody can make.
+  it.each([
+    { case: "its services not read yet", item: bare({ presence: "unknown" }) },
+    {
+      case: "no container in its project",
+      item: bare({ reason: "no Zerops Mate container in this project", missingContainer: true }),
+    },
+  ])("seats nobody where there is no container to sign in: $case", ({ item }) => {
+    const html = render([item], { getOwner: () => undefined });
+    expect(seat(html)).toBeUndefined();
+    expect(html).not.toContain("No owner yet");
+  });
+
   it("says nothing of signing in once somebody has, or once it was asked something", () => {
     const signed = render([mate(signedBy(SIGNER), { group: "connected" })], {
       getOwner: () => KAREL,
