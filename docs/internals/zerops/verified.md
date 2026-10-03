@@ -7434,6 +7434,22 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   200 with `id` equal to the id the mint returned; its one `clientUserList` row (KRLS, NO_ACCESS)
   carried `userId` equal to that id; `user/list` held exactly one entry with that `userId`
   (`ACTIVE/NO_ACCESS`); the token list's row has the same `id`. Deleted at once (200).
+- **The API's WebSocket admits only a person's session, never an integration token** — KRLS,
+  18:18–18:23Z, `POST /web-socket/login` with `Authorization: Bearer <token>`: a person's session
+  (email/password login) answered 200 `{webSocketToken}` and its subscriptions to process,
+  app-version and service-stack updates answered 200; `mate-probe-*` integration tokens with org
+  role READ_ONLY, with org role ADMIN, and NO_ACCESS with a project BASIC_USER grant each answered
+  401 `notAuthorized`, with an empty, `{token}` or `{accessToken}` body alike, while the same token
+  read `/user/info` (200). Without a bearer the endpoint answers 400 `invalidUserInputWithText`
+  "missing token". `web-socket/login` is not in the public OpenAPI. All tokens deleted at once.
+- **An org READ_ONLY token reads a service by id** — 17:23Z, a `mate-probe-*` org READ_ONLY token
+  with no grant: `GET /service-stack/{id}` of a rig Mate's zcp answered 200 (`ACTIVE`); a
+  non-existent id answered 400 `serviceStackNotFound`. Deleted at once.
+- **An uploaded app version that is never built stays `UPLOADING`** — 17:46–17:51Z, service `app`
+  of `mate-rig-e2e-h - stage`: `POST /service-stack/{id}/app-version` answered `UPLOADING`, and
+  so did `GET /app-version/{id}` before the upload, right after `PUT …/upload` (200), 60 s and
+  5 min later, with no build-and-deploy sent. `DELETE /app-version/{id}` answered 200
+  `{success}` (not a process); a read after it answered 400 `appVersionNotFound`.
 - **An org READ_ONLY token reads the token list, but not all of it** — a `mate-probe-*` token
   with org role `READ_ONLY` and no grant, minted on KRLS at 12:19Z: `GET
 /client/{id}/integration-token/list` answered 200 with 180 tokens where the owner's read, moments
