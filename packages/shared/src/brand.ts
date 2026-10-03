@@ -165,6 +165,8 @@ function round(value: number): number {
 /**
  * How far each lid travels, as `[openness, width, lift in eye units]`.
  * `sleep`/`blink`/`closed` shut the eye; `needs`/`surprise` widen and lift it.
+ * `waking` shuts it as asleep does — a Mate on its way up, its agent not
+ * answering yet — and only the motion tells the two apart: it breathes.
  */
 export const MATE_MARK_LIDS = {
   idle: [1, 1, 0],
@@ -174,6 +176,7 @@ export const MATE_MARK_LIDS = {
   done: [1, 1, 0],
   blink: [0, 1, 0],
   sleep: [0, 1, 0],
+  waking: [0, 1, 0],
   closed: [0, 1, 0],
 } as const;
 
