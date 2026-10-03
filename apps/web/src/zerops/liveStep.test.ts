@@ -87,6 +87,54 @@ describe("liveStepWords", () => {
       ),
       words: { words: "Reading index.ts" },
     },
+    // Every driver's call as the server relays it (`liveCallOf`, from the
+    // projected payload): its tool by name, what it names in Claude's keys.
+    {
+      name: "an ACP agent's read names its file",
+      step: calls(
+        call({
+          id: "call-acp-read",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "Read file",
+          detail: "/var/www/src/index.ts",
+          toolName: "read",
+          input: { file_path: "/var/www/src/index.ts" },
+          files: ["/var/www/src/index.ts"],
+        }),
+      ),
+      words: { words: "Reading index.ts" },
+    },
+    {
+      name: "an ACP agent's grep searches the code, never the web",
+      step: calls(
+        call({
+          id: "call-acp-grep",
+          activityKind: "tool.updated",
+          itemType: "web_search",
+          title: "Searched files",
+          detail: "TODO",
+          toolName: "search",
+          input: { pattern: "TODO" },
+        }),
+      ),
+      words: { words: "Searching the code for TODO" },
+    },
+    {
+      name: "an OpenCode read names its file",
+      step: calls(
+        call({
+          id: "call-oc-read",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "src/index.ts",
+          detail: "src/index.ts",
+          toolName: "read",
+          input: { file_path: "/var/www/src/index.ts" },
+        }),
+      ),
+      words: { words: "Reading index.ts" },
+    },
     {
       name: "an edit names its file",
       step: calls(

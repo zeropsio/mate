@@ -15,7 +15,9 @@
  * (`resumeRefusal` on the server); the usage stop is raised or turned off.
  */
 import { crewLandingWords } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewCommand, CrewLandingMode, CrewRun } from "@t3tools/contracts";
+
+import { crewCatalogNamesCapability } from "./CrewEditors.logic";
+import type { CrewCommand, CrewLandingMode, CrewRun, ServerProvider } from "@t3tools/contracts";
 
 /** A limit is an amount or *No limit*; the amount keeps its text while *No limit* is picked. */
 export type CrewLimitKind = "amount" | "unlimited";
@@ -94,11 +96,40 @@ function limitOf(kind: CrewLimitKind, typed: string): number | "unlimited" | nul
   return text === "" || !Number.isFinite(amount) || amount <= 0 ? null : amount;
 }
 
-/** The dialog's *Start*; `null` until a budget is picked and both limits read. */
-export function crewStartCommand(draft: CrewRunDraft, hasLead: boolean): CrewCommand | null {
+/**
+ * Why this crew can't keep a dollar budget, when a crewmate's agent doesn't
+ * report what it spends (`threadProfile.reportsSpend`); `null` when every one
+ * does, the catalog isn't read yet, or it comes from a server older than the
+ * capability (the server refuses such a budget itself).
+ */
+export function crewSpendBlocker(
+  loginIds: ReadonlyArray<string>,
+  providers: ReadonlyArray<ServerProvider> | undefined,
+): string | null {
+  // A server older than the capability kept every budget; so does its dialog.
+  if (providers === undefined || !crewCatalogNamesCapability(providers)) return null;
+  for (const loginId of loginIds) {
+    const provider = providers?.find((candidate) => candidate.instanceId === loginId);
+    if (provider !== undefined && provider.threadProfile?.reportsSpend !== true) {
+      return `${provider.displayName ?? loginId} doesn't report what it spends, so this crew can't keep a budget.`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The dialog's *Start*; `null` until a budget is picked and both limits read,
+ * and for a dollar budget the crew can't keep (`spendBlocked`).
+ */
+export function crewStartCommand(
+  draft: CrewRunDraft,
+  hasLead: boolean,
+  spendBlocked: boolean,
+): CrewCommand | null {
   const budgetUsd = draft.budget === null ? null : limitOf(draft.budget, draft.budgetText);
   const timeLimitHours = limitOf(draft.time, draft.timeText);
   if (budgetUsd === null || timeLimitHours === null) return null;
+  if (spendBlocked && budgetUsd !== "unlimited") return null;
   return {
     _tag: "start",
     budgetUsd,

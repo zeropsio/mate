@@ -29,5 +29,5 @@ export const isZeropsToolName = (raw: string): boolean =>
  */
 export const readZeropsToolCall = (event: SpiEvent): SpiToolCall | undefined => {
   const call = event.toolCall;
-  return call !== undefined && isZeropsToolName(call.rawName) ? call : undefined;
+  return call !== undefined && isZeropsToolName(call.name) ? call : undefined;
 };

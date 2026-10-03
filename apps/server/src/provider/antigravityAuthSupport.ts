@@ -241,12 +241,14 @@ function antigravityEnvironment(
 }
 
 /**
- * The agent reads its user-global skills under `GEMINI_HOME`, which T3 points
- * at the private profile. Link the two skill directories back to the user's
- * real `~/.gemini` so global skills load, while MCP servers, hooks, and
- * credentials stay isolated. Best effort: a link that cannot be made only
- * costs global skills, never the session. A real directory at the link path
- * is the user's own content and is left alone.
+ * The agent reads its user-global skills and MCP servers under `GEMINI_HOME`,
+ * which T3 points at the private profile. Link the two skill directories and
+ * `config/mcp_config.json` back to the user's real `~/.gemini` so global
+ * skills load and the MCP servers zcp and Mate's MCP tab write there reach the
+ * agent, while hooks and credentials stay isolated. Best effort: a link that
+ * cannot be made only costs what it shares, never the session. A real
+ * directory or file at the link path is the user's own content and is left
+ * alone.
  */
 const linkAntigravityUserSkills = Effect.fn("linkAntigravityUserSkills")(function* (input: {
   readonly profileDirectory: string;
@@ -257,9 +259,12 @@ const linkAntigravityUserSkills = Effect.fn("linkAntigravityUserSkills")(functio
   const path = yield* Path.Path;
   const links = antigravityUserSkillDirectories(path, input.profileDirectory);
   const targets = antigravityUserSkillDirectories(path, path.join(input.userHome, ".gemini"));
-  for (const [link, target] of [
-    [links[0], targets[0]],
-    [links[1], targets[1]],
+  const mcpConfig = (geminiHome: string) => path.join(geminiHome, "config", "mcp_config.json");
+  const directoryType = input.platform === "win32" ? "junction" : "dir";
+  for (const [link, target, type] of [
+    [links[0], targets[0], directoryType],
+    [links[1], targets[1], directoryType],
+    [mcpConfig(input.profileDirectory), mcpConfig(path.join(input.userHome, ".gemini")), "file"],
   ] as const) {
     yield* Effect.gen(function* () {
       const existing = yield* fs.readLink(link).pipe(
@@ -271,14 +276,14 @@ const linkAntigravityUserSkills = Effect.fn("linkAntigravityUserSkills")(functio
         yield* fs.remove(link);
       }
       yield* fs.makeDirectory(path.dirname(link), { recursive: true });
-      yield* Effect.tryPromise(() =>
-        NodeFSP.symlink(target, link, input.platform === "win32" ? "junction" : "dir"),
-      );
+      // The MCP config's folder is made, so a server written there later is read through the link.
+      if (type === "file") yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+      yield* Effect.tryPromise(() => NodeFSP.symlink(target, link, type));
     }).pipe(
       // A non-symlink at the link path fails `readLink`; anything else is a
       // filesystem refusal. Both leave the profile usable.
       Effect.catch((error) =>
-        Effect.logWarning("Antigravity user skills are not linked into the profile.", {
+        Effect.logWarning("An Antigravity user directory is not linked into the profile.", {
           link,
           target,
           error,

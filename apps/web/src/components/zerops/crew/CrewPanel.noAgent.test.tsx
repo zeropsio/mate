@@ -1,3 +1,4 @@
+import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
 /**
  * The Crew tab of a Mate nobody has signed in: the one "no agent yet" screen its conversation
  * shows (`ZeropsMateEmptyState`), word for word, in place of the crew's own screens.
@@ -7,8 +8,20 @@ import { EnvironmentId, ThreadId, type ZeropsAgentAuthSnapshot } from "@t3tools/
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+/** A provider instance as the server sends it: signed in, models listed, unless said otherwise. */
+const agentInstance = (driver: string, status = "ready"): OtherAgentFields =>
+  ({
+    driver,
+    enabled: true,
+    installed: true,
+    status,
+    auth: { status: status === "ready" ? "authenticated" : "unauthenticated" },
+    models: [{ slug: "m" }],
+  }) as unknown as OtherAgentFields;
+
 const feed = vi.hoisted(() => ({
   agentAuth: undefined as unknown,
+  providers: [] as ReadonlyArray<OtherAgentFields>,
 }));
 
 vi.mock("~/zerops/useZeropsFeeds", () => ({
@@ -40,7 +53,7 @@ vi.mock("~/zerops/useAskMate", () => ({
   useAskMate: () => () => undefined,
 }));
 vi.mock("~/state/entities", () => ({
-  useServerConfigs: () => new Map(),
+  useServerConfigs: () => new Map([["env-fen", { cwd: "/var/www", providers: feed.providers }]]),
   useThreadShells: () => [],
 }));
 vi.mock("../ZeropsMateEmptyState", () => ({
@@ -80,6 +93,7 @@ const known = (value: ZeropsAgentAuthSnapshot) => ({
 
 beforeEach(() => {
   feed.agentAuth = undefined;
+  feed.providers = [];
 });
 
 describe("CrewPanel — a Mate nobody has signed in", () => {
@@ -87,8 +101,16 @@ describe("CrewPanel — a Mate nobody has signed in", () => {
     { name: "no agent signed in", auth: known(agents(false)), stage: true },
     { name: "an agent signed in", auth: known(agents(true)), stage: false },
     { name: "its sign-in not read yet", auth: undefined, stage: false },
-  ])("$name: the no-agent stage $stage", ({ auth, stage }) => {
+    // Mate signs people in to Claude Code and Codex only: a ready Cursor is an agent to run.
+    {
+      name: "no agent signed in, Cursor ready",
+      auth: known(agents(false)),
+      providers: [agentInstance("cursor")],
+      stage: false,
+    },
+  ])("$name: the no-agent stage $stage", ({ auth, providers, stage }) => {
     feed.agentAuth = auth;
+    feed.providers = providers ?? [];
     const html = renderToStaticMarkup(<CrewPanel onSignIn={() => undefined} threadRef={THREAD} />);
     expect(html.includes("data-no-agent-stage")).toBe(stage);
   });

@@ -113,12 +113,18 @@ const liveLayer = Layer.mergeAll(
     Layer.provide(ProcessRunner.layer),
   ),
   // A new Mate's setup, reported at `/setup.json`, and its stand-up started
-  // here once its asker signed an agent in — admitted through the same gate.
+  // here once its asker has an agent to run — admitted through the same gate.
   // …and a running stand-up's progress, relayed from zcp's status file to its run card.
   ZeropsStandUpRelayModule.layer.pipe(
     Layer.provideMerge(
       ZeropsSetupModule.layer.pipe(
-        Layer.provide(ZeropsSetupModule.liveReadsLayer),
+        Layer.provide(
+          ZeropsSetupModule.liveReadsLayer.pipe(
+            Layer.provide(ZeropsAgentAuthLive),
+            Layer.provide(ZeropsProjectSignersModule.layer),
+            Layer.provide(providerInstancesLayer),
+          ),
+        ),
         Layer.provide(ZeropsTurnAdmissionLive),
       ),
     ),

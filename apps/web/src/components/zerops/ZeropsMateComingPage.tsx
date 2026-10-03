@@ -528,6 +528,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
           ...(made === undefined ? {} : { press: creationSubsteps(made) }),
+          ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
@@ -745,6 +746,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           signIn={handingArrival ? empty.signIn : null}
           runtimes={empty.runtimes}
           signInRequired={empty.signInRequired}
+          agentReady={empty.agentReady}
           unknown={handingArrival ? empty.unknown : null}
         />
       )}
@@ -1073,6 +1075,8 @@ export type ArrivalProgress = BirthLineProgress & {
   readonly setup?: MateSetup | undefined;
   /** The steps this tab runs for it, while it holds them (`creationSubsteps`). */
   readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
+  /** It runs on an agent that needs no sign-in, ready (`MateEmptyState.agentReady`). */
+  readonly agentReady?: boolean | undefined;
 };
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */

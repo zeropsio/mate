@@ -47,7 +47,7 @@ import { ProjectionSnapshotQuery } from "../../../orchestration/Services/Project
 import { runMigrations } from "../../../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { ClaudeThreadExtensionRegistry } from "../../../spi/claudeThreadProfile.ts";
-import { ProviderInstances } from "../../../spi/providerInstances.ts";
+import { type ProviderInstanceAgent, ProviderInstances } from "../../../spi/providerInstances.ts";
 import { ProviderRuntimeEventBusTest } from "../../../spi/ProviderRuntimeEventBus.ts";
 import { ServerCommandReadiness } from "../../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
@@ -104,6 +104,8 @@ export interface CrewWorld {
   readonly sshCalls: Ref.Ref<number>;
   /** Mate logins beyond the defaults, by id. */
   readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
+  /** Logins whose instance is not live yet (the registry has no adapter for it). */
+  readonly missingAgents: Ref.Ref<ReadonlySet<string>>;
   /**
    * Hands the engine a provider event and returns once the engine has handled
    * it: its next pull of the bus comes only after its handler for this one.
@@ -291,12 +293,56 @@ const fakes = (
     }),
     Layer.mock(ProviderInstances)({
       driverKindOf: () => Effect.succeed(ProviderDriverKind.make("claudeAgent")),
+      agentOf: (instanceId) =>
+        Effect.map(Ref.get(world.missingAgents), (missing) =>
+          missing.has(instanceId) ? undefined : testAgentOf(instanceId),
+        ),
     }),
     ProviderRuntimeEventBusTest.make(publishedEvents(events)),
     ThreadToolPolicyRegistry.layer,
     ClaudeThreadExtensionRegistry.layer,
     ServerCommandReadiness.layer,
   );
+
+/**
+ * The agents the fixture's logins run, by id: Claude's carry the crew's
+ * profile with its tools, Codex's without, Grok's with its tools but no
+ * spend reported, Cursor's not at all, and any other id is no login of this
+ * Mate.
+ */
+const TEST_AGENTS: ReadonlyArray<readonly [string, ProviderInstanceAgent]> = [
+  [
+    "claudeAgent",
+    {
+      driver: ProviderDriverKind.make("claudeAgent"),
+      displayName: "Claude",
+      threadProfile: { tools: true, reportsSpend: true },
+    },
+  ],
+  [
+    "codex",
+    {
+      driver: ProviderDriverKind.make("codex"),
+      displayName: "Codex",
+      threadProfile: { tools: false, reportsSpend: false },
+    },
+  ],
+  [
+    "grok",
+    {
+      driver: ProviderDriverKind.make("grok"),
+      displayName: "Grok",
+      threadProfile: { tools: true, reportsSpend: false },
+    },
+  ],
+  [
+    "cursor",
+    { driver: ProviderDriverKind.make("cursor"), displayName: "Cursor", threadProfile: undefined },
+  ],
+];
+
+const testAgentOf = (instanceId: string): ProviderInstanceAgent | undefined =>
+  TEST_AGENTS.find(([prefix]) => instanceId === prefix || instanceId.startsWith(`${prefix}_`))?.[1];
 
 /** The local ssh shim, counting every session and holding the one a test asked for. */
 const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray<PendingHold>>) =>
@@ -376,6 +422,7 @@ export const withCrewEngines = <E>(
       installs: yield* Ref.make(0),
       sshCalls: yield* Ref.make(0),
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
+      missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
       publish: (event) =>
         Effect.gen(function* () {
           const handled = yield* Deferred.make<void>();

@@ -25,7 +25,7 @@ describe("right panel kinds", () => {
     }
   });
 
-  it("keeps the nine launcher rows in their established order", () => {
+  it("keeps the ten launcher rows in their established order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
         ({ kind, label, description, shortcut, unavailableHint }) => ({
@@ -100,6 +100,13 @@ describe("right panel kinds", () => {
         shortcut: "C",
         unavailableHint: "Available in a Zerops project with crew mode on.",
       },
+      {
+        kind: "mcp",
+        label: "MCP",
+        description: "Add and check the tools your agents can call.",
+        shortcut: "M",
+        unavailableHint: "Available from a conversation.",
+      },
     ]);
   });
 
@@ -124,6 +131,7 @@ describe("right panel kinds", () => {
         git: "available",
         data: "available",
         crew: "available",
+        mcp: "available",
       },
     },
     {
@@ -146,6 +154,7 @@ describe("right panel kinds", () => {
         git: "unavailable",
         data: "unavailable",
         crew: "hidden",
+        mcp: "available",
       },
     },
     {
@@ -162,6 +171,7 @@ describe("right panel kinds", () => {
         git: "unknown",
         data: "unknown",
         crew: "hidden",
+        mcp: "available",
       },
     },
     {
@@ -178,6 +188,7 @@ describe("right panel kinds", () => {
         git: "available",
         data: "available",
         crew: "available",
+        mcp: "available",
       },
     },
   ] as const;

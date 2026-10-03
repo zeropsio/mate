@@ -95,6 +95,8 @@ function collectChangedFiles(
     "item",
     "result",
     "input",
+    "rawInput",
+    "locations",
     "data",
     "changes",
     "files",
@@ -196,8 +198,42 @@ const TOOL_INPUT_KEPT_FIELDS = [
 
 const TOOL_INPUT_FIELD_MAX_LENGTH = 300;
 
-function projectToolInput(data: Record<string, unknown>): Record<string, string> | undefined {
-  const input = asRecord(data.input);
+/** The keys another driver spells a kept field with, in Claude's spelling: OpenCode's `filePath`. */
+const TOOL_INPUT_ALIASES: Readonly<Record<string, (typeof TOOL_INPUT_KEPT_FIELDS)[number]>> = {
+  filePath: "file_path",
+};
+
+/** ACP kinds whose `locations` name the file the call read or changed. */
+const ACP_FILE_KINDS: ReadonlySet<unknown> = new Set(["read", "edit", "delete", "move"]);
+
+/**
+ * A call's input as every driver gives it, in Claude's keys: Claude's and
+ * Codex's `data.input`, OpenCode's `state.input`, an ACP agent's `rawInput`
+ * — and, for an ACP call on a file, the first of its `locations`.
+ */
+function callInputOf(data: Record<string, unknown>): Record<string, unknown> | null {
+  const given =
+    asRecord(data.input) ?? asRecord(asRecord(data.state)?.input) ?? asRecord(data.rawInput);
+  const input: Record<string, unknown> = { ...given };
+  for (const [alias, key] of Object.entries(TOOL_INPUT_ALIASES)) {
+    if (input[key] === undefined && input[alias] !== undefined) {
+      input[key] = input[alias];
+    }
+  }
+  if (input.file_path === undefined && ACP_FILE_KINDS.has(data.kind)) {
+    const located = Array.isArray(data.locations)
+      ? data.locations.map((location) => asTrimmedString(asRecord(location)?.path)).find(Boolean)
+      : undefined;
+    if (located) {
+      input.file_path = located;
+    }
+  }
+  return given === null && Object.keys(input).length === 0 ? null : input;
+}
+
+function projectToolInput(
+  input: Record<string, unknown> | null,
+): Record<string, string> | undefined {
   if (!input) {
     return undefined;
   }
@@ -217,17 +253,20 @@ function projectToolInput(data: Record<string, unknown>): Record<string, string>
   return Object.keys(projected).length > 0 ? projected : undefined;
 }
 
-function projectViewedImagePath(data: Record<string, unknown>): string | undefined {
+function projectViewedImagePath(
+  data: Record<string, unknown>,
+  toolName: string | undefined,
+  input: Record<string, unknown> | null,
+): string | undefined {
   const directPath = asTrimmedString(data.imagePath);
   if (directPath && isWorkspaceImagePreviewPath(directPath)) {
     return directPath;
   }
 
-  const toolName = asTrimmedString(data.toolName)?.toLowerCase();
-  if (toolName !== "read" && toolName !== "read file") {
+  const name = toolName?.toLowerCase();
+  if (name !== "read" && name !== "read file") {
     return undefined;
   }
-  const input = asRecord(data.input);
   const inputPath = asTrimmedString(input?.file_path) ?? asTrimmedString(input?.path);
   return inputPath && isWorkspaceImagePreviewPath(inputPath) ? inputPath : undefined;
 }
@@ -461,21 +500,43 @@ export function projectActivityPayload(
   // in projected form (every streamed `tool.updated`) must keep the copy it
   // carries: recomputing from the teaser would replace the document with its
   // first line, and a row with no result left has nothing to recompute from.
-  const sniffed = sniffToolCallShape(data);
-  const zerops =
-    readStoredZeropsResult(data.zerops) ??
-    projectZeropsToolCall(
-      sniffed.kind === "toolCall" && isZeropsToolName(sniffed.call.rawName)
-        ? sniffed.call
-        : undefined,
-    );
+  //
+  // The title an ACP call is named by is the activity's summary (a start's,
+  // without its " started").
+  const title =
+    asTrimmedString(payload.title) ??
+    (activity.kind === "tool.started"
+      ? activity.summary.replace(/ started$/u, "")
+      : activity.summary);
+  const sniffed = sniffToolCallShape(data, title, payload.status);
+  const call = sniffed.kind === "toolCall" ? sniffed.call : undefined;
+  const zeropsCall = call !== undefined && isZeropsToolName(call.name) ? call : undefined;
+  const zerops = readStoredZeropsResult(data.zerops) ?? projectZeropsToolCall(zeropsCall);
+  // Every driver's call in one form: the tool's name where Claude's is, a
+  // driver that names none (OpenCode, the ACP agents) by the name the SPI
+  // read — an MCP tool in Claude's `mcp__<server>__<tool>`, so it is never
+  // taken for a native tool of its name; Codex's own items carry theirs in
+  // `item`.
+  const toolName =
+    asTrimmedString(data.toolName) ??
+    (asRecord(data.item) || !call
+      ? undefined
+      : call.server === undefined
+        ? call.name
+        : `mcp__${call.server}__${call.name}`);
 
   if (payload.itemType === "mcp_tool_call") {
     return {
       ...activity,
       payload: {
         ...projectedPayload,
-        data: { ...projectMcpToolCallData(data), ...(zerops === undefined ? {} : { zerops }) },
+        data: {
+          ...projectMcpToolCallData(data),
+          ...(toolName !== undefined && data.toolName === undefined && !asRecord(data.item)
+            ? { toolName }
+            : {}),
+          ...(zerops === undefined ? {} : { zerops }),
+        },
       },
     };
   }
@@ -489,17 +550,25 @@ export function projectActivityPayload(
   if (command !== undefined) {
     projectedData.command = command;
   }
-  const input = projectToolInput(data);
+  const callInput = callInputOf(data);
+  // A Zerops call's arguments are its card's: kept whole, as an MCP call's are.
+  const zeropsArguments = asRecord(zeropsCall?.arguments);
+  const input = zeropsArguments ?? projectToolInput(callInput);
   if (input) {
     projectedData.input = input;
   }
-  const imagePath = projectViewedImagePath(data);
+  const imagePath = projectViewedImagePath(data, toolName, callInput);
   if (imagePath) {
     projectedData.imagePath = imagePath;
   }
 
   const changedFiles: string[] = [];
-  collectChangedFiles(data, changedFiles, new Set<string>(), 0);
+  collectChangedFiles(
+    callInput === null ? data : { ...data, input: callInput },
+    changedFiles,
+    new Set<string>(),
+    0,
+  );
   if (changedFiles.length > 0) {
     // Both clients discover file names by walking objects with path-like keys.
     projectedData.files = changedFiles.map((path) => ({ path }));
@@ -513,6 +582,8 @@ export function projectActivityPayload(
   }
   if ("toolName" in data) {
     projectedData.toolName = data.toolName;
+  } else if (toolName !== undefined) {
+    projectedData.toolName = toolName;
   }
 
   const rawOutput =
@@ -614,7 +685,8 @@ function toolLifecycleIdentity(activity: OrchestrationThreadActivity): string | 
 }
 
 /**
- * Drops `tool.updated` rows a `tool.completed` row already supersedes. An
+ * Drops `tool.updated` rows a `tool.completed` row already supersedes —
+ * except a call's first sight, where it has no `tool.started` before it. An
  * update is the in-flight snapshot of a call; once the call completes, the
  * completion carries the final state and the clients fold every matching
  * update into it, so shipping the updates buys nothing — 47k such rows exist
@@ -666,15 +738,26 @@ function dropSupersededToolUpdatedActivities(
     return activities;
   }
 
+  // A call's first sight: where the live run started its step and stood it.
+  // An ACP call never sends a start — its first update is its first sight —
+  // so that update stays, or a reload would start the step at its end.
+  const seen = new Set<string>();
   return activities.filter((activity, index) => {
-    if (activity.kind !== "tool.updated") {
-      return true;
-    }
-    const identity = toolLifecycleIdentity(activity);
+    const lifecycle =
+      activity.kind === "tool.started" ||
+      activity.kind === "tool.updated" ||
+      activity.kind === "tool.completed";
+    const identity = lifecycle ? toolLifecycleIdentity(activity) : null;
     if (!identity) {
       return true;
     }
-    const indices = completionIndicesByKey.get(`${activity.turnId ?? ""}\u0000${identity}`);
+    const key = `${activity.turnId ?? ""}\u0000${identity}`;
+    const firstSight = !seen.has(key);
+    seen.add(key);
+    if (activity.kind !== "tool.updated" || firstSight) {
+      return true;
+    }
+    const indices = completionIndicesByKey.get(key);
     return !indices?.some((completionIndex) => completionIndex > index);
   });
 }

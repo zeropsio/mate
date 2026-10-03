@@ -6,12 +6,13 @@ import {
   ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { isProviderReadyToRun } from "@t3tools/shared/zeropsAgentAuth";
 
 import {
   isBootstrapDecidable,
-  isBootstrapReadyProvider,
   isProbePendingProvider,
   pickBootstrapProvider,
+  pickReadyAgentWithoutSignIn,
   resolveBootstrapModelSlug,
   resolveZeropsBootstrapModelSelection,
 } from "./ZeropsBootstrapModel.ts";
@@ -60,36 +61,32 @@ const readyCodex = provider({
   models: [{ slug: DEFAULT_MODEL, name: "GPT", isCustom: false, capabilities: null }],
 });
 
-describe("isBootstrapReadyProvider", () => {
+describe("isProviderReadyToRun, as the bootstrap reads it", () => {
   it("accepts an enabled, installed, ready, authenticated provider with models", () => {
-    assert.isTrue(isBootstrapReadyProvider(readyClaude));
+    assert.isTrue(isProviderReadyToRun(readyClaude));
   });
 
   it("rejects an unauthenticated provider", () => {
-    assert.isFalse(isBootstrapReadyProvider(unauthenticatedCodex));
+    assert.isFalse(isProviderReadyToRun(unauthenticatedCodex));
   });
 
   it("rejects a provider that reports ready but explicitly unauthenticated", () => {
     assert.isFalse(
-      isBootstrapReadyProvider(
+      isProviderReadyToRun(
         provider({ driver: CLAUDE, status: "ready", auth: { status: "unauthenticated" } }),
       ),
     );
   });
 
   it("accepts a ready provider whose auth status is unknown", () => {
-    assert.isTrue(
-      isBootstrapReadyProvider(provider({ driver: CODEX, auth: { status: "unknown" } })),
-    );
+    assert.isTrue(isProviderReadyToRun(provider({ driver: CODEX, auth: { status: "unknown" } })));
   });
 
   it("rejects a disabled, uninstalled, unavailable or model-less provider", () => {
-    assert.isFalse(isBootstrapReadyProvider(provider({ driver: CLAUDE, enabled: false })));
-    assert.isFalse(isBootstrapReadyProvider(provider({ driver: CLAUDE, installed: false })));
-    assert.isFalse(
-      isBootstrapReadyProvider(provider({ driver: CLAUDE, availability: "unavailable" })),
-    );
-    assert.isFalse(isBootstrapReadyProvider(provider({ driver: CLAUDE, models: [] })));
+    assert.isFalse(isProviderReadyToRun(provider({ driver: CLAUDE, enabled: false })));
+    assert.isFalse(isProviderReadyToRun(provider({ driver: CLAUDE, installed: false })));
+    assert.isFalse(isProviderReadyToRun(provider({ driver: CLAUDE, availability: "unavailable" })));
+    assert.isFalse(isProviderReadyToRun(provider({ driver: CLAUDE, models: [] })));
   });
 });
 
@@ -220,5 +217,58 @@ describe("isBootstrapDecidable", () => {
   it("is decidable once every enabled provider has settled", () => {
     assert.isTrue(isBootstrapDecidable([unauthenticatedCodex, readyClaude]));
     assert.isTrue(isBootstrapDecidable([unauthenticatedCodex]));
+  });
+});
+
+// Mate signs people in to Claude Code and Codex only: the stand-up's other way in is an agent it
+// signs nobody in to, ready by its own probe.
+describe("pickReadyAgentWithoutSignIn", () => {
+  const OPENCODE = ProviderDriverKind.make("opencode");
+  const cases: ReadonlyArray<[string, ReadonlyArray<ServerProvider>, string | undefined]> = [
+    ["a ready Cursor", [provider({ driver: CURSOR })], "cursor"],
+    ["never Claude Code or Codex, however ready", [readyClaude, readyCodex], undefined],
+    [
+      "the first ready one, after a Claude Code the feed answers for",
+      [readyClaude, provider({ driver: CURSOR, status: "error" }), provider({ driver: OPENCODE })],
+      "opencode",
+    ],
+    ["not a signed-out Cursor", [provider({ driver: CURSOR, status: "error" })], undefined],
+    ["not a Cursor still probing", [provider({ driver: CURSOR, status: "warning" })], undefined],
+    ["not a turned-off Cursor", [provider({ driver: CURSOR, enabled: false })], undefined],
+    ["not a Cursor listing no models", [provider({ driver: CURSOR, models: [] })], undefined],
+    ["nothing configured", [], undefined],
+    // Grok and Cursor can say ready with a sign-in they could not read.
+    [
+      "not a ready Cursor whose sign-in is unknown",
+      [provider({ driver: CURSOR, auth: { status: "unknown" } })],
+      undefined,
+    ],
+  ];
+  for (const [name, providers, expected] of cases) {
+    it(name, () =>
+      assert.strictEqual(pickReadyAgentWithoutSignIn(providers)?.instanceId, expected),
+    );
+  }
+
+  // The conversation's own instance when it is one of the ready ones; the registry's order else.
+  it.each([
+    ["the conversation's, ready", "opencode", "opencode"],
+    ["the registry's first, the conversation's not ready", "grok", "cursor"],
+    ["the registry's first, the conversation on Claude Code", "claudeAgent", "cursor"],
+    ["the registry's first, no conversation", undefined, "cursor"],
+  ] as const)("picks %s", (_name, current, expected) => {
+    const providers = [
+      readyClaude,
+      provider({ driver: CURSOR }),
+      provider({ driver: ProviderDriverKind.make("grok"), status: "error" }),
+      provider({ driver: OPENCODE }),
+    ];
+    assert.strictEqual(
+      pickReadyAgentWithoutSignIn(
+        providers,
+        current === undefined ? undefined : ProviderInstanceId.make(current),
+      )?.instanceId,
+      ProviderInstanceId.make(expected),
+    );
   });
 });

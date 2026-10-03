@@ -19,7 +19,9 @@
  * container rebuilt) and the agent must be signed in again. A check that has
  * not answered (`unknown`) changes nothing.
  */
+import { agentIdForDriverKind } from "@t3tools/contracts";
 import type {
+  ServerProvider,
   ZeropsAgentAuth,
   ZeropsAgentId,
   ZeropsAgentLoginState,
@@ -193,3 +195,35 @@ export function latestSucceededSignIn<At>(
   }
   return login.lastSucceeded;
 }
+
+/** What {@link isProviderReadyToRun} reads of a provider instance (`ServerProvider`). */
+export type ProviderReadinessFields = Pick<
+  ServerProvider,
+  "driver" | "enabled" | "installed" | "availability" | "status" | "auth"
+> & { readonly models: ReadonlyArray<unknown> };
+
+/**
+ * Whether a turn can start on a provider instance — one test for the browser's gates and the
+ * server's choices (the bootstrap thread's model, the stand-up's agent). `status === "ready"` is
+ * the driver's own verdict; a driver that says ready while knowing it has no session is refused
+ * by its auth, and one listing no models is refused too: a model it has not confirmed it serves
+ * is the failure this exists to prevent.
+ */
+export const isProviderReadyToRun = (provider: ProviderReadinessFields): boolean =>
+  provider.enabled &&
+  provider.installed &&
+  provider.availability !== "unavailable" &&
+  provider.status === "ready" &&
+  provider.auth.status !== "unauthenticated" &&
+  provider.models.length > 0;
+
+/**
+ * Whether an instance is a ready agent Mate signs nobody in to — Cursor, OpenCode, Grok,
+ * Antigravity: ready to run, and its sign-in read as signed in. Grok and Cursor can say `ready`
+ * with a sign-in they could not read (`unknown`); that one never stands in for a sign-in. Claude
+ * Code and Codex never count: the agent-auth feed answers for them, and the person (D6).
+ */
+export const isAgentWithoutSignInReady = (provider: ProviderReadinessFields): boolean =>
+  agentIdForDriverKind(provider.driver) === undefined &&
+  isProviderReadyToRun(provider) &&
+  provider.auth.status === "authenticated";

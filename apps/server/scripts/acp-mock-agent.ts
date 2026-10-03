@@ -16,6 +16,10 @@ const requestLogPath = process.env.T3_ACP_REQUEST_LOG_PATH;
 const exitLogPath = process.env.T3_ACP_EXIT_LOG_PATH;
 const antigravityProfile = process.env.T3_ACP_ANTIGRAVITY === "1";
 const emitToolCalls = process.env.T3_ACP_EMIT_TOOL_CALLS === "1";
+// MCP calls as the ACP spec carries them: no tool name, the agent's title,
+// `rawInput` the arguments, `rawOutput` the MCP result — one of no kind, one
+// the agent tagged with a native kind.
+const emitMcpToolCalls = process.env.T3_ACP_EMIT_MCP_TOOL_CALLS === "1";
 const emitInterleavedAssistantToolCalls =
   process.env.T3_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
 const emitGenericToolPlaceholders = process.env.T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
@@ -981,6 +985,46 @@ const program = Effect.gen(function* () {
         // Agents can repeat a terminal update after the call finished.
         yield* progress("completed", "done");
         yield* say("| 3 | z |");
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitMcpToolCalls) {
+        const calls = [
+          { toolCallId: "mcp-call-1", title: "zerops: zerops_discover", kind: "other" },
+          { toolCallId: "mcp-call-2", title: "mcp__zerops__zerops_deploy", kind: "execute" },
+        ] as const;
+        for (const call of calls) {
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: call.toolCallId,
+              title: call.title,
+              kind: call.kind,
+              status: "pending",
+              rawInput: { targetService: "api" },
+            },
+          });
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: call.toolCallId,
+              status: "completed",
+              rawOutput: { content: [{ type: "text", text: '{"status":"FINISHED"}' }] },
+              content: [
+                { type: "content", content: { type: "text", text: '{"status":"FINISHED"}' } },
+              ],
+            },
+          });
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "deployed" },
+          },
+        });
         return { stopReason: "end_turn" };
       }
 

@@ -2493,7 +2493,7 @@ function MateRow<T extends RosterCandidate>({
   const notYours = mateNotYours({
     seat: seated.seat,
     isViewer: owner?.isViewer === true,
-    signer: records.signer,
+    signer: records.person,
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;

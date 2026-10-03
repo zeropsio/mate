@@ -137,3 +137,19 @@ describe("a call's own words and target reach its entry", () => {
     expect(entry).toMatchObject({ taskToolUseId: "toolu_c", taskType: "local_bash" });
   });
 });
+
+describe("a call's tool reaches its entry, from every driver", () => {
+  it.each([
+    { name: "Claude's own", data: { toolName: "Read" }, toolName: "Read" },
+    { name: "OpenCode's", data: { toolName: "grep" }, toolName: "grep" },
+    {
+      name: "an ACP agent's kind",
+      data: { toolName: "search", kind: "search" },
+      toolName: "search",
+    },
+    { name: "none named", data: { command: "ls" }, toolName: undefined },
+  ])("$name", ({ data, toolName }) => {
+    const [entry] = deriveWorkLogEntries([completedCall("dynamic_tool_call", data)]);
+    expect(entry?.toolName).toBe(toolName);
+  });
+});

@@ -11,6 +11,7 @@ export * from "./terminal.ts";
 export * from "./provider.ts";
 export * from "./providerInstance.ts";
 export * from "./providerSetup.ts";
+export * from "./mcpServers.ts";
 export * from "./providerRuntime.ts";
 export * from "./providerRuntimeSpi.ts";
 export * from "./providerUsageLimits.ts";

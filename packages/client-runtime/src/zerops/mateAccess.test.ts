@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canCreateMates,
+  mateIsViewers,
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
@@ -321,7 +322,12 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       records: { named: true, signedIn: true },
     },
   ])("$name", ({ userRoles, tagList, records }) => {
-    expect(mateOwnerRecords({ userRoles, tagList })).toEqual(records);
+    // None of them runs without a sign-in: its person is its signer, where it has one.
+    expect(mateOwnerRecords({ userRoles, tagList })).toEqual({
+      ...records,
+      person: "signer" in records ? records.signer : undefined,
+      runsWithoutSignIn: false,
+    });
   });
 
   it("names no owner from records that name two people on one login", () => {
@@ -526,5 +532,75 @@ describe("withMateProjectRole — handing a Mate over", () => {
     expect(
       withMateProjectRole([{ clientUserId: "cu-jan", roleCode: "OWNER" }], "cu-jan", "READ_ONLY"),
     ).toEqual([{ clientUserId: "cu-jan", roleCode: "READ_ONLY" }]);
+  });
+});
+
+// Mate signs people in to Claude Code and Codex only. A Mate that runs on an agent it signs nobody
+// in to carries `mate:runs:<driver>`, written the first time it is found ready; with that tag and
+// no Claude Code or Codex signer it is its maker's (`mate:by:`, else `mate:standup:`) — read from
+// its tags alone, the same for every caller. A Mate without it is nobody's until signed in, a
+// project token or a login added beside the agents included.
+describe("a Mate that runs without a sign-in: its maker's", () => {
+  const SERVICE = { clientUserId: "cu-zcp", roleCode: "BASIC_USER" };
+  const ada = { id: "cu-ada", user: { id: "u-ada", fullName: "Ada Lovelace" } };
+  const eva = { id: "cu-eva", user: { id: "u-eva", fullName: "Eva Dvořák" } };
+  const project = (...tagList: ReadonlyArray<string>) => ({
+    id: "p1",
+    tagList,
+    userRoles: [SERVICE],
+  });
+  const RUNS = "mate:runs:cursor";
+
+  it.each([
+    { name: "made by the viewer, on Cursor", tags: ["mate:by:u-ada", RUNS], person: "u-ada" },
+    {
+      name: "asked of by the viewer, on Cursor (born before mate:by:)",
+      tags: ["mate:standup:u-ada", RUNS],
+      person: "u-ada",
+    },
+    {
+      name: "made by the viewer, waiting on a sign-in",
+      tags: ["mate:by:u-ada"],
+      person: undefined,
+    },
+    {
+      name: "made by the viewer, on a project token (no signer tag)",
+      tags: ["mate:by:u-ada"],
+      person: undefined,
+    },
+    {
+      name: "made by the viewer, only a login added beside the agents signed in",
+      tags: ["mate:by:u-ada", "mate:signer:claudeAgent-work:u-ada"],
+      person: undefined,
+    },
+    {
+      name: "made by the viewer on Cursor, its Claude Code signed in by a colleague",
+      tags: ["mate:by:u-ada", RUNS, "mate:signer:claude-code:u-eva"],
+      person: "u-eva",
+    },
+    { name: "on Cursor, nobody named as making it", tags: [RUNS], person: undefined },
+  ])("$name: $person", ({ tags, person }) => {
+    const records = mateOwnerRecords(project("mate", ...tags));
+    expect(records.person).toBe(person);
+    expect(mateIsViewers(project("mate", ...tags), "u-ada")).toBe(person === "u-ada");
+    expect(
+      resolveMateOwner({ project: project("mate", ...tags), members: [ada, eva] })?.user?.id,
+    ).toBe(person);
+  });
+
+  it("names the Mate's person in its records once it runs without a sign-in", () => {
+    expect(mateOwnerRecords(project("mate", "mate:by:u-ada", RUNS))).toEqual({
+      named: true,
+      signedIn: false,
+      signer: undefined,
+      person: "u-ada",
+      runsWithoutSignIn: true,
+    });
+    expect(mateOwnerRecords(project("mate", "mate:by:u-ada")).named).toBe(false);
+  });
+
+  it("is nobody's while the viewer is not known", () => {
+    expect(mateIsViewers(project("mate", "mate:by:u-ada", RUNS), "")).toBe(false);
+    expect(mateIsViewers(project("mate", "mate:by:u-ada", RUNS), undefined)).toBe(false);
   });
 });

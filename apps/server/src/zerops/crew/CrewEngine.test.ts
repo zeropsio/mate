@@ -1035,37 +1035,43 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("a self-deploy onto the service freezes its copies and interrupts their turns", () =>
-    withCrewEngine((world) =>
-      Effect.gen(function* () {
-        yield* applied(world);
-        const thread = yield* firstTurn(world, () => undefined);
-        yield* world.publish(
-          spiEvent(
-            "item.started",
-            "person-thread",
-            { itemType: "mcp_tool_call", status: "inProgress" } as never,
-            {
-              itemId: "deploy-1",
-              toolCall: {
-                name: "zerops_deploy",
-                rawName: "mcp__zerops__zerops_deploy",
-                server: "zerops",
-                arguments: { targetService: "appdev" },
-              },
-            } as never,
-          ),
-        );
-        const frozen = yield* snapshotWhere(
-          (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
-        );
-        const interrupts = yield* dispatchedOf(world, "thread.turn.interrupt");
-        assert.deepStrictEqual(
-          [frozen.crewmates[0]!.lane?.state, interrupts.map((entry) => entry.threadId)],
-          ["frozen", [thread]],
-        );
-      }),
-    ),
+  it.live.each([
+    // Claude and Codex open a call with item.started; the ACP agents only update it.
+    { opens: "item.started" },
+    { opens: "item.updated" },
+  ] as const)(
+    "a self-deploy onto the service freezes its copies and interrupts their turns ($opens)",
+    ({ opens }) =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* world.publish(
+            spiEvent(
+              opens,
+              "person-thread",
+              { itemType: "mcp_tool_call", status: "inProgress" } as never,
+              {
+                itemId: "deploy-1",
+                toolCall: {
+                  name: "zerops_deploy",
+                  rawName: "mcp__zerops__zerops_deploy",
+                  server: "zerops",
+                  arguments: { targetService: "appdev" },
+                },
+              } as never,
+            ),
+          );
+          const frozen = yield* snapshotWhere(
+            (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
+          );
+          const interrupts = yield* dispatchedOf(world, "thread.turn.interrupt");
+          assert.deepStrictEqual(
+            [frozen.crewmates[0]!.lane?.state, interrupts.map((entry) => entry.threadId)],
+            ["frozen", [thread]],
+          );
+        }),
+      ),
   );
 
   it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
@@ -1905,8 +1911,150 @@ describe("CrewEngine", () => {
       ),
   );
 
+  const twoCrewmates = (leadLogin: string, writerLogin: string) =>
+    [
+      "name: Game team",
+      "briefTitle: Space shooter",
+      "members:",
+      "  - handle: lead",
+      "    displayName: Lead",
+      "    kind: lead",
+      `    login: ${leadLogin}`,
+      "  - handle: backend",
+      "    displayName: Backend",
+      "    host: appdev",
+      `    login: ${writerLogin}`,
+      "",
+    ].join("\n");
+
+  it.live.each([
+    {
+      name: "a lead on a login that can't host the crew tools",
+      lead: "codex_work",
+      writer: "codex_work",
+      words: "@lead leads the crew, and a lead needs the crew tools, which Codex cannot host",
+    },
+    {
+      name: "a writer on a login that can't carry the crew's rules",
+      lead: "claudeAgent",
+      writer: "cursor",
+      words: "@backend runs on Cursor, which can't run a crewmate",
+    },
+    {
+      name: "a lead on a login that can't carry the crew's rules",
+      lead: "cursor",
+      writer: "claudeAgent",
+      words: "@lead runs on Cursor, which can't run a crewmate",
+    },
+    {
+      name: "a crewmate on a login this Mate doesn't have",
+      lead: "claudeAgent",
+      writer: "gone",
+      words: "@backend runs on gone, which isn't a login on this Mate",
+    },
+  ])("Apply refuses $name, naming why", ({ lead, writer, words }) =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        writeCrewHome(world.workspace, {
+          "crew.yaml": twoCrewmates(lead, writer),
+          "jobs/lead.md": "Plan the work.\n",
+        });
+        const refused = yield* Effect.flip(command({ _tag: "apply" }));
+        assert.deepStrictEqual(
+          [refused.reason, refused.detail?.startsWith(words)],
+          ["invalid-definition", true],
+        );
+      }),
+    ),
+  );
+
+  it.live("an agent not live yet when the engine boots gets its crew tools once it is", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.crew.create"), (creates) => creates.length > 0),
+          );
+          yield* Ref.set(world.missingAgents, new Set(["claudeAgent"]));
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* Ref.set(world.missingAgents, new Set());
+          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
+            (entry) => entry.crew.crewmate === "backend",
+          )!;
+          const member = Option.getOrThrow(
+            yield* (yield* CrewThreadDirectory).memberFor(created.threadId),
+          );
+          assert.deepStrictEqual([member.prompt.crewTools, member.prompt.memory], [true, true]);
+        }),
+    ]),
+  );
+
+  const NO_SPEND = "Grok doesn't report what it spends, so this crew can't keep a budget";
+
   it.live(
-    "Apply refuses a lead on a Codex login, naming why; a Codex writer runs without crew tools",
+    "a run's dollar budget is refused while a crewmate's agent doesn't report its spend",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          writeCrewHome(world.workspace, {
+            "crew.yaml": twoCrewmates("claudeAgent", "grok"),
+            "jobs/lead.md": "Plan the work.\n",
+          });
+          yield* command({ _tag: "apply" });
+          yield* eventually(Effect.map(latest, everyCopyReady));
+          const budgeted = yield* Effect.flip(command({ ...RUN_NOW, budgetUsd: 20 }));
+          yield* command(RUN_NOW);
+          const run = (yield* snapshotWhere((snapshot) => snapshot.run !== null)).run!;
+          yield* command({ _tag: "pause", runId: run.id });
+          yield* snapshotWhere((snapshot) => snapshot.run?.state === "paused");
+          const resumed = yield* Effect.flip(
+            command({ _tag: "resume", runId: run.id, budgetUsd: 20 }),
+          );
+          assert.deepStrictEqual(
+            [budgeted.detail?.startsWith(NO_SPEND), resumed.detail?.startsWith(NO_SPEND)],
+            [true, true],
+          );
+        }),
+      ),
+  );
+
+  it.live("Apply refuses a crewmate on an agent that doesn't report its spend under a budget", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        writeCrewHome(world.workspace, {
+          "crew.yaml": twoCrewmates("claudeAgent", "claudeAgent"),
+          "jobs/lead.md": "Plan the work.\n",
+        });
+        yield* command({ _tag: "apply" });
+        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* command({ ...RUN_NOW, budgetUsd: 20 });
+        yield* snapshotWhere((snapshot) => snapshot.run !== null);
+        writeCrewHome(world.workspace, {
+          "crew.yaml": twoCrewmates("claudeAgent", "grok"),
+          "jobs/lead.md": "Plan the work.\n",
+        });
+        const refused = yield* Effect.flip(command({ _tag: "apply" }));
+        const ownRefused = yield* Effect.flip(
+          command({ _tag: "jobSave", handle: "backend", apply: "fresh" }),
+        );
+        assert.deepStrictEqual(
+          [
+            refused.reason,
+            refused.detail?.startsWith(NO_SPEND),
+            ownRefused.detail?.startsWith(NO_SPEND),
+          ],
+          ["invalid-definition", true, true],
+        );
+      }),
+    ),
+  );
+
+  it.live(
+    "a Codex writer runs without crew tools and memory; Runs on names each login's agent",
     () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
@@ -1914,28 +2062,8 @@ describe("CrewEngine", () => {
             world.logins,
             new Map([["codex_work", mateLogin("codex_work", "codex", "work")]]),
           );
-          const crewYaml = (leadLogin: string) =>
-            [
-              "name: Game team",
-              "briefTitle: Space shooter",
-              "members:",
-              "  - handle: lead",
-              "    displayName: Lead",
-              "    kind: lead",
-              `    login: ${leadLogin}`,
-              "  - handle: backend",
-              "    displayName: Backend",
-              "    host: appdev",
-              "    login: codex_work",
-              "",
-            ].join("\n");
           writeCrewHome(world.workspace, {
-            "crew.yaml": crewYaml("codex_work"),
-            "jobs/lead.md": "Plan the work.\n",
-          });
-          const refused = yield* Effect.flip(command({ _tag: "apply" }));
-          writeCrewHome(world.workspace, {
-            "crew.yaml": crewYaml("claudeAgent"),
+            "crew.yaml": twoCrewmates("claudeAgent", "codex_work"),
             "jobs/lead.md": "Plan the work.\n",
           });
           yield* command({ _tag: "apply" });
@@ -1947,13 +2075,19 @@ describe("CrewEngine", () => {
           const member = Option.getOrThrow(
             yield* (yield* CrewThreadDirectory).memberFor(created.threadId),
           );
+          const snapshot = yield* latest;
           assert.deepStrictEqual(
-            [
-              refused.reason,
-              refused.detail?.includes("Codex cannot host"),
-              member.prompt.crewTools,
-            ],
-            ["invalid-definition", true, false],
+            {
+              prompt: [member.prompt.crewTools, member.prompt.memory],
+              logins: snapshot.crewmates.map((crewmate) => [crewmate.handle, crewmate.login.label]),
+            },
+            {
+              prompt: [false, false],
+              logins: [
+                ["lead", "Claude"],
+                ["backend", "work"],
+              ],
+            },
           );
         }),
       ),

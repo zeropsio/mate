@@ -19,6 +19,7 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   hasMate,
+  isZeropsMateRunsWithoutSignIn,
   mateArriving,
   mateArrivingUntil,
   mateShapeOf,
@@ -72,6 +73,8 @@ export interface ZeropsMateIdentity {
   readonly madeBy?: string | undefined;
   /** Until when it is arriving (`mateArrivingUntil`); absent once it has arrived, or not known. */
   readonly arrivingUntil?: number | undefined;
+  /** Its project says it runs on an agent Mate signs nobody in to (`mate:runs:`). */
+  readonly runsWithoutSignIn?: boolean | undefined;
 }
 
 /** What a Mate's face reads of where it is in its life, from who lives there (`mateFaceFor`). */
@@ -123,6 +126,9 @@ export function zeropsMateIdentityOf(
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
     ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
+    ...(isZeropsMateRunsWithoutSignIn(candidate.project.tagList)
+      ? { runsWithoutSignIn: true }
+      : {}),
   };
 }
 

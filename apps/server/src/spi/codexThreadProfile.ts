@@ -153,7 +153,7 @@ const COMMAND_SHELLS = new Set(["sh", "bash", "zsh"]);
  * <command>` (or `-c`), so the gate judges the command inside. Anything
  * else is judged as it is.
  */
-const shellCommand = (command: string): string => {
+export const shellCommand = (command: string): string => {
   const words = commandWords(command);
   if (words?.length !== 3) return command;
   const [shell, flag, inner] = words as [string, string, string];

@@ -65,10 +65,13 @@ const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const mockAgentPath = NodePath.join(__dirname, "../../../scripts/acp-mock-agent.ts");
 const mockAgentCommand = process.execPath;
 
-async function makeMockAgentWrapper(): Promise<string> {
+async function makeMockAgentWrapper(env: Readonly<Record<string, string>> = {}): Promise<string> {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "spi-acp-mock-"));
   const wrapperPath = NodePath.join(dir, "fake-agent.sh");
-  const script = `#!/bin/sh\nexec ${JSON.stringify(mockAgentCommand)} ${JSON.stringify(mockAgentPath)} "$@"\n`;
+  const exports = Object.entries(env)
+    .map(([name, value]) => `export ${name}=${JSON.stringify(value)}\n`)
+    .join("");
+  const script = `#!/bin/sh\n${exports}exec ${JSON.stringify(mockAgentCommand)} ${JSON.stringify(mockAgentPath)} "$@"\n`;
   await NodeFSP.writeFile(wrapperPath, script, "utf8");
   await NodeFSP.chmod(wrapperPath, 0o755);
   return wrapperPath;
@@ -161,6 +164,30 @@ export async function recordCursorBaseline(): Promise<ReadonlyArray<SpiEvent>> {
       provider: ProviderDriverKind.make("cursor"),
       model: "default",
       turnInput: "hello mock",
+    });
+  });
+
+  return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));
+}
+
+/**
+ * Two MCP calls as the ACP spec carries them (the mock's
+ * `T3_ACP_EMIT_MCP_TOOL_CALLS`): one of no kind, named only by its title
+ * (`zerops: zerops_discover`), one an agent tagged `execute`, named by its
+ * title in Claude's spelling (`mcp__zerops__zerops_deploy`) — each must reach
+ * `event.toolCall` as the Zerops tool, its arguments and its result.
+ */
+export async function recordCursorMcpCalls(): Promise<ReadonlyArray<SpiEvent>> {
+  const wrapperPath = await makeMockAgentWrapper({ T3_ACP_EMIT_MCP_TOOL_CALLS: "1" });
+  const cursorConfig = decodeCursorSettings({ binaryPath: wrapperPath });
+
+  const program = Effect.gen(function* () {
+    const adapter = yield* makeCursorAdapter(cursorConfig);
+    return yield* runBaseline(adapter, {
+      threadId: ThreadId.make("spi-replay-cursor-mcp-thread"),
+      provider: ProviderDriverKind.make("cursor"),
+      model: "default",
+      turnInput: "deploy api",
     });
   });
 

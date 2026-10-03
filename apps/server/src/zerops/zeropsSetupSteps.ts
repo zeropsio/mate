@@ -65,8 +65,11 @@ export const standUpSigners = (
 };
 
 export type StandUpDecision =
+  /** On the agent the asker signed in. */
   | { readonly kind: "start"; readonly userId: string; readonly agentId: ZeropsAgentId }
-  /** Nobody asked yet, or the asker has not signed an agent in. */
+  /** On an agent Mate signs nobody in to, ready: it runs for the asker as for anybody. */
+  | { readonly kind: "start"; readonly userId: string; readonly instanceId: string }
+  /** Nobody asked yet, or the asker has no agent to run. */
   | { readonly kind: "wait" }
   /** This server has a record of one: started here or by a browser. */
   | { readonly kind: "done" }
@@ -74,21 +77,30 @@ export type StandUpDecision =
   | { readonly kind: "spoken" };
 
 /**
- * Whether to start the stand-up now: asked for by someone who has signed an
- * agent in, never twice, and never into a conversation already under way.
+ * Whether to start the stand-up now: asked for by someone with an agent to run
+ * — one they signed in, else one Mate signs nobody in to that is ready — never
+ * twice, and never into a conversation already under way. Their own sign-in
+ * comes first: it is the agent they chose.
  */
 export const standUpDecision = (input: {
   readonly recorded: boolean;
   readonly requestedBy: string | undefined;
   readonly signers: ReadonlyArray<ZeropsAgentId>;
+  /** The instance of a ready agent outside the sign-in (`pickReadyAgentWithoutSignIn`). */
+  readonly ready?: string | undefined;
   readonly spoken: boolean;
 }): StandUpDecision => {
   if (input.recorded) return { kind: "done" };
   if (input.requestedBy === undefined) return { kind: "wait" };
   const agentId = AGENT_ORDER.find((agent) => input.signers.includes(agent));
-  if (agentId === undefined) return { kind: "wait" };
-  if (input.spoken) return { kind: "spoken" };
-  return { kind: "start", userId: input.requestedBy, agentId };
+  const start: StandUpDecision | undefined =
+    agentId !== undefined
+      ? { kind: "start", userId: input.requestedBy, agentId }
+      : input.ready !== undefined
+        ? { kind: "start", userId: input.requestedBy, instanceId: input.ready }
+        : undefined;
+  if (start === undefined) return { kind: "wait" };
+  return input.spoken ? { kind: "spoken" } : start;
 };
 
 /* ------------------------------------------------------------ git */
@@ -260,7 +272,10 @@ export interface SetupFacts {
   readonly tagsRead: boolean;
   /** Who asked for the stand-up, by the project's tags. */
   readonly requestedBy: string | undefined;
-  /** When the asker's sign-in — anybody's, when nobody asked — was first seen recorded. */
+  /**
+   * When the asker's sign-in — anybody's, when nobody asked — was first seen recorded, or an
+   * agent Mate signs nobody in to (Cursor, OpenCode…) first seen ready.
+   */
   readonly signinAt: string | undefined;
   /**
    * The durable record of the stand-up: `ran`, started here or by a browser;

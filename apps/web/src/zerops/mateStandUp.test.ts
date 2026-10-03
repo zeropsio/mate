@@ -1,3 +1,4 @@
+import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
@@ -15,6 +16,17 @@ import {
   mateStandUpSignedIn,
   type MateStandUpInput,
 } from "./mateStandUp";
+
+/** A provider instance as the server sends it: signed in, models listed, unless said otherwise. */
+const agentInstance = (driver: string, status = "ready"): OtherAgentFields =>
+  ({
+    driver,
+    enabled: true,
+    installed: true,
+    status,
+    auth: { status: status === "ready" ? "authenticated" : "unauthenticated" },
+    models: [{ slug: "m" }],
+  }) as unknown as OtherAgentFields;
 
 const ADA = "u-ada";
 const FEN = "u-fen";
@@ -316,8 +328,37 @@ describe("mateStandUpSignedIn", () => {
       local: {},
       expected: true,
     },
-  ])("$name: $expected", ({ agents, local, expected }) => {
-    expect(mateStandUpSignedIn(agents, ADA, local)).toBe(expected);
+    // An agent Mate never signs anybody in to runs for whoever is looking.
+    {
+      name: "nobody signed in, Cursor ready",
+      agents: snapshot(),
+      local: {},
+      providers: [agentInstance("cursor")],
+      expected: true,
+    },
+    {
+      name: "a colleague's agent, OpenCode ready",
+      agents: snapshot(
+        agent({
+          credPresent: true,
+          flagOAuth: true,
+          state: "authorized",
+          authorizedBy: { subject: FEN },
+        }),
+      ),
+      local: {},
+      providers: [agentInstance("opencode")],
+      expected: true,
+    },
+    {
+      name: "nobody signed in, Cursor not signed in either",
+      agents: snapshot(),
+      local: {},
+      providers: [agentInstance("cursor", "error")],
+      expected: false,
+    },
+  ])("$name: $expected", ({ agents, local, providers, expected }) => {
+    expect(mateStandUpSignedIn(agents, ADA, local, providers)).toBe(expected);
   });
 });
 

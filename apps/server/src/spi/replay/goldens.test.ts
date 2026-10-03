@@ -26,6 +26,7 @@ import { CREW_REPLAY_POLICY } from "./crewReplayPolicy.ts";
 import {
   recordAntigravityBaseline,
   recordCursorBaseline,
+  recordCursorMcpCalls,
   recordGrokBaseline,
 } from "./acpReplay.ts";
 import { recordOpenCodeBaseline } from "./openCodeReplay.ts";
@@ -99,6 +100,7 @@ const jsonlCases: ReadonlyArray<GoldenCase> = [
 // scenario its record() function drives — see acpReplay.ts / openCodeReplay.ts.
 const liveCases: ReadonlyArray<GoldenCase> = [
   { driver: "cursor", name: "hello-baseline", record: recordCursorBaseline, timeoutMs: 30_000 },
+  { driver: "cursor", name: "mcp-calls", record: recordCursorMcpCalls, timeoutMs: 30_000 },
   { driver: "grok", name: "hello-baseline", record: recordGrokBaseline, timeoutMs: 30_000 },
   {
     driver: "antigravity",
