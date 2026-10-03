@@ -15,6 +15,7 @@ import {
   type ReviewVerdict,
 } from "@t3tools/client-runtime/zerops";
 import { parseAttachmentUrl, type ChangeLink } from "@t3tools/shared/hqChanges";
+import { quoteWords } from "@t3tools/shared/messagePreview";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -273,15 +274,11 @@ const RUN_WORDS_MAX = 400;
 
 /**
  * A message's markdown read as plain sentences: no code blocks, marks, links, bullets or quote
- * markers. A GitHub callout keeps its word, run into its first line as the chat draws it.
+ * markers. A GitHub callout keeps its word, run into its first line as the chat draws it
+ * (`quoteWords`).
  */
 function plainText(text: string): string {
-  return text
-    .replace(/^[ \t]{0,3}(?:>[ \t]?)+/gmu, "")
-    .replace(
-      /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*$/gimu,
-      (_marker, kind: string) => `${kind[0]!.toUpperCase()}${kind.slice(1).toLowerCase()}:`,
-    )
+  return quoteWords(text)
     .replace(/```[\s\S]*?```/gu, " ")
     .replace(/!\[[^\]]*\]\([^)]*\)/gu, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")

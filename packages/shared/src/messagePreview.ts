@@ -16,15 +16,43 @@ const STRONG = /(\*\*|__)(?=\S)([^\n]*?\S)\1/gu;
 const EMPHASIS = /(^|[^\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/gu;
 const STRIKE = /~~(?=\S)([^\n]*?\S)~~/gu;
 const CODE = /`([^`\n]+)`/gu;
-const BLOCK_MARKS = /^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,3}[.)]\s+)/gmu;
+const BLOCK_MARKS = /^\s{0,3}(?:#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,3}[.)]\s+)/gmu;
 const TRAILING_PUNCTUATION = /[\s,;:.!?…-]+$/u;
+const QUOTE_LINE = /^[ \t]{0,3}(?:>[ \t]?)+(.*)$/gmu;
+const ALERT_MARKER = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/iu;
+
+/**
+ * GitHub's five alert kinds and the word each is said as: the chat's callout
+ * label, and the word a callout keeps wherever a message is read as plain
+ * words.
+ */
+export const GITHUB_ALERT_WORDS: ReadonlyMap<string, string> = new Map([
+  ["note", "Note"],
+  ["tip", "Tip"],
+  ["important", "Important"],
+  ["warning", "Warning"],
+  ["caution", "Caution"],
+]);
+
+/**
+ * A markdown text's quotes as their words: every quote marker dropped, and a
+ * GitHub alert's marker line (`> [!WARNING]`) said as its word — "Warning:" —
+ * so it runs into the alert's first line once the lines are joined, as the
+ * chat draws it. Only a marker alone on its quote's line counts, GitHub's rule.
+ */
+export function quoteWords(markdown: string): string {
+  return markdown.replace(QUOTE_LINE, (_line, rest: string) => {
+    const kind = ALERT_MARKER.exec(rest)?.[1];
+    return kind === undefined ? rest : `${GITHUB_ALERT_WORDS.get(kind.toLowerCase())}:`;
+  });
+}
 
 /**
  * A markdown message as plain words on one line, every one of them: what a
  * preview cuts, and what a search quotes around the words it found.
  */
 export function messageWords(markdown: string): string {
-  return markdown
+  return quoteWords(markdown)
     .replace(FENCE_LINE, "")
     .replace(HORIZONTAL_RULE, "")
     .replace(IMAGE, "$1")
