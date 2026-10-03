@@ -28,7 +28,8 @@ describe("hqMates", () => {
         // Online, and no overview from it: a Mate from before the overview.
         P_BEA: { presence: { online: true, since: AT, overview: "none" } },
       },
-      people: { U1: { name: "Ada Lovelace" } },
+      // A person named by an OWNER entry carries the member id the entry names.
+      people: { U1: { name: "Ada Lovelace", clientUserId: "C1" }, U2: { name: "Bo" } },
     };
     expect(roundTrip(HqMatesSnapshot, snapshot)).toEqual(snapshot);
 

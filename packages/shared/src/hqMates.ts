@@ -11,6 +11,8 @@
  *
  * A Mate's presence is HQ's own: whether one of its links is open, since when, and where its
  * overview comes from. Names are Zerops', as HQ last read its organization's members; HQ keeps none.
+ * The people are those the view names: the Mates' makers and stand-up askers, their logins'
+ * signers, and whoever an `OWNER` entry names on the reader's projects — never a token.
  *
  * @module hqMates
  */
@@ -45,8 +47,14 @@ export const MateLiveChange = Schema.Struct({
 });
 export type MateLiveChange = typeof MateLiveChange.Type;
 
-/** A person by their Zerops user id. */
-export const HqPeople = Schema.Record(Schema.String, Schema.Struct({ name: Schema.String }));
+/**
+ * A person by their Zerops user id: their name, and their member id (`clientUser`) — what a
+ * project's `userRoles` name them by, so an `OWNER` entry finds its person here.
+ */
+export const HqPeople = Schema.Record(
+  Schema.String,
+  Schema.Struct({ name: Schema.String, clientUserId: Schema.optionalKey(Schema.String) }),
+);
 export type HqPeople = typeof HqPeople.Type;
 
 /** What a structure snapshot carries beside the structure. */
