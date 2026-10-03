@@ -63,6 +63,18 @@ export class McpLive extends Context.Service<
   }
 >()("t3/spi/mcpLive") {}
 
+/** How long a reconnect or a toggle may take before the tab hears it failed. */
+const LIVE_CALL_TIMEOUT = "15 seconds";
+
+const answeredInTime = <A>(effect: Effect.Effect<A, ProviderMcpError>) =>
+  effect.pipe(
+    Effect.timeoutOrElse({
+      duration: LIVE_CALL_TIMEOUT,
+      orElse: () =>
+        Effect.fail(new ProviderMcpError({ detail: "the agent did not answer in 15 seconds" })),
+    }),
+  );
+
 export const layer = Layer.effect(
   McpLive,
   Effect.gen(function* () {
@@ -92,9 +104,13 @@ export const layer = Layer.effect(
           return servers === undefined ? undefined : { driver: instance.driverKind, servers };
         }),
       reconnect: (threadId, name) =>
-        hookOf(threadId).pipe(Effect.flatMap((hook) => hook.reconnect(threadId, name))),
+        hookOf(threadId).pipe(
+          Effect.flatMap((hook) => answeredInTime(hook.reconnect(threadId, name))),
+        ),
       setEnabled: (threadId, name, enabled) =>
-        hookOf(threadId).pipe(Effect.flatMap((hook) => hook.setEnabled(threadId, name, enabled))),
+        hookOf(threadId).pipe(
+          Effect.flatMap((hook) => answeredInTime(hook.setEnabled(threadId, name, enabled))),
+        ),
       installedDrivers: providers.getProviders.pipe(
         Effect.map((snapshots) => [
           ...new Set(snapshots.filter((snapshot) => snapshot.installed).map((s) => s.driver)),

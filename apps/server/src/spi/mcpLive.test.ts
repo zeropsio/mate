@@ -1,5 +1,8 @@
 import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
@@ -11,7 +14,12 @@ import {
   openCodeMcpLiveServers,
   type ClaudeMcpQuery,
   type OpenCodeMcpClient,
+  layer as McpLiveLayer,
+  McpLive,
 } from "./mcpLive.ts";
+import type { ProviderInstance } from "../provider/ProviderDriver.ts";
+import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
+import { ProviderRegistryTest } from "./ProviderRegistryTest.ts";
 
 const THREAD = ThreadId.make("thread-1");
 const OTHER = ThreadId.make("thread-2");
@@ -242,5 +250,38 @@ describe("openCodeMcpControl", () => {
         "connect e",
       ]);
     }),
+  );
+});
+
+describe("McpLive", () => {
+  const hung = {
+    status: () => Effect.undefined,
+    reconnect: () => Effect.never,
+    setEnabled: () => Effect.never,
+    configChanged: () => Effect.void,
+  };
+  const instance = {
+    driverKind: "claudeAgent",
+    adapter: { hasSession: () => Effect.succeed(true), mcp: hung },
+  } as unknown as ProviderInstance;
+  const live = McpLiveLayer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(ProviderInstanceRegistry)({ listInstances: Effect.succeed([instance]) }),
+        ProviderRegistryTest.empty(),
+      ),
+    ),
+  );
+
+  it.effect("gives up on a reconnect or a toggle the agent never answers", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpLive;
+      for (const call of [mcp.reconnect(THREAD, "x"), mcp.setEnabled(THREAD, "x", false)]) {
+        const fiber = yield* Effect.forkChild(Effect.flip(call));
+        yield* TestClock.adjust("16 seconds");
+        const error = yield* Fiber.join(fiber);
+        expect(error.detail).toBe("the agent did not answer in 15 seconds");
+      }
+    }).pipe(Effect.provide(live)),
   );
 });
