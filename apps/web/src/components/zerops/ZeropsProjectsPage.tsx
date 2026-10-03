@@ -77,8 +77,11 @@ import {
   beginPress,
   finishMateSetup,
   forgetPress,
+  matePressPlacement,
   pressFailureLine,
   placedPressesIn,
+  readMatePress,
+  setUpMateRegistration,
   useMatePresses,
   type MatePress,
 } from "~/zerops/matePress";
@@ -202,7 +205,6 @@ import {
   type ZeropsRowInput,
   connectFailureLine,
   deriveZeropsRowAction,
-  setUpMateRecord,
   setUpMateVerb,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
@@ -1091,23 +1093,26 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         const agents = group === undefined ? [] : await readGroupAgents(group.environments);
         if (!isCurrent()) return;
         const project = projectRef(activeOrganization.id, projectId);
-        // Already listed: the listing places it.
+        const hq = officialHq(accountHq);
+        // Its record in HQ, written by the press's registration after the close-off its birth
+        // records: into the application a press this tab still holds placed it in, under its name
+        // and face (F6b); else in no application until somebody moves it into one.
+        const held = readMatePress(projectId);
+        const registration = setUpMateRegistration({
+          hq,
+          press: held,
+          project: candidate.project,
+          candidates,
+          taken: taken.names,
+          random: (bytes) => crypto.getRandomValues(bytes),
+        });
+        // Already listed, the listing places it; still placed by the press it was made by.
         beginPress({
           projectId,
           organizationId: activeOrganization.id,
           startedAt: Date.now(),
           container: true,
-          placement: null,
-        });
-        const hq = officialHq(accountHq);
-        // Its record in HQ — in no application until somebody moves it into one: a name nobody
-        // goes by and the face a new Mate of that name is born with. Written by the press's
-        // registration, after the close-off its birth records.
-        const record = setUpMateRecord({
-          project: candidate.project,
-          candidates,
-          taken: taken.names,
-          random: (bytes) => crypto.getRandomValues(bytes),
+          placement: matePressPlacement(held) ?? null,
         });
         // Its container with its own key, and its project closed off before anyone is let in.
         const pressed = await finishMateSetup({
@@ -1119,15 +1124,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           projectId,
           projectName: candidate.project.name,
           container: { agents },
-          registration:
-            record === undefined
-              ? null
-              : {
-                  hq,
-                  kind: "mate-record",
-                  record,
-                  birth: { standUp: false, closedOff: true },
-                },
+          registration,
           hq,
           isCurrent,
         });

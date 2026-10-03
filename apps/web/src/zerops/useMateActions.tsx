@@ -130,6 +130,8 @@ import {
   finishSetupRunning,
   finishMateSetup,
   forgetPress,
+  matePressPlacement,
+  placedMateRegistration,
   readMatePress,
   useInterruptedPresses,
   useMatePresses,
@@ -593,12 +595,20 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const groupId = tags.groupId;
       const organizationId = activeOrganization.id;
       const projectId = candidate.project.id;
-      const pressStopped = readMatePress(projectId)?.state.kind === "failed";
+      const press = readMatePress(projectId);
+      const pressStopped = press?.state.kind === "failed";
       // An owner or an admin finishes all of it; the Mate's own adder, its close-off. The harden
       // runs where it may: never on keys this viewer may not write.
       const whole =
         finishMateSetupScope(canWriteRegistry(sessionOfferViewer(user, activeOrganization))) ===
         "whole";
+      // A Mate HQ holds no record of whose press this tab still holds: the press knows its
+      // application, its name and its face, and it is finished into that application under them —
+      // never written as a new Mate in none (F6b, 2026-10-03).
+      const placed =
+        recordMissing(candidate) && (whole || mayCreateRecord(candidate))
+          ? matePressPlacement(press)
+          : undefined;
       const hardenable = mateHardenableBy(listedTokens, projectId, {
         userId: user?.id,
         roleCode: activeOrganization.roleCode,
@@ -607,7 +617,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       // Its record in HQ where it has none, a name nobody goes by and its face: written after the
       // close-off, with its birth — the stand-up asked by whoever finishes a Mate its press made.
       const record =
-        recordMissing(candidate) && mayCreateRecord(candidate)
+        placed === undefined && recordMissing(candidate) && mayCreateRecord(candidate)
           ? setUpMateRecord({
               project: candidate.project,
               candidates,
@@ -632,7 +642,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         projectId,
         organizationId,
         startedAt: Date.now(),
-        placement: null,
+        // Still placed by the press it was made by, so a Finish setup asked again finishes it there.
+        placement: matePressPlacement(press) ?? null,
         container: container !== null,
         finishing: true,
       });
@@ -660,22 +671,24 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                       closedOff: true,
                     },
                   }
-                : !whole || groupId === undefined
-                  ? null
-                  : {
-                      hq: officialHq(accountHq),
-                      groupId,
-                      kind: "mate",
-                      mate: {
-                        name: tags.bot ?? candidate.project.name,
-                        face:
-                          tags.face?.tint === undefined || tags.face.shape === undefined
-                            ? undefined
-                            : { tint: tags.face.tint, shape: tags.face.shape },
+                : placed !== undefined
+                  ? placedMateRegistration(officialHq(accountHq), placed)
+                  : !whole || groupId === undefined
+                    ? null
+                    : {
+                        hq: officialHq(accountHq),
+                        groupId,
+                        kind: "mate",
+                        mate: {
+                          name: tags.bot ?? candidate.project.name,
+                          face:
+                            tags.face?.tint === undefined || tags.face.shape === undefined
+                              ? undefined
+                              : { tint: tags.face.tint, shape: tags.face.shape },
+                        },
+                        // Closed off by the close-off before its registration.
+                        birth: { standUp: false, closedOff: true },
                       },
-                      // Closed off by the close-off before its registration.
-                      birth: { standUp: false, closedOff: true },
-                    },
             hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),
           });
