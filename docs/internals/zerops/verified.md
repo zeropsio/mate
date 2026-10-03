@@ -7445,8 +7445,12 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   and 08:35:08Z; none was deleted. A sampler polling every ~55 s saw KRLS's project list, member
   list and token list time out at 25 s at 08:33:38Z and 08:34:33Z, and answer in 0.3–1.4 s at
   08:35:28Z.
-- **The project's L7 cuts every WebSocket 120 s after it opens, busy or not, with no close frame**
-  — a Node client held KRLS HQ's structure socket through the project's own domain
+- **A WebSocket through a project's shared IPv4 is cut 120 s after it opens, busy or not, with no
+  close frame; over the project's IPv6 it is not** — KRLS HQ's project is `mode: LIGHT`,
+  `publicIpV4Shared: true`, with its own `publicIpV6`. At 12:52Z, from a KRLS Mate container, two
+  structure sockets to `<publicZone>` held with every ping answered: the one Node resolved over IPv6
+  (`--dns-result-order=ipv6first`) was still open at 150 s; the one over IPv4 ended at 120.1 s with
+  `1006`. Earlier, a Node client held KRLS HQ's structure socket through the project's own domain
   (`<publicZone>`, `*.prg1-zerops.zone`) for 5 min from 11:56Z, answering every ping: sockets 1
   and 2 each ended at 120.02 s with `1006`, not clean, after 5 pings; a reconnect got a fresh
   snapshot within 15 ms; socket 3, closed by the client at 59 s, ended `1000`. HQ's own log
@@ -7454,8 +7458,9 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   the client's, so the cut sits between them. Every Mate link (`/api/mate/link`) in HQ's log from
   11:49Z to 12:01Z lasted 119 986–120 003 ms, each followed about 1 s later by the Mate's
   link-ticket and a new link. A local Core held a socket 135 s at the same cadence. Pings every
-  20 s each way do not prevent the cut; this is not the 60 s idle cut. The L7 balancer docs name no
-  such limit.
+  20 s each way do not prevent the cut; this is not the 60 s idle cut. None of the 34 settings of
+  `GET /project/{id}/l7httpbalancer-config` is a connection lifetime; the public-access docs say a
+  shared IPv4 has "shorter connection timeouts", with no number.
 - **A production imported without code reads `source: NONE` only from the version list** — the
   `activeAppVersion` embedded in `POST /service-stack/search` carries `base, created, id,
 lastUpdate, os, status` only; `/app-version/search` gives the same version `source: NONE`,
