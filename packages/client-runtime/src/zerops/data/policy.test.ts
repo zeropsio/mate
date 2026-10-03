@@ -35,7 +35,6 @@ describe("Zerops data runtime policy", () => {
   // measured on a 193-key org, cold), a key, the import — and shared one request's 15 s, so every
   // Set up Mate on KRLS stopped at its deadline (2026-10-02). Main gave its commands a minute.
   it.each([
-    ["create-project-with-mate", 60_000],
     ["import-development-container", 60_000],
     ["create-project", 15_000],
     ["restart-service", 15_000],

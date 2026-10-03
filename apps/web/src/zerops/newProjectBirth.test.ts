@@ -304,7 +304,7 @@ function ports(over: Partial<NewProjectPorts> = {}) {
     }),
     createProject: vi.fn(async () => {
       order.push("create");
-      return { project: PROJECT, serviceName: "zcp" };
+      return { project: PROJECT };
     }),
     accepted: vi.fn((...[projectId, { hq, appId }]: AcceptedArgs) => {
       order.push(`accepted:${projectId}:${hq.projectId}:${appId}`);
@@ -323,12 +323,11 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     // and its Mate goes into the application HQ named.
     expect(order).toEqual(["register:hq-1:Acme CRM", "create", "accepted:p-vera:hq-1:app-acme"]);
     // Its Mate's row counts on from the press, not from when the platform answered; its container
-    // came with it.
+    // is its press's, after its attach (F6b).
     expect(made.accepted).toHaveBeenCalledWith(
       "p-vera",
       expect.objectContaining({ appId: "app-acme" }),
       PRESSED_AT,
-      true,
     );
     expect(moved).toEqual([
       { step: "create", appId: "app-acme" },
@@ -336,39 +335,18 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     ]);
   });
 
-  // `mate-rig-e2e-a - Ada`, 2026-10-02: the project was made, its container never asked for, and
-  // the creation stopped on a deadline — a project nobody could finish, its application empty.
-  it("hands over a project whose container was not confirmed, for its press to import", async () => {
-    const { order, ports: made } = ports({
-      createProject: vi.fn(async () => ({ project: PROJECT, serviceName: null })),
-    });
-    const moved: Array<NewProjectPatch> = [];
-    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
-    expect(order).toEqual(["register:hq-1:Acme CRM", "accepted:p-vera:hq-1:app-acme"]);
-    expect(made.accepted).toHaveBeenCalledWith(
-      "p-vera",
-      expect.objectContaining({ appId: "app-acme" }),
-      PRESSED_AT,
-      false,
-    );
-    expect(moved.at(-1)).toEqual({ step: "created", projectId: "p-vera" });
-  });
-
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
     {
       // Its application, name and face are HQ's: the press's registration writes them.
       case: "named after its Mate, and nothing of its place on the project",
       ask: {},
-      args: { name: "Acme CRM - Vera", agents: [] },
+      args: { name: "Acme CRM - Vera" },
     },
     {
-      case: "in the location chosen, with the agents selected",
+      // Its agents are its container's, which its press imports.
+      case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: {
-        name: "Acme CRM - Vera",
-        location: "prg1",
-        agents: ["claude-code"],
-      },
+      args: { name: "Acme CRM - Vera", location: "prg1" },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made } = ports();

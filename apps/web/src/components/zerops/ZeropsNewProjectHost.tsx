@@ -52,6 +52,7 @@ import {
   generateZeropsGroupId,
   newMateTint,
   resolveAddProjectVerb,
+  withZeropsMateTag,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 
@@ -271,14 +272,23 @@ function NewProjectDialog() {
         registerGroup: async ({ hq, name: groupName }) => ({
           appId: (await accountHqApi(client, organizationId, hq).createApp(groupName)).id,
         }),
-        // In flight as a press: the background mints no throwaway while it reads the token list.
-        createProject: (creation) =>
+        // The project alone, born a Mate (its marker on before anything else): its press attaches
+        // it to its application, then imports its container (F6b). In flight as a press: the
+        // background mints no throwaway while it reads the token list.
+        createProject: ({ name: projectName, location }) =>
           whilePressing(() =>
-            runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
-          ),
-        accepted: (projectId, { hq, appId }, startedAt, containerImported) => {
-          // The press goes on: the project closed off and the Mate attached to its application in
-          // HQ. The listing is read again so the project's group catches
+            runZeropsCommand(
+              runtime.commands.createProject({
+                organization,
+                name: projectName,
+                tagList: withZeropsMateTag([]),
+                ...(location === undefined ? {} : { location }),
+              }),
+            ),
+          ).then((project) => ({ project })),
+        accepted: (projectId, { hq, appId }, startedAt) => {
+          // The press goes on: the Mate attached to its application in HQ, its container imported
+          // and the project closed off. The listing is read again so the project's group catches
           // up with it. Its row stands where the creation's stood, with the same face and name.
           const placement = newProjectPlacement({ ...ask, appId });
           beginPress({
@@ -293,9 +303,9 @@ function NewProjectDialog() {
             inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
             projectId,
             projectName: placement.displayName,
-            // Imported a moment ago, with the project, by the one call that made it — or, where
-            // that call could not confirm it, imported by this press, as *Finish setup* would.
-            container: containerImported ? null : { agents: ask.agents },
+            // After its attach: a press that stops before it leaves a Mate HQ holds in its
+            // application, which any browser finishes under its name.
+            container: { agents: ask.agents },
             registration: {
               hq,
               groupId: appId,

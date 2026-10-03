@@ -2,7 +2,6 @@ import type { TokenWriteHold } from "./groupReach.ts";
 import { describe, expect, it, vi } from "@effect/vitest";
 
 import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
-import { planEnvironmentCreation } from "./createEnvironment.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
@@ -597,100 +596,5 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     });
     await client.importDevelopmentContainer(INPUT);
     expect(importOf(requests).serviceImportYaml).toContain("- hostname: zcp\n");
-  });
-});
-
-describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
-  function recordingClient() {
-    const { client, requests } = platformClient({});
-    return {
-      client,
-      requests: {
-        get project() {
-          return requests[0];
-        },
-        get import() {
-          return requests.find((request) => request.url.includes("/first-class-recipe/"));
-        },
-        all: requests,
-      },
-    };
-  }
-
-  it("creates the project, then imports the container recipe into it", async () => {
-    const { client, requests } = recordingClient();
-
-    const result = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "new" });
-
-    expect(result.project.id).toBe("project-9");
-    expect(result.serviceName).toBe("zcp");
-
-    expect(writesOf(requests.all)).toEqual([
-      "POST /client/org-1/project",
-      "POST /client/org-1/integration-token",
-      "PUT /project/project-9/first-class-recipe/development-container",
-    ]);
-
-    const importBody = JSON.parse(requests.import?.body ?? "{}");
-    expect(importBody.recipeSource).toBe("zeropsio/zcp");
-    expect(importBody.createIntegrationToken).toBe(false);
-    expect(importBody.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
-    expect(importBody.serviceImportYaml).toMatch(/VSCODE_PASSWORD: "[A-Za-z0-9]{16}"/);
-  });
-
-  it("generates the container password, sends it, and forgets it", async () => {
-    const { client, requests } = recordingClient();
-    const logged: string[] = [];
-    const spies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
-      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-        logged.push(args.map(String).join(" "));
-      }),
-    );
-
-    try {
-      const result = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "new" });
-
-      const password = /VSCODE_PASSWORD: "([A-Za-z0-9]{16})"/.exec(
-        JSON.parse(requests.import?.body ?? "{}").serviceImportYaml as string,
-      )?.[1];
-      expect(password).toBeTruthy();
-
-      // It exists only inside the one request that carries it.
-      expect(JSON.stringify(result)).not.toContain(password);
-      expect(logged.join("\n")).not.toContain(password);
-      expect(requests.project?.body ?? "").not.toContain(password);
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-    }
-  });
-
-  /**
-   * The New project wizard's first Mate is born asking, on its person's behalf, for the project's
-   * development to be stood up: the tags a Mate added with New Mate is born with. Its
-   * application, its name and its face are HQ's, written by the press's registration.
-   */
-  const birthTags = async (input: Record<string, unknown>) => {
-    const { client, requests } = recordingClient();
-    await client.createProjectWithZeropsMate({
-      clientId: "org-1",
-      name: "Acme Docs - Ada",
-      ...input,
-    });
-    return JSON.parse(requests.project?.body ?? "{}").tagList as ReadonlyArray<string>;
-  };
-
-  it("tags the first Mate at birth with the marker alone", async () => {
-    expect(await birthTags({})).toEqual(["mate"]);
-  });
-
-  it("tags it exactly as New Mate tags a Mate it adds", async () => {
-    const plan = planEnvironmentCreation({
-      clientId: "org-1",
-      role: "dev",
-      name: "Acme Docs - Ada",
-    });
-    if (!plan.ok || plan.steps[0]?.kind !== "create-project") throw new Error("no birth tags");
-    const tags = await birthTags({});
-    expect([...tags].sort()).toEqual([...plan.steps[0].tagList].sort());
   });
 });

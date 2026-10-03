@@ -60,7 +60,6 @@ describe("central Zerops data bindings", () => {
       "enableZeropsMate",
       "enableSubdomainAccess",
       "createProject",
-      "createProjectWithZeropsMate",
       "importProject",
       "importServicesIntoProject",
       "setIntegrationTokenProjects",

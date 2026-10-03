@@ -1079,11 +1079,7 @@ export interface RestartResponseDecodeResult extends ProtocolDecodeResult {
 type ProjectResponseCommand = Extract<
   PlatformCommand,
   {
-    readonly kind:
-      | "update-project-tags"
-      | "set-project-member-role"
-      | "create-project"
-      | "create-project-with-mate";
+    readonly kind: "update-project-tags" | "set-project-member-role" | "create-project";
   }
 >;
 
@@ -1119,7 +1115,6 @@ export function decodeProjectCommandResponse(
       case "set-project-member-role":
         return command.project.organization;
       case "create-project":
-      case "create-project-with-mate":
         return command.organization;
     }
   })();

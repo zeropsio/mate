@@ -1577,7 +1577,6 @@ export type PlatformCommandKind =
   | "enable-zerops-mate"
   | "enable-subdomain-access"
   | "create-project"
-  | "create-project-with-mate"
   | "import-project"
   | "import-services"
   | "read-integration-token-grant"
@@ -1879,15 +1878,6 @@ export interface CreateProjectCommandIntent {
   readonly location?: string;
 }
 
-export interface CreateProjectWithMateCommandIntent {
-  readonly kind: "create-project-with-mate";
-  readonly organization: OrganizationRef;
-  readonly name: string;
-  readonly location?: string;
-  readonly zcpVersion?: string;
-  readonly agents?: ReadonlyArray<ZeropsAgentType>;
-}
-
 export interface ImportProjectCommandIntent {
   readonly kind: "import-project";
   readonly organization: OrganizationRef;
@@ -1981,7 +1971,6 @@ export type PlatformCommandIntent =
   | EnableZeropsMateCommandIntent
   | EnableSubdomainAccessCommandIntent
   | CreateProjectCommandIntent
-  | CreateProjectWithMateCommandIntent
   | ImportProjectCommandIntent
   | ImportServicesCommandIntent
   | ReadIntegrationTokenGrantCommandIntent
@@ -2033,10 +2022,6 @@ export type PlatformCommandResult =
   | { readonly kind: "enable-zerops-mate"; readonly value: void }
   | { readonly kind: "enable-subdomain-access"; readonly value: void }
   | { readonly kind: "create-project"; readonly value: ZeropsProject }
-  | {
-      readonly kind: "create-project-with-mate";
-      readonly value: { readonly project: ZeropsProject; readonly serviceName: string | null };
-    }
   | { readonly kind: "import-project"; readonly value: { readonly projectId: string } }
   | { readonly kind: "import-services"; readonly value: void }
   | {
@@ -2269,14 +2254,6 @@ export interface ZeropsDataCommands {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
-  readonly createProjectWithMate: (
-    input: Omit<CreateProjectWithMateCommandIntent, "kind" | "organization"> & {
-      readonly organization: OrganizationRef;
-    },
-  ) => Effect.Effect<
-    CommandExecution<{ readonly project: ZeropsProject; readonly serviceName: string | null }>,
-    CommandAdmissionError | AdapterError
-  >;
   readonly importProject: (
     organization: OrganizationRef,
     yaml: string,

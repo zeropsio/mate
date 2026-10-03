@@ -32,9 +32,13 @@ describe("ZeropsNewProjectHost source", () => {
     expect(hostSource).not.toContain("runHqBirth(");
   });
 
-  it("creates through the typed runtime command", () => {
-    expect(hostSource).toContain("runtime.commands.createProjectWithMate(");
-    expect(hostSource).not.toContain("client.createProjectWithZeropsMate(");
+  // F6b (2026-10-03): the project alone, then its press — its Mate attached to its application
+  // before its container, which the press imports — never project and container in one call.
+  it("creates the project alone through the typed runtime command, its press bringing the container", () => {
+    expect(hostSource).toContain("runtime.commands.createProject(");
+    expect(hostSource).not.toContain("createProjectWithMate");
+    expect(hostSource).toContain("container: { agents: ask.agents }");
+    expect(hostSource).not.toContain("containerImported");
   });
 
   it("loads organization locations through the broker's demand-scoped atom", () => {

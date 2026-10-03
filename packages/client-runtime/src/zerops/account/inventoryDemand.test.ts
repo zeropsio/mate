@@ -389,10 +389,7 @@ describe("holdInventoryDemand", () => {
                   processRefs: [],
                   observations: decodeProjectCommandResponse(command as never, created)
                     .observations,
-                  result: {
-                    kind: "create-project-with-mate",
-                    value: { project: created, serviceName: "zcp" },
-                  },
+                  result: { kind: "create-project", value: created },
                 } as never),
             },
             atomRegistry: registry,
@@ -416,7 +413,11 @@ describe("holdInventoryDemand", () => {
             );
           expect(yield* streamed()).toEqual([]);
 
-          yield* data.commands.createProjectWithMate({ organization, name: "new-mate" });
+          yield* data.commands.createProject({
+            organization,
+            name: "new-mate",
+            tagList: ["mate"],
+          });
           yield* settle;
           expect(yield* streamed()).toEqual(["organization-variables"]);
         }),

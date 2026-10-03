@@ -91,13 +91,12 @@ export type NewProjectPatch = Partial<
 >;
 
 /**
- * What the first Mate's project is created with (`createProjectWithMate`). Its application, name
- * and face are HQ's, written by the press's registration.
+ * What the first Mate's project is created with: the project alone. Its application, name and
+ * face are HQ's, written by its press's registration before its container (F6b).
  */
 export interface NewProjectCreation {
   readonly name: string;
   readonly location?: string;
-  readonly agents: ReadonlyArray<ZeropsAgentType>;
 }
 
 /** Where the project stands once registered: its organization's HQ, and its application in it. */
@@ -114,24 +113,21 @@ export interface NewProjectPorts {
     readonly name: string;
   }) => Promise<{ readonly appId: string }>;
   /**
-   * Creates the first Mate's project and its container: the container's service name, or null
-   * where the project was made and its container not confirmed (`createProjectWithZeropsMate`).
+   * Creates the first Mate's project, alone: its press attaches it to its application, then
+   * imports its container (F6b).
    */
   readonly createProject: (creation: NewProjectCreation) => Promise<{
     readonly project: Pick<ZeropsProject, "id">;
-    readonly serviceName: string | null;
   }>;
-  /** The platform took the first Mate's project: its birth begins (`creationAccepted`). */
   /**
    * The platform took the first Mate's project: its birth begins, on the creation's own clock —
-   * `startedAt` is the press's, so its row counts on, never from 0:00 — and its press imports its
-   * container where the creation did not confirm it (`containerImported`).
+   * `startedAt` is the press's, so its row counts on, never from 0:00 — and its press attaches it,
+   * then imports its container.
    */
   readonly accepted: (
     projectId: string,
     registration: NewProjectRegistration,
     startedAt: number,
-    containerImported: boolean,
   ) => void;
 }
 
@@ -336,7 +332,6 @@ export async function runNewProjectBirth(
     created = await ports.createProject({
       name: newProjectPlacement(birth).displayName,
       ...(birth.locationId === null ? {} : { location: birth.locationId }),
-      agents: birth.agents,
     });
   } catch (cause) {
     stop(zeropsErrorMessage(cause), isUncertain(cause));
@@ -344,9 +339,8 @@ export async function runNewProjectBirth(
   }
   const projectId = created.project.id;
   // Its birth begins, and its view moves to it, in one breath: the menu draws its row from one or
-  // the other, never neither. A project whose container was not confirmed is handed over all the
-  // same: its press imports it, as *Finish setup* would.
-  ports.accepted(projectId, { hq, appId }, birth.startedAt, created.serviceName !== null);
+  // the other, never neither.
+  ports.accepted(projectId, { hq, appId }, birth.startedAt);
   moved({ step: "created", projectId });
 }
 
@@ -385,10 +379,8 @@ async function drive(birthId: string): Promise<void> {
       birth,
       {
         ...held.ports,
-        accepted: (projectId, registration, startedAt, containerImported) => {
-          if (held.isCurrent()) {
-            held.ports.accepted(projectId, registration, startedAt, containerImported);
-          }
+        accepted: (projectId, registration, startedAt) => {
+          if (held.isCurrent()) held.ports.accepted(projectId, registration, startedAt);
         },
       },
       (patch) => {

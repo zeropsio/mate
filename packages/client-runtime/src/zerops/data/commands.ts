@@ -38,7 +38,6 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "harden-mate":
       return intent.project;
     case "create-project":
-    case "create-project-with-mate":
     case "import-project":
     case "read-integration-token-grant":
     case "set-integration-token-projects":

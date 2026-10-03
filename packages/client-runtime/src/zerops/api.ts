@@ -41,7 +41,6 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
-import { withZeropsMateTag } from "./groups.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
@@ -215,20 +214,6 @@ function projectTagWriteBody(input: {
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };
-}
-
-function isCompleteCommandProject(value: unknown): value is ZeropsProject {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "string" &&
-    value.id.trim().length > 0 &&
-    "name" in value &&
-    typeof value.name === "string" &&
-    "status" in value &&
-    typeof value.status === "string"
-  );
 }
 
 /**
@@ -1679,22 +1664,11 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Creates a project and imports the platform's development-container recipe
-   * into it — the "New project" path, and the same one an exhausted pool
-   * takes.
-   *
-   * The container's `VSCODE_PASSWORD` is generated here and leaves only inside
-   * the import request: it is deliberately absent from the return value, so no
-   * caller can put it on a screen, in a log or in storage.
-   */
-  /**
    * `POST /client/{clientId}/project` with an explicit tag list, and nothing
-   * else — no container.
-   *
-   * Separate from {@link createProjectWithZeropsMate} because a production
-   * environment is a project that deliberately has no agent
-   * (`createEnvironment.ts`), and because the caller owns the tags: the group
-   * name mirror is one of them, and this client must not decide it.
+   * else — no container: a Mate's comes after its project is attached to its
+   * application (`importDevelopmentContainer`), and a production environment
+   * is a project that deliberately has no agent (`createEnvironment.ts`). The
+   * caller owns the tags, and this client must not decide them.
    */
   async createProject(
     input: {
@@ -1914,85 +1888,6 @@ export class ZeropsApiClient {
       },
     );
     return { serviceName, imported: true };
-  }
-
-  /**
-   * A new Mate's project, then its container (`importDevelopmentContainer`): the container's
-   * service name, or null where it could not be imported or confirmed. The project is the
-   * creation: once the platform made it, its container is no failure of it but a step the press
-   * resumes (`import-container`), which says why if it stops again — a project that exists is
-   * never one nobody can finish (`mate-rig-e2e-a - Ada`, 2026-10-02).
-   */
-  async createProjectWithZeropsMate(
-    input: {
-      readonly clientId: string;
-      readonly name: string;
-      readonly location?: string;
-      readonly zcpVersion?: string;
-      readonly agents?: ReadonlyArray<ZeropsAgentType>;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly project: ZeropsProject; readonly serviceName: string | null }> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const projectResponse = await this.#request<unknown>(
-      `/client/${input.clientId}/project`,
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify(
-          buildCreateProjectBody({
-            clientId: input.clientId,
-            name: input.name,
-            ...(input.location ? { location: input.location } : {}),
-            // Born a Mate: the marker goes on before the container does, so a creation that
-            // fails halfway still leaves a project that says what it was meant to be. Its
-            // application, name and face are HQ's, written by the press's registration.
-            tagList: withZeropsMateTag([]),
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!isCompleteCommandProject(projectResponse)) {
-      throw new ZeropsApiError(
-        "Zerops may have created the project, but its response was incomplete. Check your projects before trying again.",
-        "uncertain",
-      );
-    }
-    const project = projectResponse;
-
-    try {
-      this.#assertGeneration(generation);
-      // **Deliberately not the caller's signal.** What that signal cancels is
-      // the creation, and by this line the creation has happened: the project
-      // is on the account, tagged a Mate, named after one. Abandon the
-      // container here and what is left is a Mate with no agent in it —
-      // `Lighthouse - Enzo`, 2026-09-20, whose process list holds
-      // `project.create` and then nothing at all until a person ran the
-      // recovery five minutes later. Its *Finish setup* is the same call.
-      //
-      // The session generation is the one check that still stops it, and it
-      // should: a signed-out client must send nothing.
-      const { serviceName } = await this.importDevelopmentContainer(
-        {
-          clientId: input.clientId,
-          projectId: project.id,
-          projectName: project.name,
-          ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-          ...(input.agents ? { agents: input.agents } : {}),
-        },
-        undefined,
-        beforeWrite,
-      );
-      return { project, serviceName };
-    } catch {
-      return { project, serviceName: null };
-    }
   }
 
   /**

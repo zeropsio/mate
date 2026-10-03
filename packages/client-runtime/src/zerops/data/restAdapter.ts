@@ -1136,11 +1136,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     command: Extract<
       PlatformCommand,
       {
-        readonly kind:
-          | "update-project-tags"
-          | "set-project-member-role"
-          | "create-project"
-          | "create-project-with-mate";
+        readonly kind: "update-project-tags" | "set-project-member-role" | "create-project";
       }
     >,
     project: unknown,
@@ -1352,28 +1348,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         ).pipe(
           Effect.flatMap((value) =>
             projectCommandReceipt(command, value, { kind: command.kind, value }),
-          ),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "create-project-with-mate":
-        return executeApi(
-          context,
-          (signal) =>
-            options.client.createProjectWithZeropsMate(
-              {
-                clientId: command.organization.organizationId,
-                name: command.name,
-                ...(command.location === undefined ? {} : { location: command.location }),
-                ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
-                ...(command.agents === undefined ? {} : { agents: command.agents }),
-              },
-              signal,
-              context.beforeProjectWrite,
-            ),
-          commandDeadlineMs(command.kind, policy),
-        ).pipe(
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
           ),
           Effect.mapError(uncertainCommandError),
         );

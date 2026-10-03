@@ -1040,51 +1040,6 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
-  it.effect(
-    "creates the New project wizard's first Mate with its marker, and nothing of its place",
-    () =>
-      Effect.gen(function* () {
-        const bodies: Array<string> = [];
-        const client = clientFor((url, init) => {
-          if (typeof init?.body === "string") bodies.push(init.body);
-          // The container's key and its import answer as the platform does; the rest is the
-          // project.
-          const answer = url.includes("/integration-token/list")
-            ? { list: [] }
-            : url.endsWith("/integration-token")
-              ? { id: "token", token: ["test", "key"].join("-") }
-              : url.includes("/service-stack") || url.includes("/first-class-recipe/")
-                ? { list: [] }
-                : {
-                    id: "project",
-                    name: "Acme Docs - Ada",
-                    status: "CREATING",
-                    clientId: organization.organizationId,
-                  };
-          return new Response(JSON.stringify(answer), { status: 200 });
-        });
-        const adapter = makeZeropsDataAdapter({
-          client,
-          makeSocket: () => new FakeSocket(),
-          timers,
-        });
-
-        yield* adapter.execute(
-          {
-            kind: "create-project-with-mate",
-            organization,
-            name: "Acme Docs - Ada",
-            ...commandBase,
-          },
-          context(),
-        );
-
-        // The project's own POST: the one body the platform creates it with. Its application,
-        // name, face and birth are HQ's.
-        expect(bodies[0]).toContain('"tagList":["mate"]');
-      }),
-  );
-
   // Several requests in one command — its services, the org's keys, a key, the import — have a
   // minute between them, not one request's 15 s (`commandDeadlineMs`).
   it.effect("gives a Mate's container import a minute, and a project's creation its 15 s", () =>
@@ -1124,64 +1079,6 @@ describe("ZeropsDataAdapter receiver", () => {
       expect(stageTimers.delays()).toEqual([15_000]);
       stageTimers.fire(15_000);
       yield* Fiber.join(creating);
-    }),
-  );
-
-  // `mate-rig-e2e-a - Ada`, 2026-10-02: the project was made, the key list did not answer, and the
-  // person read "Zerops command exceeded its deadline" over a project nobody could finish. A
-  // failure after the project exists is its container, pending, for the press to import.
-  it.effect("answers a project whose container failed after the deadline with it pending", () =>
-    Effect.gen(function* () {
-      const stageTimers = new ManualTimers();
-      let failKeys: ((cause: Error) => void) | undefined;
-      const adapter = makeZeropsDataAdapter({
-        client: clientFor((url) =>
-          url.includes("/integration-token/list")
-            ? new Promise<Response>((_resolve, reject) => {
-                failKeys = reject;
-              })
-            : url.includes("/service-stack")
-              ? new Response(JSON.stringify({ list: [] }), { status: 200 })
-              : new Response(
-                  JSON.stringify({
-                    id: "project",
-                    name: "Acme Docs - Ada",
-                    status: "CREATING",
-                    clientId: organization.organizationId,
-                  }),
-                  { status: 200 },
-                ),
-        ),
-        makeSocket: () => new FakeSocket(),
-        timers: stageTimers,
-      });
-      const creating = yield* adapter
-        .execute(
-          {
-            kind: "create-project-with-mate",
-            organization,
-            name: "Acme Docs - Ada",
-            ...commandBase,
-          },
-          context(),
-        )
-        .pipe(Effect.result, Effect.forkChild);
-      // The project made, the key list asked for and hanging.
-      for (let attempt = 0; attempt < 200 && failKeys === undefined; attempt += 1) {
-        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1)));
-      }
-      // The command's minute runs out while the key list hangs; then the list fails.
-      stageTimers.fire(60_000);
-      failKeys?.(new TypeError("fetch failed"));
-      expect(yield* Fiber.join(creating)).toMatchObject({
-        _tag: "Success",
-        success: {
-          result: {
-            kind: "create-project-with-mate",
-            value: { project: { id: "project" }, serviceName: null },
-          },
-        },
-      });
     }),
   );
 
