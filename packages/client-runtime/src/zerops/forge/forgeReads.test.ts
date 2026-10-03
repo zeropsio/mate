@@ -750,6 +750,38 @@ describe("createForgeReads — one listing for the whole account", () => {
     expect(await refresh()).toEqual(["account", "acme", "beta"]);
   });
 
+  it.each([
+    { name: "once", unsure: [0], asked: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+    {
+      name: "twice, a minute apart",
+      unsure: [0, 2],
+      asked: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    },
+    { name: "twice in a row", unsure: [0, 1], asked: [0, 1, 11] },
+  ])("lists the account after one that did not add up $name", async ({ unsure, asked }) => {
+    let clock = NOW;
+    let minute = 0;
+    const listed: Array<number> = [];
+    const reads = createForgeReads({ now: () => clock });
+    const lists: RepositoryLists = {
+      currentUser: async () => ({ id: 9, login: "u-person" }),
+      listAccountRepositories: async () => {
+        listed.push(minute);
+        const repositories = [{ ...repo("group"), owner: { login: "acme" } }];
+        // Gitea's count says one more than came: a row dropped between pages.
+        const count = repositories.length + (unsure.includes(minute) ? 1 : 0);
+        return { repositories, counts: [count] };
+      },
+      listOrganizationRepositories: async () => [repo("group")],
+    };
+    for (; minute < 12; minute += 1) {
+      clock = NOW + minute * 60_000;
+      reads.tick();
+      expect(names(await reads.repositories("acme", lists))).toEqual(["group"]);
+    }
+    expect(listed).toEqual(asked);
+  });
+
   // The reviewer's repro (pass 37): an org read between two ticks once listed the whole account,
   // and the org it named nothing of then turned the account listing off for ten minutes.
   it.each([
