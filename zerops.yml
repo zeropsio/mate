@@ -65,3 +65,12 @@ zerops:
         # `documentRoot` — that one is for webserver runtimes and is silently
         # ignored here, leaving nginx on /var/www and every request a 404.
         root: dist
+        # The page is asked again on every load. Served without a
+        # Cache-Control header, a browser may reuse a page it fetched before
+        # a release — and with it the old release's bundle — for a tenth of
+        # the page's age (heuristic freshness). The bundle's own files are
+        # named by their content and keep the base's caching.
+        headers:
+          - for: "/*"
+            values:
+              Cache-Control: "'no-cache' always"
