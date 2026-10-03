@@ -1,10 +1,10 @@
 /**
- * The person's message with pictures, as the conversation lays it out: words
- * and pictures in the order they were written, each picture with its notes and
- * its kept original, and the images no label places, which stay above the
- * words as they always did.
+ * The person's message with pictures and files, as the conversation lays it
+ * out: words, pictures and files in the order they were written, each picture
+ * with its notes and its kept original, and the images and files no label
+ * places, which stay above the words as they always did.
  */
-import { messagePictures, splitPictureText } from "@t3tools/shared/composerPictures";
+import { messageFiles, messagePictures, splitPictureText } from "@t3tools/shared/composerPictures";
 
 import type { ParsedTerminalContextEntry } from "~/lib/terminalContext";
 import { isImageAttachment, type ChatAttachment, type ChatImageAttachment } from "~/types";
@@ -13,7 +13,7 @@ import { formatInlineTerminalContextLabel } from "./userMessageTerminalContexts"
 export type MessagePictureSegment =
   | {
       readonly kind: "text";
-      /** The picture the words follow (0 before the first): what tells them apart. */
+      /** How many pictures and files the words follow (0 before the first): what tells them apart. */
       readonly after: number;
       readonly text: string;
     }
@@ -23,44 +23,75 @@ export type MessagePictureSegment =
       readonly notes: ReadonlyArray<{ readonly number: number; readonly text: string }>;
       readonly image: ChatImageAttachment;
       readonly original: ChatAttachment | null;
+    }
+  | {
+      readonly kind: "file";
+      readonly n: number;
+      readonly file: ChatAttachment;
     };
 
 export interface PlacedMessagePictures {
   readonly segments: ReadonlyArray<MessagePictureSegment>;
   /** Images the text holds no label for: they stay above the words. */
   readonly unplaced: ReadonlyArray<ChatImageAttachment>;
+  /** Files the text holds no label for: they stay above the words too. */
+  readonly unplacedFiles: ReadonlyArray<ChatAttachment>;
 }
 
-/** The message's words and pictures in their order, or null when it places none. */
+const FILE_LABEL = /^\[File (\d+)\]$/u;
+
+/** The message's words, pictures and files in their order, or null when it places none. */
 export function placeMessagePictures(
   text: string,
   attachments: ReadonlyArray<ChatAttachment>,
 ): PlacedMessagePictures | null {
   const pictures = messagePictures(text, attachments);
-  if (pictures.length === 0) return null;
-  const segments = splitPictureText(
+  const files = messageFiles(text, attachments);
+  const placedFiles = new Map(
+    files.filter((entry) => entry.placed).map((entry) => [entry.n, entry.file] as const),
+  );
+  if (pictures.length === 0 && placedFiles.size === 0) return null;
+  const segments: MessagePictureSegment[] = [];
+  const shown = new Set<number>();
+  let blocks = 0;
+  const pushWords = (lines: ReadonlyArray<string>) => {
+    const joined = lines.join("\n").replace(/^\n+|\n+$/gu, "");
+    if (joined.trim().length > 0) segments.push({ kind: "text", after: blocks, text: joined });
+  };
+  for (const segment of splitPictureText(
     text,
     attachments.filter((attachment) => attachment.type === "image").length,
-  ).flatMap((segment, index, all): MessagePictureSegment[] => {
+  )) {
     if (segment.kind === "text") {
-      const before = all.slice(0, index).findLast((part) => part.kind === "picture");
-      return [
-        { kind: "text", after: before?.kind === "picture" ? before.n : 0, text: segment.text },
-      ];
+      // A file's label on a line of its own is that file, once, where it stands.
+      let words: string[] = [];
+      for (const line of segment.text.split("\n")) {
+        const n = Number(FILE_LABEL.exec(line)?.[1] ?? 0);
+        const file = placedFiles.get(n);
+        if (file === undefined || shown.has(n)) {
+          words.push(line);
+          continue;
+        }
+        pushWords(words);
+        words = [];
+        shown.add(n);
+        blocks += 1;
+        segments.push({ kind: "file", n, file });
+      }
+      pushWords(words);
+      continue;
     }
     const picture = pictures[segment.n - 1];
-    return picture && isImageAttachment(picture.image)
-      ? [
-          {
-            kind: "picture",
-            n: segment.n,
-            notes: segment.notes.map((text, noteIndex) => ({ number: noteIndex + 1, text })),
-            image: picture.image,
-            original: picture.original,
-          },
-        ]
-      : [];
-  });
+    if (!picture || !isImageAttachment(picture.image)) continue;
+    blocks += 1;
+    segments.push({
+      kind: "picture",
+      n: segment.n,
+      notes: segment.notes.map((note, noteIndex) => ({ number: noteIndex + 1, text: note })),
+      image: picture.image,
+      original: picture.original,
+    });
+  }
   const placed = new Set(pictures.map((picture) => picture.image.id));
   return {
     segments,
@@ -68,6 +99,7 @@ export function placeMessagePictures(
       (attachment): attachment is ChatImageAttachment =>
         isImageAttachment(attachment) && !placed.has(attachment.id),
     ),
+    unplacedFiles: files.filter((entry) => !shown.has(entry.n)).map((entry) => entry.file),
   };
 }
 
@@ -111,6 +143,14 @@ export function echoOfMessage(
             ),
           ],
   };
+}
+
+/** A message's files, when its text places none of them (a phone's): all stay above the words. */
+export function unplacedMessageFiles(
+  text: string,
+  attachments: ReadonlyArray<ChatAttachment>,
+): ChatAttachment[] {
+  return messageFiles(text, attachments).map((entry) => entry.file);
 }
 
 /**

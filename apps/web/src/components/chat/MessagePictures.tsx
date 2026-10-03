@@ -16,6 +16,7 @@ import { Fragment, useMemo, type ReactNode } from "react";
 import { assetEnvironment } from "~/state/assets";
 import type { ChatImageAttachment } from "~/types";
 import { formatPictureBytes } from "./ComposerPictureView";
+import { MessageFile } from "./MessageFiles";
 import {
   GALLERY_PICTURE_MAX_HEIGHT,
   messagePictureRows,
@@ -49,6 +50,8 @@ export function MessagePictureBody(props: {
   readonly segments: ReadonlyArray<MessagePictureSegment>;
   readonly dimensions: ReadonlyMap<string, PictureSize>;
   readonly onOpen: (image: ChatImageAttachment) => void;
+  /** Each placed file's address, by its id, once the server gives one. */
+  readonly fileUrls?: ReadonlyMap<string, string> | undefined;
   readonly renderText: (segment: Extract<MessagePictureSegment, { kind: "text" }>) => ReactNode;
 }) {
   return (
@@ -60,7 +63,7 @@ export function MessagePictureBody(props: {
         const gallery = row.items.length > 1;
         return (
           <div
-            key={`pictures:${row.items.map((item) => (item.kind === "picture" ? item.n : 0)).join()}`}
+            key={`attachments:${row.items.map((item) => `${item.kind}${item.kind === "text" ? "" : item.n}`).join()}`}
             className="message-picture-row"
             data-gallery={gallery ? "" : undefined}
           >
@@ -72,6 +75,12 @@ export function MessagePictureBody(props: {
                   dimensions={props.dimensions.get(segment.image.id)}
                   maxHeight={gallery ? GALLERY_PICTURE_MAX_HEIGHT : undefined}
                   onOpen={props.onOpen}
+                />
+              ) : segment.kind === "file" ? (
+                <MessageFile
+                  key={`file:${segment.n}`}
+                  file={segment.file}
+                  url={props.fileUrls?.get(segment.file.id) ?? null}
                 />
               ) : null,
             )}

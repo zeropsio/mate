@@ -8,6 +8,7 @@ import {
   placeMessagePictures,
   reservedPictureBox,
   terminalContextsBySegment,
+  unplacedMessageFiles,
 } from "./messagePictures.logic";
 
 const image = (id: string): ChatAttachment => ({
@@ -53,7 +54,7 @@ describe("placeMessagePictures", () => {
     const placed = placeMessagePictures(text, attachments);
     expect(
       placed?.segments.map((segment) =>
-        segment.kind === "text"
+        segment.kind !== "picture"
           ? segment
           : {
               kind: segment.kind,
@@ -65,6 +66,107 @@ describe("placeMessagePictures", () => {
       ),
     ).toEqual(segments);
     expect(placed?.unplaced.map((entry) => entry.id)).toEqual(unplaced);
+  });
+});
+
+describe("files in a sent message", () => {
+  const pdf = (id: string): ChatAttachment => ({
+    type: "file",
+    id,
+    name: `${id}.pdf`,
+    mimeType: "application/pdf",
+    sizeBytes: 4096,
+  });
+  const shape = (text: string, attachments: ReadonlyArray<ChatAttachment>) => {
+    const placed = placeMessagePictures(text, attachments);
+    return placed
+      ? {
+          segments: placed.segments.map((segment) =>
+            segment.kind === "text"
+              ? segment
+              : segment.kind === "file"
+                ? { kind: "file", n: segment.n, file: segment.file.id }
+                : { kind: "picture", n: segment.n, image: segment.image.id },
+          ),
+          unplaced: placed.unplaced.map((entry) => entry.id),
+          unplacedFiles: placed.unplacedFiles.map((entry) => entry.id),
+        }
+      : null;
+  };
+
+  it.each([
+    [
+      "a placed file stands where its label does",
+      "Read this:\n[File 1]\nthanks",
+      [pdf("spec")],
+      {
+        segments: [
+          { kind: "text", after: 0, text: "Read this:" },
+          { kind: "file", n: 1, file: "spec" },
+          { kind: "text", after: 1, text: "thanks" },
+        ],
+        unplaced: [],
+        unplacedFiles: [],
+      },
+    ],
+    [
+      "files and pictures keep their own numbers, files sent first",
+      "a\n[Picture 1]\n[File 1]\nb\n[File 2]",
+      [pdf("x"), pdf("y"), image("p")],
+      {
+        segments: [
+          { kind: "text", after: 0, text: "a" },
+          { kind: "picture", n: 1, image: "p" },
+          { kind: "file", n: 1, file: "x" },
+          { kind: "text", after: 2, text: "b" },
+          { kind: "file", n: 2, file: "y" },
+        ],
+        unplaced: [],
+        unplacedFiles: [],
+      },
+    ],
+    [
+      "a file sent before a picture is no kept original of it",
+      "[Picture 1]\n[File 1]",
+      [file("logo.svg", "image/svg+xml"), image("p")],
+      {
+        segments: [
+          { kind: "picture", n: 1, image: "p" },
+          { kind: "file", n: 1, file: "logo.svg" },
+        ],
+        unplaced: [],
+        unplacedFiles: [],
+      },
+    ],
+    [
+      "a file whose label the text lacks stands by the words",
+      "[File 1]\nwords",
+      [pdf("a"), pdf("b")],
+      {
+        segments: [
+          { kind: "file", n: 1, file: "a" },
+          { kind: "text", after: 1, text: "words" },
+        ],
+        unplaced: [],
+        unplacedFiles: ["b"],
+      },
+    ],
+    ["a person's own escaped label stays words", "[File 1] \nwords", [pdf("a")], null],
+  ])("%s", (_label, text, attachments, expected) => {
+    expect(shape(text, attachments)).toEqual(expected);
+  });
+
+  it.each([
+    ["a phone's files, with no labels", "Here you go", [pdf("a"), pdf("b")], ["a", "b"]],
+    [
+      "a picture's kept original is no file of its own",
+      "[Picture 1]\nLook",
+      [image("p"), file("p-o")],
+      [],
+    ],
+    ["no files", "Look", [image("p")], []],
+  ])("unplacedMessageFiles: %s", (_label, text, attachments, expected) => {
+    expect(unplacedMessageFiles(text, attachments).map((entry) => entry.id)).toEqual(expected);
   });
 });
 
