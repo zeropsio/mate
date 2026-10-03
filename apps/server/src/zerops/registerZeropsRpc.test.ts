@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
 import { runZeropsMateCheckUpdate, runZeropsMateUpdate } from "./registerZeropsRpc.ts";
@@ -19,6 +20,7 @@ const stubMateUpdateService = (
   check: Effect.Effect<any> = Effect.die("not used"),
 ) => ({
   current: Effect.succeed(undefined),
+  changes: Stream.make(undefined),
   refresh,
   check,
 });

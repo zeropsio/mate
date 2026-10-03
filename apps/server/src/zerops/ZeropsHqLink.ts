@@ -10,25 +10,31 @@
  * - **How it opens:** a ticket minted with `Authorization: Mate <credential>`
  *   (`POST /api/mate/link-ticket`), then `wss://<hq>/api/mate/link?ticket=`. A refused ticket
  *   opens nothing and is asked for again later — zcp enrolls anew meanwhile.
- * - **Up:** the Mate's summary at once and whenever it changed, at most once per
- *   `MATE_SUMMARY_EVERY_MS`; `pong` to each of HQ's pings.
+ * - **Up:** the Mate's overview (`zeropsHqOverview.ts`): the whole of it first on every link, then
+ *   only the sections that changed, at most once per `MATE_SUMMARY_EVERY_MS`, looked at again when
+ *   something it is made of moves — a domain event, the crew's snapshot, a login, the update line —
+ *   and never on a timer; `pong` to each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks.
  *
  * A link that closes or never opens is tried again after a growing wait.
  *
  * @module ZeropsHqLink
  */
+import type { CrewSnapshot, OrchestrationThreadShell } from "@t3tools/contracts";
 import {
   MATE_SUMMARY_EVERY_MS,
   MateLinkDown,
   MateLinkUp,
+  type MateOverview,
+  type MateOverviewSections,
   type MateState,
-  type MateSummary,
+  type OverviewIdentity,
 } from "@t3tools/shared/mateLink";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
@@ -41,11 +47,17 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
+import packageJson from "../../package.json" with { type: "json" };
 import { ServerConfig } from "../config.ts";
+import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
-import { mateSummaryOf } from "./zeropsHqSummary.ts";
+import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
+import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
+import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
+import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { ZeropsLogins } from "./ZeropsLogins.ts";
+import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
@@ -88,15 +100,14 @@ export interface ZeropsHqLinkOptions {
   /** zcp's last word on enrolling; none when it said nothing this build reads. */
   readonly readOutcome: Effect.Effect<Option.Option<HqOutcome>>;
   readonly connect: ConnectLinkSocket;
-  /** The Mate's summary as it stands now; none when it cannot be read, tried again next round. */
-  readonly summary: Effect.Effect<Option.Option<MateSummary>>;
-  /** Fires whenever the summary may have changed. */
+  /** The Mate's overview as it stands now; none when it cannot be read, tried again next round. */
+  readonly overview: Effect.Effect<Option.Option<MateOverview>>;
+  /** Fires whenever the overview may have changed. */
   readonly changes: Stream.Stream<unknown>;
   /** The waits before each next attempt; the last one repeats. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
-  readonly summaryEveryMs?: number;
-  /** How often the summary is looked at with no change heard (the clock moves a live step). */
-  readonly refreshEveryMs?: number;
+  /** The least time between two frames of the overview (`MATE_SUMMARY_EVERY_MS`). */
+  readonly overviewEveryMs?: number;
 }
 
 export class ZeropsHqLink extends Context.Service<
@@ -119,6 +130,30 @@ type SocketEvent =
 
 const ticketResponse = Schema.Struct({ ticket: Schema.String });
 
+/** An overview's sections, each sent whole when it changed. */
+const SECTIONS = ["identity", "main", "threads", "logins", "crew"] as const;
+
+/**
+ * The sections of `overview` whose JSON differs from what `sent` holds, which then holds them as
+ * sent: none when nothing changed.
+ */
+function changedSections(
+  overview: MateOverview,
+  sent: Map<string, string>,
+): MateOverviewSections | undefined {
+  const changed: { -readonly [K in keyof MateOverview]?: MateOverview[K] } = {};
+  let any = false;
+  const take = <K extends keyof MateOverview>(key: K) => {
+    const encoded = JSON.stringify(overview[key]);
+    if (sent.get(key) === encoded) return;
+    sent.set(key, encoded);
+    changed[key] = overview[key];
+    any = true;
+  };
+  for (const key of SECTIONS) take(key);
+  return any ? changed : undefined;
+}
+
 export const makeZeropsHqLink = (
   options: ZeropsHqLinkOptions,
 ): Effect.Effect<ZeropsHqLink["Service"], never, HttpClient.HttpClient | Scope.Scope> =>
@@ -126,8 +161,7 @@ export const makeZeropsHqLink = (
     const http = yield* HttpClient.HttpClient;
     const state = yield* SubscriptionRef.make<Option.Option<MateState>>(Option.none());
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
-    const summaryEvery = Duration.millis(options.summaryEveryMs ?? MATE_SUMMARY_EVERY_MS);
-    const refreshEvery = Duration.millis(options.refreshEveryMs ?? 30_000);
+    const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_SUMMARY_EVERY_MS);
 
     /** A ticket for the link, minted with the Mate's credential; none when HQ refuses or is away. */
     const ticketFor = (enrollment: HqEnrollment) =>
@@ -178,28 +212,27 @@ export const makeZeropsHqLink = (
         }
 
         const dirty = yield* Ref.make(true);
-        const sent = yield* Ref.make("");
-        const summaries = Effect.forever(
+        // What this link sent of each section, as JSON: a new link starts with nothing sent.
+        const sent = new Map<string, string>();
+        const overviews = Effect.forever(
           Effect.gen(function* () {
             if (yield* Ref.getAndSet(dirty, false)) {
-              const summary = yield* options.summary;
-              if (Option.isNone(summary)) yield* Ref.set(dirty, true);
-              else {
-                const message: MateLinkUp = { type: "summary", summary: summary.value };
-                const encoded = encodeUp(message);
-                if (encoded !== (yield* Ref.get(sent))) {
-                  yield* Ref.set(sent, encoded);
-                  yield* send(message);
+              const overview = yield* options.overview;
+              if (Option.isNone(overview)) yield* Ref.set(dirty, true);
+              else if (sent.size === 0) {
+                changedSections(overview.value, sent);
+                yield* send({ type: "overview", full: true, overview: overview.value });
+              } else {
+                const sections = changedSections(overview.value, sent);
+                if (sections !== undefined) {
+                  yield* send({ type: "overview", full: false, sections });
                 }
               }
             }
-            yield* Effect.sleep(summaryEvery);
+            yield* Effect.sleep(overviewEvery);
           }),
         );
         const heard = Stream.runForEach(options.changes, () => Ref.set(dirty, true));
-        const refresh = Effect.forever(
-          Effect.andThen(Effect.sleep(refreshEvery), Ref.set(dirty, true)),
-        );
         const relay = Stream.fromQueue(events).pipe(
           Stream.takeWhile((event) => event._tag === "message"),
           Stream.runForEach((event) => {
@@ -211,7 +244,7 @@ export const makeZeropsHqLink = (
               : SubscriptionRef.set(state, Option.some(message.value.mate));
           }),
         );
-        yield* Effect.raceFirst(relay, Effect.all([summaries, heard, refresh], { concurrency: 3 }));
+        yield* Effect.raceFirst(relay, Effect.all([overviews, heard], { concurrency: 2 }));
         yield* quit;
         return true;
       });
@@ -253,48 +286,129 @@ const OutcomeFile = Schema.fromJsonString(
   }),
 );
 
+/** Where a Mate's overview is read from: the services the link's layer finds, by what it reads. */
+export interface OverviewSources {
+  readonly environmentId: OverviewIdentity["environmentId"];
+  readonly serverVersion: string;
+  /** The thread shells of the project at the workspace root. */
+  readonly threads: Effect.Effect<
+    ReadonlyArray<OrchestrationThreadShell>,
+    ProjectionRepositoryError
+  >;
+  /** The crew engine's snapshot now, then one per change (`CrewEngine`). */
+  readonly crew: { readonly snapshot: Stream.Stream<CrewSnapshot> };
+  /** The three feeds the client's agent-auth stream combines: who signed each login in, too. */
+  readonly agentAuth: Pick<ZeropsAgentAuth["Service"], "latest" | "changes">;
+  readonly agentLogin: Pick<ZeropsAgentLogin["Service"], "latest" | "changes">;
+  readonly logins: Pick<ZeropsLogins["Service"], "latest" | "changes">;
+  /** The update line, and when it moves (`ZeropsMateUpdate`). */
+  readonly update: Pick<ZeropsMateUpdate["Service"], "current" | "changes">;
+  /** Every orchestration domain event. */
+  readonly domainEvents: Stream.Stream<unknown>;
+}
+
+/**
+ * The overview as it stands, read from `sources`, and when it may have changed. The crew's
+ * snapshot comes as a stream only, so the last one is held for as long as the scope lasts — the
+ * first overview of every link already carries it, once the engine has said anything.
+ */
+export const mateOverviewFeed = (
+  sources: OverviewSources,
+): Effect.Effect<Pick<ZeropsHqLinkOptions, "overview" | "changes">, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const crew = yield* Ref.make<CrewSnapshot | undefined>(undefined);
+    // Told only once the snapshot is held, so the overview it wakes reads it.
+    const crewMoved = yield* PubSub.unbounded<void>();
+    yield* Effect.forkScoped(
+      Stream.runForEach(sources.crew.snapshot, (snapshot) =>
+        Ref.set(crew, snapshot).pipe(Effect.andThen(PubSub.publish(crewMoved, undefined))),
+      ),
+    );
+    const overview = Effect.gen(function* () {
+      const [snapshot, extras, logins] = yield* Effect.all([
+        sources.agentAuth.latest,
+        sources.logins.latest,
+        sources.agentLogin.latest,
+      ]);
+      return mateOverviewOf({
+        identity: {
+          environmentId: sources.environmentId,
+          serverVersion: sources.serverVersion,
+          update: (yield* sources.update.current) ?? null,
+        },
+        threads: yield* sources.threads,
+        auth: combineAgentAuth(snapshot, extras, logins),
+        crew: yield* Ref.get(crew),
+      });
+    }).pipe(Effect.option);
+    return {
+      overview,
+      changes: Stream.mergeAll(
+        [
+          sources.domainEvents,
+          Stream.fromPubSub(crewMoved),
+          sources.agentAuth.changes,
+          sources.agentLogin.changes,
+          sources.logins.changes,
+          sources.update.changes,
+        ],
+        { concurrency: "unbounded" },
+      ),
+    };
+  });
+
 /**
  * The link inside a Zerops container whose zcp keeps an enrollment; elsewhere, none: the Mate's
- * state stays unknown. The summary is of the project at the workspace root (the threads the stand-up
- * and every client open the Mate to), looked at again after every domain event.
+ * state stays unknown. The overview is of the project at the workspace root (the threads the
+ * stand-up and every client open the Mate to), looked at again whenever one of its feeds moves. The crew
+ * engine's snapshot is handed in by the layer that composes crew mode (`zeropsFeedsLayer.ts`): only
+ * the wiring reaches into `zerops/crew`.
  */
-export const layer = Layer.effect(
-  ZeropsHqLink,
-  Effect.gen(function* () {
-    const config = yield* ServerConfig;
-    const path = config.zerops?.hqEnrollmentPath;
-    if (path === undefined) {
-      return ZeropsHqLink.of({
-        standing: Effect.succeed({ kind: "not-enrolled", outcome: Option.none() }),
-      });
-    }
-    const fs = yield* FileSystem.FileSystem;
-    const paths = yield* Path.Path;
-    const projection = yield* ProjectionSnapshotQuery;
-    const engine = yield* OrchestrationEngineService;
-    const signers = yield* ZeropsProjectSigners;
-    return yield* makeZeropsHqLink({
-      readEnrollment: fs
-        .readFileString(path)
-        .pipe(Effect.flatMap(Schema.decodeUnknownEffect(EnrollmentFile)), Effect.option),
-      // Beside the enrollment; a missing, unreadable or unknown document says nothing.
-      readOutcome: fs
-        .readFileString(paths.join(paths.dirname(path), "outcome.json"))
-        .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
-      connect: (url) => new WebSocket(url) as unknown as LinkSocket,
-      summary: Effect.gen(function* () {
-        const project = Option.getOrUndefined(
-          yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
-        );
-        const threads =
-          project === undefined
+export const layer = (crew: OverviewSources["crew"]) =>
+  Layer.effect(
+    ZeropsHqLink,
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const path = config.zerops?.hqEnrollmentPath;
+      if (path === undefined) {
+        return ZeropsHqLink.of({
+          standing: Effect.succeed({ kind: "not-enrolled", outcome: Option.none() }),
+        });
+      }
+      const fs = yield* FileSystem.FileSystem;
+      const paths = yield* Path.Path;
+      const projection = yield* ProjectionSnapshotQuery;
+      const engine = yield* OrchestrationEngineService;
+      const feed = yield* mateOverviewFeed({
+        environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
+        serverVersion: packageJson.version,
+        threads: Effect.gen(function* () {
+          const project = Option.getOrUndefined(
+            yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
+          );
+          return project === undefined
             ? []
             : (yield* projection.getShellSnapshot()).threads.filter(
                 (thread) => thread.projectId === project.id,
               );
-        return mateSummaryOf(threads, yield* signers.signers);
-      }).pipe(Effect.option),
-      changes: engine.streamDomainEvents,
-    });
-  }),
-);
+        }),
+        crew,
+        agentAuth: yield* ZeropsAgentAuth,
+        agentLogin: yield* ZeropsAgentLogin,
+        logins: yield* ZeropsLogins,
+        update: yield* ZeropsMateUpdate,
+        domainEvents: engine.streamDomainEvents,
+      });
+      return yield* makeZeropsHqLink({
+        readEnrollment: fs
+          .readFileString(path)
+          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(EnrollmentFile)), Effect.option),
+        // Beside the enrollment; a missing, unreadable or unknown document says nothing.
+        readOutcome: fs
+          .readFileString(paths.join(paths.dirname(path), "outcome.json"))
+          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
+        connect: (url) => new WebSocket(url) as unknown as LinkSocket,
+        ...feed,
+      });
+    }),
+  );
