@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsCall } from "../types.ts";
-import { buildStandupFields } from "./standup.ts";
+import type { ZeropsCall, ZeropsOperation, ZeropsOperationStep } from "../types.ts";
+import { buildStandupFields, standupRunsOn } from "./standup.ts";
 
 const CONTEXT = { nowMs: Date.parse("2026-09-01T00:30:00.000Z"), projectId: "proj" };
 
@@ -444,5 +444,66 @@ describe("buildStandupFields — a stand-up call, named by the half it deploys",
   ])("$name", ({ call, earlier, expected }) => {
     const fields = buildStandupFields(call, CONTEXT, earlier);
     expect({ ...fields, phase: fields.phaseOverride }).toMatchObject(expected);
+  });
+});
+
+// A stand-up's call returns while its builds run on (pass 35): the band holds
+// it while its report says a service of its own still builds.
+describe("standupRunsOn", () => {
+  const step = (label: string, state: ZeropsOperationStep["state"], stateLabel = "Running") => ({
+    id: label,
+    label,
+    state,
+    stateLabel,
+  });
+  const standup = (overrides: Partial<ZeropsOperation>): ZeropsOperation => ({
+    key: "op:s1",
+    kind: "standup",
+    phase: "done",
+    anchorAt: "2026-09-01T00:00:00.000Z",
+    anchorActivityId: "a1",
+    returnedAt: "2026-09-01T00:02:00.000Z",
+    turnId: "t1",
+    subject: "development",
+    kicker: "Stand-up · development",
+    voice: "Standing development up.",
+    voiceSource: "mate",
+    statusWord: "Done",
+    steps: [],
+    links: [],
+    callIds: ["s1"],
+    hasResult: true,
+    ...overrides,
+  });
+  it.each([
+    {
+      name: "returned, a service of its own still building",
+      operation: standup({ steps: [step("appdev", "done", "Done"), step("apidev", "running")] }),
+      runsOn: true,
+    },
+    {
+      name: "returned, every service up",
+      operation: standup({ steps: [step("appdev", "done", "Done")] }),
+      runsOn: false,
+    },
+    {
+      name: "returned, only a stage it queued for the next call",
+      operation: standup({ steps: [step("appstage", "queued", "Queued")] }),
+      runsOn: false,
+    },
+    {
+      name: "its call still open: the Mate waits on it",
+      operation: standup({ phase: "running", steps: [step("apidev", "running")] }),
+      runsOn: false,
+    },
+    {
+      name: "a deploy is no stand-up",
+      operation: standup({ kind: "deploy", steps: [step("apidev", "running")] }),
+      runsOn: false,
+    },
+  ])("$name", ({ operation, runsOn }) => {
+    const { returnedAt, ...open } = operation;
+    expect(standupRunsOn(operation.phase === "running" ? open : operation)).toBe(runsOn);
+    void returnedAt;
   });
 });
