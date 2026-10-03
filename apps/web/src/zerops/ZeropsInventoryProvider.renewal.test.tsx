@@ -4,9 +4,11 @@ import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowled
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
+import { mountTab, preloadTabs, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
+
+preloadTabs(() => import("./__fixtures__/accountProduct"));
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsFrameWait: ({

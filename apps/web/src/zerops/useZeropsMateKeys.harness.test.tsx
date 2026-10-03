@@ -7,7 +7,12 @@ import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { mountTab, settle, unmountTabs } from "./__fixtures__/harnessTabs";
+import { mountTab, preloadTabs, settle, unmountTabs } from "./__fixtures__/harnessTabs";
+
+preloadTabs(
+  () => import("./__fixtures__/accountProduct"),
+  () => import("./useZeropsMateKeys"),
+);
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsFrameWait: ({

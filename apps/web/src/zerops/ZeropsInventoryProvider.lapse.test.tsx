@@ -7,8 +7,13 @@ import * as Effect from "effect/Effect";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
+import { mountTab, preloadTabs, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
+
+preloadTabs(
+  () => import("./__fixtures__/accountProduct"),
+  () => import("./__fixtures__/platformLayers"),
+);
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsFrameWait: ({

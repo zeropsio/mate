@@ -25,7 +25,7 @@ import type {
 } from "@t3tools/client-runtime/zerops/testing";
 import { act, createElement, Fragment, useEffect, type ComponentType, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { vi } from "vite-plus/test";
+import { beforeAll, vi } from "vite-plus/test";
 
 import type { ZeropsSessionValue } from "../ZeropsSessionProvider";
 import { readableText, TestNode } from "./testDom";
@@ -54,6 +54,26 @@ interface TabGraph {
   readonly ZeropsSessionProvider: typeof import("../ZeropsSessionProvider").ZeropsSessionProvider;
   readonly useZeropsSession: typeof import("../ZeropsSessionProvider").useZeropsSession;
   readonly currentAccountId: typeof import("../accountLifetime").currentAccountId;
+}
+
+/** A file's first load of its tabs' modules is setup, with this much time: never a test's. */
+const PRELOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * Loads the tabs' modules — the session provider's graph, and `modules`, what the file's pages
+ * import — once before the file's tests, in a hook with its own time. Each tab imports them again
+ * for its own module graph, from source the run has transformed by then: tens of milliseconds,
+ * where the first load took 10 s and more under load (8 workers beside client-runtime's, measured
+ * 2026-10-03) inside the 15 s of the test that paid for it.
+ */
+export function preloadTabs(...modules: ReadonlyArray<() => Promise<unknown>>): void {
+  beforeAll(async () => {
+    await Promise.all([
+      import("../ZeropsSessionProvider"),
+      import("../accountLifetime"),
+      ...modules.map((load) => load()),
+    ]);
+  }, PRELOAD_TIMEOUT_MS);
 }
 
 async function loadTabGraph(): Promise<TabGraph> {
