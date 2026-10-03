@@ -115,9 +115,11 @@ const DRIVER_NAMES: Readonly<Record<string, string>> = {
 };
 
 /** What each driver's adapter does with a thread's profile: Cursor's nothing. */
-const DRIVER_PROFILES: Readonly<Record<string, { readonly tools: boolean }>> = {
-  claudeAgent: { tools: true },
-  codex: { tools: false },
+const DRIVER_PROFILES: Readonly<
+  Record<string, { readonly tools: boolean; readonly reportsSpend: boolean }>
+> = {
+  claudeAgent: { tools: true, reportsSpend: true },
+  codex: { tools: false, reportsSpend: false },
 };
 
 const admission = (world: World) =>

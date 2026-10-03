@@ -3952,7 +3952,7 @@ export function makeOpenCodeAdapter(
       capabilities: {
         sessionModelSwitch: "in-session",
         // spi/openCodeThreadProfile.ts: every tool asks and the gate answers.
-        threadProfile: { tools: true },
+        threadProfile: { tools: true, reportsSpend: true },
       },
       startSession,
       sendTurn,

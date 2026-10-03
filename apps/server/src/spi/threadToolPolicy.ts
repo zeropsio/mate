@@ -82,6 +82,11 @@ export interface ThreadProfileSupport {
    * runs the context, the gate, read-only and the overrides.
    */
   readonly tools: boolean;
+  /**
+   * Its turns report what they cost (`turn.completed`'s `totalCostUsd`), so a
+   * dollar budget over its threads can be kept.
+   */
+  readonly reportsSpend: boolean;
 }
 
 /**

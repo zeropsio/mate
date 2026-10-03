@@ -2162,7 +2162,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
-      threadProfile: { tools: false },
+      threadProfile: { tools: false, reportsSpend: false },
     },
     startSession,
     sendTurn,

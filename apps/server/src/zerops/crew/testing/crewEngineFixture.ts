@@ -301,8 +301,9 @@ const fakes = (
 
 /**
  * The agents the fixture's logins run, by id: Claude's carry the crew's
- * profile with its tools, Codex's without, Cursor's not at all, and any
- * other id is no login of this Mate.
+ * profile with its tools, Codex's without, Grok's with its tools but no
+ * spend reported, Cursor's not at all, and any other id is no login of this
+ * Mate.
  */
 const TEST_AGENTS: ReadonlyArray<readonly [string, ProviderInstanceAgent]> = [
   [
@@ -310,7 +311,7 @@ const TEST_AGENTS: ReadonlyArray<readonly [string, ProviderInstanceAgent]> = [
     {
       driver: ProviderDriverKind.make("claudeAgent"),
       displayName: "Claude",
-      threadProfile: { tools: true },
+      threadProfile: { tools: true, reportsSpend: true },
     },
   ],
   [
@@ -318,7 +319,15 @@ const TEST_AGENTS: ReadonlyArray<readonly [string, ProviderInstanceAgent]> = [
     {
       driver: ProviderDriverKind.make("codex"),
       displayName: "Codex",
-      threadProfile: { tools: false },
+      threadProfile: { tools: false, reportsSpend: false },
+    },
+  ],
+  [
+    "grok",
+    {
+      driver: ProviderDriverKind.make("grok"),
+      displayName: "Grok",
+      threadProfile: { tools: true, reportsSpend: false },
     },
   ],
   [

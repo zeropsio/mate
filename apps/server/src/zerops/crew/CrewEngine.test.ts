@@ -1968,6 +1968,66 @@ describe("CrewEngine", () => {
     ),
   );
 
+  const NO_SPEND = "Grok doesn't report what it spends, so this crew can't keep a budget";
+
+  it.live(
+    "a run's dollar budget is refused while a crewmate's agent doesn't report its spend",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          writeCrewHome(world.workspace, {
+            "crew.yaml": twoCrewmates("claudeAgent", "grok"),
+            "jobs/lead.md": "Plan the work.\n",
+          });
+          yield* command({ _tag: "apply" });
+          yield* eventually(Effect.map(latest, everyCopyReady));
+          const budgeted = yield* Effect.flip(command({ ...RUN_NOW, budgetUsd: 20 }));
+          yield* command(RUN_NOW);
+          const run = (yield* snapshotWhere((snapshot) => snapshot.run !== null)).run!;
+          yield* command({ _tag: "pause", runId: run.id });
+          yield* snapshotWhere((snapshot) => snapshot.run?.state === "paused");
+          const resumed = yield* Effect.flip(
+            command({ _tag: "resume", runId: run.id, budgetUsd: 20 }),
+          );
+          assert.deepStrictEqual(
+            [budgeted.detail?.startsWith(NO_SPEND), resumed.detail?.startsWith(NO_SPEND)],
+            [true, true],
+          );
+        }),
+      ),
+  );
+
+  it.live("Apply refuses a crewmate on an agent that doesn't report its spend under a budget", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        writeCrewHome(world.workspace, {
+          "crew.yaml": twoCrewmates("claudeAgent", "claudeAgent"),
+          "jobs/lead.md": "Plan the work.\n",
+        });
+        yield* command({ _tag: "apply" });
+        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* command({ ...RUN_NOW, budgetUsd: 20 });
+        yield* snapshotWhere((snapshot) => snapshot.run !== null);
+        writeCrewHome(world.workspace, {
+          "crew.yaml": twoCrewmates("claudeAgent", "grok"),
+          "jobs/lead.md": "Plan the work.\n",
+        });
+        const refused = yield* Effect.flip(command({ _tag: "apply" }));
+        const ownRefused = yield* Effect.flip(
+          command({ _tag: "jobSave", handle: "backend", apply: "fresh" }),
+        );
+        assert.deepStrictEqual(
+          [
+            refused.reason,
+            refused.detail?.startsWith(NO_SPEND),
+            ownRefused.detail?.startsWith(NO_SPEND),
+          ],
+          ["invalid-definition", true, true],
+        );
+      }),
+    ),
+  );
+
   it.live(
     "a Codex writer runs without crew tools and memory; Runs on names each login's agent",
     () =>

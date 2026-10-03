@@ -40,6 +40,8 @@ import {
   asRefusal,
   currentStint,
   defaultCrewLogin,
+  noSpendWords,
+  silentSpender,
   isWorking,
   memberOf,
   principalUser,
@@ -394,6 +396,29 @@ const requireCrewLogin = (
     }
   });
 
+/**
+ * While a run that is not over keeps a dollar budget, every crewmate's agent
+ * must report what it spends, or the run's spend would leave its turns out.
+ */
+const requireSpendUnderBudget = (
+  core: CrewCore,
+  members: ReadonlyArray<{ readonly handle: string; readonly login: string }>,
+) =>
+  Effect.gen(function* () {
+    const run = (yield* core.applied)?.run;
+    if (run === undefined || run.budgetUsd === null) return;
+    if (run.state === "finished" || run.state === "stopped") return;
+    for (const member of members) {
+      const silent = yield* silentSpender(core, [member.login]);
+      if (silent !== undefined) {
+        return yield* refuse(
+          "invalid-definition",
+          `${noSpendWords(silent)}: give @${member.handle} another login, or keep the run going with No limit.`,
+        );
+      }
+    }
+  });
+
 export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activate) =>
   Effect.gen(function* () {
     const definition = yield* loadHome(core);
@@ -412,6 +437,10 @@ export const apply = (core: CrewCore, principal: TurnPrincipal, activate: Activa
     for (const member of definition.members) {
       yield* requireCrewLogin(core, member, member.login ?? login);
     }
+    yield* requireSpendUnderBudget(
+      core,
+      definition.members.map((member) => ({ handle: member.handle, login: member.login ?? login })),
+    );
     for (const host of verified.keys()) {
       core.memory.integration.set(host, yield* asRefusal(core.reads.integration(host)));
     }
@@ -601,6 +630,7 @@ export const saveJob = (
     const loginChanged = login !== member.row.login;
     if (loginChanged && choice !== "fresh") return yield* refuse("login-needs-fresh");
     yield* requireCrewLogin(core, next, login);
+    yield* requireSpendUnderBudget(core, [{ handle: next.handle, login }]);
     const jobChanged = next.job !== member.spec.job;
     const jobVersion = jobChanged ? member.row.jobVersion + 1 : member.row.jobVersion;
     yield* asRefusal(

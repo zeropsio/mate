@@ -2198,7 +2198,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         sessionModelSwitch: "in-session",
         supportsConversationRollback: false,
         // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
-        threadProfile: { tools: true },
+        threadProfile: { tools: true, reportsSpend: false },
       },
       compaction: { type: "slash-command", command: "/compact" },
       startSession,

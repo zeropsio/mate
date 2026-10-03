@@ -565,6 +565,27 @@ export const defaultCrewLogin = (core: CrewCore) =>
     Effect.orElseSucceed(() => DEFAULT_CREW_LOGIN),
   );
 
+/**
+ * Why a dollar budget can't be kept, when an agent a crewmate runs on doesn't
+ * report what its turns cost: the run's spend would leave its turns out.
+ */
+export const noSpendWords = (agent: string): string =>
+  `${agent} doesn't report what it spends, so this crew can't keep a budget`;
+
+/** The first agent of `logins` that doesn't report its spend, by name; `undefined` when all do. */
+export const silentSpender = (core: CrewCore, logins: Iterable<string>) =>
+  Effect.gen(function* () {
+    for (const login of logins) {
+      const agent = yield* core.agentOf(login);
+      if (agent?.threadProfile?.reportsSpend !== true) return agent?.displayName ?? login;
+    }
+    return undefined;
+  });
+
+/** Every crewmate's login in the applied crew. */
+export const appliedLogins = (applied: AppliedCrew): ReadonlyArray<string> =>
+  [...applied.members.values()].map((member) => member.login ?? DEFAULT_CREW_LOGIN);
+
 /** The applied crew, or the refusal that nothing is applied. */
 export const requireApplied = (core: CrewCore) =>
   Effect.flatMap(core.applied, (applied) =>

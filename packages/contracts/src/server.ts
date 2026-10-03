@@ -217,8 +217,12 @@ export const ServerProvider = Schema.Struct({
   supportsConversationRollback: Schema.optional(Schema.Boolean),
   // The driver runs a thread by its thread tool profile (a crewmate's rules,
   // gate and overrides) and, with `tools`, serves the profile's tools to the
-  // model. Absent: it never reads one, so no crewmate may run on it.
-  threadProfile: Schema.optional(Schema.Struct({ tools: Schema.Boolean })),
+  // model, and with `reportsSpend` its turns report what they cost, so a crew
+  // on it can keep a dollar budget. Absent: it never reads one, so no
+  // crewmate may run on it.
+  threadProfile: Schema.optional(
+    Schema.Struct({ tools: Schema.Boolean, reportsSpend: Schema.Boolean }),
+  ),
   supportsTextGeneration: Schema.optional(Schema.Boolean),
   setup: Schema.optional(
     Schema.Struct({
