@@ -975,6 +975,39 @@ describe("RunChat, as the person uses it", () => {
           ).length > 0),
     );
 
+  // A resync brings what nobody watched happen: it is simply there, never a
+  // rise-in, in the history or in the slot (E2).
+  it("lets nothing a resync brings rise in", () => {
+    const rising = (renderer: ReactTestRenderer) =>
+      renderer.root.findAll((node) => node.props["data-run-rises"] !== undefined).length;
+    const synced = (row: RecordRow, syncing: boolean) => (
+      <TimelineRowCtx value={{ ...SHARED, syncing }}>
+        <TimelineRowActivityCtx value={ACTIVITY}>
+          <RunChat row={row} />
+        </TimelineRowActivityCtx>
+      </TimelineRowCtx>
+    );
+    const first = record([thought("r1", "The route is fine.")], {
+      live: true,
+      status: status(),
+    });
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(synced(first, false));
+    });
+    const caughtUp = record(
+      [
+        thought("r1", "The route is fine."),
+        step(command("w2", "pnpm build")),
+        thought("r3", "The build passed."),
+        step(command("w4", "pnpm test")),
+      ],
+      { live: true, status: status() },
+    );
+    act(() => renderer.update(synced(caughtUp, true)));
+    expect(rising(renderer)).toBe(0);
+  });
+
   it("opens what a step printed under its words, in place, and closes it again", () => {
     const renderer = mount(
       record([

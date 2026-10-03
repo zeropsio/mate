@@ -355,7 +355,9 @@ const PlopsContext = createContext(false);
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
   const shown = use(ChatShownContext);
-  const [arrived] = useState(() => shown?.current ?? false);
+  // What a resync brings nobody watched happen: it is simply there.
+  const { syncing } = use(TimelineRowCtx);
+  const [arrived] = useState(() => (shown?.current ?? false) && !syncing);
   return arrived;
 }
 
@@ -1279,7 +1281,9 @@ function CallRow({
   readonly children: ReactNode;
 }) {
   const group = use(CallGroupContext);
-  const [joined] = useState(() => group?.current ?? false);
+  // A call a resync brings is simply there.
+  const { syncing } = use(TimelineRowCtx);
+  const [joined] = useState(() => (group?.current ?? false) && !syncing);
   const lineKey = use(ChatLineContext);
   const inSlot = use(InSlotContext);
   // As it mounted: a call that landed by a plop never rises in later.
@@ -1291,6 +1295,7 @@ function CallRow({
         "relative min-w-0 first:rounded-t-2xl last:rounded-b-2xl",
         joined && !inSlot && !plops && "run-rise",
       )}
+      data-run-rises={joined && !inSlot && !plops ? "" : undefined}
       data-chat-bubble={failure === null ? "tool" : "failed"}
       data-chat-failed={failure ?? undefined}
       data-chat-kind={kind}
@@ -2477,7 +2482,10 @@ function ChatRow({
         <Mark line={markLine}>{mark}</Mark>
       )}
       {/* Only what arrives while the person watches rises in. */}
-      <div className={cn("flex min-w-0 flex-1", theirs && "justify-end", rises && "run-rise")}>
+      <div
+        className={cn("flex min-w-0 flex-1", theirs && "justify-end", rises && "run-rise")}
+        data-run-rises={rises ? "" : undefined}
+      >
         {children}
       </div>
     </li>
