@@ -867,9 +867,11 @@ describe("agentLastSpokeAt", () => {
       expected: "T2",
     },
     {
-      name: "nothing when only commands were answered",
-      messages: [user("/mcp", "T1"), agent("T2")],
-      expected: undefined,
+      // No reply heard notes yet: its first reply still bounds them, so what
+      // lands after it is told with the next message.
+      name: "the first reply when only commands were answered",
+      messages: [user("/mcp", "T1"), agent("T2"), user("/context", "T3"), agent("T4")],
+      expected: "T2",
     },
     {
       name: "a reply to a message opening with a path",
@@ -878,6 +880,21 @@ describe("agentLastSpokeAt", () => {
     },
   ])("is $name", ({ messages, expected }) => {
     expect(agentLastSpokeAt(messages)).toBe(expected);
+  });
+
+  it("tells a landing after a conversation that opened with a command", () => {
+    const messages = [user("/mcp", "2026-09-20T10:00:00Z"), agent("2026-09-20T10:00:05Z")];
+    const landed: ChangeLandedEvent = {
+      key: "change-landed:appdev#3",
+      repository: "appdev",
+      number: 3,
+      title: "Add the Harbor page",
+      line: "appdev #3",
+      landedAt: "2026-09-20T10:05:00Z",
+    };
+    const notes = agentTurnNotes([landed], agentLastSpokeAt(messages));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("#3");
   });
 });
 

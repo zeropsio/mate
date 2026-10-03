@@ -300,7 +300,9 @@ export function changeNamesRepository(
  *
  * A slash command's turn carries no notes (the server keeps them off it, or
  * the agent would not run the command), so its reply is not the agent hearing
- * them: what landed before it is still news for the next message.
+ * them: what landed before it is still news for the next message. Where every
+ * reply so far answered a command, the first one bounds the notes, so what
+ * landed after it is still told.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  */
@@ -313,11 +315,15 @@ export function agentLastSpokeAt(
 ): string | undefined {
   let answersCommand = false;
   let spokeAt: string | undefined;
+  let firstSpokeAt: string | undefined;
   for (const message of messages) {
     if (message.role === "user") answersCommand = isSlashCommand(message.text);
-    else if (message.role === "assistant" && !answersCommand) spokeAt = message.createdAt;
+    else if (message.role === "assistant") {
+      firstSpokeAt ??= message.createdAt;
+      if (!answersCommand) spokeAt = message.createdAt;
+    }
   }
-  return spokeAt;
+  return spokeAt ?? firstSpokeAt;
 }
 
 /**
