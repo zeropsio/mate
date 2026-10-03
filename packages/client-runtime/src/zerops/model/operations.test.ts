@@ -36,6 +36,8 @@ interface EntrySpec {
   readonly truncated?: boolean;
   /** Image content blocks the result carried (a browser check's picture). */
   readonly images?: ReadonlyArray<{ readonly mimeType: string; readonly data: string }>;
+  /** The model response the call was written in. */
+  readonly responseId?: string;
 }
 
 function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
@@ -50,6 +52,7 @@ function activityFor(entry: EntrySpec): OrchestrationThreadActivity {
     payload: {
       toolCallId: entry.toolCallId ?? entry.id,
       status: entry.status,
+      ...(entry.responseId !== undefined ? { responseId: entry.responseId } : {}),
       data: {
         toolName: entry.toolName,
         input: entry.input ?? {},
@@ -1124,6 +1127,71 @@ describe("reduceZeropsOperations — the stand-up's two calls", () => {
     expect(operations.map((operation) => operation.returnedAt)).toEqual([
       "2026-09-01T00:00:00.000Z",
       undefined,
+    ]);
+  });
+});
+
+// The batch rule (pass 35) reads an operation by the call the Mate waits on:
+// a session's open follow-up call is that call, not the founder's.
+describe("reduceZeropsOperations — the call the Mate waits on", () => {
+  it("a bootstrap session's open follow-up: its start and response, the session's first return kept", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "b0",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_workflow",
+        input: { action: "start", workflow: "bootstrap", route: "classic" },
+        status: "completed",
+        resultText: planResult({ sessionId: "sessFollow" }),
+        responseId: "msg-1",
+      },
+      {
+        id: "b1",
+        createdAt: "2026-09-01T00:02:00.000Z",
+        toolName: "zerops_workflow",
+        input: { action: "complete", step: "discover" },
+        status: "inProgress",
+        responseId: "msg-2",
+      },
+    ]);
+    expect(operations).toHaveLength(1);
+    expect(operations[0]).toMatchObject({
+      kind: "bootstrap",
+      returnedAt: "2026-09-01T00:00:00.000Z",
+      openedAt: "2026-09-01T00:02:00.000Z",
+      responseId: "msg-2",
+    });
+  });
+
+  it("a call the Mate waits on: its response; returned, no open call", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "d1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_deploy",
+        input: { targetService: "appdev" },
+        status: "completed",
+        resultText: JSON.stringify({ status: "DEPLOYED" }),
+        responseId: "msg-1",
+      },
+      {
+        id: "d2",
+        createdAt: "2026-09-01T00:01:00.000Z",
+        toolName: "zerops_deploy",
+        input: { targetService: "apistage" },
+        status: "inProgress",
+        responseId: "msg-2",
+      },
+    ]);
+    expect(
+      operations.map(({ responseId, openedAt, returnedAt }) => ({
+        responseId,
+        openedAt,
+        returnedAt,
+      })),
+    ).toEqual([
+      { responseId: "msg-1", openedAt: undefined, returnedAt: "2026-09-01T00:00:00.000Z" },
+      { responseId: "msg-2", openedAt: "2026-09-01T00:01:00.000Z", returnedAt: undefined },
     ]);
   });
 });
