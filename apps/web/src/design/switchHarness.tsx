@@ -527,8 +527,10 @@ function say(key: string, text: string) {
  * wheel notch and the browser's own smooth scroll 200 px up (its first
  * frames still within the end band); both while rows land every 60 ms;
  * B — ~600 px up, a row lands; C — the person's smooth scroll back to the
- * end, a row lands. Each reports the row under the reading line's move
- * (0: held) and how far the list ends from its end.
+ * end, a row lands; D — following, a control in the live card's scroller
+ * focused, ArrowUp and PageUp, rows land; E — ~300 px up, back to the end in
+ * 20 px steps while rows stream in, a row lands. Each reports the row under
+ * the reading line's move (0: held) and how far the list ends from its end.
  */
 async function probeFollow(key: string) {
   const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
@@ -609,6 +611,42 @@ async function probeFollow(key: string) {
   land();
   await wait(600);
   out.C_fromEnd = fromEnd();
+
+  // D — following, a control in the live card's own scroller focused, scroll
+  // keys up (the card scrolled partway, so they scroll the card): rows land.
+  const card = node.querySelector<HTMLElement>("[data-run-scroll]");
+  if (card && card.scrollHeight > card.clientHeight) {
+    await toEnd();
+    card.scrollTop = Math.round((card.scrollHeight - card.clientHeight) / 2);
+    const control = card.querySelector<HTMLElement>("button") ?? card;
+    control.focus();
+    for (const keyName of ["ArrowUp", "PageUp"]) {
+      control.dispatchEvent(new KeyboardEvent("keydown", { key: keyName, bubbles: true }));
+    }
+    land();
+    await wait(300);
+    land();
+    await wait(500);
+    out.D_cardKeysFromEnd = fromEnd();
+    control.blur();
+  }
+
+  // E — ~300 px up, the person scrolls back down in 20 px steps while rows
+  // stream in every 60 ms; then a row lands.
+  wheel(-100);
+  node.scrollTop -= 300;
+  await wait(400);
+  lander = setInterval(land, 60);
+  for (let step = 0; step < 60 && fromEnd() > 0; step++) {
+    wheel(20);
+    node.scrollTop += 20;
+    await frame();
+  }
+  clearInterval(lander);
+  await wait(200);
+  land();
+  await wait(600);
+  out.E_backInStepsFromEnd = fromEnd();
   return out;
 }
 
@@ -706,8 +744,19 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
   // end stops being followed at once.
   const onPersonInput = useCallback<TimelineProps["onPersonInput"]>(
     (input) => {
-      if ((input.kind === "wheel" || input.kind === "key") && input.direction === "up")
+      if (input.kind !== "wheel" && input.kind !== "key") return;
+      if (input.direction === "up") {
         flushSync(onManualNavigation);
+        return;
+      }
+      // Down in the end band is coming back.
+      setFollow((current) => {
+        const enabled = nextTimelineFollow(current.enabled, {
+          type: "toward-end-input",
+          inEndBand: current.atEnd,
+        });
+        return enabled === current.enabled ? current : { ...current, enabled };
+      });
     },
     [onManualNavigation],
   );
