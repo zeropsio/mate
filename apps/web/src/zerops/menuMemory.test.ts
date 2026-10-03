@@ -1,5 +1,4 @@
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
-import { ThreadId } from "@t3tools/contracts";
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -12,12 +11,10 @@ import {
   menuMemory,
   rememberedChangeOf,
   rememberedChanges,
-  rememberedCrewOf,
   rememberedMates,
   rememberMenu,
   withChanges,
   withChips,
-  withCrews,
   withMates,
   withMembers,
   withoutMate,
@@ -63,20 +60,13 @@ describe("a remembered change", () => {
 
 describe("what the memory keeps", () => {
   it("forgets everything of a deleted Mate at once, HQ's word of it and its crew, and nothing else", () => {
-    const crew = rememberedCrewOf([
-      { handle: "ada", displayName: "Ada", tint: "violet", lead: true },
-    ]);
     const told = new Map([
       ["nova", VERA],
       ["kai", VERA],
     ]);
-    const first = withCrews(withMates(EMPTY_MENU_MEMORY, "org-1", told, null), {
-      nova: crew,
-      kai: crew,
-    });
+    const first = withMates(EMPTY_MENU_MEMORY, "org-1", told, null);
     const next = withoutMate(first, "nova");
     expect(Object.keys(next.mates["org-1"]?.mates ?? {})).toEqual(["kai"]);
-    expect(Object.keys(next.crews)).toEqual(["kai"]);
     expect(withoutMate(next, "nova")).toBe(next);
   });
 
@@ -187,40 +177,6 @@ describe("a project's remembered chips", () => {
   });
 });
 
-describe("a remembered crew", () => {
-  const FACES = [
-    {
-      handle: "ada",
-      displayName: "Ada",
-      tint: "violet",
-      lead: true,
-      state: "working",
-      threadId: ThreadId.make("thread-ada"),
-    },
-    { handle: "bo", displayName: "Bo", tint: "sky", lead: false, state: "needs", threadId: null },
-  ] as const;
-
-  it("keeps its faces, lead first, at rest: no state, no chat, no fact", () => {
-    expect(rememberedCrewOf(FACES)).toEqual({
-      faces: [
-        { handle: "ada", displayName: "Ada", tint: "violet", lead: true },
-        { handle: "bo", displayName: "Bo", tint: "sky", lead: false },
-      ],
-    });
-  });
-
-  it("keeps each Mate's crew as last read, forgets one that is gone, and a Mate no longer listed", () => {
-    const crew = rememberedCrewOf(FACES);
-    const first = withCrews(EMPTY_MENU_MEMORY, { nova: crew, kai: crew });
-    expect(Object.keys(first.crews)).toEqual(["nova", "kai"]);
-    // Read again: Kai's crew was taken off.
-    expect(Object.keys(withCrews(first, { kai: null }).crews)).toEqual(["nova"]);
-    // The listing no longer holds Nova.
-    expect(Object.keys(withCrews(first, {}, new Set(["kai"])).crews)).toEqual(["kai"]);
-    expect(withCrews(first, { nova: rememberedCrewOf(FACES) })).toBe(first);
-  });
-});
-
 describe("the memory in this browser", () => {
   const stored = new Map<string, string>();
 
@@ -267,7 +223,7 @@ describe("the memory in this browser", () => {
     } as const;
     stored.set(
       key,
-      JSON.stringify({ rows: {}, changes: {}, chips: { g1: { prod } }, crews: {}, members: {} }),
+      JSON.stringify({ rows: {}, changes: {}, chips: { g1: { prod } }, members: {} }),
     );
     openAccountLifetime("user-ales");
     expect(menuMemory().chips.g1?.prod).toEqual(prod);
@@ -278,7 +234,7 @@ describe("the memory in this browser", () => {
     const prod = { label: "prod", state: "ok", version: "v0.1.44", untold: ["api"] } as const;
     stored.set(
       key,
-      JSON.stringify({ rows: {}, changes: {}, chips: { g1: { prod } }, crews: {}, members: {} }),
+      JSON.stringify({ rows: {}, changes: {}, chips: { g1: { prod } }, members: {} }),
     );
     openAccountLifetime("user-ales");
     expect(menuMemory().chips.g1?.prod).toEqual(prod);
@@ -286,7 +242,7 @@ describe("the memory in this browser", () => {
 
   it("reads a memory written before HQ structures were kept, with none", () => {
     const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
-    stored.set(key, JSON.stringify({ rows: {}, changes: {}, chips: {}, crews: {}, members: {} }));
+    stored.set(key, JSON.stringify({ rows: {}, changes: {}, chips: {}, members: {} }));
     openAccountLifetime("user-ales");
     expect(menuMemory().structures).toEqual({});
   });
@@ -337,22 +293,24 @@ describe("the memory in this browser", () => {
     expect(memory.chips).toEqual({ g1: {} });
   });
 
-  // A memory written before crews were kept reads with none, rather than
-  // being forgotten whole for want of them.
-  it("reads a memory from before crews were kept, crews and all none", () => {
+  // A crew's faces come with its Mate's overview now (`mates`): a memory written while this browser
+  // kept crews of their own still reads, those crews passed by, rather than forgotten whole.
+  it("reads a memory written while crews were kept, its crews passed by", () => {
     openAccountLifetime("user-ada");
     const key = `mate:account:user-ada:${MENU_MEMORY_STORAGE_KEY}`;
-    const before: Record<string, unknown> = {
+    const before = {
       ...EMPTY_MENU_MEMORY,
       changes: { g1: [rememberedChangeOf(PULL)] },
+      crews: {
+        nova: { faces: [{ handle: "ada", displayName: "Ada", tint: "violet", lead: true }] },
+      },
     };
-    delete before.crews;
     stored.set(key, JSON.stringify(before));
     closeAccountLifetime();
     stored.set(key, JSON.stringify(before));
     openAccountLifetime("user-ada");
-    expect(menuMemory().crews).toEqual({});
     expect(menuMemory().changes.g1?.[0]?.title).toBe("Add a /status page");
+    expect("crews" in menuMemory()).toBe(false);
   });
 
   // Only Mates open changes (SPEC §5.4): the author a change was once remembered with is not
