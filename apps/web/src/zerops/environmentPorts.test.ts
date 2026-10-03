@@ -21,10 +21,18 @@ import {
   EnvironmentId,
   EnvironmentInternalError,
 } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { keptSessionUnanswered, linkPhaseOf, recordsStorage } from "./environmentPorts";
+import {
+  hqIndexPort,
+  keptSessionUnanswered,
+  linkPhaseOf,
+  recordsStorage,
+} from "./environmentPorts";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
@@ -276,5 +284,32 @@ describe("keptSessionUnanswered: what a kept session's check failing says", () =
     ],
   ])("%s → no word: %s", (_name, unanswered, cause) => {
     expect(keptSessionUnanswered(cause)).toBe(unanswered);
+  });
+});
+
+describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
+  it("names the project whose Mate HQ says serves an environment, and tells of a change", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
+    const index = hqIndexPort(registry);
+    const told: Array<string | null> = [];
+    const stop = index.subscribe(() => {
+      told.push(index.projectOf(ENVIRONMENT_ID));
+    });
+    expect(index.projectOf(ENVIRONMENT_ID)).toBeNull();
+
+    registry.set(hqMatesViewAtom, {
+      organizationId: "org-acme",
+      mates: new Map([
+        ["p-vera", { identity: { environmentId: ENVIRONMENT_ID } } as unknown as MateLiveView],
+      ]),
+      current: true,
+    });
+
+    expect(index.projectOf(ENVIRONMENT_ID)).toBe("p-vera");
+    expect(told).toEqual(["p-vera"]);
+    stop();
   });
 });

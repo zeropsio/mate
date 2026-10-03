@@ -55,6 +55,7 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
+import { hqMatesAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
@@ -369,6 +370,31 @@ export const recordsStorage: AccountEnvironmentPorts["records"] = {
 // ── The ports ────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * HQ's index of the Mates the reader observes (`hqMatesAtom`): the project whose Mate serves an
+ * environment, for a route or an action no record or descriptor names yet.
+ */
+export function hqIndexPort(
+  registry: AtomRegistry.AtomRegistry,
+): NonNullable<AccountEnvironmentPorts["hqIndex"]> {
+  return {
+    projectOf: (environmentId) => hqProjectOf(registry.get(hqMatesAtom), environmentId),
+    // Read once as it mounts, so the listener hears HQ's next word, not the atom's own first read.
+    subscribe: (listener) => {
+      let mounted = false;
+      const stop = registry.subscribe(
+        hqMatesAtom,
+        () => {
+          if (mounted) listener();
+        },
+        { immediate: true },
+      );
+      mounted = true;
+      return stop;
+    },
+  };
+}
+
+/**
  * The Mate environments' ports on the web, for one account epoch: `client` is the session's, and
  * `registry` the atom registry the connection runtime publishes to.
  */
@@ -456,5 +482,6 @@ export function webEnvironmentPorts(input: {
     admission: connectionAdmission,
     // Any press in flight: the background mints no throwaway meanwhile.
     pressInFlight: pressesInFlight,
+    hqIndex: hqIndexPort(registry),
   };
 }

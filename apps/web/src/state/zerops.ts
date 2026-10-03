@@ -203,6 +203,14 @@ export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
   return view === null || view.organizationId !== organizationId ? null : view;
 }).pipe(Atom.withLabel("zerops:hq-mates"));
 
+/** The project whose Mate HQ says serves `environmentId`, in `view`; null where HQ names none. */
+export function hqProjectOf(view: HqMatesView | null, environmentId: EnvironmentId): string | null {
+  for (const [projectId, mate] of view?.mates ?? []) {
+    if (mate.identity?.environmentId === environmentId) return projectId;
+  }
+  return null;
+}
+
 /** The people HQ named for the organization in view, by Zerops user id; null while none are. */
 export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
   const view = get(hqPeopleViewAtom);
