@@ -145,6 +145,9 @@ export interface PictureSize {
 /** Pictures in a message stand at most 300 px tall. */
 const PICTURE_MAX_HEIGHT = 300;
 
+/** Pictures written one after another sit side by side, at most this tall. */
+export const GALLERY_PICTURE_MAX_HEIGHT = 160;
+
 /**
  * The room a picture holds before it loads: its own size, carried on the
  * attachment from the composer or the server, else the size the server read
@@ -153,15 +156,43 @@ const PICTURE_MAX_HEIGHT = 300;
 export function reservedPictureBox(
   image: Pick<ChatImageAttachment, "width" | "height">,
   serverSize: PictureSize | undefined,
+  maxHeight = PICTURE_MAX_HEIGHT,
 ): { readonly width: string; readonly aspectRatio: string } | null {
   const size =
     image.width !== undefined && image.height !== undefined
       ? { width: image.width, height: image.height }
       : serverSize;
   if (!size) return null;
-  const widest = Math.min(size.width, (PICTURE_MAX_HEIGHT * size.width) / size.height);
+  const widest = Math.min(size.width, (maxHeight * size.width) / size.height);
   return {
     width: `min(100%, ${Math.round(widest)}px)`,
     aspectRatio: `${size.width} / ${size.height}`,
   };
+}
+
+export type MessagePictureRow<S> =
+  | (S & { readonly kind: "text" })
+  | { readonly kind: "row"; readonly items: ReadonlyArray<S> };
+
+/**
+ * The message as rows: words as they are, and the pictures written one after
+ * another, with no words between them, together on one row.
+ */
+export function messagePictureRows<S extends { readonly kind: string }>(
+  segments: ReadonlyArray<S>,
+): MessagePictureRow<S>[] {
+  const rows: MessagePictureRow<S>[] = [];
+  for (const segment of segments) {
+    if (segment.kind === "text") {
+      rows.push(segment as S & { readonly kind: "text" });
+      continue;
+    }
+    const last = rows.at(-1);
+    if (last?.kind === "row") {
+      rows[rows.length - 1] = { kind: "row", items: [...last.items, segment] };
+    } else {
+      rows.push({ kind: "row", items: [segment] });
+    }
+  }
+  return rows;
 }

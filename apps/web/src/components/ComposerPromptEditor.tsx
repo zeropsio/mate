@@ -560,7 +560,8 @@ function $createComposerTerminalContextNode(
 /**
  * A picture's place in the text: it holds the picture's id, is written as the
  * picture placeholder, and draws what the composer says about the picture. Its
- * slot is a block of its own line, so words sit above and below it.
+ * slot sits on a row of its own, beside the pictures and files written right
+ * next to it, so words sit above and below them.
  */
 class ComposerPictureNode extends DecoratorNode<React.ReactElement> {
   __imageId: string;
@@ -593,7 +594,7 @@ class ComposerPictureNode extends DecoratorNode<React.ReactElement> {
 
   override createDOM(): HTMLElement {
     const dom = document.createElement("span");
-    dom.className = "composer-picture-slot";
+    dom.className = "composer-picture-slot composer-attachment-slot";
     return dom;
   }
 

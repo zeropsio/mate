@@ -5108,13 +5108,24 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   --picture-remove-shadow: 0 2px 6px -2px rgb(0 0 0 / 25%);
 }
 
-/* A picture in the composer's text: a block of its own line, 80 px tall. */
-.composer-picture-slot {
-  display: block;
-  width: fit-content;
+/*
+ * A picture or a file in the composer's text: on a row of its own, 80 px tall,
+ * and the ones written one after another side by side on it, wrapping like a
+ * gallery. Words never share their row: a break before a run and after it.
+ */
+.composer-attachment-slot {
+  display: inline-block;
   max-width: 100%;
   margin-block: 8px;
+  margin-inline-end: 8px;
+  vertical-align: bottom;
   line-height: 0;
+}
+
+.composer-attachment-slot + :not(.composer-attachment-slot, br)::before,
+:not(.composer-attachment-slot, br):has(+ .composer-attachment-slot)::after {
+  content: "\A";
+  white-space: pre;
 }
 
 .composer-picture {
@@ -5812,6 +5823,18 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Pictures written one after another: side by side, wrapping, each at most 160 px tall. */
+.message-picture-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.message-picture-row[data-gallery] .message-picture-img {
+  max-height: 160px;
 }
 
 /* ==== end of composer pictures ==== */

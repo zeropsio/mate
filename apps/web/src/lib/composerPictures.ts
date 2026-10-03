@@ -84,19 +84,53 @@ export function countInlinePicturePlaceholders(prompt: string): number {
   return count;
 }
 
+/** Whether a character of the prompt is the place of a picture or a file: what a row is made of. */
+export function isAttachmentPlaceholder(char: string | undefined): boolean {
+  return char === INLINE_PICTURE_PLACEHOLDER;
+}
+
+/**
+ * A picture or file put in at the caret, on a row with the ones written right
+ * next to it: on the empty line under a row it joins that row, and a line
+ * break follows it unless one already does, so the caret goes on below the
+ * row, never beside it.
+ */
+export function insertAttachmentPlaceholder(
+  prompt: string,
+  cursorInput: number,
+  placeholder: string,
+): { prompt: string; cursor: number; at: number } {
+  const cursor = Math.max(0, Math.min(prompt.length, Math.floor(cursorInput)));
+  const onEmptyLineUnderRow =
+    prompt[cursor - 1] === "\n" &&
+    isAttachmentPlaceholder(prompt[cursor - 2]) &&
+    (cursor === prompt.length || prompt[cursor] === "\n");
+  const at = onEmptyLineUnderRow ? cursor - 1 : cursor;
+  const rest = prompt.slice(at);
+  return {
+    prompt: `${prompt.slice(0, at)}${placeholder}${rest.startsWith("\n") ? "" : "\n"}${rest}`,
+    cursor: at + 2,
+    at,
+  };
+}
+
 /** A picture pasted at the caret: its place in the prompt and its index among the pictures. */
 export function insertInlinePicturePlaceholder(
   prompt: string,
   cursorInput: number,
 ): { prompt: string; cursor: number; pictureIndex: number } {
-  const cursor = Math.max(0, Math.min(prompt.length, Math.floor(cursorInput)));
+  const insertion = insertAttachmentPlaceholder(prompt, cursorInput, INLINE_PICTURE_PLACEHOLDER);
   return {
-    prompt: `${prompt.slice(0, cursor)}${INLINE_PICTURE_PLACEHOLDER}${prompt.slice(cursor)}`,
-    cursor: cursor + 1,
-    pictureIndex: countInlinePicturePlaceholders(prompt.slice(0, cursor)),
+    prompt: insertion.prompt,
+    cursor: insertion.cursor,
+    pictureIndex: countInlinePicturePlaceholders(prompt.slice(0, insertion.at)),
   };
 }
 
+/**
+ * A picture's place taken out; alone on its line, the line goes with it, so
+ * removing what was just pasted leaves the words as they were.
+ */
 export function removeInlinePicturePlaceholder(
   prompt: string,
   pictureIndex: number,
@@ -105,7 +139,11 @@ export function removeInlinePicturePlaceholder(
   for (let index = 0; index < prompt.length; index += 1) {
     if (prompt[index] !== INLINE_PICTURE_PLACEHOLDER) continue;
     if (seen === pictureIndex) {
-      return { prompt: prompt.slice(0, index) + prompt.slice(index + 1), cursor: index };
+      const alone = (index === 0 || prompt[index - 1] === "\n") && prompt[index + 1] === "\n";
+      return {
+        prompt: prompt.slice(0, index) + prompt.slice(index + (alone ? 2 : 1)),
+        cursor: index,
+      };
     }
     seen += 1;
   }

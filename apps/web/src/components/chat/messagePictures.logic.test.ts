@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ChatAttachment } from "~/types";
 import {
   echoOfMessage,
+  GALLERY_PICTURE_MAX_HEIGHT,
+  messagePictureRows,
   placeMessagePictures,
   reservedPictureBox,
   terminalContextsBySegment,
@@ -186,5 +188,41 @@ describe("echoOfMessage — the person's message as the run's card repeats it", 
     const echo = echoOfMessage(text, attachments);
     expect(echo.line).toBe(line);
     expect(echo.pictures.map((picture) => picture.id)).toEqual(pictures);
+  });
+});
+
+describe("reservedPictureBox in a gallery", () => {
+  it("holds a picture side by side with others to the gallery's height", () => {
+    expect(
+      reservedPictureBox({ width: 2000, height: 1000 }, undefined, GALLERY_PICTURE_MAX_HEIGHT),
+    ).toEqual({
+      width: `min(100%, ${GALLERY_PICTURE_MAX_HEIGHT * 2}px)`,
+      aspectRatio: "2000 / 1000",
+    });
+  });
+});
+
+describe("messagePictureRows", () => {
+  type Segment = { readonly kind: string; readonly n: number };
+  const words = (after: number): Segment => ({ kind: "text", n: after });
+  const picture = (n: number): Segment => ({ kind: "picture", n });
+  const shape = (rows: ReturnType<typeof messagePictureRows<Segment>>) =>
+    rows.map((row) => (row.kind === "row" ? row.items.map((item) => item.n) : "words"));
+
+  it.each([
+    ["one picture is a row of its own", [words(0), picture(1), words(1)], ["words", [1], "words"]],
+    [
+      "pictures written one after another share a row",
+      [words(0), picture(1), picture(2), picture(3)],
+      ["words", [1, 2, 3]],
+    ],
+    [
+      "words between pictures part them",
+      [picture(1), words(1), picture(2), picture(3)],
+      [[1], "words", [2, 3]],
+    ],
+    ["only words, no rows", [words(0)], ["words"]],
+  ])("%s", (_label, segments, expected) => {
+    expect(shape(messagePictureRows(segments))).toEqual(expected);
   });
 });

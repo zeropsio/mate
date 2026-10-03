@@ -365,10 +365,32 @@ function LiveComposer() {
       <pre className="whitespace-pre-wrap font-mono text-muted-foreground text-xs" data-live-wire>
         {materializePicturePrompt(draft.prompt, draft.images)}
       </pre>
+      <LiveSent text={materializePicturePrompt(draft.prompt, draft.images)} images={draft.images} />
       <p className="text-muted-foreground text-xs" data-live-status>
         {error ?? pictures.blockReason ?? "Ready to send"}
       </p>
       {pictures.view}
+    </div>
+  );
+}
+
+/** The live draft as the conversation draws it once sent. */
+function LiveSent(props: {
+  readonly text: string;
+  readonly images: ReadonlyArray<ComposerImageAttachment>;
+}) {
+  const placed = placeMessagePictures(props.text, [...props.images]);
+  if (!placed) return null;
+  return (
+    <div className="flex justify-end" data-live-sent>
+      <div className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+        <MessagePictureBody
+          segments={placed.segments}
+          dimensions={new Map()}
+          onOpen={() => undefined}
+          renderText={(words) => <p className="whitespace-pre-wrap">{words.text}</p>}
+        />
+      </div>
     </div>
   );
 }

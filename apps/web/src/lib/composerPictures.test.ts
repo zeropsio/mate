@@ -44,11 +44,29 @@ const withNotes = (...notes: string[]) => ({
 
 describe("picture placeholders in the prompt", () => {
   it.each([
-    ["an empty prompt", "", 0, `${P}`, 1, 0],
-    ["between words, where the caret is", "feels off:Can you", 10, `feels off:${P}Can you`, 11, 0],
-    ["after an earlier picture", `a${P}b`, 3, `a${P}b${P}`, 4, 1],
-    ["before an earlier picture", `a${P}b`, 0, `${P}a${P}b`, 1, 0],
-    ["a caret past the end lands at the end", "ab", 99, `ab${P}`, 3, 0],
+    ["an empty prompt, the caret below it", "", 0, `${P}\n`, 2, 0],
+    [
+      "between words, where the caret is, the rest of the line below it",
+      "feels off:Can you",
+      10,
+      `feels off:${P}\nCan you`,
+      12,
+      0,
+    ],
+    ["after an earlier picture", `a${P}b`, 3, `a${P}b${P}\n`, 5, 1],
+    ["before an earlier picture", `a${P}b`, 0, `${P}\na${P}b`, 2, 0],
+    ["a caret past the end lands at the end", "ab", 99, `ab${P}\n`, 4, 0],
+    ["on the empty line under a row, beside the row", `look:${P}\n`, 7, `look:${P}${P}\n`, 8, 1],
+    ["right after a row, beside it, the caret below", `look:${P}`, 6, `look:${P}${P}\n`, 8, 1],
+    [
+      "at the start of words under a row, a row of its own",
+      `${P}\nmore`,
+      2,
+      `${P}\n${P}\nmore`,
+      4,
+      1,
+    ],
+    ["a blank line under a row keeps them apart", `${P}\n\n`, 3, `${P}\n\n${P}\n`, 5, 1],
   ])("%s", (_label, prompt, cursor, expectedPrompt, expectedCursor, expectedIndex) => {
     expect(insertInlinePicturePlaceholder(prompt, cursor)).toEqual({
       prompt: expectedPrompt,
@@ -61,6 +79,9 @@ describe("picture placeholders in the prompt", () => {
     ["the first of two", `a${P}b${P}c`, 0, `ab${P}c`, 1],
     ["the second of two", `a${P}b${P}c`, 1, `a${P}bc`, 3],
     ["one that is not there", `a${P}b`, 3, `a${P}b`, 3],
+    ["one alone on its line, with its line", `look:\n${P}\nmore`, 0, "look:\nmore", 6],
+    ["one of a row, the row's line kept", `${P}${P}\nmore`, 1, `${P}\nmore`, 1],
+    ["one after words, the words' line kept", `look:${P}\nmore`, 0, "look:\nmore", 5],
   ])("removes %s", (_label, prompt, index, expectedPrompt, expectedCursor) => {
     expect(removeInlinePicturePlaceholder(prompt, index)).toEqual({
       prompt: expectedPrompt,
