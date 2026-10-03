@@ -23,7 +23,6 @@ import {
   mateRowSentAsk,
   mateRowDraft,
   mateRowReading,
-  mateRowFace,
   mateRowView,
   ownerMark,
   mateRowOffersMenu,
@@ -1005,77 +1004,67 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
   });
 });
 
-// The pose its face wears in the row (`matePose`): waking from its press until its agent answers,
-// asleep once it did not come or while it goes, its conversation's own once signed in (run 6).
-describe("mateRowFace — the pose a Mate's row wears", () => {
-  const asked = (face: "idle" | "sleep" | "working") =>
-    ({ ...mateRowView(undefined, face), ask: "Speed up the photo gallery" }) as const;
+// The pose its face wears in the row (`mateFaceFor`): waking while it arrives — from its press
+// until its first sign-in, inside its window — its conversation's own after (run 6).
+describe("mateRowReading — the pose a Mate's row wears", () => {
+  const activity = (overrides: Partial<ZeropsAgentActivity>): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "working",
+    status: null,
+    face: "working",
+    subject: "Speed up the photo gallery",
+    at: "2026-10-03T10:00:00.000Z",
+    snippet: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+    ...overrides,
+  });
   it.each([
     {
-      case: "coming up",
-      view: mateComingRowView(mateRowView(undefined, "sleep"), {
-        kind: "coming",
-        line: "Coming up.",
-      }),
-      deleting: false,
-      signedIn: false,
+      case: "arriving, up, its sign-in to come",
+      connected: true,
+      read: undefined,
+      arriving: true,
       face: "waking",
     },
     {
-      case: "did not come",
-      view: mateComingRowView(mateRowView(undefined, "sleep"), {
-        kind: "failed",
-        line: "Could not be created.",
-        verb: "remove",
-      }),
-      deleting: false,
-      signedIn: false,
-      face: "sleep",
-    },
-    {
-      case: "waiting for its sign-in, up",
-      view: mateRowView(undefined, "idle"),
-      deleting: false,
-      signedIn: false,
+      case: "arriving, its socket not up yet",
+      connected: false,
+      read: undefined,
+      arriving: true,
       face: "waking",
     },
     {
-      case: "signed in, at rest",
-      view: mateRowView(undefined, "idle"),
-      deleting: false,
-      signedIn: true,
-      face: "idle",
-    },
-    {
-      case: "no sign-in tag but talked to",
-      view: asked("idle"),
-      deleting: false,
-      signedIn: false,
-      face: "idle",
-    },
-    {
-      case: "signed in, at work",
-      view: asked("working"),
-      deleting: false,
-      signedIn: true,
+      case: "arriving, at work",
+      connected: true,
+      read: activity({ face: "working" }),
+      arriving: true,
       face: "working",
     },
+    { case: "arrived, at rest", connected: true, read: undefined, arriving: false, face: "idle" },
     {
-      case: "never signed in, not running",
-      view: mateRowView(undefined, "sleep"),
-      deleting: false,
-      signedIn: false,
+      case: "arrived, not running",
+      connected: false,
+      read: undefined,
+      arriving: false,
       face: "sleep",
     },
-    {
-      case: "deleting",
-      view: mateDeletingView(asked("working")),
-      deleting: true,
-      signedIn: true,
-      face: "sleep",
-    },
-  ] as const)("$case: $face", ({ view, deleting, signedIn, face }) => {
-    expect(mateRowFace({ view, deleting, signedIn })).toBe(face);
+  ] as const)("$case: $face", ({ connected, read, arriving, face }) => {
+    expect(
+      mateRowReading({ connected, activity: read, mine: false, pose: { arriving } }).face,
+    ).toBe(face);
+  });
+
+  it("goes to sleep while it is deleted, whatever it was", () => {
+    const view = mateRowReading({
+      connected: true,
+      activity: activity({ face: "working" }),
+      mine: true,
+      pose: { arriving: true },
+    });
+    expect(mateDeletingView(view).face).toBe("sleep");
   });
 });
 

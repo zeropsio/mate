@@ -134,7 +134,7 @@ vi.mock("~/zerops/useMateSetup", () => ({ useMateSetup: () => undefined }));
 vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));
-vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0 }));
+vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0, useNowMs: () => Date.now() }));
 // A slow first connect lists its project's processes; none are read here.
 vi.mock("~/zerops/activity/useProjectActivity", () => ({
   useProjectActivity: () => ({ processes: app.processes }),

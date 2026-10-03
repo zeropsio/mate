@@ -2370,17 +2370,52 @@ describe("the Mate's card", () => {
   it("gives a connected environment with nothing running open eyes, and no word about it", () => {
     // The socket is the client's business; the row answers what the agent is
     // up to — with its face. Nothing known about the conversation, no line.
-    const html = render([mine({ ...NAMED, group: "connected" })]);
+    const html = render([{ ...NAMED, group: "connected" }]);
     expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain(">Idle<");
     expect(html).not.toContain("Connected");
     expect(html).not.toContain("sidebar-mate-subject");
   });
 
-  // Up with nobody signed in yet, its agent has not answered: it is still on its way (`matePose`).
-  it("wakes for a connected environment nobody has signed in yet", () => {
-    const html = render([{ ...NAMED, group: "connected" }]);
-    expect(html).toContain('data-mate-face-state="waking"');
+  // Waking while it arrives (`mateFaceFor`): from its press to its first sign-in, inside its
+  // window — never a Mate signed in once, nor one nobody signed in for days (Everyone).
+  it.each([
+    {
+      case: "up, made minutes ago, nobody signed in",
+      ago: 5,
+      signed: false,
+      group: "connected",
+      face: "waking",
+    },
+    {
+      case: "its socket not up yet, made minutes ago",
+      ago: 5,
+      signed: false,
+      group: "ready",
+      face: "waking",
+    },
+    {
+      case: "up, made two days ago, nobody signed in",
+      ago: 2880,
+      signed: false,
+      group: "connected",
+      face: "idle",
+    },
+    {
+      case: "up, made minutes ago, signed in once",
+      ago: 5,
+      signed: true,
+      group: "connected",
+      face: "idle",
+    },
+  ] as const)("$case: $face", ({ ago, signed, group, face }) => {
+    const made = new Date(Date.now() - ago * 60_000).toISOString();
+    const listed = NAMED.project.tagList ?? [];
+    const tagList = signed ? [...listed, "mate:signer:claude-code:u-eva"] : listed;
+    const html = render([
+      { ...NAMED, group, project: { ...NAMED.project, created: made, tagList } },
+    ]);
+    expect(html).toContain(`data-mate-face-state="${face}"`);
   });
 
   it("is asleep for a container nobody has connected to", () => {

@@ -373,19 +373,19 @@ describe("the stage's words", () => {
       kind: "sign-in",
       headline: "Sign Wren in to start.",
       sentence: "Once it's signed in, Wren stands up development on Beviro.",
-      face: "waking",
+      face: "idle",
     },
     {
       kind: "sign-in-plain",
       headline: "Sign Wren in to start.",
       sentence: "Once it's signed in, Wren writes and runs code on its own copy of Beviro.",
-      face: "waking",
+      face: "idle",
     },
     {
       kind: "sign-in-colleague",
       headline: "Sign Wren in to start.",
       sentence: "Nobody has signed Wren in yet. Sign it in with your own account and it's yours.",
-      face: "waking",
+      face: "idle",
     },
     {
       kind: "standing-up",
@@ -408,7 +408,8 @@ describe("the stage's words", () => {
   ])("$kind: $headline", ({ kind, headline, sentence, face }) => {
     expect(arrivalHeadline(WREN, kind)).toBe(headline);
     expect(arrivalSentence(WREN, kind)).toBe(sentence);
-    expect(arrivalFace(kind, true)).toBe(face);
+    // Arrived (its window past, or signed in once): at rest where it waits.
+    expect(arrivalFace(kind, true, false)).toBe(face);
   });
 
   it("names who added it to a colleague, where that is known", () => {
@@ -441,20 +442,40 @@ describe("the stage's words", () => {
   });
 
   it("sleeps until it answers", () => {
-    expect(arrivalFace("sign-in", false)).toBe("sleep");
-    expect(arrivalFace("coming-failed", false)).toBe("needs");
+    expect(arrivalFace("sign-in", false, false)).toBe("sleep");
+    expect(arrivalFace("coming-failed", false, true)).toBe("needs");
+  });
+
+  // Its pose (`mateFaceFor`): waking while it arrives — from the press to its first sign-in,
+  // inside its window — never for a Mate signed in once and signed out since (its signer tag
+  // stays), nor for one nobody signed in past its window.
+  it.each([
+    { case: "coming up", kind: "coming", arriving: true, face: "waking" },
+    { case: "coming up, its window read as past", kind: "coming", arriving: false, face: "waking" },
+    { case: "arriving, its sign-in to come", kind: "sign-in", arriving: true, face: "waking" },
+    { case: "arriving, a colleague's", kind: "sign-in-colleague", arriving: true, face: "waking" },
+    { case: "signed in once, signed out since", kind: "sign-in", arriving: false, face: "idle" },
+    {
+      case: "nobody signed it in, past its window",
+      kind: "sign-in-plain",
+      arriving: false,
+      face: "idle",
+    },
+    { case: "signed in, asked nothing yet", kind: "question", arriving: false, face: "idle" },
+  ] as const)("$case: $face", ({ kind, arriving, face }) => {
+    expect(arrivalFace(kind, true, arriving)).toBe(face);
   });
 });
 
-// The header over a Mate's arrival wears the stage's pose (`matePose`): waking while it comes up
-// and until its agent answers, asleep where it did not come, at rest once signed in.
+// The header over a Mate's arrival wears the stage's pose (`mateFaceFor`): waking while it comes up
+// and arrives, asleep where it did not come, at rest once it has arrived.
 describe("arrivalHeaderFace", () => {
   it.each([
     {
       case: "coming up",
       kind: "coming",
       over: false,
-      signInRequired: true,
+      arriving: true,
       connected: false,
       face: "waking",
     },
@@ -462,15 +483,15 @@ describe("arrivalHeaderFace", () => {
       case: "up, waiting for its sign-in",
       kind: "coming",
       over: true,
-      signInRequired: true,
+      arriving: true,
       connected: true,
       face: "waking",
     },
     {
-      case: "up, signed in",
+      case: "up, signed in once (signed out since or not)",
       kind: "coming",
       over: true,
-      signInRequired: false,
+      arriving: false,
       connected: true,
       face: "idle",
     },
@@ -478,7 +499,7 @@ describe("arrivalHeaderFace", () => {
       case: "did not come",
       kind: "failed",
       over: false,
-      signInRequired: true,
+      arriving: true,
       connected: false,
       face: "sleep",
     },
@@ -486,7 +507,7 @@ describe("arrivalHeaderFace", () => {
       case: "its link not made",
       kind: "reaching",
       over: false,
-      signInRequired: false,
+      arriving: false,
       connected: false,
       face: "sleep",
     },

@@ -122,8 +122,9 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
           face={arrivalHeaderFace({
             kind: view.kind,
             over: false,
-            signInRequired: true,
             connected: false,
+            // Its birth runs in this tab: nobody has signed it in yet.
+            arriving: true,
           })}
           mate={{ ...mate, projectUrl: undefined }}
         />

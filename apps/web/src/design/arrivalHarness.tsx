@@ -617,7 +617,12 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     <MateEmptyStateView
       addedBy={state.addedBy}
       coming={comingOf(state, nowMs)}
-      mate={state.mate}
+      // Waiting for its first sign-in, it is still arriving (`mateArrivingUntil`).
+      mate={
+        state.logins === undefined
+          ? state.mate
+          : { ...state.mate, arrivingUntil: nowMs + 30 * 60_000 }
+      }
       onRetry={() => go("standing-up")}
       phase={state.phase}
       runtimes={signInRuntimes(nowMs - openedAt)}
@@ -670,7 +675,7 @@ function Header({ state }: { readonly state: HarnessState }) {
                         ? "reaching"
                         : "coming",
                   over: state.coming === undefined,
-                  signInRequired: state.logins !== undefined,
+                  arriving: state.logins !== undefined,
                   connected: state.mate.connected,
                 })
           }
