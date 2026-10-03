@@ -7,10 +7,12 @@
  *
  * The decision logic (`deriveOperationObservation`) is a pure function of
  * its inputs, exported and tested directly — the hook itself is thin React
- * glue: it reads session/topology/activity through hooks and keeps its
- * cross-render observation memory by the operation's key
- * (`ObservationMemory`), so a card drawn again for the same operation starts
- * from what was read of it.
+ * glue: it reads session/topology/activity through hooks, keeps its
+ * cross-render observation memory inside the mounted card, and asks the
+ * account store to read the operation only while the decision says so. A card
+ * drawn again for the same operation (a row plopped from the live slot, a
+ * settled row opened after a reload or in another window) reads it from the
+ * store again — by the ids its result named — never from the page.
  */
 import { useMemo, useRef } from "react";
 
@@ -25,6 +27,8 @@ import {
   type ObservationOffReason,
   type ObservationState,
   observe,
+  operationReadCeilingMs,
+  readsOperation,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -33,7 +37,7 @@ import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
 import { useZeropsTopology } from "../useZeropsFeeds";
 import type { ProjectActivitySnapshot } from "./useProjectActivity.ts";
 import { useBuildLog } from "./useBuildLog.ts";
-import { useProjectActivity } from "./useProjectActivity.ts";
+import { useProjectActivityDemand, useProjectActivityRead } from "./useProjectActivity.ts";
 
 export const OPERATION_OBSERVATION_CEILING_MS = 30 * 60 * 1000;
 
@@ -158,7 +162,10 @@ export function deriveOperationObservation(
     }
   }
 
-  const ceilingMs = input.ceilingMs ?? OPERATION_OBSERVATION_CEILING_MS;
+  const ceilingMs = operationReadCeilingMs(
+    { running: target.running, exact: target.exact !== undefined },
+    input.ceilingMs ?? OPERATION_OBSERVATION_CEILING_MS,
+  );
   const resolvedUnavailableReason = input.attributable
     ? unavailableReason
     : input.notAttributableReason;
@@ -178,16 +185,13 @@ export function deriveOperationObservation(
   const observationNow = state.kind === "off" ? undefined : state.observation;
   const history = observationNow?.pipeline !== undefined ? observationNow : input.previousHistory;
 
-  // `state.kind === "off"` already covers every stop condition but
-  // `running`/outcome — not attributable, the ceiling, and any feed
-  // problem the activity feed or attribution itself reports (including a
-  // project mismatch: no process for the right project is ever going to
-  // arrive from a read that is not even reading that project). A feed that
-  // has only been silent past its timeout keeps the lease: it recovers only
-  // while somebody still wants it.
-  const outcomeSettled = observationNow?.outcome !== undefined;
-  const feedStopped = state.kind === "off" && state.reason !== "stale-timeout";
-  const wantsPoll = target.running && !feedStopped && !outcomeSettled;
+  // `state.kind === "off"` covers every stop condition but the outcome —
+  // not attributable, the ceiling, and any feed problem the activity feed or
+  // attribution itself reports (including a project mismatch: no process for
+  // the right project is ever going to arrive from a read that is not even
+  // reading that project). Its call settling is none: it reads on until the
+  // outcome is read (`readsOperation`).
+  const wantsPoll = readsOperation(state);
   const buildLogQuery = observationNow?.buildLog ?? history?.buildLog;
 
   return {
@@ -198,35 +202,6 @@ export function deriveOperationObservation(
     ...(buildLogQuery === undefined ? {} : { buildLogQuery }),
   };
 }
-
-/**
- * What was last read of each operation, by its key, across the cards drawn
- * for it: a row moves from the live slot into the history, a detail opens
- * again, and the new card starts from what the last one read — a deploy that
- * ended keeps its pipeline and its build log. Bounded: the oldest read leaves
- * first, and one read again is kept as the newest.
- */
-export class ObservationMemory {
-  readonly #reads = new Map<string, Observation>();
-
-  constructor(readonly bound: number) {}
-
-  recall(key: string): Observation | undefined {
-    return this.#reads.get(key);
-  }
-
-  remember(key: string, observation: Observation): void {
-    this.#reads.delete(key);
-    this.#reads.set(key, observation);
-    for (const oldest of this.#reads.keys()) {
-      if (this.#reads.size <= this.bound) break;
-      this.#reads.delete(oldest);
-    }
-  }
-}
-
-/** The operations a conversation shows at once, with room to spare. */
-const observationMemory = new ObservationMemory(64);
 
 function serviceIdsFor(
   target: ObservationTarget | null,
@@ -271,24 +246,15 @@ export function useOperationObservation(
   const keyRef = useRef<string | null>(null);
   const lastReadRef = useRef<LastRead | undefined>(undefined);
   const historyRef = useRef<Observation | undefined>(undefined);
-  // The single source of truth for "should we retain activity demand" is
-  // `deriveOperationObservation`'s own `wantsPoll` — reused here as the
-  // guess driving *this* render's `useProjectActivity` lease
-  // (necessarily one render behind its own verdict, since that verdict is
-  // computed from this render's snapshot) rather than a second,
-  // independently re-derived formula that can drift out of sync with it,
-  // as it once did for `project-mismatch`.
-  const wantsPollRef = useRef(target !== null && target.running);
   if (target === null || target.key !== keyRef.current) {
     keyRef.current = target?.key ?? null;
     lastReadRef.current = undefined;
-    historyRef.current = target === null ? undefined : observationMemory.recall(target.key);
-    wantsPollRef.current = target !== null && target.running;
+    historyRef.current = undefined;
   }
 
-  const snapshot = useProjectActivity(
-    wantsPollRef.current && projectId !== undefined ? projectId : null,
-  );
+  // What the account store holds of the project is read at once, whoever
+  // asked it to read: a settled operation it holds draws on its first paint.
+  const snapshot = useProjectActivityRead(target === null ? null : (projectId ?? null));
 
   const previousHistory = historyRef.current;
 
@@ -307,11 +273,10 @@ export function useOperationObservation(
   );
 
   lastReadRef.current = result.lastRead;
-  wantsPollRef.current = result.wantsPoll;
-  if (target !== null && result.history !== undefined && result.history !== historyRef.current) {
-    observationMemory.remember(target.key, result.history);
-  }
   historyRef.current = result.history;
+  // The single source of truth for "should the store read it" is the
+  // decision's own `wantsPoll`, from this render's snapshot.
+  useProjectActivityDemand(result.wantsPoll ? (projectId ?? null) : null);
 
   const observationNow = result.state.kind === "off" ? undefined : result.state.observation;
   const buildLog = useBuildLog({

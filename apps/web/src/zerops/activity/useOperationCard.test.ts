@@ -470,6 +470,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     const state: ObservationState = { kind: "off", reason: "ceiling" };
     const history = observation({
       pipeline: BUILDING,
+      outcome: "finished",
       buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
     });
     const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
@@ -479,12 +480,30 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
   });
 
+  // A read from mid-run that nobody reads on is never drawn as live under the
+  // verdict: its steps leave, what it named of the build stays (pass 36).
+  it.each([
+    { name: "the read stopped", state: { kind: "off", reason: "ceiling" } as const },
+    {
+      name: "the read is stale",
+      state: { kind: "stale", observation: observation(), ageMs: 20_000 } as const,
+    },
+  ])("settled, a remembered mid-run read: $name", ({ state }) => {
+    const history = observation({
+      pipeline: BUILDING,
+      buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+    });
+    const region = deriveObservedStepsRegion("deploy", "done", state, history, NOW);
+    expect(region?.pipeline).toBeUndefined();
+    expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
+  });
+
   it("settled operation, no history at all: undefined", () => {
     const state: ObservationState = { kind: "off", reason: "ceiling" };
     expect(deriveObservedStepsRegion("import", "failed", state, undefined, NOW)).toBeUndefined();
   });
 
-  it("a settled operation prefers its history over a live state that might still be computing", () => {
+  it("a settled operation still being read draws the newest read", () => {
     const state: ObservationState = {
       kind: "observing",
       observation: observation({ pipeline: { appVersion: { status: "DEPLOYING" } } }),
@@ -492,7 +511,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     };
     const history = observation({ pipeline: BUILDING });
     const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
-    expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("RUN_BUILD_COMMANDS");
+    expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("DEPLOY");
   });
 });
 
@@ -650,12 +669,12 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
     ]);
   });
 
-  it("a settled deploy keeps the readout it last saw", () => {
+  it("a settled deploy keeps the readout it last saw once its outcome was read", () => {
     const region = deriveObservedStepsRegion(
       "deploy",
       "done",
       { kind: "off", reason: "ceiling" },
-      observation({ pipeline: BUILDING }),
+      observation({ pipeline: BUILDING, outcome: "failed" }),
       NOW,
       SERVICE,
     );

@@ -7,7 +7,6 @@ import type { Observation } from "@t3tools/client-runtime/zerops/activity/observ
 import type { ProjectActivitySnapshot } from "./useProjectActivity.ts";
 import {
   OPERATION_OBSERVATION_CEILING_MS,
-  ObservationMemory,
   deriveOperationObservation,
   type DeriveOperationObservationInput,
   type ObservationTarget,
@@ -137,7 +136,6 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
       NOW + 60_000,
     );
     expect(stopped.history).toEqual(running.history);
-    expect(stopped.wantsPoll).toBe(false);
   });
 
   it("does not overwrite history with an observation that has no pipeline", () => {
@@ -164,12 +162,63 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(result.wantsPoll).toBe(false);
   });
 
-  it("stops polling once the operation is no longer running", () => {
+  // Its call settled before its outcome was read: it keeps reading until the
+  // outcome is read, so a step read as running never stays running under the
+  // verdict; past the ceiling only a settled one its result named by id is
+  // still read — looked up by that id, as after a reload (pass 36).
+  it.each([
+    {
+      name: "settled, its outcome unread: keeps reading",
+      exact: undefined,
+      processes: [process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } })],
+      at: NOW + 5_000,
+      reads: true,
+      outcome: undefined,
+    },
+    {
+      name: "settled, its outcome read: stops",
+      exact: undefined,
+      processes: [process({ appVersion: { status: "ACTIVE" } })],
+      at: NOW + 5_000,
+      reads: false,
+      outcome: "finished",
+    },
+    {
+      name: "settled past the ceiling, nothing to know it by: stops",
+      exact: undefined,
+      processes: [],
+      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      reads: false,
+      outcome: undefined,
+    },
+    {
+      name: "settled past the ceiling, named by id and not held: read by it",
+      exact: { appVersionId: "av-7" },
+      processes: [],
+      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      reads: true,
+      outcome: undefined,
+    },
+    {
+      name: "settled past the ceiling, named by id and held: its outcome, read no further",
+      exact: { appVersionId: "av-7" },
+      processes: [process({ appVersion: { id: "av-7", status: "ACTIVE" } })],
+      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      reads: false,
+      outcome: "finished",
+    },
+  ])("$name", ({ exact, processes, at, reads, outcome }) => {
     const result = deriveOperationObservation(
-      baseInput({ target: target({ running: false }) }),
-      NOW,
+      baseInput({
+        target: target({ running: false, ...(exact === undefined ? {} : { exact }) }),
+        snapshot: snapshotOf(processes, NOW + 1_000),
+      }),
+      at,
     );
-    expect(result.wantsPoll).toBe(false);
+    expect(result.wantsPoll).toBe(reads);
+    expect(result.state.kind === "off" ? undefined : result.state.observation.outcome).toBe(
+      outcome,
+    );
   });
 
   it("stops polling past the ceiling", () => {
@@ -393,57 +442,5 @@ describe("deriveOperationObservation — the build log a card keeps showing", ()
 
   it("none before any build was seen", () => {
     expect(deriveOperationObservation(baseInput(), NOW).buildLogQuery).toBeUndefined();
-  });
-});
-
-// A card is drawn again for the same operation — its row moves from the live
-// slot into the history, a detail opens again: it starts from what was read
-// of it, so a deploy that ended keeps its pipeline and its build log (pass 36).
-describe("ObservationMemory — what was read of an operation, across its cards", () => {
-  const read = (appVersionId: string): Observation => ({
-    pipeline: { appVersion: { status: "ACTIVE" } },
-    chips: [],
-    readAtMs: NOW,
-    buildLog: { buildServiceStackId: "svc-build", appVersionId },
-  });
-  it.each([
-    { name: "nothing read of it", remember: [], recall: "op:a", found: undefined },
-    { name: "what was read of it", remember: ["op:a"], recall: "op:a", found: "op:a" },
-    { name: "never another operation's", remember: ["op:a"], recall: "op:b", found: undefined },
-    {
-      name: "the newest read of it",
-      remember: ["op:a", "op:b", "op:a"],
-      recall: "op:a",
-      found: "op:a",
-    },
-    {
-      name: "past its bound, the oldest is forgotten",
-      remember: ["op:a", "op:b", "op:c"],
-      recall: "op:a",
-      found: undefined,
-    },
-    {
-      name: "one read again is kept as the newest",
-      remember: ["op:a", "op:b", "op:a", "op:c"],
-      recall: "op:a",
-      found: "op:a",
-    },
-  ])("$name", ({ remember, recall, found }) => {
-    const memory = new ObservationMemory(2);
-    for (const key of remember) memory.remember(key, read(key));
-    expect(memory.recall(recall)?.buildLog?.appVersionId).toBe(found);
-  });
-
-  it("a settled card drawn anew reads its build's log from what was remembered", () => {
-    const memory = new ObservationMemory(2);
-    memory.remember("deploy:weatherdash:1", read("av-9"));
-    const result = deriveOperationObservation(
-      baseInput({
-        target: target({ running: false }),
-        previousHistory: memory.recall("deploy:weatherdash:1"),
-      }),
-      NOW + 60_000,
-    );
-    expect(result.buildLogQuery?.appVersionId).toBe("av-9");
   });
 });
