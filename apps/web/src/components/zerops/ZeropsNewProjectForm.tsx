@@ -35,7 +35,6 @@ import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker } from "./MateFacePicker";
-import { FormOrPress, type PressingView } from "./ZeropsEnvironmentCreationDialog";
 import { MateNameInput } from "./MateNameInput";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newProjectNext } from "./whatHappensNext.logic";
@@ -298,22 +297,14 @@ export function ZeropsNewProjectForm({
 /** The form in its dialog, New Mate's size: what the host opens, and what the harness draws. */
 export function ZeropsNewProjectDialog({
   onOpenChange,
-  pressing,
   ...form
 }: ZeropsNewProjectFormProps & {
   readonly onOpenChange: (open: boolean) => void;
-  /**
-   * The press under way, in the form's place: the dialog stays on it until the first Mate needs
-   * no browser (its project marked closed off), so a tab closed meanwhile is a person's choice.
-   */
-  readonly pressing?: PressingView | undefined;
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open>
       <DialogPopup className="max-w-lg">
-        <FormOrPress pressing={pressing}>
-          <ZeropsNewProjectForm {...form} />
-        </FormOrPress>
+        <ZeropsNewProjectForm {...form} />
       </DialogPopup>
     </Dialog>
   );

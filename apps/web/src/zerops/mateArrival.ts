@@ -237,6 +237,47 @@ export interface ArrivalStep {
   /** Why it stopped, in its own words. */
   readonly why?: string;
   readonly services?: ReadonlyArray<ArrivalService>;
+  /** The steps this tab runs for it, under its project's row (`ArrivalSubstep`). */
+  readonly substeps?: ReadonlyArray<ArrivalSubstep>;
+}
+
+/**
+ * A step this tab runs with the person's own session — the project registered and created, closed
+ * off, the Mate registered — drawn under its project's row, from the press until the hand-over.
+ */
+export interface ArrivalSubstep {
+  readonly id: string;
+  readonly label: string;
+  readonly state: "done" | "active" | "waiting" | "failed";
+  /** Why it stopped and what to do, in its own words. */
+  readonly why?: string;
+}
+
+/** What the page says while the steps this tab runs are under way: the one thing that stops them. */
+export const KEEP_TAB_OPEN_LINE =
+  "Keep this tab open for about half a minute: after that it needs nobody.";
+
+/**
+ * Whether the steps this tab runs are still under way: none stopped, one not through. Only then
+ * does a tab closed interrupt them, and only then does the page say so (`KEEP_TAB_OPEN_LINE`).
+ */
+export function pressRuns(press: ReadonlyArray<ArrivalSubstep> | undefined): boolean {
+  if (press === undefined || press.length === 0) return false;
+  if (press.some((step) => step.state === "failed")) return false;
+  return press.some((step) => step.state !== "done");
+}
+
+/**
+ * A project's row with the steps this tab runs under it: stopped where one stopped, under way
+ * while one is not through though the row's own facts are, and as its own facts say once they are.
+ */
+function withSubsteps(
+  state: ArrivalStep["state"],
+  press: ReadonlyArray<ArrivalSubstep>,
+): ArrivalStep["state"] {
+  if (state === "failed" || press.some((step) => step.state === "failed")) return "failed";
+  if (state === "done" && press.some((step) => step.state !== "done")) return "active";
+  return state;
 }
 
 /** The Mate's six birth steps; anything else before them is its project's own (a New project's). */
@@ -288,6 +329,8 @@ export function arrivalSteps(
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
     readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
+    /** The steps this tab runs for it, while it holds them: under its project's row. */
+    readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
   },
   mate: Named,
   nowMs: number,
@@ -356,6 +399,15 @@ export function arrivalSteps(
         ]),
       ),
     });
+  }
+  // The steps this tab runs go under the project's row: a New project's own, else the Mate's copy.
+  const press = progress.press;
+  if (press !== undefined && press.length > 0) {
+    const at = steps.findIndex((step) => step.id === "registry" || step.id === "copy");
+    const row = steps[at];
+    if (row !== undefined) {
+      steps[at] = { ...row, state: withSubsteps(row.state, press), substeps: press };
+    }
   }
   const setup = progress.setup;
   if (setup?.git !== undefined) {

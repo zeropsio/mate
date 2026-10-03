@@ -11,9 +11,12 @@ import {
   arrivalSteps,
   comingSentence,
   inFirstSeenOrder,
+  KEEP_TAB_OPEN_LINE,
   nextRuntimesLine,
+  pressRuns,
   runtimesComing,
   type ArrivalKind,
+  type ArrivalSubstep,
 } from "./mateArrival";
 
 const WREN = { name: "Wren", project: "Beviro" };
@@ -492,5 +495,85 @@ describe("arrivalHeaderFace", () => {
     },
   ] as const)("$case: $face", ({ case: _case, face, ...input }) => {
     expect(arrivalHeaderFace(input)).toBe(face);
+  });
+});
+
+/** The browser-run steps in a row: each id's state, in order. */
+const subs = (...states: ReadonlyArray<ArrivalSubstep["state"]>): ReadonlyArray<ArrivalSubstep> =>
+  states.map((state, index) => ({
+    id: `s${String(index)}`,
+    label: `Step ${String(index)}`,
+    state,
+  }));
+
+describe("arrivalSteps — the steps this tab runs, under the project's row", () => {
+  const mate = deriveBirthProgress(CREATING, NOW);
+  const newProject = {
+    steps: [{ id: "registry", label: "Acme Shop", state: "done" as const }, ...mate.steps],
+  };
+
+  it.each([
+    { case: "running", press: subs("done", "active", "waiting", "waiting"), row: "active" },
+    { case: "stopped", press: subs("done", "failed", "waiting", "waiting"), row: "failed" },
+    { case: "through", press: subs("done", "done", "done", "done"), row: "done" },
+    {
+      case: "a registration refused",
+      press: subs("done", "done", "done", "failed"),
+      row: "failed",
+    },
+  ])("a New project's row reads $row while its steps are $case", ({ press, row }) => {
+    const steps = arrivalSteps(
+      { ...newProject, press },
+      { name: "Vera", project: "Acme Shop" },
+      NOW,
+    );
+    expect(steps[0]).toMatchObject({ id: "registry", state: row, substeps: press });
+    expect(steps.slice(1).some((step) => step.substeps !== undefined)).toBe(false);
+  });
+
+  it.each([
+    { case: "running", press: subs("active", "waiting", "waiting", "waiting"), row: "active" },
+    { case: "stopped", press: subs("done", "done", "failed", "waiting"), row: "failed" },
+    { case: "through", press: subs("done", "done", "done", "done"), row: "done" },
+  ])("an added Mate's copy reads $row while its steps are $case", ({ press, row }) => {
+    const steps = arrivalSteps({ ...mate, press }, WREN, NOW);
+    expect(steps[0]).toMatchObject({ id: "copy", state: row, substeps: press });
+  });
+
+  it("keeps a row's own stop over its steps running", () => {
+    const failedCopy = {
+      steps: mate.steps.map((step) =>
+        step.id === "project" ? { ...step, state: "failed" as const, detail: "No room." } : step,
+      ),
+    };
+    const steps = arrivalSteps({ ...failedCopy, press: subs("active", "waiting") }, WREN, NOW);
+    expect(steps[0]).toMatchObject({ id: "copy", state: "failed" });
+  });
+
+  it("draws no steps under any row where this tab ran none", () => {
+    const steps = arrivalSteps(mate, WREN, NOW);
+    expect(steps.some((step) => step.substeps !== undefined)).toBe(false);
+  });
+});
+
+describe("pressRuns — while the tab must stay open", () => {
+  it.each([
+    { case: "nothing run here", press: undefined, runs: false },
+    { case: "no steps", press: subs(), runs: false },
+    { case: "not begun", press: subs("waiting", "waiting"), runs: true },
+    { case: "one running", press: subs("done", "active", "waiting"), runs: true },
+    { case: "one stopped", press: subs("done", "failed", "waiting"), runs: false },
+    {
+      case: "a registration refused at the end",
+      press: subs("done", "done", "failed"),
+      runs: false,
+    },
+    { case: "all through", press: subs("done", "done", "done"), runs: false },
+  ])("$case: $runs", ({ press, runs }) => {
+    expect(pressRuns(press)).toBe(runs);
+  });
+
+  it("says the one interruption in words", () => {
+    expect(KEEP_TAB_OPEN_LINE).toMatch(/^Keep this tab open for about half a minute/);
   });
 });

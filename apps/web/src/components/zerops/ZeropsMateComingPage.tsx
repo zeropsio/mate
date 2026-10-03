@@ -83,10 +83,14 @@ import {
   arrivalSteps,
   comingSentence,
   inFirstSeenOrder,
+  KEEP_TAB_OPEN_LINE,
+  pressRuns,
+  type ArrivalSubstep,
 } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
+  creationSubsteps,
   newProjectBirthOf,
   newProjectProgress,
   useNewProjectBirths,
@@ -125,6 +129,7 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
+import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { PressSteps } from "./ZeropsEnvironmentCreationDialog";
 import {
@@ -166,7 +171,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const press = useMatePress(projectId);
   const inventory = useZeropsInventory();
   const creation = useNewMate((state) => state.creations[projectId]);
-  // The New project this tab made whose first Mate this is, while the tab holds it.
+  // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const made = useNewProjectBirths((state) => newProjectBirthOf(state.births, projectId));
   const forgetCreation = useNewMate((state) => state.forget);
   // The platform's verdict on its creation, read while it may still be refused (H20).
@@ -488,15 +493,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
+  // Made here, the steps this tab runs stay under the project's row until the hand-over.
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
       : {
-          ...(made === undefined
+          ...(made === undefined || made.adds !== undefined
             ? progress.progress
             : newProjectProgress(made, progress.progress, progress.nowMs)),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
+          ...(made === undefined ? {} : { press: creationSubsteps(made) }),
         };
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
@@ -835,12 +842,19 @@ export function personOf(
 export function comingSentenceOf(input: {
   readonly coming: MateComing | undefined;
   readonly trouble?: string | null;
-  readonly progress: BirthLineProgress | undefined;
+  readonly progress: ArrivalProgress | undefined;
   readonly nowMs: number | undefined;
 }): string | undefined {
   const { coming, progress, nowMs } = input;
   if (coming === undefined) return undefined;
-  if (coming.kind === "failed") return input.trouble ?? coming.line;
+  if (coming.kind === "failed") {
+    if (input.trouble != null) return input.trouble;
+    // A step this tab ran says why it stopped in its own place: the sentence, only that it did.
+    const said = progress?.press?.some((step) => step.state === "failed" && step.why !== undefined);
+    return said === true ? NOT_SET_UP_LINE : coming.line;
+  }
+  // While the steps this tab runs are under way, the one thing that stops them.
+  if (pressRuns(progress?.press)) return KEEP_TAB_OPEN_LINE;
   const startedAt = progress?.startedAt === undefined ? Number.NaN : Date.parse(progress.startedAt);
   return comingSentence(
     nowMs === undefined || Number.isNaN(startedAt) ? undefined : nowMs - startedAt,
@@ -937,6 +951,8 @@ export function ComingBelow({
 export type ArrivalProgress = BirthLineProgress & {
   readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
   readonly setup?: MateSetup | undefined;
+  /** The steps this tab runs for it, while it holds them (`creationSubsteps`). */
+  readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
 };
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */

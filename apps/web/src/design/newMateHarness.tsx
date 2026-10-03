@@ -5,16 +5,15 @@
  * `?state=<id>`: `recipe` — the group repo read, a tier on main; `reading` —
  * the repo still being read; `none` — no recipe merged on main; `stage` — the
  * stage form, which keeps its own fields; `&name=<name>` proposes another
- * name; `&resolves=none` has a `reading` repo find no recipe; `adding` — Add pressed, the
- * platform taking the Mate's project; `refused` — the platform refused it before; and the project
+ * name; `&resolves=none` has a `reading` repo find no recipe; and the project
  * taking no Mate (`newMateDoor`): `waiting` — the recipe in Fen's change, `writer` — Fen still to
  * write it, `mates` — one of three to, `unreadable` — the read failed; `&resolves=<one of them>`
  * has a `reading` repo shut the door, to watch nothing move). The dialog ends with what happens
  * next (board D1): up, signed in, development set up with the project's code for `recipe` and
  * `reading`; up, signed in, told what to build for `none` — `&resolves=none` turns one into the
  * other in place, to watch nothing move. The die at the name's end rolls another name. A press on
- * Add goes busy for a second, as the platform takes the project, and then the dialog closes where
- * the person lands on the new Mate. Open it at the owner's 1786 × 1000. The account holds three Mates —
+ * Add gives way to the new Mate's page at once, the steps this tab runs advancing under its copy
+ * (`pressPage.tsx`, `&fail=` stops one). Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.
  * `window.__newMateHarness.read()` answers the recipe the moment it is asked
  * to, so a press made while it was being read can be watched going through.
@@ -34,6 +33,8 @@ import {
 } from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
+
+import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
@@ -105,7 +106,8 @@ const created: Array<unknown> = [];
 function Harness() {
   const role = STATE === "stage" ? "stage" : "dev";
   const [read, setRead] = useState(STATE !== "reading");
-  const [adding, setAdding] = useState(STATE === "adding");
+  // Add pressed: the dialog gives way to the new Mate's page, at once.
+  const [page, setPage] = useState<string | null>(null);
   const [landed, setLanded] = useState<string | null>(null);
   useEffect(() => {
     window.__newMateHarness = {
@@ -116,6 +118,13 @@ function Harness() {
     };
   }, []);
   const loaded = read && RESOLVES === "recipe" && SHUTS === undefined;
+  if (page !== null) {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <HarnessPressPage birthId={page} />
+      </div>
+    );
+  }
   if (landed !== null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -128,12 +137,6 @@ function Harness() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ZeropsEnvironmentCreationDialog
-        addError={
-          STATE === "refused" && !adding
-            ? "Your organization has reached its limit of projects."
-            : undefined
-        }
-        adding={adding}
         closed={read && SHUTS?.kind === "closed" ? SHUTS : undefined}
         defaultBotName={NAME}
         defaultName={role === "dev" ? `Acme Docs - ${NAME}` : "Acme Docs - stage"}
@@ -143,11 +146,13 @@ function Harness() {
         onCancel={() => {}}
         onCreate={(choice) => {
           created.push(choice);
-          // The platform takes the Mate's project in about a second; then the person lands on it.
-          setAdding(true);
-          setTimeout(() => {
-            setLanded(`/mate/acme-docs-${(choice.botName ?? "mate").toLowerCase()}`);
-          }, 1200);
+          setPage(
+            beginHarnessPress({
+              flow: "add",
+              project: "Acme Docs",
+              botName: choice.botName ?? choice.name,
+            }),
+          );
         }}
         onDoorAction={(action) => {
           if (action.kind === "retry") return;
