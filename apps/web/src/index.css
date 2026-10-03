@@ -7322,6 +7322,47 @@ button.rv-relrow:hover .rv-relrow-go {
   padding: 2px 0 8px;
 }
 
+/* p37/one-screen: the steps this tab runs, under the project's row — a small mark and the words
+   each, quieter than the steps, one under another. Drawn from the press to the hand-over, so they
+   never come or go under what is read. */
+.arrival-substeps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-inline-start: 0;
+  list-style: none;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.arrival-substep {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.arrival-substep-mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+}
+
+.arrival-substep-mark .arrival-glyph {
+  width: 12px;
+  height: 12px;
+}
+
+.arrival-substep[data-state="active"] .arrival-substep-label {
+  color: var(--foreground);
+}
+
+.arrival-substep-label {
+  min-width: 0;
+}
+
 /* The copy's services, one name and one dot each, quieter than the steps. */
 .arrival-services {
   display: flex;

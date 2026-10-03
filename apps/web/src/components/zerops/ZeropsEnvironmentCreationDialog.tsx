@@ -15,7 +15,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
-import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
 import {
@@ -80,36 +80,12 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly tierLoading: boolean;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
-  /** A Mate's Add went through and the platform is taking its project (`ZeropsNewMateForm`). */
-  readonly adding?: boolean | undefined;
-  /** Why the platform refused a Mate's last Add, before it took any project. */
-  readonly addError?: string | undefined;
-  /**
-   * The press under way, in the form's place: the dialog stays open until the Mate needs no
-   * browser (its project marked closed off), so a tab closed meanwhile is a person's choice.
-   */
-  readonly pressing?: PressingView | undefined;
   /** Why the project takes no Mate now, in the Mate's form's place (`newMateDoor`). */
   readonly closed?: NewMateDoorClosed | undefined;
   /** The one thing to do while the project takes no Mate, pressed. */
   readonly onDoorAction?: ((action: NewMateDoorAction) => void) | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
-}
-
-/** A press the Add dialog stays on: its steps, and where one stopped, why and Try again. */
-export interface PressingView {
-  /** What is being set up: the Mate's name. */
-  readonly name: string;
-  readonly steps: ReadonlyArray<PressStepView>;
-  /** The step that stopped said this. */
-  readonly failed?: string | undefined;
-  /** Resumes the press at the step that stopped, on the same project. */
-  readonly onTryAgain?: (() => void) | undefined;
-  /** It runs, and something is left for somebody else: a refused registration, said. */
-  readonly notice?: string | undefined;
-  /** Opens the Mate, where the dialog stays only to say `notice`. */
-  readonly onOpen?: (() => void) | undefined;
 }
 
 const PRESS_STEP_STATES: Readonly<
@@ -121,7 +97,7 @@ const PRESS_STEP_STATES: Readonly<
   failed: { state: "failed", label: "Failed" },
 };
 
-/** A press's steps, as the Add dialog and *Finish setup* on a Mate's view draw them. */
+/** A press's steps, as *Finish setup* on a Mate's view draws them. */
 export function PressSteps({
   name,
   steps,
@@ -142,96 +118,17 @@ export function PressSteps({
   );
 }
 
-/** The press, in the form's place, until the Mate needs no browser. */
-export function PressingPanel({ pressing }: { readonly pressing: PressingView }) {
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Setting up {pressing.name}…</DialogTitle>
-        <DialogDescription>
-          {pressing.failed ??
-            pressing.notice ??
-            "Keep this open for about half a minute: after this it needs nobody."}
-        </DialogDescription>
-      </DialogHeader>
-      <DialogPanel>
-        <PressSteps name={pressing.name} steps={pressing.steps} />
-      </DialogPanel>
-      {pressing.onTryAgain === undefined && pressing.onOpen === undefined ? null : (
-        <DialogFooter className="mt-auto">
-          {pressing.onTryAgain === undefined ? null : (
-            <Button onClick={pressing.onTryAgain}>Try again</Button>
-          )}
-          {pressing.onOpen === undefined ? null : (
-            <Button onClick={pressing.onOpen}>Open {pressing.name}</Button>
-          )}
-        </DialogFooter>
-      )}
-    </>
-  );
-}
-
-/**
- * The form, then the press in its place at the height the form had: Create pressed dropped the
- * New project dialog from 673 to 386 px under the pointer, and Add's from 599 to 258 (pass 30,
- * 2026-10-02). The press's steps keep the top of the dialog, the footer its bottom.
- */
-export function FormOrPress({
-  pressing,
-  children,
-}: {
-  readonly pressing: PressingView | undefined;
-  readonly children: ReactNode;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  const formHeight = useRef<number | null>(null);
-  const [held, setHeld] = useState<number | null>(null);
-  const pressed = pressing !== undefined;
-  useLayoutEffect(() => {
-    const element = box.current;
-    if (element === null || pressed) return;
-    const measure = () => {
-      formHeight.current = element.getBoundingClientRect().height;
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
-  }, [pressed]);
-  useLayoutEffect(() => {
-    setHeld(pressed ? formHeight.current : null);
-  }, [pressed]);
-  return (
-    <div
-      className="flex min-h-0 flex-col"
-      ref={box}
-      style={held === null ? undefined : { minHeight: held }}
-    >
-      {pressing === undefined ? children : <PressingPanel pressing={pressing} />}
-    </div>
-  );
-}
-
 /** The form on its own, so it can be rendered and read without a portal. */
 export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFormProps) {
-  return (
-    <FormOrPress pressing={props.pressing}>
-      <CreationForm {...props} />
-    </FormOrPress>
-  );
+  return <CreationForm {...props} />;
 }
 
 function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
   const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
-  const { defaultTintFor, adding, addError, closed, onDoorAction, onCancel, onCreate } = props;
+  const { defaultTintFor, closed, onDoorAction, onCancel, onCreate } = props;
   return (
     <ZeropsNewMateForm
-      addError={addError}
-      adding={adding}
       closed={closed}
       defaultBotName={defaultBotName}
       defaultTintFor={defaultTintFor}

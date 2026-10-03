@@ -13,11 +13,14 @@
  * the page was reloaded before the platform took it — says so in the route gate's words, with the
  * way to the projects: nothing here hands the person to another screen on its own.
  */
+import { birthCopyServices } from "@t3tools/client-runtime/zerops/birthProgress";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
 
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
+  creationManaged,
+  creationSubsteps,
   newProjectComing,
   newProjectHandOver,
   newProjectProgress,
@@ -30,6 +33,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import {
   ComingBelow,
   comingSentenceOf,
+  type ArrivalProgress,
   MateComingFrame,
   MateComingHeader,
   personOf,
@@ -63,10 +67,20 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
   const nowMs = useSecondsNowMs(
     birth !== undefined && birth.failed === null && birth.projectId === null,
   );
-  const progress = useMemo(
-    () => (birth === undefined ? undefined : newProjectProgress(birth, null, nowMs)),
-    [birth, nowMs],
-  );
+  // The steps this tab runs go under the project's row — an added Mate's under its copy, with the
+  // managed services its plan names — as its Mate's own view draws them after the hand-over.
+  const progress = useMemo((): ArrivalProgress | undefined => {
+    if (birth === undefined) return undefined;
+    const managed = birthCopyServices({
+      planned: creationManaged(birth),
+      services: undefined,
+    });
+    return {
+      ...newProjectProgress(birth, null, nowMs),
+      ...(birth.adds === undefined || managed === undefined ? {} : { managed }),
+      press: creationSubsteps(birth),
+    };
+  }, [birth, nowMs]);
 
   const mate =
     birth === undefined

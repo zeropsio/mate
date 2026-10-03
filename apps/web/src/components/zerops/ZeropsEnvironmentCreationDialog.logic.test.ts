@@ -26,7 +26,6 @@ import {
   validateCreationForm,
   type NewMateDoor,
   type RecipeOption,
-  pressRegistrationRefused,
   pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
@@ -759,7 +758,7 @@ describe("recipeChangeView — where Review the change goes", () => {
 
 // The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
 // closed 2 s after the dialog left a Mate with no container).
-describe("pressSteps — the press as the Add dialog draws it", () => {
+describe("pressSteps — the press as Finish setup draws it", () => {
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
     { kind: "import-container", agents: [] },
@@ -837,16 +836,4 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
       expect(pressThrough(at(states))).toBe(want);
     },
   );
-
-  it("says a refused registration in the dialog: the Mate runs, an owner registers it", () => {
-    expect(
-      pressRegistrationRefused(
-        "Ada",
-        at(["done", "done", "done", "failed", "running", "queued"], "No."),
-      ),
-    ).toBe("Ada is running. An owner needs to register it before it can use Git.");
-    expect(
-      pressRegistrationRefused("Ada", at(["done", "done", "done", "done", "running", "queued"])),
-    ).toBeUndefined();
-  });
 });

@@ -55,13 +55,16 @@ describe("ZeropsNewProjectHost source", () => {
     expect(hostSource).not.toContain("generateBotName([],");
   });
 
-  it("stays on the press and lands on its first Mate's own view only once it is closed off", () => {
+  // Run 6 (the owner, 2026-10-03: "why are these two screens separate?"): the page is the one
+  // screen from the press, and the press's steps run on without the dialog.
+  it("gives way to its first Mate's own view at the press, the steps running on without it", () => {
     expect(hostSource).not.toContain("ZeropsProvisioningPanel");
     expect(hostSource).toContain("beginNewProjectBirth(");
-    expect(hostSource).toContain("if (newProjectPressThrough(progress)) land();");
-    expect(hostSource).not.toContain(
-      "dismiss();\n    void navigate(newProjectView(birthId));\n  };",
+    expect(hostSource).toContain("progressNewProjectBirth(birthId, progress)");
+    expect(hostSource).toContain(
+      "    dismiss();\n    void navigate(newProjectView(birthId));\n  };",
     );
+    expect(hostSource).not.toContain("pressing");
   });
 });
 
