@@ -2,9 +2,10 @@
  * The route gate's input and every link into an environment (DESIGN §4.4, §4.8), read off the
  * account runtime's machine per Mate target through `selectReachability`, the one verdict: a
  * route and the links into it agree on which environments are worth opening. An environment no
- * machine names is looked up in the descriptor index. The route's environment is the runtime's
- * too: it exchanges the route's target first, and sweeps the descriptors of every present Mate
- * that has not answered while nothing names it.
+ * machine names is looked up in the descriptor index, then in HQ's index of the Mates the reader
+ * observes (`hqProjectAtom`, A9). The route's environment is the runtime's too: it exchanges the
+ * route's target first, and sweeps the descriptors of every present Mate that has not answered
+ * while nothing names it.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -16,6 +17,7 @@ import {
   selectConversation,
   type ConversationAccess,
   type ConversationView,
+  selectReachability,
   type DescriptorIndex,
   type EnvironmentMachine,
   type MateLink,
@@ -32,6 +34,7 @@ import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
+import { hqProjectAtom } from "../state/zerops";
 import {
   useAccountEnvironments,
   useDescriptorIndex,
@@ -46,6 +49,7 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
   status: "empty",
   error: Option.none(),
 }).pipe(Atom.withLabel("route-gate:no-environment"));
+const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gate:no-project"));
 
 export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
 
@@ -101,6 +105,21 @@ export function discoveryPending(
 export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
 
 /**
+ * The listed Mate of the project HQ names for an environment: its service's target, never the
+ * project's own row, whose key is the project alone.
+ */
+export function hqNamedTarget(
+  machines: Machines,
+  projectId: string | null,
+): { readonly key: TargetKey; readonly machine: EnvironmentMachine } | undefined {
+  if (projectId === null) return undefined;
+  for (const [key, machine] of machines) {
+    if (key.startsWith(`${projectId}:`)) return { key, machine };
+  }
+  return undefined;
+}
+
+/**
  * The gate's target for the route's environment. Discovery reads every organization's Mates, so
  * it runs whether an organization is chosen or not: the picker is offered only once it settled
  * without naming the environment, never while it could still name it.
@@ -110,6 +129,8 @@ export function routeTarget(input: {
   readonly index: DescriptorIndex;
   readonly remembered: ReadonlyArray<TargetKey>;
   readonly environmentId: EnvironmentId;
+  /** The listed Mate HQ names for the environment (`hqNamedTarget`), where no machine does. */
+  readonly hqNamed?: { readonly machine: EnvironmentMachine } | undefined;
   /** The inventory is read under verified access, not loading or failing. */
   readonly inventoryKnown: boolean;
   readonly organization: RouteOrganization;
@@ -118,6 +139,19 @@ export function routeTarget(input: {
   const found = resolveEnvironment(input.machines, input.index, input.environmentId);
   if (found !== undefined) {
     return { kind: "resolved", reachability: found.reachability, content: input.content };
+  }
+  if (input.hqNamed !== undefined) {
+    // As the descriptor index's own find: a machine holding another environment's credential
+    // speaks for that one, and the route waits for its descriptor.
+    const { machine } = input.hqNamed;
+    return {
+      kind: "resolved",
+      reachability:
+        machine.credential.kind === "held"
+          ? { kind: "connecting", waitingOn: "descriptor" }
+          : selectReachability(machine, input.environmentId),
+      content: input.content,
+    };
   }
   const discovering =
     input.organization === "choosing" ||
@@ -190,6 +224,10 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const content = useAtomValue(
     environmentId === null ? NO_SHELL : environmentShell.stateValueAtom(environmentId),
   ).status;
+  const hqProject = useAtomValue(
+    environmentId === null ? NO_PROJECT : hqProjectAtom(environmentId),
+  );
+  const hqNamed = hqNamedTarget(machines, hqProject);
   const target =
     environmentId === null
       ? null
@@ -198,6 +236,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           index,
           remembered: records.map((record) => record.targetKey),
           environmentId,
+          hqNamed,
           inventoryKnown:
             inventory !== null &&
             inventory.account.kind === "authorized" &&
@@ -214,7 +253,9 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   if (environmentId === null) return { target: null, projectId: null, mateName: "This Mate" };
   return {
     target,
-    projectId: resolveEnvironment(machines, index, environmentId)?.key.split(":")[0] ?? null,
+    projectId:
+      (resolveEnvironment(machines, index, environmentId)?.key ?? hqNamed?.key)?.split(":")[0] ??
+      null,
     mateName:
       environments.find((entry) => entry.environmentId === environmentId)?.label ?? "This Mate",
   };

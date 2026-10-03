@@ -211,6 +211,13 @@ export function hqProjectOf(view: HqMatesView | null, environmentId: Environment
   return null;
 }
 
+/** `hqProjectOf` for one environment: re-read only when HQ moves the project it names. */
+export const hqProjectAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) => hqProjectOf(get(hqMatesAtom), environmentId)).pipe(
+    Atom.withLabel(`zerops:hq-project:${environmentId}`),
+  ),
+);
+
 /** The people HQ named for the organization in view, by Zerops user id; null while none are. */
 export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
   const view = get(hqPeopleViewAtom);
