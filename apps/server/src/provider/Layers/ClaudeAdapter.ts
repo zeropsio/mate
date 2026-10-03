@@ -289,6 +289,8 @@ interface ClaudeTurnState {
   latestAssistantRateLimited: boolean;
   emittedThinkingText: boolean;
   readonly thinkingSnapshotIds: Set<string>;
+  /** The Mate's model response streaming now (`message_start`): its calls are one batch. */
+  responseId?: string | undefined;
 }
 
 interface AssistantTextBlockState {
@@ -2949,6 +2951,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     if (event.type === "message_start" && context.turnState && !streamParentToolUseId) {
       context.turnState.emittedThinkingText = false;
+      context.turnState.responseId = trimmedString(event.message.id);
     }
 
     if (event.type === "message_delta") {
@@ -3174,6 +3177,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(parentToolUseId ? { parentToolUseId } : {}),
       };
       context.inFlightTools.set(inFlightToolKey(parentToolUseId, index), tool);
+      // A helper's call is no call of the Mate's response.
+      const responseId = parentToolUseId ? undefined : context.turnState?.responseId;
 
       const stamp = yield* makeEventStamp();
       yield* offerRuntimeEvent({
@@ -3191,6 +3196,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(tool.detail ? { detail: tool.detail } : {}),
           ...(tool.agentId ? { agentId: tool.agentId } : {}),
           ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+          ...(responseId ? { responseId } : {}),
           data: {
             toolName: tool.toolName,
             input: toolInput,

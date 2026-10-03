@@ -2412,6 +2412,73 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // The calls of one model response are one batch: the live slot tells a
+  // newer batch by the response a call was written in.
+  it.effect("stamps each call with the model response it was written in", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "look", attachments: [] });
+      const stream = (uuid: string, parent: string | null, event: Record<string, unknown>) =>
+        ({
+          type: "stream_event",
+          session_id: "sdk-session-response",
+          uuid,
+          parent_tool_use_id: parent,
+          event,
+        }) as unknown as SDKMessage;
+      const toolUse = (index: number, id: string) => ({
+        type: "content_block_start",
+        index,
+        content_block: { type: "tool_use", id, name: "Read", input: { file_path: `/srv/${id}` } },
+      });
+      harness.query.emit(stream("s1", null, { type: "message_start", message: { id: "msg-a" } }));
+      harness.query.emit(stream("s2", null, toolUse(0, "tool-a1")));
+      harness.query.emit(stream("s3", null, toolUse(1, "tool-a2")));
+      // A helper's response streams between: it is no response of the Mate's.
+      harness.query.emit(
+        stream("s4", "tool-a2", { type: "message_start", message: { id: "msg-h" } }),
+      );
+      harness.query.emit(stream("s5", "tool-a2", toolUse(0, "tool-h1")));
+      harness.query.emit(stream("s6", null, { type: "message_start", message: { id: "msg-b" } }));
+      harness.query.emit(stream("s7", null, toolUse(0, "tool-b1")));
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-response",
+        uuid: "result-response",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const started = events.flatMap((event) =>
+        event.type === "item.started" && event.itemId !== undefined
+          ? [[String(event.itemId), event.payload.responseId ?? null] as const]
+          : [],
+      );
+      assert.deepStrictEqual(started, [
+        ["tool-a1", "msg-a"],
+        ["tool-a2", "msg-a"],
+        ["tool-h1", null],
+        ["tool-b1", "msg-b"],
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("treats user-aborted Claude results as interrupted without a runtime error", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

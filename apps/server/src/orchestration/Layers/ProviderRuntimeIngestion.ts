@@ -1017,6 +1017,7 @@ export function runtimeEventToActivities(
             ...(event.payload.parentToolUseId
               ? { parentToolUseId: event.payload.parentToolUseId }
               : {}),
+            ...(event.payload.responseId ? { responseId: event.payload.responseId } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
