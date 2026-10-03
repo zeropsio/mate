@@ -455,6 +455,15 @@ export function crewNeedSentence(
   const mate = crewPossessive(mateName);
   const task = crew.board.tasks.find((candidate) => candidate.id === row.taskId);
   switch (row.kind) {
+    case "interrupted":
+      return (
+        (row.operation?.status === "failed" ? "Stopped · " : "Interrupted · ") +
+        (row.text ?? "Its work stays in its copy.")
+      );
+    case "copy-missing":
+      return "Its crew copy is missing";
+    case "conversation-copy":
+      return "Conversation points elsewhere";
     case "question":
       return row.text === null || row.text.trim() === ""
         ? "It asks you something."
@@ -515,6 +524,8 @@ export function crewNeedSentence(
 
 /** What a row lets you press about what it needs. */
 export const CREW_ROW_VERBS = {
+  rebuildCopy: "Rebuild crew copy",
+  useCrewCopy: "Use crew copy",
   answer: "Answer",
   review: "Review",
   reviewWhatItHas: "Review what it has",
@@ -547,6 +558,10 @@ export function crewRowVerbLine(
 ): string {
   const mate = crewPossessive(mateName);
   switch (verb) {
+    case "rebuildCopy":
+      return "Rebuilds this copy from its saved work. It leaves other copies alone.";
+    case "useCrewCopy":
+      return "This conversation uses its crew copy.";
     case "answer":
       return "Write your answer right here.";
     case "review":
@@ -1190,4 +1205,86 @@ export function crewRunsOnWord(runsOn: {
   return ["Runs on " + runsOn.login, runsOn.model, runsOn.effort]
     .filter((part) => part !== null)
     .join(" · ");
+}
+
+/** Durable stages, in the same words on every client. */
+export function crewOperationStageWord(stage: string): string {
+  switch (stage) {
+    case "prepared":
+      return "ready to start";
+    case "legacy-state-recorded":
+      return "its last task state recorded; the outcome is unknown";
+    case "copy-rebuilt":
+      return "its copy rebuilt";
+    case "snapshotting-refs":
+      return "its saved work recorded";
+    case "inspecting-refs":
+      return "its saved work checked";
+    case "opening-conversation":
+      return "its conversation opened";
+    case "preparing-copy":
+      return "its copy preparation ended";
+    case "attempt-recorded":
+      return "its work recorded";
+    case "admitting":
+    case "admitted":
+      return "allowed to start";
+    case "dispatching":
+      return "starting its turn";
+    case "dispatched":
+    case "working":
+      return "its turn started";
+    case "committing":
+      return "its preservation step ended";
+    case "merging":
+      return "its merge ended";
+    case "setting-up":
+      return "its setup ended";
+    case "checking":
+      return "its check ended";
+    case "landing":
+      return "its landing ended";
+    default:
+      return "its last recorded step";
+  }
+}
+
+export const crewCopyAssignmentDetail = (
+  copy: NonNullable<CrewAttention["copyAssignment"]>,
+): string =>
+  `Current copy: ${copy.currentPath ?? "none"} · Crew copy: ${copy.crewPath} · Crew copy set when the conversation opened`;
+export const crewOperationDetail = (stage: string): string =>
+  `Last confirmed: ${crewOperationStageWord(stage)} · Its work stays in its copy`;
+
+/** Work the server still owns after the agent's live step ended. */
+export function crewPendingOperationWord(
+  operation: NonNullable<CrewAttention["operation"]>,
+  mateName: string,
+): string | null {
+  switch (operation.stage) {
+    case "dispatched":
+      return null;
+    case "committing":
+      return "Preserving its work";
+    case "inspecting-refs":
+      return "Checking its saved work";
+    case "checking":
+      return CREW_CHECKING_ITS_WORK;
+    case "merging":
+      return "Preparing its work for checking";
+    case "setting-up":
+      return "Setting up its copy";
+    case "rebuilding-copy":
+      return "Rebuilding its crew copy";
+    case "landing":
+      return `Adding its work to ${crewPossessive(mateName)} code`;
+    case "reading-landing":
+      return "Checking whether its work is in the code";
+    case "opening-conversation":
+      return "Opening its conversation";
+    case "preparing-copy":
+      return CREW_COPY_READYING;
+    default:
+      return "Getting ready to start";
+  }
 }

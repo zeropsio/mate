@@ -984,6 +984,15 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      if (
+        command.expectedWorktreePath !== undefined &&
+        thread.worktreePath !== command.expectedWorktreePath
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "The conversation copy changed before this assignment.",
+        });
+      }
       const branch =
         command.branch !== undefined &&
         command.expectedBranch !== undefined &&

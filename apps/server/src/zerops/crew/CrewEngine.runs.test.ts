@@ -16,6 +16,7 @@ import {
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import {
+  KAREL,
   applied,
   command,
   dispatchedOf,
@@ -411,7 +412,7 @@ describe("CrewEngine runs", () => {
     ),
   );
 
-  it.live("in a run, a failed check goes back to its crewmate on its own", () =>
+  it.live("in a run, a failed check waits for a person to ask for a fix", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* started(world);
@@ -420,10 +421,12 @@ describe("CrewEngine runs", () => {
         );
         yield* reportDone(thread);
         yield* ended(world, thread, 0.1);
-        const reworked = yield* snapshotWhere(
-          (current) =>
-            current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 2,
+        const stopped = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "rework",
         );
+        assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
+        yield* command({ _tag: "askFix", taskId: stopped.board.tasks[0]!.id });
+        const reworked = yield* snapshotWhere((current) => current.board.tasks[0]?.attempts === 2);
         const fix = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
         assert.deepStrictEqual(
           [
@@ -432,7 +435,7 @@ describe("CrewEngine runs", () => {
             (yield* Ref.get(world.admitted)).at(-1)?.principal,
             reworked.attention.map((row) => row.kind),
           ],
-          [thread, true, { kind: "crew", startedBy: "user-karel" }, []],
+          [thread, true, KAREL, []],
         );
       }),
     ),

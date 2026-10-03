@@ -89,6 +89,7 @@ export interface CrewWorld {
    * the machine writes it under the engine.
    */
   readonly devServerPidFile: string;
+  readonly beforeDispatch: Ref.Ref<Effect.Effect<void>>;
   readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
   readonly admitted: Ref.Ref<
     ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
@@ -104,7 +105,7 @@ export interface CrewWorld {
   >;
   /** Logins the person may not run, with the words admission refuses them in. */
   readonly notTheirs: Ref.Ref<ReadonlyMap<string, string>>;
-  /** Threads the projection reports, for the landing gate and the boot sweep. */
+  /** Threads the projection reports, for the landing gate and restart inspection. */
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly installs: Ref.Ref<number>;
   /** ssh sessions the crew opened. */
@@ -250,7 +251,13 @@ const fakes = (
     repositoryLayers(world.root),
     Layer.mock(OrchestrationEngineService)({
       dispatch: (command) =>
-        Ref.update(world.dispatched, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
+        (command.type === "thread.turn.start"
+          ? Ref.get(world.beforeDispatch).pipe(Effect.flatten)
+          : Effect.void
+        ).pipe(
+          Effect.andThen(Ref.update(world.dispatched, (all) => [...all, command])),
+          Effect.as({ sequence: 1 }),
+        ),
     }),
     Layer.mock(ProjectionSnapshotQuery)({
       getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.some(project)),
@@ -369,6 +376,7 @@ export const withCrewEngines = <E>(
       root,
       workspace,
       devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
+      beforeDispatch: yield* Ref.make<Effect.Effect<void>>(Effect.void),
       dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
       admitted: yield* Ref.make<
         ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>

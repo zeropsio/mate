@@ -31,7 +31,7 @@
  * - the engine records every tip it writes; a lane tip it did not write parks
  *   the lane.
  *
- * **Retry, re-queue and failure** run in one order (`keepAndReset`): WIP
+ * **The person's ordinary task discard** runs in one order (`keepAndReset`): WIP
  * commit, keep the tip as `refs/t3/crew/<run>/<task>/<attempt>` (run
  * `manual` for a task the person started outside a run; at most
  * {@link ATTEMPT_REFS_PER_LANE} kept per lane), `reset --hard` to the dispatch
@@ -40,10 +40,7 @@
  *
  * **Self-deploys and container replacement** keep `.git` but not the lane
  * directories, or revert the disk. `freeze` stops lane writes on a host;
- * `recover` prunes worktrees, verifies every `crew/<handle>` and every
- * recorded landing's `Crew-Assignment:` trailer in H's first-parent history,
- * and re-adds the lanes - or names what was lost. The boot `sweep` re-derives
- * lane state from git, not from the tables.
+ * no restart or deploy reconstructs a lane. Missing copies remain visible until a person acts.
  *
  * @module CrewWorkspace
  */
@@ -76,7 +73,6 @@ import {
   type CrewLaneRow,
   type CrewStoreError,
 } from "./CrewStore.ts";
-import { landedAssignmentsScript } from "./crewTrailers.ts";
 
 /** The integration HEAD a lane script read into `$H`. */
 const H = shellVariable("H");
@@ -182,50 +178,16 @@ export type KeepOutcome =
 export const attemptRef = (input: Pick<KeepInput, "run" | "assignment" | "attempt">): string =>
   `refs/t3/crew/${input.run ?? "manual"}/${input.assignment}/${input.attempt}`;
 
+export type RebuildOutcome =
+  | { readonly _tag: "rebuilt"; readonly tip: string }
+  | { readonly _tag: "present" | "branch-missing" | "branch-changed" | "mount-unseen" };
+
 export type DispatchOutcome =
+  | { readonly _tag: "dirty" }
   | { readonly _tag: "ready"; readonly dispatchCommit: string; readonly reset: boolean }
   | { readonly _tag: "parked"; readonly reason: "unknown-tip"; readonly tip: string }
   | { readonly _tag: "frozen" }
   | { readonly _tag: "lane-missing" };
-
-export type RecoverOutcome =
-  | {
-      readonly _tag: "recovered";
-      /** Lanes whose directory was added back (and set up again). */
-      readonly readded: ReadonlyArray<string>;
-      readonly setups: Readonly<Record<string, CheckOutcome>>;
-    }
-  | {
-      readonly _tag: "lost";
-      /** Recorded landings no longer in H's first-parent history. */
-      readonly landings: ReadonlyArray<{ readonly assignment: string; readonly title: string }>;
-      /** Lanes whose `crew/<handle>` is gone. */
-      readonly branches: ReadonlyArray<string>;
-      /** Lanes whose branch no longer holds the recorded tip; `since` is what survived. */
-      readonly wip: ReadonlyArray<{ readonly handle: string; readonly since: string }>;
-    };
-
-/** One lane's state as the boot sweep read it from git. */
-export type SweepLane = { readonly handle: string } & (
-  | { readonly _tag: "clean"; readonly tip: string }
-  | { readonly _tag: "committed"; readonly tip: string }
-  /** An open merge; its conflicted files go back as rework. */
-  | { readonly _tag: "merging"; readonly paths: ReadonlyArray<string> }
-  | {
-      readonly _tag: "parked";
-      readonly reason: LaneParkReason | "unreadable-ref";
-      readonly paths: ReadonlyArray<string>;
-    }
-  | { readonly _tag: "frozen" }
-  /** The directory is gone: `recover` brings it back. */
-  | { readonly _tag: "missing" }
-);
-
-export interface SweepOutcome {
-  readonly lanes: ReadonlyArray<SweepLane>;
-  /** Refs git ignores as broken (a 0-byte file from an unclean restart). */
-  readonly brokenRefs: ReadonlyArray<string>;
-}
 
 export type CleanupOutcome =
   | { readonly _tag: "removed" }
@@ -242,9 +204,11 @@ export interface OrphanBranch {
 const laneCommit = (commit: LaneCommit): LaneCommit => commit;
 
 export interface CrewWorkspaceService {
+  /** One selected missing copy, from its recorded branch; never reset an existing copy. */
+  readonly rebuild: (key: LaneKey) => Effect.Effect<RebuildOutcome, CrewWorkspaceError>;
   /** Apply: exclude line, disk floor, `worktree add`, wait for the mount, setup, record. */
   readonly create: (spec: LaneSpec) => Effect.Effect<CreateOutcome, CrewWorkspaceError>;
-  /** Retry, re-queue or failure: WIP, keep the tip, reset to the dispatch commit. */
+  /** The person's ordinary task discard: WIP, keep the tip, reset to the dispatch commit. */
   readonly keepAndReset: (
     key: LaneKey,
     input: KeepInput,
@@ -257,21 +221,6 @@ export interface CrewWorkspaceService {
   /** A self-deploy started on `host`: no lane writes, setup or resets there. */
   readonly freeze: (host: string) => Effect.Effect<ReadonlyArray<LaneKey>, CrewWorkspaceError>;
   readonly unfreeze: (host: string) => Effect.Effect<void, CrewWorkspaceError>;
-  /**
-   * After a self-deploy, a container replacement, or whenever a lane directory
-   * is missing: prune, verify every branch and recorded landing, then re-add
-   * the lanes, set them up and unfreeze - or name the loss and stay frozen.
-   */
-  readonly recover: (
-    host: string,
-    specs: ReadonlyArray<LaneSpec>,
-  ) => Effect.Effect<RecoverOutcome, CrewWorkspaceError>;
-  /**
-   * Boot: lane state from git, not from the tables - a WIP commit for a dirty
-   * lane that is not merging, a park for an unreadable ref or a tip the engine
-   * did not write.
-   */
-  readonly sweep: (host: string) => Effect.Effect<SweepOutcome, CrewWorkspaceError>;
   /**
    * Finish or *Remove from crew*: a clean lane goes (`worktree remove --force`,
    * `branch -D`); one with unlanded work stays unless `discard` is set.
@@ -491,6 +440,7 @@ export const make = Effect.gen(function* () {
           `[ "$tip" = ${shellQuote(row.recordedTip ?? "")} ] || { printf 'status\\tunknown-tip\\ntip\\t%s\\n' "$tip"; exit 0; }\n` +
           `reset=0\n` +
           `if [ "$tip" = ${shellQuote(row.lastLanding ?? "")} ] && [ "$tip" != "$H" ]; then\n` +
+          `[ -z "$(${lg(["status", "--porcelain"])})" ] || { printf 'status\\tdirty\\n'; exit 0; }\n` +
           `  ${lg(["reset", "-q", "--hard", H])} || exit 1\n` +
           `  tip=$H; reset=1\n` +
           `fi\n` +
@@ -498,6 +448,7 @@ export const make = Effect.gen(function* () {
       );
       const status = field(out, "status");
       const tip = field(out, "tip") ?? "";
+      if (status === "dirty") return { _tag: "dirty" } satisfies DispatchOutcome;
       if (status === "lane-missing") return { _tag: "lane-missing" } satisfies DispatchOutcome;
       if (status === "unknown-tip") {
         yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
@@ -529,182 +480,6 @@ export const make = Effect.gen(function* () {
 
   const unfreeze: CrewWorkspaceService["unfreeze"] = (host) =>
     setFrozen(host, null).pipe(Effect.asVoid);
-
-  const recover: CrewWorkspaceService["recover"] = (host, specs) =>
-    Effect.gen(function* () {
-      const lanes = yield* store.lanesOnHost(host);
-      const out = yield* runLane(
-        host,
-        "recover",
-        `${git("integration", ["worktree", "prune"])} || exit 1\n` +
-          lanes
-            .map((row) => {
-              const branch = `refs/heads/${laneBranch(row.lane)}`;
-              const recorded = shellQuote(row.recordedTip ?? "");
-              return (
-                `if tip=$(${git("integration", ["rev-parse", "-q", "--verify", branch])}); then\n` +
-                `  dir=0; [ -d ${shellQuote(laneDirectory(row.lane))} ] && dir=1\n` +
-                `  kept=1; [ -z ${recorded} ] || ${git("integration", ["merge-base", "--is-ancestor", row.recordedTip ?? "", shellVariable("tip")])} 2>/dev/null || kept=0\n` +
-                `  printf 'lane\\t%s\\t%s\\t%s\\t%s\\n' ${shellQuote(row.lane)} "$dir" "$kept" "$(${git("integration", ["log", "-1", "--format=%cI", shellVariable("tip")])})"\n` +
-                `else\n` +
-                `  printf 'missing\\t%s\\n' ${shellQuote(row.lane)}\n` +
-                `fi\n`
-              );
-            })
-            .join("") +
-          landedAssignmentsScript("HEAD"),
-      );
-      const landed = new Set(fieldsOf(out, "landed"));
-      const lost = (yield* store.landingsOnHost(host))
-        .filter((landing) => !landed.has(landing.assignment))
-        .map((landing) => ({ assignment: landing.assignment, title: landing.title }));
-      const branches = fieldsOf(out, "missing");
-      const present = fieldsOf(out, "lane").map((value) => {
-        const [handle = "", dir = "", kept = "", since = ""] = value.split("\t");
-        return { handle, dir: dir === "1", kept: kept === "1", since };
-      });
-      const wip = present
-        .filter((lane) => !lane.kept)
-        .map((lane) => ({ handle: lane.handle, since: lane.since }));
-      if (lost.length > 0 || branches.length > 0 || wip.length > 0) {
-        yield* Effect.forEach(
-          lanes.filter((row) => branches.includes(row.lane)),
-          (row) => store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "lost" })),
-        );
-        return { _tag: "lost", landings: lost, branches, wip } satisfies RecoverOutcome;
-      }
-      const readded = present.filter((lane) => !lane.dir).map((lane) => lane.handle);
-      if (readded.length > 0) {
-        yield* runLane(
-          host,
-          "recover",
-          readded
-            .map(
-              (handle) =>
-                `${git("integration", ["worktree", "add", "-q", laneDirectory(handle), laneBranch(handle)])} || exit 1\n` +
-                relativeGitdir(handle),
-            )
-            .join(""),
-        );
-      }
-      const setups: Record<string, CheckOutcome> = {};
-      for (const handle of readded) {
-        yield* seenThroughMount(host, handle);
-        const spec = specs.find((candidate) => candidate.handle === handle);
-        if (spec?.setup !== undefined) {
-          setups[handle] = yield* checks.run({
-            host,
-            lane: handle,
-            kind: "setup",
-            command: spec.setup,
-            crewPort: spec.crewPort,
-            env: spec.env,
-          });
-        }
-      }
-      yield* setFrozen(host, null);
-      return { _tag: "recovered", readded, setups } satisfies RecoverOutcome;
-    });
-
-  const sweep: CrewWorkspaceService["sweep"] = (host) =>
-    Effect.gen(function* () {
-      const lanes = yield* store.lanesOnHost(host);
-      const out = yield* runLane(
-        host,
-        "sweep",
-        `${git("integration", ["for-each-ref", "--format=%(refname)"])} 2>&1 >/dev/null | sed -n 's/^warning: ignoring broken ref /broken\t/p'\n` +
-          lanes
-            .map((row) => {
-              const lg = laneGit(row.lane);
-              const handle = shellQuote(row.lane);
-              return (
-                `if [ -d ${shellQuote(laneDirectory(row.lane))} ]; then\n` +
-                relativeGitdir(row.lane) +
-                `  tip=$(${lg(["rev-parse", "-q", "--verify", "HEAD"])} 2>/dev/null) || tip=\n` +
-                `  merging=0; ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null 2>&1 && merging=1\n` +
-                `  dirty=0; [ -z "$(${lg(["status", "--porcelain"])} 2>/dev/null)" ] || dirty=1\n` +
-                `  printf 'lane\\t%s\\t%s\\t%s\\t%s\\n' ${handle} "$tip" "$merging" "$dirty"\n` +
-                `  [ "$merging" = 0 ] || ${lg(["diff", "--name-only", "--diff-filter=U"])} | sed 's/^/unmerged\t${row.lane}\t/'\n` +
-                `else\n` +
-                `  printf 'missing\\t%s\\n' ${handle}\n` +
-                `fi\n`
-              );
-            })
-            .join(""),
-      );
-      const brokenRefs = fieldsOf(out, "broken");
-      const missing = new Set(fieldsOf(out, "missing"));
-      const read = new Map(
-        fieldsOf(out, "lane").map((value) => {
-          const [handle = "", tip = "", merging = "", dirty = ""] = value.split("\t");
-          return [handle, { tip, merging: merging === "1", dirty: dirty === "1" }] as const;
-        }),
-      );
-      const unmerged = fieldsOf(out, "unmerged").map((value) => {
-        const tab = value.indexOf("\t");
-        return [value.slice(0, tab), value.slice(tab + 1)] as const;
-      });
-      const park = (row: CrewLaneRow) =>
-        store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
-      const swept = yield* Effect.forEach(lanes, (row) =>
-        Effect.gen(function* () {
-          const handle = row.lane;
-          const state = read.get(handle);
-          if (missing.has(handle) || state === undefined) {
-            return { handle, _tag: "missing" } satisfies SweepLane;
-          }
-          if (state.tip === "" || brokenRefs.includes(`refs/heads/${laneBranch(handle)}`)) {
-            yield* park(row);
-            return {
-              handle,
-              _tag: "parked",
-              reason: "unreadable-ref",
-              paths: [],
-            } satisfies SweepLane;
-          }
-          if (state.tip !== row.recordedTip) {
-            yield* park(row);
-            return {
-              handle,
-              _tag: "parked",
-              reason: "unknown-tip",
-              paths: [state.tip],
-            } satisfies SweepLane;
-          }
-          if (state.merging) {
-            const paths = unmerged.filter(([lane]) => lane === handle).map(([, path]) => path);
-            return { handle, _tag: "merging", paths } satisfies SweepLane;
-          }
-          if (!state.dirty) return { handle, _tag: "clean", tip: state.tip } satisfies SweepLane;
-          const committed = yield* commitLane(
-            row,
-            "wip(sweep): lane work left uncommitted at boot",
-            DEFAULT_MAX_BLOB_BYTES,
-          );
-          switch (committed._tag) {
-            case "committed":
-            case "unchanged":
-              return { handle, _tag: "committed", tip: committed.tip } satisfies SweepLane;
-            case "rework":
-              return { handle, _tag: "merging", paths: committed.paths } satisfies SweepLane;
-            case "parked":
-              return {
-                handle,
-                _tag: "parked",
-                reason: committed.reason,
-                paths: committed.reason === "unknown-tip" ? [committed.tip] : committed.paths,
-              } satisfies SweepLane;
-            case "frozen":
-            case "lane-missing":
-              return {
-                handle,
-                _tag: committed._tag === "frozen" ? "frozen" : "missing",
-              } satisfies SweepLane;
-          }
-        }),
-      );
-      return { lanes: swept, brokenRefs } satisfies SweepOutcome;
-    });
 
   const cleanup: CrewWorkspaceService["cleanup"] = (key, options) =>
     Effect.gen(function* () {
@@ -752,6 +527,36 @@ export const make = Effect.gen(function* () {
           return { handle, unlanded: Number(unlanded) };
         })
         .filter((branch) => !known.has(branch.handle));
+    });
+
+  const rebuild: CrewWorkspaceService["rebuild"] = (key) =>
+    Effect.gen(function* () {
+      const row = yield* store.requireLane(key.crew, key.handle);
+      const directory = shellQuote(laneDirectory(row.lane));
+      const out = yield* runLane(
+        row.host,
+        "rebuild",
+        `if [ -e ${directory} ]; then\n` +
+          `  tip=$(${git({ lane: row.lane }, ["rev-parse", "HEAD"])}) || exit 1\n` +
+          `  [ "$tip" = ${shellQuote(row.recordedTip ?? "")} ] || { printf 'status\\tbranch-changed\\n'; exit 0; }\n` +
+          `  printf 'status\\tpresent\\n'; exit 0\nfi\n` +
+          `tip=$(${git("integration", ["rev-parse", "-q", "--verify", `refs/heads/${row.branch}`])}) || { printf 'status\\tbranch-missing\\n'; exit 0; }\n` +
+          `[ "$tip" = ${shellQuote(row.recordedTip ?? "")} ] || { printf 'status\\tbranch-changed\\n'; exit 0; }\n` +
+          `${git("integration", ["worktree", "add", "--force", "-q", laneDirectory(row.lane), row.branch])} || exit 1\n` +
+          relativeGitdir(row.lane) +
+          `printf 'status\\trebuilt\\ntip\\t%s\\n' "$tip"\n`,
+      );
+      const status = field(out, "status");
+      if (status === "present" || status === "branch-missing" || status === "branch-changed")
+        return { _tag: status } satisfies RebuildOutcome;
+      if (!(yield* seenThroughMount(row.host, row.lane)))
+        return { _tag: "mount-unseen" } satisfies RebuildOutcome;
+      yield* store.updateLane(row.crew, row.lane, (lane) => ({
+        ...lane,
+        frozenSince: null,
+        state: "ready",
+      }));
+      return { _tag: "rebuilt", tip: field(out, "tip") ?? "" } satisfies RebuildOutcome;
     });
 
   const create: CrewWorkspaceService["create"] = (spec) =>
@@ -824,11 +629,10 @@ export const make = Effect.gen(function* () {
 
   return CrewWorkspace.of({
     create,
+    rebuild,
     prepareDispatch,
     freeze,
     unfreeze,
-    recover,
-    sweep,
     cleanup,
     orphanScan,
     commitTurn,

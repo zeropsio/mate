@@ -10,8 +10,8 @@
  * tests reach its own database when one is declared.
  *
  * The outcome is classified, not just passed through: a command stopped by
- * its timeout, or killed by a signal (the OOM killer), is not the lane's
- * failure - the task goes back to checking without counting a rework.
+ * its timeout, or killed by a signal (the OOM killer), ends with that reason
+ * and waits for a person to choose what continues.
  *
  * @module CrewChecks
  */

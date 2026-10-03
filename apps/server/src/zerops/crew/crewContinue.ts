@@ -1,0 +1,272 @@
+import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+
+import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
+import {
+  asRefusal,
+  refuse,
+  requireApplied,
+  requireMember,
+  isWorking,
+  principalUser,
+  type CrewCore,
+} from "./crewCore.ts";
+import { CREW_ID } from "./CrewHome.ts";
+import { updateOperation, withOperation, operationStep } from "./crewOperations.ts";
+import { integrate, land, refreshLaneStats } from "./crewLanding.ts";
+import { commitAndPolice } from "./crewTurns.ts";
+import { continueTask, requireTask, saveTask, startTask, leadTurn } from "./crewTasks.ts";
+
+const readDispatchEnding = Schema.decodeUnknownOption(
+  Schema.Struct({ terminalReason: Schema.optional(Schema.String) }),
+);
+
+const readDirtyDispatch = Schema.decodeUnknownOption(Schema.TaggedStruct("dirty", {}));
+
+const readLandedEvidence = Schema.decodeUnknownOption(
+  Schema.TaggedStruct("already-landed", {
+    commit: Schema.String,
+  }),
+);
+
+/** A selected ending, guarded against a changed task, a running turn, or a newer operation. */
+const selected = (core: CrewCore, handle: string, id: string) =>
+  Effect.gen(function* () {
+    const found = yield* asRefusal(core.store.getOperation(id));
+    if (
+      Option.isNone(found) ||
+      found.value.handle !== handle ||
+      !["interrupted", "failed"].includes(found.value.status)
+    ) {
+      return yield* refuse("wrong-state", "This work is no longer waiting to continue.");
+    }
+    const operation = found.value;
+    const applied = yield* requireApplied(core);
+    if (
+      isWorking(core, applied, handle) ||
+      (operation.taskId !== null && core.memory.integrating.has(operation.taskId))
+    ) {
+      return yield* refuse("wrong-state", "This crewmate is working.");
+    }
+    const pending = yield* asRefusal(core.store.operations(CREW_ID));
+    const related = pending.filter(
+      (row) =>
+        row.handle === handle &&
+        row.taskId === operation.taskId &&
+        ["failed", "interrupted"].includes(row.status),
+    );
+    if (related.at(-1)?.id !== operation.id)
+      return yield* refuse("wrong-state", "Open the latest interruption before continuing.");
+    const task = operation.taskId === null ? undefined : yield* requireTask(core, operation.taskId);
+    if (
+      task !== undefined &&
+      (task.attempt !== operation.targets.attempt ||
+        task.state === "discarded" ||
+        (task.state === "landed" && operation.kind !== "landing"))
+    ) {
+      return yield* refuse("wrong-state", "This task changed. Open it again before continuing.");
+    }
+    return { operation, related, task, applied, member: yield* requireMember(applied, handle) };
+  });
+
+/** Only this person's selected work continues; the restart-paused crew stays paused. */
+export const continueOperation = (
+  core: CrewCore,
+  principal: TurnPrincipal,
+  handle: string,
+  id: string,
+) =>
+  Effect.gen(function* () {
+    const { operation, related, task, applied, member } = yield* selected(core, handle, id);
+    if (operation.kind === "rebuild") {
+      yield* rebuildCopy(core, principal, handle, true);
+      for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+      return;
+    }
+    if (task === undefined && operation.kind !== "dispatch")
+      return yield* refuse("wrong-state", "This work has no task to continue.");
+    // Keep the old ending visible until the next operation owns the selected effects.
+    if (task === undefined) {
+      if (operation.kind !== "dispatch")
+        return yield* refuse("wrong-state", "This work has no task to continue.");
+      yield* leadTurn(core, member, principal, "Continue where you stopped.");
+      for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+      return;
+    }
+    let evidence = readLandedEvidence(operation.result);
+    // The inspection may still be running at the first press. Read this exact landing before any git writes.
+    if (
+      operation.kind === "landing" &&
+      Option.isNone(evidence) &&
+      operation.targets.host !== null
+    ) {
+      const commit = yield* operationStep(
+        core,
+        operation.id,
+        "reading-landing",
+        asRefusal(core.integration.landingEvidence(operation.targets.host, task.assignment)),
+      );
+      if (commit !== null) evidence = Option.some({ _tag: "already-landed" as const, commit });
+    }
+    if (operation.kind === "landing" && Option.isSome(evidence)) {
+      yield* saveTask(core, {
+        ...task,
+        state: "landed",
+        landedCommit: evidence.value.commit,
+        waiting: null,
+      });
+      for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+      yield* core.changed;
+      return;
+    }
+    if (operation.kind === "dispatch") {
+      const ending = readDispatchEnding(operation.result);
+      if (
+        Option.isSome(ending) &&
+        ending.value.terminalReason !== undefined &&
+        operation.targets.threadId !== null
+      )
+        core.memory.terminalReasons.set(operation.targets.threadId, ending.value.terminalReason);
+      if (task.state === "queued") {
+        if (Option.isSome(readDirtyDispatch(operation.result)))
+          yield* commitAndPolice(
+            core,
+            member,
+            task,
+            yield* asRefusal(core.store.assignments(CREW_ID)),
+          );
+        const preserved = yield* requireTask(core, task.assignment);
+        if (preserved.state === "queued")
+          yield* startTask(core, applied, member, preserved, principal);
+      } else {
+        const next = yield* saveTask(core, { ...task, state: "rework", waiting: null });
+        yield* continueTask(
+          core,
+          applied,
+          member,
+          next,
+          principal,
+          "Continue where you stopped. Its edits remain in its copy.",
+        );
+      }
+    } else {
+      const resuming =
+        task.state === "parked"
+          ? yield* saveTask(core, { ...task, state: operation.resumeState, waiting: null })
+          : task;
+      if (member.row.kind === "writer")
+        yield* commitAndPolice(
+          core,
+          member,
+          resuming,
+          yield* asRefusal(core.store.assignments(CREW_ID)),
+        );
+      const preserved = yield* requireTask(core, task.assignment);
+      if (preserved.state === "parked") {
+        for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+        return;
+      }
+      if (operation.kind === "checkpoint" && task.state === "working") {
+        const next = yield* saveTask(core, { ...preserved, state: "rework", waiting: null });
+        yield* continueTask(
+          core,
+          applied,
+          member,
+          next,
+          principal,
+          "Continue where you stopped. Its saved work remains in its copy.",
+        );
+      } else if (operation.kind !== "checkpoint" || task.state === "merging") {
+        const merging = yield* saveTask(core, { ...preserved, state: "merging" });
+        yield* integrate(core, merging.assignment, undefined, operation.stage === "setting-up");
+        if (
+          operation.kind === "landing" &&
+          (yield* requireTask(core, task.assignment)).state === "ready"
+        )
+          yield* land(core, principal, task.assignment);
+      }
+    }
+    for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+    yield* refreshLaneStats(core, member);
+    yield* core.changed;
+  });
+
+/** Dropping an interrupted task cancels its records; its files remain exactly where they are. */
+export const discardOperation = (core: CrewCore, handle: string, id: string) =>
+  Effect.gen(function* () {
+    const { operation, related, task, member } = yield* selected(core, handle, id);
+    if (operation.kind === "landing" || task === undefined)
+      return yield* refuse("wrong-state", "Inspect and continue this work before dropping it.");
+    yield* saveTask(core, { ...task, state: "discarded" });
+    for (const row of related) yield* updateOperation(core, row.id, { status: "discarded" });
+    yield* refreshLaneStats(core, member);
+    yield* core.changed;
+  });
+
+/** Only a selected missing copy can be reconstructed, from the engine's recorded branch. */
+export const rebuildCopy = (
+  core: CrewCore,
+  principal: TurnPrincipal,
+  handle: string,
+  continuing = false,
+) =>
+  Effect.gen(function* () {
+    const applied = yield* requireApplied(core);
+    const member = yield* requireMember(applied, handle);
+    if (
+      member.row.kind !== "writer" ||
+      isWorking(core, applied, handle) ||
+      (!continuing && !core.memory.missingLanes.has(handle))
+    )
+      return yield* refuse("wrong-state", "This copy is not waiting to be rebuilt.");
+    yield* withOperation(
+      core,
+      { kind: "rebuild", handle, startedBy: principalUser(principal) },
+      (operation) =>
+        Effect.gen(function* () {
+          const result = yield* operationStep(
+            core,
+            operation.id,
+            "rebuilding-copy",
+            asRefusal(core.workspace.rebuild({ crew: CREW_ID, handle })),
+            "copy-rebuilt",
+          );
+          if (result._tag !== "rebuilt" && !(continuing && result._tag === "present")) {
+            yield* updateOperation(core, operation.id, {
+              detail: "The recorded copy could not be rebuilt. Inspect its saved branch.",
+              result,
+            });
+            return;
+          }
+          if (member.spec.setup !== undefined && member.row.host !== null) {
+            const setup = yield* operationStep(
+              core,
+              operation.id,
+              "setting-up",
+              asRefusal(
+                core.checks.run({
+                  host: member.row.host,
+                  lane: handle,
+                  kind: "setup",
+                  command: member.spec.setup,
+                  crewPort: member.row.crewPort ?? undefined,
+                  env: member.spec.env,
+                }),
+              ),
+            );
+            if (setup._tag !== "passed") {
+              yield* updateOperation(core, operation.id, {
+                detail: "Its copy was rebuilt, but setup failed.",
+                result: setup,
+              });
+              core.memory.progress.set(handle, { state: "failed", detail: "Its setup failed." });
+              return;
+            }
+          }
+          core.memory.missingLanes.delete(handle);
+          yield* refreshLaneStats(core, member);
+        }),
+    );
+    yield* core.changed;
+  });

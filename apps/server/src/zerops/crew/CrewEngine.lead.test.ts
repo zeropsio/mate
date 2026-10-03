@@ -538,7 +538,7 @@ describe("CrewEngine lead", () => {
   );
 
   it.live(
-    "an accepted task whose landing finds your tree moved merges again and lands, without a second review",
+    "an accepted task whose landing finds your tree moved waits for Continue, without a second review",
     () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
@@ -561,6 +561,17 @@ describe("CrewEngine lead", () => {
             note: "Looks right.",
           });
           yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
+          const stopped = yield* snapshotWhere((current) =>
+            current.attention.some((need) => need.operation?.kind === "landing"),
+          );
+          const operation = stopped.attention.find(
+            (need) => need.operation?.kind === "landing",
+          )!.operation!;
+          yield* command({
+            _tag: "operationContinue",
+            handle: "backend",
+            operationId: operation.id,
+          });
           yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
           yield* Effect.sleep("300 millis");
           assert.deepStrictEqual(
@@ -772,33 +783,29 @@ describe("CrewEngine lead", () => {
     ),
   );
 
-  it.live(
-    "a restart wakes the lead again for a pending review only two minutes after its last wake",
-    () => {
-      let before = 0;
-      return withCrewEngines([
-        (world) =>
-          Effect.gen(function* () {
-            yield* withLead(world);
-            yield* startRun({ landing: "lead" });
-            const thread = yield* firstTurn(world, () =>
-              write(world.root, ".crew/backend/ok.txt", "ok\n"),
-            );
-            yield* reportDone(thread);
-            yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-            yield* wokenWith(world, yield* leadThread(world), "review @backend's work");
-            before = yield* wakes(world, yield* leadThread(world));
-          }),
-        (world) =>
-          Effect.gen(function* () {
-            yield* (yield* ServerCommandReadiness).complete;
-            yield* snapshotWhere((current) => current.run?.state === "running");
-            yield* Effect.sleep("500 millis");
-            assert.deepStrictEqual([before, yield* wakes(world, yield* leadThread(world))], [1, 1]);
-          }),
-      ]);
-    },
-  );
+  it.live("a restart pauses the crew and leaves the lead review interrupted", () => {
+    let before = 0;
+    return withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun({ landing: "lead" });
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          yield* wokenWith(world, yield* leadThread(world), "review @backend's work");
+          before = yield* wakes(world, yield* leadThread(world));
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          yield* snapshotWhere((current) => current.run?.state === "paused");
+          assert.deepStrictEqual([before, yield* wakes(world, yield* leadThread(world))], [1, 1]);
+        }),
+    ]);
+  });
 
   it.live("the lead's own question still waits on you after a restart", () =>
     withCrewEngines([
@@ -815,11 +822,21 @@ describe("CrewEngine lead", () => {
         }),
       () =>
         Effect.gen(function* () {
-          const waiting = yield* snapshotWhere((current) => current.attention.length === 1);
+          const waiting = yield* snapshotWhere((current) =>
+            current.attention.some((need) => need.kind === "question"),
+          );
           assert.deepStrictEqual(
-            waiting.attention.map((row) => [row.kind, row.handle, row.text]),
+            waiting.attention
+              .filter((row) => row.kind === "question")
+              .map((row) => [row.kind, row.handle, row.text]),
             [["question", "lead", "Mobile first?"]],
           );
+          const interruption = waiting.attention.find(
+            (need) => need.kind === "interrupted",
+          )!.operation!;
+          yield* command({ _tag: "answer", handle: "lead", taskId: null, text: "Mobile first." });
+          const settled = yield* (yield* CrewStore).getOperation(interruption.id);
+          assert.strictEqual(settled._tag === "Some" ? settled.value.status : null, "continued");
         }),
     ]),
   );
