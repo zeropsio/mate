@@ -1,5 +1,10 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import {
+  projectGrantsOf,
+  withProjectGrants,
+  type ZeropsProject,
+  type ZeropsService,
+} from "@t3tools/client-runtime/zerops";
 import {
   evidenceProjectRefs,
   heldEvidence,
@@ -620,12 +625,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [lapseRetry, lapseSentence, retryNow, signOutNow, subject, unanswered, voice],
   );
 
-  // Each project where the organization's HQ places it (ADR 0002), as last known.
+  // Each project where the organization's HQ places it (ADR 0002), as last known, with its own
+  // grants as the access grant's last round read them: the records carry none, and HQ's rule
+  // weighs a member's grant above their org role (F12).
   const placements = useAtomValue(hqPlacementsAtom);
+  const grants = useMemo(() => projectGrantsOf(evidence), [evidence]);
   const placed = useMemo(
     () =>
-      placements === null ? projected.projects : placeProjects(projected.projects, placements),
-    [placements, projected.projects],
+      (placements === null
+        ? projected.projects
+        : placeProjects(projected.projects, placements)
+      ).map((project) => withProjectGrants(project, grants)),
+    [grants, placements, projected.projects],
   );
 
   // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld

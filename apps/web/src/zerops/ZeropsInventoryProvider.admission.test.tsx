@@ -138,3 +138,41 @@ describe("ZeropsInventoryProvider publication", () => {
     expect(tab.text()).toContain("rows known: One");
   });
 });
+
+// F12 (e2e, 2026-10-03): a member NO_ACCESS in the organization, OWNER on one project by its
+// grant. The platform's records carry no grants; the access grant's round read them, and the
+// inventory HQ's rule is asked over carries them.
+describe("ZeropsInventoryProvider grants", () => {
+  it("carries each project's own grants, as the access grant's round read them", async () => {
+    const developer: ZeropsUser = {
+      id: "user-dev",
+      email: "developer@example.test",
+      clientUserList: [{ id: "cu-dev", clientId: "org-1", roleCode: "NO_ACCESS" }],
+    };
+    const grants = [{ clientUserId: "cu-dev", roleCode: "OWNER" }];
+    const harness = makeAccountHarness({
+      people: [{ user: developer, password: "secret" }],
+      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: grants }],
+      signedIn: "user-dev",
+    });
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      page: async () => {
+        const { AccountProduct } = await import("./__fixtures__/accountProduct");
+        const { useContext } = await import("react");
+        const { InventoryContext } = await import("./inventoryContext");
+        function Grants() {
+          const projects = useContext(InventoryContext)?.projects ?? [];
+          return `grants ${JSON.stringify(projects.map(({ id, userRoles }) => [id, userRoles ?? null]))}`;
+        }
+        return (
+          <AccountProduct datastream={harness.datastream}>
+            <Grants />
+          </AccountProduct>
+        );
+      },
+    });
+    await settle();
+
+    expect(tab.text()).toContain(`grants ${JSON.stringify([["p1", grants]])}`);
+  });
+});

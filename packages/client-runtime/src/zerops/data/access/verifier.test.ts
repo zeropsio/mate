@@ -145,9 +145,24 @@ describe("the REST access verifier's round (DESIGN G1)", () => {
   );
 
   it.effect.each([
-    ["OWNER", { role: "OWNER", mutationsAllowed: true }],
-    ["READ_ONLY", { role: "READ_ONLY", mutationsAllowed: false }],
-    ["NO_ACCESS", { role: "NO_ACCESS", mutationsAllowed: false }],
+    [
+      "OWNER",
+      {
+        role: "OWNER",
+        mutationsAllowed: true,
+        userRoles: [{ clientUserId: "membership", roleCode: "OWNER" }],
+      },
+    ],
+    [
+      "READ_ONLY",
+      {
+        role: "READ_ONLY",
+        mutationsAllowed: false,
+        userRoles: [{ clientUserId: "membership", roleCode: "READ_ONLY" }],
+      },
+    ],
+    // Hidden from the viewer: its grants are not theirs to know.
+    ["NO_ACCESS", { role: "NO_ACCESS", mutationsAllowed: false, userRoles: [] }],
   ] as const)("verifies a project read with a %s override", ([roleCode, access]) =>
     Effect.gen(function* () {
       const { outcomes } = yield* round({
@@ -166,10 +181,24 @@ describe("the REST access verifier's round (DESIGN G1)", () => {
   );
 
   it.effect.each([
-    ["OWNER", { role: "OWNER", mutationsAllowed: true }],
-    ["READ_ONLY", { role: "READ_ONLY", mutationsAllowed: false }],
-    ["NO_ACCESS", { role: "NO_ACCESS", mutationsAllowed: false }],
-    [undefined, { role: "OWNER", mutationsAllowed: true }],
+    [
+      "OWNER",
+      {
+        role: "OWNER",
+        mutationsAllowed: true,
+        userRoles: [{ clientUserId: "membership", roleCode: "OWNER" }],
+      },
+    ],
+    [
+      "READ_ONLY",
+      {
+        role: "READ_ONLY",
+        mutationsAllowed: false,
+        userRoles: [{ clientUserId: "membership", roleCode: "READ_ONLY" }],
+      },
+    ],
+    ["NO_ACCESS", { role: "NO_ACCESS", mutationsAllowed: false, userRoles: [] }],
+    [undefined, { role: "OWNER", mutationsAllowed: true, userRoles: [] }],
   ] as const)(
     "verifies a project the organization's direct list carries with %s overrides from the list itself, reading none",
     ([roleCode, access]) =>
@@ -389,6 +418,41 @@ describe("the REST access verifier's round (DESIGN G1)", () => {
   );
 });
 
+// F12, F11 (e2e, 2026-10-03): the project's grants are what HQ's rule and its owner read — a
+// member granted OWNER on one project, below their NO_ACCESS org role, and its OWNER after a hand
+// over. The row carries them; the round keeps them, whichever read it came from.
+describe("the REST access verifier keeps each project's grants", () => {
+  const granted = (id: string): ZeropsProject => ({
+    ...project(id),
+    userRoles: [
+      { clientUserId: "membership", roleCode: "BASIC_USER" },
+      { clientUserId: "colleague", roleCode: "OWNER" },
+    ],
+  });
+
+  it.effect.each([
+    ["read on its own", false],
+    ["carried by the direct list", true],
+  ] as const)("from a project %s", ([_name, direct]) =>
+    Effect.gen(function* () {
+      const { outcomes } = yield* round({
+        readAccessibleClientProjects: async () => ({ projects: [granted("a")], direct }),
+        fetchProject: async (id) => granted(id),
+      });
+
+      expect(outcomes.get(ZeropsProjectId.make("a"))).toEqual({
+        kind: "verified",
+        access: {
+          project: projectRef("a"),
+          role: "BASIC_USER",
+          mutationsAllowed: true,
+          userRoles: granted("a").userRoles,
+        },
+      });
+    }),
+  );
+});
+
 describe("the REST access verifier's read of one project between rounds", () => {
   it.effect("judges the read against the membership the last round read", () =>
     Effect.gen(function* () {
@@ -397,7 +461,12 @@ describe("the REST access verifier's read of one project between rounds", () => 
 
       expect(yield* verifier.verifyProject(projectRef("a"))).toEqual({
         kind: "verified",
-        access: { project: projectRef("a"), role: "READ_ONLY", mutationsAllowed: false },
+        access: {
+          project: projectRef("a"),
+          role: "READ_ONLY",
+          mutationsAllowed: false,
+          userRoles: [{ clientUserId: "membership", roleCode: "READ_ONLY" }],
+        },
       });
     }),
   );
