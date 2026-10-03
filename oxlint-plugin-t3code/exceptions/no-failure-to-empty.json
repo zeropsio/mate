@@ -80,14 +80,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsGroupEnvironmentReconcile.ts",
-    "kind": "CallExpression",
-    "fingerprint": "addGroupEnvironment({ client, hq: accountHqApi(client, clientId, hq), clientId, groupId: entry.groupId, environment: { tier: entry.tier, project: entry.projectId }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
-    "owner": "state-model 4.7",
-    "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/agentLogin.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "result._tag === \"Success\" ? result.value.terminalId : undefined",
