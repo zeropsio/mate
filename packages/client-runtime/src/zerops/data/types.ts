@@ -2188,9 +2188,17 @@ export interface HistoryReadView {
   readonly observation: ViewObservation;
 }
 
+/**
+ * Where a project's newest process history window (`project-process-history`, `before: null`)
+ * stands: nobody asks for it, it is being read, it was read (and is held current while asked
+ * for), or its read failed.
+ */
+export type ProcessHistoryRead = "unread" | "reading" | "read" | "failed";
+
 export interface ProjectActivityRead {
   readonly running: CollectionRead<ProcessRecord>;
   readonly retainedHistory: ReadonlyArray<EntityKnowledge<ProcessRecord>>;
+  readonly processHistory: ProcessHistoryRead;
   readonly observation: ViewObservation;
 }
 
