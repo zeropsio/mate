@@ -607,8 +607,14 @@ export function CardStates() {
               kind: "step",
               step: stepOf(running(command("s3", "pnpm lint", null, 0, 4))),
               others: [
-                stepOf(running(command("s1", "pnpm build", "Build the app", 0, 9))),
-                stepOf(running(command("s2", "pnpm test -- status", null, 0, 8))),
+                {
+                  kind: "step",
+                  step: stepOf(running(command("s1", "pnpm build", "Build the app", 0, 9))),
+                },
+                {
+                  kind: "step",
+                  step: stepOf(running(command("s2", "pnpm test -- status", null, 0, 8))),
+                },
               ],
             },
           })}

@@ -220,6 +220,27 @@ describe("collectZeropsCalls — the lattice properties", () => {
     expect(collectZeropsCalls(activities, "t2")[0]!.status).toBe("completed");
   });
 
+  // The turn's end closes a call still open as unreturned: it never came
+  // back, so it is interrupted, never completed.
+  it("a call its turn's end closed as unreturned is interrupted, never completed", () => {
+    const activities = [
+      started({ id: "a1", turnId: "t1" }),
+      completed({ id: "a3", turnId: "t1", payload: { unreturned: true } }),
+    ];
+    const [call] = collectZeropsCalls(activities, null);
+    expect(call!.status).toBe("interrupted");
+    expect(call!.settledAt).toBeUndefined();
+    // A turn that failed closes it as failed: still never a call that came back.
+    const failed = collectZeropsCalls(
+      [
+        started({ id: "a1", turnId: "t1" }),
+        completed({ id: "a3", turnId: "t1", payload: { status: "failed", unreturned: true } }),
+      ],
+      null,
+    );
+    expect(failed[0]!.status).toBe("interrupted");
+  });
+
   it("input is the richest (last non-empty) row", () => {
     const activities = [
       started({ id: "a1" }),

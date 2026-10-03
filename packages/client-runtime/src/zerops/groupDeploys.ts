@@ -42,9 +42,13 @@ import {
   deployedCommit,
   deployStatusContext,
   environmentRow,
+  firstDeployOnHead,
   type EnvironmentServiceState,
   type GroupRowTone,
+  type MainHeadStatuses,
 } from "./groupRows.ts";
+import { STATUS_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
+import { COMING_UP_WINDOW_MS } from "./stopComing.ts";
 
 /** One runtime service of one Zerops project, as the reads need it. */
 export interface GroupEnvironmentService {
@@ -176,6 +180,159 @@ export function planMainHeadReads(input: {
   return [...reads.values()];
 }
 
+/** One read of a stage's first deploy: its service's repository's `main` head, and its statuses. */
+export interface FirstDeployHeadRead {
+  readonly projectId: string;
+  /** The stage's name in `environments.yaml`, which the broker's status names. */
+  readonly environment: string;
+  readonly hostname: string;
+  readonly repo: string;
+}
+
+/** The key a first-deploy head read is answered under. */
+export function firstDeployHeadKey(read: Pick<FirstDeployHeadRead, "projectId" | "hostname">) {
+  return `${read.projectId}/${read.hostname}`;
+}
+
+/**
+ * A stage the broker deploys `main`'s head to as it is declared: on push, fed by `main` alone. One
+ * deployed on request waits for nobody's ask, and one fed by another branch, or a mixed one
+ * deployed from its own merge commit, does not run `main`'s head.
+ */
+function deploysMainHead(declaration: GroupEnvironment): boolean {
+  return (
+    declaration.tier === "stage" &&
+    declaration.deploy !== "on-request" &&
+    declaration.sources !== "release" &&
+    declaration.sources.length === 1 &&
+    declaration.sources[0] === "main"
+  );
+}
+
+/**
+ * Which `main` heads a stage's first deploy has to read (run 5): each service's repository, as its
+ * tier's `buildFromGit` names it, of a declared stage none of whose services runs a deployed
+ * commit yet — the broker deploys `main` there as the stage is declared, and a job that fails
+ * before it asks the broker for its grant leaves its failure on that head and nowhere else. Nothing
+ * for a stage that runs a deploy, a production (its first deploy is a release, whose verdict is
+ * read with the tags), or a group that declares no stage.
+ */
+export function planFirstDeployHeadReads(input: {
+  readonly declarations: ReadonlyArray<GroupEnvironment>;
+  readonly services: ReadonlyArray<GroupEnvironmentService>;
+  /** The version name each service runs, by service id. */
+  readonly versions: ReadonlyMap<string, string>;
+  /** The repository's name in the org by hostname, from the tiers on `main`. */
+  readonly repositories: ReadonlyMap<string, string>;
+}): ReadonlyArray<FirstDeployHeadRead> {
+  const reads: Array<FirstDeployHeadRead> = [];
+  for (const declaration of input.declarations) {
+    if (!deploysMainHead(declaration)) continue;
+    const own = input.services.filter((service) => service.projectId === declaration.project);
+    const runs = own.some(
+      (service) => deployedCommit(input.versions.get(service.serviceId)) !== undefined,
+    );
+    if (runs) continue;
+    for (const service of own) {
+      const repo = input.repositories.get(service.hostname);
+      if (repo === undefined) continue;
+      reads.push({
+        projectId: declaration.project,
+        environment: declaration.name,
+        hostname: service.hostname,
+        repo,
+      });
+    }
+  }
+  return reads;
+}
+
+/**
+ * Whether what a first-deploy head read answered can no longer change for it
+ * (`firstDeployOnHead`): the broker's own job report, or the broker deployed it. A push job's
+ * failure is not — a dispatch that gets past its steps turns it — nor a refusal the broker retries.
+ */
+export function firstDeployHeadSettled(
+  read: Pick<FirstDeployHeadRead, "environment" | "hostname">,
+  statuses: ReadonlyArray<GiteaCommitStatus>,
+): boolean {
+  const verdict = firstDeployOnHead({
+    environment: read.environment,
+    hostname: read.hostname,
+    statuses,
+  });
+  return verdict.kind === "deployed" || (verdict.kind === "failed" && verdict.final);
+}
+
+/**
+ * How long a first deploy's head is read at all after the later of its ask (the stage's making)
+ * and its newest status: the coming-up window, then the broker's 20 minutes of patience with a
+ * job that has not reported (gitea-mate). A push makes a new head, read again from the start.
+ */
+export const FIRST_DEPLOY_PATIENCE_MS = COMING_UP_WINDOW_MS + 20 * 60_000;
+
+/**
+ * How often a first-deploy head's statuses are read again while it waits, on a clock from the latest
+ * of the stage's making (its ask), when this head was first seen (`MainHeadStatuses.firstSeenAtMs`),
+ * and the statuses that say a job moved (`firstDeployHeadMoved`): on the pending back-off (15 s,
+ * 30 s, then a minute — one read a minute on the reader's clock) within the coming-up window, or for
+ * a head not read before; one read every five minutes ({@link FIRST_DEPLOY_QUIET_LADDER_MS}) until
+ * {@link FIRST_DEPLOY_PATIENCE_MS}; then not at all (`undefined`) until a push makes a new head.
+ *
+ * The broker's own retries — a new "dispatched" every ~20 minutes, a refusal on every 5-minute
+ * pass — do not move the clock, so the stop is hard: at most 15 + 4 reads a head. A failure that
+ * lands after it is not read, and pass 34's words stand; that takes a runner gone for over 35
+ * minutes, when the runner's own line is what the stage says.
+ */
+export function firstDeployHeadLadder(
+  previous: MainHeadStatuses | undefined,
+  read: Pick<FirstDeployHeadRead, "environment" | "hostname">,
+  sha: string,
+  askedAt: string | undefined,
+  nowMs: number,
+): ReadonlyArray<number> | undefined {
+  if (previous === undefined || previous.sha !== sha) return STATUS_RECHECK_LADDER_MS;
+  let latest = askedAt === undefined ? Number.NaN : Date.parse(askedAt);
+  const later = (at: number | undefined) => {
+    if (at !== undefined && !Number.isNaN(at) && !(at <= latest)) latest = at;
+  };
+  later(previous.firstSeenAtMs);
+  for (const status of previous.statuses) {
+    if (!firstDeployHeadMoved(read, status)) continue;
+    later(status.created_at === undefined ? Number.NaN : Date.parse(status.created_at));
+  }
+  // Nothing says when anything happened there: read no more until a push.
+  if (Number.isNaN(latest)) return undefined;
+  const quiet = nowMs - latest;
+  if (quiet < COMING_UP_WINDOW_MS) return STATUS_RECHECK_LADDER_MS;
+  return quiet < FIRST_DEPLOY_PATIENCE_MS ? FIRST_DEPLOY_QUIET_LADDER_MS : undefined;
+}
+
+/**
+ * A quiet head is read every five minutes flat: a broker retry changing what it answers starts no
+ * quicker rung, so the quiet stretch costs four reads at most.
+ */
+export const FIRST_DEPLOY_QUIET_LADDER_MS: ReadonlyArray<number> = [300_000];
+
+/**
+ * Whether a status on a first deploy's head says a job moved: any of the group's workflow's own,
+ * and the broker's grant ("deploying"), its job's own report ("failed: ") or its deploy — never its
+ * retries ("dispatched", a refusal) nor another environment's.
+ */
+export function firstDeployHeadMoved(
+  read: Pick<FirstDeployHeadRead, "environment" | "hostname">,
+  status: GiteaCommitStatus,
+): boolean {
+  if (!status.context.startsWith("mate/")) return true;
+  if (status.context !== deployStatusContext(read.environment, read.hostname)) return false;
+  const words = status.description?.trim() ?? "";
+  return (
+    status.state === "success" ||
+    (status.state === "pending" && words.startsWith("deploying")) ||
+    ((status.state === "failure" || status.state === "error") && words.startsWith("failed: "))
+  );
+}
+
 /** What one environment's row is built from, before the row itself. */
 export interface GroupEnvironmentRowInput {
   readonly projectId: string;
@@ -206,6 +363,8 @@ export function buildGroupEnvironmentRowInputs(input: {
   readonly repositories?: ReadonlyMap<string, string> | undefined;
   /** Every commit status read, by {@link deployStatusKey}. */
   readonly statuses: ReadonlyMap<string, ReadonlyArray<GiteaCommitStatus>>;
+  /** Each first-deploy head read, by {@link firstDeployHeadKey}. */
+  readonly heads?: ReadonlyMap<string, MainHeadStatuses> | undefined;
 }): ReadonlyArray<GroupEnvironmentRowInput> {
   return input.declarations.map((declaration) => ({
     projectId: declaration.project,
@@ -225,11 +384,13 @@ export function buildGroupEnvironmentRowInputs(input: {
                 deployStatusKey({ owner: input.owner, hostname: service.hostname, sha }),
               );
         const repository = input.repositories?.get(service.hostname);
+        const head = input.heads?.get(firstDeployHeadKey(service));
         return {
           hostname: service.hostname,
           ...(repository === undefined ? {} : { repository }),
           ...(appVersionName === undefined ? {} : { appVersionName }),
           ...(statuses === undefined ? {} : { statuses }),
+          ...(head === undefined ? {} : { head }),
         };
       }),
   }));

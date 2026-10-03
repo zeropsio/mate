@@ -615,22 +615,30 @@ export function ZeropsReleaseVerb({
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  const inventory = useZeropsInventory();
+  // The project and its services as the menu and the projects page read them: the candidate
+  // listing, which lists a project not active yet with none of its services.
+  const { listing } = useZeropsCandidates();
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const nowMs = useNowMs();
-  return (projectId) =>
-    flow === undefined
-      ? undefined
-      : stageFirstDeploy({
-          deployment: flowValue?.deployments.get(projectId),
-          declared: flow.environments.some(
-            (entry) => entry.projectId === projectId && entry.tier === "stage",
-          ),
-          mainHasCode: undefined,
-          merged: flow.merged,
-          runner: flowValue?.runners?.get(groupId),
-          createdAt: inventory.projects.find((entry) => entry.id === projectId)?.created,
-          nowMs,
-        });
+  return (projectId) => {
+    if (flow === undefined) return undefined;
+    const candidate = candidates.find((entry) => entry.project.id === projectId);
+    const row = flow.environments.find(
+      (entry) => entry.projectId === projectId && entry.tier === "stage",
+    );
+    return stageFirstDeploy({
+      projectStatus: candidate?.project.status,
+      services: candidate?.services?.statuses,
+      deployment: flowValue?.deployments.get(projectId),
+      headFailure: row?.firstDeployFailure,
+      declared: row !== undefined,
+      mainHasCode: undefined,
+      merged: flow.merged,
+      runner: flowValue?.runners?.get(groupId),
+      createdAt: candidate?.project.created,
+      nowMs,
+    });
+  };
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {

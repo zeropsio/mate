@@ -105,6 +105,8 @@ function standUpProgressByCall(
 }
 
 function rowStatus(row: Row): RawRowStatus | undefined {
+  // Its turn's end closed it: the call never returned, so no status of its own.
+  if (row.payload.unreturned === true) return undefined;
   const raw = row.payload.status;
   if (typeof raw === "string" && RAW_ROW_STATUSES.has(raw)) {
     return raw as RawRowStatus;
@@ -262,7 +264,10 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
 
   const agentInternal = rows.some((row) => readString(row.payload.agentId) !== undefined);
 
-  const completedRows = rows.filter((row) => row.kind === "tool.completed");
+  // A completion its turn's end made for a call still open never returned.
+  const completedRows = rows.filter(
+    (row) => row.kind === "tool.completed" && row.payload.unreturned !== true,
+  );
   let baseStatus: ZeropsCallStatus = "inProgress";
   let settledRow: Row | undefined;
   if (completedRows.length > 0) {
@@ -322,6 +327,16 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     }
   }
 
+  // The start says the response it was written in; its other rows never do.
+  let responseId: string | undefined;
+  for (const row of rows) {
+    const named = row.payload.responseId;
+    if (typeof named === "string" && named.trim().length > 0) {
+      responseId = named;
+      break;
+    }
+  }
+
   return {
     id: group.toolCallId ?? group.id,
     turnId,
@@ -336,5 +351,6 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     ...(settledRow !== undefined ? { settledAt: settledRow.createdAt } : {}),
     rowIds: new Set(rows.map((row) => row.id)),
     agentInternal,
+    ...(responseId !== undefined ? { responseId } : {}),
   };
 }

@@ -13,7 +13,11 @@ import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 import { TurnReport } from "./TurnReport";
 
 /** What the workspace answers for each picture's file, by its path: loading unless told. */
-const workspace = vi.hoisted(() => ({ files: new Map<string, AssetUrlState>() }));
+const workspace = vi.hoisted(() => ({
+  files: new Map<string, AssetUrlState>(),
+  /** Files given an address the read of which then failed. */
+  addressed: new Map<string, string>(),
+}));
 
 // A tile's tooltip, drawn in place of its popup: the words a pointer reads.
 vi.mock("../ui/tooltip", async () => {
@@ -41,7 +45,9 @@ vi.mock("../../assets/assetUrls", () => {
     useAssetUrls: (_environment: unknown, resources: ReadonlyArray<{ readonly path: string }>) =>
       resources.map((resource) => {
         const state = stateOf(resource.path);
-        return state._tag === "Success" ? state.url : null;
+        return state._tag === "Success"
+          ? state.url
+          : (workspace.addressed.get(resource.path) ?? null);
       }),
   };
 });
@@ -390,6 +396,50 @@ describe("TurnReport's pictures", () => {
       src: served("map-landscape.png"),
       name: "map-landscape.png",
     });
+  });
+
+  // An address can be given for a file whose read then fails: the last tile
+  // standing for more opens the viewer past its own, never on itself.
+  it("opens the viewer past the last tile's own file when its read failed", () => {
+    workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
+    workspace.addressed.set("/var/www/app/.shots/world-mobile.png", served("world-mobile.png"));
+    try {
+      const onOpenImage = vi.fn();
+      const pictures = [
+        ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
+        filePicture("world-mobile.png"),
+        filePicture("map-landscape.png"),
+      ];
+      const last = tilesOf(renderPictures(pictures, { onOpenImage })).at(-1)!;
+      act(() => last.props.onClick());
+      const opened = onOpenImage.mock.calls[0]![0];
+      expect(opened.images.at(opened.index)).toEqual({
+        src: served("map-landscape.png"),
+        name: "map-landscape.png",
+      });
+    } finally {
+      workspace.addressed.clear();
+    }
+  });
+
+  // Gone, with nothing past it the viewer can show, the last tile is no
+  // button: it would open nothing (E16).
+  it("draws a gone last tile with nothing viewable past it as no button", () => {
+    workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
+    workspace.files.set("/var/www/app/.shots/map-landscape.png", { _tag: "Failure" });
+    workspace.addressed.set("/var/www/app/.shots/world-mobile.png", served("world-mobile.png"));
+    try {
+      const pictures = [
+        ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
+        filePicture("world-mobile.png"),
+        filePicture("map-landscape.png"),
+      ];
+      const last = tilesOf(renderPictures(pictures, { onOpenImage: vi.fn() })).at(-1)!;
+      expect([last.type, last.props["data-result-picture"]]).toEqual(["span", "gone"]);
+    } finally {
+      workspace.addressed.clear();
+      workspace.files.delete("/var/www/app/.shots/map-landscape.png");
+    }
   });
 
   // Each tile takes its picture's shape at the strip's one height, from its

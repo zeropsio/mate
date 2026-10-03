@@ -289,6 +289,8 @@ interface ClaudeTurnState {
   latestAssistantRateLimited: boolean;
   emittedThinkingText: boolean;
   readonly thinkingSnapshotIds: Set<string>;
+  /** The Mate's model response streaming now (`message_start`): its calls are one batch. */
+  responseId?: string | undefined;
 }
 
 interface AssistantTextBlockState {
@@ -435,7 +437,8 @@ interface ClaudeSessionContext {
     id: TurnId;
     items: Array<unknown>;
   }>;
-  readonly inFlightTools: Map<number, ToolInFlight>;
+  /** By `inFlightToolKey`: a block index counts within one response, the parent's or a helper's. */
+  readonly inFlightTools: Map<string, ToolInFlight>;
   readonly claudeTasks: Map<string, ClaudeTaskState>;
   readonly taskAgents: Map<string, ClaudeTaskAgentState>;
   /**
@@ -1781,6 +1784,16 @@ function shouldRequestClaudeThinkingSummaries(input: {
   return input.thinking !== false && input.thinkingDisplay !== "omitted";
 }
 
+/**
+ * A tool block in flight, by the response it streams in: block indexes count
+ * per response, and a helper's response (`parent_tool_use_id`) streams beside
+ * its parent's, so an index alone would let a helper's call take the place of
+ * the parent's call at the same index, and one result would never close its call.
+ */
+function inFlightToolKey(parentToolUseId: string | null | undefined, index: number): string {
+  return `${parentToolUseId ?? ""}#${index}`;
+}
+
 function nativeProviderRefs(
   _context: ClaudeSessionContext,
   options?: {
@@ -2833,6 +2846,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             toolName: tool.toolName,
             input: tool.input,
           },
+          // Mate: its result never came; the turn's end closes it.
+          unreturned: true,
         },
         providerRefs: nativeProviderRefs(context, {
           providerItemId: tool.itemId,
@@ -2938,6 +2953,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     if (event.type === "message_start" && context.turnState && !streamParentToolUseId) {
       context.turnState.emittedThinkingText = false;
+      context.turnState.responseId = trimmedString(event.message.id);
     }
 
     if (event.type === "message_delta") {
@@ -3013,7 +3029,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
 
       if (event.delta.type === "input_json_delta") {
-        const tool = context.inFlightTools.get(event.index);
+        const tool = context.inFlightTools.get(inFlightToolKey(streamParentToolUseId, event.index));
         if (!tool || typeof event.delta.partial_json !== "string") {
           return;
         }
@@ -3037,7 +3053,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           parsedInput && Object.keys(parsedInput).length > 0
             ? toolInputFingerprint(parsedInput)
             : undefined;
-        context.inFlightTools.set(event.index, nextTool);
+        context.inFlightTools.set(inFlightToolKey(streamParentToolUseId, event.index), nextTool);
 
         if (
           !parsedInput ||
@@ -3051,7 +3067,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...nextTool,
           lastEmittedInputFingerprint: nextFingerprint,
         };
-        context.inFlightTools.set(event.index, nextTool);
+        context.inFlightTools.set(inFlightToolKey(streamParentToolUseId, event.index), nextTool);
 
         const stamp = yield* makeEventStamp();
         yield* offerRuntimeEvent({
@@ -3162,7 +3178,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(owningAgentId ? { agentId: owningAgentId } : {}),
         ...(parentToolUseId ? { parentToolUseId } : {}),
       };
-      context.inFlightTools.set(index, tool);
+      context.inFlightTools.set(inFlightToolKey(parentToolUseId, index), tool);
+      // A helper's call is no call of the Mate's response.
+      const responseId = parentToolUseId ? undefined : context.turnState?.responseId;
 
       const stamp = yield* makeEventStamp();
       yield* offerRuntimeEvent({
@@ -3180,6 +3198,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(tool.detail ? { detail: tool.detail } : {}),
           ...(tool.agentId ? { agentId: tool.agentId } : {}),
           ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+          ...(responseId ? { responseId } : {}),
           data: {
             toolName: tool.toolName,
             input: toolInput,
@@ -3199,7 +3218,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     if (event.type === "content_block_stop") {
       const { index } = event;
-      const assistantBlock = context.turnState?.assistantTextBlocks.get(index);
+      // Mate: a helper's block indexes are its own response's, never the Mate's text.
+      const assistantBlock = streamParentToolUseId
+        ? undefined
+        : context.turnState?.assistantTextBlocks.get(index);
       if (assistantBlock) {
         assistantBlock.streamClosed = true;
         yield* completeAssistantTextBlock(context, assistantBlock, {
@@ -3208,7 +3230,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
         return;
       }
-      const tool = context.inFlightTools.get(index);
+      const tool = context.inFlightTools.get(inFlightToolKey(streamParentToolUseId, index));
       if (!tool) {
         return;
       }
@@ -4527,7 +4549,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
       const pendingApprovals = new Map<ApprovalRequestId, PendingApproval>();
       const pendingUserInputs = new Map<ApprovalRequestId, PendingUserInput>();
-      const inFlightTools = new Map<number, ToolInFlight>();
+      const inFlightTools = new Map<string, ToolInFlight>();
       const claudeTasks = new Map<string, ClaudeTaskState>();
       const taskAgents = new Map<string, ClaudeTaskAgentState>();
       const pendingTaskModels = new Map<string, string>();

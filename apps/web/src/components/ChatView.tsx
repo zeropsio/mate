@@ -1,3 +1,4 @@
+import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
 import {
   collectProviderUsageLimits,
@@ -5495,6 +5496,21 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [feedbackSubmissions, routeThreadKey],
   );
+  // A stand-up's builds that ran on after its call returned leave the band
+  // once the store reads them done.
+  // Only while a turn runs: an operation of no turn never reads the project.
+  const runningOperations = useMemo(
+    () =>
+      activeRunningTurnId === null
+        ? []
+        : displayedTimeline.entries.flatMap((entry) =>
+            entry.kind === "operation" && entry.operation.turnId === activeRunningTurnId
+              ? [entry.operation]
+              : [],
+          ),
+    [displayedTimeline.entries, activeRunningTurnId],
+  );
+  const standupsDone = useStandupsDone(runningOperations, activeThreadEnvironmentId);
   // What runs while the Mate works — deploys, helpers, the task list — shown
   // in the conversation's working component, under the live line it belongs to.
   const dockModel = useMemo(
@@ -5512,8 +5528,10 @@ export default function ChatView(props: ChatViewProps) {
         pause: activeThreadShell?.usagePause
           ? { resetsAt: activeThreadShell.usagePause.resetsAt }
           : latestUsagePause(displayedTimeline.entries),
+        standupsDone,
       }),
     [
+      standupsDone,
       displayedTimeline.entries,
       isWorking,
       activeRunningTurnId,
@@ -8236,6 +8254,10 @@ export default function ChatView(props: ChatViewProps) {
                   routeThreadKey,
                   onOpenTurnDiff,
                   supportsConversationRollback,
+                  provider:
+                    activeThread.session?.providerName ??
+                    conversationProviderStatus?.driver ??
+                    null,
                   onRevertToTurnCount: onRevertTimelineTurn,
                   ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
                   isRevertingCheckpoint,

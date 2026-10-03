@@ -29,11 +29,15 @@
 import {
   buildGroupEnvironmentRowInputs,
   deployStatusKey,
+  firstDeployHeadKey,
+  firstDeployHeadLadder,
+  firstDeployHeadSettled,
   environmentTierForRole,
   GROUP_REPOSITORY,
   missingEnvironmentRows,
   planDeployStatusReads,
   planDeployedVersionReads,
+  planFirstDeployHeadReads,
   planMainHeadReads,
   readGroupEnvironments,
   planReleaseReads,
@@ -44,10 +48,12 @@ import {
   type GiteaCommit,
   type GiteaCommitStatus,
   type GiteaPullRequest,
+  type FirstDeployHeadRead,
   type GroupEnvironment,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentService,
   type GroupEnvironmentTier,
+  type MainHeadStatuses,
   type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
@@ -86,6 +92,8 @@ export interface ZeropsDeployGroup {
     readonly name: string;
     /** Its role tag, which says which tier it fills before any declaration does. */
     readonly role?: ZeropsEnvironmentRole | undefined;
+    /** When it was made: a stage's first deploy is asked for from then (`firstDeployHeadLadder`). */
+    readonly createdAt?: string | undefined;
     /** Its runtime services — the ones that hold code the broker deploys. */
     readonly services: ReadonlyArray<{
       readonly serviceId: string;
@@ -256,8 +264,19 @@ export async function readGroupDeploys(input: {
       planReleaseReads(heads, running),
       signal,
     );
+    // A stage waiting for its first deploy from that repository: its new head starts it again.
+    const firstHeads = await readFirstDeployHeads(
+      kept,
+      reads.statuses,
+      group,
+      heldFirstDeployReads(held, scope.repository),
+      held,
+      signal,
+    );
     return (current) =>
-      current === undefined ? undefined : withMainHeads(current, moved, heads, contents);
+      current === undefined
+        ? undefined
+        : withFirstDeployHeads(withMainHeads(current, moved, heads, contents), firstHeads);
   }
   // The org's listing first: what it says moved is read again below, and the rest is kept. One
   // that does not answer is no reason for this half to fail, which never needed it: it reads the
@@ -337,6 +356,22 @@ export async function readGroupDeploys(input: {
     if (answered !== null) statuses.set(deployStatusKey(read), answered);
   }
 
+  // A declared stage that runs nothing: the job deploying `main` there may fail before it asks the
+  // broker for its grant, and say so only on `main`'s head (run 5).
+  const heads = await readFirstDeployHeads(
+    client,
+    memo,
+    group,
+    planFirstDeployHeadReads({
+      declarations,
+      services,
+      versions,
+      repositories: onMain.repositories,
+    }),
+    held,
+    signal,
+  );
+
   const rowInputs = buildGroupEnvironmentRowInputs({
     owner: group.slug,
     declarations,
@@ -344,6 +379,7 @@ export async function readGroupDeploys(input: {
     services,
     versions,
     statuses,
+    heads,
     // Which repository each service is built from, so a row's version can
     // address the commit it was built from.
     repositories: onMain.repositories,
@@ -499,6 +535,122 @@ function withMainHeads(
     ),
   );
   return { ...held, mainHeads, releaseContents };
+}
+
+/**
+ * Each first-deploy head read (`planFirstDeployHeadReads`): the repository's `main` head — kept
+ * while the org's listing says nothing was pushed — and its statuses, read again until they settle
+ * (`firstDeployHeadSettled`) on `firstDeployHeadLadder`: a read a minute within the coming-up
+ * window of the stage's making, the head first seen, or a job moving there, one every five minutes
+ * until the broker's patience runs out, then none until a push makes a new head. A stage that runs a
+ * deploy, or a group with none declared, costs nothing. A read that does not answer keeps the
+ * head the group last read.
+ */
+async function readFirstDeployHeads(
+  client: GiteaClient,
+  memo: ForgeReads["statuses"],
+  group: ZeropsDeployGroup,
+  planned: ReadonlyArray<FirstDeployHeadRead>,
+  held: ZeropsGroupDeployState | undefined,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, MainHeadStatuses>> {
+  const heads = new Map<string, MainHeadStatuses>();
+  for (const read of planned) {
+    signal.throwIfAborted();
+    const askedAt = group.projects.find(
+      (project) => project.projectId === read.projectId,
+    )?.createdAt;
+    const head = await readFirstDeployHead(
+      client,
+      memo,
+      group.slug,
+      read,
+      heldHead(held, read),
+      askedAt,
+    );
+    if (head !== undefined) heads.set(firstDeployHeadKey(read), head);
+  }
+  return heads;
+}
+
+/** One head and its statuses; a read that does not answer keeps the head held before. */
+async function readFirstDeployHead(
+  client: GiteaClient,
+  memo: ForgeReads["statuses"],
+  slug: string,
+  read: FirstDeployHeadRead,
+  held: MainHeadStatuses | undefined,
+  askedAt: string | undefined,
+): Promise<MainHeadStatuses | undefined> {
+  try {
+    const sha = (await client.getBranch(slug, read.repo, "main"))?.commit?.id;
+    if (sha === undefined || sha === "") return held;
+    const nowMs = Date.now();
+    const waiting = firstDeployHeadLadder(held, read, sha, askedAt, nowMs);
+    // Past the broker's patience on the same head: what was read stands until a push.
+    if (waiting === undefined) return held;
+    const statuses = await memo.read(
+      { owner: slug, repo: read.repo, sha },
+      () => client.listCommitStatuses(slug, read.repo, sha),
+      { settled: (answered) => firstDeployHeadSettled(read, answered), waiting },
+    );
+    // When main was first seen at this commit: a head nobody posted to yet still waits.
+    const firstSeenAtMs = held?.sha === sha ? (held.firstSeenAtMs ?? nowMs) : nowMs;
+    return { sha, statuses, firstSeenAtMs };
+  } catch {
+    return held;
+  }
+}
+
+/** The first-deploy head reads a group held from one repository: what a merge into it re-reads. */
+function heldFirstDeployReads(
+  held: ZeropsGroupDeployState,
+  repository: string,
+): ReadonlyArray<FirstDeployHeadRead> {
+  return held.environments.flatMap((environment) =>
+    environment.services.flatMap((service) =>
+      service.head === undefined || service.repository !== repository
+        ? []
+        : [
+            {
+              projectId: environment.projectId,
+              environment: environment.environment,
+              hostname: service.hostname,
+              repo: repository,
+            },
+          ],
+    ),
+  );
+}
+
+/** The held answer with the re-read first-deploy heads in place. */
+function withFirstDeployHeads(
+  held: ZeropsGroupDeployState,
+  heads: ReadonlyMap<string, MainHeadStatuses>,
+): ZeropsGroupDeployState {
+  if (heads.size === 0) return held;
+  return {
+    ...held,
+    environments: held.environments.map((environment) => ({
+      ...environment,
+      services: environment.services.map((service) => {
+        const head = heads.get(
+          firstDeployHeadKey({ projectId: environment.projectId, hostname: service.hostname }),
+        );
+        return head === undefined ? service : { ...service, head };
+      }),
+    })),
+  };
+}
+
+/** The head a stage's service was last read with. */
+function heldHead(
+  held: ZeropsGroupDeployState | undefined,
+  read: FirstDeployHeadRead,
+): MainHeadStatuses | undefined {
+  return held?.environments
+    .find((environment) => environment.projectId === read.projectId)
+    ?.services.find((service) => service.hostname === read.hostname)?.head;
 }
 
 /** The version a service was last read with, by its project and hostname. */

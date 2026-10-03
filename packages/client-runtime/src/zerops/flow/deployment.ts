@@ -361,6 +361,11 @@ function runningBuilds(read: CollectionRead<ProcessRecord>): StopBuilds {
   return { builds, complete };
 }
 
+/** Whether the processes listing is complete enough to prove that no build runs. */
+export function buildsListed(processes: CollectionRead<ProcessRecord>): boolean {
+  return runningBuilds(processes).complete;
+}
+
 /**
  * The names the running builds give their app versions, over the ones held: the same map while
  * no build names anything new.
@@ -593,6 +598,10 @@ const knownNone = (
 ): shown is Extract<Shown<Deployment>, { state: "known" }> =>
   shown.state === "known" && shown.value.kind === "none";
 
+/** A build in flight: a re-check of the whole listing is no news of its end (run 5). */
+const knownDeploying = (shown: Shown<Deployment>): boolean =>
+  shown.state === "known" && shown.value.kind === "deploying";
+
 /** A known answer, now being checked again: since when, kept from a check already under way. */
 function revalidating<T>(
   held: Extract<Known<T>, { readonly state: "known" }>,
@@ -604,7 +613,7 @@ function revalidating<T>(
 
 /**
  * A stop read again, over what it showed: a re-check keeps the last answer where that answer was
- * "nothing deployed" (run 4, F5) — the import's own no-code version, which a push names only by
+ * "nothing deployed" (run 4, F5), or a build in flight (run 5) — the import's own no-code version, which a push names only by
  * its id (A14), then the account's store states, never ran anything either way. The listing read
  * again keeps the services it showed where each ran nothing, and a service checked again keeps its
  * none, revalidating, until an answer or a failure replaces it. A version is never held: one
@@ -619,7 +628,9 @@ export function heldThroughRecheck(
 ): Known<ReadonlyArray<StopService>> {
   if (shown.state !== "known") return next;
   if (rechecking(next)) {
-    return shown.value.every(({ deployment }) => knownNone(deployment))
+    return shown.value.every(
+      ({ deployment }) => knownNone(deployment) || knownDeploying(deployment),
+    )
       ? revalidating(shown, nowMs)
       : next;
   }
@@ -660,44 +671,69 @@ export interface SeenBuild {
  * run nothing ran no build of its — its first deploy failed (`afterBuild`), which no running-process
  * listing keeps once the build is gone. Only after {@link AFTER_BUILD_GRACE_MS} with still nothing
  * running: until then it says what it said while it built, since its new version may be on its
- * way. One running anything is forgotten. Returns the services seen building, the stop as shown,
+ * way — and so does one whose answer is not known yet, its new version unstated or a listing read
+ * again (run 5: "Checking what runs here…" for 1.2 s as a build ended). One running anything is
+ * forgotten. Returns the services seen building, the stop as shown,
  * and when the store must read it again for a grace to run out (`null` for none).
  */
 export function afterBuilds(
   built: ReadonlyMap<string, SeenBuild>,
   next: Known<ReadonlyArray<StopService>>,
   nowMs: number,
+  /** The processes listing is complete (`buildsListed`): a build it no longer shows has ended. */
+  listed: boolean,
 ): {
   readonly built: ReadonlyMap<string, SeenBuild>;
   readonly shown: Known<ReadonlyArray<StopService>>;
   readonly wakeAtMs: number | null;
 } {
-  if (next.state !== "known") return { built, shown: next, wakeAtMs: null };
+  if (next.state !== "known") {
+    // A re-check of the whole listing is no news of a build's end: a grace already running keeps
+    // its end, so the stop is read again as it runs out.
+    let wakeAtMs: number | null = null;
+    for (const { endedAtMs } of built.values()) {
+      if (endedAtMs === null) continue;
+      const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
+      if (nowMs < graceEndsAtMs && (wakeAtMs === null || graceEndsAtMs < wakeAtMs))
+        wakeAtMs = graceEndsAtMs;
+    }
+    return { built, shown: next, wakeAtMs };
+  }
   const seen = new Map(built);
   let changed = false;
   let wakeAtMs: number | null = null;
   const value = next.value.map((service): StopService => {
     const { deployment } = service;
-    if (deployment.state !== "known") return service;
     const id = service.service.serviceId;
-    if (deployment.value.kind === "deploying") {
+    if (deployment.state === "known" && deployment.value.kind === "deploying") {
       seen.set(id, { building: deployment, endedAtMs: null });
       return service;
     }
-    if (deployment.value.kind === "running") {
+    if (deployment.state === "known" && deployment.value.kind === "running") {
       seen.delete(id);
       return service;
     }
     const build = seen.get(id);
     if (build === undefined) return service;
+    // Its end is known only from a complete listing of the processes that no longer shows it: a
+    // re-check of them while it runs starts no grace. A source that failed says why instead.
+    if (build.endedAtMs === null && !listed) {
+      if (deployment.state === "failed") return service;
+      changed = true;
+      return { ...service, deployment: build.building };
+    }
     const endedAtMs = build.endedAtMs ?? nowMs;
     if (build.endedAtMs === null) seen.set(id, { ...build, endedAtMs });
-    changed = true;
     const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
+    // Its new version not known yet, or nothing running yet: the deploy is still finishing.
     if (nowMs < graceEndsAtMs) {
+      changed = true;
       wakeAtMs = wakeAtMs === null ? graceEndsAtMs : Math.min(wakeAtMs, graceEndsAtMs);
       return { ...service, deployment: build.building };
     }
+    // Past the grace, what is not known reads as not known; only a known none failed.
+    if (deployment.state !== "known") return service;
+    changed = true;
     return { ...service, deployment: { ...deployment, value: { kind: "none", afterBuild: true } } };
   });
   return { built: seen, shown: changed ? { ...next, value } : next, wakeAtMs };

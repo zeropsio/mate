@@ -1,7 +1,12 @@
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
-import { settledStandupReading, standupExpected, standupReadingFor } from "./useStandupReading";
+import {
+  settledStandupReading,
+  standupBuildsDone,
+  standupExpected,
+  standupReadingFor,
+} from "./useStandupReading";
 
 const standup = (overrides: Partial<ZeropsOperation>): ZeropsOperation => ({
   key: "op:s",
@@ -208,5 +213,95 @@ describe("standupReadingFor — a running call its Mate relays", () => {
   it("a settled call reads as it settled, whatever was relayed", () => {
     const settled = { ...relayed, phase: "done" as const };
     expect(standupReadingFor(settled, { nowMs: 0 })?.rows).toEqual([]);
+  });
+});
+
+// A stand-up's call returns while its builds run on (pass 35): its report
+// froze as it returned, and the store's reading of its services says when
+// they are done, so the band lets it go.
+describe("standupBuildsDone — a stand-up that ran on after its call returned", () => {
+  const services = [
+    {
+      hostname: "db",
+      serviceId: "s-db",
+      group: "data" as const,
+      runsCode: false,
+      status: "ACTIVE",
+    },
+    {
+      hostname: "appdev",
+      serviceId: "s-appdev",
+      group: "runtimes" as const,
+      runsCode: true,
+      status: "ACTIVE",
+    },
+    {
+      hostname: "apidev",
+      serviceId: "s-apidev",
+      group: "runtimes" as const,
+      runsCode: false,
+      status: "READY_TO_DEPLOY",
+    },
+  ];
+  const build = (
+    serviceId: string,
+    status: string,
+    finished?: string,
+    created = "2026-09-02T10:01:00.000Z",
+  ) => ({
+    id: `p-${serviceId}-${created}`,
+    projectId: "proj",
+    serviceStackIds: [serviceId],
+    status,
+    actionName: "stack.build",
+    created,
+    ...(finished === undefined ? {} : { finished }),
+  });
+  const ranOn = standup({
+    returnedAt: "2026-09-02T10:02:00.000Z",
+    steps: [step("appdev", "done"), step("apidev", "running")],
+  });
+  const nowMs = Date.parse("2026-09-02T10:08:00.000Z");
+  it.each([
+    {
+      name: "its build finished: done",
+      processes: [build("s-apidev", "FINISHED", "2026-09-02T10:07:00.000Z")],
+      done: true,
+    },
+    { name: "its build still runs", processes: [build("s-apidev", "RUNNING")], done: false },
+    { name: "no build of it seen yet", processes: [], done: false },
+    { name: "the project not read yet", processes: undefined, done: false },
+    {
+      // A later deploy in the same turn is no build of the stand-up's (E1).
+      name: "its build finished, then a later deploy builds it again: still done",
+      processes: [
+        build("s-apidev", "FINISHED", "2026-09-02T10:07:00.000Z"),
+        build("s-apidev", "RUNNING", undefined, "2026-09-02T10:07:30.000Z"),
+      ],
+      done: true,
+    },
+  ])("$name", ({ processes, done }) => {
+    expect(
+      standupBuildsDone(ranOn, {
+        services,
+        ...(processes === undefined ? {} : { processes }),
+        nowMs,
+      }),
+    ).toBe(done);
+  });
+
+  // Its turn over, it stands as the call left it: never the project as it is
+  // today, and no reading of it (E7).
+  it.each([
+    { live: true, apidev: "up" },
+    { live: false, apidev: "building" },
+  ])("reads its builds only while its turn runs: $live", ({ live, apidev }) => {
+    const reading = standupReadingFor(ranOn, {
+      services,
+      processes: [build("s-apidev", "FINISHED", "2026-09-02T10:07:00.000Z")],
+      nowMs,
+      live,
+    });
+    expect(reading?.rows.find((row) => row.hostname === "apidev")?.state).toBe(apidev);
   });
 });

@@ -1,4 +1,8 @@
-import { GiteaApiError, type GiteaClient } from "@t3tools/client-runtime/zerops";
+import {
+  buildGroupEnvironmentRows,
+  GiteaApiError,
+  type GiteaClient,
+} from "@t3tools/client-runtime/zerops";
 import { createGroupAnswers, flowVerbInvalidations } from "@t3tools/client-runtime/zerops/flow";
 import { createForgeReads, GATE_FRESH_MS } from "@t3tools/client-runtime/zerops/forge";
 import { act, createElement } from "react";
@@ -1034,5 +1038,320 @@ describe("useZeropsGroupDeploys", () => {
     await act(async () => {
       root.unmount();
     });
+  });
+});
+
+// Run 5 (2–3 Oct 2026): a stage's first deploy failed in the group's workflow before it asked the
+// broker for its grant, and said so only on `main`'s head — "on its way" stood for 4.3 min.
+describe("a stage's first deploy on main's head", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const HEAD = "4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5";
+  const STAGE_TIER = `services:
+  - hostname: app
+    type: nodejs@22
+    buildFromGit: https://gitea.test/harbor/appdev
+`;
+
+  /** The group repo of {@link listedGroupRepo}, its stage tier building `app` from `appdev`. */
+  function stageRepo(options: { readonly declares?: boolean | undefined } = {}) {
+    const { client: base, calls, listed } = listedGroupRepo();
+    listed.set("appdev", { updated_at: PUSHED, open_pr_counter: 0 });
+    const head = {
+      sha: HEAD,
+      statuses: [] as Array<{
+        context: string;
+        state: string;
+        created_at?: string;
+        description?: string;
+      }>,
+      /** A push to `appdev`: a new head, which the org's listing shows. */
+      push: (sha: string) => {
+        head.sha = sha;
+        head.statuses = [];
+        listed.set("appdev", {
+          updated_at: new Date(Date.now()).toISOString(),
+          open_pr_counter: 0,
+        });
+      },
+    };
+    const client = {
+      ...base,
+      listDirectory: async (owner: string, name: string, path: string, ref: string) =>
+        options.declares === false
+          ? (calls.push(`list ${name}/${path}`), [])
+          : base.listDirectory(owner, name, path, ref),
+      readFile: async (owner: string, name: string, path: string, ref: string) => {
+        if (path === "3 — Stage/import.yaml") {
+          calls.push(`read ${name}/${path}`);
+          return { content: STAGE_TIER };
+        }
+        return base.readFile(owner, name, path, ref);
+      },
+      getBranch: async (_owner: string, name: string, branch: string) => {
+        calls.push(`branch ${name}/${branch}`);
+        return name === "appdev" ? { name: "main", commit: { id: head.sha } } : undefined;
+      },
+      listCommitStatuses: async (_owner: string, name: string, sha: string) => {
+        calls.push(`statuses ${name}@${sha.slice(0, 7)}`);
+        return head.statuses;
+      },
+    } as unknown as GiteaClient;
+    return { client, calls, head };
+  }
+
+  /** Reads the group once a minute for `minutes`, as the reader's clock does. */
+  async function everyMinute(
+    client: GiteaClient,
+    readVersion: () => Promise<string | undefined>,
+    minutes: number,
+    between: (minute: number) => void = () => undefined,
+    group: ZeropsDeployGroup = GROUP,
+  ) {
+    const reads = createForgeReads();
+    let held: ZeropsGroupDeployState | undefined;
+    const rows: Array<ZeropsGroupDeployState | undefined> = [];
+    for (let minute = 0; minute < minutes; minute += 1) {
+      if (minute > 0) vi.advanceTimersByTime(GROUP_DEPLOYS_REFRESH_MS);
+      between(minute);
+      held = (
+        await readGroupDeploys({
+          client,
+          group,
+          scope: "group",
+          readVersion,
+          held,
+          signal: new AbortController().signal,
+          reads,
+        })
+      )(held);
+      rows.push(held);
+    }
+    return rows;
+  }
+
+  const failureOf = (state: ZeropsGroupDeployState | undefined) =>
+    buildGroupEnvironmentRows({
+      owner: "harbor",
+      declarations: state?.declarations ?? [],
+      projectNames: new Map(),
+      services: [{ projectId: "p-stage", serviceId: "s1", hostname: "app" }],
+      versions: new Map(),
+      statuses: new Map(),
+      heads: new Map(
+        (state?.environments ?? []).flatMap((environment) =>
+          environment.services.flatMap((service) =>
+            service.head === undefined
+              ? []
+              : [[`${environment.projectId}/${service.hostname}`, service.head] as const],
+          ),
+        ),
+      ),
+    })[0]?.firstDeployFailure;
+
+  const posted = (context: string, state: string, description?: string) => ({
+    context,
+    state,
+    created_at: new Date(Date.now()).toISOString(),
+    ...(description === undefined ? {} : { description }),
+  });
+  const PUSH = "Zerops deploy / deploy (push)";
+  const BROKER = "mate/deploy/stage/app";
+
+  it("says a push job's failure from the next read, and reads on: a dispatch past its steps turns it", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, head } = stageRepo();
+    head.statuses = [posted(BROKER, "pending", "dispatched")];
+    const rows = await everyMinute(
+      client,
+      async () => undefined,
+      10,
+      (minute) => {
+        if (minute === 4)
+          head.statuses = [posted(PUSH, "failure", "Failing after 9s"), ...head.statuses];
+        if (minute === 7)
+          head.statuses = [posted(BROKER, "pending", "deploying 4e5f6a7"), ...head.statuses];
+      },
+    );
+    expect(rows.map(failureOf)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { reason: undefined },
+      { reason: undefined },
+      { reason: undefined },
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("never says a refusal the broker retries failed, and reads its retry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [posted(BROKER, "failure", "has no workflow zerops.yml for the stage")];
+    const rows = await everyMinute(
+      client,
+      async () => undefined,
+      6,
+      (minute) => {
+        if (minute === 3)
+          head.statuses = [posted(BROKER, "pending", "dispatched"), ...head.statuses];
+      },
+    );
+    expect(rows.map(failureOf)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(
+      calls.filter((call) => call.startsWith("statuses appdev")).length,
+    ).toBeGreaterThanOrEqual(5);
+  });
+
+  it("says the broker's own job report, and why, and reads no more", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [posted(BROKER, "failure", "failed: the build step exited with 1")];
+    const rows = await everyMinute(client, async () => undefined, 6);
+    expect(failureOf(rows[5])).toEqual({ reason: "the build step exited with 1" });
+    expect(calls.filter((call) => call.startsWith("statuses appdev"))).toHaveLength(1);
+  });
+
+  /** The group of {@link GROUP}, its stage made `minutes` before the clock's start. */
+  const madeBefore = (minutes: number): ZeropsDeployGroup => ({
+    ...GROUP,
+    projects: GROUP.projects.map((project) => ({
+      ...project,
+      createdAt: new Date(Date.parse("2026-10-02T22:10:00Z") - minutes * 60_000).toISOString(),
+    })),
+  });
+
+  it("reads no more past the broker's patience, and a late fix's head until its job posts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [posted(BROKER, "pending", "dispatched")];
+    const reads = () => calls.filter((call) => call.startsWith("statuses appdev")).length;
+    let rested = 0;
+    const rows = await everyMinute(
+      client,
+      async () => undefined,
+      60,
+      (minute) => {
+        if (minute === 40) rested = reads();
+        // A fix merged late: Gitea posts nothing on its head for three minutes, then the failure.
+        if (minute === 50) head.push("5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b");
+        if (minute === 53) head.statuses = [posted(PUSH, "failure", "Failing after 9s")];
+      },
+      madeBefore(40),
+    );
+    expect(
+      reads() - rested - calls.filter((call) => call === "statuses appdev@5a6b7c8").length,
+    ).toBe(0);
+    expect(failureOf(rows[49])).toBeUndefined();
+    expect(failureOf(rows[53])).toEqual({ reason: undefined });
+  });
+
+  it.each([
+    {
+      retry: "re-dispatches every 22 minutes",
+      every: 22,
+      status: () => posted(BROKER, "pending", "dispatched"),
+    },
+    {
+      retry: "refuses every 5 minutes",
+      every: 5,
+      status: () => posted(BROKER, "failure", "the runner is busy"),
+    },
+  ])("stops for good on a head the broker $retry", async ({ every, status }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [status()];
+    await everyMinute(
+      client,
+      async () => undefined,
+      180,
+      (minute) => {
+        if (minute > 0 && minute % every === 0) head.statuses = [status(), ...head.statuses];
+      },
+      madeBefore(0),
+    );
+    // 15 reads a minute in the window, 4 on the verdict back-off, then none for three hours.
+    expect(calls.filter((call) => call.startsWith("statuses appdev")).length).toBeLessThanOrEqual(
+      15 + 4,
+    );
+  });
+
+  it("re-reads a stage's head as a merge into its repository lands", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, head } = stageRepo();
+    head.statuses = [posted(PUSH, "failure")];
+    const reads = createForgeReads();
+    const read = (
+      scope: "group" | { kind: "main-head"; repository: string },
+      held?: ZeropsGroupDeployState,
+    ) =>
+      readGroupDeploys({
+        client,
+        group: GROUP,
+        scope,
+        readVersion: async () => undefined,
+        held,
+        signal: new AbortController().signal,
+        reads,
+      }).then((update) => update(held));
+    const failed = await read("group");
+    expect(failureOf(failed)).toEqual({ reason: undefined });
+    head.push("5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b");
+    reads.forget("harbor", "appdev");
+    const merged = await read({ kind: "main-head", repository: "appdev" }, failed);
+    expect(failureOf(merged)).toBeUndefined();
+  });
+
+  it("falls to a read every five minutes once the head is quiet past the window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [
+      { context: "mate/deploy/stage/app", state: "pending", created_at: "2026-10-02T22:09:30Z" },
+    ];
+    const reads = () => calls.filter((call) => call.startsWith("statuses appdev")).length;
+    let quietFrom = 0;
+    await everyMinute(
+      client,
+      async () => undefined,
+      40,
+      (minute) => {
+        if (minute === 20) quietFrom = reads();
+      },
+    );
+    // A read a minute while a job may run there; then one every five minutes.
+    expect(quietFrom).toBeLessThanOrEqual(20);
+    expect(reads() - quietFrom).toBeLessThanOrEqual(4);
+  });
+
+  it.each([
+    { name: "whose stage runs a deploy", readVersion: async () => `main ${SHA.slice(0, 7)}` },
+    { name: "that declares no stage", readVersion: async () => undefined, declares: false },
+  ])("asks nothing of main's head for a group $name", async ({ readVersion, declares }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls } = stageRepo({ declares });
+    await everyMinute(client, readVersion, 5);
+    expect(
+      calls.filter((call) => call === "branch appdev/main" || call === "statuses appdev@4e5f6a7"),
+    ).toEqual([]);
   });
 });
