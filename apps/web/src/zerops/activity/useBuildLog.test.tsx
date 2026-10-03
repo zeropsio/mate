@@ -4,13 +4,18 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BuildLogLine, BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import {
   AccountEpoch,
+  makeBuildLogRegistry,
+  makeBuildLogTransport,
   makeZeropsApiOrigin,
+  makeZeropsDataPolicy,
   ZeropsAccountId,
   ZeropsOrganizationId,
   ZeropsProjectId,
+  type AccessState,
   type BuildLogLease,
   type BuildLogRegistry,
   type BuildLogSnapshot,
+  type BuildLogSocket,
   type ManagedZeropsDataRuntime,
   type ProjectRef,
   type SharedBuildLogSession,
@@ -423,6 +428,129 @@ describe("useBuildLog runtime lease binding", () => {
       expect(onResult.mock.calls.at(-1)?.[0].status).toBe("error");
     } finally {
       await act(() => root.unmount());
+    }
+  });
+});
+
+/** The log backend's stream, as the browser opens it: its url, and the frames it answers. */
+class StreamSocket implements BuildLogSocket {
+  static opened: StreamSocket[] = [];
+  readonly url: string;
+  #message: ((event: { readonly data: unknown }) => void) | undefined;
+
+  constructor(url: string) {
+    this.url = url;
+    StreamSocket.opened.push(this);
+  }
+
+  addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
+  addEventListener(type: "error" | "close", listener: () => void): void;
+  addEventListener(
+    type: "message" | "error" | "close",
+    listener: ((event: { readonly data: unknown }) => void) | (() => void),
+  ): void {
+    if (type === "message") this.#message = listener as (event: { readonly data: unknown }) => void;
+  }
+
+  answer(
+    items: ReadonlyArray<{
+      readonly id: string;
+      readonly timestamp: string;
+      readonly message: string;
+    }>,
+  ) {
+    this.#message?.({ data: JSON.stringify({ items }) });
+  }
+
+  close(): void {}
+}
+
+const VERIFIED: AccessState = {
+  status: "verified",
+  account,
+  accountEpoch: AccountEpoch.make(1),
+  verifiedAtMs: 0,
+  deadlineMs: Number.MAX_SAFE_INTEGER,
+  mutationsAllowed: true,
+  organizations: [{ organization, mutationsAllowed: true }],
+  projects: [{ project: PROJECT, role: "OWNER", mutationsAllowed: true }],
+};
+
+describe("useBuildLog over the account's own log registry", () => {
+  // Live run, 2026-10-03: a running deploy's log was read 2 s in, the build
+  // had written nothing yet, and its stream — asked from the backfill's time —
+  // stood open through the whole build without a line. The slot's room stood
+  // empty and "Build log" never appeared until the run settled.
+  it("reads a running build's log while it runs, draws its streamed lines, and the line that plops as it settles keeps the one read", async () => {
+    installTestDom();
+    StreamSocket.opened = [];
+    const { createRoot } = await import("react-dom/client");
+    const { useBuildLog } = await import("./useBuildLog.ts");
+    const pageReads: string[] = [];
+    const scope = { account, epoch: AccountEpoch.make(1) };
+    const logs = makeBuildLogRegistry({
+      scope,
+      access: () => VERIFIED,
+      now: () => 0,
+      transport: makeBuildLogTransport({
+        scope,
+        acquireGrant: async () => ({ url: "https://logs.example.test/api/rest/log?accessToken=t" }),
+        fetchImpl: async (url) => {
+          pageReads.push(url);
+          return { ok: true, json: async () => ({ items: [] }) };
+        },
+        WebSocketCtor: StreamSocket,
+      }),
+      policy: makeZeropsDataPolicy(),
+      setTimer: (callback) => setTimeout(callback, 0),
+      clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    });
+    const managed = { logs, scope } as unknown as ManagedZeropsDataRuntime;
+    const running: BuildLogQuery = { ...QUERY, fromIso: "2026-10-03T10:00:00.000Z" };
+    const seen: Record<string, ReadonlyArray<string>> = {};
+    const record = (where: string, lines: ReadonlyArray<BuildLogLine>) => {
+      seen[where] = lines.map(({ text }) => text);
+    };
+
+    function Line({ where, live }: { readonly where: string; readonly live: boolean }) {
+      const { lines } = useBuildLog({ projectId: "project-1", query: running, live });
+      useEffect(() => record(where, lines), [where, lines]);
+      return null;
+    }
+    const draw = (where: string, live: boolean) => (
+      <ZeropsDataContext value={context(managed)}>
+        <InventoryContext value={inventory()}>
+          <Line key={where} live={live} where={where} />
+        </InventoryContext>
+      </ZeropsDataContext>
+    );
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => root.render(draw("slot", true)));
+      await act(() => logs.drain());
+
+      expect(pageReads).toHaveLength(1);
+      expect(StreamSocket.opened).toHaveLength(1);
+      expect(new URL(StreamSocket.opened[0]!.url).searchParams.get("from")).toBeNull();
+
+      await act(async () => {
+        StreamSocket.opened[0]!.answer([
+          { id: "b1", timestamp: "2026-10-03T10:00:14.000Z", message: "Installing dependencies" },
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      });
+      expect(seen.slot).toEqual(["Installing dependencies"]);
+
+      // Its call settled: the line plops from the slot into the history.
+      await act(() => root.render(draw("history", false)));
+      await act(() => logs.drain());
+      expect(seen.history).toEqual(["Installing dependencies"]);
+      expect(pageReads).toHaveLength(1);
+      expect(StreamSocket.opened).toHaveLength(1);
+    } finally {
+      await act(() => root.unmount());
+      logs.shutdown();
     }
   });
 });

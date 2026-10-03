@@ -7,7 +7,7 @@
  * (`frontend-legacy` `trlog.utils.ts`) and its build-log query
  * (`pipeline-detail.feature.ts` `buildLogParams$`: `serviceStackId` = the
  * build container's own service, `tags=zbuilder@<appVersionId>`,
- * `from` = `pipelineStart − 5s`).
+ * `from` = `pipelineStart − 5s`, the backfill's only).
  *
  * Live-verified against the log backend (2026-09-03, from a container, a
  * real project's access URL): the access URL's own query already carries
@@ -68,17 +68,21 @@ export function buildLogUrls(
   const wsUrl = new URL(httpUrl.toString());
   wsUrl.protocol = "wss:";
   wsUrl.pathname = `${wsUrl.pathname}/stream`;
-  // The live stream is not paginated the same way as the backfill — always
-  // `limit=100`, independent of whatever backfill page size was asked for.
+  // The stream is asked for as the GUI asks for it (`trlog.store.ts`
+  // `_openLogStream$`): always `limit=100` and `desc=0`, and a `from` only
+  // as a line's id (`withStreamFrom`), never the backfill's time — a stream
+  // opened with `from=<time>` stood through a whole build and answered no
+  // line (live run, 2026-10-03).
   wsUrl.searchParams.set("limit", String(STREAM_LIMIT));
+  wsUrl.searchParams.set("desc", "0");
+  wsUrl.searchParams.delete("from");
 
   // The HTTP backfill wants the newest `limit` lines: the GUI's default
   // tail params always send `desc=1` (trlog.store.ts's `_toStateApiParams`)
   // and zcp's own log fetcher sets it unconditionally (logfetcher.go) —
   // without it, a log over `limit` lines backfills the OLDEST `limit`
   // lines instead. `mergeBuildLogLines` re-sorts ascending regardless of
-  // what order the backend answers in. Set after cloning `wsUrl` — the
-  // GUI's live-stream request never carries `desc`, so it stays off `ws`.
+  // what order the backend answers in.
   httpUrl.searchParams.set("desc", "1");
 
   return { http: httpUrl.toString(), ws: wsUrl.toString() };

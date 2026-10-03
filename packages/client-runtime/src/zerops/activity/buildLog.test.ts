@@ -75,13 +75,14 @@ describe("buildLogUrls", () => {
    * OLDEST `limit` lines instead of the newest. `mergeBuildLogLines`
    * re-sorts ascending regardless of what order the backend answers in.
    *
-   * The live stream never carries `desc` in the GUI's own request either,
-   * so it stays off the ws url.
+   * The live stream sends `desc=0`, as the GUI's own stream request does
+   * (`addTrlogParamsToUrl` defaults it), and never the backfill's time `from`.
    */
-  it("sends desc=1 on the HTTP backfill only, never on the ws stream", () => {
-    const { http, ws } = buildLogUrls(access, query);
+  it("sends desc=1 and the time from on the HTTP backfill only", () => {
+    const { http, ws } = buildLogUrls(access, { ...query, fromIso: "2026-09-02T09:59:50.000Z" });
     expect(new URL(http).searchParams.get("desc")).toBe("1");
-    expect(new URL(ws).searchParams.has("desc")).toBe(false);
+    expect(new URL(ws).searchParams.get("desc")).toBe("0");
+    expect(new URL(ws).searchParams.has("from")).toBe(false);
   });
 });
 
