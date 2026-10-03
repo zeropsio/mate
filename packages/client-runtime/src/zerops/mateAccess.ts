@@ -356,22 +356,23 @@ export function handOverCandidates<
 
 /**
  * Handing a Mate over: one person's project role list with this project's
- * role set, and their every other project's untouched (guide 0.8, D11).
+ * role set — or, `null`, gone from it — and their every other project's
+ * untouched (guide 0.8, D11).
  *
  * `PUT /client-user/{id}/roles` replaces the person's list wholesale, so the
  * caller sends the whole thing; a blind write would drop the person's role on
- * every other project. Overrides are measured in both directions — the same
- * call, lowered, takes a Mate away.
+ * every other project. Measured both ways: the same call, lowered, takes a
+ * Mate away, and a list without the project drops it alone (F7, 2026-10-03).
  */
 export function withMateProjectRole(
   projectRoleList:
     | ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>
     | undefined,
   projectId: string,
-  roleCode: ZeropsOrgRole,
+  roleCode: ZeropsOrgRole | null,
 ): ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }> {
   const others = (projectRoleList ?? [])
     .filter((entry) => entry.projectId !== projectId)
     .map((entry) => ({ projectId: entry.projectId, roleCode: entry.roleCode }));
-  return [...others, { projectId, roleCode }];
+  return roleCode === null ? others : [...others, { projectId, roleCode }];
 }

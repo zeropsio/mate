@@ -1839,14 +1839,15 @@ export type MateProjectRoleCode = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY"
 
 /**
  * Handing a Mate to a person — a per-project role override (guide 0.8, D11).
- * Lowered, the same command takes a Mate away.
+ * Lowered, the same command takes a Mate away; `null` takes the project off the
+ * person's list, as a hand over does to the Mate's previous owner (F23).
  */
 export interface SetProjectMemberRoleCommandIntent {
   readonly kind: "set-project-member-role";
   readonly project: ProjectRef;
   /** The `clientUser` id — what a project's `userRoles` names. */
   readonly clientUserId: string;
-  readonly roleCode: MateProjectRoleCode;
+  readonly roleCode: MateProjectRoleCode | null;
 }
 
 export interface ImportDevelopmentContainerCommandIntent {

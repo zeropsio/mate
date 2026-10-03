@@ -2146,6 +2146,28 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
       { projectId: "p1", roleCode: "READ_ONLY" },
     ]);
   });
+
+  // F23: a hand over takes OWNER from whoever held it — this project off their list, their other
+  // projects kept, as measured in F7 (f7-handover-probe.json: restored by the same call, exact).
+  it("takes this project off a person's list, keeping their others", async () => {
+    const stub = answering([
+      { projectId: "p1", roleCode: "OWNER" },
+      { projectId: "p-elsewhere", roleCode: "OWNER" },
+    ]);
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.setProjectMemberRole({ projectId: "p1", clientUserId: "cu-krls", roleCode: null });
+
+    expect(sent(stub)).toEqual([
+      "GET /client-user/cu-krls/roles",
+      "PUT /client-user/cu-krls/roles",
+      "GET /project/p1",
+    ]);
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
+      projectRoleList: [{ projectId: "p-elsewhere", roleCode: "OWNER" }],
+    });
+  });
 });
 
 describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {

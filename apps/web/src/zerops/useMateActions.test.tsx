@@ -401,6 +401,53 @@ describe("useMateActions — Hand this Mate over", () => {
     expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
+  // F23 (e2e, 2026-10-03): Fin handed back to Karlos read OWNER twice, and the menu named the one
+  // who had handed it over. A Mate has one OWNER: the hand over gives it to the person picked, then
+  // takes it from whoever held it — the key's grant, not an OWNER, untouched.
+  describe("one OWNER per Mate", () => {
+    const KEY = { clientUserId: "cu-key", roleCode: "BASIC_USER" };
+    const handed = {
+      ...FEN.project,
+      userRoles: [
+        KEY,
+        { clientUserId: "cu-eva", roleCode: "OWNER" },
+        { clientUserId: "cu-ada", roleCode: "OWNER" },
+      ],
+    };
+
+    it("gives it to the person picked, then takes it from its previous owner", async () => {
+      mock.setProjectMemberRole.mockResolvedValueOnce(handed).mockResolvedValueOnce(undefined);
+      mount();
+      openAssign();
+      await act(async () => {
+        mock.assignDialog.current!.onSubmit("cu-eva");
+      });
+      expect(mock.setProjectMemberRole.mock.calls.map(([, input]) => input)).toEqual([
+        { clientUserId: "cu-eva", roleCode: "OWNER" },
+        { clientUserId: "cu-ada", roleCode: null },
+      ]);
+      expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
+    });
+
+    it("says the hand over is not complete where its previous owner keeps it, and reads the grants again", async () => {
+      mock.setProjectMemberRole
+        .mockResolvedValueOnce(handed)
+        .mockRejectedValueOnce(new Error("Zerops refused it."));
+      mount();
+      openAssign();
+      await act(async () => {
+        mock.assignDialog.current!.onSubmit("cu-eva");
+      });
+      // Open, saying what stands: the person picked has it, the previous owner still does.
+      expect(mock.assignDialog.current).toMatchObject({
+        pending: false,
+        error: "It was handed over, but its previous owner still owns it too: Zerops refused it.",
+      });
+      // The first write landed: the grant is asked again, so the menu reads what the platform holds.
+      expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
+    });
+  });
+
   it("closes once the platform takes it", async () => {
     let answer: (value: unknown) => void = () => {};
     mock.setProjectMemberRole.mockReturnValue(

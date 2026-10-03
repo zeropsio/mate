@@ -477,31 +477,51 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * Hands a Mate over (guide 0.8, D11): a per-project role override to OWNER
-   * for the person picked, written on their own role list
-   * (`ZeropsApiClient.setProjectMemberRole`). The dialog stays open until the
-   * platform answers: a refusal is said there, and nothing changes. Taken, the
-   * access grant reads every project's grants again at once (`grants-written`),
-   * so the person who handed the Mate over sees its new owner now (F11).
+   * Hands a Mate over (guide 0.8, D11): a transfer — a Mate has one OWNER (F23, 2026-10-03). The
+   * person picked gets a per-project override to OWNER on their own role list
+   * (`ZeropsApiClient.setProjectMemberRole`); then whoever else the project names OWNER, as the
+   * platform answers that write, has the project taken off theirs. The key's grant, not an OWNER,
+   * stays. The dialog stays open until the platform answers: a refusal of the first write is said
+   * there and nothing changes; one of the second says the hand over is not complete — the person
+   * picked has it, the previous owner still does too. Once anything was written, the access grant
+   * reads every project's grants again at once (`grants-written`), so the person who handed the
+   * Mate over sees what the platform holds now (F11).
    */
   const assign = useCallback(
     (candidate: ZeropsCandidatePresentation, clientUserId: string) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
+      const project = projectRef(activeOrganization.id, candidate.project.id);
+      const writeRole = (input: {
+        readonly clientUserId: string;
+        readonly roleCode: "OWNER" | null;
+      }) => runZeropsCommand(runtime.commands.setProjectMemberRole(project, input));
+      const refused = (error: string) => {
+        if (isCurrent()) setPress({ pending: false, error });
+      };
       setPress({ pending: true, error: null });
-      runZeropsCommand(
-        runtime.commands.setProjectMemberRole(
-          projectRef(activeOrganization.id, candidate.project.id),
-          { clientUserId, roleCode: "OWNER" },
-        ),
-      ).then(
-        () => {
+      writeRole({ clientUserId, roleCode: "OWNER" }).then(
+        async (handed) => {
+          const previous = (handed?.userRoles ?? []).filter(
+            (entry) => entry.roleCode === "OWNER" && entry.clientUserId !== clientUserId,
+          );
+          try {
+            for (const owner of previous) {
+              await writeRole({ clientUserId: owner.clientUserId, roleCode: null });
+            }
+          } catch (cause) {
+            if (isCurrent()) invalidateZerops({ topic: "access", change: "grants-written" });
+            refused(
+              `It was handed over, but its previous owner still owns it too: ${zeropsErrorMessage(cause)}`,
+            );
+            return;
+          }
           if (!isCurrent()) return;
           invalidateZerops({ topic: "access", change: "grants-written" });
           setDialog(null);
         },
         (cause: unknown) => {
-          if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
+          refused(zeropsErrorMessage(cause));
         },
       );
     },
