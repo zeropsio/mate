@@ -158,6 +158,7 @@ import { useSyncStateOnChange } from "./composerStateSync";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
+  withoutShadowedProviderCommands,
 } from "./composerSlashCommandSearch";
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { getTraitsSectionVisibility } from "./TraitsPicker";
@@ -544,6 +545,8 @@ export interface ChatComposerProps {
   externalDrawerAttached: boolean;
   /** Picking /usage-limits from the menu is the action itself; the draft keeps nothing of it. */
   onUsageLimitsCommand?: (() => void) | undefined;
+  /** Mate's own /mcp: opens the MCP tab; nothing is sent. */
+  onMcpCommand?: (() => void) | undefined;
   /** The composer's environment is not connected: nothing can be sent. */
   environmentUnavailable: boolean;
 
@@ -1224,6 +1227,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerTerminalContexts.length === 0 &&
     composerReviewComments.length === 0;
 
+  const mcpCommandOffered = props.onMcpCommand !== undefined;
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path" || composerTrigger.kind === "crewmate") {
@@ -1273,6 +1277,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           label: "/model",
           description: "Switch response model for this thread",
         },
+        ...(mcpCommandOffered
+          ? ([
+              {
+                id: "slash:mcp",
+                type: "slash-command",
+                command: "mcp",
+                label: "/mcp",
+                description: "See and add the MCP servers your agents can call",
+              },
+            ] as const)
+          : []),
         ...(planModeUiEnabled
           ? ([
               {
@@ -1323,7 +1338,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         (item) => item.command.name !== "compact" || compactSlashCommandAvailable,
       );
       const slashCommandItems = slashCommandItemsForPromptPosition(
-        [...builtInSlashCommandItems, ...visibleProviderSlashCommandItems, ...skillItems],
+        withoutShadowedProviderCommands([
+          ...builtInSlashCommandItems,
+          ...visibleProviderSlashCommandItems,
+          ...skillItems,
+        ]),
         composerTrigger.rangeStart === 0,
       );
       return searchSlashCommandItems(slashCommandItems, query);
@@ -1346,6 +1365,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     compactSlashCommandAvailable,
     composerTrigger,
     dataMentions,
+    mcpCommandOffered,
     mentionCrewmates,
     planModeUiEnabled,
     selectedProvider,
@@ -2013,7 +2033,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [detectTrigger, readComposerSnapshot, resolveComposerTrigger]);
 
-  const { onUsageLimitsCommand } = props;
+  const { onUsageLimitsCommand, onMcpCommand } = props;
   const onSelectComposerItem = useCallback(
     (item: ComposerCommandItem) => {
       if (composerSelectLockRef.current) return;
@@ -2081,6 +2101,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           }
           return;
         }
+        if (item.command === "mcp") {
+          const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+            focusEditorAfterReplace: false,
+          });
+          if (applied) {
+            setComposerHighlightedItemId(null);
+            onMcpCommand?.();
+          }
+          return;
+        }
         if (!planModeUiEnabled) return;
         void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
@@ -2145,6 +2176,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       handleInteractionModeChange,
       planModeUiEnabled,
       onUsageLimitsCommand,
+      onMcpCommand,
       resolveActiveComposerTrigger,
     ],
   );

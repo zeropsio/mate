@@ -102,6 +102,7 @@ import { useDiffPanelStore } from "../diffPanelStore";
 import {
   collapseExpandedComposerCursor,
   type ComposerSubmissionIntent,
+  isStandaloneMcpCommand,
   parseStandaloneComposerSlashCommand,
 } from "../composer-logic";
 import {
@@ -6291,6 +6292,18 @@ export default function ChatView(props: ChatViewProps) {
       }
       return;
     }
+    // /mcp alone is Mate's own: it opens the MCP tab, and the agent never sees it.
+    if (
+      !queuedMessage &&
+      !composerHasNonPromptContent &&
+      isStandaloneMcpCommand(promptRef.current)
+    ) {
+      addMcpSurface();
+      promptRef.current = "";
+      setComposerDraftPrompt(composerDraftTarget, "");
+      composerRef.current?.resetCursorState();
+      return;
+    }
     if (
       !activeThread ||
       isSendBusy ||
@@ -8507,6 +8520,7 @@ export default function ChatView(props: ChatViewProps) {
                                   ? openUsageLimits
                                   : undefined
                               }
+                              onMcpCommand={addMcpSurface}
                               externalDrawerAttached={externalComposerDrawerAttached}
                               environmentUnavailable={activeEnvironmentUnavailable}
                               activePendingApproval={activePendingApproval}
