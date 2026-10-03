@@ -1,9 +1,16 @@
+import {
+  nextTimelineFollow,
+  type TimelineScrollDirection,
+} from "@t3tools/client-runtime/zerops/timelineFollow";
+
 export type ThreadFeedLiveFollowEvent =
   | { readonly type: "reset" }
   | { readonly type: "user-scroll-begin" }
   | {
       readonly type: "user-scroll-end";
       readonly isAtEnd: boolean;
+      /** Which way the drag and its glide carried the list, from where the drag began. */
+      readonly direction: TimelineScrollDirection;
       readonly userScrollSessionActive: boolean;
     }
   | {
@@ -65,26 +72,46 @@ export function resolveThreadFeedSubmissionAnchor<AnchorId>(input: {
   return input.queuedMessageCount > 0 ? null : input.submittedMessageId;
 }
 
+/**
+ * The conversation's follow rule (client-runtime's `nextTimelineFollow`) read
+ * through the feed's scroll session: a drag and its momentum are the
+ * person's, every other scroll is the list's or the layout's and never
+ * changes follow.
+ */
 export function resolveThreadFeedLiveFollow(
   current: boolean,
   event: ThreadFeedLiveFollowEvent,
 ): boolean {
   switch (event.type) {
     case "reset":
-      return true;
+      return nextTimelineFollow(current, { type: "opened", atEnd: true });
+    // The person takes hold of the list: paused before the first scroll, so
+    // a stream update can't pin the end between touch-down and the drag.
     case "user-scroll-begin":
-      return false;
+      return nextTimelineFollow(current, { type: "left-end" });
     case "user-scroll-end":
-      return event.userScrollSessionActive ? event.isAtEnd : current;
+      return event.userScrollSessionActive
+        ? nextTimelineFollow(current, {
+            type: "position",
+            atEnd: event.isAtEnd,
+            byPerson: true,
+            direction: event.direction,
+          })
+        : current;
+    // The person's tap opened or closed a disclosure: it leaves the end when
+    // it leaves them above it, and never brings follow back.
     case "disclosure-settled":
-      return !event.userScrollSessionActive && event.isAtEnd;
+      return !event.userScrollSessionActive && !event.isAtEnd
+        ? nextTimelineFollow(current, { type: "left-end" })
+        : current;
     case "scroll":
-      if (event.userScrollSessionActive) {
-        return false;
-      }
-      if (event.isAtEnd) {
-        return true;
-      }
-      return current;
+      return event.userScrollSessionActive
+        ? false
+        : nextTimelineFollow(current, {
+            type: "position",
+            atEnd: event.isAtEnd,
+            byPerson: false,
+            direction: null,
+          });
   }
 }
