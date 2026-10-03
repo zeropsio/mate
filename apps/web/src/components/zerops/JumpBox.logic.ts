@@ -143,6 +143,11 @@ export function jumpMateOf(input: {
   readonly environmentId: string | undefined;
   readonly owner: JumpMate["owner"];
   readonly connected: boolean;
+  /**
+   * Its container runs (`candidateContainerRuns`): the face wears it awake while this browser's
+   * socket to it opens, as its row does. Absent, the face follows `connected`.
+   */
+  readonly runs?: boolean | undefined;
   readonly activity: JumpActivity | undefined;
   readonly reviewWaits?: boolean | undefined;
   readonly mine: boolean;
@@ -155,8 +160,8 @@ export function jumpMateOf(input: {
     tint: input.tint,
     shape: input.shape,
     face: mateFaceOf({
-      connected: input.connected,
-      activity: input.activity,
+      connected: input.runs ?? input.connected,
+      activity: live,
       reviewWaits: input.reviewWaits === true,
       mine: input.mine,
       pose: input.pose,

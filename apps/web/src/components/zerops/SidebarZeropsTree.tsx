@@ -937,6 +937,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           environmentId: item.environmentId,
           owner: getOwner?.(item),
           connected: item.group === "connected",
+          runs: candidateContainerRuns(item),
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
           mine: mateIsViewers(item.project, viewer),
