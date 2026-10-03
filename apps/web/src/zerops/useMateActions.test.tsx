@@ -20,6 +20,10 @@ import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions"
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface AssignDialogProps {
+  readonly readingOrganization?: string | undefined;
+  readonly readFailed?:
+    | { readonly organization: string; readonly onReadAgain: () => void }
+    | undefined;
   readonly pending: boolean;
   readonly error: string | null;
   readonly onSubmit: (clientUserId: string) => void;
@@ -63,6 +67,12 @@ const mock = vi.hoisted(() => ({
   asked: [] as Array<string>,
   /** The organization's token list, as the platform would answer it were it read. */
   tokens: [] as Array<unknown>,
+  /** Whether the member list was to be read, at each render that asked. */
+  membersEnabled: [] as Array<boolean>,
+  /** The member list's read, as it stands. */
+  membersStatus: "ready" as "idle" | "loading" | "ready" | "failed",
+  /** The account HQ's read of the member list again. */
+  reread: vi.fn(),
 }));
 
 vi.mock("./accountInvalidations", () => ({
@@ -139,7 +149,10 @@ vi.mock("./inventoryContext", async () => {
   return { useProjectDialog: () => useState(null) };
 });
 vi.mock("./useZeropsMateOwners", () => ({
-  useZeropsOrganizationMembers: () => [],
+  useZeropsOrganizationMembersRead: (input: { readonly enabled: boolean }) => {
+    mock.membersEnabled.push(input.enabled);
+    return { members: [], status: input.enabled ? mock.membersStatus : "idle", settled: false };
+  },
   zeropsMateOwner: () => undefined,
 }));
 // The organization's official HQ, where a Mate's face is written.
@@ -149,7 +162,7 @@ vi.mock("./accountHq", async (original) => ({
     status: "ready",
     hq: { kind: "official", projectId: "p-hq", address: "https://hq.example.test" },
     admins: [],
-    reread: () => {},
+    reread: mock.reread,
   }),
   accountHqApi: () => ({ updateMate: mock.updateMate, mateKey: async () => mock.mateKey }),
 }));
@@ -237,6 +250,9 @@ beforeEach(() => {
   mock.asked = [];
   mock.tokens = [];
   mock.deletedTokens = [];
+  mock.membersEnabled = [];
+  mock.membersStatus = "ready";
+  mock.reread.mockReset();
   mock.mateKey = null;
   mock.deleteDialog.current = null;
   mock.updateMate.mockReset();
@@ -410,6 +426,31 @@ describe("useMateActions — Hand this Mate over", () => {
       entry!.onSelect();
     });
   };
+
+  it("reads the organization's members once its picker opens, never on load", () => {
+    mount();
+    expect(mock.membersEnabled).not.toContain(true);
+    openAssign();
+    expect(mock.membersEnabled.at(-1)).toBe(true);
+  });
+
+  it("says it reads the organization until its people are there to pick", () => {
+    mock.membersStatus = "loading";
+    mount();
+    openAssign();
+    expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
+  });
+
+  it("says it could not read the organization's people, and reads them again on Try again", () => {
+    mock.membersStatus = "failed";
+    mount();
+    openAssign();
+    expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
+    act(() => {
+      mock.assignDialog.current!.readFailed!.onReadAgain();
+    });
+    expect(mock.reread).toHaveBeenCalledTimes(1);
+  });
 
   it("says a refused hand-over's reason in the dialog, which stays open", async () => {
     mock.setProjectMemberRole.mockRejectedValue(new Error("Zerops refused the hand-over."));

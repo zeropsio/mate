@@ -54,9 +54,17 @@ export function ZeropsAssignMateForm({
   onSubmit,
   pending,
   error,
+  readingOrganization,
+  readFailed,
 }: {
   readonly projectName: string;
   readonly members: ReadonlyArray<AssignableMember>;
+  /** The organization whose people are still being read, while there is nobody to pick yet. */
+  readonly readingOrganization?: string | undefined;
+  /** The organization whose people could not be read, and the way to read them again. */
+  readonly readFailed?:
+    | { readonly organization: string; readonly onReadAgain: () => void }
+    | undefined;
   readonly onCancel: () => void;
   readonly onSubmit: (clientUserId: string) => void;
   /** The platform is answering the hand-over. */
@@ -88,8 +96,10 @@ export function ZeropsAssignMateForm({
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-member`}>Owner</Label>
           <select
+            aria-busy={readingOrganization === undefined ? undefined : true}
             autoFocus
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+            disabled={readingOrganization !== undefined}
             id={`${id}-member`}
             onChange={(event) => {
               setSelected(event.target.value);
@@ -97,7 +107,9 @@ export function ZeropsAssignMateForm({
             value={selected}
           >
             <option disabled value="">
-              Pick a person
+              {readingOrganization === undefined
+                ? "Pick a person"
+                : `Reading ${readingOrganization}…`}
             </option>
             {handOverCandidates(members).map((member) => (
               <option key={member.id} value={member.id}>
@@ -106,6 +118,16 @@ export function ZeropsAssignMateForm({
             ))}
           </select>
         </div>
+        {readFailed === undefined ? null : (
+          <div className="mt-3 flex flex-col items-start gap-3">
+            <p className="text-sm text-foreground" role="alert">
+              Couldn't read {readFailed.organization}'s members from Zerops.
+            </p>
+            <Button onClick={readFailed.onReadAgain} size="sm" type="button" variant="secondary">
+              Try again
+            </Button>
+          </div>
+        )}
       </DialogPanel>
       <DialogFooter>
         <p

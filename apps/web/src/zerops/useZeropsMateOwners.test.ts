@@ -1,6 +1,6 @@
 import { act, createElement, StrictMode } from "react";
 import { create } from "react-test-renderer";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { RegistryContext } from "@effect/atom-react";
 import {
@@ -15,11 +15,13 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
-import { hqPeopleViewAtom, zeropsSessionAtom } from "../state/zerops";
+import { hqPeopleViewAtom, hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
 import { makeMemberCells } from "./__fixtures__/memberCells";
+import { keepHqVerdict, keepNoHqVerdict } from "./hqVerdict";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useZeropsMateOwners,
+  useZeropsMemberNames,
   useZeropsOrganizationMembersRead,
   zeropsMateOwnerOf,
   zeropsMemberNameByUserId,
@@ -215,5 +217,91 @@ describe("useZeropsMateOwners", () => {
       isViewer: true,
     });
     expect(reads).toBe(0);
+  });
+});
+
+// Who signed a login in, who said a remark: HQ's people name them where HQ has word for the
+// organization; the member list is read only where it has none.
+describe("useZeropsMemberNames", () => {
+  const scope: AccountScope = {
+    account: {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account-names"),
+    },
+    epoch: AccountEpoch.make(1),
+  };
+  const organizationRef = (organizationId: string): OrganizationRef => ({
+    kind: "organization",
+    account: scope.account,
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+  const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
+
+  // This browser's storage, for the HQ verdict it keeps.
+  beforeEach(() => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["HQ answers for it", "official", null, "Cleo as HQ names her", 0],
+    ["its HQ is down", "official", 1_000, "Cleo Dvořák", 1],
+    ["it has no official HQ", "none", null, "Cleo Dvořák", 1],
+  ] as const)("names Cleo where %s", async (_case, verdict, unavailableSince, name, reads) => {
+    const clientId = `org-${verdict}-${String(unavailableSince)}`;
+    const owner = { account: scope.account, clientId };
+    if (verdict === "official") keepHqVerdict(owner, HQ);
+    else keepNoHqVerdict(owner, Date.now());
+    let read = 0;
+    const cells = await makeMemberCells({
+      scope,
+      organization: organizationRef(clientId),
+      members: async () => {
+        read += 1;
+        return [{ id: "cu-cleo", user: { id: "u-cleo", fullName: "Cleo Dvořák" } }] as never;
+      },
+    });
+    const data = {
+      runtime: { scope, cells },
+      organizationRef,
+    } as unknown as ZeropsDataContextValue;
+    const registry = AtomRegistry.make();
+    registry.set(hqStructureAtom, {
+      organizationId: clientId,
+      structure: null,
+      changes: null,
+      readAt: null,
+      current: unavailableSince === null,
+      unavailableSince,
+    });
+    registry.set(hqPeopleViewAtom, {
+      organizationId: clientId,
+      people: { "u-cleo": { name: "Cleo as HQ names her" } },
+    });
+    const named: Array<string | undefined> = [];
+    function Probe() {
+      named.push(useZeropsMemberNames({ clientId, enabled: true })("u-cleo"));
+      return null;
+    }
+    await act(async () => {
+      create(
+        createElement(
+          RegistryContext.Provider,
+          { value: registry },
+          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+        ),
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect([named.at(-1), read]).toEqual([name, reads]);
   });
 });

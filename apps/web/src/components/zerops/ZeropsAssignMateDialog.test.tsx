@@ -61,6 +61,23 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/<button type="submit"[^>]*aria-busy="true"/u);
   });
 
+  // F27: the member list is read once the dialog opens, and KRLS's took seconds.
+  it("says it reads the organization while there is nobody to pick yet", () => {
+    const html = renderToStaticMarkup(form({ members: [], readingOrganization: "Acme" }));
+    expect(html).toMatch(/<select(?=[^>]*aria-busy="true")(?=[^>]*disabled="")/u);
+    expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Reading Acme…<\/option>/u);
+  });
+
+  it("says it could not read the organization's people, with the way to read them again", () => {
+    const html = renderToStaticMarkup(
+      form({ members: [], readFailed: { organization: "Acme", onReadAgain: () => {} } }),
+    );
+    expect(html).toMatch(
+      /role="alert"[^>]*>Couldn(&#x27;|')t read Acme(&#x27;|')s members from Zerops\.</u,
+    );
+    expect(html).toMatch(/<button[^>]*>Try again<\/button>/u);
+  });
+
   it("picks nobody: the hand-over waits on the person's own pick", () => {
     const html = renderToStaticMarkup(form());
     expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Pick a person<\/option>/u);

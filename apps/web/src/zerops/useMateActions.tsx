@@ -116,7 +116,7 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
+import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import {
   beginPress,
@@ -326,19 +326,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [asker, moveChoicesFor],
   );
-  // The member list is read only where somebody could be handed a Mate, and
-  // where a Mate about to be deleted may be a colleague's, to say whose.
-  const anyAssignable = useMemo(
-    () =>
-      viewer !== null &&
-      candidates.some(
-        (candidate) => resolveMateVerbs({ project: candidate.project, viewer }).assign,
-      ),
-    [candidates, viewer],
-  );
-  const members = useZeropsOrganizationMembers({
+  // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
+  // about to be deleted says whose it is from HQ's people.
+  const { members, status: membersStatus } = useZeropsOrganizationMembersRead({
     clientId: activeOrganization?.id,
-    enabled: anyAssignable || dialog?.kind === "delete",
+    enabled: dialog?.kind === "assign",
   });
 
   /** One write, with its busy key and its refusal, wherever it came from. */
@@ -1059,6 +1051,16 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           error={press.error}
           key={`assign:${dialog.candidate.key}`}
           members={members}
+          readingOrganization={
+            membersStatus === "loading" && members.length === 0
+              ? activeOrganization?.name
+              : undefined
+          }
+          readFailed={
+            membersStatus === "failed" && members.length === 0 && activeOrganization !== null
+              ? { organization: activeOrganization.name, onReadAgain: accountHq.reread }
+              : undefined
+          }
           onCancel={close}
           onOpenChange={(open) => {
             if (!open) close();
