@@ -9,6 +9,9 @@ import {
   observe,
   operationReadCeilingMs,
   readsOperation,
+  settledReadAfter,
+  type OperationReadBound,
+  type SettledRead,
 } from "./observe.ts";
 
 const NOW = Date.parse("2026-09-02T10:00:00.000Z");
@@ -326,32 +329,161 @@ describe("readsOperation — whether a card keeps the store reading its operatio
     readAtMs: NOW,
     ...(outcome === undefined ? {} : { outcome }),
   });
-  it.each<{ name: string; state: ObservationState; reads: boolean }>([
+  const RUNNING: OperationReadBound = {
+    running: true,
+    settledRead: "pending",
+    found: false,
+    withinCeiling: true,
+  };
+  const settled = (bound: Partial<OperationReadBound>): OperationReadBound => ({
+    ...RUNNING,
+    running: false,
+    ...bound,
+  });
+  const unread: ObservationState = { kind: "observing", observation: read(), elapsedMs: 9_000 };
+  it.each<{ name: string; state: ObservationState; bound: OperationReadBound; reads: boolean }>([
     {
-      name: "nothing read yet",
+      name: "running, nothing read yet",
       state: { kind: "observing", observation: read(), elapsedMs: 0 },
+      bound: RUNNING,
       reads: true,
     },
+    { name: "running, read mid-run", state: unread, bound: RUNNING, reads: true },
     {
-      name: "read mid-run",
-      state: { kind: "observing", observation: read(), elapsedMs: 9_000 },
-      reads: true,
-    },
-    {
-      name: "its outcome read",
+      name: "running, its outcome read",
       state: { kind: "observing", observation: read("finished"), elapsedMs: 9_000 },
+      bound: RUNNING,
       reads: false,
     },
-    { name: "stale", state: { kind: "stale", observation: read(), ageMs: 20_000 }, reads: true },
     {
-      name: "silent past its timeout",
-      state: { kind: "off", reason: "stale-timeout" },
+      name: "running, stale",
+      state: { kind: "stale", observation: read(), ageMs: 20_000 },
+      bound: RUNNING,
       reads: true,
     },
-    { name: "past the ceiling", state: { kind: "off", reason: "ceiling" }, reads: false },
-    { name: "the feed failed", state: { kind: "off", reason: "feed-error" }, reads: false },
-    { name: "signed out", state: { kind: "off", reason: "no-session" }, reads: false },
-  ])("$name", ({ state, reads }) => {
-    expect(readsOperation(state)).toBe(reads);
+    {
+      name: "running, silent past its timeout",
+      state: { kind: "off", reason: "stale-timeout" },
+      bound: RUNNING,
+      reads: true,
+    },
+    {
+      name: "running, past the ceiling",
+      state: { kind: "off", reason: "ceiling" },
+      bound: RUNNING,
+      reads: false,
+    },
+    {
+      name: "running, the feed failed",
+      state: { kind: "off", reason: "feed-error" },
+      bound: RUNNING,
+      reads: false,
+    },
+    {
+      name: "signed out",
+      state: { kind: "off", reason: "no-session" },
+      bound: RUNNING,
+      reads: false,
+    },
+    {
+      name: "settled, its one read pending",
+      state: unread,
+      bound: settled({ withinCeiling: false }),
+      reads: true,
+    },
+    {
+      name: "settled, its read failed",
+      state: unread,
+      bound: settled({ settledRead: "failed" }),
+      reads: false,
+    },
+    {
+      name: "settled, read and not found",
+      state: unread,
+      bound: settled({ settledRead: "read" }),
+      reads: false,
+    },
+    {
+      name: "settled, found mid-run inside the ceiling: until its outcome",
+      state: unread,
+      bound: settled({ settledRead: "read", found: true }),
+      reads: true,
+    },
+    {
+      name: "settled, found mid-run past the ceiling: no further",
+      state: unread,
+      bound: settled({ settledRead: "read", found: true, withinCeiling: false }),
+      reads: false,
+    },
+    {
+      name: "settled, its outcome read",
+      state: { kind: "observing", observation: read("failed"), elapsedMs: 9_000 },
+      bound: settled({}),
+      reads: false,
+    },
+    {
+      name: "settled, silent past its timeout",
+      state: { kind: "off", reason: "stale-timeout" },
+      bound: settled({}),
+      reads: false,
+    },
+  ])("$name", ({ state, bound, reads }) => {
+    expect(readsOperation(state, bound)).toBe(reads);
+  });
+});
+
+describe("settledReadAfter — one read of a settled operation per open", () => {
+  it.each<{
+    name: string;
+    previous: SettledRead;
+    history: "unread" | "reading" | "read" | "failed";
+    feedFailed: boolean;
+    next: SettledRead;
+  }>([
+    {
+      name: "not asked yet",
+      previous: "pending",
+      history: "unread",
+      feedFailed: false,
+      next: "pending",
+    },
+    {
+      name: "being read",
+      previous: "pending",
+      history: "reading",
+      feedFailed: false,
+      next: "pending",
+    },
+    { name: "read", previous: "pending", history: "read", feedFailed: false, next: "read" },
+    {
+      name: "its read failed",
+      previous: "pending",
+      history: "failed",
+      feedFailed: false,
+      next: "failed",
+    },
+    {
+      name: "the store's read failed",
+      previous: "pending",
+      history: "reading",
+      feedFailed: true,
+      next: "failed",
+    },
+    {
+      name: "failed, then let go",
+      previous: "failed",
+      history: "unread",
+      feedFailed: false,
+      next: "failed",
+    },
+    {
+      name: "read, then let go",
+      previous: "read",
+      history: "unread",
+      feedFailed: false,
+      next: "read",
+    },
+  ])("$name", ({ previous, history, feedFailed, next }) => {
+    expect(settledReadAfter(previous, history, feedFailed)).toBe(next);
   });
 });

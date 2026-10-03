@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import { selectActivity, selectRunningProcessesOf } from "./projection.ts";
 import { makeInitialZeropsDataState, reduceZeropsDataState } from "./state.ts";
-import { processKeyOf, queryKeyOf } from "./types.ts";
+import { ReceiptOrdinal, processKeyOf, queryKeyOf } from "./types.ts";
 import {
   desiredInterest,
   directTicket,
@@ -322,5 +322,76 @@ describe("a project's running processes after its organization's running read", 
     ["one the read carries runs", ["pushed RUNNING", "read with it"], ["build"]],
   ] as const)("%s", (_, order, expected) => {
     expect(running(order)).toEqual(expected);
+  });
+});
+
+// A settled operation's card reads the project's newest process history once
+// per open: it has to know when that read landed, or failed (pass 36).
+describe("selectActivity — where the project's newest process history read stands", () => {
+  const history = (
+    status: "establishing" | "observing" | "failed" | "paused" | "recovering" | null,
+    descriptor: { readonly projectId?: string; readonly before?: string | null } = {},
+  ) => {
+    const state = makeInitialZeropsDataState(scope());
+    if (status === null) return state;
+    const id = identity(1, 1, 1, "history");
+    const base = desiredInterest(id, 1, false);
+    const interest =
+      status === "establishing"
+        ? base.interest
+        : status === "observing"
+          ? {
+              status,
+              identity: id,
+              guarantee: "source-order-unverified" as const,
+              sinceReceiptOrdinal: ReceiptOrdinal.make(1),
+            }
+          : status === "failed"
+            ? { status, identity: id, reason: "boom", retryable: true, attempts: 1, retryAtMs: 9 }
+            : status === "paused"
+              ? { status, identity: id, reason: "no-leases" as const }
+              : {
+                  status,
+                  identity: id,
+                  reason: "disconnect" as const,
+                  attempt: 1,
+                  nextRetryAtMs: 9,
+                  progress: {
+                    requiredRegistrations: 1,
+                    completedRegistrations: 0,
+                    requiredReads: 1,
+                    completedReads: 0,
+                    crossedReceiptOrdinal: ReceiptOrdinal.make(0),
+                  },
+                };
+    return reduce(state, {
+      kind: "interest-upserted",
+      interest: {
+        ...base,
+        descriptor: {
+          kind: "project-process-history",
+          project: project(descriptor.projectId),
+          before: descriptor.before ?? null,
+          limit: 100,
+        },
+        interest,
+      },
+    });
+  };
+  it.each([
+    { name: "nobody asks for it", state: history(null), read: "unread" },
+    { name: "being read", state: history("establishing"), read: "reading" },
+    { name: "read again after a drop", state: history("recovering"), read: "reading" },
+    { name: "read", state: history("observing"), read: "read" },
+    { name: "its read failed", state: history("failed"), read: "failed" },
+    { name: "let go", state: history("paused"), read: "unread" },
+    {
+      name: "another project's",
+      state: history("observing", { projectId: "project-2" }),
+      read: "unread",
+    },
+    { name: "an older window", state: history("observing", { before: "p-9" }), read: "unread" },
+  ])("$name: $read", ({ state, read }) => {
+    expect(selectActivity(state, project()).processHistory).toBe(read);
   });
 });

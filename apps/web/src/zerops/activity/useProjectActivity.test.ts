@@ -52,6 +52,7 @@ function emptyRead(required: ReadonlyArray<InterestState>): ProjectActivityRead 
       observation,
     },
     retainedHistory: [],
+    processHistory: "unread",
     observation,
   };
 }
@@ -62,6 +63,7 @@ describe("projectActivitySnapshotFromRead", () => {
       processes: [],
       atMs: 42,
       live: true,
+      processHistory: "unread",
     });
   });
 

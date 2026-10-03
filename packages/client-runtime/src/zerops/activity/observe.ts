@@ -40,6 +40,8 @@ export interface Observation {
   readonly readAtMs: number;
   /** Present once the step source's appVersion carries both an id and `build.serviceStackId`. */
   readonly buildLog?: BuildLogQuery;
+  /** The services the step source names — which of a batch's services it is. */
+  readonly serviceIds?: ReadonlyArray<string>;
 }
 
 /** Extracts the `off` variant's `reason` union, so both sides of the contract share one list. */
@@ -170,6 +172,7 @@ function observationFor(attribution: AttributionResult, atMs: number): Observati
     readAtMs: atMs,
     ...(outcome === undefined ? {} : { outcome }),
     ...(buildLog === undefined ? {} : { buildLog }),
+    ...(stepSource === undefined ? {} : { serviceIds: stepSource.serviceStackIds }),
   };
 }
 
@@ -218,10 +221,10 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
 }
 
 /**
- * How long after its start a card reads its operation from the account store. A running one,
- * and one whose call settled before its outcome was read, are watched up to the ceiling; a
- * settled one its result named by id (`AttributionInput.exact`) is looked up by that id whatever
- * its age, so the same row shows the same details in any window and after a reload.
+ * How long after its start a card draws what the account store read of its operation: a
+ * running one up to the ceiling; a settled one — read only by the ids its result named, once
+ * per open (`readsOperation`) — whatever its age, so the same row shows the same details in any
+ * window and after a reload.
  */
 export function operationReadCeilingMs(
   operation: { readonly running: boolean; readonly exact: boolean },
@@ -231,12 +234,53 @@ export function operationReadCeilingMs(
 }
 
 /**
- * Whether a card keeps the account store reading its operation: until its outcome is read —
- * after its call settled too, so a step read as running never stays running under the verdict —
- * while the read can still answer. One only silent past its timeout keeps reading: it recovers
- * only while somebody still wants it.
+ * What one open of a settled operation's card has read of it: its read of the project's newest
+ * process history is pending, landed, or failed — then it says so and reads no more.
  */
-export function readsOperation(state: ObservationState): boolean {
-  if (state.kind === "off") return state.reason === "stale-timeout";
-  return state.observation.outcome === undefined;
+export type SettledRead = "pending" | "read" | "failed";
+
+/**
+ * The next `SettledRead`, from where the project's newest process history read stands and
+ * whether the store's read of the project failed. Once landed or failed it stays so for the
+ * open: a failed read is never asked for again.
+ */
+export function settledReadAfter(
+  previous: SettledRead,
+  history: "unread" | "reading" | "read" | "failed",
+  feedFailed: boolean,
+): SettledRead {
+  if (previous !== "pending") return previous;
+  if (feedFailed || history === "failed") return "failed";
+  return history === "read" ? "read" : "pending";
+}
+
+export interface OperationReadBound {
+  readonly running: boolean;
+  /** Settled only: what this open has read of it. */
+  readonly settledRead: SettledRead;
+  /** Settled only: the read named its process. */
+  readonly found: boolean;
+  /** Still inside the ceiling since its start, on a clock that moves. */
+  readonly withinCeiling: boolean;
+}
+
+/**
+ * Whether a card keeps the account store reading its operation. A running one: until its
+ * outcome is read, and one only silent past its timeout too — it recovers only while somebody
+ * still wants it. A settled one: one read of the project's history per open; past it, only one
+ * whose process that read found, its outcome still unread, and only inside the ceiling — never
+ * after a failed read, never once the store stopped answering.
+ */
+export function readsOperation(state: ObservationState, bound: OperationReadBound): boolean {
+  if (state.kind === "off") return bound.running && state.reason === "stale-timeout";
+  if (state.observation.outcome !== undefined) return false;
+  if (bound.running) return true;
+  switch (bound.settledRead) {
+    case "pending":
+      return true;
+    case "failed":
+      return false;
+    case "read":
+      return bound.found && bound.withinCeiling;
+  }
 }

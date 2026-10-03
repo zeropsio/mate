@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import {
   processRecordToActivityProcess,
+  type ProcessHistoryRead,
   type ProjectActivityRead,
   type RuntimeInterestDescriptor,
 } from "@t3tools/client-runtime/zerops/data";
@@ -22,6 +23,8 @@ export interface ProjectActivitySnapshot {
    */
   readonly live: boolean;
   readonly unavailableReason?: string | undefined;
+  /** Where the project's newest process history read stands; `unread` when not said. */
+  readonly processHistory?: ProcessHistoryRead;
 }
 
 export const EMPTY_PROJECT_ACTIVITY_SNAPSHOT: ProjectActivitySnapshot = {
@@ -71,6 +74,7 @@ export function projectActivitySnapshotFromRead(
   if (read.running.query.status !== "observed" && deduped.length === 0) {
     return {
       ...EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
+      processHistory: read.processHistory,
       ...(unavailableReason ? { unavailableReason } : {}),
     };
   }
@@ -79,6 +83,7 @@ export function projectActivitySnapshotFromRead(
     processes: deduped,
     atMs,
     live: required.length > 0 && required.every((interest) => interest.status === "observing"),
+    processHistory: read.processHistory,
     ...(unavailableReason ? { unavailableReason } : {}),
   };
 }

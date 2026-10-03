@@ -107,7 +107,6 @@ import {
   formatWorkDuration,
   operationLineWords,
   operationUnreturnedWords,
-  splitBatchDeploy,
   type BrowserStripModel,
   type IncidentModel,
   type OutcomeModel,
@@ -129,13 +128,13 @@ import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import {
+  cardOperationOf,
   detailLines,
   liveOperationBar,
   observedLinesOf,
   settledOperationBar,
   showsCardInSlot,
   slotOpenDeployLine,
-  slotServiceLine,
 } from "./operationBar.logic";
 import { HELPER_LINE_CHARS, helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
 import { StandupDetail } from "./StandupDetail";
@@ -673,6 +672,11 @@ function FoldToggle({
 // ---------------------------------------------------------------------------
 // What a bubble holds, opened in place
 // ---------------------------------------------------------------------------
+
+/** Only an open the person made rises; a carried, a first or a landing one is simply there. */
+function rises(made: boolean): string | false {
+  return made && "animate-detail-in motion-reduce:animate-none";
+}
 
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
 function useDisclosure(initial = false, part = "open", follows = false, shut = false) {
@@ -1532,8 +1536,9 @@ function StepBubble({
       <StepPictures paths={step.images} />
       {disclosure.open && outputs.length > 0 ? (
         <div
-          className="grid animate-detail-in gap-2 px-3 pb-2 motion-reduce:animate-none"
+          className={cn("grid gap-2 px-3 pb-2", rises(disclosure.made))}
           data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
           {outputs.map((output) => (
             <OutputBlock key={output.key} label={output.label} text={output.text} />
@@ -1598,7 +1603,12 @@ export function OperationDetail({
   }
   if (regions !== undefined) {
     return (
-      <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />
+      <ZeropsOperationCard
+        headless
+        operation={cardOperationOf(operation, regions.service)}
+        threadRef={threadRef}
+        {...regions}
+      />
     );
   }
   return (
@@ -1625,7 +1635,14 @@ function ZeropsOperationDetail({
     environmentId,
     useCarried("log", () => false),
   );
-  return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
+  return (
+    <ZeropsOperationCard
+      headless
+      operation={cardOperationOf(operation, regions.service)}
+      threadRef={threadRef}
+      {...regions}
+    />
+  );
 }
 
 /**
@@ -1683,24 +1700,16 @@ interface OperationLineProps {
  * to its plop: its bar follows its pipeline, and the newest running one stands
  * open on its card (the pipeline's steps, the build's newest lines, the way to
  * the whole log) once the store has read any of it (pass 36: "the running
- * builds, their logs ... seem to be completely gone"). A batch deploy is a
- * line per service there, each read as a deploy of its own.
+ * builds, their logs ... seem to be completely gone"). A batch deploy is one
+ * line like any call: its bar a segment per service, its card the service the
+ * platform says is building.
  */
 function OperationBubble(props: OperationLineProps) {
   const inSlot = use(InSlotContext);
-  const line = use(ChatLineContext);
   if (!inSlot || props.noResult !== undefined || props.operation.kind !== "deploy") {
     return <OperationLine {...props} regions={null} />;
   }
-  if (props.operation.batch !== true) return <WatchedOperationBubble {...props} />;
-  return splitBatchDeploy(props.operation).map((service) => {
-    const serviceLine = slotServiceLine(line, service);
-    return (
-      <ChatLineContext key={service.key} value={serviceLine}>
-        <WatchedOperationBubble {...props} operation={service} />
-      </ChatLineContext>
-    );
-  });
+  return <WatchedOperationBubble {...props} />;
 }
 
 /** An operation in the live slot, with what its card reads of the platform. */
@@ -1750,7 +1759,14 @@ function OperationLine({
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = noResult === undefined && operation.phase === "running";
   // Live in the slot, its pipeline as it goes and the step it is on.
-  const live = running && inSlot ? liveOperationBar(operation, regions?.observed?.pipeline) : null;
+  // A batch's bar keeps a segment per service; a deploy's follows its pipeline.
+  const live =
+    running && inSlot
+      ? liveOperationBar(
+          operation,
+          operation.batch === true ? undefined : regions?.observed?.pipeline,
+        )
+      : null;
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
@@ -1823,7 +1839,7 @@ function OperationLine({
           className={cn(
             "px-3 pb-2",
             // Only an open the person made moves; a carried or a landing one is simply there.
-            disclosure.made && "animate-detail-in motion-reduce:animate-none",
+            rises(disclosure.made),
           )}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
@@ -1951,7 +1967,11 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
         </div>
       )}
       {opens && disclosure.open ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <BrowserStrip
             bare
             environmentId={ctx.activeThreadEnvironmentId}
@@ -2151,8 +2171,9 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
       {opens && disclosure.open ? (
         // Its helpers' words on the bubble's text edge: 8 px in, and their own 6.
         <div
-          className="grid animate-detail-in gap-2 px-2 pb-2.5 motion-reduce:animate-none"
+          className={cn("grid gap-2 px-2 pb-2.5", rises(disclosure.made))}
           data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
           <ul className="grid gap-0.5">
             {agents.map((agent) => (
@@ -2230,7 +2251,11 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
         <div className={CALL_PAD}>{line}</div>
       )}
       {disclosure.open ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <TaskReport entry={entry} />
         </div>
       ) : null}
@@ -2272,7 +2297,11 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
         <div className={CALL_PAD}>{head}</div>
       )}
       {opens && disclosure.open ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <PlanSteps steps={steps} />
         </div>
       ) : null}
@@ -2313,7 +2342,11 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
         </DisclosureButton>
       )}
       {disclosure.open && more !== null ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn("px-3 pb-2", rises(disclosure.made))}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <OutputBlock text={more} />
         </div>
       ) : null}
@@ -3191,13 +3224,17 @@ function LiveSlot({
   });
   const drawn = shown.slice(0, SLOT_MAX_ROWS);
   const more = slotRunningPast(shown);
+  // The deploy line standing open keeps standing until it plops.
+  const [heldOpen, setHeldOpen] = useState<string | null>(null);
   const standsOpen = slotOpenDeployLine(
     drawn.flatMap(({ item }) =>
       item.kind === "operation" && item.noResult === undefined
         ? [{ key: item.key, operation: item.operation }]
         : [],
     ),
+    heldOpen,
   );
+  if (standsOpen !== heldOpen) setHeldOpen(standsOpen);
   const lines = drawn
     .flatMap(({ item }) => {
       const line = itemLine(item, undone);

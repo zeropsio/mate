@@ -138,8 +138,10 @@ export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
   }, [appVersionId, buildServiceStackId, fromIso, project]);
   const store = useMemo(() => new BuildLogBindingStore(), []);
 
-  // Bound before the first paint: a card drawn again for a build whose log
-  // the registry still keeps (a row that plopped) paints it at once.
+  // Bound as the card mounts; what the registry holds reaches the card on the
+  // draw after. The card's height never waits on it: a running build's newest
+  // lines' room and a settled one's way to its log stand from the first draw
+  // (`ZeropsBuildLog`).
   useLayoutEffect(() => {
     if (active === null) return;
     return store.bind(runtime, runtime.logs, active);

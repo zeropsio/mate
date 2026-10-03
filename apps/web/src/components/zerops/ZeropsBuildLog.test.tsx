@@ -1,7 +1,22 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { BuildLogLines, ZeropsBuildLog, type ZeropsBuildLogLine } from "./ZeropsBuildLog";
+
+// The whole log's dialog, drawn in place when open: what it says is there to read.
+vi.mock("~/components/ui/dialog", () => {
+  const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
+  return {
+    Dialog: ({ open, children }: { open: boolean; children?: ReactNode }) =>
+      open ? <div data-dialog-open="">{children}</div> : null,
+    DialogDescription: Pass,
+    DialogHeader: Pass,
+    DialogPanel: Pass,
+    DialogPopup: Pass,
+    DialogTitle: Pass,
+  };
+});
 
 const lineOf = (index: number, text: string, severity = 6): ZeropsBuildLogLine => ({
   id: `l${index}`,
@@ -73,8 +88,22 @@ describe("ZeropsBuildLog", () => {
   // A log the build has not written a line of is nothing to open: the
   // container may not even run yet (the owner, 2026-09-27: "you shouldn't be
   // able to open build log when the container is not even running").
-  it.each(["live", "ended"] as const)("offers nothing while the log is empty (%s)", (status) => {
-    expect(render([], status)).toBe("");
+  it("offers nothing to open once the build ended without a line", () => {
+    expect(render([], "ended")).toBe("");
+  });
+
+  // Its room stands from the first draw while the build runs, so the card's
+  // height is final when it opens; the way to the log is there but not open
+  // to anyone until the first line (pass 36).
+  it.each([
+    { name: "no line yet", lines: [], rows: 0, openable: false },
+    { name: "its first lines", lines: LINES, rows: 2, openable: true },
+  ])("while it runs, its newest lines' room stands: $name", ({ lines, rows, openable }) => {
+    const html = render(lines, "live");
+    expect(html).toContain("data-zerops-build-log-glance");
+    expect(rowsOf(html)).toHaveLength(rows);
+    const toggle = html.match(/<button[^>]*data-zerops-build-log-toggle[^>]*>/)?.[0] ?? "";
+    expect(toggle.includes("disabled")).toBe(!openable);
   });
 
   it.each([
@@ -109,5 +138,22 @@ describe("BuildLogLines", () => {
     expect(rows[2]).toContain("whitespace-pre-wrap");
     expect(rows[1]).toContain("text-destructive-foreground");
     expect(html).toContain('aria-live="polite"');
+  });
+});
+
+// A settled build's way to its log stands before its lines are read: opened
+// with none to draw, its dialog says why, in words (pass 36).
+describe("ZeropsBuildLog — the dialog of a log with no line", () => {
+  it.each([
+    { status: "error" as const, words: "Couldn't read this build's log from Zerops." },
+    { status: "loading" as const, words: "Reading this build's log…" },
+    { status: "ended" as const, words: "Zerops keeps no lines of this build's log." },
+  ])("$status: $words", ({ status, words }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsBuildLog lines={[]} onToggle={vi.fn()} open stands status={status} />,
+    );
+    expect(html.match(/data-zerops-build-log-empty[^>]*>([^<]*)</)?.[1]).toBe(
+      words.replaceAll("'", "&#x27;"),
+    );
   });
 });

@@ -29,6 +29,8 @@ import {
   observe,
   operationReadCeilingMs,
   readsOperation,
+  settledReadAfter,
+  type SettledRead,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -51,6 +53,8 @@ export interface ObservationTarget {
   readonly running: boolean;
   /** The ids the result named (`AttributionInput.exact`) — present once it named any. */
   readonly exact?: AttributionInput["exact"];
+  /** A batch deploy: its card follows the service the platform says is building. */
+  readonly batch?: boolean;
 }
 
 export interface OperationObservation {
@@ -58,6 +62,10 @@ export interface OperationObservation {
   /** The last good observation, kept after `running` turns false. */
   readonly history: Observation | undefined;
   readonly buildLog: ReturnType<typeof useBuildLog>;
+  /** Whether the card keeps the account store reading its operation. */
+  readonly wantsPoll: boolean;
+  /** A settled one's: what this open read of it — `failed` says so. */
+  readonly settledRead: SettledRead;
 }
 
 type LastRead = { readonly attribution: AttributionResult; readonly atMs: number };
@@ -95,6 +103,8 @@ export interface DeriveOperationObservationInput {
   readonly snapshot: ProjectActivitySnapshot;
   readonly previousLastRead: LastRead | undefined;
   readonly previousHistory: Observation | undefined;
+  /** What this open of a settled operation had read of it, as of the previous draw. */
+  readonly previousSettledRead?: SettledRead;
   readonly ceilingMs?: number;
 }
 
@@ -103,6 +113,7 @@ export interface DeriveOperationObservationResult {
   readonly lastRead: LastRead | undefined;
   readonly history: Observation | undefined;
   readonly wantsPoll: boolean;
+  readonly settledRead: SettledRead;
   /** The build whose log the card shows: the current read's, else the remembered one's — so a log once shown never leaves. */
   readonly buildLogQuery?: BuildLogQuery;
 }
@@ -125,6 +136,7 @@ export function deriveOperationObservation(
       lastRead: undefined,
       history: input.previousHistory,
       wantsPoll: false,
+      settledRead: input.previousSettledRead ?? "pending",
     };
   }
 
@@ -144,6 +156,7 @@ export function deriveOperationObservation(
       startedAtMs: target.startedAtMs,
       kind: target.kind,
       ...(target.exact === undefined ? {} : { exact: target.exact }),
+      ...(target.batch === true ? { batch: true } : {}),
     });
     if (attribution.projectMismatch) {
       unavailableReason = "project-mismatch";
@@ -162,9 +175,10 @@ export function deriveOperationObservation(
     }
   }
 
+  const ceiling = input.ceilingMs ?? OPERATION_OBSERVATION_CEILING_MS;
   const ceilingMs = operationReadCeilingMs(
     { running: target.running, exact: target.exact !== undefined },
-    input.ceilingMs ?? OPERATION_OBSERVATION_CEILING_MS,
+    ceiling,
   );
   const resolvedUnavailableReason = input.attributable
     ? unavailableReason
@@ -185,13 +199,27 @@ export function deriveOperationObservation(
   const observationNow = state.kind === "off" ? undefined : state.observation;
   const history = observationNow?.pipeline !== undefined ? observationNow : input.previousHistory;
 
+  // A settled one is read once per open: its read of the project's history
+  // lands or fails, and a failed one is never asked for again.
+  const settledRead = target.running
+    ? "pending"
+    : settledReadAfter(
+        input.previousSettledRead ?? "pending",
+        input.snapshot.processHistory ?? "unread",
+        input.attributable && unavailableReason !== undefined,
+      );
   // `state.kind === "off"` covers every stop condition but the outcome —
   // not attributable, the ceiling, and any feed problem the activity feed or
   // attribution itself reports (including a project mismatch: no process for
   // the right project is ever going to arrive from a read that is not even
-  // reading that project). Its call settling is none: it reads on until the
-  // outcome is read (`readsOperation`).
-  const wantsPoll = readsOperation(state);
+  // reading that project). A settled one stops once its read landed, unless
+  // that read found it mid-run inside the ceiling (`readsOperation`).
+  const wantsPoll = readsOperation(state, {
+    running: target.running,
+    settledRead,
+    found: lastRead !== undefined,
+    withinCeiling: nowMs - target.startedAtMs <= ceiling,
+  });
   const buildLogQuery = observationNow?.buildLog ?? history?.buildLog;
 
   return {
@@ -199,6 +227,7 @@ export function deriveOperationObservation(
     lastRead,
     history,
     wantsPoll,
+    settledRead,
     ...(buildLogQuery === undefined ? {} : { buildLogQuery }),
   };
 }
@@ -248,10 +277,12 @@ export function useOperationObservation(
   const keyRef = useRef<string | null>(null);
   const lastReadRef = useRef<LastRead | undefined>(undefined);
   const historyRef = useRef<Observation | undefined>(undefined);
+  const settledReadRef = useRef<SettledRead>("pending");
   if (target === null || target.key !== keyRef.current) {
     keyRef.current = target?.key ?? null;
     lastReadRef.current = undefined;
     historyRef.current = undefined;
+    settledReadRef.current = "pending";
   }
 
   // What the account store holds of the project is read at once, whoever
@@ -270,12 +301,14 @@ export function useOperationObservation(
       snapshot,
       previousLastRead: lastReadRef.current,
       previousHistory,
+      previousSettledRead: settledReadRef.current,
     },
     nowMs,
   );
 
   lastReadRef.current = result.lastRead;
   historyRef.current = result.history;
+  settledReadRef.current = result.settledRead;
   // The single source of truth for "should the store read it" is the
   // decision's own `wantsPoll`, from this render's snapshot.
   useProjectActivityDemand(result.wantsPoll ? (projectId ?? null) : null);
@@ -287,5 +320,11 @@ export function useOperationObservation(
     live: target !== null && target.running && observationNow?.outcome === undefined,
   });
 
-  return { state: result.state, history: result.history, buildLog };
+  return {
+    state: result.state,
+    history: result.history,
+    buildLog,
+    wantsPoll: result.wantsPoll,
+    settledRead: result.settledRead,
+  };
 }

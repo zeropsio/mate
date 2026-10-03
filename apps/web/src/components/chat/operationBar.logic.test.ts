@@ -437,11 +437,6 @@ describe("slotOpenDeployLine — the one deploy that stands open in the live slo
     key: `operation:${key}`,
     operation: operation({ key, kind: "deploy", phase: "running", subject: key, ...overrides }),
   });
-  const batch = deploy("b1", {
-    batch: true,
-    subject: "3 services",
-    steps: [step("apidev", "done"), step("webdev", "running"), step("workerdev", "queued")],
-  });
   it.each([
     { name: "none in the slot", lines: [], open: null },
     { name: "the one running", lines: [deploy("d1")], open: "operation:d1" },
@@ -461,8 +456,35 @@ describe("slotOpenDeployLine — the one deploy that stands open in the live slo
       open: "operation:d2",
     },
     { name: "never another kind", lines: [deploy("s1", { kind: "subdomain" })], open: null },
-    { name: "a batch: the service it is building", lines: [batch], open: "operation:b1~webdev" },
-  ])("$name", ({ lines, open }) => {
-    expect(slotOpenDeployLine(lines)).toBe(open);
+    {
+      name: "a batch: one line, like any call",
+      lines: [deploy("b1", { batch: true, subject: "apidev, webdev" })],
+      open: "operation:b1",
+    },
+    {
+      name: "the one standing open, ended before an older one: until it plops",
+      lines: [deploy("d1"), deploy("d2", { phase: "done" })],
+      held: "operation:d2",
+      open: "operation:d2",
+    },
+    {
+      name: "the one standing open, still running: gives way to a newer one running",
+      lines: [deploy("d1"), deploy("d2")],
+      held: "operation:d1",
+      open: "operation:d2",
+    },
+    {
+      name: "the one standing open plopped: the newest running",
+      lines: [deploy("d1")],
+      held: "operation:d2",
+      open: "operation:d1",
+    },
+  ] as ReadonlyArray<{
+    name: string;
+    lines: ReadonlyArray<ReturnType<typeof deploy>>;
+    held?: string;
+    open: string | null;
+  }>)("$name", ({ lines, held, open }) => {
+    expect(slotOpenDeployLine(lines, held ?? null)).toBe(open);
   });
 });

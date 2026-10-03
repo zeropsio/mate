@@ -2816,8 +2816,6 @@ describe("splitBatchDeploy", () => {
     for (const op of split) {
       expect(op.batch).toBeUndefined();
       expect(op.target).toEqual({ hostname: op.subject });
-      // Its line says it in its own words, never the batch's.
-      expect(operationLineWords(op)).toContain(op.subject);
     }
     const failed = split.find((op) => op.phase === "failed");
     if (failed !== undefined) expect(failed.explanation).toEqual({ reason: "Build failed" });

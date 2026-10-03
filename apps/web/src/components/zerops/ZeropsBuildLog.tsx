@@ -55,6 +55,19 @@ const FAILED_SEVERITY_MAX = 3;
 /** The newest lines shown under the build step while it runs. */
 const GLANCE_ROWS = 2;
 
+/** What a log with no line to draw says in its dialog: read failed, still reading, or gone. */
+export function emptyLogWords(status: ZeropsBuildLogStatus): string {
+  switch (status) {
+    case "error":
+      return "Couldn't read this build's log from Zerops.";
+    case "idle":
+    case "loading":
+      return "Reading this build's log…";
+    default:
+      return "Zerops keeps no lines of this build's log.";
+  }
+}
+
 const lineCount = (count: number): string | undefined =>
   count === 0 ? undefined : `${count.toLocaleString("en-US")} ${count === 1 ? "line" : "lines"}`;
 
@@ -66,17 +79,21 @@ export function ZeropsBuildLog({
   status,
   subject,
 }: ZeropsBuildLogProps): JSX.Element | null {
+  // While the build runs its newest lines' room stands from the first draw,
+  // so the card's height is final when it opens; once it ended, no glance.
+  const glancing = !stands && status !== "ended" && status !== "error";
+  if (lines.length === 0 && !stands && !glancing) return null;
   // Nothing to open until a running build writes its first line: before that
-  // the log is empty, and its container may not even run yet.
-  if (lines.length === 0 && !stands) return null;
+  // the log is empty, and its container may not even run yet. Its row stands.
+  const openable = stands || lines.length > 0;
   const count = lineCount(lines.length);
-  const glance = status === "live" ? foldBuildLogLines(lines).slice(-GLANCE_ROWS) : [];
+  const glance = glancing ? foldBuildLogLines(lines).slice(-GLANCE_ROWS) : [];
   return (
     <div className="mt-1" data-zerops-build-log data-zerops-build-log-status={status}>
-      {glance.length > 0 ? (
+      {glancing ? (
         <ol
           aria-label="The build's newest lines"
-          className="font-mono text-muted-foreground text-xs leading-5"
+          className="h-10 font-mono text-muted-foreground text-xs leading-5"
           data-zerops-build-log-glance
         >
           {glance.map((row) => (
@@ -101,9 +118,15 @@ export function ZeropsBuildLog({
       ) : null}
       <button
         aria-haspopup="dialog"
-        className="group/log inline-flex items-center gap-1.5 text-muted-foreground text-xs transition-colors hover:text-foreground"
+        aria-hidden={openable ? undefined : true}
+        className={cn(
+          "group/log inline-flex items-center gap-1.5 text-muted-foreground text-xs transition-colors hover:text-foreground",
+          !openable && "invisible",
+        )}
         data-zerops-build-log-toggle
+        disabled={!openable}
         onClick={onToggle}
+        tabIndex={openable ? undefined : -1}
         type="button"
       >
         <span className="text-foreground">Build log</span>
@@ -130,7 +153,13 @@ export function ZeropsBuildLog({
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            <BuildLogLines lines={lines} live={status === "live"} />
+            {lines.length === 0 ? (
+              <p className="text-muted-foreground text-sm" data-zerops-build-log-empty>
+                {emptyLogWords(status)}
+              </p>
+            ) : (
+              <BuildLogLines lines={lines} live={status === "live"} />
+            )}
           </DialogPanel>
         </DialogPopup>
       </Dialog>
