@@ -1755,9 +1755,16 @@ export function makeOpenCodeAdapter(
       request: PermissionRequest,
     ) {
       const call = request.tool ? context.toolInputByCallId.get(request.tool.callID) : undefined;
-      const reply = yield* threadSetup.decidePermission(request, call);
+      const decided = yield* threadSetup.decidePermission(request, call);
       yield* runOpenCodeSdk("permission.reply", (signal) =>
-        context.client.permission.reply({ requestID: request.id, reply }, { signal }),
+        context.client.permission.reply(
+          {
+            requestID: request.id,
+            reply: decided.reply,
+            ...(decided.message === undefined ? {} : { message: decided.message }),
+          },
+          { signal },
+        ),
       ).pipe(Effect.timeout("10 seconds"), Effect.ignore);
     });
 
