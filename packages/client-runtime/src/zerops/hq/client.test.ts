@@ -170,6 +170,24 @@ describe("makeHqApi", () => {
     expect(hq.seen[0]?.body).toEqual({ token: "door-1" });
   });
 
+  // Key by id (audit K3): the id of the key a Mate's container holds, as the Mate named it to HQ.
+  it("reads the id of the key a Mate named, and none where it named none", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/mates/P_ADA/key"
+        ? json(200, { keyTokenId: "tok-ada" })
+        : seen.path === "/api/mates/P_BEA/key"
+          ? json(200, { keyTokenId: null })
+          : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    expect([await api.mateKey("P_ADA"), await api.mateKey("P_BEA")]).toEqual(["tok-ada", null]);
+  });
+
   it("comes through the door again once HQ no longer takes the session, and only once", async () => {
     const hq = fakeHq();
     const door = doors();

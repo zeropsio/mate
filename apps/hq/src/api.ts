@@ -23,8 +23,11 @@
  * - `POST /api/mates` `{ projectId, name, face }`, `PATCH /api/mates/:projectId` `{ name?, face? }`
  *   → `{ projectId, name, face }`: a Mate's record, in an application or not.
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
- *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce }` → `{ credential }`;
- *   `GET /api/mate/whoami` with `Authorization: Mate <credential>` → `{ projectId }`;
+ *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce, keyTokenId? }` →
+ *   `{ credential }`; `GET /api/mate/whoami` with `Authorization: Mate <credential>` →
+ *   `{ projectId }`; `PUT /api/mate/key` `{ keyTokenId }`, the same → `204`: the id of the key the
+ *   Mate's container holds, which `GET /api/mates/:projectId/key` → `{ keyTokenId }` tells the
+ *   project's admin;
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
  *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
  * - `POST /api/mates/:projectId/standup`, `POST /api/mates/:projectId/closed-off` → the Mate's state:
@@ -134,7 +137,14 @@ const TEXT_BODY_LIMIT = 128 * 1024;
 
 const DoorBody = Schema.Struct({ token: Schema.String });
 const ChallengeBody = Schema.Struct({ projectId: Schema.String });
-const CredentialBody = Schema.Struct({ projectId: Schema.String, nonce: Schema.String });
+/** A Zerops token's id, as the platform spells one — never a token's value. */
+const TokenId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,64}$/u));
+const CredentialBody = Schema.Struct({
+  projectId: Schema.String,
+  nonce: Schema.String,
+  keyTokenId: Schema.optionalKey(TokenId),
+});
+const KeyBody = Schema.Struct({ keyTokenId: TokenId });
 const AppBody = Schema.Struct({ name: Schema.String });
 const MoveBody = Schema.Struct({
   appId: Schema.NullOr(Schema.String),
@@ -184,6 +194,7 @@ const MATE_STATUS = {
   project_not_in_org: 403,
   project_gone: 404,
   not_a_mate: 403,
+  mate_credential_required: 401,
 } as const;
 
 const CHANGE_STATUS = {
@@ -641,8 +652,8 @@ const routes = (
       handle(
         Effect.gen(function* () {
           yield* knock("mate");
-          const { projectId, nonce } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
-          return json(yield* (yield* MateCredentials).issue(projectId, nonce), 200);
+          const { projectId, nonce, keyTokenId } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
+          return json(yield* (yield* MateCredentials).issue(projectId, nonce, keyTokenId), 200);
         }),
       ),
     ),
@@ -738,6 +749,18 @@ const routes = (
       handle(Effect.map(mate, ({ projectId }) => json({ projectId }, 200))),
     ),
     HttpRouter.add(
+      "PUT",
+      "/api/mate/key",
+      handle(
+        Effect.gen(function* () {
+          const { keyTokenId } = yield* jsonBody(KeyBody, DOOR_BODY_LIMIT);
+          const { credential } = yield* mate;
+          yield* (yield* MateCredentials).keepKey(credential, keyTokenId);
+          return HttpServerResponse.empty();
+        }),
+      ),
+    ),
+    HttpRouter.add(
       "POST",
       "/api/mate/link-ticket",
       handle(
@@ -803,7 +826,7 @@ const routes = (
           yield* principal;
           const token = yield* bearer;
           if (token !== undefined) yield* (yield* Sessions).revoke(token);
-          return HttpServerResponse.empty({ status: 204 });
+          return HttpServerResponse.empty();
         }),
       ),
     ),
@@ -849,7 +872,7 @@ const routes = (
                 .pipe(
                   Effect.catch((error) => Effect.logWarning("repositories not removed", error)),
                 );
-              return HttpServerResponse.empty({ status: 204 });
+              return HttpServerResponse.empty();
             }),
           );
         }),
@@ -1049,7 +1072,7 @@ const routes = (
                 params["name"] ?? "",
                 Redacted.make(token),
               );
-              return HttpServerResponse.empty({ status: 204 });
+              return HttpServerResponse.empty();
             }),
           );
         }),
@@ -1098,6 +1121,18 @@ const routes = (
               return json(yield* (yield* Structure).createMate(userId, mate), 201);
             }),
           );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mates/:projectId/key",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+          const keyTokenId = yield* (yield* MateCredentials).keyFor(userId, projectId);
+          return json({ keyTokenId }, 200);
         }),
       ),
     ),

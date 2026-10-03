@@ -2237,6 +2237,11 @@ export class ZeropsApiClient {
     projectId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
+    /**
+     * The id of the key the Mate's container holds, as the Mate named it to HQ: that key alone is
+     * hardened, and the organization's token list is neither read nor matched (audit K3).
+     */
+    keyTokenId?: string,
   ): Promise<{
     readonly tokenLowered: boolean;
     /** Why a key of the Mate's could not be lowered — the platform refused this account the write. */
@@ -2246,23 +2251,12 @@ export class ZeropsApiClient {
     readonly restarted: boolean;
   }> {
     const generation = this.#generation;
-    // The key its container holds: where two are its, the one made before the container.
-    const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
-    const tokens = await this.listIntegrationTokens(clientId, signal);
-    const token = findHeldMateKey(tokens, projectId, container?.created);
-
     let tokenLowered = false;
     let keyNotLowered: string | null = null;
     let delegationsDropped = 0;
 
-    // The key its container holds, and every other key of the Mate still ADMIN on its project —
-    // a raced press's, an older platform key — whichever the container holds.
-    const keys = [
-      ...new Set([
-        ...(token === undefined ? [] : [token.id]),
-        ...mateAdminKeys(tokens, projectId, container?.created).map((key) => key.id),
-      ]),
-    ];
+    const keys =
+      keyTokenId === undefined ? await this.#mateKeys(clientId, projectId, signal) : [keyTokenId];
     for (const tokenId of keys) {
       // A key this account may not write — an org admin's adoption of a Mate whose key an owner
       // made — is said and left as it is: the rest of the harden still runs.
@@ -2296,6 +2290,27 @@ export class ZeropsApiClient {
       isolationSteps: isolation.steps,
       restarted: isolation.restarted,
     };
+  }
+
+  /**
+   * The keys of a Mate HQ knows no key id of, matched on the organization's token list: the one its
+   * container holds — where two are its, the newest made before the container — and every other
+   * still ADMIN on its project, a raced press's or an older platform key.
+   */
+  async #mateKeys(
+    clientId: string,
+    projectId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<ReadonlyArray<string>> {
+    const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
+    const tokens = await this.listIntegrationTokens(clientId, signal);
+    const token = findHeldMateKey(tokens, projectId, container?.created);
+    return [
+      ...new Set([
+        ...(token === undefined ? [] : [token.id]),
+        ...mateAdminKeys(tokens, projectId, container?.created).map((key) => key.id),
+      ]),
+    ];
   }
 
   /** One key of a Mate lowered to its own project, and its delegations dropped. */

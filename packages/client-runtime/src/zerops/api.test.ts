@@ -1140,6 +1140,44 @@ describe("ZeropsApiClient project reads", () => {
     ).toBe(false);
   });
 
+  // Key by id (audit K3): a Mate whose key HQ knows by the id the Mate named is hardened by that
+  // id alone — the organization's token list is not read, nor matched by name.
+  it("hardens the key its Mate named by id, reading no token list", async () => {
+    const token = {
+      id: "token-7",
+      name: "zerops-zcp-zcp",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    };
+    const stub = recordingFetch((request) => {
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-7"))
+        return jsonResponse(200, token);
+      if (request.url.includes("/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack"))
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1", undefined, undefined, "token-7");
+
+    expect(result.tokenLowered).toBe(true);
+    expect(
+      stub.requests.filter((request) => request.method === "PUT").map((request) => request.url),
+    ).toEqual([expect.stringMatching(/\/integration-token\/token-7$/u)]);
+    expect(stub.requests.some((request) => request.url.endsWith("/integration-token/list"))).toBe(
+      false,
+    );
+  });
+
   // Step A, A11: an admin adopting a Mate whose key an owner made may not write that key. The
   // adoption is not failed for it: the harden says so, and closes the project off all the same.
   it("says a key write it was refused, and still isolates the project", async () => {

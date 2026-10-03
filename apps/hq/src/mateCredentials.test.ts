@@ -212,6 +212,38 @@ describe("mate credentials", () => {
       ),
     );
 
+    // Audit K3 and the adoption's harden: a Mate names its own key's id to HQ — at its enrollment,
+    // and again with its credential — so its key is found by id, never by matching a token list.
+    // A credential issued without one keeps the id the one before named; a revoked credential
+    // names nothing.
+    it.effect("keeps the key id a Mate names, at its enrollment and with its credential", () =>
+      withMates((fake) =>
+        Effect.gen(function* () {
+          const mates = yield* MateCredentials;
+          const enroll = (keyTokenId?: string) =>
+            Effect.gen(function* () {
+              const { nonce } = yield* mates.challenge("P_MATE");
+              writeChallenge(fake, "P_MATE", nonce);
+              return (yield* mates.issue("P_MATE", nonce, keyTokenId)).credential;
+            });
+          assert.isNull(yield* mates.keyOf("P_MATE"));
+          const first = yield* enroll("tok-key-1");
+          assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-key-1");
+          yield* mates.keepKey(first, "tok-key-2");
+          assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-key-2");
+
+          const second = yield* enroll();
+          assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-key-2");
+          assert.strictEqual(
+            yield* refusalOf(mates.keepKey(first, "tok-key-3")),
+            "mate_credential_required",
+          );
+          yield* mates.keepKey(second, "tok-key-3");
+          assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-key-3");
+        }),
+      ),
+    );
+
     it.effect("a project's next credential revokes the one before", () =>
       withMates((fake) =>
         Effect.gen(function* () {

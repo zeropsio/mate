@@ -53,6 +53,12 @@ const mock = vi.hoisted(() => ({
   assignDialog: { current: null as AssignDialogProps | null },
   /** What the hook asked the account's bus to read again. */
   invalidated: [] as Array<unknown>,
+  /** The tokens the account deleted, by id. */
+  deletedTokens: [] as Array<string>,
+  /** The id of the key a Mate named to HQ; none where it named none. */
+  mateKey: null as string | null,
+  /** The delete dialog as the hook mounts it. */
+  deleteDialog: { current: null as { readonly onConfirm: () => void } | null },
   /** The kinds of the account's cells the hook asked for. */
   asked: [] as Array<string>,
   /** The organization's token list, as the platform would answer it were it read. */
@@ -74,7 +80,11 @@ vi.mock("./ZeropsSessionProvider", () => ({
       roleCode: mock.roleCode,
       canCreateProjects: true,
     },
-    client: {},
+    client: {
+      deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
+        mock.deletedTokens.push(tokenId);
+      },
+    },
     user: mock.user,
   }),
 }));
@@ -84,7 +94,10 @@ vi.mock("./zeropsDataContext", () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {
-      commands: { setProjectMemberRole: mock.setProjectMemberRole },
+      commands: {
+        setProjectMemberRole: mock.setProjectMemberRole,
+        deleteProject: async () => ({ value: undefined }),
+      },
       reads: { setupMarker: () => null },
       cells: {
         known: (request: { readonly kind: string }) => {
@@ -138,7 +151,7 @@ vi.mock("./accountHq", async (original) => ({
     admins: [],
     reread: () => {},
   }),
-  accountHqApi: () => ({ updateMate: mock.updateMate }),
+  accountHqApi: () => ({ updateMate: mock.updateMate, mateKey: async () => mock.mateKey }),
 }));
 vi.mock("./projectOrderPreference", () => ({ useProjectOrderOptions: () => ({ order: "name" }) }));
 // The press's steps, not run here: what *Finish setup* hands them is the case.
@@ -146,6 +159,12 @@ vi.mock("./matePress", async (original) => ({
   ...(await original<typeof import("./matePress")>()),
   beginPress: () => {},
   finishMateSetup: mock.finishMateSetup,
+}));
+vi.mock("../components/zerops/ZeropsDeleteMateDialog", () => ({
+  ZeropsDeleteMateDialog: (props: { readonly onConfirm: () => void }) => {
+    mock.deleteDialog.current = props;
+    return null;
+  },
 }));
 vi.mock("../components/zerops/ZeropsAssignMateDialog", () => ({
   ZeropsAssignMateDialog: (props: AssignDialogProps) => {
@@ -217,6 +236,9 @@ beforeEach(() => {
   mock.invalidated = [];
   mock.asked = [];
   mock.tokens = [];
+  mock.deletedTokens = [];
+  mock.mateKey = null;
+  mock.deleteDialog.current = null;
   mock.updateMate.mockReset();
   mock.finishMateSetup.mockReset();
   seen.length = 0;
@@ -924,5 +946,28 @@ describe("mateAddedBy — whether the viewer added this Mate", () => {
     { case: "nothing names anybody", hq: placed({}), added: false },
   ])("$case: $added", ({ hq, added }) => {
     expect(mateAddedBy({ hq }, "user-ada")).toBe(added);
+  });
+});
+
+// Audit K3: deleting a Mate deleted its project and left its key on the account — 59 such orphans
+// on KRLS, and a member holding tokens cannot be taken off the org. The key goes with it now, by the
+// id the Mate named to HQ; none is matched by name where it named none.
+describe("useMateActions — Delete Mate takes its key with it", () => {
+  const deleteVerb = () => verbs(FEN).find((verb) => verb.id === "delete");
+
+  it.each([
+    { case: "by the id the Mate named", key: "tok-fen", retired: ["tok-fen"] },
+    { case: "none where the Mate named none", key: null, retired: [] },
+  ])("retires its key $case", async ({ key, retired }) => {
+    mock.mateKey = key;
+    mount();
+    act(() => {
+      deleteVerb()!.onSelect();
+    });
+    await act(async () => {
+      mock.deleteDialog.current!.onConfirm();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(mock.deletedTokens).toEqual(retired);
   });
 });

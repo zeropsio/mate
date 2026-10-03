@@ -973,16 +973,33 @@ export async function withPressTries(
   }
 }
 
+/** The id of the key the Mate of `input.projectId` named to HQ; none where HQ does not say one. */
+async function mateKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<string | null> {
+  if (input.hq === null) return null;
+  try {
+    return await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey(
+      input.projectId,
+    );
+  } catch {
+    // HQ not answering, or not telling this person: the harden matches the token list instead.
+    return null;
+  }
+}
+
 async function finishLocked(
   input: Parameters<typeof finishMateSetup>[0],
 ): Promise<EnvironmentCreationOutcome> {
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
+    // The key its Mate named to HQ by its id, hardened by it alone (audit K3); matched on the token
+    // list only where the Mate named none, or HQ does not say.
+    const keyTokenId = await mateKeyAtHq(input);
     const hardened = await withPressTries(
       () =>
         runZeropsCommand(
           input.inputs.data.runtime.commands.isolateProjectEnv(
             input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
+            keyTokenId ?? undefined,
           ),
         ).then((hardened) => {
           keyNotLowered = hardened.keyNotLowered;

@@ -1448,6 +1448,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
             command.project.projectId,
             signal,
             context.beforeProjectWrite,
+            command.keyTokenId,
           ),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({

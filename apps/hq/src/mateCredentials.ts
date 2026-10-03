@@ -14,6 +14,10 @@
  * loses its credential and its challenges at the structure's reconcile (`structure.ts`). Writes are
  * fenced by the leader.
  *
+ * A Mate names its own key's id with its credential — at its enrollment, and again later — so HQ
+ * can say which Zerops key is the Mate's to whoever adopts or deletes it: an id, never a value,
+ * and never a match on the organization's token list (audit K3; `keyOf`).
+ *
  * @module mateCredentials
  */
 import * as NodeCrypto from "node:crypto";
@@ -32,6 +36,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
+import { StructureRefused } from "./structure.ts";
 import { ZeropsApi, type ZeropsError, ZeropsRefused } from "./zerops/api.ts";
 
 /** The project env key zcp writes the nonce into. */
@@ -45,6 +50,7 @@ export class MateRefused extends Schema.TaggedError<MateRefused>()("MateRefused"
     "project_not_in_org",
     "project_gone",
     "not_a_mate",
+    "mate_credential_required",
   ]),
 }) {}
 
@@ -57,10 +63,14 @@ export class MateCredentials extends Context.Service<
       { readonly nonce: string; readonly expiresIn: number },
       MateRefused | NotLeader | SqlError | ZeropsError
     >;
-    /** The credential for the project whose env holds the nonce now. */
+    /**
+     * The credential for the project whose env holds the nonce now; `keyTokenId`, the id of the key
+     * its container holds, as the Mate names it — else the one its credential before named.
+     */
     readonly issue: (
       projectId: string,
       nonce: string,
+      keyTokenId?: string,
     ) => Effect.Effect<
       { readonly credential: string },
       MateRefused | NotLeader | SqlError | ZeropsError
@@ -69,6 +79,21 @@ export class MateCredentials extends Context.Service<
     readonly whoami: (
       credential: string,
     ) => Effect.Effect<Option.Option<{ readonly projectId: string }>, SqlError>;
+    /** The id of the key its container holds, as the Mate of a live `credential` names it now. */
+    readonly keepKey: (
+      credential: string,
+      keyTokenId: string,
+    ) => Effect.Effect<void, MateRefused | NotLeader | SqlError>;
+    /** The id of the key the Mate of `projectId` named with its live credential; none unnamed. */
+    readonly keyOf: (projectId: string) => Effect.Effect<string | null, SqlError>;
+    /**
+     * {@link keyOf}, told to the person `userId` where they administer the Mate's project — who
+     * adopts it, or deletes it (`edit_mate_record`'s rule).
+     */
+    readonly keyFor: (
+      userId: string,
+      projectId: string,
+    ) => Effect.Effect<string | null, StructureRefused | SqlError | ZeropsError>;
   }
 >()("@t3tools/hq/mateCredentials") {}
 
@@ -131,6 +156,13 @@ export const mateCredentialsLayer = (options: {
             });
           }),
         );
+      const keyOf = (projectId: string) =>
+        Effect.map(
+          sql<{ readonly key_token_id: string | null }>`
+            SELECT key_token_id FROM hq_mate_credential
+            WHERE project_id = ${projectId} AND revoked_at IS NULL`,
+          (rows) => rows[0]?.key_token_id ?? null,
+        );
       return MateCredentials.of({
         challenge: (projectId) =>
           Effect.gen(function* () {
@@ -147,7 +179,7 @@ export const mateCredentialsLayer = (options: {
             );
             return { nonce, expiresIn: Duration.toSeconds(CHALLENGE_TTL) };
           }),
-        issue: (projectId, nonce) =>
+        issue: (projectId, nonce, keyTokenId) =>
           Effect.gen(function* () {
             const nonceHash = hashOf(nonce);
             const [challenge] = yield* sql<{ readonly live: boolean }>`
@@ -170,18 +202,46 @@ export const mateCredentialsLayer = (options: {
                   WHERE nonce_hash = ${nonceHash} AND used_at IS NULL AND expires_at > now()
                   RETURNING 1`;
                 if (spent.length === 0) return false;
-                yield* sql`
+                const [before] = yield* sql<{ readonly key_token_id: string | null }>`
                   UPDATE hq_mate_credential SET revoked_at = now()
-                  WHERE project_id = ${projectId} AND revoked_at IS NULL`;
+                  WHERE project_id = ${projectId} AND revoked_at IS NULL
+                  RETURNING key_token_id`;
                 yield* sql`
-                  INSERT INTO hq_mate_credential (credential_hash, project_id)
-                  VALUES (${hashOf(credential)}, ${projectId})`;
+                  INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id)
+                  VALUES (${hashOf(credential)}, ${projectId},
+                    ${keyTokenId ?? before?.key_token_id ?? null})`;
                 return true;
               }),
             );
             if (!issued) return yield* new MateRefused({ code: "unknown_nonce" });
             return { credential };
           }),
+        keepKey: (credential, keyTokenId) =>
+          Effect.gen(function* () {
+            const kept = yield* leader.write(sql`
+              UPDATE hq_mate_credential SET key_token_id = ${keyTokenId}
+              WHERE credential_hash = ${hashOf(credential)} AND revoked_at IS NULL
+              RETURNING 1`);
+            if (kept.length === 0) {
+              return yield* new MateRefused({ code: "mate_credential_required" });
+            }
+          }),
+        keyOf,
+        keyFor: (userId, projectId) =>
+          confirmingRefusal(
+            Effect.gen(function* () {
+              const decision = can(
+                { kind: "person", userId },
+                "edit_mate_record",
+                { projectId, held: yield* heldOf(sql, projectId) },
+                yield* roles.forWrite,
+              );
+              if (!decision.allow) {
+                return yield* new StructureRefused({ code: "forbidden", reason: decision.reason });
+              }
+              return yield* keyOf(projectId);
+            }),
+          ),
         whoami: (credential) =>
           sql<{ readonly project_id: string }>`
             SELECT project_id FROM hq_mate_credential
