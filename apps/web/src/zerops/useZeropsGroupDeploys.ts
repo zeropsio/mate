@@ -541,8 +541,8 @@ function withMainHeads(
  * Each first-deploy head read (`planFirstDeployHeadReads`): the repository's `main` head — kept
  * while the org's listing says nothing was pushed — and its statuses, read again until they settle
  * (`firstDeployHeadSettled`) on `firstDeployHeadLadder`: a read a minute within the coming-up
- * window of the stage's making or the head's newest status, one every five minutes until the
- * broker's patience runs out, then none until a push makes a new head. A stage that runs a
+ * window of the stage's making, the head first seen, or a job moving there, one every five minutes
+ * until the broker's patience runs out, then none until a push makes a new head. A stage that runs a
  * deploy, or a group with none declared, costs nothing. A read that does not answer keeps the
  * head the group last read.
  */
@@ -585,7 +585,8 @@ async function readFirstDeployHead(
   try {
     const sha = (await client.getBranch(slug, read.repo, "main"))?.commit?.id;
     if (sha === undefined || sha === "") return held;
-    const waiting = firstDeployHeadLadder(held, sha, askedAt, Date.now());
+    const nowMs = Date.now();
+    const waiting = firstDeployHeadLadder(held, read, sha, askedAt, nowMs);
     // Past the broker's patience on the same head: what was read stands until a push.
     if (waiting === undefined) return held;
     const statuses = await memo.read(
@@ -593,7 +594,9 @@ async function readFirstDeployHead(
       () => client.listCommitStatuses(slug, read.repo, sha),
       { settled: (answered) => firstDeployHeadSettled(read, answered), waiting },
     );
-    return { sha, statuses };
+    // When main was first seen at this commit: a head nobody posted to yet still waits.
+    const firstSeenAtMs = held?.sha === sha ? (held.firstSeenAtMs ?? nowMs) : nowMs;
+    return { sha, statuses, firstSeenAtMs };
   } catch {
     return held;
   }

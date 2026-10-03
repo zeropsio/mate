@@ -240,6 +240,8 @@ export interface EnvironmentServiceState {
 export interface MainHeadStatuses {
   readonly sha: string;
   readonly statuses: ReadonlyArray<GiteaCommitStatus>;
+  /** When the reader first saw `main` at this commit: a head nobody posted to yet still waits. */
+  readonly firstSeenAtMs?: number | undefined;
 }
 
 /** A stage's first deploy failing on `main`'s head (`firstDeployOnHead`). */
