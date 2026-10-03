@@ -765,4 +765,48 @@ describe("ComingBelow — a Mate half made", () => {
   it("offers nothing to anyone else", () => {
     expect(render(undefined).root.findAllByType("button")).toHaveLength(0);
   });
+
+  // F6b (e2e, 2026-10-03): Dan's view said he could not be added while his workspace's clock ran
+  // on, "139:30 of about 2 min", its spinner turning — the press this tab held never settled.
+  it("says its workspace stopped, its clock not running on, where its press never settled", () => {
+    const START = Date.parse("2026-10-03T05:00:00Z");
+    const at = (ms: number) => new Date(START + ms).toISOString();
+    const project = {
+      id: "project",
+      label: "Dan's project",
+      state: "done",
+      startedAt: at(0),
+      endedAt: at(29_000),
+    } as const;
+    const container = {
+      id: "container",
+      label: "Dan's container",
+      state: "active",
+      startedAt: at(29_000),
+    } as const;
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: HALF_MADE,
+          progress: {
+            steps: [project, container],
+            active: container,
+            failed: null,
+            doneCount: 1,
+            total: 2,
+            complete: false,
+          },
+          nowMs: START + 29_000 + 139 * 60_000 + 30_000,
+          mate: { name: "Dan", project: undefined },
+          you: null,
+        }),
+      );
+    });
+    const said = JSON.stringify(rendered!.toJSON());
+    expect(said).toContain("Dan's workspace");
+    expect(said).not.toContain("139:30");
+    expect(said).not.toContain("about 2 min");
+    expect(said).toContain("Stopped");
+  });
 });

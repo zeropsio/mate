@@ -77,7 +77,12 @@ import {
 } from "~/zerops/mateComing";
 import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
-import { arrivalSteps, comingSentence, inFirstSeenOrder } from "~/zerops/mateArrival";
+import {
+  arrivalSteps,
+  comingSentence,
+  inFirstSeenOrder,
+  type ArrivalStep,
+} from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
@@ -870,7 +875,7 @@ export function ComingBelow({
       ? null
       : arrivalSteps(progress, mate, nowMs).map((step) => {
           const { why: _said, ...marked } = step;
-          const shown = coming?.kind === "failed" ? marked : step;
+          const shown = coming?.kind === "failed" ? stoppedStep(marked) : step;
           if (shown.services === undefined) return shown;
           const kept = inFirstSeenOrder(
             seen.get(step.id) ?? [],
@@ -907,6 +912,20 @@ export function ComingBelow({
       {steps}
     </div>
   );
+}
+
+/** A step's word once its creation stopped while it was under way. */
+const STOPPED_NOTE = "Stopped";
+
+/**
+ * A step of a creation that stopped: one still under way stopped with it, so its clock runs no
+ * further and its spinner turns no more — a press that never settled ran it on past two hours
+ * (F6b, 2026-10-03). Its time is not known, and it says so rather than guess one.
+ */
+function stoppedStep(step: ArrivalStep): ArrivalStep {
+  if (step.state !== "active") return step;
+  const { time: _running, note: _estimate, ...rest } = step;
+  return { ...rest, state: "failed", note: STOPPED_NOTE };
 }
 
 /**
