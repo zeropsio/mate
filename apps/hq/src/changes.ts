@@ -158,6 +158,7 @@ export class Changes extends Context.Service<
       projectId: string,
       repo: string,
       title: string,
+      tree?: string,
     ) => Effect.Effect<OpenChangeResponse, MateError | GitError>;
     /** The Mate's open change `number` in `repo`, retitled, described, or both. */
     readonly editChange: (
@@ -872,7 +873,7 @@ export const changesLayer: Layer.Layer<
           const { appId } = yield* mateHeld(projectId);
           return yield* recipeTier(yield* mateFetch(projectId, appId ?? ""), tier);
         }),
-      openChange: (projectId, repo, title) =>
+      openChange: (projectId, repo, title, tree) =>
         Effect.gen(function* () {
           const appId = yield* mateApp(projectId, "open_change");
           const columns = sql.literal(CHANGE_COLUMNS);
@@ -884,6 +885,20 @@ export const changesLayer: Layer.Layer<
                 const repos = yield* sql`
                 SELECT 1 FROM hq_repo WHERE app_id = ${appId}::uuid AND name = ${repo} FOR UPDATE`;
                 if (repos.length === 0) return yield* refuse("repo_not_found", "repo_not_found");
+                // The tree hash identifies content, irrespective of squash ancestry. This verdict
+                // precedes both opening a number and returning an existing open change.
+                const at = { appId, id: repo };
+                const main = yield* mainOf(git, at);
+                if (tree !== undefined && main !== null && tree === (yield* git.treeId(at, main))) {
+                  yield* appendEvent(sql, {
+                    kind: "delivery_empty",
+                    appId,
+                    repo,
+                    number: null,
+                    data: { mateProjectId: projectId, main, tree },
+                  });
+                  return { change: null, created: false, reason: "nothing_to_deliver" } as const;
+                }
                 const [open] = yield* sql<ChangeRow>`
                 SELECT ${columns} FROM hq_change
                 WHERE app_id = ${appId}::uuid AND repo = ${repo}
@@ -1087,7 +1102,18 @@ export const changesLayer: Layer.Layer<
             maxFiles: 300,
             maxBytesPerFile: 256 * 1024,
           });
-          const log = yield* git.changeLog(at, mate, number, { limit: 100 });
+          // A squash lands content without its original commits. The preceding landing of this
+          // Mate is the change's own base, independent of a later merge-base with main.
+          const [previous] = yield* sql<{ readonly landed_head: string | null }>`
+            SELECT landed_head FROM hq_change
+            WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+              AND mate_project_id = ${mate} AND number < ${number} AND state = 'merged'
+              AND landed_head IS NOT NULL
+            ORDER BY number DESC LIMIT 1`;
+          const log = yield* git.changeLog(at, mate, number, {
+            limit: 100,
+            ...(previous?.landed_head == null ? {} : { base: previous.landed_head }),
+          });
           const mainHead = yield* mainOf(git, at);
           const mergeBase = yield* git.mergeBase(at, mate, number);
           const mergeability = yield* git.mergeability(at, mate, number);

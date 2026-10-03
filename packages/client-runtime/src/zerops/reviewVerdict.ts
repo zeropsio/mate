@@ -600,6 +600,14 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
 
   const verdictOf = changeVerdictOf(input);
   const { verdict } = verdictOf;
+  if (verdict.state === "empty") {
+    return {
+      verdict,
+      consequence: `Nothing to deliver: ${base} already has this.`,
+      primary: undefined,
+      secondary,
+    };
+  }
   // A head whose files are still being read was not shown: it waits for them, as it waits for the
   // facts HQ's rule is asked over.
   const enabled = verdictOf.enabled && input.readout !== "reading" && input.offered?.merge === true;

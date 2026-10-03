@@ -11,6 +11,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 export type GitEventKind =
   | "pushed"
   | "opened"
+  | "delivery_empty"
   | "main_moved"
   | "merged"
   | "closed"

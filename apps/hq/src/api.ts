@@ -731,11 +731,11 @@ const routes = (
       "/api/mate/changes",
       handle(
         Effect.gen(function* () {
-          const { repo, title } = yield* jsonBody(OpenChangeRequest, BODY_LIMIT);
+          const { repo, title, tree } = yield* jsonBody(OpenChangeRequest, BODY_LIMIT);
           return yield* outliving(
             Effect.gen(function* () {
               const { projectId } = yield* mate;
-              return json(yield* (yield* Changes).openChange(projectId, repo, title), 200);
+              return json(yield* (yield* Changes).openChange(projectId, repo, title, tree), 200);
             }),
           );
         }),

@@ -321,6 +321,8 @@ export interface HqGit {
   readonly branches: (
     repo: Repo,
   ) => Effect.Effect<Bounded<{ readonly ref: string; readonly sha: string }>, GitError>;
+  /** Git's content hash of a commit's tree, for delivery equality. */
+  readonly treeId: (repo: Repo, sha: string) => Effect.Effect<string, GitError>;
   readonly tree: (
     repo: Repo,
     rev: string,
@@ -394,14 +396,15 @@ export interface HqGit {
     options: { readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary> & { readonly total: number }, GitError>;
   /**
-   * The change's commits not on main (`main..head`), children before parents, at most `limit`;
+   * The change's commits not on main or before its own base (the previously landed head),
+   * children before parents, at most `limit`;
    * without a main, all of the change's. None without a change head.
    */
   readonly changeLog: (
     repo: Repo,
     mateId: string,
     number: number,
-    options: { readonly limit: number },
+    options: { readonly limit: number; readonly base?: string },
   ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
   /**
    * What squashing the change into main would do to main now: each file of the merged tree that
