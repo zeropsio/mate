@@ -6,7 +6,7 @@
  * - `POST /api/apps` `{ name }` → the application; `DELETE /api/apps/:id` → `204`, only one that
  *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it.
  * - `POST /api/apps/:id/projects` `{ projectId, kind, mate?, environment?, created? }`: attaches a
- *   project; a stage or a production is its application's environment, named `environment.name` or
+ *   project, a Mate's record naming its zcp service where `mate.serviceId` does; a stage or a production is its application's environment, named `environment.name` or
  *   after its project (`environments.ts`); `created` says the person's client made it for HQ to
  *   deploy, whose services then get their subdomain on their first deploy (audit R1).
  * - `GET /api/structure` → `{ apps }`, as the caller sees them in Zerops: each with its projects,
@@ -20,8 +20,9 @@
  *   deploy token, minted by the client of whoever attaches it; the structure says only `keyHeld`.
  * - `POST /api/apps/:appId/environments/:name/redeploy` `{ service, sha }` → `202`: a person's "Run
  *   again" of the environment's newest deploy of that service, failed (`deploys.ts`).
- * - `POST /api/mates` `{ projectId, name, face }`, `PATCH /api/mates/:projectId` `{ name?, face? }`
- *   → `{ projectId, name, face }`: a Mate's record, in an application or not.
+ * - `POST /api/mates` `{ projectId, name, face, standUp?, serviceId? }`, `PATCH
+ *   /api/mates/:projectId` `{ name?, face? }` → `{ projectId, name, face }`: a Mate's record, in an
+ *   application or not, naming its zcp service where its client knows it (one Mate per project).
  * - The Mate's own door (`mateCredentials.ts`): `POST /api/mate/challenge` `{ projectId }` →
  *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce, keyTokenId?,
  *   serviceId? }` → `{ credential }`, refused `409 not_this_projects_mate` to a zcp service other
@@ -159,6 +160,7 @@ const NewMateBody = Schema.Struct({
   name: Schema.String,
   face: Schema.String,
   standUp: Schema.optionalKey(Schema.Boolean),
+  serviceId: Schema.optionalKey(ServiceId),
 });
 const MateBody = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
@@ -172,6 +174,7 @@ const AttachBody = Schema.Struct({
       name: Schema.String,
       face: Schema.String,
       standUp: Schema.optionalKey(Schema.Boolean),
+      serviceId: Schema.optionalKey(ServiceId),
     }),
   ),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),

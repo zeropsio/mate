@@ -18,6 +18,10 @@
  * can say which Zerops key is the Mate's to whoever adopts or deletes it: an id, never a value,
  * and never a match on the organization's token list (audit K3; `keyOf`).
  *
+ * A project holds one Mate (audit D2): its record names its zcp service, and a zcp names its own at
+ * its enrollment. Another zcp service of the project is refused, and never takes the Mate's
+ * credential ({@link enrollmentVerdict}).
+ *
  * @module mateCredentials
  */
 import * as NodeCrypto from "node:crypto";
