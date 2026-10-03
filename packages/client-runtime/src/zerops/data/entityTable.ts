@@ -612,8 +612,14 @@ export function serviceVariableHeard(
   key: string,
 ): { readonly id: string; readonly asOf: number } | null {
   const row = variablesByService(state).get(serviceId)?.get(key);
-  const held = row === undefined ? undefined : state.rows["user-data"].get(row.id);
-  return row === undefined || held === undefined ? null : { id: row.id, asOf: held.asOf };
+  const asOf = row === undefined ? null : rowHeard(state, "user-data", row.id);
+  return row === undefined || asOf === null ? null : { id: row.id, asOf };
+}
+
+/** The receipt a row the table holds is as current as; `null` for one it holds none of. */
+export function rowHeard(state: EntityTableState, entity: TableEntity, id: string): number | null {
+  const held = state.rows[entity].get(id);
+  return held?.row == null ? null : held.asOf;
 }
 
 /**

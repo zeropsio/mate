@@ -54,7 +54,11 @@ const deploy = (overrides: Partial<ServiceDeployInfo>): ServiceDeployInfo => ({
 });
 
 /** The service as its organization's search and stream state it. */
-const withService = (state: ZeropsDataState, activeDeploy: ServiceDeployInfo | null) => {
+const withService = (
+  state: ZeropsDataState,
+  activeDeploy: ServiceDeployInfo | null,
+  at = stamp(3),
+) => {
   const record = {
     ref,
     deployment: {
@@ -62,7 +66,7 @@ const withService = (state: ZeropsDataState, activeDeploy: ServiceDeployInfo | n
       fields: { versionNumber: null, mode: null, activeDeploy },
       unresolvedRequiredFields: [],
       source: "native-push",
-      stamp: stamp(3),
+      stamp: at,
     },
   } as unknown as ServiceRecord;
   const services = new Map(state.inventory.services);
@@ -114,11 +118,12 @@ const answered = (
   }).state,
 });
 
-/** The organization's variables as its stream pushed them, at receipt `ordinal`. */
+/** The organization's variables (or active versions) as its stream pushed them, at `ordinal`. */
 const pushed = (
   state: ZeropsDataState,
   rows: ReadonlyArray<Record<string, unknown>>,
   ordinal: number,
+  entity: "user-data" | "app-version" = "user-data",
 ): ZeropsDataState => ({
   ...state,
   table: reduceTableObservation(state.table, {
@@ -126,12 +131,10 @@ const pushed = (
     accessEvidence: null,
     input: {
       kind: "table-rows-observed",
-      entity: "user-data",
+      entity,
       rows: rows as never,
       source: "native-push",
-      registration: {
-        descriptor: { kind: "table-updates", entity: "user-data", organization },
-      } as never,
+      registration: { descriptor: { kind: "table-updates", entity, organization } } as never,
     },
   }).state,
 });
@@ -589,6 +592,24 @@ describe("a service's variables heard before it moved to another version", () =>
     expect(selectDeployedVersion(moved.state, ref).state).toBe("unread");
   });
 
+  it("count from when the version it runs was heard active, not from the service's last push", () => {
+    const active = pushed(
+      loaded,
+      [{ id: "v-2", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "CLI" }],
+      6,
+      "app-version",
+    );
+    // Its version went active after the variables were heard, its push long after both.
+    const state = wantStaleVariables(
+      withService(active, deploy({ id: "v-2" }), stamp(9)),
+      10,
+      1_000,
+    );
+    expect(tableRowsWanted(state.table)).toMatchObject([
+      { entity: "user-data", ids: ["u-appVersionId", "u-appVersionName"] },
+    ]);
+  });
+
   it("are read again once per move, never in a loop, whatever the read answers", () => {
     let state = wantStaleVariables(deployed, 4, 1_000);
     state = readById(
@@ -626,6 +647,25 @@ describe("a service's variables heard before it moved to another version", () =>
     {
       name: "the service runs nothing",
       state: withService(loaded, null),
+    },
+    {
+      // The service's push moves its stamp whatever it carries; its version's row does not.
+      name: "a later push of the service leaves it on the version whose build failed since",
+      state: withService(
+        pushed(
+          answered(
+            answered(makeInitialZeropsDataState(scope()), versions, [
+              { id: "v-2", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "CLI" },
+            ]),
+            variables,
+            [],
+          ),
+          [variable("appVersionId", "v-3"), variable("appVersionName", "main 7e2d4c1")],
+          5,
+        ),
+        deploy({ id: "v-2" }),
+        stamp(9),
+      ),
     },
   ])("are not read again when $name", ({ state }) => {
     expect(tableRowsWanted(wantStaleVariables(state, 9, 1_000).table)).toEqual([]);
