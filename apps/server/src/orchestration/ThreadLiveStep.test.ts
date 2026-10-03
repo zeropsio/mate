@@ -80,6 +80,55 @@ describe("ThreadLiveStep", () => {
     // it calls again, so a call started after another returned is a newer
     // batch's, and one an older batch left open lost its completion.
     {
+      // A batch is one model response: Claude Code runs a response's early
+      // calls while the model still writes the later ones.
+      name: "a response's call that returned before a later one started leaves the earlier running",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5), response: "r1" },
+        { type: "call-running", call: call("c2", 6), response: "r1" },
+        { type: "call-ended", callId: "c2", at: at(8) },
+        { type: "call-running", call: call("c3", 9), response: "r1" },
+      ],
+      step: { kind: "calls", since: at(9), calls: [call("c1", 5), call("c3", 9)] },
+    },
+    {
+      name: "a call of a newer response puts the older response's open call behind it",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5), response: "r1" },
+        { type: "call-running", call: call("c2", 6), response: "r1" },
+        { type: "call-ended", callId: "c2", at: at(8) },
+        { type: "call-running", call: call("c3", 9), response: "r2" },
+      ],
+      step: { kind: "calls", since: at(9), calls: [call("c3", 9)] },
+    },
+    {
+      name: "a completion of a call it never saw start leaves a response's calls running",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5), response: "r1" },
+        { type: "call-ended", callId: "c0", at: at(6) },
+        { type: "call-running", call: call("c2", 7), response: "r1" },
+      ],
+      step: { kind: "calls", since: at(7), calls: [call("c1", 5), call("c2", 7)] },
+    },
+    {
+      name: "a call's update names no response: it stays its response's",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5), response: "r1" },
+        { type: "call-running", call: call("c1", 6, { detail: "Bash: pnpm test" }) },
+        { type: "call-running", call: call("c2", 7), response: "r1" },
+      ],
+      step: {
+        kind: "calls",
+        since: at(7),
+        calls: [call("c1", 5, { detail: "Bash: pnpm test" }), call("c2", 7)],
+      },
+    },
+    // A provider whose calls name no response keeps the timing rule.
+    {
       name: "a call started after another returned puts an older open call behind it",
       observations: [
         started,
@@ -576,6 +625,17 @@ describe("liveStepObservationOf", () => {
       name: "its completion ends it",
       activity: activity("tool.completed", "completed"),
       observation: ended,
+    },
+    {
+      name: "a call starting says the response it was written in",
+      activity: {
+        ...activity("tool.started", "inProgress", "Command run started"),
+        payload: {
+          ...(activity("tool.started", "inProgress").payload as Record<string, unknown>),
+          responseId: "msg-r1",
+        },
+      },
+      observation: { ...running("Command run", "tool.started"), response: "msg-r1" },
     },
     {
       name: "what is no call says nothing of a step",
