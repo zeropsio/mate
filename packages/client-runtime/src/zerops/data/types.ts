@@ -1948,6 +1948,8 @@ export interface DeleteTokenDelegationCommandIntent {
 export interface HardenMateCommandIntent {
   readonly kind: "harden-mate";
   readonly project: ProjectRef;
+  /** The key the Mate named to HQ by its id: that one alone is hardened (audit K3). */
+  readonly keyTokenId?: string;
 }
 
 /**
@@ -2294,7 +2296,10 @@ export interface ZeropsDataCommands {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly isolateProjectEnv: (project: ProjectRef) => Effect.Effect<
+  readonly isolateProjectEnv: (
+    project: ProjectRef,
+    keyTokenId?: string,
+  ) => Effect.Effect<
     CommandExecution<{
       readonly tokenLowered: boolean;
       /** Why a key of the Mate's could not be lowered: the platform refused this account. */

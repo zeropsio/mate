@@ -3876,8 +3876,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
-    isolateProjectEnv: (project) =>
-      runCommand({ kind: "harden-mate", project }).pipe(
+    isolateProjectEnv: (project, keyTokenId) =>
+      runCommand({
+        kind: "harden-mate",
+        project,
+        ...(keyTokenId === undefined ? {} : { keyTokenId }),
+      }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "harden-mate"
             ? Effect.succeed({ attempt, value: result.value })

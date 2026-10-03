@@ -170,6 +170,11 @@ export interface HqApi {
     },
     signal: AbortSignal,
   ) => Promise<void>;
+  /**
+   * The id of the key a Mate's container holds, as the Mate named it to HQ (`GET
+   * /api/mates/{projectId}/key`); none where it named none. Told to the project's admin alone.
+   */
+  readonly mateKey: (projectId: string, signal?: AbortSignal) => Promise<string | null>;
   /** A Mate's name or face, as HQ records them (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (
     projectId: string,
@@ -756,6 +761,15 @@ export function makeHqApi(input: {
         "once",
       );
     },
+    mateKey: async (projectId, signal) =>
+      (
+        await json<{ readonly keyTokenId: string | null }>(
+          await authorized(
+            `/api/mates/${encodeURIComponent(projectId)}/key`,
+            signal === undefined ? {} : { signal },
+          ),
+        )
+      ).keyTokenId,
     updateMate: async (projectId, change) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}`,

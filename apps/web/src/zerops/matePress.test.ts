@@ -42,7 +42,11 @@ import {
 import type { LockManagerLike } from "./mateLocks";
 
 /** What HQ heard of the press: each close-off it was asked to mark. */
-const hq = vi.hoisted(() => ({ calls: null as Array<string> | null }));
+const hq = vi.hoisted(() => ({
+  calls: null as Array<string> | null,
+  /** The id of the key the Mate named to HQ; none where it named none. */
+  key: null as string | null,
+}));
 vi.mock("./accountHq", () => ({
   accountHqApi: () => ({
     recordClosedOff: async () => {
@@ -59,6 +63,7 @@ vi.mock("./accountHq", () => ({
     recordStandUp: async () => {
       hq.calls?.push("standup");
     },
+    mateKey: async () => hq.key,
   }),
 }));
 
@@ -920,6 +925,61 @@ describe("finishMateSetup — the harden path", () => {
       `${FINISHED_SETUP_LINE} ${said}`,
       `Setup finished. ${said}`,
     ]);
+    forgetPress("p-old");
+  });
+
+  // Key by id (audit K3): an adopted Mate's key is hardened by the id the Mate named to HQ, where
+  // it named one; matched on the token list only where it did not.
+  it("hardens an adopted Mate's key by the id HQ names", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const asked: Array<string | undefined> = [];
+    const byId = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            isolateProjectEnv: (_project: unknown, keyTokenId?: string) => {
+              asked.push(keyTokenId);
+              return Effect.succeed({
+                value: {
+                  tokenLowered: true,
+                  keyNotLowered: null,
+                  delegationsDropped: 0,
+                  isolationSteps: 1,
+                  restarted: false,
+                },
+              });
+            },
+          },
+        },
+      },
+    };
+    hq.calls = calls;
+    const finishOld = () =>
+      finishMateSetup({
+        inputs: byId as never,
+        projectId: "p-old",
+        projectName: "Acme - Ada",
+        container: null,
+        registration: null,
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        harden: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      });
+    hq.key = "token-7";
+    expect(await finishOld()).toMatchObject({ ok: true });
+    hq.key = null;
+    expect(await finishOld()).toMatchObject({ ok: true });
+    expect(asked).toEqual(["token-7", undefined]);
     forgetPress("p-old");
   });
 
