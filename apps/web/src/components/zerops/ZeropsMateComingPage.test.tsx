@@ -9,9 +9,11 @@ import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 import { beginPress, forgetPress } from "~/zerops/matePress";
 import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
+import { rememberWriter } from "~/zerops/writerMemory";
 
 import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
@@ -391,25 +393,60 @@ describe("a Mate's own view while its link is made", () => {
 
 // The owner, 2026-09-30: "sometimes the text area still flashed because old one is gone sooner
 // than new one is in". A switch from a conversation to a Mate whose link is still being made
-// lands here: its composer stands in its place, as the conversation that takes over draws it,
-// never nothing until the conversation opens. A Mate coming up for the first time holds its
-// composer back for its stand-up, and one that cannot be opened has nothing to write to.
-describe("the composer in a Mate's own view", () => {
+// lands here: the footer its conversation will draw stands in its place, never nothing until the
+// conversation opens. Before the page knows the conversation it opens on, that is the composer's
+// room held — not a composer or a strip guessed from the menu's last chat, which in a crew Mate
+// whose chats run on different logins would flip under the person. A Mate coming up for the first
+// time holds its composer back for its stand-up, and one that cannot be opened has nothing to
+// write to.
+describe("the footer in a Mate's own view", () => {
   const composer = () =>
     tree?.root.findAll((node) => typeof node.type === "string" && node.type === "textarea") ?? [];
+  const roomHeld = () =>
+    tree?.root.findAll(
+      (node) =>
+        typeof node.type === "string" && node.props["data-composer-room-held"] !== undefined,
+    ) ?? [];
+  const OLDER = { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-older") };
+  beforeEach(() => openAccountLifetime("person-a"));
+  afterEach(() => {
+    closeAccountLifetime();
+    window.localStorage.clear();
+  });
 
   it.each([
     {
       case: "an existing Mate while its link is made",
       link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
       candidate: QUINN,
-      shown: true,
+      footer: "held",
     },
     {
       case: "an existing Mate no machine names yet",
       link: { key: KEY, environmentId: undefined, reachability: null },
       candidate: QUINN,
-      shown: true,
+      footer: "held",
+    },
+    {
+      case: "an existing Mate whose menu row's chat this browser remembers as the viewer's",
+      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
+      candidate: QUINN,
+      row: { writer: "you" },
+      footer: "held",
+    },
+    {
+      case: "an existing Mate whose menu row's chat this browser remembers as someone else's",
+      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
+      candidate: QUINN,
+      row: { writer: "someone" },
+      footer: "held",
+    },
+    {
+      case: "an existing Mate whose own conversation this browser remembers as the viewer's",
+      link: { key: KEY, environmentId: ENV_QUINN, reachability: { kind: "ready", notice: null } },
+      candidate: QUINN,
+      main: { writer: "you" },
+      footer: "composer",
     },
     {
       case: "a Mate that cannot be opened",
@@ -419,126 +456,40 @@ describe("the composer in a Mate's own view", () => {
         reachability: { kind: "gone", because: "direct-not-found" },
       },
       candidate: QUINN,
-      shown: false,
+      footer: "none",
     },
     {
       case: "a new Mate coming up",
       link: { key: KEY, environmentId: undefined, reachability: null },
       candidate: { ...QUINN, group: "provisioning" } as ZeropsCandidate,
-      shown: false,
+      footer: "none",
     },
   ] satisfies ReadonlyArray<{
     case: string;
     link: MateLink;
     candidate: ZeropsCandidate;
-    shown: boolean;
-  }>)("$case: shown $shown", ({ link, candidate, shown }) => {
+    row?: { readonly writer: "you" | "someone" };
+    main?: { readonly writer: "you" };
+    footer: "composer" | "held" | "none";
+  }>)("$case: $footer", ({ link, candidate, footer, ...remembered }) => {
     app.link = link;
     app.listing = listingOf([candidate]);
+    if ("row" in remembered) {
+      app.remembered = { subject: "Earlier", threadKey: `${ENV_QUINN}:${OLDER.threadId}` };
+      rememberWriter(OLDER, remembered.row.writer);
+    }
+    if ("main" in remembered) {
+      app.threads = [MAIN];
+      rememberWriter({ environmentId: ENV_QUINN, threadId: MAIN.id }, remembered.main.writer);
+    }
     openView();
 
-    expect(composer().length).toBe(shown ? 1 : 0);
-    if (shown) {
+    expect(composer().length).toBe(footer === "composer" ? 1 : 0);
+    expect(roomHeld().length).toBe(footer === "held" ? 1 : 0);
+    expect(said()).not.toContain("only they can run this agent");
+    if (footer === "composer") {
       expect(composer()[0]?.props.placeholder).toBe("Describe what you want to build or change…");
     }
-  });
-
-  // What the person types while the Mate connects is not lost: it is the conversation's draft
-  // once it opens, the caret where they left it.
-  it("hands what was typed to the conversation's draft, the caret with it", async () => {
-    const { useComposerDraftStore } = await import("~/composerDraftStore");
-    const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
-    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
-    openView();
-    act(() =>
-      composer()[0]?.props.onChange({
-        currentTarget: { value: "Deploy it to stage", selectionEnd: 6 },
-      }),
-    );
-
-    app.link = {
-      key: KEY,
-      environmentId: ENV_QUINN,
-      reachability: { kind: "ready", notice: null },
-    } satisfies MateLink;
-    app.threads = [MAIN];
-    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
-    act(() => vi.advanceTimersByTime(0));
-
-    const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
-    expect(useComposerDraftStore.getState().getComposerDraft(conversation)?.prompt).toBe(
-      "Deploy it to stage",
-    );
-    expect(takeHandedOverCaret(`${ENV_QUINN}:${MAIN.id}`, Date.now())).toBe(6);
-  });
-});
-
-describe("the composer in a Mate's own view, its conversation known from the menu", () => {
-  it("is that conversation's composer: its draft shown, what is typed its draft", async () => {
-    const { useComposerDraftStore } = await import("~/composerDraftStore");
-    const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
-    const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
-    const threadKey = `${ENV_QUINN}:${MAIN.id}`;
-    useComposerDraftStore.getState().setPrompt(conversation, "Check the logs");
-    app.remembered = { subject: "Check the logs", threadKey };
-    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
-    openView();
-    const field = () =>
-      tree!.root.find((node) => typeof node.type === "string" && node.type === "textarea");
-    expect(field().props.value).toBe("Check the logs");
-
-    act(() =>
-      field().props.onChange({
-        currentTarget: { value: "Check the logs first", selectionEnd: 20 },
-      }),
-    );
-    expect(useComposerDraftStore.getState().getComposerDraft(conversation)?.prompt).toBe(
-      "Check the logs first",
-    );
-
-    app.link = {
-      key: KEY,
-      environmentId: ENV_QUINN,
-      reachability: { kind: "ready", notice: null },
-    } satisfies MateLink;
-    app.threads = [MAIN];
-    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
-    act(() => vi.advanceTimersByTime(0));
-    expect(useComposerDraftStore.getState().getComposerDraft(conversation)?.prompt).toBe(
-      "Check the logs first",
-    );
-    expect(takeHandedOverCaret(threadKey, Date.now())).toBe(20);
-  });
-});
-
-describe("the composer in a Mate's own view, the menu naming an older conversation", () => {
-  it("moves what was typed there into the conversation that opens", async () => {
-    const { useComposerDraftStore } = await import("~/composerDraftStore");
-    const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
-    const older = { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-older") };
-    const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
-    app.remembered = { subject: "Earlier", threadKey: `${ENV_QUINN}:thread-older` };
-    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
-    openView();
-    act(() =>
-      tree!.root
-        .find((node) => typeof node.type === "string" && node.type === "textarea")
-        .props.onChange({ currentTarget: { value: "Ship it", selectionEnd: 4 } }),
-    );
-
-    app.link = {
-      key: KEY,
-      environmentId: ENV_QUINN,
-      reachability: { kind: "ready", notice: null },
-    } satisfies MateLink;
-    app.threads = [MAIN];
-    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
-    act(() => vi.advanceTimersByTime(0));
-
-    const drafts = useComposerDraftStore.getState();
-    expect(drafts.getComposerDraft(conversation)?.prompt).toBe("Ship it");
-    expect(drafts.getComposerDraft(older)?.prompt ?? "").toBe("");
-    expect(takeHandedOverCaret(`${ENV_QUINN}:${MAIN.id}`, Date.now())).toBe(4);
   });
 });
 

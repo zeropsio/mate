@@ -710,11 +710,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           <ConversationFooterStandIn
             composer={<ComposerStandIn onType={type} typed={typed} />}
             draft={typed.text}
-            // Its conversation's remembered answer: the one it opens on, or the one its menu row
-            // stands for before that is known.
-            footer={standInFooter(
-              threadRef ?? (standInKey === null ? null : parseScopedThreadKey(standInKey)),
-            )}
+            // The remembered answer of the conversation it opens on; before that is known, the
+            // room held — never the menu row's chat, whose writer may be another login's.
+            footer={standInFooter(threadRef)}
           />
         ) : null
       }
