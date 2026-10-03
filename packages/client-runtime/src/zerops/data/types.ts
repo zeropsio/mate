@@ -2355,6 +2355,8 @@ export interface ZeropsDataRuntime {
     organization: OrganizationRef,
     options?: { readonly retry?: boolean },
   ) => Effect.Effect<void>;
+  /** Re-reads one project and its services, sharing an outstanding check per project. */
+  readonly refreshPresence: (project: ProjectRef) => Effect.Effect<void>;
   /**
    * Idempotent. It closes admission and advances the account fence before
    * interrupting work, closing receivers and clearing retained grants/model state.

@@ -593,15 +593,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     ...(ports.door.kept === undefined ? {} : { kept: ports.door.kept }),
     ...(ports.door.capped === undefined ? {} : { capped: ports.door.capped }),
     retryLink: ports.door.retryLink,
-    // The inventory of the organization that lists the target's project, or of the active one
-    // when nothing names it (§6.2).
     refreshPresence: (key) => {
       const organizationId = organizationOf(key) ?? activeOrganization;
       if (organizationId === null) return;
       run(
-        options.invalidations.invalidate({
-          topic: "inventory",
+        data.refreshPresence({
+          kind: "project",
           organization: organizationRef(organizationId),
+          projectId: ZeropsProjectId.make(targetProject(key)),
         }),
       );
     },

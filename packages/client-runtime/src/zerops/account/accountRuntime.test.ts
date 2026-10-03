@@ -31,6 +31,7 @@ import {
   ZeropsServiceId,
   type EntityQueryDescriptor,
   type ProjectRef,
+  type ReceiverEvent,
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
@@ -1488,6 +1489,126 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  it.effect.each([1, 3])(
+    "%s Mate link drops read only those projects, coalescing concurrent checks without receiver churn",
+    (count) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mates = Array.from({ length: count }, (_, index) => mate(String(index)));
+          const remembered = mates.map((mate, index) => ({
+            ...REMEMBERED_A,
+            targetKey: mate.key,
+            environmentId: EnvironmentId.make(`env-${index}`),
+            origin: mate.origin,
+            projectRef: { projectId: mate.projectId, orgId: "org-1" },
+          }));
+          const platform = platformAdapter(mates);
+          const events = yield* PubSub.unbounded<ReceiverEvent>();
+          let opens = 0;
+          let registrations = 0;
+          const reads: Array<string> = [];
+          const release = yield* Deferred.make<void>();
+          let checking = false;
+          const adapter: ZeropsDataAdapter = {
+            ...platform,
+            openReceiver: (...args) =>
+              Effect.sync(() => {
+                opens += 1;
+              }).pipe(
+                Effect.andThen(platform.openReceiver(...args)),
+                Effect.map((handle) => ({ ...handle, events: Stream.fromPubSub(events) })),
+              ),
+            register: (...args) =>
+              Effect.sync(() => {
+                registrations += 1;
+              }).pipe(Effect.andThen(platform.register(...args))),
+            read: (ticket, context) =>
+              Effect.gen(function* () {
+                if (checking) {
+                  reads.push(
+                    ticket.target.kind === "query"
+                      ? `${ticket.target.descriptor.kind}:${"project" in ticket.target.descriptor ? ticket.target.descriptor.project.projectId : "organization"}`
+                      : `${ticket.target.kind}:${ticket.target.ref.kind === "project" ? ticket.target.ref.projectId : "other"}`,
+                  );
+                  yield* Deferred.await(release);
+                }
+                return yield* (
+                  checking
+                    ? platformAdapter(
+                        mates.map((mate) => ({
+                          ...mate,
+                          project: { ...mate.project, name: "fresh project" },
+                          service: { ...mate.service, status: "STOPPED" },
+                        })),
+                      )
+                    : platform
+                ).read(ticket, context);
+              }),
+          };
+          const { clock, rig, built, environments } = yield* granted(remembered, mates, adapter);
+          rig
+            .catalog()
+            .environments(
+              remembered.map(({ environmentId, origin }) => ({ environmentId, origin })),
+            );
+          for (const { environmentId } of remembered) environments.hold(environmentId);
+          yield* settle;
+          for (const exchange of rig.exchanges) {
+            const index = mates.findIndex(({ key }) => key === exchange.input.key);
+            exchange.answer(admitted(remembered[index]!.environmentId, async () => ({ ok: true })));
+          }
+          yield* settle;
+          for (const { projectId } of mates) {
+            yield* built.data.acquire({
+              kind: "project-topology",
+              project: project(projectId),
+              includeCurrentMetrics: false,
+            });
+          }
+          yield* settle;
+          const before = { opens, registrations };
+          const heard: Array<Invalidation> = [];
+          const subscription = yield* built.invalidations.subscribe;
+          yield* Stream.fromSubscription(subscription).pipe(
+            Stream.runForEach((invalidation) => Effect.sync(() => heard.push(invalidation))),
+            Effect.forkScoped,
+          );
+          checking = true;
+          for (let repeat = 0; repeat < 3; repeat += 1) {
+            for (const { environmentId } of remembered) {
+              rig.catalog().link(environmentId, { phase: "connected" });
+              rig.catalog().link(environmentId, { phase: "backoff", retryAtMs: 10_000 });
+            }
+            yield* clock.advance(250);
+            yield* settle;
+          }
+          expect({ opens, registrations }).toEqual(before);
+          expect(heard).toEqual([]);
+          yield* Deferred.succeed(release, undefined);
+          yield* settle;
+          expect(mates.map(({ key }) => environments.machines().get(key)?.presence.kind)).toEqual(
+            mates.map(() => "inactive"),
+          );
+          expect(reads.toSorted()).toEqual(
+            mates
+              .flatMap(({ projectId }) => [
+                `project:${projectId}`,
+                `services-of-project:${projectId}`,
+              ])
+              .toSorted(),
+          );
+          checking = false;
+          yield* PubSub.publish(events, { kind: "closed", reason: "real receiver close" });
+          yield* settle;
+          expect(opens).toBe(before.opens);
+          yield* clock.advance(1_000);
+          yield* settle;
+          expect(opens).toBe(before.opens + 1);
+          expect(registrations).toBeGreaterThan(before.registrations);
+        }),
+      ),
+  );
+
   // A park closes a link nothing holds: it is no drop, so the platform is asked nothing.
   it.effect("a park of a connected Mate reads no inventory", () =>
     Effect.scoped(
@@ -2059,7 +2180,7 @@ describe("the post-grant stage's Mate environments", () => {
   );
 
   it.effect(
-    "a Mate whose door names another project has its organization's inventory read again",
+    "a Mate whose door names another project refreshes presence without inventory invalidation",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -2082,7 +2203,7 @@ describe("the post-grant stage's Mate environments", () => {
           yield* clock.advance(250);
           yield* settle;
 
-          expect(heard).toEqual([{ topic: "inventory", organization }]);
+          expect(heard).toEqual([]);
         }),
       ),
   );

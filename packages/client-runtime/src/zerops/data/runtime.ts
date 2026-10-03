@@ -3169,6 +3169,46 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
+  const presenceChecks = new Map<string, Fiber.Fiber<void>>();
+  const refreshPresence: ZeropsDataRuntime["refreshPresence"] = (project) =>
+    lifecycleLock
+      .withPermit(
+        Effect.gen(function* () {
+          if (yield* Ref.get(closed)) return null;
+          const key = projectKeyOf(project);
+          const outstanding = presenceChecks.get(key);
+          if (outstanding !== undefined) return outstanding;
+          // The account holds the organization's inventory for the epoch. Its existing identity
+          // fences these direct observations too; no subscription or receiver is replaced.
+          const owner = interests.get(
+            interestKeyOf({ kind: "organization-inventory", organization: project.organization }),
+          );
+          if (owner === undefined || owner.leases.size === 0) return null;
+          const identity = owner.identity;
+          const check = yield* Effect.gen(function* () {
+            for (const target of [
+              { kind: "project", ref: project },
+              {
+                kind: "query",
+                descriptor: { kind: "services-of-project", project, schemaVersion: 1 },
+              },
+            ] satisfies ReadonlyArray<ReadTarget>) {
+              const ticket = yield* requestTicket(
+                identity,
+                target.kind === "query" ? "baseline" : "direct",
+                target,
+              );
+              if (!(yield* admitRead(ticket))) return;
+              yield* runRead(ticket, identity);
+            }
+            yield* awaitIngress;
+          }).pipe(Effect.ensuring(Effect.sync(() => presenceChecks.delete(key))), forkOwned);
+          presenceChecks.set(key, check);
+          return check;
+        }),
+      )
+      .pipe(Effect.flatMap((check) => (check === null ? Effect.void : Fiber.join(check))));
+
   const refresh: ZeropsDataRuntime["refresh"] = (organization, refreshOptions) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
@@ -3989,6 +4029,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     logs,
     acquire,
     refresh,
+    refreshPresence,
     acquireMany,
     listen,
     shutdown,
