@@ -7,9 +7,9 @@
  * went missing. Such a call is stale: never shown as live, and closed as
  * "No result" when the run settles.
  *
- * A provider whose calls never name a response (Codex) keeps the timing
- * rule: a call that started after another call returned belongs to a newer
- * batch. A call seen only as it ended — its start and return at one instant,
+ * Codex, whose calls never name a response and run one after another,
+ * keeps the timing rule: a call that started after another call returned
+ * belongs to a newer batch. A call seen only as it ended — its start and return at one instant,
  * or no start at all — tells that a call returned, never that a batch began.
  * Claude names them; where its calls name none — an older Mate server, a
  * helper's call — nothing is judged stale by timing, as before the rule.
@@ -54,16 +54,22 @@ export interface BatchRule {
   readonly byTiming: boolean;
 }
 
-/** The driver that names each call's model response (Claude Code). */
-const NAMES_RESPONSES = "claudeAgent";
+/**
+ * The driver whose calls run one after another and name no response (Codex):
+ * a call that started after another returned is of a newer response.
+ */
+const RUNS_CALLS_IN_TURN = "codex";
 
 /**
- * Whether a thread's provider never names its calls' response, so its batches
- * are read by timing (Codex). Claude names them; a provider not known reads
- * nothing stale by timing.
+ * Whether a thread's provider never names its calls' response and runs them
+ * one after another, so its batches are read by timing (Codex). Claude names
+ * them; OpenCode runs a response's calls side by side — a call that starts
+ * after another returned may be of the same response — and the ACP agents
+ * say nothing of how they run theirs: none of them reads a call stale by
+ * timing, nor does a provider not known.
  */
 export function batchesByTiming(driver: string | null | undefined): boolean {
-  return driver !== null && driver !== undefined && driver !== NAMES_RESPONSES;
+  return driver === RUNS_CALLS_IN_TURN;
 }
 
 /** The first index in `sorted` whose value passes `test`, `sorted.length` if none. */
