@@ -337,6 +337,19 @@ describe("a backup set, taken", () => {
       }),
     );
 
+    // F18's handover must not move the database: the leader holding its official ok, renewed every
+    // recheck, writes nothing a set counts as movement.
+    it.effect("is not moved by the leader holding its official ok", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true, { officialRecheck: Duration.millis(50) });
+        yield* leading(a);
+        const one = yield* a.backup.take;
+        yield* Effect.sleep("500 millis");
+        const two = yield* a.backup.take;
+        assert.strictEqual(two.id, one.id);
+      }),
+    );
+
     it.effect("is taken by the leading Core on its own, at once when none is staged", () =>
       Effect.gen(function* () {
         const hourly = { backupEvery: Duration.hours(1), backupCheck: Duration.millis(100) };

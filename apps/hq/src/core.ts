@@ -65,6 +65,7 @@ export interface CoreOptions {
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
+  readonly officialRecheck?: Duration.Duration;
   readonly viewTtl?: Duration.Duration;
   readonly reconcileEvery?: Duration.Duration;
   readonly streamRecheck?: Duration.Duration;
@@ -97,6 +98,7 @@ const services = (options: CoreOptions) => {
       officialLayer({
         projectId: options.hqProjectId,
         credential: options.credential,
+        ...(options.officialRecheck === undefined ? {} : { recheck: options.officialRecheck }),
       }),
     ),
   );
