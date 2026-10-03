@@ -54,9 +54,12 @@ export function ZeropsAssignMateForm({
   onSubmit,
   pending,
   error,
+  readingOrganization,
 }: {
   readonly projectName: string;
   readonly members: ReadonlyArray<AssignableMember>;
+  /** The organization whose people are still being read, while there is nobody to pick yet. */
+  readonly readingOrganization?: string | undefined;
   readonly onCancel: () => void;
   readonly onSubmit: (clientUserId: string) => void;
   /** The platform is answering the hand-over. */
@@ -88,8 +91,10 @@ export function ZeropsAssignMateForm({
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-member`}>Owner</Label>
           <select
+            aria-busy={readingOrganization === undefined ? undefined : true}
             autoFocus
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+            disabled={readingOrganization !== undefined}
             id={`${id}-member`}
             onChange={(event) => {
               setSelected(event.target.value);
@@ -97,7 +102,9 @@ export function ZeropsAssignMateForm({
             value={selected}
           >
             <option disabled value="">
-              Pick a person
+              {readingOrganization === undefined
+                ? "Pick a person"
+                : `Reading ${readingOrganization}…`}
             </option>
             {handOverCandidates(members).map((member) => (
               <option key={member.id} value={member.id}>

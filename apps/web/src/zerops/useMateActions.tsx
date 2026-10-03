@@ -116,7 +116,7 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
+import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import {
   beginPress,
@@ -328,7 +328,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
   // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
   // about to be deleted says whose it is from HQ's people.
-  const members = useZeropsOrganizationMembers({
+  const { members, status: membersStatus } = useZeropsOrganizationMembersRead({
     clientId: activeOrganization?.id,
     enabled: dialog?.kind === "assign",
   });
@@ -1051,6 +1051,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           error={press.error}
           key={`assign:${dialog.candidate.key}`}
           members={members}
+          readingOrganization={
+            membersStatus === "loading" && members.length === 0
+              ? activeOrganization?.name
+              : undefined
+          }
           onCancel={close}
           onOpenChange={(open) => {
             if (!open) close();

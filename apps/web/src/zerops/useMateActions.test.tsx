@@ -20,6 +20,7 @@ import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions"
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface AssignDialogProps {
+  readonly readingOrganization?: string | undefined;
   readonly pending: boolean;
   readonly error: string | null;
   readonly onSubmit: (clientUserId: string) => void;
@@ -65,6 +66,8 @@ const mock = vi.hoisted(() => ({
   tokens: [] as Array<unknown>,
   /** Whether the member list was to be read, at each render that asked. */
   membersEnabled: [] as Array<boolean>,
+  /** The member list's read, as it stands. */
+  membersStatus: "ready" as "idle" | "loading" | "ready" | "failed",
 }));
 
 vi.mock("./accountInvalidations", () => ({
@@ -141,9 +144,9 @@ vi.mock("./inventoryContext", async () => {
   return { useProjectDialog: () => useState(null) };
 });
 vi.mock("./useZeropsMateOwners", () => ({
-  useZeropsOrganizationMembers: (input: { readonly enabled: boolean }) => {
+  useZeropsOrganizationMembersRead: (input: { readonly enabled: boolean }) => {
     mock.membersEnabled.push(input.enabled);
-    return [];
+    return { members: [], status: input.enabled ? mock.membersStatus : "idle", settled: false };
   },
   zeropsMateOwner: () => undefined,
 }));
@@ -243,6 +246,7 @@ beforeEach(() => {
   mock.tokens = [];
   mock.deletedTokens = [];
   mock.membersEnabled = [];
+  mock.membersStatus = "ready";
   mock.mateKey = null;
   mock.deleteDialog.current = null;
   mock.updateMate.mockReset();
@@ -422,6 +426,13 @@ describe("useMateActions — Hand this Mate over", () => {
     expect(mock.membersEnabled).not.toContain(true);
     openAssign();
     expect(mock.membersEnabled.at(-1)).toBe(true);
+  });
+
+  it("says it reads the organization until its people are there to pick", () => {
+    mock.membersStatus = "loading";
+    mount();
+    openAssign();
+    expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
   });
 
   it("says a refused hand-over's reason in the dialog, which stays open", async () => {
