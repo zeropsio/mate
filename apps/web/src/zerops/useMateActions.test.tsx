@@ -51,6 +51,14 @@ const mock = vi.hoisted(() => ({
   /** The platform's per-project role write a hand-over makes, a promise the test answers. */
   setProjectMemberRole: vi.fn(),
   assignDialog: { current: null as AssignDialogProps | null },
+  /** What the hook asked the account's bus to read again. */
+  invalidated: [] as Array<unknown>,
+}));
+
+vi.mock("./accountInvalidations", () => ({
+  invalidateZerops: (invalidation: unknown) => {
+    mock.invalidated.push(invalidation);
+  },
 }));
 
 vi.mock("./ZeropsSessionProvider", () => ({
@@ -188,6 +196,7 @@ beforeEach(() => {
   mock.dialog.current = null;
   mock.assignDialog.current = null;
   mock.setProjectMemberRole.mockReset();
+  mock.invalidated = [];
   mock.updateMate.mockReset();
   mock.finishMateSetup.mockReset();
   seen.length = 0;
@@ -376,6 +385,20 @@ describe("useMateActions — Hand this Mate over", () => {
       pending: false,
       error: "Zerops refused the hand-over.",
     });
+    // Nothing changed hands: the grant is not asked again.
+    expect(mock.invalidated).toEqual([]);
+  });
+
+  // F11: the person who handed a Mate over sees its new owner at once — the grant's round reads
+  // the project's grants again — never only after the next round.
+  it("asks the access grant to read the projects again once the platform takes it", async () => {
+    mock.setProjectMemberRole.mockResolvedValue(undefined);
+    mount();
+    openAssign();
+    await act(async () => {
+      mock.assignDialog.current!.onSubmit("cu-eva");
+    });
+    expect(mock.invalidated).toEqual([{ topic: "access", change: "renew-now" }]);
   });
 
   it("closes once the platform takes it", async () => {

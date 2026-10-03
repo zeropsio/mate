@@ -478,7 +478,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
    * Hands a Mate over (guide 0.8, D11): a per-project role override to OWNER
    * for the person picked, written on their own role list
    * (`ZeropsApiClient.setProjectMemberRole`). The dialog stays open until the
-   * platform answers: a refusal is said there, and nothing changes.
+   * platform answers: a refusal is said there, and nothing changes. Taken, the
+   * access grant reads the projects again at once, so its new owner is drawn
+   * now (F11): a Mate's owner is its project's grants, which only a round reads.
    */
   const assign = useCallback(
     (candidate: ZeropsCandidatePresentation, clientUserId: string) => {
@@ -492,7 +494,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         ),
       ).then(
         () => {
-          if (isCurrent()) setDialog(null);
+          if (!isCurrent()) return;
+          invalidateZerops({ topic: "access", change: "renew-now" });
+          setDialog(null);
         },
         (cause: unknown) => {
           if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
