@@ -45,7 +45,7 @@ interface ReleaseRowsProps {
 }
 
 const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
-const EMPTY_RELEASES: ReadonlyMap<string, string> = new Map();
+const EMPTY_RELEASES: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 
 /**
  * A project's releases, newest first, each with its word and, on an earlier

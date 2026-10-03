@@ -713,7 +713,7 @@ export function ZeropsGroupPane({
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
   /** `full sha → the release that shipped it`. */
-  readonly tags: ReadonlyMap<string, string>;
+  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
   /** Opens the review of the change that landed a commit. */
   readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
@@ -1110,10 +1110,10 @@ const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
   production: "prod",
 };
 
-/** `full sha → the release that shipped it`, from HQ's records (`releaseTagsByCommit`). */
+/** `full sha → the releases that shipped it`, from HQ's records (`releaseTagsByCommit`). */
 function useReleaseTags(
   releases: ReadonlyArray<FlowReleaseRow> | undefined,
-): ReadonlyMap<string, string> {
+): ReadonlyMap<string, ReadonlyArray<string>> {
   return useMemo(() => releaseTagsByCommit(releases ?? NO_RELEASES), [releases]);
 }
 
@@ -1271,7 +1271,7 @@ export function ZeropsStopPane({
   /** A stage's deploys: what has landed on its repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
   /** `full sha → the release that shipped it`. */
-  readonly tags: ReadonlyMap<string, string>;
+  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
   /** Opens the review of the change that landed a commit of the stage's history. */
   readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
   /** `environment name → the whole sha it runs`, for the history's own marks. */

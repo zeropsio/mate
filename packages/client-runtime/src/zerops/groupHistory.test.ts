@@ -53,8 +53,8 @@ describe("a group's history", () => {
       commits: [commit(SHA_A, "Add a footer"), commit(SHA_B, "Rename the heading")],
       deployed: new Map(),
       tags: new Map([
-        [SHA_A, "v1.2.0"],
-        [SHA_C, "v1.1.0"],
+        [SHA_A, ["v1.2.0"]],
+        [SHA_C, ["v1.1.0"]],
       ]),
     });
     expect(history[0]?.tags).toEqual(["v1.2.0"]);
@@ -152,9 +152,9 @@ describe("the release a commit shipped in", () => {
       release("v1.2.0", { app: SHA_A, web: SHA_B }),
       release("v1.1.0", { app: SHA_C }),
     ]);
-    expect(byCommit.get(SHA_A)).toBe("v1.2.0");
-    expect(byCommit.get(SHA_B)).toBe("v1.2.0");
-    expect(byCommit.get(SHA_C)).toBe("v1.1.0");
+    expect(byCommit.get(SHA_A)).toEqual(["v1.2.0"]);
+    expect(byCommit.get(SHA_B)).toEqual(["v1.2.0"]);
+    expect(byCommit.get(SHA_C)).toEqual(["v1.1.0"]);
   });
 
   it("names the release that first shipped a commit, not the last that still ran it", () => {
@@ -164,7 +164,29 @@ describe("the release a commit shipped in", () => {
       release("v1.1.0", { app: SHA_A }),
       release("v1.2.0", { app: SHA_A }),
     ]);
-    expect(byCommit.get(SHA_A)).toBe("v1.1.0");
+    expect(byCommit.get(SHA_A)).toEqual(["v1.1.0"]);
+  });
+
+  // e2e 2026-10-03: after B rolled back to v0.1.0, History named 30f75f9 v0.1.0 alone, though
+  // v0.1.2 brought it back.
+  it("names a roll back on the commits it brought back too", () => {
+    const byCommit = releaseTagsByCommit([
+      release("v0.1.2", { app: SHA_A }),
+      release("v0.1.1", { app: SHA_B }),
+      release("v0.1.0", { app: SHA_A }),
+    ]);
+    expect(byCommit.get(SHA_A)).toEqual(["v0.1.0", "v0.1.2"]);
+    expect(byCommit.get(SHA_B)).toEqual(["v0.1.1"]);
+  });
+
+  it("names a roll back on no commit it did not bring back: a service that never moved", () => {
+    const byCommit = releaseTagsByCommit([
+      release("v1.3.0", { app: SHA_A, web: SHA_C }),
+      release("v1.2.0", { app: SHA_B, web: SHA_C }),
+      release("v1.1.0", { app: SHA_A, web: SHA_C }),
+    ]);
+    expect(byCommit.get(SHA_A)).toEqual(["v1.1.0", "v1.3.0"]);
+    expect(byCommit.get(SHA_C)).toEqual(["v1.1.0"]);
   });
 
   it("names no commit by a release HQ refused: it never went live", () => {

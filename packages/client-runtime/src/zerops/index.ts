@@ -297,6 +297,7 @@ export {
   type ReleaseGate,
   type ReleaseVerdict,
   releaseRow,
+  rolledBackTo,
   shortCommit,
   type FlowRelease,
   type FlowReleaseRow,
@@ -329,7 +330,6 @@ export {
   releaseCarriedToggleLabel,
   releaseDescription,
   rolledBackDescription,
-  rolledBackTo,
   type ReleaseDescription,
 } from "./releaseCarried.ts";
 export {
