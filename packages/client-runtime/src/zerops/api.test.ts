@@ -854,7 +854,7 @@ describe("ZeropsApiClient project reads", () => {
     const stub = recordingFetch((request) => {
       if (request.url.includes("integration-token"))
         log.push(`${request.method} ${new URL(request.url).pathname.split("/").slice(-1)[0]}`);
-      if (request.url.endsWith("/integration-token/list?limit=100"))
+      if (request.url.endsWith("/integration-token/list"))
         return jsonResponse(200, {
           list: [
             {
@@ -923,7 +923,7 @@ describe("ZeropsApiClient project reads", () => {
       projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
     });
     const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/integration-token/list?limit=100"))
+      if (request.url.endsWith("/integration-token/list"))
         return jsonResponse(200, {
           list: [
             adminKey("token-1", "2026-10-01T09:00:00Z"),
@@ -960,7 +960,7 @@ describe("ZeropsApiClient project reads", () => {
 
   it("hardening lowers the Mate's token and drops its delegations before health is asked", async () => {
     const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/integration-token/list?limit=100"))
+      if (request.url.endsWith("/integration-token/list"))
         return jsonResponse(200, {
           list: [
             {
@@ -1055,7 +1055,7 @@ describe("ZeropsApiClient project reads", () => {
     },
   ])("hardening lowers only the Mate's own grant: $case", async ({ grants, written }) => {
     const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/integration-token/list?limit=100"))
+      if (request.url.endsWith("/integration-token/list"))
         return jsonResponse(200, {
           list: [{ id: "token-1", name: "zcp-project-1", roleCode: "NO_ACCESS", projects: grants }],
         });
@@ -1085,7 +1085,7 @@ describe("ZeropsApiClient project reads", () => {
 
   it("a hardened Mate is left alone", async () => {
     const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/integration-token/list?limit=100"))
+      if (request.url.endsWith("/integration-token/list"))
         return jsonResponse(200, {
           list: [
             {
@@ -1132,8 +1132,7 @@ describe("ZeropsApiClient project reads", () => {
 
   it("skips the token half when no token matches this project, and still isolates it", async () => {
     const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/integration-token/list?limit=100"))
-        return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/integration-token/list")) return jsonResponse(200, { list: [] });
       if (request.url.endsWith("/project/search"))
         return jsonResponse(200, {
           items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
@@ -1907,6 +1906,20 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     await expect(
       client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
     ).resolves.toMatchObject({ project: { id: "project-1" }, serviceName: null });
+  });
+});
+
+describe("ZeropsApiClient.listIntegrationTokens", () => {
+  // The platform answers the whole list whatever is asked: `limit` and `offset` ignored, 193 tokens
+  // to `?limit=100` and to `?limit=100&offset=100` alike (measured 2026-10-03).
+  it("asks for the whole list, with no limit the platform would not keep", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { list: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.listIntegrationTokens("org-1");
+
+    expect(stub.requests.map((request) => new URL(request.url).search)).toEqual([""]);
   });
 });
 

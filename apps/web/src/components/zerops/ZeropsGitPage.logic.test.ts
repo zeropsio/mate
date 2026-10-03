@@ -80,6 +80,26 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
     expect(said.kind === "read" && said.apps.map((entry) => entry.name)).toEqual(["Todo"]);
   });
 
+  // E2E 2026-10-03 (F5): an application a stopped press left with no project stays listed here,
+  // with the repository HQ made for it, as the projects page now draws it too.
+  it("keeps listing an application with no project, and its repository", () => {
+    const said = state({
+      apps: [
+        app(),
+        app({
+          appId: "a-e2e",
+          name: "mate-rig-e2e-a",
+          changes: [],
+          repositories: [{ name: "group" }],
+        }),
+      ],
+    });
+    expect(said.kind === "read" && said.apps.map((entry) => entry.name)).toEqual([
+      "mate-rig-e2e-a",
+      "Todo",
+    ]);
+  });
+
   it("names why a read did not answer, beside what was read", () => {
     const said = state({
       apps: [

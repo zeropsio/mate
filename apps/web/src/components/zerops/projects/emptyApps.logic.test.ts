@@ -1,3 +1,4 @@
+import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { HqStructureView } from "~/state/zerops";
@@ -48,6 +49,37 @@ describe("the applications HQ holds with no project", () => {
     },
   ])("$name", ({ view: given, organizationId, apps }) => {
     expect(emptyApplications(given, organizationId)).toEqual(apps);
+  });
+});
+
+// E2E 2026-10-03 (F5): Ada's presses left the applications a, a2 and a3, seen only on the Git
+// page, and the bare project `mate-rig-e2e-a - Ada` in no application. The projects page draws
+// each application as its project, empty — offered *Add a Mate* — and the bare project ungrouped.
+describe("the applications a stopped press left, on the projects page", () => {
+  it("draws each as its project, empty, beside the bare project left ungrouped", () => {
+    const structure = {
+      ungrouped: [],
+      apps: [
+        { id: "app-a", name: "mate-rig-e2e-a", projects: [] },
+        { id: "app-a2", name: "mate-rig-e2e-a2", projects: [] },
+        { id: "app-a3", name: "mate-rig-e2e-a3", projects: [] },
+        { id: "app-a4", name: "mate-rig-e2e-a4", projects: [{ projectId: "p-a4" }] },
+      ],
+    } as unknown as NonNullable<HqStructureView["structure"]>;
+    const given = { ...view("org-a"), structure };
+    const bare = {
+      project: { id: "p-a", name: "mate-rig-e2e-a - Ada", status: "ACTIVE", tagList: ["mate"] },
+    };
+    const tree = buildZeropsGroupTree([bare], {
+      order: "name",
+      apps: emptyApplications(given, "org-a"),
+    });
+    expect(tree.groups.map(({ group }) => [group.name, groupIsEmpty(group)])).toEqual([
+      ["mate-rig-e2e-a", true],
+      ["mate-rig-e2e-a2", true],
+      ["mate-rig-e2e-a3", true],
+    ]);
+    expect(tree.ungrouped.map(({ project }) => project.name)).toEqual(["mate-rig-e2e-a - Ada"]);
   });
 });
 

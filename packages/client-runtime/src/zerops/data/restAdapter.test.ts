@@ -1127,6 +1127,64 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  // `mate-rig-e2e-a - Ada`, 2026-10-02: the project was made, the key list did not answer, and the
+  // person read "Zerops command exceeded its deadline" over a project nobody could finish. A
+  // failure after the project exists is its container, pending, for the press to import.
+  it.effect("answers a project whose container failed after the deadline with it pending", () =>
+    Effect.gen(function* () {
+      const stageTimers = new ManualTimers();
+      let failKeys: ((cause: Error) => void) | undefined;
+      const adapter = makeZeropsDataAdapter({
+        client: clientFor((url) =>
+          url.includes("/integration-token/list")
+            ? new Promise<Response>((_resolve, reject) => {
+                failKeys = reject;
+              })
+            : url.includes("/service-stack")
+              ? new Response(JSON.stringify({ list: [] }), { status: 200 })
+              : new Response(
+                  JSON.stringify({
+                    id: "project",
+                    name: "Acme Docs - Ada",
+                    status: "CREATING",
+                    clientId: organization.organizationId,
+                  }),
+                  { status: 200 },
+                ),
+        ),
+        makeSocket: () => new FakeSocket(),
+        timers: stageTimers,
+      });
+      const creating = yield* adapter
+        .execute(
+          {
+            kind: "create-project-with-mate",
+            organization,
+            name: "Acme Docs - Ada",
+            ...commandBase,
+          },
+          context(),
+        )
+        .pipe(Effect.result, Effect.forkChild);
+      // The project made, the key list asked for and hanging.
+      for (let attempt = 0; attempt < 200 && failKeys === undefined; attempt += 1) {
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1)));
+      }
+      // The command's minute runs out while the key list hangs; then the list fails.
+      stageTimers.fire(60_000);
+      failKeys?.(new TypeError("fetch failed"));
+      expect(yield* Fiber.join(creating)).toMatchObject({
+        _tag: "Success",
+        success: {
+          result: {
+            kind: "create-project-with-mate",
+            value: { project: { id: "project" }, serviceName: null },
+          },
+        },
+      });
+    }),
+  );
+
   it.effect(
     "reports an accepted malformed start-project response as non-retryable uncertainty",
     () =>

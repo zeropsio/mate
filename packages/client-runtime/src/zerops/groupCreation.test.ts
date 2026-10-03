@@ -225,6 +225,14 @@ describe("finishMateSetupVerb", () => {
       viewerRole: "BASIC_USER",
       expected: "Finish setup",
     },
+    // E2E 2026-10-03 (F6): a press that stopped before its container left a `mate` project in no
+    // application, with no container and no record — finished into its container's import.
+    {
+      name: "an owner, on a Mate in no application whose press stopped before its container",
+      input: { ...HALF_MADE, hasContainer: false, recordMissing: true, mayCreateRecord: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
     {
       name: "nobody else, on a Mate HQ holds no record of",
       input: { ...HALF_MADE, recordMissing: true },

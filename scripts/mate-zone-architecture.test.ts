@@ -120,8 +120,11 @@ function isPlainStringLiteral(value: string): boolean {
   return true;
 }
 
+// Over the source with its comments blanked: prose that reads "import (" is no import.
 function collectDynamicImportArguments(source: string): ReadonlyArray<string> {
-  return [...source.matchAll(DYNAMIC_IMPORT_CALL_PATTERN)].map((match) => match[1]!.trim());
+  return [...scanSourceLiterals(source).commentFree.matchAll(DYNAMIC_IMPORT_CALL_PATTERN)].map(
+    (match) => match[1]!.trim(),
+  );
 }
 
 function collectImportStatements(source: string): ReadonlyArray<ImportStatement> {
@@ -281,16 +284,24 @@ function decodeSourceLiteral(raw: string): string {
 function scanSourceLiterals(source: string): {
   readonly literals: ReadonlyArray<SourceLiteral>;
   readonly jsxSource: string;
+  /** The source with its comments blanked and its literals kept. */
+  readonly commentFree: string;
 } {
   const literals: Array<SourceLiteral> = [];
   const jsxCharacters = source.split("");
+  const codeCharacters = source.split("");
 
-  const mask = (start: number, end: number) => {
+  const blank = (characters: Array<string>, start: number, end: number) => {
     for (let index = start; index < end; index += 1) {
-      if (jsxCharacters[index] !== "\n" && jsxCharacters[index] !== "\r") {
-        jsxCharacters[index] = " ";
+      if (characters[index] !== "\n" && characters[index] !== "\r") {
+        characters[index] = " ";
       }
     }
+  };
+  const mask = (start: number, end: number) => blank(jsxCharacters, start, end);
+  const maskComment = (start: number, end: number) => {
+    mask(start, end);
+    blank(codeCharacters, start, end);
   };
 
   const readQuoted = (start: number, quote: "'" | '"'): number => {
@@ -319,14 +330,14 @@ function scanSourceLiterals(source: string): {
   const readLineComment = (start: number): number => {
     const newline = source.indexOf("\n", start + 2);
     const end = newline === -1 ? source.length : newline;
-    mask(start, end);
+    maskComment(start, end);
     return end;
   };
 
   const readBlockComment = (start: number): number => {
     const close = source.indexOf("*/", start + 2);
     const end = close === -1 ? source.length : close + 2;
-    mask(start, end);
+    maskComment(start, end);
     return end;
   };
 
@@ -403,7 +414,11 @@ function scanSourceLiterals(source: string): {
     }
   }
 
-  return { literals, jsxSource: jsxCharacters.join("") };
+  return {
+    literals,
+    jsxSource: jsxCharacters.join(""),
+    commentFree: codeCharacters.join(""),
+  };
 }
 
 function findLocalThreadStatusPhrases(source: string): ReadonlyArray<string> {
@@ -2622,6 +2637,8 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         "data/access/grant.ts": [
           'import { later } from "./later.ts";',
           "// Date.now() and performance.now() in a comment are prose, not reads.",
+          "// A key, the import (`api.ts`): a comment is prose, never a dynamic import.",
+          "/* Nor is the import (`./later.ts`) a block comment names. */",
           'export const label = "new Date()";',
           "export const stamp = (wall: number) => new Date(wall);",
           "",
