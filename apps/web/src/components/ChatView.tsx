@@ -205,7 +205,7 @@ import {
   useZeropsChangeLandedEvents,
   useZeropsConversationLandings,
 } from "../zerops/useZeropsChangeLandedEvents";
-import { agentLastSpokeAt, agentTurnNotes } from "@t3tools/client-runtime/zerops";
+import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
@@ -6907,6 +6907,7 @@ export default function ChatView(props: ChatViewProps) {
       if (backgroundThreadRef) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
+      const turnAgentNotes = agentNotesFor(outgoingMessageText, agentNotes);
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -6921,8 +6922,9 @@ export default function ChatView(props: ChatViewProps) {
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
           // What the Mate has not been told, placed in front of the text for
-          // the provider only: the stored message stays what was typed.
-          ...(agentNotes.length > 0 ? { agentNotes } : {}),
+          // the provider only: the stored message stays what was typed. A
+          // slash command carries none.
+          ...(turnAgentNotes.length > 0 ? { agentNotes: turnAgentNotes } : {}),
           runtimeMode,
           interactionMode: sendInteractionMode,
           ...(bootstrap ? { bootstrap } : {}),

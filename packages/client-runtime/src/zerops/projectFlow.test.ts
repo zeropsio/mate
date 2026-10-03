@@ -26,6 +26,7 @@ import {
   type FlowPullRequest,
   changeLandedEvents,
   agentLastSpokeAt,
+  agentNotesFor,
   agentTurnNotes,
   type ChangeLandedEvent,
 } from "./projectFlow.ts";
@@ -845,6 +846,24 @@ describe("agentTurnNotes", () => {
     const notes = agentTurnNotes(many, "2026-09-20T09:00:00Z");
     expect(notes).toHaveLength(5);
     expect(notes[4]).toContain("#9");
+  });
+});
+
+describe("agentNotesFor", () => {
+  const notes = ["appdev #3 landed: Add the Harbor page"];
+
+  it.each([
+    { name: "a message carries the notes", text: "and the footer?", expected: notes },
+    // An older Mate would put them in front of the command, and they would
+    // be told again with the next message.
+    { name: "a slash command carries none", text: "/compact", expected: [] },
+    {
+      name: "a message opening with a path carries them",
+      text: "/var/www is full",
+      expected: notes,
+    },
+  ])("$name", ({ text, expected }) => {
+    expect(agentNotesFor(text, notes)).toEqual(expected);
   });
 });
 

@@ -271,6 +271,17 @@ export function agentTurnNotes(
   });
 }
 
+/**
+ * The notes a message carries: none on a slash command, which the agent runs
+ * only when it stands first. A Mate keeps them off a command itself; an older
+ * one would put them in front of it, and tell them again with the next message.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function agentNotesFor(text: string, notes: ReadonlyArray<string>): ReadonlyArray<string> {
+  return isSlashCommand(text) ? [] : notes;
+}
+
 type ChangeLabelOf = Pick<
   FlowPullRequest,
   "repository" | "number" | "title" | "mateProjectId" | "author"
