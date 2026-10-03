@@ -398,8 +398,12 @@ export function deriveDock(input: {
   // A stand-up's call settles it as its report said (`standupRunsOn`): it
   // runs on while that report says a service builds, until the store's
   // reading of its services says they are done.
+  // A session whose follow-up call the Mate waits on (`openedAt`) is the
+  // live slot's, never the band's.
   const runsOn = (operation: ZeropsOperation) =>
-    (operation.phase === "running" && operation.returnedAt !== undefined) ||
+    (operation.phase === "running" &&
+      operation.returnedAt !== undefined &&
+      operation.openedAt === undefined) ||
     (standupRunsOn(operation) && !(input.standupsDone?.has(operation.key) ?? false));
   const operations =
     input.isWorking && input.runningTurnId !== null

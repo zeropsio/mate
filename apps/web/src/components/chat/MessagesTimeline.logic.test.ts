@@ -688,7 +688,11 @@ describe("deriveMessagesTimelineRows", () => {
         returned("w2", 2, 0, 2, 5, "r2"),
         open("w4", 3, 5, "r3"),
       ],
-      now: { kind: "step", step: { key: "w4" } },
+      now: {
+        kind: "step",
+        step: { key: "w4" },
+        others: [{ kind: "operation", operation: { key: "op:bs1" } }],
+      },
     },
     {
       name: "a deploy and a command in one batch: both, the deploy under the command",
@@ -804,7 +808,8 @@ describe("deriveMessagesTimelineRows", () => {
     ];
     const live = recordOf(rows({ entries, live: "t1" }));
     expect(live?.items.map((item) => item.key)).toEqual(["operation:op:bs1", "step:w2"]);
-    expect(live?.now).toMatchObject({ kind: "thinking" });
+    // The follow-up it waits on stands in the slot, never "Thinking" (D2).
+    expect(live?.now).toMatchObject({ kind: "operation", operation: { key: "op:bs1" } });
   });
 
   it("lands a stale operation in the record where it went stale", () => {

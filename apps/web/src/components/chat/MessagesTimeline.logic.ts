@@ -1159,11 +1159,15 @@ function liveActivity(
 ): TurnHeaderActivity {
   const asked = pendingQuestion(stretch);
   if (asked !== null) return { kind: "waiting", on: "answer", key: `question:${asked.id}` };
-  // An operation whose line stands — its first call returned, and the Mate
-  // waits on a follow-up of its session — is the record's, not the slot's.
+  // An operation whose call returned runs on in the band; one whose session's
+  // follow-up the Mate waits on (`openedAt`) stands in the slot, a line of
+  // its own apart from the session's in the record (`liveCallItem`).
   const open = new Set<TimelineEntry>(
     batch.open.filter(
-      (entry) => entry.kind !== "operation" || entry.operation.returnedAt === undefined,
+      (entry) =>
+        entry.kind !== "operation" ||
+        entry.operation.returnedAt === undefined ||
+        entry.operation.openedAt !== undefined,
     ),
   );
   /** The open calls of the batch up to `index`, oldest first, as the slot shows them. */

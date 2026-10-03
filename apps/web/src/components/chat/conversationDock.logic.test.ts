@@ -341,9 +341,17 @@ describe("deriveDock", () => {
         }),
         operation("v1", "t1", 2, { kind: "verify", phase: "running", returnedAt: at(2, 5) }),
         operation("d2", "t0", 2, { kind: "deploy", phase: "running", returnedAt: at(2, 5) }),
+        // A session whose follow-up call the Mate waits on is the slot's (D2).
+        operation("bs1", "t1", 2, {
+          kind: "bootstrap",
+          phase: "running",
+          returnedAt: at(2, 5),
+          openedAt: at(3, 0),
+        }),
+        operation("bs2", "t1", 2, { kind: "bootstrap", phase: "running", returnedAt: at(2, 5) }),
       ],
     });
-    expect(dock?.operations.map((op) => op.key)).toEqual(["op:s1"]);
+    expect(dock?.operations.map((op) => op.key)).toEqual(["op:s1", "op:bs2"]);
   });
 
   // The stand-up's report froze as its call returned; the store's reading of

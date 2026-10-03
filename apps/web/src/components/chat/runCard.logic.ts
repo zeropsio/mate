@@ -277,15 +277,22 @@ export function slotModelOf(input: {
   }
 }
 
-/** A call the Mate waits on, as the record item it becomes. */
+/**
+ * A call the Mate waits on, as the record item it becomes. A session's
+ * follow-up call is a line of its own: the session's line stands in the
+ * record where its first call returned, and stays there.
+ */
 function liveCallItem(call: LiveCall): RecordItem {
   if (call.kind === "step") {
     return { kind: "step", key: `step:${call.step.key}`, at: call.step.startedAt, step: call.step };
   }
   const op = call.operation;
+  const followUp = op.returnedAt === undefined ? undefined : op.openedAt;
+  const key = followUp === undefined ? `operation:${op.key}` : `operation:${op.key}#${followUp}`;
+  const at = followUp ?? op.anchorAt;
   return op.kind === "browser"
-    ? { kind: "strip", key: `operation:${op.key}`, at: op.anchorAt, strip: checksStrip([op], true) }
-    : { kind: "operation", key: `operation:${op.key}`, at: op.anchorAt, operation: op };
+    ? { kind: "strip", key, at, strip: checksStrip([op], true) }
+    : { kind: "operation", key, at, operation: op };
 }
 
 /** Several steps of one kind at once, said by their kind: "Running 3 commands", "Reading 2 files". */

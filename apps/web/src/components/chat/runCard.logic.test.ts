@@ -269,6 +269,23 @@ describe("the live slot's model", () => {
       filler: "thinking",
     },
     {
+      // Its line stands in the record where its first call returned; the
+      // follow-up it waits on is a line of its own (D2).
+      name: "a session's follow-up call: a row of its own, apart from the session's line",
+      now: {
+        kind: "operation",
+        operation: {
+          ...deploy,
+          key: "op:bs1",
+          kind: "bootstrap",
+          returnedAt: "2026-09-24T20:01:30.000Z",
+          openedAt: "2026-09-24T20:03:00.000Z",
+        },
+      },
+      live: ["operation:op:bs1#2026-09-24T20:03:00.000Z"],
+      filler: "thinking",
+    },
+    {
       name: "a check in the browser: the row of takes it becomes",
       now: { kind: "operation", operation: browser },
       live: ["operation:op:b1"],
