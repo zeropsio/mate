@@ -136,6 +136,36 @@ describe("FakeZeropsRest", () => {
     await expect(failureOf(client.fetchProject("p1"))).resolves.toBe("forbidden");
   });
 
+  it("lists an organization's integration tokens whole, and rewrites one in place", async () => {
+    const rest = platform();
+    const client = clientOf(rest);
+    rest.addIntegrationToken("org-1", {
+      id: "t1",
+      name: "zcp-One",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "p1", roleCode: "ADMIN" }],
+    });
+
+    await expect(client.listIntegrationTokens("org-1")).resolves.toEqual([
+      {
+        id: "t1",
+        name: "zcp-One",
+        roleCode: "NO_ACCESS",
+        projects: [{ projectId: "p1", roleCode: "ADMIN" }],
+      },
+    ]);
+    await client.setIntegrationTokenProjects({
+      clientId: "org-1",
+      tokenId: "t1",
+      name: "zcp-One",
+      projects: [{ projectId: "p1", roleCode: "BASIC_USER" }],
+    });
+    expect(rest.integrationToken("org-1", "t1")).toMatchObject({
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "p1", roleCode: "BASIC_USER" }],
+    });
+  });
+
   it("answers each project with the failure a test gives it", async () => {
     const rest = platform();
     const client = clientOf(rest);

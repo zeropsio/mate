@@ -154,6 +154,9 @@ export function useZeropsMateKeys(input: {
     const runKey = `${clientId}:${key}:${tokenSetKey}`;
     if (lastKey.current === runKey) return;
     lastKey.current = runKey;
+    // The shared list says whether anything is owed; where nothing is, nothing more is read — the
+    // organization's token list is one heavy response, and every projects page loads it.
+    if (planAccountMateKeys({ mateProjectIds, tokens }).length === 0) return;
 
     let cancelled = false;
     let finished = false;

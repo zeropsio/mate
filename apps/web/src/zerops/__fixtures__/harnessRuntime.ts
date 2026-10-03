@@ -6,7 +6,12 @@
  * `no-manual-effect-runtime-in-tests` forbids in test files. A harness tab
  * imports it after its module graph is reset, so the runtime is the tab's own.
  */
-import { makeZeropsDataRuntime, type ZeropsCellAdapter } from "@t3tools/client-runtime/zerops/data";
+import {
+  makeZeropsDataAdapter,
+  makeZeropsDataRuntime,
+  type ZeropsCellAdapter,
+  type ZeropsDataAdapter,
+} from "@t3tools/client-runtime/zerops/data";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -16,19 +21,44 @@ import { signalsVisibility } from "../browserSignals";
 import type { MakeZeropsDataRuntime } from "../ZeropsDataProvider";
 import { tabClock } from "../tabClock";
 
+/**
+ * `cellAdapter` is where the runtime's cells read; `overRest` reads them, runs its commands and
+ * hears its token writes through the harness's REST platform instead, as the browser's REST
+ * adapter does, so a test counts what reached the platform.
+ */
 export function harnessRuntime(
   datastream: FakeDatastream,
   cellAdapter?: ZeropsCellAdapter,
+  options: { readonly overRest?: boolean } = {},
 ): MakeZeropsDataRuntime {
   let opaque = 0;
-  return ({ scope, registry, scheduler, signals, signal }) =>
-    Effect.runPromise(
+  return ({ scope, client, registry, scheduler, signals, signal }) => {
+    const rest: Partial<ZeropsDataAdapter> = {};
+    if (options.overRest === true) {
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => {
+          throw new Error("The harness's push half is its datastream.");
+        },
+        timers: {
+          setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+          clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        },
+      });
+      Object.assign(rest, {
+        cells: adapter.cells,
+        execute: adapter.execute,
+        onTokensWritten: adapter.onTokensWritten,
+      });
+    }
+    return Effect.runPromise(
       makeZeropsDataRuntime({
         scope,
-        adapter:
-          cellAdapter === undefined
-            ? datastream.adapter
-            : { ...datastream.adapter, cells: cellAdapter },
+        adapter: {
+          ...datastream.adapter,
+          ...(cellAdapter === undefined ? {} : { cells: cellAdapter }),
+          ...rest,
+        },
         atomRegistry: registry,
         makeOpaqueId: () => `opaque-${++opaque}`,
         // The tab's visibility, as the browser runtime hears it: a hidden tab pauses its push half.
@@ -39,4 +69,5 @@ export function harnessRuntime(
       ),
       { signal },
     );
+  };
 }
