@@ -76,12 +76,6 @@ export function resolveThreadFeedSubmissionAnchor<AnchorId>(input: {
 }
 
 /**
- * The conversation's follow rule (client-runtime's `nextTimelineFollow`) read
- * through the feed's scroll session: a drag and its momentum are the
- * person's, every other scroll is the list's or the layout's and never
- * changes follow.
- */
-/**
  * Which way a drag and its glide carried the list, from where the drag began:
  * one that came back to where it began, or bounced at the end, did not leave it.
  */
@@ -94,6 +88,12 @@ function threadFeedDragDirection(
     : "away";
 }
 
+/**
+ * The conversation's follow rule (client-runtime's `nextTimelineFollow`) read
+ * through the feed's scroll session: a drag and its momentum are the
+ * person's, every other scroll is the list's or the layout's and never
+ * changes follow.
+ */
 export function resolveThreadFeedLiveFollow(
   current: boolean,
   event: ThreadFeedLiveFollowEvent,
