@@ -156,6 +156,8 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
     <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
       <MateEmptyStateView
         coming={view}
+        // Landed on from the press: the dialog is gone, and the headline takes the focus.
+        focusOnArrival
         mate={mate}
         onRetry={() => undefined}
         phase={null}

@@ -16,7 +16,7 @@
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -301,10 +301,19 @@ export function ZeropsNewProjectDialog({
 }: ZeropsNewProjectFormProps & {
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  // Create closes it onto the first Mate's page, which takes the focus: never back to what opened
+  // it, where a second Enter would open it again over that page.
+  const created = useRef(false);
   return (
     <Dialog onOpenChange={onOpenChange} open>
-      <DialogPopup className="max-w-lg">
-        <ZeropsNewProjectForm {...form} />
+      <DialogPopup className="max-w-lg" finalFocus={() => !created.current}>
+        <ZeropsNewProjectForm
+          {...form}
+          onCreate={(choice) => {
+            created.current = true;
+            form.onCreate(choice);
+          }}
+        />
       </DialogPopup>
     </Dialog>
   );

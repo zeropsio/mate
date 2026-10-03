@@ -32,7 +32,7 @@ import {
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { RotateCcwIcon } from "lucide-react";
-import { Fragment, useContext, useMemo, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -269,6 +269,7 @@ export function MateEmptyStateView({
   coming = null,
   addedBy,
   runtimes,
+  focusOnArrival = false,
 }: {
   readonly mate: DrawnMate;
   readonly phase: MateStandUpPhase | null;
@@ -284,7 +285,22 @@ export function MateEmptyStateView({
   readonly addedBy?: string | null | undefined;
   /** Its project's runtimes: under the sign-in, the ones still coming up; undefined while unread. */
   readonly runtimes?: ReadonlyArray<BirthRuntimeFact> | undefined;
+  /**
+   * Landed on from a press, the dialog gone: the headline takes the focus where nothing else holds
+   * it, and reads with the sentence under it.
+   */
+  readonly focusOnArrival?: boolean;
 }) {
+  const sentenceId = useId();
+  const headline = useRef<HTMLHeadingElement>(null);
+  const arrived = useRef(false);
+  useEffect(() => {
+    if (!focusOnArrival || arrived.current) return;
+    arrived.current = true;
+    const holder = document.activeElement;
+    if (holder !== null && holder !== document.body) return;
+    headline.current?.focus({ preventScroll: true });
+  }, [focusOnArrival]);
   const kind = mateArrivalKind({ coming, phase, signInRequired, addedBy });
   const clauses = arrivalHeadlineClauses(mate, kind);
   const sentence =
@@ -315,7 +331,13 @@ export function MateEmptyStateView({
           id={clauses.join(" ")}
           kind="words"
         >
-          <h1 aria-live="polite" className={cn(MATE_EMPTY_HEADLINE_CLASS, "text-balance")}>
+          <h1
+            aria-describedby={sentence.length === 0 ? undefined : sentenceId}
+            aria-live="polite"
+            className={cn(MATE_EMPTY_HEADLINE_CLASS, "text-balance outline-none")}
+            ref={headline}
+            tabIndex={-1}
+          >
             {clauses.map((clause, at) => (
               <Fragment key={clause}>
                 {at === 0 ? null : " "}
@@ -328,8 +350,10 @@ export function MateEmptyStateView({
           <ArrivalSwap
             className="mt-2 w-full max-w-2xl"
             data-arrival-sentence=""
+            domId={sentenceId}
             id={sentence}
             kind="words"
+            live="polite"
           >
             <p className="arrival-sentence">{sentence}</p>
           </ArrivalSwap>

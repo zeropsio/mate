@@ -678,6 +678,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       {view === null ? null : (
         <MateEmptyStateView
           coming={view}
+          // Handed over to from the creation's view, whose headline held the focus.
+          focusOnArrival={made !== undefined}
           mate={{ ...(shown === undefined ? named : mate), connected: environmentId !== null }}
           onRetry={empty.onRetry}
           phase={handingArrival ? empty.phase : phaseAhead}

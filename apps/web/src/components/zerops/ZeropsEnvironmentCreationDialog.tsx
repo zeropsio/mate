@@ -15,7 +15,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "../ui/button";
 import {
@@ -353,10 +353,19 @@ export function ZeropsEnvironmentCreationDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  // Add closes it onto the new Mate's page, which takes the focus: never back to what opened it,
+  // where a second Enter would open it again over that page.
+  const added = useRef(false);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogPopup className="max-w-lg">
-        <ZeropsEnvironmentCreationForm {...form} />
+      <DialogPopup className="max-w-lg" finalFocus={() => !added.current}>
+        <ZeropsEnvironmentCreationForm
+          {...form}
+          onCreate={(choice) => {
+            if (choice.withAgent) added.current = true;
+            form.onCreate(choice);
+          }}
+        />
       </DialogPopup>
     </Dialog>
   );
