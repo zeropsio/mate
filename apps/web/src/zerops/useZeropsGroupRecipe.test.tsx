@@ -14,6 +14,12 @@ import { forgetGroupRecipes, useZeropsGroupRecipe, type GroupRecipe } from "./us
  * The organization's official HQ — one object, as `useOfficialHq` keeps it, or `null` while it is
  * not open here — and each read of a tier still waiting on its answer.
  */
+vi.mock("../state/zerops", async () => {
+  const { Atom } = await import("effect/unstable/reactivity");
+  return { hqStructureAtom: Atom.make(null) };
+});
+vi.mock("./hqStructure", () => ({ requestHqSnapshot: () => {} }));
+
 const hq = vi.hoisted(() => {
   const reads: Array<{
     readonly appId: string;
@@ -24,9 +30,9 @@ const hq = vi.hoisted(() => {
   const official = {
     address: "https://hq.example.test",
     api: {
-      recipeTier: (appId: string, tier: RecipeTier) =>
+      mateRecipe: (appId: string) =>
         new Promise<RecipeTierResponse>((resolve, reject) => {
-          reads.push({ appId, tier, resolve, reject });
+          reads.push({ appId, tier: "mate", resolve, reject });
         }),
     },
   };

@@ -15,7 +15,7 @@ const view = (organizationId: string): HqStructureView => ({
     ],
   } as unknown as NonNullable<HqStructureView["structure"]>,
   changes: null,
-  releaseRevisions: null,
+  appReads: null,
   readAt: 0,
   current: true,
   unavailableSince: null,

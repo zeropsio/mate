@@ -3,7 +3,7 @@
  * organization (`/api/structure/ws`) — the whole structure, then its changes — published
  * to `hqStructureAtom`, from which every surface places its projects (`hqPlacementsAtom`). The
  * same stream carries each application's Mates' changes (SPEC §3.2a, `hqChangesAtom`) and where
- * its releases and repositories last moved (`releaseRevisions`, audit R4), and the
+ * its releases, repository heads and stage/production recipes (`appReads`), and the
  * Mates the reader may observe with the people its view names (`hqMatesAtom`, `hqPeopleAtom`) —
  * in atoms of their own, since a Mate at work moves them twice a second and the structure never.
  *
@@ -19,13 +19,13 @@ import {
   applyChangesEvent,
   applyMatesEvent,
   applyPeopleEvent,
-  applyReleaseRevisionsEvent,
+  applyAppReadsEvent,
   applyStructureEvent,
   HqError,
   type HqApi,
   type HqChanges,
   type HqMates,
-  type HqReleaseRevisions,
+  type HqAppReads,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -64,6 +64,12 @@ export const HQ_STREAM_RETRY_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 1
 /** How often at most the Mates are remembered while they move: a reload's first paint needs no more. */
 const HQ_MATES_REMEMBER_MS = 10_000;
 
+/** Explicit detail retries reuse the account's stream owner; they never write facts themselves. */
+const snapshotReaders = new Map<string, Set<() => void>>();
+export function requestHqSnapshot(organizationId: string): void {
+  for (const read of snapshotReaders.get(organizationId) ?? []) read();
+}
+
 /**
  * Reads the organization's structure from its HQ until `signal` aborts, telling `publish` of every
  * state it reaches and `remember` of every structure HQ answered.
@@ -94,7 +100,7 @@ export async function driveHqStructure(input: {
     organizationId: input.organizationId,
     structure: input.remembered?.structure ?? null,
     changes: null,
-    releaseRevisions: null,
+    appReads: null,
     readAt: input.remembered?.readAt ?? null,
     current: false,
     unavailableSince: null,
@@ -159,7 +165,7 @@ export async function driveHqStructure(input: {
     /** This stream's own structure, changes, Mates and people: a reconnect starts from its snapshot. */
     let streamed: HqStructure | null = null;
     let changes: HqChanges | null = null;
-    let releaseRevisions: HqReleaseRevisions | null = null;
+    let appReads: HqAppReads | null = view.appReads;
     let mates: HqMates | null = null;
     let people: HqPeople | null = null;
     let rememberedAt: number | null = null;
@@ -232,7 +238,10 @@ export async function driveHqStructure(input: {
             const first = streamed === null;
             streamed = applyStructureEvent(streamed, event);
             changes = applyChangesEvent(changes, event);
-            releaseRevisions = applyReleaseRevisionsEvent(releaseRevisions, event);
+            appReads = applyAppReadsEvent(
+              event.kind === "snapshot" ? view.appReads : appReads,
+              event,
+            );
             if (streamed === null) return;
             failures = 0;
             stoppedAt = null;
@@ -252,7 +261,7 @@ export async function driveHqStructure(input: {
               ...view,
               structure: streamed,
               changes,
-              releaseRevisions,
+              appReads,
               readAt,
               current: true,
               unavailableSince: null,
@@ -276,40 +285,51 @@ export async function driveHqStructure(input: {
     return self;
   };
 
-  while (!input.signal.aborted) {
-    current = follow();
-    for (;;) {
-      const followed: Followed = current;
-      const { broke, cause } = await followed.ended;
-      if (input.signal.aborted) return;
-      const lived = `after ${String(input.now() - followed.openedAt)} ms`;
-      // Its successor took over: the stream it hands to is followed from here on.
-      if (followed.handedOff()) {
-        input.log(`HQ's structure stream rotated ${lived}`);
-        continue;
+  const reread = () => {
+    if (!input.signal.aborted && current !== null && successor === null) successor = follow();
+  };
+  const readers = snapshotReaders.get(input.organizationId) ?? new Set();
+  readers.add(reread);
+  snapshotReaders.set(input.organizationId, readers);
+  try {
+    while (!input.signal.aborted) {
+      current = follow();
+      for (;;) {
+        const followed: Followed = current;
+        const { broke, cause } = await followed.ended;
+        if (input.signal.aborted) return;
+        const lived = `after ${String(input.now() - followed.openedAt)} ms`;
+        // Its successor took over: the stream it hands to is followed from here on.
+        if (followed.handedOff()) {
+          input.log(`HQ's structure stream rotated ${lived}`);
+          continue;
+        }
+        // The stream itself ended: a successor still unanswered goes with it.
+        letSuccessorGo();
+        input.log(
+          !broke
+            ? `HQ's structure stream ended ${lived}`
+            : `HQ's structure stream ${followed.silent() ? "went silent" : "broke"} ${lived}: ${
+                cause instanceof HqError ? cause.code : String(cause)
+              }`,
+        );
+        // A stream that ended after its snapshot is HQ restarting: read again at once. One that broke
+        // or never answered is HQ not answering: read again a little later each time. Either way the
+        // outage is said once HQ has not answered for `HQ_OUTAGE_GRACE_MS`, since it stopped.
+        const failed = broke || !followed.answered();
+        if (failed) failures += 1;
+        current = null;
+        stopped();
+        if (failed) {
+          const wait = HQ_STREAM_RETRY_MS[Math.min(failures, HQ_STREAM_RETRY_MS.length) - 1]!;
+          await input.sleep(wait, input.signal);
+        }
+        break;
       }
-      // The stream itself ended: a successor still unanswered goes with it.
-      letSuccessorGo();
-      input.log(
-        !broke
-          ? `HQ's structure stream ended ${lived}`
-          : `HQ's structure stream ${followed.silent() ? "went silent" : "broke"} ${lived}: ${
-              cause instanceof HqError ? cause.code : String(cause)
-            }`,
-      );
-      // A stream that ended after its snapshot is HQ restarting: read again at once. One that broke
-      // or never answered is HQ not answering: read again a little later each time. Either way the
-      // outage is said once HQ has not answered for `HQ_OUTAGE_GRACE_MS`, since it stopped.
-      const failed = broke || !followed.answered();
-      if (failed) failures += 1;
-      current = null;
-      stopped();
-      if (failed) {
-        const wait = HQ_STREAM_RETRY_MS[Math.min(failures, HQ_STREAM_RETRY_MS.length) - 1]!;
-        await input.sleep(wait, input.signal);
-      }
-      break;
     }
+  } finally {
+    readers.delete(reread);
+    if (readers.size === 0) snapshotReaders.delete(input.organizationId);
   }
 }
 
@@ -387,7 +407,7 @@ export function ZeropsHqStructure(): null {
         organizationId,
         structure: kept?.structure ?? null,
         changes: null,
-        releaseRevisions: null,
+        appReads: null,
         readAt: kept?.readAt ?? null,
         current: false,
         unavailableSince: null,

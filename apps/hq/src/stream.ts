@@ -3,16 +3,16 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", ungrouped, apps, changes, releaseRevisions, mates, people }` — what
+ * - `{ type: "snapshot", ungrouped, apps, changes, appReads, mates, people }` — what
  *   `GET /api/structure` answers; beside it the changes of every application the caller may read
  *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
- *   those last moved its releases or its repositories' `main` (`ReleaseRevisions`, audit R4); and
+ *   those applications' releases, repository heads and stage/production recipes (`hqAppReads`); and
  *   every Mate the caller may observe (`observe_mate`) as HQ holds it, by project, with the people
  *   the view names (`@t3tools/shared/hqMates`);
  * - `{ type: "changes", appId, changes }` — one application's changes as the caller now reads them
  *   (`changes: null` once they no longer may), sent before the structure's own changes of a tick;
- * - `{ type: "release-revision", appId, revision }` — one application's releases or repositories
- *   moved (`revision: null` once the caller no longer reads its changes), after its changes;
+ * - `{ type: "release-revision", appId, read }` — one application's releases or repositories
+ *   moved, with their fresh load data (`read: null` once access ends), after its changes;
  * - `{ type: "change", key, value }` — one application by id as the caller now sees it (`value:
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
@@ -40,12 +40,8 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import type {
-  ChangesMessage,
-  ChangesSnapshot,
-  ReleaseRevisionMessage,
-  ReleaseRevisions,
-} from "@t3tools/shared/hqChanges";
+import type { ChangesMessage, ChangesSnapshot } from "@t3tools/shared/hqChanges";
+import type { AppRead, AppReads, ReleaseRevisionMessage } from "@t3tools/shared/hqAppReads";
 import type {
   HqMatesMessage,
   HqMatesSnapshot,
@@ -90,7 +86,7 @@ export type StructureMessage =
   | ({
       readonly type: "snapshot";
       readonly changes: ChangesSnapshot;
-      readonly releaseRevisions: ReleaseRevisions;
+      readonly appReads: AppReads;
     } & StructureRead &
       HqMatesSnapshot)
   | ChangesMessage
@@ -170,6 +166,7 @@ interface Sent {
   readonly changes: ReadonlyMap<string, string>;
   /** Each readable application's release revision, encoded. */
   readonly revisions: ReadonlyMap<string, string>;
+  readonly appReads: AppReads;
   /** The Mates the caller's last view lets them observe. */
   readonly observable: ReadonlySet<string>;
   /** The people the last view's records name. */
@@ -261,9 +258,54 @@ export const structureMessages = <R>(
         const view = yield* structure.read(userId);
         const readable = yield* changes.readable(userId);
         const moved = yield* changes.releaseRevisions;
-        const releaseRevisions: ReleaseRevisions = Object.fromEntries(
-          Object.keys(readable).map((appId) => [appId, moved.get(appId) ?? null]),
-        );
+        const before = yield* Ref.get(sent);
+        const appReads: Record<string, AppRead> = {};
+        for (const appId of Object.keys(readable)) {
+          const revision = moved.get(appId) ?? null;
+          const kept = before?.appReads[appId];
+          if (kept !== undefined && kept.revision === revision) {
+            appReads[appId] = kept;
+            continue;
+          }
+          appReads[appId] = yield* Effect.gen(function* () {
+            const records = yield* releases.list(userId, appId);
+            const repos = yield* changes.listRepos(userId, appId);
+            const stage = yield* changes.readRecipe(userId, appId, "stage");
+            const production = yield* changes.readRecipe(userId, appId, "production");
+            return {
+              revision,
+              value: { releases: records, repos, recipes: { stage, production } },
+              failure: null,
+            };
+          }).pipe(
+            Effect.catchTags({
+              ChangeRefused: (error) =>
+                Effect.succeed({
+                  revision,
+                  value: null,
+                  failure: { code: error.code, reason: error.reason },
+                }),
+              ReleaseRefused: (error) =>
+                Effect.succeed({
+                  revision,
+                  value: null,
+                  failure: { code: error.code, reason: error.reason },
+                }),
+              GitError: (error) =>
+                Effect.succeed({
+                  revision,
+                  value: null,
+                  failure: { code: "repo_unavailable", reason: error.reason },
+                }),
+              NotLeader: (error) =>
+                Effect.succeed({
+                  revision,
+                  value: null,
+                  failure: { code: "not_active", reason: error.reason },
+                }),
+            }),
+          );
+        }
         const facts = yield* roles.view;
         const listed = matesIn(view);
         const observable = new Set(
@@ -291,24 +333,25 @@ export const structureMessages = <R>(
             ]),
           ),
           revisions: new Map(
-            Object.entries(releaseRevisions).map(([appId, revision]): [string, string] => [
+            Object.entries(appReads).map(([appId, read]): [string, string] => [
               appId,
-              toJson(revision),
+              toJson(read.revision),
             ]),
           ),
+          appReads,
           observable,
           named,
           mates: new Map([...mates].map(([projectId, entry]) => [projectId, encodedParts(entry)])),
           people: toJson(people),
         };
-        const before = yield* Ref.getAndSet(sent, now);
+        yield* Ref.set(sent, now);
         if (before === undefined) {
           return [
             {
               type: "snapshot" as const,
               ...view,
               changes: readable,
-              releaseRevisions,
+              appReads,
               mates: Object.fromEntries(
                 [...mates].map(([projectId, entry]) => [projectId, partsOf(entry)]),
               ) as HqMatesSnapshot["mates"],
@@ -325,7 +368,7 @@ export const structureMessages = <R>(
           ...differing(before.revisions, now.revisions).map((appId): Outgoing => ({
             type: "release-revision",
             appId,
-            revision: releaseRevisions[appId] ?? null,
+            read: appReads[appId] ?? null,
           })),
           ...differing(before.structure, now.structure).map((key): Outgoing => ({
             type: "change",

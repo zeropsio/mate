@@ -35,7 +35,7 @@ import {
   type HqEnvironment,
   type HqMates,
   type HqPlacement,
-  type HqReleaseRevisions,
+  type HqAppReads,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -115,11 +115,10 @@ export interface HqStructureView {
    */
   readonly changes: HqChanges | null;
   /**
-   * Where each application's releases and repositories last moved, as this stream last told them
-   * (audit R4): they are read again only when it moves. Null until its snapshot carried them, and
-   * from an HQ from before them. Never remembered across loads.
+   * HQ-owned releases, repository heads and stage/production recipes for each readable app.
+   * Null until the stream's first snapshot; never remembered across loads.
    */
-  readonly releaseRevisions: HqReleaseRevisions | null;
+  readonly appReads: HqAppReads | null;
   /** When `structure` was HQ's answer, wall ms. */
   readonly readAt: number | null;
   /** `structure` is HQ's answer now. */

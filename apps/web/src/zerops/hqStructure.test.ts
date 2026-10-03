@@ -6,6 +6,7 @@ import {
   type HqStructure,
   type HqStructureEvent,
 } from "@t3tools/client-runtime/zerops/hq";
+import type { AppRead } from "@t3tools/shared/hqAppReads";
 import type { HqChange } from "@t3tools/shared/hqChanges";
 import { MateLiveView, type HqPeople } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
@@ -14,6 +15,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { HqMatesView, HqPeopleView, HqStructureView } from "../state/zerops";
 import {
   driveHqStructure,
+  requestHqSnapshot,
   HQ_OUTAGE_GRACE_MS,
   HQ_STREAM_ROTATE_MS,
   HQ_STREAM_SILENCE_MS,
@@ -150,7 +152,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: null,
             structure: ACME,
             changes: new Map([["app-1", [change]]]),
             mates: null,
@@ -164,7 +166,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: null,
             structure: ACME,
             changes: new Map(),
             mates: null,
@@ -185,21 +187,119 @@ describe("driveHqStructure", () => {
     expect(h.views.map((view) => view.changes)).toContainEqual(new Map([["app-1", [merged]]]));
   });
 
-  // Audit R4: where each application's releases and repositories last moved, from the stream, so
-  // they are read again only then; an HQ from before revisions sends none, and none is known.
-  it("carries each application's release revision from its stream, and none from an HQ that sends none", async () => {
+  it("a failed successor snapshot retains the latest app value from the stream it replaces", async () => {
+    vi.useFakeTimers();
+    const handlers: Array<Parameters<HqApi["streamStructure"]>[0]> = [];
+    const api = {
+      streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0], signal: AbortSignal) => {
+        handlers.push(on);
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("aborted"))),
+        );
+      },
+    };
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({
+      ...h.deps,
+      api,
+      signal: stop.signal,
+      silenceMs: 2 * HQ_STREAM_ROTATE_MS,
+    });
+    const value = {
+      releases: [],
+      repos: [],
+      recipes: { stage: { state: "absent" as const }, production: { state: "absent" as const } },
+    };
+    const fresh = {
+      ...value,
+      repos: [{ name: "group", mainHead: "b".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" }],
+    };
+    const snapshot = (read: AppRead): HqStructureEvent => ({
+      kind: "snapshot",
+      structure: ACME,
+      changes: new Map(),
+      appReads: new Map([["app-1", read]]),
+      mates: null,
+      people: null,
+    });
+    try {
+      handlers[0]!.onEvent(snapshot({ revision: "1", value, failure: null }));
+      h.tick(HQ_STREAM_ROTATE_MS);
+      await vi.advanceTimersByTimeAsync(HQ_STREAM_ROTATE_MS);
+      expect(handlers).toHaveLength(2);
+      handlers[0]!.onEvent({
+        kind: "release-revision",
+        appId: "app-1",
+        read: { revision: "2", value: fresh, failure: null },
+      });
+      expect(h.views.at(-1)?.appReads?.get("app-1")?.value).toEqual(fresh);
+      handlers[1]!.onEvent(
+        snapshot({
+          revision: "3",
+          value: null,
+          failure: { code: "repo_unavailable", reason: null },
+        }),
+      );
+      expect(h.views.at(-1)?.appReads?.get("app-1")?.value).toEqual(fresh);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("an explicit recipe retry asks for a fresh snapshot and keeps the current view meanwhile", async () => {
     const api = streamingApi([
       {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: new Map([["app-1", "41"]]),
+            structure: ACME,
+            changes: new Map(),
+            appReads: new Map(),
+            mates: null,
+            people: null,
+          },
+        ],
+        end: "hang",
+      },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(api.attempts()).toBe(1));
+    requestHqSnapshot("org-1");
+    await vi.waitFor(() => expect(api.attempts()).toBe(2));
+    expect(h.views.at(-1)?.structure).toEqual(ACME);
+    stop.abort();
+    await driving;
+    requestHqSnapshot("org-1");
+    expect(api.attempts()).toBe(2);
+  });
+
+  it("carries each application's load data from its stream and replaces it on reconnect", async () => {
+    const read = (revision: string) => ({
+      revision,
+      value: {
+        releases: [],
+        repos: [],
+        recipes: { stage: { state: "absent" as const }, production: { state: "absent" as const } },
+      },
+      failure: null,
+    });
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            appReads: new Map([["app-1", read("41")]]),
             structure: ACME,
             changes: null,
             mates: null,
             people: null,
           },
-          { kind: "release-revision", appId: "app-1", revision: "57" },
+          { kind: "release-revision", appId: "app-1", read: read("57") },
         ],
         end: "close",
       },
@@ -207,7 +307,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: new Map(),
             structure: ACME,
             changes: null,
             mates: null,
@@ -223,12 +323,11 @@ describe("driveHqStructure", () => {
     await vi.waitFor(() => expect(h.views).toHaveLength(4));
     stop.abort();
     await driving;
-
-    expect(h.views.map((view) => view.releaseRevisions)).toEqual([
+    expect(h.views.map((view) => view.appReads)).toEqual([
       null,
-      new Map([["app-1", "41"]]),
-      new Map([["app-1", "57"]]),
-      null,
+      new Map([["app-1", read("41")]]),
+      new Map([["app-1", read("57")]]),
+      new Map(),
     ]);
   });
 
@@ -238,7 +337,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: null,
             structure: ACME,
             changes: null,
             mates: null,
@@ -260,7 +359,7 @@ describe("driveHqStructure", () => {
       organizationId: "org-1",
       structure: { ungrouped: [], apps: [] },
       changes: null,
-      releaseRevisions: null,
+      appReads: null,
       readAt: 1_000,
       current: false,
       unavailableSince: null,
@@ -282,7 +381,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: null,
             structure: ACME,
             changes: null,
             mates: new Map([["p1", VERA]]),
@@ -322,7 +421,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: null,
             structure: ACME,
             changes: null,
             mates: new Map([["p1", VERA]]),
@@ -353,7 +452,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: ACME,
               changes: null,
               mates: null,
@@ -369,7 +468,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: { ungrouped: [], apps: [BETA] },
               changes: null,
               mates: null,
@@ -408,7 +507,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: null,
             structure: ACME,
             changes: null,
             mates: null,
@@ -421,7 +520,7 @@ describe("driveHqStructure", () => {
         events: [
           {
             kind: "snapshot",
-            releaseRevisions: null,
+            appReads: null,
             structure: ACME,
             changes: null,
             mates: null,
@@ -454,7 +553,7 @@ describe("driveHqStructure", () => {
             kind: "snapshot",
             structure: ACME,
             changes: null,
-            releaseRevisions: null,
+            appReads: null,
             mates: null,
             people: null,
           },
@@ -468,7 +567,7 @@ describe("driveHqStructure", () => {
             kind: "snapshot",
             structure: ACME,
             changes: null,
-            releaseRevisions: null,
+            appReads: null,
             mates: null,
             people: null,
           },
@@ -499,7 +598,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: ACME,
               changes: null,
               mates: null,
@@ -512,7 +611,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: { ungrouped: [], apps: [BETA] },
               changes: null,
               mates: null,
@@ -555,7 +654,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: ACME,
               changes: null,
               mates: null,
@@ -569,7 +668,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: { ungrouped: [], apps: [BETA] },
               changes: null,
               mates: null,
@@ -610,7 +709,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: ACME,
               changes: null,
               mates: null,
@@ -653,7 +752,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: ACME,
               changes: null,
               mates: null,
@@ -691,7 +790,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: ACME,
               changes: null,
               mates: null,
@@ -704,7 +803,7 @@ describe("driveHqStructure", () => {
           events: [
             {
               kind: "snapshot",
-              releaseRevisions: null,
+              appReads: null,
               structure: ACME,
               changes: null,
               mates: null,
@@ -817,7 +916,7 @@ describe("hqOutageLine", () => {
     organizationId: "org-1",
     structure: ACME,
     changes: null,
-    releaseRevisions: null,
+    appReads: null,
     readAt: at(13, 58),
     current: false,
     unavailableSince: at(14, 5),

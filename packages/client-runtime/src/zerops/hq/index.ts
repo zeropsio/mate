@@ -49,12 +49,12 @@ export {
 } from "./placement.ts";
 export {
   applyChangesEvent,
-  applyReleaseRevisionsEvent,
+  applyAppReadsEvent,
   applyStructureEvent,
   structureEventOf,
   type HqChanges,
   type HqMates,
-  type HqReleaseRevisions,
+  type HqAppReads,
   type HqStructureEvent,
 } from "./stream.ts";
 export { environmentsOf, type HqDeploy, type HqEnvironment } from "./environments.ts";

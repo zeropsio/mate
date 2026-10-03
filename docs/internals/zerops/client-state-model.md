@@ -439,9 +439,11 @@ declare membership. `Deployment` is `none` (the deployment facet observed with n
 `running` (activation time, version name and commit) or `deploying` (the version a build makes, and
 what ran when it started); an unresolved facet is `unread`, never "Nothing deployed yet". A change
 is `merged`, `closed`, or `open` with mergeability `checking`, `mergeable`, `conflicting` or
-`empty`, as HQ says it (`changeMergeability.ts`); `checking` until it has said. A verb invalidates
-exactly what it changed: a release or a roll back reads that application's releases again
-(`useZeropsAppReleases`' `refresh`); a stage added, a merge or a close comes back down HQ's stream.
+`empty`, as HQ says it (`changeMergeability.ts`); `checking` until it has said. A release, a roll back, a stage added, a merge or a close comes back down HQ's stream.
+The stream snapshot carries each readable application's releases, repository heads and stage/production
+recipes; a `release-revision` message replaces only the moved application's value. The client folds
+these once (`hq/stream.ts`) and projects them without per-app bootstrap reads or recipe retry timers.
+A failed revalidation preserves that app's last value with its failure; access loss removes it.
 
 ## Lifetimes
 
@@ -520,24 +522,25 @@ project. They use the existing inventory identity and leave the organization's r
 registrations alone. Actual receiver failures still enter the receiver recovery path with its
 backoff.
 
-Release reads wait for the first HQ environment snapshot to supply their production signature.
-Recipe reads adopt the first known revision as bootstrap; only subsequent revision moves re-read
-the tiers.
+HQ supplies application load data with its first structure snapshot, and fresh values when each
+application's release revision moves. Recomputes reuse unchanged revisions. Stage/production creation
+forms use those same recipe values; only the Mate recipe, which the snapshot does not carry, is
+read when its detail opens. An explicit recipe retry asks the stream owner for a fresh snapshot.
 
 **Polling is a backstop, and this is the complete list.**
 
-| Fact                                              | Backstop                                                                                                            | Runs only while                     |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Access grant                                      | Renewal before its deadline; per-project retry for unverified projects                                              | Epoch open, hidden under 60 minutes |
-| Inventory, activity                               | None: resnapshot on reconnect, foreground and explicit refresh                                                      | —                                   |
-| Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                                        | —                                   |
-| An application's releases and repositories        | None: HQ's release revision, production deploys or an explicit refresh (`useZeropsAppReleases`)                     | An official HQ is known             |
-| HQ's structure, environments and a Mate's changes | None: HQ's stream, its snapshot again on reconnect                                                                  | —                                   |
-| A recipe's tiers on `main`                        | None: read when its application is first shown, and again once a change of the recipe lands (`useZeropsAppRecipes`) | —                                   |
-| A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`)                      | Still wanted                        |
-| Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                                         | Demanded                            |
-| Container probe                                   | The container machine's cadence                                                                                     | Its state requires it               |
-| Throwaway sweep                                   | Once, after this tab failed a delete, past the door's window (`throwawayDebt`)                                      | The projects screen is open         |
+| Fact                                              | Backstop                                                                                       | Runs only while                     |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Access grant                                      | Renewal before its deadline; per-project retry for unverified projects                         | Epoch open, hidden under 60 minutes |
+| Inventory, activity                               | None: resnapshot on reconnect, foreground and explicit refresh                                 | —                                   |
+| Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                   | —                                   |
+| An application's releases and repositories        | None: values in HQ's snapshot and release-revision messages (`useZeropsAppReleases`)           | An official HQ is known             |
+| HQ's structure, environments and a Mate's changes | None: HQ's stream, its snapshot again on reconnect                                             | —                                   |
+| A recipe's tiers on `main`                        | None: stage/production in the same snapshot and messages; Mate tier on detail demand           | —                                   |
+| A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`) | Still wanted                        |
+| Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                    | Demanded                            |
+| Container probe                                   | The container machine's cadence                                                                | Its state requires it               |
+| Throwaway sweep                                   | Once, after this tab failed a delete, past the door's window (`throwawayDebt`)                 | The projects screen is open         |
 
 **Wake.** A visible wake is one coalesced event, at most one per 10 s, on: visible again after at
 least 30 s hidden, `pageshow` with `persisted`, `resume`, `online`, sleep detected while visible,

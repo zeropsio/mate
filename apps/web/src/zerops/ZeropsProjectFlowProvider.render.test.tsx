@@ -54,11 +54,9 @@ const access = vi.hoisted(() => ({
  */
 const released = vi.hoisted(() => ({
   /** What each render asked releases to be read on, by application. */
-  reasons: [] as Array<ReadonlyMap<string, string>>,
   releases: [] as ReadonlyArray<Release>,
   repos: [] as ReadonlyArray<RepoListEntry>,
   failures: new Map<string, string>(),
-  refreshed: [] as Array<string>,
 }));
 
 vi.mock("./ZeropsSessionProvider", () => ({
@@ -214,15 +212,11 @@ vi.mock("./useZeropsCompares", async () => {
   };
 });
 vi.mock("./useZeropsAppReleases", () => ({
-  useZeropsAppReleases: (apps: ReadonlyMap<string, string>) => {
-    released.reasons.push(apps);
+  useZeropsAppReleases: () => {
     return {
       releases: new Map([["g1", released.releases]]),
       repos: new Map([["g1", released.repos]]),
       failures: released.failures,
-      refresh: (appId: string) => {
-        released.refreshed.push(appId);
-      },
     };
   },
 }));
@@ -325,7 +319,7 @@ function structureWith(environments: ReadonlyArray<HqEnvironment>): HqStructureV
       apps: [{ id: "g1", name: "Harbor", projects: [], environments }],
     },
     changes: null,
-    releaseRevisions: null,
+    appReads: null,
     readAt: 1,
     current: true,
     unavailableSince: null,
@@ -340,11 +334,9 @@ describe("ZeropsProjectFlowProvider", () => {
     inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
     recipes.read = new Map();
-    released.reasons = [];
     released.releases = [];
     released.repos = [];
     released.failures = new Map();
-    released.refreshed = [];
     permission.gate = { allowed: true };
     compares.commits = [];
     compares.asked.clear();
@@ -578,96 +570,6 @@ describe("ZeropsProjectFlowProvider", () => {
       root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
     });
     expect(seen.at(-1)?.releaseFailures.size).toBe(0);
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
-  it.each(["no production", "production"])(
-    "waits for the first HQ environment snapshot before reading releases (%s)",
-    async (state) => {
-      installTestDom();
-      const { createRoot } = await import("react-dom/client");
-      const atoms = signedInAtoms();
-      const root = createRoot(document.createElement("div") as unknown as Element);
-      await act(async () => {
-        root.render(
-          createElement(
-            RegistryContext.Provider,
-            { value: atoms },
-            createElement(ZeropsProjectFlowProvider, null, null),
-          ),
-        );
-      });
-      expect(released.reasons.at(-1)?.size).toBe(0);
-      await act(async () => {
-        atoms.set(
-          hqStructureAtom,
-          structureWith(state === "production" ? [environment("p1", "production")] : []),
-        );
-      });
-      const first = released.reasons.at(-1)?.get("g1");
-      expect(first).toBeDefined();
-      expect(JSON.parse(first!)[1]).toEqual(state === "production" ? [[]] : []);
-      await act(async () => {
-        atoms.set(hqStructureAtom, {
-          ...structureWith(state === "production" ? [environment("p1", "production")] : []),
-          readAt: 2,
-        });
-      });
-      expect(released.reasons.at(-1)?.get("g1")).toBe(first);
-      await act(async () => {
-        root.unmount();
-      });
-    },
-  );
-
-  // Audit R4: an application's releases and repositories are read again when HQ's stream says
-  // they moved — no other application's, and never on a clock.
-  it("reads an application's releases again when HQ says they moved, and no other's", async () => {
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const atoms = signedInAtoms();
-    const told = (revisions: ReadonlyMap<string, string | null>): HqStructureView => ({
-      ...structureWith([]),
-      releaseRevisions: revisions,
-    });
-    atoms.set(hqStructureAtom, told(new Map([["g1", "41"]])));
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    const render = () =>
-      root.render(
-        createElement(
-          RegistryContext.Provider,
-          { value: atoms },
-          createElement(ZeropsProjectFlowProvider, null, null),
-        ),
-      );
-    await act(async () => {
-      render();
-    });
-    const reasonOf = () => released.reasons.at(-1)?.get("g1");
-    const atFirst = reasonOf();
-    expect(atFirst).toBeDefined();
-
-    // Another application's releases moved: g1's reason stands.
-    await act(async () => {
-      atoms.set(
-        hqStructureAtom,
-        told(
-          new Map([
-            ["g1", "41"],
-            ["g9", "57"],
-          ]),
-        ),
-      );
-    });
-    expect(reasonOf()).toBe(atFirst);
-
-    await act(async () => {
-      atoms.set(hqStructureAtom, told(new Map([["g1", "58"]])));
-    });
-    expect(reasonOf()).not.toBe(atFirst);
 
     await act(async () => {
       root.unmount();
@@ -967,7 +869,6 @@ describe("ZeropsProjectFlowProvider", () => {
         ],
       ]);
       expect(outcome).toEqual({ ok: true, tag: "v0.1.0" });
-      expect(released.refreshed).toEqual(["g1"]);
       expect(seen.at(-1)?.pending.has(RELEASE)).toBe(true);
       released.releases = [MADE];
       await render();
@@ -1070,12 +971,11 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
 
-    it("reads the releases again right after, and Roll back waits for them to list it", async () => {
+    it("Roll back waits for the stream to list the release", async () => {
       const { seen, render, root } = await mountRollBack();
       await act(async () => {
         await seen.at(-1)!.rollBack("g1", "v1.0.0");
       });
-      expect(released.refreshed).toEqual(["g1"]);
       expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
       released.releases = [MADE];
       await render();
@@ -1225,7 +1125,7 @@ describe("a Mate's changes in a project's flow", () => {
     organizationId: "org-1",
     structure: null,
     changes: null,
-    releaseRevisions: null,
+    appReads: null,
     readAt: null,
     current: true,
     unavailableSince: null,
@@ -1290,7 +1190,7 @@ describe("merging and closing a change in HQ", () => {
     organizationId: "org-1",
     structure: null,
     changes: new Map([["g1", changes]]),
-    releaseRevisions: null,
+    appReads: null,
     readAt: 1,
     current: true,
     unavailableSince: null,
@@ -1351,7 +1251,6 @@ describe("merging and closing a change in HQ", () => {
     expect(outcome).toEqual({ ok: true });
     expect(hq.asked).toEqual([["merge", { appId: "g1", repo: "app", number: 7 }, HEAD]]);
     // Nothing is read again: the change comes back down the stream.
-    expect(released.refreshed).toEqual([]);
     expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
     await say([
       { ...open(7), state: "merged", mergedSha: "d00d", mergedAt: "2026-10-02T10:00:00Z" },

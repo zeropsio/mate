@@ -1192,13 +1192,13 @@ export const apiRoutes = (
   options: { readonly clientOrigins: ReadonlyArray<string> } & StreamOptions & {
       readonly link?: LinkOptions;
     },
-) =>
-  Layer.mergeAll(
-    routes(options),
-    HttpRouter.cors({
-      allowedOrigins: options.clientOrigins,
-      allowedMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-      allowedHeaders: ["authorization", "content-type"],
-      maxAge: 600,
-    }),
-  );
+) => Layer.mergeAll(routes(options), corsRoutes(options.clientOrigins));
+
+/** The same CORS door on every route, including preflights that need no session. */
+export const corsRoutes = (clientOrigins: ReadonlyArray<string>) =>
+  HttpRouter.cors({
+    allowedOrigins: clientOrigins,
+    allowedMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["authorization", "content-type"],
+    maxAge: 7200,
+  });

@@ -277,7 +277,7 @@ describe("useZeropsMemberNames", () => {
       organizationId: clientId,
       structure: null,
       changes: null,
-      releaseRevisions: null,
+      appReads: null,
       readAt: null,
       current: unavailableSince === null,
       unavailableSince,
