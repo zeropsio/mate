@@ -2349,6 +2349,8 @@ export function makeOpenCodeAdapter(
                   : { status: "inProgress" as const }),
               ...(title ? { title } : {}),
               ...(detail ? { detail } : {}),
+              // The calls of one assistant message are one batch (liveBatch).
+              ...(part.state.status === "pending" ? { responseId: part.messageID } : {}),
               data: {
                 tool: part.tool,
                 state: part.state,
