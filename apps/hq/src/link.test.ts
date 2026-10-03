@@ -15,6 +15,7 @@ import { enrollMate, setUpMate, startCore, untilHealth } from "../test/harness/r
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
+import { MateAccess } from "./mateAccess.ts";
 import { serveMateLink } from "./link.ts";
 import { MateCredentials } from "./mateCredentials.ts";
 import { makeMateOverviews, MateOverviews } from "./mateOverviews.ts";
@@ -61,6 +62,49 @@ describe("a Mate's link", () => {
         assert.isAbove(linkFrameBytes(toJson(frame)), MATE_LINK_FRAME_MAX);
         yield* link.send(frame);
         assert.strictEqual(yield* link.closedWith, 1009);
+      }),
+    );
+
+    // R6: HQ relays who the Mate's project lets in, from the org's view it reads anyway — at once
+    // on the link, then whole and aged after every view it reads, a member gone with the view.
+    it.effect("relays the Mate's access, aged, and again after each view it reads", () =>
+      Effect.gen(function* () {
+        const { link, fake } = yield* linked;
+        type Access = {
+          readonly ageMs: number;
+          readonly members: ReadonlyArray<{
+            readonly userId: string;
+            readonly role: string;
+            readonly visibility: string;
+          }>;
+        };
+        const said = (access: Access) =>
+          access.members.map((member) => `${member.userId} ${member.role} ${member.visibility}`);
+        const first = (yield* link.next("access")) as Access;
+        assert.deepStrictEqual(said(first), [
+          "owner OWNER open",
+          "reader READ_ONLY listed",
+          "T-hq READ_ONLY listed",
+          "T-anchor ADMIN open",
+        ]);
+        assert.isAtLeast(first.ageMs, 0);
+        fake.members.set(
+          "ORG",
+          (fake.members.get("ORG") ?? []).filter((member) => member.userId !== "reader"),
+        );
+        let later = first;
+        for (
+          let frames = 0;
+          frames < 50 && said(later).includes("reader READ_ONLY listed");
+          frames++
+        ) {
+          later = (yield* link.next("access")) as Access;
+        }
+        assert.deepStrictEqual(said(later), [
+          "owner OWNER open",
+          "T-hq READ_ONLY listed",
+          "T-anchor ADMIN open",
+        ]);
       }),
     );
 
@@ -124,6 +168,7 @@ describe("serveMateLink: who ended a link, and with what code", () => {
             status: Effect.succeed({ state: "active" }),
           } as unknown as Leader["Service"]),
         ),
+        Layer.succeed(MateAccess, MateAccess.of({ frames: () => Stream.never })),
       ),
     ),
   );
