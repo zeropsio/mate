@@ -1,5 +1,10 @@
 import * as Equal from "effect/Equal";
-import { liveBatch, type LiveBatch } from "@t3tools/shared/liveBatch";
+import {
+  batchesByTiming,
+  liveBatch,
+  type BatchRule,
+  type LiveBatch,
+} from "@t3tools/shared/liveBatch";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -686,6 +691,17 @@ export type RecordItem =
       readonly key: string;
       readonly at: string;
       readonly step: WorkStep;
+      /**
+       * While the run goes on, a line that folds calls in a row (`foldSteps`)
+       * carries each as a line of its own: the live slot draws one it still
+       * holds as it ended, and the history folds it in once it lands.
+       */
+      readonly parts?: ReadonlyArray<{
+        readonly kind: "step";
+        readonly key: string;
+        readonly at: string;
+        readonly step: WorkStep;
+      }>;
     }
   /** A stretch of thinking, however short: a bubble of its own, and how long it took. */
   | {
@@ -735,6 +751,11 @@ export type RecordItem =
       readonly key: string;
       readonly at: string;
       readonly operation: ZeropsOperation;
+      /**
+       * Its call never returned: "stale" while the run goes on (a newer batch
+       * started), "closed" once it settled without it — "No result".
+       */
+      readonly noResult?: "stale" | "closed";
     }
   /** Helpers it started, a batch or a workflow at once. */
   | {
@@ -1044,30 +1065,26 @@ function epoch(iso: string | undefined): number | null {
  * What the batch rule reads off the whole thread: the calls that returned, by
  * their call id — a start whose completion was filed under another turn, or
  * none, never merged with it (`session-logic` collapses by turn and call id),
- * yet its call returned — and whether its calls name their model response.
+ * yet its call returned — and, by the thread's provider, whether a call that
+ * names no response goes stale by timing (`batchesByTiming`).
  */
-export interface BatchReading {
+export interface BatchReading extends BatchRule {
   readonly returned: ReadonlySet<string>;
-  /** Its calls name their response (Claude): a returned call that names none is a lone completion. */
-  readonly named: boolean;
 }
 
-export function batchReadingOf(entries: ReadonlyArray<TimelineEntry>): BatchReading {
+export function batchReadingOf(
+  entries: ReadonlyArray<TimelineEntry>,
+  rule: BatchRule,
+): BatchReading {
   const returned = new Set<string>();
-  let named = false;
   for (const entry of entries) {
-    if (entry.kind === "operation") {
-      if (entry.operation.responseId !== undefined) named = true;
-      continue;
-    }
     if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
-    const { toolCallId, toolLifecycleStatus, responseId } = entry.entry;
-    if (responseId !== undefined) named = true;
+    const { toolCallId, toolLifecycleStatus } = entry.entry;
     if (toolCallId !== undefined && toolLifecycleStatus !== undefined) {
       if (toolLifecycleStatus !== "inProgress") returned.add(toolCallId);
     }
   }
-  return { returned, named };
+  return { returned, byTiming: rule.byTiming };
 }
 
 /** A start whose call's completion stands apart from it in the thread: the completion tells it. */
@@ -1100,7 +1117,8 @@ function batchCallOf(
     if (op.returnedAt !== undefined) {
       return { startedAt, returnedAt: epoch(op.returnedAt), response };
     }
-    if (op.phase !== "running") {
+    // Its call never returned — still running, or cut off as its run ended.
+    if (op.phase !== "running" && op.phase !== "interrupted") {
       return { startedAt, returnedAt: epoch(op.settledAt) ?? startedAt, response };
     }
     return { startedAt, returnedAt: null, response };
@@ -1114,10 +1132,9 @@ function batchCallOf(
     return { startedAt: epoch(work.startedAt ?? work.createdAt), returnedAt: null, response };
   }
   // A completion seen on its own tells that a call returned, never when one
-  // started: where calls name their response, one that names none had no
-  // start merged into it (Claude files a result as an update and a
-  // completion); elsewhere, one no later activity stamped (`updatedAt`).
-  const alone = reading.named ? response === undefined : work.updatedAt === undefined;
+  // started: one no later activity stamped (`updatedAt`). Only the timing
+  // rule reads it; a call that names its response goes by the response.
+  const alone = work.updatedAt === undefined;
   return {
     startedAt: alone ? null : epoch(work.startedAt ?? work.createdAt),
     returnedAt: epoch(work.updatedAt ?? work.createdAt),
@@ -1133,13 +1150,14 @@ function batchCallOf(
  */
 export function stretchBatch(
   stretch: Pick<Stretch, "entries">,
-  reading: BatchReading = batchReadingOf(stretch.entries),
+  reading: BatchReading,
 ): LiveBatch<BatchEntry> {
   return liveBatch(
     stretch.entries.flatMap((entry) => {
       const call = batchCallOf(entry, reading);
       return call === null ? [] : [{ item: entry as BatchEntry, ...call }];
     }),
+    reading,
   );
 }
 
@@ -1154,15 +1172,19 @@ function liveActivity(
   stretch: Stretch,
   writing: MessageEntry | null,
   tracked: TrackedCommands,
-  batch: LiveBatch<BatchEntry> = stretchBatch(stretch),
+  batch: LiveBatch<BatchEntry>,
 ): TurnHeaderActivity {
   const asked = pendingQuestion(stretch);
   if (asked !== null) return { kind: "waiting", on: "answer", key: `question:${asked.id}` };
-  // An operation whose line stands — its first call returned, and the Mate
-  // waits on a follow-up of its session — is the record's, not the slot's.
+  // An operation whose call returned runs on in the band; one whose session's
+  // follow-up the Mate waits on (`openedAt`) stands in the slot, a line of
+  // its own apart from the session's in the record (`liveCallItem`).
   const open = new Set<TimelineEntry>(
     batch.open.filter(
-      (entry) => entry.kind !== "operation" || entry.operation.returnedAt === undefined,
+      (entry) =>
+        entry.kind !== "operation" ||
+        entry.operation.returnedAt === undefined ||
+        entry.operation.openedAt !== undefined,
     ),
   );
   /** The open calls of the batch up to `index`, oldest first, as the slot shows them. */
@@ -1431,16 +1453,25 @@ function stretchRecord(input: {
         if (stretch.live) continue;
       }
       const call = step.entries[0]!;
+      const at =
+        staleAt ??
+        joinedAt(
+          call.toolLifecycleStatus === "inProgress" ? null : (call.updatedAt ?? call.createdAt),
+          call.createdAt,
+        );
+      const parts =
+        runLive && step.entries.length > 1
+          ? step.entries.map((entry) => {
+              const part = stepOf(entry, input.tracked, false);
+              return { kind: "step" as const, key: `step:${part.key}`, at, step: part };
+            })
+          : undefined;
       push({
         kind: "step",
         key: `step:${step.key}`,
-        at:
-          staleAt ??
-          joinedAt(
-            call.toolLifecycleStatus === "inProgress" ? null : (call.updatedAt ?? call.createdAt),
-            call.createdAt,
-          ),
+        at,
         step,
+        ...(parts === undefined ? {} : { parts }),
       });
     }
   };
@@ -1529,8 +1560,9 @@ function stretchRecord(input: {
         const op = entry.operation;
         const staleAt = staleOperationSince.get(op.key);
         if (op.kind === "browser") {
-          // One an older batch left marked open joins where it went stale.
-          if (staleAt !== undefined && runLive) {
+          // One an older batch left marked open joins where it went stale,
+          // and stays there once the run is over.
+          if (staleAt !== undefined) {
             joinCheck(op, staleAt);
             break;
           }
@@ -1552,14 +1584,25 @@ function stretchRecord(input: {
         // What the Mate waits on stands in the live slot until its call
         // returns; one that runs on after (a stand-up's builds) is the band's,
         // and its line joins the record where its call returned.
-        if (runLive && op.phase === "running" && op.returnedAt === undefined) {
-          // One an older batch left marked open joins where it went stale.
-          if (staleAt !== undefined) {
-            push({ kind: "operation", key: `operation:${op.key}`, at: staleAt, operation: op });
-            break;
-          }
-          if (stretch.live) break;
+        // Its call never returned: one an older batch left marked open joins
+        // where it went stale, and stays there once the run is over.
+        const unreturned =
+          op.returnedAt === undefined && (op.phase === "running" || op.phase === "interrupted");
+        if (unreturned && staleAt !== undefined) {
+          push({
+            kind: "operation",
+            key: `operation:${op.key}`,
+            at: staleAt,
+            operation: op,
+            noResult: runLive ? "stale" : "closed",
+          });
+          break;
         }
+        if (runLive && op.phase === "running" && op.returnedAt === undefined && stretch.live) {
+          break;
+        }
+        // The run is over without it: no result.
+        const closed = !runLive && unreturned;
         push({
           kind: "operation",
           key: `operation:${op.key}`,
@@ -1568,6 +1611,7 @@ function stretchRecord(input: {
             entry.createdAt,
           ),
           operation: op,
+          ...(closed ? { noResult: "closed" as const } : {}),
         });
         break;
       }
@@ -1769,9 +1813,14 @@ export function deriveMessagesTimelineRows(input: {
   helperFinishes?: ReadonlyArray<HelperFinish>;
   /** Something runs alongside the live run: its panel draws a bar (`dockDraws`). */
   alongside?: boolean;
+  /**
+   * The thread's provider driver: whether its calls go stale by timing
+   * (`batchesByTiming`); not known, nothing does.
+   */
+  provider?: string | null;
 }): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
-  const reading = batchReadingOf(entries);
+  const reading = batchReadingOf(entries, { byTiming: batchesByTiming(input.provider) });
   const structure = deriveConversationStructure({
     timelineEntries: entries,
     latestTurn: input.latestTurn ?? null,

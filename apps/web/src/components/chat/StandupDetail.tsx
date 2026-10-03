@@ -34,10 +34,13 @@ export function StandupRows({ reading }: { readonly reading: StandupReading | nu
 export function StandupDetail({
   operation,
   environmentId,
+  turnRuns,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
+  /** Its turn runs: builds it ran on with are read as they stand. */
+  readonly turnRuns: boolean;
 }) {
-  const reading = useStandupReading(operation, environmentId);
+  const reading = useStandupReading(operation, environmentId, turnRuns);
   return <StandupRows reading={reading} />;
 }

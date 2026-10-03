@@ -7,10 +7,12 @@
  * went missing. Such a call is stale: never shown as live, and closed as
  * "No result" when the run settles.
  *
- * A provider whose calls name no response (Codex) keeps the timing rule: a
- * call that started after another call returned belongs to a newer batch. A
- * call seen only as it ended — its start and return at one instant, or no
- * start at all — tells that a call returned, never that a batch began.
+ * A provider whose calls never name a response (Codex) keeps the timing
+ * rule: a call that started after another call returned belongs to a newer
+ * batch. A call seen only as it ended — its start and return at one instant,
+ * or no start at all — tells that a call returned, never that a batch began.
+ * Claude names them; where its calls name none — an older Mate server, a
+ * helper's call — nothing is judged stale by timing, as before the rule.
  *
  * The rule needs no event to arrive: staleness follows from the calls alone.
  * The run card's live slot (web) reads it, and the menu row's live step
@@ -43,6 +45,27 @@ export interface LiveBatch<T> {
   readonly stale: ReadonlyArray<{ readonly item: T; readonly since: number }>;
 }
 
+/** How a thread's calls read under the rule. */
+export interface BatchRule {
+  /**
+   * A call that names no response goes stale by timing: the thread's provider
+   * never names one (`batchesByTiming`).
+   */
+  readonly byTiming: boolean;
+}
+
+/** The driver that names each call's model response (Claude Code). */
+const NAMES_RESPONSES = "claudeAgent";
+
+/**
+ * Whether a thread's provider never names its calls' response, so its batches
+ * are read by timing (Codex). Claude names them; a provider not known reads
+ * nothing stale by timing.
+ */
+export function batchesByTiming(driver: string | null | undefined): boolean {
+  return driver !== null && driver !== undefined && driver !== NAMES_RESPONSES;
+}
+
 /** The first index in `sorted` whose value passes `test`, `sorted.length` if none. */
 function firstIndex(sorted: ReadonlyArray<number>, test: (value: number) => boolean): number {
   let low = 0;
@@ -65,11 +88,11 @@ function startOf(call: BatchCall<unknown>): number | null {
 /**
  * Splits the calls still open into the newest batch's and the stale ones. A
  * call of a named response is stale once a call of another response started
- * after it; a call of none, once some call returned after it started and
- * another call started after that return. A call with neither is the newest
- * batch's.
+ * after it; a call of none, where batches go by timing, once some call
+ * returned after it started and another call started after that return. Any
+ * other is the newest batch's.
  */
-export function liveBatch<T>(calls: ReadonlyArray<BatchCall<T>>): LiveBatch<T> {
+export function liveBatch<T>(calls: ReadonlyArray<BatchCall<T>>, rule: BatchRule): LiveBatch<T> {
   const starts = calls
     .flatMap((call) => {
       const start = startOf(call);
@@ -99,7 +122,7 @@ export function liveBatch<T>(calls: ReadonlyArray<BatchCall<T>>): LiveBatch<T> {
       next = responded.find(
         (other) => other.start > startedAt && other.response !== call.response,
       )?.start;
-    } else {
+    } else if (rule.byTiming) {
       const back = firstIndex(returns, (value) => value > startedAt);
       const returnedAfter = returns[back];
       next =

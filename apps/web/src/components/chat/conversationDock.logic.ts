@@ -131,6 +131,8 @@ export function endedSince(
 export interface BandSeen {
   readonly running: ReadonlySet<string>;
   readonly held: ReadonlySet<string>;
+  /** How many times each bar has ended: a new ending holds its whole time again. */
+  readonly ends: ReadonlyMap<string, number>;
 }
 
 /**
@@ -139,10 +141,10 @@ export interface BandSeen {
  */
 export function bandSeenNext(seen: BandSeen, dock: DockModel | null, syncing: boolean): BandSeen {
   const ended = syncing ? [] : endedSince(seen.running, dock);
-  return {
-    running: bandKeys(dock),
-    held: ended.length === 0 ? seen.held : new Set([...seen.held, ...ended]),
-  };
+  if (ended.length === 0) return { running: bandKeys(dock), held: seen.held, ends: seen.ends };
+  const ends = new Map(seen.ends);
+  for (const key of ended) ends.set(key, (ends.get(key) ?? 0) + 1);
+  return { running: bandKeys(dock), held: new Set([...seen.held, ...ended]), ends };
 }
 
 /**
@@ -398,8 +400,12 @@ export function deriveDock(input: {
   // A stand-up's call settles it as its report said (`standupRunsOn`): it
   // runs on while that report says a service builds, until the store's
   // reading of its services says they are done.
+  // A session whose follow-up call the Mate waits on (`openedAt`) is the
+  // live slot's, never the band's.
   const runsOn = (operation: ZeropsOperation) =>
-    (operation.phase === "running" && operation.returnedAt !== undefined) ||
+    (operation.phase === "running" &&
+      operation.returnedAt !== undefined &&
+      operation.openedAt === undefined) ||
     (standupRunsOn(operation) && !(input.standupsDone?.has(operation.key) ?? false));
   const operations =
     input.isWorking && input.runningTurnId !== null

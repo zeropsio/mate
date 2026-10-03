@@ -266,6 +266,8 @@ interface MessagesTimelineProps {
   routeThreadKey: string;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   supportsConversationRollback: boolean;
+  /** The thread's provider driver: how its live field reads a batch (`batchesByTiming`). */
+  provider?: string | null;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onRunShellCommand?: (command: string) => void;
   isRevertingCheckpoint: boolean;
@@ -340,6 +342,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   routeThreadKey,
   onOpenTurnDiff,
   supportsConversationRollback,
+  provider = null,
   onRevertToTurnCount,
   onRunShellCommand,
   isRevertingCheckpoint,
@@ -475,6 +478,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         afterTurnWork,
         helperFinishes,
         alongside,
+        provider,
       }),
     [
       nowMs,
@@ -490,6 +494,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       afterTurnWork,
       helperFinishes,
       alongside,
+      provider,
     ],
   );
   const rows = useStableRows(rawRows);

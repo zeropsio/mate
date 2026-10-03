@@ -43,6 +43,8 @@ type Scene = {
   helperFinishes?: ReadonlyArray<HelperFinish>;
   /** Something runs alongside the live run: its panel draws a bar. */
   alongside?: boolean;
+  /** The thread's provider driver; Codex unless given, whose batches go by timing. */
+  provider?: string | null;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -68,6 +70,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     supportsConversationRollback: false,
     ...(scene.helperFinishes === undefined ? {} : { helperFinishes: scene.helperFinishes }),
     ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
+    provider: scene.provider === undefined ? "codex" : scene.provider,
   });
 }
 
@@ -685,7 +688,11 @@ describe("deriveMessagesTimelineRows", () => {
         returned("w2", 2, 0, 2, 5, "r2"),
         open("w4", 3, 5, "r3"),
       ],
-      now: { kind: "step", step: { key: "w4" } },
+      now: {
+        kind: "step",
+        step: { key: "w4" },
+        others: [{ kind: "operation", operation: { key: "op:bs1" } }],
+      },
     },
     {
       name: "a deploy and a command in one batch: both, the deploy under the command",
@@ -746,7 +753,14 @@ describe("deriveMessagesTimelineRows", () => {
     },
   ])("reads the live field from the newest batch: $name", ({ entries, now }) => {
     // The live run's record: a completion filed under another turn draws its own.
-    const record = rows({ entries: [user("m0", 0), ...entries], live: "t1" }).find(
+    const provider = entries.some((entry) =>
+      entry.kind === "operation"
+        ? entry.operation.responseId !== undefined
+        : "entry" in entry && "responseId" in entry.entry && entry.entry.responseId !== undefined,
+    )
+      ? "claudeAgent"
+      : "codex";
+    const record = rows({ entries: [user("m0", 0), ...entries], live: "t1", provider }).find(
       (row): row is Extract<MessagesTimelineRow, { kind: "record" }> =>
         row.kind === "record" && row.live,
     );
@@ -754,6 +768,55 @@ describe("deriveMessagesTimelineRows", () => {
     if (!("others" in now)) {
       expect(record?.now).not.toHaveProperty("others");
     }
+  });
+
+  // An older Mate server names no response: a Claude thread's calls then go
+  // stale by nothing, as before the batch rule (D1), and the timing rule is
+  // Codex's alone.
+  it.each([
+    { provider: "claudeAgent", now: { key: "w3", others: [{ step: { key: "w1" } }] }, stale: [] },
+    { provider: null, now: { key: "w3", others: [{ step: { key: "w1" } }] }, stale: [] },
+    { provider: "codex", now: { key: "w3" }, stale: ["step:w1"] },
+  ])("reads a thread whose calls name no response by its provider: $provider", (row) => {
+    const entries = [user("m0", 0), open("w1", 1), returned("w2", 1, 5, 1, 10), open("w3", 1, 20)];
+    const record = recordOf(rows({ entries, live: "t1", provider: row.provider }));
+    expect(record?.now).toMatchObject({
+      kind: "step",
+      step: { key: row.now.key },
+      ...("others" in row.now ? { others: row.now.others } : {}),
+    });
+    if (!("others" in row.now)) expect(record?.now).not.toHaveProperty("others");
+    expect(
+      record?.items.flatMap((item) =>
+        item.kind === "step" && item.step.noResult === "stale" ? [item.key] : [],
+      ),
+    ).toEqual(row.stale);
+  });
+
+  // Two edits in a row fold into one line; while the run goes on, the line
+  // carries each edit as its own, so the slot draws the second as it ended
+  // and the history folds it in once it lands (E6).
+  it("carries each edit a live folded line holds as a line of its own", () => {
+    const edit = (id: string, minute: number) =>
+      tool(id, "t1", minute, {
+        itemType: "file_change" as never,
+        label: "File change",
+        command: undefined as never,
+        detail: `Edit: {"file_path":"/srv/app/${id}.ts"}`,
+        createdAt: at(minute),
+        startedAt: at(minute),
+        updatedAt: at(minute, 5),
+      });
+    const entries = [user("m0", 0), edit("e1", 1), edit("e2", 2)];
+    const live = recordOf(rows({ entries, live: "t1" }));
+    const folded = live?.items.find((item) => item.key === "step:e1");
+    expect(folded?.kind).toBe("step");
+    if (folded?.kind !== "step") return;
+    expect(folded.step.entries).toHaveLength(2);
+    expect(folded.parts?.map((part) => [part.key, part.step.words, part.step.state])).toEqual([
+      ["step:e1", "Edited e1.ts", "done"],
+      ["step:e2", "Edited e2.ts", "done"],
+    ]);
   });
 
   it("keeps a bootstrap session's line where it first returned while its follow-up runs", () => {
@@ -771,7 +834,8 @@ describe("deriveMessagesTimelineRows", () => {
     ];
     const live = recordOf(rows({ entries, live: "t1" }));
     expect(live?.items.map((item) => item.key)).toEqual(["operation:op:bs1", "step:w2"]);
-    expect(live?.now).toMatchObject({ kind: "thinking" });
+    // The follow-up it waits on stands in the slot, never "Thinking" (D2).
+    expect(live?.now).toMatchObject({ kind: "operation", operation: { key: "op:bs1" } });
   });
 
   it("lands a stale operation in the record where it went stale", () => {
@@ -790,6 +854,28 @@ describe("deriveMessagesTimelineRows", () => {
     const live = recordOf(rows({ entries, live: "t1" }));
     expect(live?.now).toMatchObject({ kind: "step", step: { key: "w3" } });
     expect(live?.items.map((item) => [item.key, item.at])).toEqual([
+      ["step:w2", at(1, 20)],
+      ["operation:op:d1", at(2, 0)],
+    ]);
+    // Stale, it no longer runs (D3); settled, it closes as no result.
+    expect(live?.items.find((item) => item.key === "operation:op:d1")).toMatchObject({
+      noResult: "stale",
+    });
+    const settled = recordOf(
+      rows({
+        entries: entries.map((entry) =>
+          entry.kind === "operation"
+            ? { ...entry, operation: { ...entry.operation, phase: "interrupted" as const } }
+            : entry,
+        ),
+        settled: "t1",
+      }),
+    );
+    expect(settled?.items.find((item) => item.key === "operation:op:d1")).toMatchObject({
+      noResult: "closed",
+    });
+    // It stays where it went stale.
+    expect(settled?.items.map((item) => [item.key, item.at]).slice(0, 2)).toEqual([
       ["step:w2", at(1, 20)],
       ["operation:op:d1", at(2, 0)],
     ]);
@@ -862,6 +948,12 @@ describe("deriveMessagesTimelineRows", () => {
     expect(settled?.items.find((item) => item.key === "step:w1")).toMatchObject({
       step: { noResult: "closed" },
     });
+    // The turn's end closes it as unreturned (D4): it stays where it went stale.
+    expect(settled?.items.map((item) => [item.key, item.at])).toEqual([
+      ["step:w2", at(2, 5)],
+      ["step:w1", at(3)],
+      ["step:w3", at(3)],
+    ]);
     expect(settled?.items.find((item) => item.key === "step:w3")).toMatchObject({
       step: { noResult: "closed" },
     });

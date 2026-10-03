@@ -26,7 +26,7 @@ import {
   standupStepRole,
   type ZeropsOperation,
 } from "@t3tools/client-runtime/zerops/model";
-import { createContext, use, useMemo } from "react";
+import { createContext, use, useMemo, useState } from "react";
 
 import { useNowMs } from "../useNowMs";
 import { useZeropsTopology } from "../useZeropsFeeds";
@@ -110,7 +110,9 @@ function stillBuilding(operation: ZeropsOperation): ReadonlyArray<string> {
 /**
  * A call that returned while its builds run on (`standupRunsOn`), read from
  * the project as it stands: the services its report said still build, and
- * what their builds have come to since. Null before the project is read.
+ * what their builds have come to since. Only builds made before its call
+ * returned are its own — a later deploy of the same turn is not. Null before
+ * the project is read.
  */
 function ranOnReading(
   operation: ZeropsOperation,
@@ -121,11 +123,15 @@ function ranOnReading(
   },
 ): StandupReading | null {
   if (read.services === undefined || read.processes === undefined) return null;
+  const returnedMs = Date.parse(operation.returnedAt ?? "");
+  const processes = Number.isFinite(returnedMs)
+    ? read.processes.filter((process) => !(Date.parse(process.created) > returnedMs))
+    : read.processes;
   return readStandup({
     half: halfOf(operation),
     expected: stillBuilding(operation),
     services: read.services,
-    processes: read.processes,
+    processes,
     since: operation.anchorAt,
     nowMs: read.nowMs,
   });
@@ -155,27 +161,42 @@ export function standupBuildsDone(
 /**
  * The stand-ups of `operations` whose builds ran on after their call returned
  * and that the project, as it stands, says are done (`standupBuildsDone`), by
- * key. It reads the project only while such a stand-up runs on.
+ * key. One seen done stays done. It reads the project only while such a
+ * stand-up runs on and is not done yet. Before the project is read, none is
+ * said to run on: a page opened after its builds finished never draws them
+ * building and then plays their ending.
  */
 export function useStandupsDone(
   operations: ReadonlyArray<ZeropsOperation>,
   environmentId: EnvironmentId | null,
 ): ReadonlySet<string> {
-  const ranOn = useMemo(() => operations.filter(standupRunsOn), [operations]);
+  const [seenDone, setSeenDone] = useState<ReadonlySet<string>>(NONE);
+  const ranOn = useMemo(
+    () =>
+      operations.filter((operation) => standupRunsOn(operation) && !seenDone.has(operation.key)),
+    [operations, seenDone],
+  );
   const topology = useZeropsTopology(ranOn.length > 0 ? environmentId : null);
   const { processes } = useProjectActivity(
     ranOn.length > 0 ? (topology?.project.id ?? null) : null,
   );
-  return useMemo(() => {
+  const unread = ranOn.length > 0 && (topology === undefined || processes === undefined);
+  const doneNow = useMemo(() => {
     if (ranOn.length === 0 || topology === undefined || processes === undefined) return NONE;
     const services = standupServices(topology.services);
     const nowMs = Date.now();
-    return new Set(
-      ranOn
-        .filter((operation) => standupBuildsDone(operation, { services, processes, nowMs }))
-        .map((operation) => operation.key),
-    );
+    return ranOn
+      .filter((operation) => standupBuildsDone(operation, { services, processes, nowMs }))
+      .map((operation) => operation.key);
   }, [processes, ranOn, topology]);
+  // Latched: a later build of the same service is no build of the stand-up's.
+  const fresh = [...doneNow].filter((key) => !seenDone.has(key));
+  if (fresh.length > 0) setSeenDone(new Set([...seenDone, ...fresh]));
+  // Not read yet: held back as done, never latched.
+  const held = unread ? ranOn.map((operation) => operation.key) : [];
+  return fresh.length === 0 && held.length === 0
+    ? seenDone
+    : new Set([...seenDone, ...fresh, ...held]);
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -183,7 +204,8 @@ const NONE: ReadonlySet<string> = new Set();
 /**
  * A call's reading: a running one from the project as it stands (not read
  * yet: null — the bar says it is getting ready); a settled one as the call
- * left it (`settledStandupReading`).
+ * left it (`settledStandupReading`) — one whose builds ran on, read as they
+ * stand only while its turn runs (`live`).
  */
 export function standupReadingFor(
   operation: ZeropsOperation,
@@ -191,11 +213,13 @@ export function standupReadingFor(
     readonly services?: ReadonlyArray<StandupService>;
     readonly processes?: ReadonlyArray<ActivityProcess>;
     readonly nowMs: number;
+    /** Its turn runs: builds it ran on with are read as they stand. */
+    readonly live?: boolean;
   },
 ): StandupReading | null {
   if (operation.phase !== "running") {
     // Its builds run on after its call returned: read as they stand.
-    if (standupRunsOn(operation)) {
+    if ((read.live ?? true) && standupRunsOn(operation)) {
       const reading = ranOnReading(operation, read);
       if (reading !== null) return reading;
     }
@@ -220,12 +244,17 @@ export function standupReadingFor(
   });
 }
 
+/**
+ * A stand-up's reading, the project read while `turnRuns` — its turn runs —
+ * and no longer: once the turn is over it stands as the call left it.
+ */
 export function useStandupReading(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
+  turnRuns: boolean,
 ): StandupReading | null {
   const fixtures = use(StandupReadings);
-  const running = operation.phase === "running" || standupRunsOn(operation);
+  const running = operation.phase === "running" || (turnRuns && standupRunsOn(operation));
   const topology = useZeropsTopology(environmentId);
   const { processes } = useProjectActivity(running ? (topology?.project.id ?? null) : null);
   const nowMs = useNowMs();
@@ -235,8 +264,9 @@ export function useStandupReading(
         ...(topology === undefined ? {} : { services: standupServices(topology.services) }),
         ...(processes === undefined ? {} : { processes }),
         nowMs,
+        live: turnRuns,
       }),
-    [nowMs, operation, processes, topology],
+    [nowMs, operation, processes, topology, turnRuns],
   );
   return fixtures?.get(operation.key) ?? live;
 }

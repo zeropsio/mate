@@ -102,6 +102,7 @@ import {
   browserTakeState,
   formatWorkDuration,
   operationLineWords,
+  operationUnreturnedWords,
   type BrowserStripModel,
   type IncidentModel,
   type OutcomeModel,
@@ -325,24 +326,47 @@ const ChatLineContext = createContext<string | null>(null);
  * showed lands in the history as it stood — opened, or at its cap — so its
  * plop moves it and never resizes it (pass 35).
  */
-const CarriedOpenContext = createContext<Map<string, boolean> | null>(null);
+const CarriedOpenContext = createContext<Map<string, Carried> | null>(null);
 
-/** A state of a line's, kept across its slot row and its history row. */
-function useCarried(part: string, initial: () => boolean): [boolean, (next: boolean) => void] {
+/** A line's state as carried: the person's own choice, or how the slot last drew it. */
+interface Carried {
+  readonly value: boolean;
+  /** The person set it: it holds wherever the line is drawn. */
+  readonly own: boolean;
+}
+
+/**
+ * A state of a line's, kept across its slot row and its history row. With
+ * `follows`, the slot row draws it from what it shows now — a call's input
+ * streams in after its start — until the person sets it, and the history row
+ * takes it as the slot last drew it.
+ */
+function useCarried(
+  part: string,
+  initial: () => boolean,
+  follows = false,
+): [boolean, (next: boolean) => void] {
   const carried = use(CarriedOpenContext);
   const line = use(ChatLineContext);
+  const inSlot = use(InSlotContext);
   const key = line === null ? null : `${line}#${part}`;
-  const [value, setValue] = useState(() => {
+  const following = follows && inSlot;
+  const [value, setValue] = useState<boolean | undefined>(() => {
     const kept = key === null ? undefined : carried?.get(key);
-    if (kept !== undefined) return kept;
+    if (kept !== undefined && (kept.own || !following)) return kept.value;
+    if (following) return undefined;
     const first = initial();
-    if (key !== null) carried?.set(key, first);
+    if (key !== null) carried?.set(key, { value: first, own: false });
     return first;
   });
+  const shown = value ?? initial();
+  if (value === undefined && key !== null && carried?.get(key)?.value !== shown) {
+    carried?.set(key, { value: shown, own: false });
+  }
   return [
-    value,
+    shown,
     (next) => {
-      if (key !== null) carried?.set(key, next);
+      if (key !== null) carried?.set(key, { value: next, own: true });
       setValue(next);
     },
   ];
@@ -351,10 +375,15 @@ function useCarried(part: string, initial: () => boolean): [boolean, (next: bool
 /** Whether the line lands by a plop from the live slot: then it never rises in on its own. */
 const PlopsContext = createContext(false);
 
+/** A call riding in a new card that lands by a plop: it rises in, the card plops. */
+const RidesContext = createContext(false);
+
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
   const shown = use(ChatShownContext);
-  const [arrived] = useState(() => shown?.current ?? false);
+  // What a resync brings nobody watched happen: it is simply there.
+  const { syncing } = use(TimelineRowCtx);
+  const [arrived] = useState(() => (shown?.current ?? false) && !syncing);
   return arrived;
 }
 
@@ -599,9 +628,9 @@ function FoldToggle({
 // ---------------------------------------------------------------------------
 
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
-function useDisclosure(initial = false, part = "open") {
+function useDisclosure(initial = false, part = "open", follows = false) {
   const hold = useHoldReading();
-  const [open, setOpen] = useCarried(part, () => initial);
+  const [open, setOpen] = useCarried(part, () => initial, follows);
   return {
     open,
     set: (next: boolean) => {
@@ -1278,9 +1307,12 @@ function CallRow({
   readonly children: ReactNode;
 }) {
   const group = use(CallGroupContext);
-  const [joined] = useState(() => group?.current ?? false);
+  // A call a resync brings is simply there.
+  const { syncing } = use(TimelineRowCtx);
+  // One riding in a card that plops rises in, though its card is new.
+  const rides = use(RidesContext);
+  const [joined] = useState(() => ((group?.current ?? false) || rides) && !syncing);
   const lineKey = use(ChatLineContext);
-  const inSlot = use(InSlotContext);
   // As it mounted: a call that landed by a plop never rises in later.
   const plopping = use(PlopsContext);
   const [plops] = useState(plopping);
@@ -1288,8 +1320,9 @@ function CallRow({
     <div
       className={cn(
         "relative min-w-0 first:rounded-t-2xl last:rounded-b-2xl",
-        joined && !inSlot && !plops && "run-rise",
+        joined && !plops && "run-rise",
       )}
+      data-run-rises={joined && !plops ? "" : undefined}
       data-chat-bubble={failure === null ? "tool" : "failed"}
       data-chat-failed={failure ?? undefined}
       data-chat-kind={kind}
@@ -1366,7 +1399,8 @@ function StepBubble({
   // line, in mono, and the rest of it opens under it. In the live slot it
   // stands open to its cap, and lands so.
   const bare = script !== null && step.words === null;
-  const disclosure = useDisclosure(bare && inSlot && step.codeLines > 1);
+  // In the slot it follows the code as it streams in, until the person sets it.
+  const disclosure = useDisclosure(bare && inSlot && step.codeLines > 1, "open", true);
   // A bare command opened to its cap, then whole.
   const whole = useDisclosure(false, "whole");
   const outputs = stepOutput(step);
@@ -1487,13 +1521,18 @@ export function OperationDetail({
   operation,
   environmentId,
   threadRef,
+  turnRuns,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
+  /** Its turn runs: a stand-up's builds that ran on are read as they stand. */
+  readonly turnRuns: boolean;
 }) {
   if (operation.kind === "standup") {
-    return <StandupDetail environmentId={environmentId} operation={operation} />;
+    return (
+      <StandupDetail environmentId={environmentId} operation={operation} turnRuns={turnRuns} />
+    );
   }
   if (operation.kind === "import") {
     return <ImportDetail environmentId={environmentId} operation={operation} />;
@@ -1526,6 +1565,12 @@ function ZeropsOperationDetail({
  * runs, what the Mate waits on beside its face (the bar under the chat has
  * its clock). Its card — the pipeline, the build log — opens under it.
  */
+/** Whether the turn an operation ran in still runs: what it started may still be read live. */
+function useTurnRuns(operation: ZeropsOperation): boolean {
+  const activity = use(TimelineRowActivityCtx);
+  return activity.isWorking && activity.latestTurnId === operation.turnId;
+}
+
 /** A stand-up's row: it opens to its services' lines only when there are any. */
 function StandupBubble({
   operation,
@@ -1535,7 +1580,11 @@ function StandupBubble({
   readonly undone: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
-  const reading = useStandupReading(operation, ctx.activeThreadEnvironmentId);
+  const reading = useStandupReading(
+    operation,
+    ctx.activeThreadEnvironmentId,
+    useTurnRuns(operation),
+  );
   return (
     <OperationBubble
       lines={detailLines(operation, reading?.rows.length ?? null)}
@@ -1548,23 +1597,31 @@ function StandupBubble({
 function OperationBubble({
   operation,
   undone = false,
+  noResult,
   lines = detailLines(operation, null),
 }: {
   readonly operation: ZeropsOperation;
   /** It failed, and a later one on the same service went through: quiet (K9). */
   readonly undone?: boolean;
+  /**
+   * Its call never returned: what was asked, never "Running" — "stale" while
+   * the run goes on, "closed" ("No result") once it is over.
+   */
+  readonly noResult?: "stale" | "closed" | undefined;
   /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
   readonly lines?: number;
 }) {
   const ctx = use(TimelineRowCtx);
+  const turnRuns = useTurnRuns(operation);
   const disclosure = useDisclosure();
   const inSlot = use(InSlotContext);
   const failed = operation.phase === "failed";
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
-  const running = operation.phase === "running";
+  const running = noResult === undefined && operation.phase === "running";
   // Live in the slot, its pipeline as it goes and the step it is on.
   const live = running && inSlot ? liveOperationBar(operation) : null;
-  const words = operationLineWords(operation);
+  const words =
+    noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
   const detail =
     reason ?? (operation.kind === "deploy" ? (versionText(operation.version?.name) ?? null) : null);
@@ -1579,7 +1636,9 @@ function OperationBubble({
     <Headline
       column
       opens={opens}
-      time={operationTime(operation)}
+      time={
+        noResult === undefined ? operationTime(operation) : noResult === "closed" ? NO_RESULT : null
+      }
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
@@ -1591,7 +1650,7 @@ function OperationBubble({
             <StatusBar className="w-12" segments={live.segments} />
             {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}
           </>
-        ) : running ? null : (
+        ) : running || noResult !== undefined ? null : (
           <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
         )}
         {detail !== null ? (
@@ -1634,6 +1693,7 @@ function OperationBubble({
             environmentId={ctx.activeThreadEnvironmentId}
             operation={operation}
             threadRef={ctx.threadRef}
+            turnRuns={turnRuns}
           />
         </div>
       ) : null}
@@ -2234,9 +2294,9 @@ function gatherCalls(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
  * its first call, so one whose first call leaves stays the same card.
  */
 function slotEntries(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
-  let cards = 0;
+  // A card is its first call's: a new card is a new row, and rises in.
   return gatherCalls(lines).map((entry) =>
-    "calls" in entry ? { ...entry, key: `calls#${cards++}` } : entry,
+    "calls" in entry ? { ...entry, key: `calls#${entry.calls[0]?.key ?? entry.key}` } : entry,
   );
 }
 
@@ -2372,10 +2432,14 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
       return {
         key: item.key,
         bubble:
-          item.operation.kind === "standup" ? (
+          item.operation.kind === "standup" && item.noResult === undefined ? (
             <StandupBubble operation={item.operation} undone={undone.has(item.key)} />
           ) : (
-            <OperationBubble operation={item.operation} undone={undone.has(item.key)} />
+            <OperationBubble
+              noResult={item.noResult}
+              operation={item.operation}
+              undone={undone.has(item.key)}
+            />
           ),
         call: true,
       };
@@ -2463,7 +2527,10 @@ function ChatRow({
         <Mark line={markLine}>{mark}</Mark>
       )}
       {/* Only what arrives while the person watches rises in. */}
-      <div className={cn("flex min-w-0 flex-1", theirs && "justify-end", rises && "run-rise")}>
+      <div
+        className={cn("flex min-w-0 flex-1", theirs && "justify-end", rises && "run-rise")}
+        data-run-rises={rises ? "" : undefined}
+      >
         {children}
       </div>
     </li>
@@ -2789,6 +2856,53 @@ function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
 const THINKING_WORD_DELAY_MS = 300;
 
 /**
+ * A line the slot drew live that ended with no line of its own in the record:
+ * said over, never still running — a step in its settled words.
+ */
+function endedLine(item: RecordItem): RecordItem {
+  if (item.kind !== "step" || item.step.state !== "running") return item;
+  const last = item.step.entries.at(-1);
+  if (last === undefined) return item;
+  const over = stepOf({ ...last, toolLifecycleStatus: "completed" }, undefined, false);
+  return { ...item, step: { ...over, key: item.step.key } };
+}
+
+/**
+ * Places the live slot's face and clock on its first line, and says the room
+ * the slot takes, its gap above it included: on a short page the card holds
+ * it whole once the history has none left to give.
+ */
+function placeSlot(list: HTMLOListElement | null): void {
+  // Drawn outside a page (a test's renderer), it has no layout to read.
+  if (typeof list?.querySelector !== "function") return;
+  const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
+  const slotBox = list.parentElement;
+  if (slotBox === null) return;
+  const line = mark?.getBoundingClientRect();
+  const top = slotBox.getBoundingClientRect().top;
+  const y = line === undefined ? null : line.top + line.height / 2 - top;
+  if (y === null) slotBox.style.removeProperty("--run-slot-line");
+  else slotBox.style.setProperty("--run-slot-line", `${y}px`);
+  // The room the slot takes, its gap above it included: on a short page
+  // the card holds it whole once the history has none left to give.
+  const chat = slotBox.parentElement;
+  if (chat !== null) {
+    const above = slotBox.previousElementSibling ?? null;
+    const from =
+      above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+    chat.style.setProperty(
+      "--run-slot-room",
+      `${Math.ceil(slotBox.getBoundingClientRect().bottom - from)}px`,
+    );
+  }
+  // They move with the first line only once placed: a first paint, a
+  // thread opened or a card scrolled back to never slides them in.
+  if (!slotBox.hasAttribute("data-placed")) {
+    requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
+  }
+}
+
+/**
  * What the slot says when no item stands in it: "Thinking" — muted, its word
  * a moment late, so a quick gap between two steps never flashes it — its
  * words on their way, a wait on the person, the context condensing.
@@ -2890,9 +3004,16 @@ function LiveSlot({
   const byKey = new Map<string, RecordItem>();
   for (const [key, item] of lastLive) {
     // A check the record drew into the row of the one before it is drawn there.
-    if (item.kind !== "strip") byKey.set(key, item);
+    if (item.kind !== "strip") byKey.set(key, live.includes(item) ? item : endedLine(item));
   }
-  for (const item of items) byKey.set(item.key, item);
+  for (const item of items) {
+    // A call the record folded into the line before it is drawn as it ended
+    // while it stands here (`parts`).
+    if (item.kind === "step") {
+      for (const part of item.parts ?? []) byKey.set(part.key, part);
+    }
+    byKey.set(item.key, item);
+  }
   for (const item of live) byKey.set(item.key, item);
   const shown = slot.entries.flatMap((entry) => {
     // One the record drew into another line (a check joining the row of the
@@ -2927,36 +3048,18 @@ function LiveSlot({
   }, []);
   // The face and the clock stand on the first line, whatever bubble it is in.
   useLayoutEffect(() => {
-    const list = listRef.current;
-    // Drawn outside a page (a test's renderer), it has no layout to read.
-    if (typeof list?.querySelector !== "function") return;
-    const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
-    const slotBox = list.parentElement;
-    if (slotBox === null) return;
-    const line = mark?.getBoundingClientRect();
-    const top = slotBox.getBoundingClientRect().top;
-    const y = line === undefined ? null : line.top + line.height / 2 - top;
-    if (y === null) slotBox.style.removeProperty("--run-slot-line");
-    else slotBox.style.setProperty("--run-slot-line", `${y}px`);
-    // The room the slot takes, its gap above it included: on a short page
-    // the card holds it whole once the history has none left to give.
-    const chat = slotBox.parentElement;
-    if (chat !== null) {
-      const above = slotBox.previousElementSibling ?? null;
-      const from =
-        above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
-      chat.style.setProperty(
-        "--run-slot-room",
-        `${Math.ceil(slotBox.getBoundingClientRect().bottom - from)}px`,
-      );
-    }
-    // They move with the first line only once placed: a first paint, a
-    // thread opened or a card scrolled back to never slides them in.
-    if (!slotBox.hasAttribute("data-placed")) {
-      requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
-    }
-    // Read only when what it shows changed, never on every draw.
+    placeSlot(listRef.current);
+    // Read when what it shows changed, never on every draw.
   }, [slot, live, items, filler, lines.length]);
+  // A row opened or shut in place, or the page resized: the room it takes
+  // changes with no change of what it shows.
+  useEffect(() => {
+    const slotBox = listRef.current?.parentElement;
+    if (slotBox === null || slotBox === undefined || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => placeSlot(listRef.current));
+    observer.observe(slotBox);
+    return () => observer.disconnect();
+  }, []);
   return (
     <div
       ref={ref}
@@ -3040,7 +3143,7 @@ function LiveSlot({
  */
 export function RunChat({ row }: { readonly row: RecordRow }) {
   // What the person opened, kept as a row lands from the slot in the history.
-  const [carriedOpen] = useState(() => new Map<string, boolean>());
+  const [carriedOpen] = useState(() => new Map<string, Carried>());
   const ctx = use(TimelineRowCtx);
   const hold = useHoldReading();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -3048,7 +3151,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Whether the person reads the work this moment — scrolled up in it, or
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
-  const { fold, foldNow } = useRunFold({
+  const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
@@ -3082,7 +3185,16 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       }),
     [row.now, row.answering, isCompacting, row.items],
   );
-  const recordKeys = useMemo(() => row.items.map((item) => item.key), [row.items]);
+  // A folded line's own calls are the record's too (`parts`).
+  const recordKeys = useMemo(
+    () =>
+      row.items.flatMap((item) =>
+        item.kind === "step" && item.parts !== undefined
+          ? [item.key, ...item.parts.map((part) => part.key).filter((key) => key !== item.key)]
+          : [item.key],
+      ),
+    [row.items],
+  );
   const slotRef = useRef<HTMLDivElement>(null);
   // Where each row leaving the slot stood, and each line of the history, read
   // before they move: the plop starts there, and the history glides from there.
@@ -3133,11 +3245,6 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     };
   };
   const paintedRef = useRef<ReturnType<typeof paintedNow> | null>(null);
-  // Read after each draw of a live run's card, once its landing glides
-  // started: the next change starts from here.
-  useLayoutEffect(() => {
-    paintedRef.current = slotted ? paintedNow() : null;
-  });
   // What left the slot lands: the history at its foot, its lines gliding
   // where the landing moved them, each landed line plopping from where it
   // stood in the slot. Once the card holds its height the slot glides to its
@@ -3148,9 +3255,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (landing === null) return;
     if (prefersReducedMotion()) {
       for (const key of landing.from.keys()) {
+        // Faded from its first frame: never a frame at full opacity first.
         rowByKey(aboveRef.current, key)?.animate([{ opacity: 0 }, { opacity: 1 }], {
           duration: 200,
           easing: "ease",
+          fill: "backwards",
         });
       }
       return;
@@ -3191,8 +3300,24 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       glideBy(row, stood - holderStood - (row.getBoundingClientRect().top - base));
     }
   }, [landing]);
+  // Read after each draw of a live run's card, once its landing glides
+  // started — declared after the landing, so it runs after it: the next
+  // change starts from what shows, never from the glides' destinations.
+  useLayoutEffect(() => {
+    paintedRef.current = slotted ? paintedNow() : null;
+  });
   const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
-  const history = holds.size === 0 ? row.items : row.items.filter((item) => !holds.has(item.key));
+  // A folded line whose call the slot still holds stands unfolded, that call
+  // left out: it folds in once the call lands.
+  const history =
+    holds.size === 0
+      ? row.items
+      : row.items.flatMap((item): RecordItem[] => {
+          if (holds.has(item.key)) return [];
+          if (item.kind !== "step" || item.parts === undefined) return [item];
+          if (!item.parts.some((part) => holds.has(part.key))) return [item];
+          return item.parts.filter((part) => !holds.has(part.key));
+        });
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
   // A toggle leaves the height the work stood at: once the new fold is laid
@@ -3228,7 +3353,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         data-run-fold={settled ? fold : undefined}
         // The shared height holds through the settle's fold: dropped in the
         // commit the fold measures, the history jumped to its own height first.
-        data-run-live={slotted || fold === "folding" ? "" : undefined}
+        data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
         style={
           { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
         }
@@ -3351,11 +3476,15 @@ function useRunFold({
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
-}): { readonly fold: RunFold; readonly foldNow: () => void } {
+}): { readonly fold: RunFold; readonly foldNow: () => void; readonly settling: boolean } {
   const read = () => runFoldOf(conversation, run);
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
   const fold = live ? "watched" : stored;
   const wasLiveRef = useRef(live);
+  // The draw where the run settled, before its fold is measured: the card
+  // holds its live height through it, or it jumps first.
+  const [drawnLive, setDrawnLive] = useState(live);
+  const settling = !live && drawnLive && stored === "watched";
   // Where the line's words stood as the run settled: the fold starts there.
   const settledAtRef = useRef<number | null>(null);
   // It folds from where its line's words stand now, easing the work shut
@@ -3370,6 +3499,7 @@ function useRunFold({
   useLayoutEffect(() => {
     const wasLive = wasLiveRef.current;
     wasLiveRef.current = live;
+    setDrawnLive(live);
     if (live) {
       setRunFold(conversation, run, "watched");
       return;
@@ -3396,7 +3526,7 @@ function useRunFold({
     }
     return foldAway(above, from - words.getBoundingClientRect().top, done);
   }, [conversation, run, fold, aboveRef, rootRef]);
-  return { fold, foldNow };
+  return { fold, foldNow, settling };
 }
 
 /** The now line's words in a run's chat: where the line stands. */
@@ -3730,7 +3860,9 @@ function CallsCard({ entry }: { readonly entry: Extract<ChatEntry, { calls: unkn
         <CallGroup>
           {entry.calls.map((line) => (
             <ChatLineContext key={line.key} value={line.key}>
-              <PlopsContext value={line.plops === true}>{line.bubble}</PlopsContext>
+              <PlopsContext value={line.plops === true}>
+                <RidesContext value={plops && line.plops !== true}>{line.bubble}</RidesContext>
+              </PlopsContext>
             </ChatLineContext>
           ))}
         </CallGroup>
@@ -3780,6 +3912,7 @@ function plop(row: HTMLElement, from: number) {
     row.animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: 200,
       easing: "ease",
+      fill: "backwards",
     }).currentTime = 0;
     return;
   }

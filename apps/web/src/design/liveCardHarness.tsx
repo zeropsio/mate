@@ -9,12 +9,14 @@
  * - `?script=main` (the default) the board's 36 s run; `burst` six reads in
  *   half a second, then the tests; `stale` a call whose completion never
  *   comes; `band` a stand-up whose builds run on after its call returned;
- *   `long` thirty steps, so the card fills its height;
+ *   `long` thirty steps, so the card fills its height; `edits` two edits in
+ *   a row, the second folding into the first as it lands;
  * - `?speed=<x>` plays faster or slower, `?at=<s>` starts that far in;
  * - `?theme=dark`.
  *
- * `window.__liveHarness.restart()` plays it again from the start, and
- * `.seconds()` says where it is, for a per-frame sampler.
+ * `window.__liveHarness.restart()` plays it again from the start,
+ * `.seconds()` says where it is, for a per-frame sampler, and `.resync(s)`
+ * catches it up to `s` seconds as a resync does.
  *
  * Fixtures only, all invented. Nothing here ships — `design-live.html` is not
  * `index.html`, and no route imports this module.
@@ -285,7 +287,21 @@ const LONG: Run = {
   answer: "Tidied thirty routes.",
 };
 
-const RUN: Run = { main: MAIN, burst: BURST, stale: STALE, band: BAND, long: LONG }[SCRIPT] ?? MAIN;
+/** Two edits in a row, then a command: the second folds into the first once it lands. */
+const EDITS: Run = {
+  ask: "Fix the two routes.",
+  items: [
+    { id: "e1", kind: "edit", start: 0.5, end: 0.8, name: "src/routes/status.ts" },
+    { id: "e2", kind: "edit", start: 1.2, end: 1.5, name: "src/routes/health.ts" },
+    { id: "c1", kind: "command", start: 2.6, end: 5, words: "Run the tests", code: "npm test" },
+  ],
+  write: 5.5,
+  end: 7,
+  answer: "Fixed both routes; the tests pass.",
+};
+
+const RUN: Run =
+  { main: MAIN, burst: BURST, stale: STALE, band: BAND, long: LONG, edits: EDITS }[SCRIPT] ?? MAIN;
 
 /** The run started this long before the page loaded, so its clock reads as it would live. */
 const STARTED = Date.now() - START_AT * 1000;
@@ -522,7 +538,7 @@ function entriesAt(t: number): TimelineEntry[] {
 }
 
 /** The harness's clock: seconds into the run, at `SPEED`. */
-function useRunClock(): readonly [number, () => void] {
+function useRunClock(): readonly [number, () => void, (to: number) => void] {
   const [origin, setOrigin] = useState(() => performance.now() - (START_AT * 1000) / SPEED);
   const [seconds, setSeconds] = useState(START_AT);
   useEffect(() => {
@@ -542,15 +558,22 @@ function useRunClock(): readonly [number, () => void] {
     setOrigin(performance.now());
     setSeconds(0);
   }, []);
-  return [seconds, restart];
+  // A jump forward, as a resync catches a thread up.
+  const jump = useCallback((to: number) => {
+    setOrigin(performance.now() - (to * 1000) / SPEED);
+    setSeconds(to);
+  }, []);
+  return [seconds, restart, jump];
 }
 
 const keptForever = () => true;
 const readsNothing = () => null;
 
 function Pane() {
-  const [seconds, restart] = useRunClock();
+  const [seconds, restart, jump] = useRunClock();
   const [epoch, setEpoch] = useState(0);
+  // A resync: the thread catches up while `syncing`, then settles.
+  const [syncing, setSyncing] = useState(false);
   const listRef = useRef<LegendListRef | null>(null);
   useEffect(() => {
     (window as unknown as { __liveHarness: unknown }).__liveHarness = {
@@ -559,8 +582,13 @@ function Pane() {
         restart();
       },
       seconds: () => seconds,
+      resync: (to: number) => {
+        setSyncing(true);
+        jump(to);
+        setTimeout(() => setSyncing(false), 300);
+      },
     };
-  }, [restart, seconds]);
+  }, [jump, restart, seconds]);
   const step = Math.floor(seconds * 20) / 20;
   const ended = step >= RUN.end;
   const entries = useMemo(() => entriesAt(step), [step]);
@@ -606,6 +634,8 @@ function Pane() {
             routeThreadKey,
             onOpenTurnDiff: () => undefined,
             supportsConversationRollback: false,
+            // Its calls name no response: the timing rule reads its batches.
+            provider: "codex",
             onRevertToTurnCount: () => undefined,
             isRevertingCheckpoint: false,
             onImageExpand: () => undefined,
@@ -622,7 +652,7 @@ function Pane() {
             onManualNavigation: () => undefined,
             hideEmptyPlaceholder: false,
             loading: false,
-            syncing: false,
+            syncing,
             topFadeEnabled: true,
           }}
         />

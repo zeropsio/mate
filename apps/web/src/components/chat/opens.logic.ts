@@ -74,12 +74,12 @@ function editedFiles(entry: WorkLogEntry): string[] {
 function askedPastTheLine(entry: WorkLogEntry, kind: WorkStep["kind"]): string[] {
   if (kind !== "search" && kind !== "web") return [];
   const input = entry.callInput;
-  // The line names a page by its host and path: an address that says more is asked.
+  // The line names a page by its host and path: an address that says more is
+  // asked. A trailing slash says nothing more.
   const url = input?.url;
+  const bare = (text: string) => text.replace(/^https?:\/\//u, "").replace(/\/$/u, "");
   const address =
-    url !== undefined && url.replace(/^https?:\/\//u, "").replace(/\/$/u, "") !== webTarget(url)
-      ? `address  ${url}`
-      : null;
+    url !== undefined && bare(url) !== bare(webTarget(url)) ? `address  ${url}` : null;
   return [
     address,
     input?.glob && input.glob !== input.pattern ? `glob     ${input.glob}` : null,

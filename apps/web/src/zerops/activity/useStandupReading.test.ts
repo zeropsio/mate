@@ -243,13 +243,18 @@ describe("standupBuildsDone — a stand-up that ran on after its call returned",
       status: "READY_TO_DEPLOY",
     },
   ];
-  const build = (serviceId: string, status: string, finished?: string) => ({
-    id: `p-${serviceId}`,
+  const build = (
+    serviceId: string,
+    status: string,
+    finished?: string,
+    created = "2026-09-02T10:01:00.000Z",
+  ) => ({
+    id: `p-${serviceId}-${created}`,
     projectId: "proj",
     serviceStackIds: [serviceId],
     status,
     actionName: "stack.build",
-    created: "2026-09-02T10:01:00.000Z",
+    created,
     ...(finished === undefined ? {} : { finished }),
   });
   const ranOn = standup({
@@ -266,6 +271,15 @@ describe("standupBuildsDone — a stand-up that ran on after its call returned",
     { name: "its build still runs", processes: [build("s-apidev", "RUNNING")], done: false },
     { name: "no build of it seen yet", processes: [], done: false },
     { name: "the project not read yet", processes: undefined, done: false },
+    {
+      // A later deploy in the same turn is no build of the stand-up's (E1).
+      name: "its build finished, then a later deploy builds it again: still done",
+      processes: [
+        build("s-apidev", "FINISHED", "2026-09-02T10:07:00.000Z"),
+        build("s-apidev", "RUNNING", undefined, "2026-09-02T10:07:30.000Z"),
+      ],
+      done: true,
+    },
   ])("$name", ({ processes, done }) => {
     expect(
       standupBuildsDone(ranOn, {
@@ -274,5 +288,20 @@ describe("standupBuildsDone — a stand-up that ran on after its call returned",
         nowMs,
       }),
     ).toBe(done);
+  });
+
+  // Its turn over, it stands as the call left it: never the project as it is
+  // today, and no reading of it (E7).
+  it.each([
+    { live: true, apidev: "up" },
+    { live: false, apidev: "building" },
+  ])("reads its builds only while its turn runs: $live", ({ live, apidev }) => {
+    const reading = standupReadingFor(ranOn, {
+      services,
+      processes: [build("s-apidev", "FINISHED", "2026-09-02T10:07:00.000Z")],
+      nowMs,
+      live,
+    });
+    expect(reading?.rows.find((row) => row.hostname === "apidev")?.state).toBe(apidev);
   });
 });

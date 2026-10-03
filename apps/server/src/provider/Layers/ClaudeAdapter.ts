@@ -2846,6 +2846,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             toolName: tool.toolName,
             input: tool.input,
           },
+          // Mate: its result never came; the turn's end closes it.
+          unreturned: true,
         },
         providerRefs: nativeProviderRefs(context, {
           providerItemId: tool.itemId,
@@ -3216,7 +3218,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     if (event.type === "content_block_stop") {
       const { index } = event;
-      const assistantBlock = context.turnState?.assistantTextBlocks.get(index);
+      // Mate: a helper's block indexes are its own response's, never the Mate's text.
+      const assistantBlock = streamParentToolUseId
+        ? undefined
+        : context.turnState?.assistantTextBlocks.get(index);
       if (assistantBlock) {
         assistantBlock.streamClosed = true;
         yield* completeAssistantTextBlock(context, assistantBlock, {

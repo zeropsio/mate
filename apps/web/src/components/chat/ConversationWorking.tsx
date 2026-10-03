@@ -357,7 +357,8 @@ function StandupInstrument({
   /** What it opens to, under it. */
   readonly detail: ReactNode;
 }) {
-  const reading = useStandupReading(operation, environmentId);
+  // The band draws it only while its turn runs.
+  const reading = useStandupReading(operation, environmentId, true);
   const { words, figure, segments, failed } = standupBar(reading);
   const subject = operationSubject(operation);
   // No service read yet: nothing to open to.
@@ -398,7 +399,8 @@ function keyedSteps<T extends { readonly step: string }>(steps: ReadonlyArray<T>
 function Arriving({ children }: { readonly children: ReactNode }) {
   const arrived = useArrivedLive();
   return (
-    <li className={cn("grid", arrived && "animate-room-in motion-reduce:animate-none")}>
+    // Under reduced motion it fades in: every arrival does.
+    <li className={cn("grid", arrived && "animate-room-in motion-reduce:animate-run-fade")}>
       <div className="min-h-0 overflow-hidden">{children}</div>
     </li>
   );
@@ -619,6 +621,7 @@ function Instruments({
             environmentId={environmentId}
             operation={operation}
             threadRef={threadRef}
+            turnRuns
           />
         );
         return (

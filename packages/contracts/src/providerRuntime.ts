@@ -378,6 +378,12 @@ export const ItemLifecyclePayload = Schema.Struct({
    * older calls returned. Absent where a provider names no response.
    */
   responseId: Schema.optional(TrimmedNonEmptyStringSchema),
+  /**
+   * On a completion: the call never returned — the turn ended with it still
+   * open, and its end closed it. Clients read it as no result, never as a
+   * call that came back.
+   */
+  unreturned: Schema.optional(Schema.Boolean),
 });
 export type ItemLifecyclePayload = typeof ItemLifecyclePayload.Type;
 

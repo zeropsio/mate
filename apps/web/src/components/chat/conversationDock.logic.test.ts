@@ -10,6 +10,7 @@ import { assistant, at, operation, tool, user } from "./conversationFixtures";
 import {
   bandKeys,
   bandSeenNext,
+  type BandSeen,
   deriveDock,
   endedSince,
   withEndingsHeld,
@@ -341,9 +342,17 @@ describe("deriveDock", () => {
         }),
         operation("v1", "t1", 2, { kind: "verify", phase: "running", returnedAt: at(2, 5) }),
         operation("d2", "t0", 2, { kind: "deploy", phase: "running", returnedAt: at(2, 5) }),
+        // A session whose follow-up call the Mate waits on is the slot's (D2).
+        operation("bs1", "t1", 2, {
+          kind: "bootstrap",
+          phase: "running",
+          returnedAt: at(2, 5),
+          openedAt: at(3, 0),
+        }),
+        operation("bs2", "t1", 2, { kind: "bootstrap", phase: "running", returnedAt: at(2, 5) }),
       ],
     });
-    expect(dock?.operations.map((op) => op.key)).toEqual(["op:s1"]);
+    expect(dock?.operations.map((op) => op.key)).toEqual(["op:s1", "op:bs2"]);
   });
 
   // The stand-up's report froze as its call returned; the store's reading of
@@ -530,10 +539,30 @@ describe("bandSeenNext", () => {
     { name: "watched: the ending is held", syncing: false, held: ["task:b1"] },
     { name: "a resync: nothing is held", syncing: true, held: [] },
   ])("$name", ({ syncing, held }) => {
-    const before = { running: bandKeys(runningDock()), held: new Set<string>() };
+    const before: BandSeen = {
+      running: bandKeys(runningDock()),
+      held: new Set<string>(),
+      ends: new Map<string, number>(),
+    };
     const next = bandSeenNext(before, endedDock(), syncing);
     expect([...next.held]).toEqual(held);
     expect([...next.running]).toEqual([]);
+  });
+
+  // A bar that runs again and ends again while its first ending is still
+  // held shows its second ending its whole time (E15): each ending counts.
+  it("counts each ending of a bar, so a second one restarts its hold", () => {
+    let seen: BandSeen = {
+      running: bandKeys(runningDock()),
+      held: new Set<string>(),
+      ends: new Map<string, number>(),
+    };
+    seen = bandSeenNext(seen, endedDock(), false);
+    expect(seen.ends.get("task:b1")).toBe(1);
+    seen = bandSeenNext(seen, runningDock(), false);
+    seen = bandSeenNext(seen, endedDock(), false);
+    expect([...seen.held]).toEqual(["task:b1"]);
+    expect(seen.ends.get("task:b1")).toBe(2);
   });
 });
 

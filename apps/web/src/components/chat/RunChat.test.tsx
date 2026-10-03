@@ -100,6 +100,12 @@ function command(id: string, text: string, extra: Partial<WorkLogEntry> = {}): W
   };
 }
 
+/** A call that says no command: an edit, or a command whose input has not streamed in yet. */
+function withoutCommand(entry: WorkLogEntry): WorkLogEntry {
+  const { command: _command, ...rest } = entry;
+  return rest;
+}
+
 const LONG = Array.from({ length: 12 }, (_, index) => `Line ${index + 1} of what it thought.`).join(
   "\n",
 );
@@ -784,6 +790,37 @@ describe("RunChat", () => {
     expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
   });
 
+  // An operation whose call never returned is behind the newer batch: it says
+  // what was asked, never "Running"; once the run is over, "No result" (D3).
+  it.each([
+    { noResult: "stale" as const, time: null },
+    { noResult: "closed" as const, time: "No result" },
+  ])("draws an operation whose call never returned: $noResult", ({ noResult, time }) => {
+    const entry = operation("d1", "turn-1", 1, {
+      kind: "deploy",
+      subject: "appdev",
+      phase: "running",
+      voice: "Deploying appdev.",
+    });
+    if (entry.kind !== "operation") throw new Error("an operation");
+    const html = draw(
+      record([
+        {
+          kind: "operation",
+          key: "operation:op:d1",
+          at: at(1),
+          operation: entry.operation,
+          noResult,
+        },
+      ]),
+    );
+    expect(html).toContain(">Deploy appdev<");
+    expect(html).not.toContain("Deploying appdev");
+    expect(html).not.toContain(">Running<");
+    if (time === null) expect(html).not.toContain("No result");
+    else expect(html).toContain(`>${time}<`);
+  });
+
   // Before anything is in the chat the card is its status line alone, the
   // first thing seen after every message: the face as far from the card's
   // top as from its foot, where the empty list's room stood it 31 px down
@@ -943,6 +980,289 @@ describe("RunChat, as the person uses it", () => {
             (child) => typeof child.children[0] === "string" && child.children[0] === words,
           ).length > 0),
     );
+
+  // The Claude adapter starts a call before its input streams in: a bare
+  // command stands open to its cap once its code arrives, and lands so (E3).
+  it("opens a bare command in the slot once its code streams in, and lands it so", () => {
+    vi.useFakeTimers();
+    try {
+      const running = (text: string | undefined) =>
+        record([], {
+          live: true,
+          status: status(),
+          now: {
+            kind: "step",
+            step: stepOf(
+              (text === undefined ? withoutCommand : (entry: WorkLogEntry) => entry)(
+                command("w8", text ?? "", {
+                  toolLifecycleStatus: "inProgress",
+                  sourceActivityKind: "tool.started",
+                }),
+              ),
+            ),
+          },
+        });
+      const renderer = mount(running(undefined));
+      const shown = () => JSON.stringify(renderer.toJSON());
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={running(SCRIPT)} />
+          </Rows>,
+        ),
+      );
+      expect(shown()).toContain('"data-chat-folded":"true"');
+      expect(shown()).toContain("Show all 16 lines");
+      // It returned: it lands in the history as it stood, open to its cap.
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat
+              row={record([step(command("w8", SCRIPT))], { live: true, status: status() })}
+            />
+          </Rows>,
+        ),
+      );
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      expect(shown()).toContain('"data-chat-folded":"true"');
+      expect(shown()).toContain("Show all 16 lines");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Two edits in a row fold into one line: the second stands in the slot as
+  // it ended, the first in the history on its own, and they fold once it
+  // lands (E6).
+  it("folds the second of two edits into the first only once it lands", () => {
+    vi.useFakeTimers();
+    try {
+      const edit = (id: string, running: boolean) =>
+        withoutCommand(
+          command(id, "", {
+            itemType: "file_change",
+            label: "File change",
+            detail: `Edit: {"file_path":"/srv/app/${id}.ts"}`,
+            ...(running
+              ? { toolLifecycleStatus: "inProgress", sourceActivityKind: "tool.started" }
+              : {}),
+          }),
+        );
+      const first = step(edit("e1", false));
+      const renderer = mount(
+        record([first], {
+          live: true,
+          status: status(),
+          now: { kind: "step", step: stepOf(edit("e2", true)) },
+        }),
+      );
+      const said = () => JSON.stringify(renderer.toJSON());
+      // It returned: the record folds it into the line before it.
+      const done = stepOf(edit("e2", false), undefined, false);
+      const folded: RecordItem = {
+        kind: "step",
+        key: "step:e1",
+        at: at(2),
+        step: {
+          ...(first.kind === "step" ? first.step : done),
+          words: "Edited e1.ts and e2.ts",
+          entries: [edit("e1", false), edit("e2", false)],
+        },
+        parts: [
+          first as Extract<RecordItem, { kind: "step" }>,
+          {
+            kind: "step",
+            key: "step:e2",
+            at: at(2),
+            step: done,
+          },
+        ],
+      };
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={record([folded], { live: true, status: status() })} />
+          </Rows>,
+        ),
+      );
+      const rows = () =>
+        renderer.root
+          .findAll((node) => node.type === "li" && node.props["data-run-key"] !== undefined)
+          .map((node) => String(node.props["data-run-key"]));
+      // Each its own line, the second as it ended: never running, never gone.
+      expect(rows().filter((key) => key.endsWith("step:e1"))).toHaveLength(1);
+      expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(1);
+      expect(said()).not.toContain("data-run-shimmer");
+      expect(said()).not.toContain("2 edits");
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // Landed, it folds in.
+      expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(0);
+      expect(said()).toContain("2 edits");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A call that joins the slot while the person watches rises in (E5).
+  it("lets a call joining the live slot rise in", () => {
+    const rising = (renderer: ReactTestRenderer) =>
+      renderer.root.findAll(
+        (node) =>
+          node.props["data-run-rises"] !== undefined &&
+          node.findAll((child) => child.props["data-chat-kind"] === "step:command").length > 0,
+      ).length;
+    const running = (id: string, text: string) =>
+      stepOf(
+        command(id, text, {
+          callInput: { description: `Run ${text}` },
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      );
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: { kind: "step", step: running("w1", "pnpm build") },
+      }),
+    );
+    expect(rising(renderer)).toBe(0);
+    act(() =>
+      renderer.update(
+        <Rows>
+          <RunChat
+            row={record([], {
+              live: true,
+              status: status(),
+              now: {
+                kind: "step",
+                step: running("w2", "pnpm test"),
+                others: [{ kind: "step", step: running("w1", "pnpm build") }],
+              },
+            })}
+          />
+        </Rows>,
+      ),
+    );
+    expect(rising(renderer)).toBe(1);
+  });
+
+  // A resync brings what nobody watched happen: it is simply there, never a
+  // rise-in, in the history or in the slot (E2).
+  it("lets nothing a resync brings rise in", () => {
+    const rising = (renderer: ReactTestRenderer) =>
+      renderer.root.findAll((node) => node.props["data-run-rises"] !== undefined).length;
+    const synced = (row: RecordRow, syncing: boolean) => (
+      <TimelineRowCtx value={{ ...SHARED, syncing }}>
+        <TimelineRowActivityCtx value={ACTIVITY}>
+          <RunChat row={row} />
+        </TimelineRowActivityCtx>
+      </TimelineRowCtx>
+    );
+    const first = record([thought("r1", "The route is fine.")], {
+      live: true,
+      status: status(),
+    });
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(synced(first, false));
+    });
+    const caughtUp = record(
+      [
+        thought("r1", "The route is fine."),
+        step(command("w2", "pnpm build")),
+        thought("r3", "The build passed."),
+        step(command("w4", "pnpm test")),
+      ],
+      { live: true, status: status() },
+    );
+    act(() => renderer.update(synced(caughtUp, true)));
+    expect(rising(renderer)).toBe(0);
+  });
+
+  // A helper's one-line report opens only when the card's width cuts it, as
+  // measured on the page (A7, E17).
+  it.each([
+    { name: "cut at the card's width", scrollWidth: 480, opens: true },
+    { name: "whole on its line", scrollWidth: 120, opens: false },
+  ])("opens a helper's one-line report only when it is $name", ({ scrollWidth, opens }) => {
+    const agent = {
+      ...emptyAgentPanelModel(),
+      directAgents: [
+        {
+          id: "a1",
+          kind: "subagent" as const,
+          title: "Check the schema",
+          role: null,
+          model: null,
+          effort: null,
+          status: "completed" as const,
+          activationCount: 1,
+          usage: null,
+          progress: null,
+          lastToolName: null,
+          result: "Wrote three tests for the schema and its migrations",
+          error: null,
+          outputFile: null,
+          parentAgentId: null,
+          agentIndex: null,
+          phaseIndex: null,
+          phaseTitle: null,
+          attempt: null,
+          workflowName: null,
+          phases: [],
+          runHandles: null,
+          recentActivity: [],
+          firstSeenAt: at(1),
+          startedAt: at(1),
+          completedAt: at(2),
+          updatedAt: at(2),
+        },
+      ],
+      hasAgents: true,
+    };
+    const helpers: RecordItem = {
+      kind: "helpers",
+      key: "helpers:h1",
+      at: at(1),
+      entry: {
+        ...command("h1", ""),
+        itemType: "collab_agent_tool_call",
+        agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
+      },
+    };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: agent }}>
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={record([helpers])} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+        {
+          // The preview's line, as the page lays it out.
+          createNodeMock: (element) =>
+            element.type === "span"
+              ? { scrollWidth, clientWidth: 200, scrollHeight: 20, clientHeight: 20 }
+              : null,
+        },
+      );
+    });
+    act(() =>
+      button(renderer, "Started a helper").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
+    );
+    // The helper's own line: a button where it opens onto its report.
+    const title = renderer.root.find(
+      (node) => node.type === "span" && node.children.includes("Check the schema"),
+    );
+    let holder = title.parent;
+    while (holder !== null && holder.type !== "button" && holder.type !== "li") {
+      holder = holder.parent;
+    }
+    expect(holder?.type === "button").toBe(opens);
+  });
 
   it("opens what a step printed under its words, in place, and closes it again", () => {
     const renderer = mount(
@@ -1229,7 +1549,7 @@ describe("RunChat, as the person uses it", () => {
   // An entry that ended with no line of its own in the record yet — a call
   // the record folds or files elsewhere — stands its minimum as it last
   // showed, never a gap that blocks what comes next (pass 35).
-  it("draws a slot entry that ended with no record line as it last showed", () => {
+  it("draws a slot entry that ended with no record line as it ended", () => {
     vi.useFakeTimers();
     try {
       const running = stepOf(
@@ -1254,6 +1574,8 @@ describe("RunChat, as the person uses it", () => {
         ),
       );
       expect(commands()).toHaveLength(1);
+      // Ended, never still running (E17).
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("data-run-shimmer");
       act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
       expect(commands()).toHaveLength(0);
     } finally {
