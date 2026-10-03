@@ -86,6 +86,7 @@ const SUBSTEP_STATE_WORDS: Readonly<Record<ArrivalSubstep["state"], string>> = {
   active: "in progress",
   waiting: "waiting",
   failed: "stopped",
+  owner: "left to an owner",
 };
 
 /**
@@ -104,12 +105,16 @@ function ArrivalSubsteps({ steps }: { readonly steps: ReadonlyArray<ArrivalSubst
           key={step.id}
         >
           <span className="arrival-substep-mark">
-            <ArrivalStepGlyph state={step.state} />
+            {/* Left to an owner, it waits on nobody here: the waiting mark, never a stop's. */}
+            <ArrivalStepGlyph state={step.state === "owner" ? "waiting" : step.state} />
           </span>
           <span className="arrival-substep-label">
             {step.label}
             {step.why === undefined ? null : (
-              <span className="arrival-step-why"> · {step.why}</span>
+              <span className={step.state === "owner" ? undefined : "arrival-step-why"}>
+                {" "}
+                · {step.why}
+              </span>
             )}
           </span>
         </li>

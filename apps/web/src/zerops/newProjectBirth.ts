@@ -563,7 +563,7 @@ function pressedStep(
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
  * project registered and created, then its Mate closed off and registered; an added Mate's copy
  * created, its container, closed off and registered. Each in its state, and one that stopped with
- * why — a registration refused with who finishes it.
+ * why — a registration refused left to an owner, with who finishes it, never a stop.
  */
 export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalSubstep> {
   const said = (
@@ -572,24 +572,18 @@ export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalS
     state: ArrivalSubstep["state"],
     why?: string,
   ): ArrivalSubstep => ({ id, label, state, ...(why === undefined ? {} : { why }) });
-  const fromPress = (
-    id: keyof typeof PRESS_KINDS,
-    label: string,
-    refused?: string,
-  ): ArrivalSubstep => {
+  const fromPress = (id: keyof typeof PRESS_KINDS, label: string): ArrivalSubstep => {
     const step = pressedStep(birth.progress, PRESS_KINDS[id]);
     if (step === null) return said(id, label, "waiting");
-    return said(
-      id,
-      label,
-      step.state,
-      step.state === "failed" ? (refused ?? step.error) : undefined,
-    );
+    return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
   };
-  const registered = fromPress(
-    "registered",
-    `${birth.botName} registered`,
-    `An owner needs to register ${birth.botName} before it can use Git.`,
+  // A Mate's registration comes after its close-off, and the press goes on past a refusal: the
+  // Mate runs, and an owner registers it (*Finish setup*). Nothing stopped.
+  const leftToOwner = (step: ArrivalSubstep, who: string): ArrivalSubstep =>
+    step.state === "failed" ? said(step.id, step.label, "owner", who) : step;
+  const registered = leftToOwner(
+    fromPress("registered", `${birth.botName} registered`),
+    `An owner registers ${birth.botName} for Git.`,
   );
   if (birth.adds === undefined) {
     const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {

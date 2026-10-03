@@ -748,7 +748,7 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:done",
         "Closed off:done",
-        "Vera registered:failed (An owner needs to register Vera before it can use Git.)",
+        "Vera registered:owner (An owner registers Vera for Git.)",
       ],
     },
     {
@@ -848,6 +848,26 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         ),
       }),
       want: ["Created:done", "Container:done", "Closed off:done", "Ida registered:done"],
+    },
+    {
+      case: "a registration refused: Ida runs on, and an owner registers it",
+      made: added({
+        step: "created",
+        projectId: "p-ida",
+        progress: pressed(
+          ["create-project", "done"],
+          ["import-container", "done"],
+          ["close-off", "done"],
+          ["register", "failed"],
+          ["share-reach", "done"],
+        ),
+      }),
+      want: [
+        "Created:done",
+        "Container:done",
+        "Closed off:done",
+        "Ida registered:owner (An owner registers Ida for Git.)",
+      ],
     },
   ])("$case", ({ made, want }) => {
     expect(drawnSubsteps(made)).toEqual(want);
