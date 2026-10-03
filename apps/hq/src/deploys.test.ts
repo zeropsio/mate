@@ -303,6 +303,13 @@ const withDeploys = <A, E>(
     );
   });
 
+/** The environment of `projectId` attached as created for HQ to deploy (audit R1, D6). */
+const createdForHq = (projectId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`INSERT INTO hq_subdomain_intent (project_id) VALUES (${projectId})`;
+  }).pipe(Effect.orDie);
+
 const settled = (state: string) => (rows: ReadonlyArray<{ readonly state: string }>) =>
   rows.length > 0 && rows.every((row) => row.state === state);
 
@@ -575,11 +582,12 @@ describe("deploys", () => {
       ),
     );
 
-    // Main B17/E13: an HTTP service gets its subdomain after a verified deploy, with the
-    // environment's own key; one serving no HTTP never does.
+    // Main B17/E13: an HTTP service created for HQ gets its subdomain after its first verified
+    // deploy, with the environment's own key; one serving no HTTP never does.
     it.effect("turns on an HTTP service's subdomain after its deploy, and no other's", () =>
       withDeploys(({ appId, world, tiers, commit, until }) =>
         Effect.gen(function* () {
+          yield* createdForHq("P_STAGE");
           world.services.push(fakeService("worker", { http: false }));
           tiers.set(
             `${appId}/stage`,
@@ -600,6 +608,40 @@ describe("deploys", () => {
       ),
     );
 
+    // Audit R1 (D6): HQ turns a subdomain on only on the first deploy of a service created for it
+    // to deploy — by the person's client, which said so as it attached the environment, or by
+    // HQ's own recipe delta — and on no later deploy, where a person may have turned it off since.
+    it.effect("opens the subdomain on a created service's first deploy, and on no later one", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          yield* createdForHq("P_STAGE");
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* (yield* Deploys).catchUp;
+          yield* until((rows) => rows.length === 1 && settled("live")(rows));
+          const web = world.services.find((service) => service.name === "web")!;
+          assert.isTrue(web.subdomainAccess);
+
+          web.subdomainAccess = false;
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML, "index.js": "2\n" });
+          yield* until((rows) => rows.length === 2 && settled("live")(rows));
+          assert.isFalse(web.subdomainAccess);
+        }),
+      ),
+    );
+
+    it.effect("opens no subdomain on the first deploy of a service not created for HQ", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* (yield* Deploys).catchUp;
+          yield* until(settled("live"));
+          assert.isFalse(world.services.find((service) => service.name === "web")!.subdomainAccess);
+        }),
+      ),
+    );
+
     // Audit R1 (D6): a person who turned a service's subdomain off in Zerops keeps it off — HQ's
     // catch-up of a service that already runs its commit turns nothing on.
     it.effect(
@@ -607,11 +649,13 @@ describe("deploys", () => {
       () =>
         withDeploys(({ appId, world, tiers, commit, until }) =>
           Effect.gen(function* () {
+            yield* createdForHq("P_STAGE");
             tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
             yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
             yield* (yield* Deploys).catchUp;
             yield* until(settled("live"));
             const web = world.services.find((service) => service.name === "web")!;
+            assert.isTrue(web.subdomainAccess);
             web.subdomainAccess = false;
             yield* (yield* Deploys).catchUp;
             yield* Effect.sleep(Duration.millis(200));
@@ -873,6 +917,11 @@ describe("deploys", () => {
           assert.deepStrictEqual(
             world.services.map((service) => service.name),
             ["web", "api", "cache"],
+          );
+          // Audit R1 (D6): the runtime HQ created to deploy gets its subdomain on its first deploy.
+          assert.deepStrictEqual(
+            yield* sql`SELECT project_id, service FROM hq_subdomain_intent ORDER BY service`,
+            [{ project_id: "P_STAGE", service: "api" }],
           );
           assert.notDeepEqual(yield* digest, first);
           // Seen: no second import.

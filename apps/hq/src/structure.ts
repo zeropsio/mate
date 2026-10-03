@@ -98,6 +98,11 @@ export interface AttachInput {
   readonly environment?: { readonly name: string };
   /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
   readonly birth?: string;
+  /**
+   * The person's client created the stage's or production's project for HQ to deploy: its services
+   * get their subdomain on their first deploy (`hq_subdomain_intent`, audit R1, D6).
+   */
+  readonly created?: boolean;
 }
 
 /**
@@ -760,6 +765,11 @@ export const structureLayer = (options: {
                         view.projects.find((project) => project.id === input.projectId)?.name ?? "",
                       replaced,
                     });
+                    if (input.created === true) {
+                      yield* sql`
+                        INSERT INTO hq_subdomain_intent (project_id) VALUES (${input.projectId})
+                        ON CONFLICT DO NOTHING`;
+                    }
                   }
                   // A Mate set up already keeps its record: renaming it is its admin's
                   // (`edit_mate_record`), not an attacher's. One born under an intent was made by

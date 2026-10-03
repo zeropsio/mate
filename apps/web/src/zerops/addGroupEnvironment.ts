@@ -55,9 +55,11 @@ export async function addGroupEnvironment(input: {
   });
 
   try {
+    // Created for HQ to deploy: HQ turns its services' subdomains on at their first deploy.
     await attachToApp(input.hq, input.groupId, {
       projectId: input.environment.project,
       kind: input.environment.tier,
+      created: true,
     });
     done.push("registry");
   } catch (cause) {

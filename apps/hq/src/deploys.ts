@@ -12,10 +12,11 @@
  * the rest deploy.
  *
  * - **Live is what runs**: a deploy is live only once the service runs the commit, read back from
- *   the version it names (B17); an HTTP service HQ's own deploy brought live then gets its
- *   subdomain, with the same token (E13, measured 2026-10-02 — HQ's org Read only token may not),
- *   and a catch-up of a service that runs its commit turns on nothing a person turned off (audit
- *   R1, D6).
+ *   the version it names (B17); an HTTP service created for HQ to deploy — by the person's
+ *   client, which said so at the attach, or by HQ's own recipe delta — gets its subdomain once its
+ *   first deploy is live, with the same token (E13, measured 2026-10-02 — HQ's org Read only token
+ *   may not), and on no other: a later deploy or a catch-up turns on nothing a person turned off
+ *   (audit R1, D6).
  * - **One queue per environment, the newest wins** (B20): its services one after another, higher
  *   priority first (B19); a commit main moved past while a deploy ran is never deployed.
  * - **A build's own failure is final** (B37): only a person asks for that commit again. HQ's own
@@ -69,7 +70,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { deadDeployToken, noDeployToken, reachesOnly, widenedDeployToken } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
-import { type TierService, deltaImport, tierServices } from "./recipeDeltas.ts";
+import { type TierService, deltaImport, deployedByHq, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Releases } from "./releases.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
@@ -502,6 +503,43 @@ export const deploysLayer = (
           : Effect.void;
 
       /**
+       * Whether HQ turns `target`'s subdomain on as its deploy goes live: its service was created
+       * for HQ to deploy (`hq_subdomain_intent`: its project's attach said so, or HQ's recipe delta
+       * imported it), and this is its first deploy HQ sees live (audit R1, D6).
+       */
+      const intendedFor = (target: Target) =>
+        Effect.map(
+          sql`
+            SELECT 1 FROM hq_subdomain_intent
+            WHERE project_id = ${target.projectId}
+              AND (service IS NULL OR service = ${target.service})
+              AND NOT EXISTS (
+                SELECT 1 FROM hq_deploy
+                WHERE project_id = ${target.projectId} AND service = ${target.service}
+                  AND state = 'live' AND sha <> ${target.sha}
+              )`,
+          (rows) => rows.length > 0,
+        );
+
+      /**
+       * HQ's own deploy of `target`, live: its subdomain turned on where it was intended, and its
+       * service's intent spent. A project's own row stays, for each of its services is first
+       * deployed once. Never fails the deploy.
+       */
+      const openIfIntended = (target: Target, service: ZeropsService, token: Redacted.Redacted) =>
+        Effect.gen(function* () {
+          if (!(yield* intendedFor(target))) return;
+          yield* openSubdomain(service, token);
+          yield* leader.write(sql`
+            DELETE FROM hq_subdomain_intent
+            WHERE project_id = ${target.projectId} AND service = ${target.service}`);
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("subdomain intent not read", { service: service.name, error }),
+          ),
+        );
+
+      /**
        * A running deploy's job, read until it ends or `patience` passes, then what the service runs:
        * live, the build's own failure, or — still running — nothing yet (the next pass decides).
        */
@@ -519,7 +557,7 @@ export const deploysLayer = (
           if (process.status !== "FINISHED") return undefined;
           const service = yield* zerops.service(serviceId)(token);
           if (runs(service, target.sha)) {
-            yield* openSubdomain(service, token);
+            yield* openIfIntended(target, service, token);
             return { state: "live" };
           }
           const named = service.named === null ? "" : versionSha(service.named.name);
@@ -770,6 +808,20 @@ export const deploysLayer = (
             return true;
           }
           yield* deploy.importServices(projectId, deltaImport(missing))(key.token);
+          // What HQ created to deploy gets its subdomain on its first deploy (audit R1, D6).
+          const deployed = missing.filter((service) => deployedByHq(service.declaration));
+          if (deployed.length > 0) {
+            yield* leader.write(
+              Effect.forEach(
+                deployed,
+                (service) => sql`
+                  INSERT INTO hq_subdomain_intent (project_id, service)
+                  VALUES (${projectId}, ${service.hostname})
+                  ON CONFLICT DO NOTHING`,
+                { discard: true },
+              ),
+            );
+          }
           yield* Effect.logInfo("a recipe delta was imported", {
             environment: envName,
             services: missing.map((service) => service.hostname),
@@ -806,7 +858,7 @@ export const deploysLayer = (
               // Only HQ's own deploy, landed after its watch let go, opens the subdomain here: a
               // catch-up of a service that runs its commit turns on nothing a person turned off
               // (audit R1, D6).
-              if (existing?.state === "deploying") yield* openSubdomain(service, token);
+              if (existing?.state === "deploying") yield* openIfIntended(target, service, token);
               return existing?.state === "live" ? undefined : ({ state: "live" } as const);
             }
             if (existing?.state === "deploying" && existing.fresh && existing.process_id !== null) {
