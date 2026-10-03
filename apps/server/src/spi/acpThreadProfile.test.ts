@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import * as Effect from "effect/Effect";
 
-import { acpGateCalls, decideAcpPermission } from "./acpThreadProfile.ts";
+import { acpGateCalls, acpTerminalReason, decideAcpPermission } from "./acpThreadProfile.ts";
 import type { ThreadToolProfile, ToolDecision } from "./threadToolPolicy.ts";
 
 const CWD = "/var/www/.crew/backend";
@@ -165,5 +165,19 @@ describe("acpGateCalls", () => {
     [{ title: "Running zerops_verify" }, [{ toolName: "mcp__zerops__zerops_verify", input: {} }]],
   ] as const)("shapes %j as the gate's calls", (call, expected) => {
     expect(acpGateCalls({ toolCallId: "c", ...(call as object) } as never, CWD)).toEqual(expected);
+  });
+});
+
+describe("acpTerminalReason", () => {
+  it.each([
+    ["max_tokens", { terminalReason: "max_tokens" }],
+    ["max_turn_requests", { terminalReason: "max_turn_requests" }],
+    ["refusal", { terminalReason: "refusal" }],
+    ["end_turn", {}],
+    ["cancelled", {}],
+    [null, {}],
+    [undefined, {}],
+  ] as const)("a turn that stopped for %s", (stopReason, expected) => {
+    expect(acpTerminalReason(stopReason)).toEqual(expected);
   });
 });

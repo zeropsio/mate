@@ -76,6 +76,7 @@ import {
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
 import {
+  acpTerminalReason,
   acpThreadSetup,
   acpTurnProfile,
   readAcpThreadPolicies,
@@ -1145,6 +1146,7 @@ export function makeCursorAdapter(
               payload: {
                 state: result.stopReason === "cancelled" ? "cancelled" : "completed",
                 stopReason: result.stopReason ?? null,
+                ...acpTerminalReason(result.stopReason),
               },
             });
           }

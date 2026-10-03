@@ -257,6 +257,25 @@ export const decideAcpPermission = (
       : { outcome: { outcome: "selected", optionId: option.optionId } };
   });
 
+/** The stop reasons that end an ACP turn for a reason of its own (ACP `StopReason`). */
+const TERMINAL_STOP_REASONS: ReadonlySet<string> = new Set([
+  "max_tokens",
+  "max_turn_requests",
+  "refusal",
+]);
+
+/**
+ * A turn's terminal reason, as `turn.completed` carries one, from ACP's stop
+ * reason: the context or the turn's requests ran out, or the model refused.
+ * A turn that ended or was cancelled as asked has none.
+ */
+export const acpTerminalReason = (
+  stopReason: string | null | undefined,
+): { readonly terminalReason?: string } =>
+  stopReason !== null && stopReason !== undefined && TERMINAL_STOP_REASONS.has(stopReason)
+    ? { terminalReason: stopReason }
+    : {};
+
 /** What a profiled thread's session starts with on an ACP agent. */
 export interface AcpThreadSetup {
   /** Laid into `session/new`, `session/load` and `session/resume`. */

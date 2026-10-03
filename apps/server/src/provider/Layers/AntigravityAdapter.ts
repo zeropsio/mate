@@ -83,6 +83,7 @@ import {
   selectAntigravityPermissionOptionId,
 } from "../acp/AntigravityProtocol.ts";
 import {
+  acpTerminalReason,
   acpThreadSetup,
   acpTurnProfile,
   readAcpThreadPolicies,
@@ -1137,6 +1138,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         finishTurn(launch.turn, {
           state: result.stopReason === "cancelled" ? "cancelled" : "completed",
           stopReason: result.stopReason,
+          ...acpTerminalReason(result.stopReason),
         }),
       );
       return {

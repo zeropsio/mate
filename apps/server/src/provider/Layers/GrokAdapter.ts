@@ -83,6 +83,7 @@ import {
   XAiExitPlanModeRequest,
 } from "../acp/XAiAcpExtension.ts";
 import {
+  acpTerminalReason,
   acpThreadSetup,
   acpTurnProfile,
   readAcpThreadPolicies,
@@ -640,6 +641,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 payload: {
                   state: options.completedStopReason === "cancelled" ? "cancelled" : "completed",
                   stopReason: options.completedStopReason ?? null,
+                  ...acpTerminalReason(options.completedStopReason),
                 },
               });
             }
@@ -721,6 +723,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             payload: {
               state: options.completedStopReason === "cancelled" ? "cancelled" : "completed",
               stopReason: options.completedStopReason ?? null,
+              ...acpTerminalReason(options.completedStopReason),
             },
           });
         }
@@ -1930,6 +1933,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                   payload: {
                     state: result.stopReason === "cancelled" ? "cancelled" : "completed",
                     stopReason: completedStopReason,
+                    ...acpTerminalReason(completedStopReason),
                   },
                 });
                 ctx.interruptedTurnIds.delete(prepared.turnId);
