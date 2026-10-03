@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import type { Project, Thread } from "../types";
 import {
   browseInputEndPaddingClass,
@@ -484,6 +487,131 @@ describe("buildThreadActionItems", () => {
     });
 
     expect(items.map((item) => item.value)).toEqual(["thread:thread-person"]);
+  });
+});
+
+describe("buildThreadActionItems — chats HQ lists", () => {
+  const OPEN = EnvironmentId.make("environment-open");
+  const PARKED = EnvironmentId.make("environment-parked");
+
+  /** A chat as its Mate digests it. */
+  const digest = (id: string, over: Partial<ThreadDigest> = {}): ThreadDigest => ({
+    id: ThreadId.make(id),
+    title: `Chat ${id}`,
+    kind: "idle",
+    turnId: null,
+    turnState: "completed",
+    completedAt: "2026-03-18T00:00:00.000Z",
+    ...over,
+  });
+
+  /** A Mate HQ holds, its environment `environmentId`, with the chats `list`. */
+  const mate = (environmentId: EnvironmentId, list: ReadonlyArray<ThreadDigest>): MateLiveView => ({
+    presence: { online: true, since: "2026-03-18T00:00:00.000Z", overview: "live" },
+    identity: { environmentId, serverVersion: "0.11.90", update: null },
+    main: null,
+    threads: { list, omitted: 0 },
+    logins: {},
+    crew: null,
+  });
+
+  const hq = (mates: HqMates) => ({
+    mates,
+    current: true,
+    connected: (environmentId: EnvironmentId) => environmentId === OPEN,
+    linkable: () => true,
+    lastVisitedAt: () => undefined,
+    mateName: (projectId: string) => (projectId === "project-parked" ? "Ida" : undefined),
+    renderStatus: (status: { readonly kind: string }) => `status:${status.kind}`,
+  });
+
+  it("lists an unopened Mate's chats from HQ without branch or terminal badges", async () => {
+    const runThread = vi.fn(async (_thread: unknown) => undefined);
+    const items = buildThreadActionItems({
+      threads: [
+        makeThread({
+          id: ThreadId.make("thread-open"),
+          environmentId: OPEN,
+          title: "Open chat",
+          branch: "feature/open",
+          updatedAt: "2026-03-19T00:00:00.000Z",
+        }),
+      ],
+      hq: hq(
+        new Map([
+          ["project-open", mate(OPEN, [digest("thread-open")])],
+          [
+            "project-parked",
+            mate(PARKED, [digest("thread-parked", { title: "Checkout flow", kind: "approval" })]),
+          ],
+        ]),
+      ),
+      projectTitleById: new Map([[PROJECT_ID, "Project"]]),
+      sortOrder: "updated_at",
+      icon: null,
+      renderLeadingContent: () => "shell status",
+      renderTrailingContent: () => "terminal",
+      runThread,
+    });
+
+    expect(items.map((item) => item.value)).toEqual(["thread:thread-open", "thread:thread-parked"]);
+    const parked = items[1];
+    expect(parked).toMatchObject({
+      title: "Checkout flow",
+      description: "Ida",
+      titleLeadingContent: "status:approval",
+    });
+    expect(parked?.titleTrailingContent).toBeUndefined();
+    expect(parked?.searchTerms).not.toContain("feature/open");
+    await parked?.run();
+    expect(runThread).toHaveBeenCalledWith({ environmentId: PARKED, id: "thread-parked" });
+  });
+
+  it("takes a Mate's chats from HQ, not from what was kept of it, once it has no socket", () => {
+    const items = buildThreadActionItems({
+      threads: [
+        makeThread({
+          id: ThreadId.make("thread-parked"),
+          environmentId: PARKED,
+          title: "Checkout (as kept)",
+          branch: "feature/checkout",
+        }),
+      ],
+      hq: hq(
+        new Map([
+          [
+            "project-parked",
+            mate(PARKED, [digest("thread-parked", { title: "Checkout flow", kind: "working" })]),
+          ],
+        ]),
+      ),
+      projectTitleById: new Map([[PROJECT_ID, "Project"]]),
+      sortOrder: "updated_at",
+      icon: null,
+      renderTrailingContent: () => "terminal",
+      runThread: async (_thread) => undefined,
+    });
+
+    expect(items.map((item) => [item.value, item.title, item.titleTrailingContent])).toEqual([
+      ["thread:thread-parked", "Checkout flow", undefined],
+    ]);
+  });
+
+  it("lists the chats of HQ's view kept from before without a status", () => {
+    const [item] = buildThreadActionItems({
+      threads: [],
+      hq: {
+        ...hq(new Map([["project-parked", mate(PARKED, [digest("t1", { kind: "approval" })])]])),
+        current: false,
+      },
+      projectTitleById: new Map(),
+      sortOrder: "updated_at",
+      icon: null,
+      runThread: async (_thread) => undefined,
+    });
+
+    expect(item?.value).toBe("thread:t1");
+    expect(item?.titleLeadingContent).toBeUndefined();
   });
 });
 

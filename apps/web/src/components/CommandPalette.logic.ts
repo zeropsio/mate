@@ -2,9 +2,13 @@ import {
   type EnvironmentId,
   type FilesystemBrowseEntry,
   type KeybindingCommand,
+  type ThreadId,
   THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
 import { filterFilesystemBrowseEntries } from "@t3tools/client-runtime/state/filesystem";
+import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
+import type { ThreadDigest } from "@t3tools/shared/mateLink";
+import { toneIdForKind, viewerThreadKind, type ThreadStatus } from "@t3tools/shared/threadStatus";
 import type { SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
@@ -207,8 +211,102 @@ export type BuildThreadActionItemsThread = Pick<
   latestUserMessageAt?: string | null;
 };
 
+/**
+ * The chats HQ lists of the Mates this browser holds no socket to (open question 4): their titles
+ * and status, never a branch, a change or a terminal, which only a Mate's own socket reads.
+ */
+export interface CommandPaletteHqThreads {
+  /** HQ's Mates, by project; null while nothing is known. */
+  readonly mates: HqMates | null;
+  /** `mates` is HQ's answer now; a status kept from before is not drawn as if it were. */
+  readonly current: boolean;
+  /** This browser holds a socket to the environment: its chats come from its own threads. */
+  readonly connected: (environmentId: EnvironmentId) => boolean;
+  /** A link into the environment would open: the route gate's verdict. */
+  readonly linkable: (environmentId: EnvironmentId) => boolean;
+  /** This device's last visit to a chat, which finishes its digest's kind. */
+  readonly lastVisitedAt: (
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+  ) => string | null | undefined;
+  /** The Mate's name, by its project. */
+  readonly mateName: (projectId: string) => string | undefined;
+  readonly renderStatus: (status: ThreadStatus) => ReactNode;
+}
+
+interface HqChat {
+  readonly environmentId: EnvironmentId;
+  readonly digest: ThreadDigest;
+  readonly mateName: string | undefined;
+  readonly status: ReactNode;
+}
+
+/**
+ * The environments whose chats HQ lists in place of their own threads — each Mate with no socket
+ * HQ holds a list for, whose threads kept from before are no longer current — and those chats, in
+ * each Mate's own order, of the environments a link would open.
+ */
+function hqChats(hq: CommandPaletteHqThreads | undefined): {
+  readonly listed: ReadonlySet<EnvironmentId>;
+  readonly chats: ReadonlyArray<HqChat>;
+} {
+  const listed = new Set<EnvironmentId>();
+  const chats: HqChat[] = [];
+  for (const [projectId, mate] of hq?.mates ?? []) {
+    const environmentId = mate.identity?.environmentId;
+    if (hq === undefined || environmentId === undefined || mate.threads === undefined) continue;
+    if (hq.connected(environmentId)) continue;
+    listed.add(environmentId);
+    if (!hq.linkable(environmentId)) continue;
+    const mateName = hq.mateName(projectId);
+    for (const digest of mate.threads.list) {
+      const kind = viewerThreadKind(digest, hq.lastVisitedAt(environmentId, digest.id));
+      chats.push({
+        environmentId,
+        digest,
+        mateName,
+        status: hq.current ? hq.renderStatus({ kind, toneId: toneIdForKind(kind) }) : null,
+      });
+    }
+  }
+  return { listed, chats };
+}
+
+/** A digest's recency: its turn's completion, or now for a turn still under way. */
+function digestRecency(digest: ThreadDigest): number {
+  if (digest.completedAt !== null) return Date.parse(digest.completedAt);
+  return digest.kind === "idle" ? 0 : Number.MAX_SAFE_INTEGER;
+}
+
+function hqChatActionItem(
+  { environmentId, digest, mateName, status }: HqChat,
+  icon: ReactNode,
+  runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>,
+): CommandPaletteActionItem {
+  return Object.assign(
+    {
+      kind: "action" as const,
+      value: `thread:${digest.id}`,
+      searchTerms: [digest.title, mateName ?? ``, digest.id],
+      title: digest.title,
+      searchRecency: digestRecency(digest),
+      icon,
+    },
+    mateName === undefined ? {} : { description: mateName },
+    digest.completedAt === null ? {} : { timestamp: formatRelativeTimeLabel(digest.completedAt) },
+    status ? { titleLeadingContent: status } : {},
+    {
+      run: async () => {
+        await runThread({ environmentId, id: digest.id });
+      },
+    },
+  );
+}
+
 export function buildThreadActionItems<TThread extends BuildThreadActionItemsThread>(input: {
   threads: ReadonlyArray<TThread>;
+  /** The chats HQ lists of the Mates with no socket, after the threads at hand. */
+  hq?: CommandPaletteHqThreads;
   activeThreadId?: Thread["id"];
   projectTitleById: ReadonlyMap<Project["id"], string>;
   sortOrder: SidebarThreadSortOrder;
@@ -223,15 +321,19 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>;
   limit?: number;
 }): CommandPaletteActionItem[] {
+  const fromHq = hqChats(input.hq);
   // A crewmate's thread is the crew's, opened from the crew, never listed.
   const sortedThreads = sortThreads(
-    input.threads.filter((thread) => thread.archivedAt === null && thread.crew === undefined),
+    input.threads.filter(
+      (thread) =>
+        thread.archivedAt === null &&
+        thread.crew === undefined &&
+        !fromHq.listed.has(thread.environmentId),
+    ),
     input.sortOrder,
   );
-  const visibleThreads =
-    input.limit === undefined ? sortedThreads : sortedThreads.slice(0, input.limit);
 
-  return visibleThreads.map((thread) => {
+  const threadItems = sortedThreads.map((thread) => {
     const projectTitle = input.projectTitleById.get(thread.projectId);
     const descriptionParts: string[] = [];
 
@@ -282,6 +384,11 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
       },
     );
   });
+  const items = [
+    ...threadItems,
+    ...fromHq.chats.map((chat) => hqChatActionItem(chat, input.icon, input.runThread)),
+  ];
+  return input.limit === undefined ? items : items.slice(0, input.limit);
 }
 
 function rankSearchFieldMatch(field: string, normalizedQuery: string): number {

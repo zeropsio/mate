@@ -4,7 +4,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import type { ThreadLinkedPullRequest, VcsStatusResult } from "@t3tools/contracts";
-import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import { resolveThreadStatus, type ThreadStatus } from "@t3tools/shared/threadStatus";
 import { Atom } from "effect/unstable/reactivity";
 import { CloudIcon, FolderGit2Icon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { useMemo, type AnimationEvent, type MouseEventHandler, type ReactNode } from "react";
@@ -545,6 +545,19 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
         </Tooltip>
       ) : null}
       {threadStatus ? <ThreadStatusLabel status={threadStatus} /> : null}
+    </span>
+  );
+}
+
+/**
+ * A status resolved without the thread at hand — a chat HQ lists of a Mate this browser holds no
+ * socket to — drawn as {@link ThreadRowLeadingStatus} draws its own.
+ */
+export function ThreadRowResolvedStatus({ status }: { status: ThreadStatus }) {
+  const pill = threadStatusPill(status);
+  return pill === null ? null : (
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <ThreadStatusLabel status={pill} />
     </span>
   );
 }

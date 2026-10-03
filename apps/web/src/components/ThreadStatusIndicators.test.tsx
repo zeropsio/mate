@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { SidebarThreadSummary } from "../types";
 import {
   ThreadRowLeadingStatus,
+  ThreadRowResolvedStatus,
   ThreadRowTrailingStatus,
   ThreadWorktreeIndicator,
 } from "./ThreadStatusIndicators";
@@ -106,6 +107,21 @@ describe("ThreadRowLeadingStatus — change status", () => {
       expect(reads.queries[0] !== null).toBe(expected);
     },
   );
+});
+
+describe("ThreadRowResolvedStatus", () => {
+  it("draws a status resolved without the thread as a row draws its own", () => {
+    expect(
+      renderToStaticMarkup(
+        <ThreadRowResolvedStatus status={{ kind: "failed", toneId: "danger" }} />,
+      ),
+    ).toContain('aria-label="Failed"');
+    expect(
+      renderToStaticMarkup(
+        <ThreadRowResolvedStatus status={{ kind: "idle", toneId: "neutral" }} />,
+      ),
+    ).toBe("");
+  });
 });
 
 describe("ThreadRowTrailingStatus — running terminal", () => {
