@@ -9,7 +9,8 @@
  *   again when its service's status moves, on its socket dropping or a connect to it failing, on
  *   a visible wake that finds it unread for `WAKE_REREAD_MS` and whenever someone asks
  *   (`request`): ready is never terminal. A container behind a live socket is never read: the
- *   socket proves it up.
+ *   socket proves it up. Neither is one whose Mate HQ holds online (`setOnline`), unless it is the
+ *   route's or holds an intent of ours: those are read whatever HQ says.
  * - Intents are persisted in this tab's storage as `{target, kind, since, from?}`, so a reload
  *   inside an intent's budget shows `restarting(you)` or `updating` again instead of guesses. An
  *   intent restored for a target not yet listed waits for it.
@@ -38,6 +39,7 @@ import {
   type ProbeReading,
   type ProbeStorePorts,
 } from "./probeStore.ts";
+import { targetProject } from "./targets.ts";
 
 /** One target as the platform describes it now. */
 export interface ContainerTarget {
@@ -97,6 +99,11 @@ export interface ContainerStore {
   readonly process: (key: TargetKey, running: boolean) => void;
   /** Whether the target's Mate socket is connected; a drop reads the container again. */
   readonly link: (key: TargetKey, connected: boolean) => void;
+  /**
+   * The projects whose Mate HQ holds online now: each proves its container up as a socket does,
+   * and HQ letting one go reads it again.
+   */
+  readonly setOnline: (projectIds: ReadonlySet<string>) => void;
   /** Our verb was accepted: its level holds until a read fact settles it. */
   readonly intend: (key: TargetKey, intent: IntentRequest) => void;
   /**
@@ -140,6 +147,8 @@ interface Entry {
   cancelTimer: (() => void) | null;
   /** A Mate flag read is in flight. */
   readingFlag: boolean;
+  /** The target's Mate socket is connected. */
+  socket: boolean;
 }
 
 const INTENT_KINDS: ReadonlySet<string> = new Set<IntentKind>([
@@ -225,6 +234,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   let published: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
   let persisted = ports.intents.read();
   let first: ReadonlySet<TargetKey> = new Set();
+  let online: ReadonlySet<string> = new Set();
   let disposed = false;
 
   const probes = makeProbeStore({ clock, probe: ports.probe });
@@ -267,11 +277,35 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     }
   };
 
-  const step = (key: TargetKey, entry: Entry, event: ContainerEvent) => {
-    if (entries.get(key) !== entry) return;
+  const transition = (key: TargetKey, entry: Entry, event: ContainerEvent) => {
     const next = transitionContainer(entry.machine, event, { now: clock.now() });
     entry.machine = next.state;
     for (const effect of next.effects) run(key, entry, effect);
+  };
+
+  const step = (key: TargetKey, entry: Entry, event: ContainerEvent) => {
+    if (entries.get(key) !== entry) return;
+    transition(key, entry, event);
+    prove(key, entry);
+  };
+
+  /**
+   * Tells the machine whether anything proves the container up: its socket, or HQ holding its Mate
+   * online — but not for the route's container, nor one our verb waits on: those are read whatever
+   * HQ says. A proof lost reads the container again.
+   */
+  const prove = (key: TargetKey, entry: Entry) => {
+    const proven =
+      entry.socket ||
+      (online.has(targetProject(key)) && !first.has(key) && entry.machine.intent === null);
+    if (proven === (entry.machine.connectedSince !== null)) return;
+    transition(key, entry, { type: "LINK", connected: proven });
+    if (!proven) requestFor(entry, { fresh: true });
+  };
+
+  /** Every target's proof again, once what it is composed of moved. */
+  const proveAll = () => {
+    for (const [key, entry] of entries) prove(key, entry);
   };
 
   // ── Publication ──────────────────────────────────────────────────────────────────────────
@@ -336,7 +370,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   const requests = new Map<string, boolean>();
 
   /**
-   * Reads the container once this batch ends, unless its socket is live — that proves it up — or
+   * Reads the container once this batch ends, unless something proves it up (`prove`) or
    * the platform says it is down: its push back reads it. `fresh` unless the ask is content with a
    * descriptor another reader made a moment ago: a read after a status move, a drop or a failure
    * must be sent after it.
@@ -382,14 +416,17 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
               known: knownStatus(null, target.platform),
               cancelTimer: null,
               readingFlag: false,
+              socket: false,
             };
             entries.set(target.key, entry);
-            step(target.key, entry, { type: "PLATFORM", status: target.platform });
+            transition(target.key, entry, { type: "PLATFORM", status: target.platform });
             const record = restored.get(target.key);
             if (record !== undefined) {
               restored.delete(target.key);
-              step(target.key, entry, { type: "INTENT", intent: restore(record) });
+              transition(target.key, entry, { type: "INTENT", intent: restore(record) });
             }
+            // Proven once its intent is back: a proof stepped first would read as its end.
+            prove(target.key, entry);
             // A Mate seen for the first time: the read its connect makes will do.
             requestFor(entry, { fresh: false });
             continue;
@@ -413,9 +450,13 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       batch(() => {
         const entry = entries.get(key);
         if (entry === undefined) return;
-        const dropped = !connected && entry.machine.connectedSince !== null;
-        step(key, entry, { type: "LINK", connected });
-        if (dropped) requestFor(entry, { fresh: true });
+        entry.socket = connected;
+        prove(key, entry);
+      }),
+    setOnline: (projectIds) =>
+      batch(() => {
+        online = projectIds;
+        proveAll();
       }),
     intend: (key, intent) =>
       batch(() => {
@@ -453,6 +494,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     setFirst: (keys) =>
       batch(() => {
         first = keys;
+        proveAll();
       }),
     next: (origin) => probes.next(origin),
     setVisible: (visible) => probes.setVisible(visible),

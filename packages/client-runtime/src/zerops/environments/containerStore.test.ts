@@ -516,6 +516,8 @@ describe("container store: what reads a container again", () => {
     readonly initial?: ContainerTarget;
     /** Whether the Mate's socket is live once its first reading landed. */
     readonly connected: boolean;
+    /** Whether HQ holds the Mate online once its first reading landed. */
+    readonly online?: boolean;
     readonly act: (store: ContainerStore, clock: ReturnType<typeof manualClock>) => Promise<void>;
     readonly reads: number;
     /** Whether those reads are started now, past a descriptor another reader just made. */
@@ -656,6 +658,46 @@ describe("container store: what reads a container again", () => {
       reads: 1,
       fresh: false,
     },
+    {
+      name: "a Mate HQ holds online, on a visible wake",
+      connected: false,
+      online: true,
+      act: async (store, clock) => {
+        await clock.advance(120_000);
+        store.wake(true);
+      },
+      reads: 0,
+    },
+    {
+      name: "a Mate HQ holds online somebody asks about",
+      connected: false,
+      online: true,
+      act: async (store) => store.request(KEY),
+      reads: 0,
+    },
+    {
+      name: "a Mate HQ lets go",
+      connected: false,
+      online: true,
+      act: async (store) => store.setOnline(new Set()),
+      reads: 1,
+      fresh: true,
+    },
+    {
+      name: "a Mate HQ holds online whose socket drops",
+      connected: true,
+      online: true,
+      act: async (store) => store.link(KEY, false),
+      reads: 0,
+    },
+    {
+      name: "a Mate HQ holds online that our verb restarts",
+      connected: false,
+      online: true,
+      act: async (store) => store.intend(KEY, { kind: "restart" }),
+      reads: 1,
+      fresh: true,
+    },
   ];
 
   it.each(rows.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
@@ -664,6 +706,7 @@ describe("container store: what reads a container again", () => {
     await clock.advance(0);
     expect(probes).toHaveLength(1);
     if (row.connected) store.link(KEY, true);
+    if (row.online) store.setOnline(new Set(["project-1"]));
     await clock.advance(0);
     probes.length = 0;
 
@@ -672,6 +715,77 @@ describe("container store: what reads a container again", () => {
     expect(probes).toHaveLength(row.reads);
     expect(asks.slice(1)).toEqual(probes.map(() => row.fresh));
     store.dispose();
+  });
+});
+
+describe("container store: a Mate HQ holds online (krok-a §4)", () => {
+  it("never probes a container whose Mate HQ holds online", async () => {
+    const { clock, store, probes } = rig();
+    store.setOnline(new Set(["project-1"]));
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(120_000);
+    store.wake(true);
+    store.request(KEY);
+    await clock.advance(0);
+    expect(probes).toEqual([]);
+    expect(store.verdict(KEY)).toEqual({ level: "ready" });
+    store.dispose();
+  });
+
+  it("probes the route's container whatever HQ says", async () => {
+    const { clock, store, probes } = rig();
+    store.setOnline(new Set(["project-1"]));
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toEqual([]);
+
+    // The route moves onto it: it is read at once, and whenever someone asks.
+    store.setFirst(new Set([KEY]));
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+    store.request(KEY);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+
+    // The route moving off it leaves HQ's word to prove it up again.
+    store.setFirst(new Set());
+    store.request(KEY);
+    await clock.advance(60_000);
+    store.wake(true);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+    store.dispose();
+  });
+
+  it("a reload mid-update is not ended by HQ holding the Mate online", async () => {
+    const intents = memoryStorage();
+    const clock = manualClock();
+    const before = rig({ clock, intents });
+    before.store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    before.store.intend(KEY, { kind: "update", from: "0.11.40" });
+    await clock.advance(10_000);
+    before.store.dispose();
+
+    // HQ has not heard the Mate go yet: it still holds it online when the tab reloads.
+    clock.reload();
+    const after = rig({ clock, intents });
+    after.store.setOnline(new Set(["project-1"]));
+    after.store.setTargets([target("ACTIVE")]);
+    await clock.advance(5_000);
+    expect(after.store.verdict(KEY)).toEqual({ level: "updating", overdue: false });
+
+    // The new version answering ends it; HQ's word proves it up from then on.
+    after.answer = ready("0.11.41");
+    await clock.advance(10_000);
+    expect(after.store.verdict(KEY)).toEqual({ level: "ready" });
+    expect(intents.value).toBeNull();
+    after.probes.length = 0;
+    await clock.advance(120_000);
+    after.store.wake(true);
+    await clock.advance(0);
+    expect(after.probes).toEqual([]);
+    after.store.dispose();
   });
 });
 
