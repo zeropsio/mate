@@ -20,7 +20,8 @@ import {
   makeThrowawayDebt,
   makeThrowawayMintBudgets,
   planThrowawaySweep,
-  THROWAWAY_DELETE_RETRY_MS,
+  THROWAWAY_DELETE_RETRIES_MS,
+  THROWAWAY_REUSE_MS,
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
@@ -673,7 +674,108 @@ describe("throwaway hygiene", () => {
     await first;
   });
 
-  it("a delete Zerops could not answer is tried once more, 5 s later", async () => {
+  // KRLS, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
+  // `mate-door:` throwaways in 21 s, one per try, none deleted. A door's next try presents the
+  // throwaway its last try was not taken with, while it is young — never one mint per try.
+  it("a door's next try presents the throwaway its last try was not taken with", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const presented: Array<string> = [];
+    const notTaken = (outcome: { readonly ok: boolean }) => !outcome.ok;
+    await expect(
+      connectThroughThrowaway({
+        platform: tab.throwaways({ asked: true }),
+        clientId: "org-1",
+        projectId: "p-hq",
+        nonce: "n1",
+        keep: notTaken,
+        connect: async (token) => {
+          presented.push(token);
+          throw new Error("HQ's door did not answer.");
+        },
+      }),
+    ).rejects.toThrow("HQ's door did not answer.");
+    await settle();
+    expect(tab.rest.orphanTokens()).toHaveLength(1);
+
+    await expect(
+      connectThroughThrowaway({
+        platform: tab.throwaways({ asked: true }),
+        clientId: "org-1",
+        projectId: "p-hq",
+        nonce: "n2",
+        keep: notTaken,
+        connect: async (token) => {
+          presented.push(token);
+          return "admitted";
+        },
+      }),
+    ).resolves.toBe("admitted");
+    await settle();
+
+    expect(tab.mints()).toHaveLength(1);
+    expect(new Set(presented).size).toBe(1);
+    // Taken at last, it is deleted.
+    expect(tab.rest.orphanTokens()).toEqual([]);
+  });
+
+  it("a throwaway held for a door nobody tries again is deleted once it is no longer young", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    await expect(
+      connectThroughThrowaway({
+        platform: tab.throwaways({ asked: true }),
+        clientId: "org-1",
+        projectId: "p-hq",
+        nonce: "n1",
+        keep: () => true,
+        connect: async () => {
+          throw new Error("HQ's door did not answer.");
+        },
+      }),
+    ).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(THROWAWAY_REUSE_MS - 1);
+    expect(tab.rest.orphanTokens()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tab.rest.orphanTokens()).toEqual([]);
+
+    // The door's next try, past it, mints a new one.
+    await connectThroughThrowaway({
+      platform: tab.throwaways({ asked: true }),
+      clientId: "org-1",
+      projectId: "p-hq",
+      nonce: "n2",
+      connect: async () => "admitted",
+    });
+    expect(tab.mints()).toHaveLength(2);
+  });
+
+  // KRLS, 2026-10-03: mints the stall took past their answer stood on the account, and nothing
+  // here knew to sweep them.
+  it("a mint whose answer was lost owes the organization a sweep", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const client = new ZeropsApiClient({
+      fetch: async (input, init) => {
+        const response = await tab.rest.fetch(input, init);
+        if (init?.method === "POST") throw new TypeError("Failed to fetch");
+        return response;
+      },
+    });
+    client.restoreSession(tab.session);
+    const debt = makeThrowawayDebt();
+    const platform = zeropsThrowawayPlatform(client, {
+      budgets: makeThrowawayMintBudgets(() => Date.now()),
+      debt,
+    });
+    await expect(
+      platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" }),
+    ).rejects.toMatchObject({ kind: "uncertain" });
+    expect(tab.rest.integrationTokens()).toHaveLength(1);
+    expect(debt.failedAt("org-1")).toBe(Date.now());
+  });
+
+  it("a delete Zerops could not answer is tried again, 5 s later", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
     const orphaned: Array<unknown> = [];
@@ -689,12 +791,42 @@ describe("throwaway hygiene", () => {
     });
     await settle();
     firstDelete.fail(503);
-    await vi.advanceTimersByTimeAsync(THROWAWAY_DELETE_RETRY_MS - 1);
+    await vi.advanceTimersByTimeAsync(THROWAWAY_DELETE_RETRIES_MS[0]! - 1);
     expect(tab.rest.orphanTokens()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
 
     await expect(connecting).resolves.toBe("connected");
     expect(orphaned).toEqual([]);
     expect(tab.rest.orphanTokens()).toEqual([]);
+  });
+
+  // A stall of the organization's reads outlasts one retry: the delete is tried on, waiting longer
+  // each time, until Zerops answers — and only a delete that never answers is owed to the sweep.
+  it("a delete is tried on, waiting longer each time, until Zerops answers", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const debt = makeThrowawayDebt();
+    const platform = zeropsThrowawayPlatform(tab.client, {
+      budgets: makeThrowawayMintBudgets(() => Date.now()),
+      debt,
+    });
+    const minted = await platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" });
+    const route = `DELETE /client/org-1/integration-token/${minted.id}`;
+    let stalled = tab.rest.hold(route);
+    const deleting = platform.remove({ clientId: "org-1", tokenId: minted.id });
+    // Each try the stall leaves unanswered, and the next one only once its wait is over.
+    for (const [index, wait] of THROWAWAY_DELETE_RETRIES_MS.entries()) {
+      await settle();
+      expect(stalled.waiting()).toBe(1);
+      stalled.fail(503);
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(tab.rest.orphanTokens()).toHaveLength(1);
+      if (index < THROWAWAY_DELETE_RETRIES_MS.length - 1) stalled = tab.rest.hold(route);
+      await vi.advanceTimersByTimeAsync(1);
+    }
+    await expect(deleting).resolves.toBeUndefined();
+
+    expect(tab.rest.orphanTokens()).toEqual([]);
+    expect(debt.failedAt("org-1")).toBeNull();
   });
 });

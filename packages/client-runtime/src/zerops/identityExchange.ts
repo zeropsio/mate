@@ -18,12 +18,24 @@ import * as EnvironmentRegistry from "../connection/registry.ts";
 
 import type { EnvironmentId, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 
-import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
+import type {
+  ThrowawayOutcome,
+  ZeropsThrowawayPlatform,
+} from "../authorization/zeropsThrowaway.ts";
 import { squashAtomCommandFailure, type AtomCommandResult } from "../state/runtime.ts";
 import { ZeropsApiError } from "./api.ts";
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import { diagnosticFailure, mateDiagnostics, type IdentityExchangeReason } from "./diagnostics.ts";
 import { connectThroughThrowaway } from "./doorThrowaway.ts";
+
+/**
+ * Whether a Mate's door did not admit the throwaway: the connect failed, or never answered. A
+ * Mate's door keeps no record of the throwaways it saw, so one it did not admit is held for its
+ * next try, while young, and that try mints nothing (KRLS, 2026-10-03: a stall left one throwaway
+ * per try).
+ */
+const notAdmitted = <A, E>(outcome: ThrowawayOutcome<AtomCommandResult<A, E>>): boolean =>
+  !outcome.ok || outcome.value._tag === "Failure";
 import type { DescriptorFacts, ExchangeFailure } from "./environments/environmentMachine.ts";
 import { zeropsErrorMessage } from "./errors.ts";
 import { mateServerCompatibility } from "./serverCompatibility.ts";
@@ -130,6 +142,7 @@ export async function exchangeZeropsContainerIdentity<E>(
       projectId: throwaway.projectId,
       nonce: throwaway.nonce,
       ...(deps.onOrphanedThrowaway === undefined ? {} : { onOrphaned: deps.onOrphanedThrowaway }),
+      keep: notAdmitted,
       connect: (doorToken) => deps.connect({ httpBaseUrl, doorToken }),
     });
   } catch (cause) {
@@ -423,6 +436,7 @@ export async function exchangeAtDoor<C, E>(
       projectId: throwaway.projectId,
       nonce: throwaway.nonce,
       ...(deps.onOrphanedThrowaway === undefined ? {} : { onOrphaned: deps.onOrphanedThrowaway }),
+      keep: notAdmitted,
       connect: (doorToken) =>
         deps.prepare({
           httpBaseUrl,

@@ -341,6 +341,10 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
   }>;
   /** How long a session HQ issues from now on lasts. */
   let lifetimeMs: number;
+  /** How many door calls from now on HQ answers it is not serving, before it admits. */
+  let notServing: number;
+  /** The throwaways each door call presented, in order. */
+  let presented: Array<unknown>;
   let stored: Map<string, string>;
   /** This test's run: the page remembers every token it ended, so no two tests share one. */
   let run = 0;
@@ -351,6 +355,8 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     run += 1;
     calls = [];
     lifetimeMs = 12 * HOUR_MS;
+    notServing = 0;
+    presented = [];
     stored = new Map();
     let issued = 0;
     // The account's scoped storage reads this browser's `window.localStorage`.
@@ -369,6 +375,11 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
         authorization: new Headers(init?.headers).get("authorization"),
       });
       if (url.pathname === "/api/door") {
+        presented.push((JSON.parse(String(init?.body)) as { readonly token: unknown }).token);
+        if (notServing > 0) {
+          notServing -= 1;
+          return Response.json({ code: "not_active" }, { status: 503 });
+        }
         return Response.json({
           session: issuedSession(++issued),
           expiresAt: new Date(Date.now() + lifetimeMs).toISOString(),
@@ -438,6 +449,20 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     await accountHqApi(again.client, "org-1", HQ).structure();
     expect(again.doors()).toBe(0);
     expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
+  });
+
+  // KRLS, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
+  // throwaways in 21 s, one per try. A door HQ did not answer is tried again with the same one.
+  it("a door HQ is not serving is tried again with the throwaway it already minted", async () => {
+    notServing = 1;
+    const first = load();
+    const api = accountHqApi(first.client, "org-1", HQ);
+    await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable" });
+    await api.structure();
+
+    expect(first.doors()).toBe(1);
+    expect(presented).toHaveLength(2);
+    expect(presented[1]).toBe(presented[0]);
   });
 
   it("a sign-out revokes HQ's session and forgets it", async () => {

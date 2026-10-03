@@ -6,7 +6,8 @@
  *   project could copy. The verdict — that HQ, or that there is none — is kept in this browser
  *   (`hqVerdict.ts`), and a load that keeps one reads no member list.
  * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named for its
- *   project (`mate-door:<hqProjectId>:<nonce>`, deleted at once). One API per account, org and
+ *   project (`mate-door:<hqProjectId>:<nonce>`), deleted once the door takes it — one a try was
+ *   not served with is presented again on the next, while young, and mints nothing. One API per account, org and
  *   HQ for the account's lifetime; its session is kept across loads as the Mates' are
  *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
  * - **Whether it answers:** `/health`, read while a surface shows it. An HQ that stops answering
@@ -232,6 +233,11 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         clientId,
         projectId: hq.projectId,
         nonce: randomUUID(),
+        // A door HQ did not answer as serving — unreached, past its deadline, or not serving — did
+        // not take the throwaway: its next try presents it again, while young, and mints nothing
+        // (KRLS, 2026-10-03: eight throwaways in 21 s while the organization's reads stalled).
+        keep: (outcome) =>
+          !outcome.ok && outcome.cause instanceof HqError && outcome.cause.kind === "unavailable",
         connect: use,
       }).catch(async (cause: unknown) => {
         if (cause instanceof HqError && cause.code === "not_active") {
