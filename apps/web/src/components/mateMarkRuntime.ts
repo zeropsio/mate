@@ -83,74 +83,150 @@ interface MarkRuntime {
   offscreenAt: number;
 }
 
-const marks = new Set<MarkRuntime>();
-const pointer = { x: 0, y: 0, on: false, activeAt: 0, asleep: false };
-let frame: number | undefined;
-let listening = false;
-let observer: IntersectionObserver | undefined;
-
-function prefersReducedMotion(): boolean {
-  return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+/**
+ * What the loop needs from the page: a clock, frames, timers and the viewport. The page's own is
+ * `browserHost`; a test hands it a fake one and steps time itself.
+ */
+export interface MarkLoopHost {
+  readonly now: () => number;
+  readonly requestFrame: (callback: (now: number) => void) => number;
+  readonly cancelFrame: (handle: number) => void;
+  readonly setTimer: (callback: () => void, ms: number) => unknown;
+  readonly clearTimer: (handle: unknown) => void;
+  readonly reducedMotion: () => boolean;
+  readonly random: () => number;
+  readonly viewport: () => { readonly width: number; readonly height: number };
 }
 
-function wake() {
-  pointer.activeAt = performance.now();
+/** The one loop every mark on a page shares, and what moves it. */
+export interface MarkLoop {
+  readonly register: (
+    root: SVGSVGElement,
+    parts: LiveMarkParts,
+    forced: MateMarkState | undefined,
+    options?: { readonly awake?: boolean },
+  ) => () => void;
+  readonly pointerMove: (x: number, y: number) => void;
+  /** The pointer left the window. */
+  readonly pointerOut: () => void;
+  /** Something the person did that is not a pointer move: a key, a scroll. */
+  readonly wake: () => void;
+  /** The marks moved on the page (a scroll, a resize): measure them again. */
+  readonly invalidateRects: () => void;
+  readonly setVisible: (root: Element, visible: boolean) => void;
+  readonly size: () => number;
 }
 
-function onPointerMove(event: PointerEvent) {
-  pointer.x = event.clientX;
-  pointer.y = event.clientY;
-  pointer.on = true;
-  wake();
+export function createMarkLoop(host: MarkLoopHost): MarkLoop {
+  const marks = new Set<MarkRuntime>();
+  const pointer = { x: 0, y: 0, on: false, activeAt: host.now(), asleep: false };
+  let frame: number | undefined;
+  let lastFrameAt = 0;
+
+  const wake = () => {
+    pointer.activeAt = host.now();
+  };
+
+  const runFrame = (now: number) => {
+    const dt = clamp((now - lastFrameAt) / 1000 || 0.016, 0.001, 0.05);
+    lastFrameAt = now;
+    const reduced = host.reducedMotion();
+    pointer.asleep = !reduced && now - pointer.activeAt > SLEEP_AFTER_MS;
+    for (const mark of marks) tick(mark, pointer, host, now, dt, reduced);
+    frame = marks.size > 0 ? host.requestFrame(runFrame) : undefined;
+  };
+
+  return {
+    register(root, parts, forced, options = {}) {
+      const now = host.now();
+      const reduced = host.reducedMotion();
+      const mark: MarkRuntime = {
+        root,
+        parts,
+        forced,
+        seed: host.random() * Math.PI * 2,
+        hovered: false,
+        visible: true,
+        rect: null,
+        rectAt: -1,
+        // Reduced motion opens the mark at once and never animates it shut; so does a mark that
+        // takes over from the still one, already open.
+        band: reduced || options.awake === true ? 1 : 0,
+        gazeX: 0,
+        gazeY: 0,
+        targetX: 0,
+        targetY: 0,
+        rotX: 0,
+        rotY: 0,
+        openness: 1,
+        width: 1,
+        lift: 0,
+        blinkAt: -1,
+        nextBlink: now + 1500 + host.random() * 3000,
+        wanderAt: now + 1200,
+        smileUntil: 0,
+        effective: "idle",
+        effectiveAt: now,
+        offscreenAt: now,
+      };
+
+      const enter = () => {
+        mark.hovered = true;
+        wake();
+      };
+      const leave = () => {
+        // A hover that surprised it leaves a smile behind on the way out.
+        if (mark.hovered && mark.forced === undefined && mark.band > 0.9) {
+          mark.smileUntil = host.now() + 700;
+        }
+        mark.hovered = false;
+      };
+      root.addEventListener("pointerenter", enter);
+      root.addEventListener("pointerleave", leave);
+      if (marks.size === 0) wake();
+      marks.add(mark);
+      if (frame === undefined) {
+        lastFrameAt = now;
+        frame = host.requestFrame(runFrame);
+      }
+
+      return () => {
+        root.removeEventListener("pointerenter", enter);
+        root.removeEventListener("pointerleave", leave);
+        marks.delete(mark);
+        if (marks.size === 0) {
+          if (frame !== undefined) host.cancelFrame(frame);
+          frame = undefined;
+        }
+      };
+    },
+    pointerMove(x, y) {
+      pointer.x = x;
+      pointer.y = y;
+      pointer.on = true;
+      wake();
+    },
+    pointerOut() {
+      pointer.on = false;
+    },
+    wake,
+    invalidateRects() {
+      for (const mark of marks) mark.rectAt = -1;
+      wake();
+    },
+    setVisible(root, visible) {
+      for (const mark of marks) if (mark.root === root) mark.visible = visible;
+    },
+    size: () => marks.size,
+  };
 }
 
-function onPointerOut(event: PointerEvent) {
-  if (event.relatedTarget === null) pointer.on = false;
-}
-
-function onBlur() {
-  pointer.on = false;
-}
-
-function invalidateRects() {
-  for (const mark of marks) mark.rectAt = -1;
-  wake();
-}
-
-function startListening() {
-  if (listening) return;
-  listening = true;
-  pointer.activeAt = performance.now();
-  window.addEventListener("pointermove", onPointerMove, { passive: true });
-  window.addEventListener("pointerdown", onPointerMove, { passive: true });
-  window.addEventListener("pointerout", onPointerOut);
-  window.addEventListener("blur", onBlur);
-  window.addEventListener("keydown", wake);
-  window.addEventListener("scroll", invalidateRects, { passive: true });
-  window.addEventListener("resize", invalidateRects);
-}
-
-function stopListening() {
-  if (!listening) return;
-  listening = false;
-  window.removeEventListener("pointermove", onPointerMove);
-  window.removeEventListener("pointerdown", onPointerMove);
-  window.removeEventListener("pointerout", onPointerOut);
-  window.removeEventListener("blur", onBlur);
-  window.removeEventListener("keydown", wake);
-  window.removeEventListener("scroll", invalidateRects);
-  window.removeEventListener("resize", invalidateRects);
-}
-
-let lastFrameAt = 0;
-
-function runFrame(now: number) {
-  const dt = clamp((now - lastFrameAt) / 1000 || 0.016, 0.001, 0.05);
-  lastFrameAt = now;
-  const reduced = prefersReducedMotion();
-  pointer.asleep = !reduced && now - pointer.activeAt > SLEEP_AFTER_MS;
-  for (const mark of marks) tick(mark, now, dt, reduced);
-  frame = marks.size > 0 ? requestAnimationFrame(runFrame) : undefined;
+interface Pointer {
+  x: number;
+  y: number;
+  on: boolean;
+  activeAt: number;
+  asleep: boolean;
 }
 
 /** A waking Mate's breath: one swell and settle every three seconds, a fifth of the band out. */
@@ -168,7 +244,7 @@ export function markBandTarget(state: MateMarkState, seconds: number, reduced: b
   return (BREATH_DEPTH * (1 - Math.cos((2 * Math.PI * seconds) / BREATH_SECONDS))) / 2;
 }
 
-function effectiveState(mark: MarkRuntime, now: number): MateMarkState {
+function effectiveState(mark: MarkRuntime, pointer: Pointer, now: number): MateMarkState {
   if (mark.forced !== undefined) return mark.forced;
   if (mark.hovered) return "surprise";
   if (now < mark.smileUntil) return "done";
@@ -176,7 +252,14 @@ function effectiveState(mark: MarkRuntime, now: number): MateMarkState {
   return "idle";
 }
 
-function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
+function tick(
+  mark: MarkRuntime,
+  pointer: Pointer,
+  host: MarkLoopHost,
+  now: number,
+  delta: number,
+  reduced: boolean,
+) {
   let dt = delta;
   if (!mark.visible) {
     if (now - mark.offscreenAt < 250) return;
@@ -190,7 +273,7 @@ function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
   const rect = mark.rect;
   if (!rect || !rect.width) return;
 
-  const state = effectiveState(mark, now);
+  const state = effectiveState(mark, pointer, now);
   if (state !== mark.effective) {
     mark.effective = state;
     mark.effectiveAt = now;
@@ -222,7 +305,8 @@ function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
     const dx = pointer.x - (rect.left + rect.width / 2);
     const dy = pointer.y - (rect.top + rect.height / 2);
     const distance = Math.hypot(dx, dy) || 1;
-    const reach = Math.max(240, Math.min(window.innerWidth, window.innerHeight) * 0.38);
+    const viewport = host.viewport();
+    const reach = Math.max(240, Math.min(viewport.width, viewport.height) * 0.38);
     const gain = Math.tanh(distance / reach);
     mark.targetX = (gain * dx) / distance;
     mark.targetY = (gain * dy) / distance;
@@ -230,10 +314,10 @@ function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
     mark.targetX = 0;
     mark.targetY = 0;
   } else if (now >= mark.wanderAt) {
-    mark.wanderAt = now + 2400 + Math.random() * 2600;
-    const centre = Math.random() < 0.35;
-    mark.targetX = centre ? 0 : Math.random() * 1.4 - 0.7;
-    mark.targetY = centre ? 0 : Math.random() * 1 - 0.5;
+    mark.wanderAt = now + 2400 + host.random() * 2600;
+    const centre = host.random() < 0.35;
+    mark.targetX = centre ? 0 : host.random() * 1.4 - 0.7;
+    mark.targetY = centre ? 0 : host.random() * 1 - 0.5;
   }
   mark.gazeX = lerpTo(mark.gazeX, mark.targetX, 11, dt);
   mark.gazeY = lerpTo(mark.gazeY, mark.targetY, 11, dt);
@@ -250,7 +334,7 @@ function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
       if (now - mark.blinkAt < 140) targetOpen = 0;
       else {
         mark.blinkAt = -1;
-        mark.nextBlink = now + 2500 + Math.random() * 4000;
+        mark.nextBlink = now + 2500 + host.random() * 4000;
       }
     }
   }
@@ -341,8 +425,62 @@ function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
   mark.parts.bob?.setAttribute("transform", `translate(0,${round(bobY)})`);
 }
 
+const browserHost: MarkLoopHost = {
+  now: () => performance.now(),
+  requestFrame: (callback) => requestAnimationFrame(callback),
+  cancelFrame: (handle) => cancelAnimationFrame(handle),
+  setTimer: (callback, ms) => setTimeout(callback, ms),
+  clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  reducedMotion: () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+  random: Math.random,
+  viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
+};
+
+let pageLoop: MarkLoop | undefined;
+let observer: IntersectionObserver | undefined;
+
+function onPointerMove(event: PointerEvent) {
+  pageLoop?.pointerMove(event.clientX, event.clientY);
+}
+
+function onPointerOut(event: PointerEvent) {
+  if (event.relatedTarget === null) pageLoop?.pointerOut();
+}
+
+function onBlur() {
+  pageLoop?.pointerOut();
+}
+
+function onWake() {
+  pageLoop?.wake();
+}
+
+function onMoved() {
+  pageLoop?.invalidateRects();
+}
+
+function startListening() {
+  window.addEventListener("pointermove", onPointerMove, { passive: true });
+  window.addEventListener("pointerdown", onPointerMove, { passive: true });
+  window.addEventListener("pointerout", onPointerOut);
+  window.addEventListener("blur", onBlur);
+  window.addEventListener("keydown", onWake);
+  window.addEventListener("scroll", onMoved, { passive: true });
+  window.addEventListener("resize", onMoved);
+}
+
+function stopListening() {
+  window.removeEventListener("pointermove", onPointerMove);
+  window.removeEventListener("pointerdown", onPointerMove);
+  window.removeEventListener("pointerout", onPointerOut);
+  window.removeEventListener("blur", onBlur);
+  window.removeEventListener("keydown", onWake);
+  window.removeEventListener("scroll", onMoved);
+  window.removeEventListener("resize", onMoved);
+}
+
 /**
- * Adds one mark to the shared loop. Returns the unsubscribe the caller's
+ * Adds one mark to the page's shared loop. Returns the unsubscribe the caller's
  * effect cleanup runs — the last one out stops the loop and the listeners, so
  * nothing keeps ticking after the marks unmount.
  */
@@ -352,81 +490,21 @@ export function registerLiveMark(
   forced: MateMarkState | undefined,
   options: { readonly awake?: boolean } = {},
 ): () => void {
-  const now = typeof performance === "undefined" ? 0 : performance.now();
-  const reduced = prefersReducedMotion();
-  const mark: MarkRuntime = {
-    root,
-    parts,
-    forced,
-    seed: Math.random() * Math.PI * 2,
-    hovered: false,
-    visible: true,
-    rect: null,
-    rectAt: -1,
-    // Reduced motion opens the mark at once and never animates it shut; so does a mark that
-    // takes over from the still one, already open.
-    band: reduced || options.awake === true ? 1 : 0,
-    gazeX: 0,
-    gazeY: 0,
-    targetX: 0,
-    targetY: 0,
-    rotX: 0,
-    rotY: 0,
-    openness: 1,
-    width: 1,
-    lift: 0,
-    blinkAt: -1,
-    nextBlink: now + 1500 + Math.random() * 3000,
-    wanderAt: now + 1200,
-    smileUntil: 0,
-    effective: "idle",
-    effectiveAt: now,
-    offscreenAt: now,
-  };
-
-  const enter = () => {
-    mark.hovered = true;
-    wake();
-  };
-  const leave = () => {
-    // A hover that surprised it leaves a smile behind on the way out.
-    if (mark.hovered && mark.forced === undefined && mark.band > 0.9) {
-      mark.smileUntil = performance.now() + 700;
-    }
-    mark.hovered = false;
-  };
-  root.addEventListener("pointerenter", enter);
-  root.addEventListener("pointerleave", leave);
-
-  marks.add(mark);
-  startListening();
+  const loop = (pageLoop ??= createMarkLoop(browserHost));
+  if (loop.size() === 0) startListening();
+  const unregister = loop.register(root, parts, forced, options);
   if (typeof IntersectionObserver === "function") {
     observer ??= new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          for (const candidate of marks) {
-            if (candidate.root === entry.target) candidate.visible = entry.isIntersecting;
-          }
-        }
+        for (const entry of entries) pageLoop?.setVisible(entry.target, entry.isIntersecting);
       },
       { rootMargin: "120px" },
     );
     observer.observe(root);
   }
-  if (frame === undefined) {
-    lastFrameAt = now;
-    frame = requestAnimationFrame(runFrame);
-  }
-
   return () => {
-    root.removeEventListener("pointerenter", enter);
-    root.removeEventListener("pointerleave", leave);
     observer?.unobserve(root);
-    marks.delete(mark);
-    if (marks.size === 0) {
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      frame = undefined;
-      stopListening();
-    }
+    unregister();
+    if (loop.size() === 0) stopListening();
   };
 }
