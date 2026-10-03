@@ -1279,24 +1279,29 @@ In the order the owner ranked them, then the rest:
     stage half is imported empty, the dev half's first deploys run one at a time, zcp's checks fail
     on a basic-auth inbox and on a dev service idling before its dev server — are the next pass's
     input.
-41. **A deploy job that fails before it reaches the broker is invisible** (run 5, 2026-10-02). A
-    group workflow's own step failed (`npm test` with no Node on the runner); the commit on `main`
-    carried "Zerops deploy: failure", the broker's status stayed pending, and the menu and the cell
-    said "first deploy on its way" for 4.3 min (up to its 15-minute bound). The fix the stage part
-    proposed and the pass deferred: read `main`'s head statuses only while a declared stage runs
-    nothing, and say "First deploy failed".
-42. **zcp's workflow template leaves the runner's runtime to the Mate** — its test step defaults to
-    `echo "no test command configured"` under "Replace with this project's own test command"; one
-    Mate wrote `npm test` without `actions/setup-node` and the bare Ubuntu runner failed it (run 5),
-    another added the setup (run 4). The template should set up the project's runtime, or say the
-    runner has none.
-43. **Two short blips in a stage's first deploy** (run 5): where the build ends and its version is
-    not yet known, one window read "awaiting a first deploy" (menu, ~2 s) and "Checking what runs
-    here…" (cell, 1.2 s); and the runner line came 4 s before the project was made, then gave way to
-    "adding the app" and came back.
-44. **A tainted runner's replacement may register with the org's same token** — Gitea's org
-    registration-token read likely returns the latest active token; a replacement after a taint
-    should reset it first. Needs Gitea 1.27's API checked (the runner part's review, pass 34).
+41. **A deploy job that fails before it reaches the broker is invisible** (run 5, 2026-10-02).
+    Closed in pass 35 (mate 0.11.88), unmeasured live until run 6: while a declared stage runs
+    nothing, the group's deploy reader reads `main`'s head and its statuses — the broker's `failed: …`
+    report, or the deploy workflow's own failure whenever posted, until the broker says `deploying` —
+    and the menu says "Stage didn't come up · its first deploy failed", the cell "First deploy
+    failed" (design decisions, 2026-10-03). Open: the broker writing `failed: <step>` when the run it
+    dispatched fails, the exact signal (gitea-mate).
+42. **zcp's workflow template leaves the runner's runtime to the Mate** (run 5). Closed in zcp
+    v9.189.0: the workflow sets Node.js, Go or Java up at the dev half's version before the Test
+    step; Bun, Deno, Python and PHP get a comment naming what works on the runner (it has no `unzip`
+    and no hosted tool cache); a file still exactly zcp's old template is brought up to it, and a
+    file a project touched is left as it is. Open: `unzip` in the runner image and one live run per
+    runtime.
+43. **Two short blips in a stage's first deploy** (run 5). Closed in pass 35, unmeasured live until
+    run 6: a build's end holds "deploying" until its version is known or the 20 s grace ends, the
+    grace's timer kept through a re-check of the listing; the stage's own import comes before the
+    first deploy and the runner on every surface ("Setting up a stage…").
+44. **A tainted runner's replacement may register with the org's same token.** Partly closed in
+    gitea-mate#8: Gitea 1.27.2's API returns the org's latest active token and only its web UI
+    resets one, so every runner import first deletes every runner registration in the group's org,
+    which removes the tainted container's own credential and anything registered before the import.
+    Open, the owner's call: a copied token still registers a new runner (deactivating it in Gitea's
+    database once per taint, or the broker registering runners itself).
 
 ## 8. Working on it
 
