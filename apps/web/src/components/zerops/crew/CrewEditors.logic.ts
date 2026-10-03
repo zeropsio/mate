@@ -43,6 +43,27 @@ export interface CrewLoginOption extends CrewLogin {
 }
 
 /**
+ * A server older than the capability names none on any provider; it ran a
+ * crewmate on its two default agents only, Claude with the crew tools and
+ * Codex without.
+ */
+export function crewCatalogNamesCapability(providers: ReadonlyArray<ServerProvider>): boolean {
+  return providers.some((provider) => provider.threadProfile !== undefined);
+}
+
+const OLDER_SERVER_TOOLS: Readonly<Record<string, boolean>> = { claudeAgent: true, codex: false };
+
+/** What a provider does with a crewmate's profile, by its capability or an older server's rule. */
+function crewProfileOf(
+  provider: ServerProvider,
+  namesCapability: boolean,
+): { readonly tools: boolean } | undefined {
+  if (namesCapability) return provider.threadProfile;
+  const tools = OLDER_SERVER_TOOLS[provider.instanceId];
+  return tools === undefined ? undefined : { tools };
+}
+
+/**
  * The logins a crewmate may run on: every installed, enabled one whose agent
  * carries the crew's rules (`threadProfile`). The lead hands out and lands
  * the work with the crew tools, so it is offered only an agent that hosts them.
@@ -51,8 +72,9 @@ export function crewLoginOptions(
   providers: ReadonlyArray<ServerProvider>,
   lead: boolean,
 ): ReadonlyArray<CrewLoginOption> {
+  const namesCapability = crewCatalogNamesCapability(providers);
   return providers.flatMap((provider) => {
-    const profile = provider.threadProfile;
+    const profile = crewProfileOf(provider, namesCapability);
     if (!provider.enabled || !provider.installed || profile === undefined) return [];
     if (lead && !profile.tools) return [];
     const agent =
