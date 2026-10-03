@@ -247,18 +247,33 @@ function deploy(
   return taking;
 }
 
-/** A batch deploy of two services, the first building, the second waiting its turn. */
-function batch(): ZeropsOperation {
-  return deploy("running", {
+/**
+ * A batch deploy of two services, as the builder draws it: while it runs
+ * every service's step runs (its call says nothing until it returns); ended,
+ * each done, and the versions its entries named.
+ */
+function batch(phase: "running" | "done"): ZeropsOperation {
+  const { version: _single, ...entry } = deploy(phase, {
     batch: true,
-    subject: "2 services",
+    subject: "appdev, apidev",
     target: { hostname: "appdev" },
-    steps: [
-      { id: "appdev", label: "appdev", state: "running", stateLabel: "Building" },
-      { id: "apidev", label: "apidev", state: "queued", stateLabel: "Waiting" },
-    ],
+    statusWord: phase === "running" ? "Deploying" : "Deployed",
+    steps: ["appdev", "apidev"].map((hostname) => ({
+      id: hostname,
+      label: hostname,
+      state: phase === "running" ? "running" : "done",
+      stateLabel: phase === "running" ? "Running" : "Deployed",
+    })),
+    ...(phase === "done" ? { appVersionIds: ["av-41", "av-42"] } : {}),
   });
+  return entry;
 }
+
+/** The batch's processes: the dev service's build ended, the API's builds after it. */
+const batchProcesses = (api: "building" | "finished") => [
+  process("finished"),
+  process(api, { serviceId: "svc-api", appVersionId: "av-42", minute: 2 }),
+];
 
 const inSlot = (op: ZeropsOperation) => record([], { now: { kind: "operation", operation: op } });
 const inRecord = (op: ZeropsOperation, overrides: Partial<RecordRow> = {}) =>
@@ -358,17 +373,33 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
   });
 
-  it("a running batch deploy stands as a line per service, the one building open on its pipeline and log", () => {
-    store.processes = [
-      process("building"),
-      process("building", { serviceId: "svc-api", appVersionId: "av-42" }),
-    ];
-    const renderer = mount(inSlot(batch()));
-    // The service that stands closed reads no build log.
-    expect([...store.logReads]).toEqual(["av-41"]);
-    expect(operationRows(renderer)).toBe(2);
+  it("a running batch deploy is one line, its card on the service the store says is building", () => {
+    store.processes = batchProcesses("building");
+    vi.setSystemTime(fixtureAt(2, 30));
+    const renderer = mount(inSlot(batch("running")));
+    expect(operationRows(renderer)).toBe(1);
+    // Its card is the API's, the one building: its pipeline, its newest lines, its log.
+    expect([...store.logReads]).toEqual(["av-42"]);
     expect(count(renderer)).toMatchObject({ log: 2, whole: 1 });
     expect(count(renderer).steps).toBeGreaterThan(0);
+  });
+
+  it("a batch lands in the history as it stood, its dialog open", () => {
+    store.processes = batchProcesses("building");
+    vi.setSystemTime(fixtureAt(2, 30));
+    const renderer = mount(inSlot(batch("running")));
+    act(() => nodes(renderer, "data-zerops-build-log-toggle")[0]!.props.onClick());
+    store.processes = batchProcesses("finished");
+    redraw(renderer, inSlot(batch("done")));
+    const settled = { rows: operationRows(renderer), ...count(renderer) };
+    store.logReads = new Set();
+    plop(renderer, inRecord(batch("done")));
+    expect({ rows: operationRows(renderer), ...count(renderer) }).toEqual(settled);
+    expect(settled).toMatchObject({ rows: 1, whole: 1 });
+    expect(settled.steps).toBeGreaterThan(0);
+    expect(nodes(renderer, "data-dialog-open")).toHaveLength(1);
+    // The API's log, the one its card stood on: no other.
+    expect([...store.logReads]).toEqual(["av-42"]);
   });
 
   it.each([

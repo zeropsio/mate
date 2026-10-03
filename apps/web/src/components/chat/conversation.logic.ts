@@ -1349,8 +1349,6 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
       key: `${operation.key}:${step.label}`,
       subject: step.label,
       kicker: `Deploy · ${step.label}`,
-      // What the Mate said named the batch: its line says its own service.
-      voice: `Deploying ${step.label}`,
       target: { hostname: step.label },
       phase,
       statusWord:

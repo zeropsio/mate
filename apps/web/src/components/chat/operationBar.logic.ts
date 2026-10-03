@@ -347,38 +347,35 @@ export function detailLines(
   );
 }
 
-/** A batch deploy's service's line in the live slot: its own, beside the batch's. */
-export function slotServiceLine(line: string | null, service: ZeropsOperation): string {
-  return `${line ?? ""}~${service.subject}`;
-}
-
 /**
  * The line of the one deploy that stands open on its card in the live slot:
  * the newest running one, else, none running, the newest as it ended there —
- * the others stay a line each, so the slot never outgrows its room. A batch
- * stands as its services' lines: the one it is building, else the first
- * still running.
+ * the others stay a line each, so the slot never outgrows its room. The one
+ * standing open (`held`) keeps standing until it plops: one that ended first
+ * gives way only once it left the slot, a running one only to a newer one
+ * running. A batch is one line, like any call.
  */
 export function slotOpenDeployLine(
   lines: ReadonlyArray<{ readonly key: string; readonly operation: ZeropsOperation }>,
+  held: string | null = null,
 ): string | null {
-  const deploys = lines.flatMap((line) =>
-    line.operation.kind !== "deploy"
-      ? []
-      : line.operation.batch === true
-        ? (() => {
-            const services = splitBatchDeploy(line.operation);
-            const service =
-              services.find((one) => one.steps[0]?.state === "running") ??
-              services.find((one) => one.phase === "running") ??
-              services.at(-1);
-            return service === undefined
-              ? []
-              : [{ key: slotServiceLine(line.key, service), operation: service }];
-          })()
-        : [line],
-  );
-  const newest =
-    deploys.findLast((line) => line.operation.phase === "running") ?? deploys.at(-1) ?? null;
-  return newest === null ? null : newest.key;
+  const deploys = lines.filter((line) => line.operation.kind === "deploy");
+  const newestRunning = deploys.findLast((line) => line.operation.phase === "running");
+  const standing = deploys.find((line) => line.key === held);
+  if (
+    standing !== undefined &&
+    (standing.operation.phase !== "running" || newestRunning === standing)
+  ) {
+    return standing.key;
+  }
+  return (newestRunning ?? deploys.at(-1))?.key ?? null;
+}
+
+/** What a batch deploy's card draws: the service it shows, as a deploy of its own; any other operation as it is. */
+export function cardOperationOf(
+  operation: ZeropsOperation,
+  service: string | undefined,
+): ZeropsOperation {
+  if (operation.batch !== true || service === undefined) return operation;
+  return splitBatchDeploy(operation).find((one) => one.subject === service) ?? operation;
 }

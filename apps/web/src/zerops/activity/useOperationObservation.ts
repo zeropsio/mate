@@ -53,6 +53,8 @@ export interface ObservationTarget {
   readonly running: boolean;
   /** The ids the result named (`AttributionInput.exact`) — present once it named any. */
   readonly exact?: AttributionInput["exact"];
+  /** A batch deploy: its card follows the service the platform says is building. */
+  readonly batch?: boolean;
 }
 
 export interface OperationObservation {
@@ -154,6 +156,7 @@ export function deriveOperationObservation(
       startedAtMs: target.startedAtMs,
       kind: target.kind,
       ...(target.exact === undefined ? {} : { exact: target.exact }),
+      ...(target.batch === true ? { batch: true } : {}),
     });
     if (attribution.projectMismatch) {
       unavailableReason = "project-mismatch";

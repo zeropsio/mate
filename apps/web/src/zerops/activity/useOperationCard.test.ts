@@ -145,8 +145,35 @@ describe("observationTargetFor — building the ObservationTarget from an operat
     ).toEqual({ processIds: ["p-1", "p-2"] });
   });
 
-  it("a batch deploy has no target: its per-target rows stand from birth to settle", () => {
-    expect(observationTargetFor(operation({ batch: true, subject: "api, web" }))).toBeNull();
+  // A batch's card follows the service the platform says is building; once
+  // settled it is read by the versions its entries named, or not at all.
+  it.each([
+    {
+      name: "running: by all its services",
+      fields: {},
+      target: { hostnames: ["api", "web"], batch: true, running: true },
+    },
+    {
+      name: "settled, its entries' versions named: by those",
+      fields: { phase: "done" as const, appVersionIds: ["av-a", "av-w"] },
+      target: { batch: true, running: false, exact: { appVersionIds: ["av-a", "av-w"] } },
+    },
+    { name: "settled, none named: not read", fields: { phase: "done" as const }, target: null },
+  ])("a batch deploy $name", ({ fields, target }) => {
+    const batch = operation({
+      batch: true,
+      subject: "api, web",
+      steps: ["api", "web"].map((host) => ({
+        id: host,
+        label: host,
+        state: "running" as const,
+        stateLabel: "Running",
+      })),
+      ...fields,
+    });
+    const built = observationTargetFor(batch);
+    if (target === null) expect(built).toBeNull();
+    else expect(built).toMatchObject(target);
   });
 
   it("a non-observed kind (verify) has no target at all", () => {

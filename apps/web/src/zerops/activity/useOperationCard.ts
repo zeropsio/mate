@@ -74,38 +74,46 @@ function hostnamesFor(operation: ZeropsOperation): ReadonlyArray<string> {
 /**
  * What a card reads of its operation in the account store. `null` for a kind
  * the Observation layer has no attribution rules for (bootstrap, mount,
- * verify, env, error) and for a batch deploy, whose per-target rows are its
- * steps from birth to settle. A running one is read by its services and its
- * start; a settled one only when it is a deploy whose result named its app
- * version or processes, and then only by those — never guessed by time and
- * service, which is how a failed deploy that named nothing took on a later
- * deploy's pipeline and log. Without them its card shows what its call
- * returned.
+ * verify, env, error). A running one is read by its services and its start —
+ * a batch deploy by all of its services, its card following the one the
+ * platform says is building; a settled one only when it is a deploy whose
+ * result named its app versions or processes, and then only by those — never
+ * guessed by time and service, which is how a failed deploy that named
+ * nothing took on a later deploy's pipeline and log. Without them its card
+ * shows what its call returned.
  */
 export function observationTargetFor(operation: ZeropsOperation): ObservationTarget | null {
-  if (!isObservedKind(operation.kind) || operation.batch === true) {
+  if (!isObservedKind(operation.kind)) {
     return null;
   }
-  const appVersionId = operation.version?.id;
+  const batch = operation.batch === true;
+  const appVersionIds = batch
+    ? (operation.appVersionIds ?? [])
+    : operation.version?.id === undefined
+      ? []
+      : [operation.version.id];
   const processIds = operation.processIds ?? [];
+  const named = appVersionIds.length > 0 || processIds.length > 0;
   const running = operation.phase === "running";
-  if (
-    !running &&
-    (operation.kind !== "deploy" || (appVersionId === undefined && processIds.length === 0))
-  ) {
+  if (!running && (operation.kind !== "deploy" || !named)) {
     return null;
   }
   return {
     key: operation.key,
     kind: operation.kind,
-    hostnames: hostnamesFor(operation),
+    hostnames: batch ? operation.steps.map((step) => step.label) : hostnamesFor(operation),
     startedAtMs: Date.parse(operation.anchorAt),
     running,
-    ...(appVersionId === undefined && processIds.length === 0
+    ...(batch ? { batch } : {}),
+    ...(!named
       ? {}
       : {
           exact: {
-            ...(appVersionId === undefined ? {} : { appVersionId }),
+            ...(appVersionIds.length === 0
+              ? {}
+              : batch
+                ? { appVersionIds }
+                : { appVersionId: appVersionIds[0]! }),
             ...(processIds.length === 0 ? {} : { processIds }),
           },
         }),
@@ -392,6 +400,22 @@ export interface OperationCardRegions {
   readonly live?: boolean;
   /** `browser` only: the latest live frame, kept across the running→done transition. */
   readonly liveFrame?: LiveBrowserFrame;
+  /** A batch deploy only: the service its card shows — the one building, else one that failed, else the last that ended. */
+  readonly service?: string;
+}
+
+/** A batch's service the observation's step source names, by the client's topology view. */
+export function batchServiceFor(
+  operation: ZeropsOperation,
+  observation: Observation | undefined,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  if (operation.batch !== true || observation?.serviceIds === undefined) return undefined;
+  const ids = new Set(observation.serviceIds);
+  const hostnames = new Set(operation.steps.map((step) => step.label));
+  return topology?.services.find(
+    (service) => ids.has(service.serviceId) && hostnames.has(service.hostname),
+  )?.hostname;
 }
 
 /** Whether a build log's dialog is open, and how to open or close it. */
@@ -432,7 +456,13 @@ export function useOperationCard(
   const devServerUrl = devServerUrlFor(operation, topology);
   const browserScreenshot = browserScreenshotFor(operation);
   const subjectHost = browserSubjectHostFor(operation, topology);
+  const seen =
+    state.kind === "off" || state.observation.serviceIds === undefined
+      ? history
+      : state.observation;
+  const service = batchServiceFor(operation, seen, topology);
   const fields = {
+    ...(service === undefined ? {} : { service }),
     ...(devServerUrl === undefined ? {} : { devServerUrl }),
     ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
     ...(subjectHost === undefined ? {} : { subjectHost }),
@@ -448,7 +478,10 @@ export function useOperationCard(
       state,
       history,
       nowMs,
-      pipelineServiceFor(operation, topology),
+      pipelineServiceFor(
+        service === undefined ? operation : { ...operation, target: { hostname: service } },
+        topology,
+      ),
     ) ?? (target !== null && !running && settledRead === "failed" ? UNREAD_REGION : undefined);
   if (region === undefined) {
     return fields;
@@ -473,7 +506,7 @@ export function useOperationCard(
     open: logOpen,
     stands,
     status: buildLog.status,
-    subject: operation.subject,
+    subject: service ?? operation.subject,
   });
   return { observed: { ...observed, log }, ...fields };
 }

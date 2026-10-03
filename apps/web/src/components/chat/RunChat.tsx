@@ -106,7 +106,6 @@ import {
   formatWorkDuration,
   operationLineWords,
   operationUnreturnedWords,
-  splitBatchDeploy,
   type BrowserStripModel,
   type IncidentModel,
   type OutcomeModel,
@@ -128,13 +127,13 @@ import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import {
+  cardOperationOf,
   detailLines,
   liveOperationBar,
   observedLinesOf,
   settledOperationBar,
   showsCardInSlot,
   slotOpenDeployLine,
-  slotServiceLine,
 } from "./operationBar.logic";
 import { HELPER_LINE_CHARS, helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
 import { StandupDetail } from "./StandupDetail";
@@ -1583,7 +1582,12 @@ export function OperationDetail({
   }
   if (regions !== undefined) {
     return (
-      <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />
+      <ZeropsOperationCard
+        headless
+        operation={cardOperationOf(operation, regions.service)}
+        threadRef={threadRef}
+        {...regions}
+      />
     );
   }
   return (
@@ -1610,7 +1614,14 @@ function ZeropsOperationDetail({
     environmentId,
     useCarried("log", () => false),
   );
-  return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
+  return (
+    <ZeropsOperationCard
+      headless
+      operation={cardOperationOf(operation, regions.service)}
+      threadRef={threadRef}
+      {...regions}
+    />
+  );
 }
 
 /**
@@ -1668,24 +1679,16 @@ interface OperationLineProps {
  * to its plop: its bar follows its pipeline, and the newest running one stands
  * open on its card (the pipeline's steps, the build's newest lines, the way to
  * the whole log) once the store has read any of it (pass 36: "the running
- * builds, their logs ... seem to be completely gone"). A batch deploy is a
- * line per service there, each read as a deploy of its own.
+ * builds, their logs ... seem to be completely gone"). A batch deploy is one
+ * line like any call: its bar a segment per service, its card the service the
+ * platform says is building.
  */
 function OperationBubble(props: OperationLineProps) {
   const inSlot = use(InSlotContext);
-  const line = use(ChatLineContext);
   if (!inSlot || props.noResult !== undefined || props.operation.kind !== "deploy") {
     return <OperationLine {...props} regions={null} />;
   }
-  if (props.operation.batch !== true) return <WatchedOperationBubble {...props} />;
-  return splitBatchDeploy(props.operation).map((service) => {
-    const serviceLine = slotServiceLine(line, service);
-    return (
-      <ChatLineContext key={service.key} value={serviceLine}>
-        <WatchedOperationBubble {...props} operation={service} />
-      </ChatLineContext>
-    );
-  });
+  return <WatchedOperationBubble {...props} />;
 }
 
 /** An operation in the live slot, with what its card reads of the platform. */
@@ -1735,7 +1738,14 @@ function OperationLine({
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = noResult === undefined && operation.phase === "running";
   // Live in the slot, its pipeline as it goes and the step it is on.
-  const live = running && inSlot ? liveOperationBar(operation, regions?.observed?.pipeline) : null;
+  // A batch's bar keeps a segment per service; a deploy's follows its pipeline.
+  const live =
+    running && inSlot
+      ? liveOperationBar(
+          operation,
+          operation.batch === true ? undefined : regions?.observed?.pipeline,
+        )
+      : null;
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
@@ -3178,13 +3188,17 @@ function LiveSlot({
   });
   const drawn = shown.slice(0, SLOT_MAX_ROWS);
   const more = slotRunningPast(shown);
+  // The deploy line standing open keeps standing until it plops.
+  const [heldOpen, setHeldOpen] = useState<string | null>(null);
   const standsOpen = slotOpenDeployLine(
     drawn.flatMap(({ item }) =>
       item.kind === "operation" && item.noResult === undefined
         ? [{ key: item.key, operation: item.operation }]
         : [],
     ),
+    heldOpen,
   );
+  if (standsOpen !== heldOpen) setHeldOpen(standsOpen);
   const lines = drawn
     .flatMap(({ item }) => {
       const line = itemLine(item, undone);
