@@ -28,6 +28,7 @@ describe("the drain", () => {
         }),
         Layer.succeed(GitHost, {
           git: Effect.fail(new NotLeader({ reason: "standby" })),
+          status: Effect.succeed({ git: "closed" as const, quarantined: [] }),
           opened: () => Effect.fail(new NotLeader({ reason: "standby" })),
           serve: () => Effect.die("no git"),
           close: note("git closed"),

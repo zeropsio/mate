@@ -17,6 +17,9 @@
  *
  * Afterwards no change branch is without its record, and a new change's number passes them all.
  *
+ * Neither looks into a repository the takeover quarantined (`withheld`, `gitHost.ts`): git cannot be
+ * read there until it converges, and the next takeover judges it.
+ *
  * Neither runs for an application whose import is unfinished (`importingApps`): the import records
  * a repository before it brings it, and its releases after, and agrees the two itself as it resumes
  * under the next leader (`importJob.ts`; migration-only, it goes with T14). The applications
@@ -62,11 +65,15 @@ export const importingApps = (
 /** How many recorded things git lacks, by kind; none when the records and git agree. */
 export type Missing = Readonly<Record<string, number>>;
 
-/** Every recorded commit git lacks, and every repository it lacks, counted by kind; `aside`'s not. */
+/**
+ * Every recorded commit git lacks, and every repository it lacks, counted by kind; `aside`'s
+ * applications not, nor what `withheld` repositories (`<appId>/<repo>`) hold.
+ */
 export const missing = (
   git: HqGit,
   sql: SqlClient.SqlClient,
   aside: ReadonlySet<string>,
+  withheld: ReadonlySet<string>,
 ): Effect.Effect<Missing, GitError | SqlError> =>
   Effect.gen(function* () {
     const kept = <A extends { readonly app_id: string }>(rows: ReadonlyArray<A>) =>
@@ -108,6 +115,7 @@ export const missing = (
       byRepo.set(key, [...(byRepo.get(key) ?? []), row]);
     }
     for (const [key, rows] of byRepo) {
+      if (withheld.has(key)) continue;
       if (!present.has(key)) {
         for (const row of rows) count(row.kind, 1);
         continue;
@@ -124,7 +132,8 @@ export const missing = (
         SELECT app_id::text AS app_id, tag FROM hq_release`,
     );
     for (const appId of new Set(releases.map((row) => row.app_id))) {
-      if (!present.has(`${appId}/${RECIPE_REPO}`)) continue;
+      const recipe = `${appId}/${RECIPE_REPO}`;
+      if (!present.has(recipe) || withheld.has(recipe)) continue;
       const tags = new Set(
         (yield* git.tags({ appId, id: RECIPE_REPO })).items.map((tag) => tag.name),
       );
@@ -142,12 +151,16 @@ interface ChangeRow {
   readonly state: string;
 }
 
-/** What git holds beyond the records, recorded, each logged `reconciled`; `aside`'s left to its import. */
+/**
+ * What git holds beyond the records, recorded, each logged `reconciled`; `aside`'s left to its
+ * import, `withheld` repositories to the takeover that serves them.
+ */
 export const catchUp = (
   git: HqGit,
   sql: SqlClient.SqlClient,
   leader: Leader["Service"],
   aside: ReadonlySet<string>,
+  withheld: ReadonlySet<string>,
 ): Effect.Effect<void, GitError | SqlError | NotLeader> =>
   Effect.gen(function* () {
     const apps = new Set(
@@ -162,7 +175,8 @@ export const catchUp = (
         .map((row) => `${row.app_id}/${row.name}`),
     );
     for (const repo of yield* git.list()) {
-      if (aside.has(repo.appId) || rows.has(`${repo.appId}/${repo.id}`)) continue;
+      const key = `${repo.appId}/${repo.id}`;
+      if (aside.has(repo.appId) || rows.has(key) || withheld.has(key)) continue;
       if (!apps.has(repo.appId)) {
         yield* Effect.logWarning("a repository of an application HQ does not know, left aside", {
           repo,
@@ -175,11 +189,13 @@ export const catchUp = (
       rows.add(`${repo.appId}/${repo.id}`);
     }
     for (const key of rows) {
+      if (withheld.has(key)) continue;
       const [appId = "", id = ""] = key.split("/");
       yield* changesOf(git, sql, leader, { appId, id });
     }
     for (const appId of apps) {
-      if (rows.has(`${appId}/${RECIPE_REPO}`)) {
+      const recipe = `${appId}/${RECIPE_REPO}`;
+      if (rows.has(recipe) && !withheld.has(recipe)) {
         yield* releasesOf(git, sql, leader, { appId, id: RECIPE_REPO });
       }
     }

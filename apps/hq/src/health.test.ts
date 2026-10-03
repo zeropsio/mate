@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
@@ -12,6 +13,7 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Backup, type BackupStatus } from "./backup.ts";
+import { GitHost, type GitState, type Quarantined } from "./gitHost.ts";
 import { healthRoute } from "./health.ts";
 import { Leader, type LeaderStatus } from "./leader.ts";
 import { LoopWatch, type LoopStatus } from "./loopWatch.ts";
@@ -22,7 +24,8 @@ const QUIET: LoopStatus = { maxLagMs: 0, p99LagMs: 0, lastStall: null };
 
 /**
  * `GET /health` for a leader in `status` and the official verdict, over a pool on `databaseUrl`;
- * the event loop's watch as `loop`, the structure's recomputes of the last minute `recomputes`.
+ * the event loop's watch as `loop`, the structure's recomputes of the last minute `recomputes`;
+ * git open while the leader is active, else closed, unless `git` says otherwise.
  */
 const getHealth = (
   status: LeaderStatus,
@@ -32,6 +35,10 @@ const getHealth = (
   backup: BackupStatus = { state: "off" },
   loop: LoopStatus = QUIET,
   recomputes = 0,
+  git: { readonly git: GitState; readonly quarantined: ReadonlyArray<Quarantined> } = {
+    git: status.state === "active" ? "open" : "closed",
+    quarantined: [],
+  },
 ) =>
   Effect.gen(function* () {
     const handler = yield* HttpRouter.toHttpEffect(healthRoute("b1"));
@@ -58,6 +65,20 @@ const getHealth = (
           Layer.succeed(Backup, { take: Effect.die("no sets"), status: Effect.succeed(backup) }),
           Layer.succeed(LoopWatch, { status: Effect.succeed(loop) }),
           Layer.succeed(Recomputes, { count: Effect.void, lastMinute: Effect.succeed(recomputes) }),
+          Layer.effect(
+            GitHost,
+            Effect.map(Queue.unbounded<never>(), (pushes) =>
+              GitHost.of({
+                git: Effect.die("no git"),
+                status: Effect.succeed(git),
+                opened: () => Effect.die("no git"),
+                serve: () => Effect.die("no git"),
+                close: Effect.void,
+                recorded: Stream.make(0),
+                pushes,
+              }),
+            ),
+          ),
           PgClient.layer({ url: Redacted.make(databaseUrl), connectTimeout: Duration.seconds(1) }),
         ),
       ),
@@ -113,6 +134,7 @@ describe("GET /health", () => {
               state: leader.state,
               official,
               db: database,
+              git: leader.state === "active" ? "open" : "closed",
               backup: { state: "off" },
               loop: QUIET,
               recomputes: 0,
@@ -142,6 +164,7 @@ describe("GET /health", () => {
               reason: "restore_mismatch",
               official: "ok",
               db: "up",
+              git: "closed",
               backup: { state: "off" },
               loop: QUIET,
               recomputes: 0,
@@ -172,6 +195,7 @@ describe("GET /health", () => {
               state: "active",
               official: "ok",
               db: "up",
+              git: "open",
               backup,
               loop: QUIET,
               recomputes: 0,
@@ -217,6 +241,7 @@ describe("GET /health", () => {
                 state: "active",
                 official: "ok",
                 db: "up",
+                git: "open",
                 backup: { state: "off" },
                 loop,
                 recomputes: 480,
@@ -242,6 +267,42 @@ describe("GET /health", () => {
         yield* watching.close;
         assert.deepStrictEqual(Object.keys(health.loop), ["maxLagMs", "p99LagMs", "lastStall"]);
         assert.isAtLeast(health.recomputes, 1);
+      }),
+    );
+
+    // H2: git as this Core holds it, and the repositories it quarantined, reported.
+    it.effect("tells where git stands and lists the repositories it quarantined", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const quarantined = [{ repo: "A1/web", reason: "converge_git_failed" }];
+        const response = yield* getHealth(
+          { state: "active", epoch: 3 },
+          "ok",
+          url,
+          null,
+          { state: "off" },
+          QUIET,
+          0,
+          { git: "open", quarantined },
+        );
+        assert.deepStrictEqual(
+          [response.status, response.body],
+          [
+            200,
+            {
+              state: "active",
+              official: "ok",
+              db: "up",
+              git: "open",
+              quarantined,
+              backup: { state: "off" },
+              loop: QUIET,
+              recomputes: 0,
+              epoch: 3,
+              build: "b1",
+            },
+          ],
+        );
       }),
     );
   });

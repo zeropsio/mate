@@ -10,6 +10,12 @@
  * missed (`hq_git_event`); it closes when the lead goes, and on shutdown before the lead is given
  * up (`core.ts`), so no git of this instance outlives its lead.
  *
+ * The takeover is the barrier before git serves: one that fails opens nothing, and the opening is
+ * tried again while this Core leads. A repository that does not converge is quarantined, not the
+ * whole of git: it refuses every read and write (`unavailable`, its reason named), the takeover
+ * judges nothing in it, `/health` lists it, and it is tried again every `quarantineRetry` — once it
+ * converges, git opens again and the takeover judges it with the rest.
+ *
  * Every ref the layer writes reaches the durable log through its events: a change branch's push
  * moves the change's head, `main` moving moves the repository's. Each also judges again whether a
  * change merges: a push its own change, a move of `main` the repository's open ones.
@@ -21,6 +27,7 @@ import type * as NodeHttp from "node:http";
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import {
   type GitEvent,
+  GitError,
   type GitService,
   type HqGit,
   type Principal,
@@ -28,6 +35,7 @@ import {
   gitTarget,
   makeHqGit,
 } from "@t3tools/hq-git";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
@@ -57,14 +65,32 @@ export interface PushedChange {
   readonly number: number;
 }
 
+/** Where git stands on this Core: open, opening (leading, its takeover not through), or closed. */
+export type GitState = "open" | "opening" | "closed";
+
+/** A repository withheld from every read and write until it converges, and why. */
+export interface Quarantined {
+  /** `<appId>/<repo>`. */
+  readonly repo: string;
+  readonly reason: string;
+}
+
 /** A Mate as git serves it, decided by Core before the layer sees the request. */
 export type MatePrincipal = Extract<Principal, { readonly kind: "mate" }>;
 
 export class GitHost extends Context.Service<
   GitHost,
   {
-    /** The git layer, while this Core leads and has it open. */
+    /**
+     * The git layer, while this Core leads and has it open; a quarantined repository's every
+     * operation fails `unavailable`, its reason the message.
+     */
     readonly git: Effect.Effect<HqGit, NotLeader>;
+    /** Where git stands, and the repositories it withholds. */
+    readonly status: Effect.Effect<{
+      readonly git: GitState;
+      readonly quarantined: ReadonlyArray<Quarantined>;
+    }>;
     /**
      * The git layer once open, waited for up to `wait`: it opens a moment after the lead, its
      * takeover converging every repository first. Not open by then is `NotLeader`.
@@ -76,7 +102,7 @@ export class GitHost extends Context.Service<
      * so a verb is never chosen on another reading of its address — and answers who serves it, or
      * fails, and the layer serves nothing; a request the layer reads as no service is the layer's
      * to refuse. The layer then serves a repository only where `mayRead` allows it, and applies its
-     * own write rules to a push.
+     * own write rules to a push. A quarantined repository is refused `unavailable`.
      */
     readonly serve: <E, R>(
       request: HttpServerRequest.HttpServerRequest,
@@ -85,7 +111,7 @@ export class GitHost extends Context.Service<
         readonly service: GitService;
       }) => Effect.Effect<MatePrincipal, E, R>,
       mayRead: (repo: Repo) => Effect.Effect<boolean>,
-    ) => Effect.Effect<void, E | NotLeader, R>;
+    ) => Effect.Effect<void, E | NotLeader | GitError, R>;
     /** Closes the layer for good: on shutdown, before the lead is given up. */
     readonly close: Effect.Effect<void>;
     /** Ticks after the log has followed a ref that moved, starting with the current tick. */
@@ -139,6 +165,8 @@ export const gitHostLayer = (options: {
   readonly importRoots?: ReadonlyArray<string>;
   /** The first pause before opening git again after it failed, doubling up to 30 s; 1 s. */
   readonly openBackoff?: Duration.Duration;
+  /** How often a quarantined repository is tried again; 1 min. */
+  readonly quarantineRetry?: Duration.Duration;
 }): Layer.Layer<GitHost, never, Leader | SqlClient.SqlClient> =>
   Layer.effect(
     GitHost,
@@ -150,6 +178,11 @@ export const gitHostLayer = (options: {
       /** Who each request in flight is, as Core decided it, and what it may read. */
       const principals = new WeakMap<NodeHttp.IncomingMessage, Principal>();
       const readers = new WeakMap<Principal, (repo: Repo) => Effect.Effect<boolean>>();
+
+      const state = yield* Ref.make<GitState>("closed");
+      /** The quarantined repositories by `<appId>/<repo>`, and why. */
+      const quarantined = yield* Ref.make<ReadonlyMap<string, string>>(new Map());
+      const keyOf = (repo: Repo) => `${repo.appId}/${repo.id}`;
 
       const event = (repo: Repo, kind: GitEventKind, number: number | null, data: object) =>
         appendEvent(sql, { kind, appId: repo.appId, repo: repo.id, number, data });
@@ -258,26 +291,38 @@ export const gitHostLayer = (options: {
       const takeover = (git: HqGit) =>
         Effect.gen(function* () {
           const found: Array<PushedChange> = [];
+          const withheld = new Map<string, string>();
           for (const repo of yield* git.list()) {
-            yield* git
-              .convergeRepo(repo)
-              .pipe(Effect.catch((error) => Effect.logWarning("git converge failed", error)));
+            const converged = yield* Effect.exit(git.convergeRepo(repo));
+            if (Exit.isFailure(converged)) {
+              const error = Cause.findErrorOption(converged.cause);
+              const reason = `converge_${Option.isSome(error) ? error.value.reason : "failed"}`;
+              withheld.set(keyOf(repo), reason);
+              yield* Effect.logError("repository quarantined: it did not converge", {
+                repo,
+                reason,
+              });
+            }
           }
+          yield* Ref.set(quarantined, withheld);
+          const aside = new Set(withheld.keys());
           // An unfinished import agrees its own application's records and git as it resumes
           // (`reconcile.ts`); every other application is judged and caught up.
           const importing = yield* importingApps(sql);
-          const lacked = yield* missing(git, sql, importing);
+          const lacked = yield* missing(git, sql, importing, aside);
           if (Object.keys(lacked).length > 0) {
             yield* Effect.logError("HQ's records name what git lacks: serving nothing", lacked);
             yield* leader.hold("restore_mismatch");
             return found;
           }
-          yield* catchUp(git, sql, leader, importing);
-          const repos = yield* sql<{
+          yield* catchUp(git, sql, leader, importing, aside);
+          const repos = (yield* sql<{
             readonly app_id: string;
             readonly name: string;
             readonly main_head: string | null;
-          }>`SELECT app_id::text AS app_id, name, main_head FROM hq_repo`;
+          }>`SELECT app_id::text AS app_id, name, main_head FROM hq_repo`).filter(
+            (row) => !aside.has(`${row.app_id}/${row.name}`),
+          );
           for (const row of repos) {
             const repo = { appId: row.app_id, id: row.name };
             const main = yield* mainOf(git, repo).pipe(Effect.option);
@@ -296,6 +341,7 @@ export const gitHostLayer = (options: {
             FROM hq_change WHERE state = 'open'`;
           for (const row of open) {
             const repo = { appId: row.app_id, id: row.repo };
+            if (aside.has(keyOf(repo))) continue;
             const head = yield* git
               .changeHead(repo, row.mate_project_id, row.number)
               .pipe(Effect.option);
@@ -327,6 +373,9 @@ export const gitHostLayer = (options: {
       )(
         Effect.gen(function* () {
           if ((yield* Ref.get(stopped)) || Option.isSome(yield* Ref.get(current))) return;
+          // Only while leading: the lead may have gone since the opening was asked for.
+          if ((yield* leader.status).state !== "active") return;
+          yield* Ref.set(state, "opening");
           const scope = yield* Scope.make();
           // Events come only after a write, so never before the layer is here.
           const opened: { git?: HqGit } = {};
@@ -366,12 +415,12 @@ export const gitHostLayer = (options: {
             Effect.tapError(() => Scope.close(scope, Exit.void)),
           );
           opened.git = git;
+          // The takeover is the barrier: one that fails opens nothing, and the opening is tried again.
           const open = yield* takeover(git).pipe(
-            Effect.catch((error) =>
-              Effect.as(Effect.logWarning("git takeover reconcile failed", error), []),
-            ),
+            Effect.tapError(() => Scope.close(scope, Exit.void)),
           );
           yield* Ref.set(current, Option.some({ git, scope }));
+          yield* Ref.set(state, "open");
           yield* Effect.logInfo("git open");
           // Judged once the layer serves: what the last lead left open is judged again.
           yield* Queue.offerAll(pushes, open);
@@ -384,6 +433,9 @@ export const gitHostLayer = (options: {
       )(
         Effect.gen(function* () {
           const open = yield* Ref.getAndSet(current, Option.none());
+          yield* Ref.set(state, "closed");
+          // What the next takeover quarantines is its own to say.
+          yield* Ref.set(quarantined, new Map());
           if (Option.isSome(open)) {
             yield* Scope.close(open.value.scope, Exit.void);
             yield* Effect.logInfo("git closed");
@@ -412,13 +464,73 @@ export const gitHostLayer = (options: {
       );
       yield* Effect.addFinalizer(() => shut);
 
+      // A quarantined repository is tried again; once it converges, git opens again, so the
+      // takeover judges it with the rest before it serves.
+      yield* Effect.forkScoped(
+        Effect.gen(function* () {
+          const opened = yield* Ref.get(current);
+          const withheld = yield* Ref.get(quarantined);
+          if (Option.isNone(opened) || withheld.size === 0) return;
+          for (const key of withheld.keys()) {
+            const [appId = "", id = ""] = key.split("/");
+            if (Exit.isSuccess(yield* Effect.exit(opened.value.git.convergeRepo({ appId, id })))) {
+              yield* Effect.logInfo("quarantined repository converged: git opens again", { key });
+              yield* Effect.uninterruptible(shut);
+              yield* Effect.uninterruptible(open).pipe(
+                Effect.tapError((error) => Effect.logError("git open failed", error)),
+                Effect.retry(backoff),
+              );
+              return;
+            }
+          }
+        }).pipe(
+          Effect.catch((error) => Effect.logError("git open failed", error)),
+          Effect.repeat(Schedule.spaced(options.quarantineRetry ?? Duration.minutes(1))),
+        ),
+      );
+
+      /** `git` refusing every operation on a quarantined repository. */
+      const guarded = (git: HqGit): HqGit =>
+        new Proxy(git, {
+          get: (target, property, receiver) => {
+            const value: unknown = Reflect.get(target, property, receiver);
+            if (typeof value !== "function" || property === "handler") return value;
+            const call = value as (...all: Array<unknown>) => Effect.Effect<unknown>;
+            return (...args: Array<unknown>) => {
+              const [repo] = args;
+              if (typeof repo !== "object" || repo === null || !("appId" in repo && "id" in repo)) {
+                return call.apply(target, args);
+              }
+              return Effect.flatMap(Ref.get(quarantined), (withheld) => {
+                const reason = withheld.get(keyOf(repo as Repo));
+                return reason === undefined
+                  ? call.apply(target, args)
+                  : Effect.fail(
+                      new GitError({
+                        operation: String(property),
+                        reason: "unavailable",
+                        message: reason,
+                      }),
+                    );
+              });
+            };
+          },
+        });
+
       const git = Effect.flatMap(Ref.get(current), (open) =>
         Option.isSome(open)
-          ? Effect.succeed(open.value.git)
+          ? Effect.succeed(guarded(open.value.git))
           : Effect.fail(new NotLeader({ reason: "standby" })),
       );
       return GitHost.of({
         git,
+        status: Effect.gen(function* () {
+          const withheld = yield* Ref.get(quarantined);
+          return {
+            git: yield* Ref.get(state),
+            quarantined: [...withheld].map(([repo, reason]) => ({ repo, reason })),
+          };
+        }),
         opened: (wait) =>
           git.pipe(
             Effect.retry(Schedule.spaced(Duration.millis(50))),
@@ -435,6 +547,14 @@ export const gitHostLayer = (options: {
             const target = gitTarget(GIT_PREFIX, req.url ?? "");
             if (target !== null && target.service !== null) {
               const principal = yield* decide({ repo: target.repo, service: target.service });
+              const reason = (yield* Ref.get(quarantined)).get(keyOf(target.repo));
+              if (reason !== undefined) {
+                return yield* new GitError({
+                  operation: "serve",
+                  reason: "unavailable",
+                  message: reason,
+                });
+              }
               principals.set(req, principal);
               readers.set(principal, mayRead);
             }
