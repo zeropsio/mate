@@ -129,6 +129,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         }
       : {
           kind: coming.kind,
+          pressed: true,
           sentence: comingSentenceOf({ coming, progress, nowMs }),
           below: (
             <ComingBelow

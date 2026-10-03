@@ -607,6 +607,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           : {
               kind: shown.kind,
               over: handing,
+              pressed: made !== undefined,
               sentence:
                 finish !== undefined && shown.kind === "coming"
                   ? finish.line

@@ -7225,6 +7225,23 @@ button.rv-relrow:hover .rv-relrow-go {
   text-wrap: balance;
 }
 
+/* A press's words on a narrow screen: keeping the tab open wraps to two lines where a stop's
+   takes one, and "could not be added to …" wraps where "is coming up on …" does not — so the
+   headline and the sentence each hold two lines' room from the press, the headline set on its
+   last lines, next to its sentence: a stop, and Try again, move nothing. */
+@media (max-width: 639px) {
+  .arrival-headline[data-pressed] {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 64px;
+  }
+
+  .arrival-sentence[data-pressed] {
+    min-height: 44px;
+  }
+}
+
 /* A stop's one way on, and a stage's press: centred under the sentence. */
 .arrival-acts {
   display: flex;
