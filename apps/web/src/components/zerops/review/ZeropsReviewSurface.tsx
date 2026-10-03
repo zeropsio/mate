@@ -15,6 +15,7 @@
  */
 import type { ChangeDiffFile, ReviewTone, ReviewVerdict } from "@t3tools/client-runtime/zerops";
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   ArrowLeftIcon,
@@ -38,6 +39,7 @@ import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
 
 import { MateFace } from "../primitives";
+import { ZeropsDeployAnswer } from "../ZeropsDeployAnswer";
 import {
   changeFileLetter,
   diffFold,
@@ -104,8 +106,6 @@ export interface ZeropsReviewSurfaceProps {
   /** The one line of provenance under the title. */
   readonly meta?: ReactNode;
   readonly verdict: ReviewVerdict;
-  /** What HQ answered of the deploys the press asked for, said under the verdict. */
-  readonly deploys?: ReactNode;
   /** "Ask Nova to resolve it": the fix, where there is a Mate of the person's to ask. */
   readonly fix?: ReviewButton | undefined;
   /** The sections, in reading order. */
@@ -136,7 +136,6 @@ export function ZeropsReviewSurface({
   titleId,
   meta,
   verdict,
-  deploys,
   fix,
   children,
   consequence,
@@ -202,7 +201,6 @@ export function ZeropsReviewSurface({
           </button>
         )}
       </div>
-      {deploys}
       <div className="rv-body">{children}</div>
       <footer className="rv-foot">
         <span className="rv-conseq">{consequence}</span>
@@ -675,26 +673,13 @@ export function ReviewReleaseRows({
   );
 }
 
-/** Where it goes: each service and the commit it redeploys from. */
+/** Where it goes: the planned deploy, replaced by HQ's answer after the press. */
 export function ReviewWhere({
   rows,
+  answer,
 }: {
-  readonly rows: ReadonlyArray<{ readonly service: string; readonly line: string }>;
+  readonly rows?: ReadonlyArray<{ readonly service: string; readonly line: string }> | undefined;
+  readonly answer?: HqDeployAnswer | undefined;
 }) {
-  return (
-    <div className="rv-where">
-      {rows.map((row) => (
-        <WhereRow key={row.service} line={row.line} service={row.service} />
-      ))}
-    </div>
-  );
-}
-
-function WhereRow({ service, line }: { readonly service: string; readonly line: string }) {
-  return (
-    <>
-      <b>{service}</b>
-      <span>{line}</span>
-    </>
-  );
+  return <ZeropsDeployAnswer answer={answer} rows={rows} />;
 }

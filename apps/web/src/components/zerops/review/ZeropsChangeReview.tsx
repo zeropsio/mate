@@ -76,6 +76,7 @@ import { ReviewDescription } from "./ReviewDescription";
 import {
   ReviewFiles,
   ReviewSection,
+  ReviewWhere,
   ReviewSize,
   ZeropsReviewSurface,
   type ReviewButton,
@@ -502,6 +503,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
     readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout;
   const mine = mate.mine ? mate : undefined;
+  const answer = answeredDeploys(press);
   const fix = model.verdict.fix;
   // Once merged, its one button is the release's review.
   const next = model.primary?.label === REVIEW_RELEASE_LABEL;
@@ -579,8 +581,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
-      deploys={answeredDeploys(press)}
     >
+      {answer === undefined ? null : (
+        <ReviewSection title="Where">
+          <ReviewWhere answer={answer} />
+        </ReviewSection>
+      )}
       <ReviewDescription
         description={pull.description}
         hqAddress={props.hqAddress}

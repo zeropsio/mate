@@ -5,6 +5,7 @@
  */
 import { changeReadout, releaseOffer, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
+import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -188,6 +189,36 @@ const textOf = (html: string) =>
     .trim();
 
 describe("ChangeReviewView: a change after its merge", () => {
+  it("says the merge's deploy state once in the dialog's Where section", () => {
+    const markup = render(merged(), [], {
+      press: {
+        kind: "done",
+        deploys: {
+          jobs: [
+            {
+              environment: "stage",
+              kind: "deploy",
+              service: "app",
+              sha: MAIN,
+              job: "1",
+              state: "queued",
+              processId: null,
+              behind: "0",
+              reason: null,
+            },
+          ],
+          note: "Production could not be read.",
+        },
+      },
+    });
+    const document = new Window().document;
+    document.body.innerHTML = markup;
+    const job = document.querySelector('[data-zerops-job-state="queued"]');
+    expect(job?.closest("section")?.querySelector("h3")?.textContent).toBe("Where");
+    expect(job?.closest("section")?.parentElement?.classList.contains("rv-body")).toBe(true);
+    expect(document.body.textContent.match(/queued behind/g)).toHaveLength(1);
+    expect(document.body.textContent.match(/Production could not be read/g)).toHaveLength(1);
+  });
   it.each([
     [
       "a recipe change to recipes nothing in the project is made from",

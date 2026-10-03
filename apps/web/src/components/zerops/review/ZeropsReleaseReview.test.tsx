@@ -4,6 +4,8 @@
  * leaves production and what comes back.
  */
 import { HQ_WRITE_UNCERTAIN } from "@t3tools/client-runtime/zerops/hq";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -15,6 +17,23 @@ import {
 } from "./ZeropsReleaseReview";
 
 const NOW = Date.parse("2026-10-02T10:00:00.000Z");
+
+const DEPLOYS: HqDeployAnswer = {
+  jobs: [
+    {
+      environment: "xyz-production",
+      kind: "deploy",
+      service: "app",
+      sha: "96e2309".padEnd(40, "0"),
+      job: "1",
+      state: "building",
+      processId: "process-1",
+      behind: null,
+      reason: null,
+    },
+  ],
+  note: null,
+};
 
 function render(over: Partial<ReleaseReviewViewProps>): string {
   return renderToStaticMarkup(
@@ -200,6 +219,36 @@ describe("RollbackReviewView", () => {
     const markup = renderRollback(over);
     for (const words of says) expect(markup).toContain(words);
   });
+});
+
+describe("a review's deploy answer belongs to its service in Where", () => {
+  it.each(["release", "rollback"] as const)(
+    "says the %s deploy once, inside the content section",
+    (kind) => {
+      const markup =
+        kind === "release"
+          ? render({
+              press: { kind: "done", deploys: DEPLOYS },
+              outcome: { kind: "releasing" },
+              untold: ["app"],
+            })
+          : renderRollback({
+              press: { kind: "done", deploys: DEPLOYS },
+              outcome: { kind: "releasing" },
+              untold: ["app"],
+            });
+      const document = new Window().document;
+      document.body.innerHTML = markup;
+      const job = document.querySelector('[data-zerops-job-state="building"]');
+      expect(job?.closest("section")?.querySelector("h3")?.textContent).toBe("Where");
+      expect(job?.closest("section")?.parentElement?.classList.contains("rv-body")).toBe(true);
+      expect(document.body.textContent.match(/96e2309/g)).toHaveLength(1);
+      expect(document.body.textContent).not.toContain("app is deploying");
+      expect(document.body.textContent).not.toContain("Can't tell what app runs");
+      expect(document.body.textContent).not.toContain("redeploys from 3fa9c21");
+      expect(document.body.textContent).not.toContain("goes back to 7e1c0d2");
+    },
+  );
 });
 
 describe("a roll back that hasn't landed", () => {

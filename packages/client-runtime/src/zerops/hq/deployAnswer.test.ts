@@ -84,7 +84,7 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
       text: "The recipe's services: added cache",
     },
   ])("says $name", ({ job, text }) => {
-    expect(deployAnswerSaid({ jobs: [job], note: null }).environments).toEqual([
+    expect(deployAnswerSaid({ jobs: [job], note: null }).environments).toMatchObject([
       { environment: "stage", jobs: [{ state: job.state, text }] },
     ]);
   });
@@ -98,7 +98,7 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
       ],
       note: "  the stage tier was refused: invalid ",
     });
-    expect(said).toEqual({
+    expect(said).toMatchObject({
       environments: [
         {
           environment: "stage",
@@ -114,6 +114,29 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
       ],
       note: "the stage tier was refused: invalid",
     });
+  });
+
+  it("gives the same outcome without the service name for its existing row", () => {
+    const [environment] = deployAnswerSaid({
+      jobs: [outcome({ state: "queued", behind: "9" })],
+      note: null,
+    }).environments;
+    expect(environment?.jobs[0]).toMatchObject({
+      service: "web",
+      line: "5c3ea18 queued behind the build under way",
+    });
+  });
+
+  it.each([
+    ["refused", "no deploy key", "HQ refused: no deploy key"],
+    ["skipped", "no recipe", "skipped: no recipe"],
+    ["live", "already runs it", "already runs it"],
+  ] as const)("says a %s answer without a commit, on its service's row", (state, reason, line) => {
+    const [environment] = deployAnswerSaid({
+      jobs: [outcome({ state, reason, sha: null })],
+      note: null,
+    }).environments;
+    expect(environment?.jobs[0]?.line).toBe(line);
   });
 
   it("says nothing of an event that asked for nothing", () => {

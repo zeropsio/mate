@@ -10,6 +10,7 @@ import {
   type ReviewClose,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { CrewTask } from "@t3tools/contracts";
 import type {
   ChangeCommit,
@@ -501,7 +502,11 @@ function Rollback({
   leaving = LEAVING,
   comingBack = NOTHING_BACK,
   untold = NONE_OPEN,
+  press = IDLE,
+  outcome = OFFERED,
 }: {
+  readonly press?: ReviewPress;
+  readonly outcome?: Parameters<typeof RollbackReviewView>[0]["outcome"];
   readonly leaving?: RollbackList;
   readonly comingBack?: RollbackList;
   readonly untold?: ReadonlyArray<string>;
@@ -519,8 +524,8 @@ function Rollback({
       onClose={noop}
       onOpenChange={noop}
       onRollBack={noop}
-      outcome={OFFERED}
-      press={IDLE}
+      outcome={outcome}
+      press={press}
       services={["app", "api"]}
       tag="v0.1.55"
       untold={untold}
@@ -543,7 +548,9 @@ function Release({
   titleId,
   onOpenChange,
   onClose = noop,
+  over,
 }: {
+  readonly over?: Partial<Parameters<typeof ReleaseReviewView>[0]>;
   readonly outcome?: Parameters<typeof ReleaseReviewView>[0]["outcome"];
   readonly press?: ReviewPress;
   readonly titleId?: string | undefined;
@@ -571,6 +578,7 @@ function Release({
       tag="v0.1.57"
       untold={[]}
       where={WHERE}
+      {...over}
     />
   );
 }
@@ -660,6 +668,46 @@ function Settling({
 
 /** How long a settling review's reads take, as a slow Gitea answers. */
 const SETTLE_MS = 1_500;
+
+/** Immediate deploy answers, before the same jobs arrive in HQ's stream. */
+const DEPLOY_ANSWER: HqDeployAnswer = {
+  jobs: [
+    {
+      environment: "xyz-production",
+      kind: "deploy",
+      service: "app",
+      sha: "96e2309".padEnd(40, "0"),
+      job: "1",
+      state: "building",
+      processId: "process-1",
+      behind: null,
+      reason: null,
+    },
+  ],
+  note: null,
+};
+const QUEUED_ANSWER: HqDeployAnswer = {
+  jobs: [
+    ...DEPLOY_ANSWER.jobs,
+    {
+      ...DEPLOY_ANSWER.jobs[0]!,
+      service: "api",
+      job: "2",
+      state: "queued",
+      processId: null,
+      behind: "1",
+    },
+    {
+      ...DEPLOY_ANSWER.jobs[0]!,
+      environment: "xyz-stage",
+      job: "3",
+      state: "skipped",
+      processId: null,
+      reason: "This tier has no deploy key.",
+    },
+  ],
+  note: "The preview tier could not be read.",
+};
 
 export const REVIEW_STATES: ReadonlyArray<{
   readonly id: string;
@@ -910,6 +958,93 @@ export const REVIEW_STATES: ReadonlyArray<{
         }}
         readout={recipeRead(MADE_FROM_TIERS)}
         run={{ words: undefined, reading: false }}
+      />
+    ),
+  },
+  {
+    id: "release-deploy-answer",
+    label: "Release · xyz v0.1.2, app building",
+    node: (
+      <Release
+        press={{ kind: "done", deploys: DEPLOY_ANSWER }}
+        outcome={{ kind: "releasing", progress: "Production redeploys from v0.1.2 · 0:10" }}
+        over={{
+          name: "xyz",
+          tag: "v0.1.2",
+          replaces: { kind: "release", tag: "v0.1.1" },
+          services: ["app"],
+          untold: ["app"],
+          where: [{ service: "app", line: "redeploys from 96e2309" }],
+        }}
+      />
+    ),
+  },
+  {
+    id: "release-deploy-queued",
+    label: "Release · multiple environments, queued and skipped",
+    node: (
+      <Release press={{ kind: "done", deploys: QUEUED_ANSWER }} outcome={{ kind: "releasing" }} />
+    ),
+  },
+  {
+    id: "release-deploy-refused",
+    label: "Release · deploy refused",
+    node: (
+      <Release
+        press={{
+          kind: "done",
+          deploys: {
+            ...DEPLOY_ANSWER,
+            jobs: DEPLOY_ANSWER.jobs.map((job) => ({
+              ...job,
+              state: "refused",
+              processId: null,
+              reason: "Zerops did not answer: timeout.",
+            })),
+          },
+        }}
+        outcome={{ kind: "releasing" }}
+      />
+    ),
+  },
+  {
+    id: "rollback-deploy-answer",
+    label: "Roll back · queued deploy",
+    node: (
+      <Rollback
+        press={{ kind: "done", deploys: QUEUED_ANSWER }}
+        outcome={{ kind: "releasing" }}
+        untold={["app"]}
+      />
+    ),
+  },
+  {
+    id: "merged-deploy-answer",
+    label: "Merged · stage building, production skipped",
+    node: <Change press={{ kind: "done", deploys: QUEUED_ANSWER }} />,
+  },
+  {
+    id: "recipe-deploy-answer",
+    label: "Recipe merged · services being added",
+    node: (
+      <Change
+        over={{ ...RECIPE, ...MERGED_NOW }}
+        readout={recipeRead(MADE_FROM_TIERS)}
+        press={{
+          kind: "done",
+          deploys: {
+            jobs: [
+              {
+                ...DEPLOY_ANSWER.jobs[0]!,
+                environment: "stage",
+                kind: "delta",
+                service: null,
+                sha: null,
+              },
+            ],
+            note: null,
+          },
+        }}
       />
     ),
   },
