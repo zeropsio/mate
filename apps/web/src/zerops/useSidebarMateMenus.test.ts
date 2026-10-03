@@ -106,4 +106,16 @@ describe("mateMenuTarget — where a Mate's own menu acts", () => {
       }),
     ).toEqual({ environmentId: "env-vera", finished: shell });
   });
+
+  it("stops a working Mate this page holds no socket to on HQ's environment", () => {
+    const working = { ...activity, face: "working" } as ZeropsAgentActivity;
+    expect(
+      mateMenuTarget({
+        environmentId: undefined,
+        told: VERA,
+        activity: working,
+        completedAt: new Map(),
+      }).stop,
+    ).toEqual({ environmentId: "env-vera", input: { threadId: "t1" } });
+  });
 });
