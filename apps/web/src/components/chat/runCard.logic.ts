@@ -108,6 +108,8 @@ export interface RunScrollFollow {
    * move the foot on under it, and reaching where it stood reaches it.
    */
   readonly reach: number | null;
+  /** Its foot as it was last read: where a move down that starts now sets out for. */
+  readonly foot: number | null;
 }
 
 /** What happened to the run's scroll, for whether it follows its foot. */
@@ -170,20 +172,29 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
     case "scrolled": {
       const { position } = event;
       const top = position.scrollTop;
+      const foot = footTop(position);
       if (top < state.stood - MOVED_PX) {
         // Onto its foot exactly: the browser clamped it there.
-        if (fromFoot(position) <= MOVED_PX) return { ...state, stood: top, reach: null };
-        return { follows: false, stood: top, opened: state.opened, resumes: false, reach: null };
+        if (fromFoot(position) <= MOVED_PX) return { ...state, stood: top, reach: null, foot };
+        return { ...state, follows: false, stood: top, resumes: false, reach: null, foot };
       }
       if (top > state.stood + MOVED_PX) {
-        const reach = state.reach ?? footTop(position);
+        // A line that landed since the move began is read with its first step.
+        const reach = state.reach ?? state.foot ?? foot;
         if (standsAtFoot(position) || top >= reach - FOLLOW_SLACK_PX) {
-          return { follows: true, stood: top, opened: NOTHING_OPENED, resumes: false, reach: null };
+          return {
+            follows: true,
+            stood: top,
+            opened: NOTHING_OPENED,
+            resumes: false,
+            reach: null,
+            foot,
+          };
         }
-        return { ...state, stood: top, reach };
+        return { ...state, stood: top, reach, foot };
       }
       // Less than a move: kept from where it stood, so a slow drag adds up.
-      return state;
+      return state.foot === foot ? state : { ...state, foot };
     }
   }
 }

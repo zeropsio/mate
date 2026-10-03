@@ -575,6 +575,7 @@ describe("followAfter", () => {
     opened: new Set(),
     resumes: false,
     reach: null,
+    foot: null,
   });
   const foot = { scrollTop: 560, scrollHeight: 1000, clientHeight: 440 };
   const nearFoot = { ...foot, scrollTop: 560 - FOLLOW_SLACK_PX };
@@ -773,6 +774,16 @@ describe("followAfter", () => {
       state = followAfter(state, read(400, 1035));
       state = followAfter(state, read(to, 1035));
       expect(state.follows).toBe(after);
+    });
+
+    // End pressed at a foot of 560; a line lands before the first read of
+    // the glide, which reads it grown already.
+    it("sets out for the foot it read last before the move", () => {
+      let state = at(false, 0);
+      state = followAfter(state, read(0, 1000));
+      state = followAfter(state, read(200, 1035));
+      state = followAfter(state, read(560, 1035));
+      expect(state.follows).toBe(true);
     });
 
     it("sets out anew once its move ends", () => {

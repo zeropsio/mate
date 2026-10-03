@@ -3716,6 +3716,7 @@ function RunScroll({
     opened: NOTHING_OPENED,
     resumes: false,
     reach: null,
+    foot: null,
   });
   const follow = useMemo(() => {
     const heard = (event: RunScrollEvent) => {
