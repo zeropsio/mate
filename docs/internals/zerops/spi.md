@@ -38,7 +38,9 @@ and OpenCode seams_ below): `apps/server/src/spi/threadToolPolicy.ts` (provider-
 options) and `apps/server/src/spi/codexThreadProfile.ts` (Codex's — `codexThreadSetup`, the
 translation of a profile into thread and turn params and an approval gate), and `apps/server/src/spi/mcpControl.ts`
 (the MCP tab's one driver hook, `ProviderAdapterShape.mcp`, built from Claude's, Codex's and OpenCode's
-native MCP calls; `mcpLive.ts` routes it across the instances from outside). They are the only `spi/`
+native MCP calls; `mcpLive.ts` routes it across the instances from outside), and
+`apps/server/src/spi/mcpToolTitle.ts` (the whole-name rule an ACP call's title names an MCP tool by,
+shared by the ACP gate and the tool-call reader; it imports nothing). They are the only `spi/`
 files `provider/**` may import, and they import only each other and packages (effect, contracts, the
 Claude Agent SDK, the Codex app-server schema) — any other spi file reaches `provider/**`, so one hop
 through it would make the two directories import each other.
@@ -211,17 +213,24 @@ driver (`toolCall.ts`'s `READERS` map):
 - `claudeAgent` — `{toolName, input, result}`; an MCP tool is `mcp__<server>__<tool>`.
 - `codex` — the `mcpToolCall` item only (see below).
 - `opencode` — `{tool, state}`; an MCP tool is `<server>_<tool>` (`zerops_zerops_deploy`), split
-  at the first `_` (`apply_patch` is native); the result is `state.output`, a failure
-  `state.error`, a picture a data-URL attachment.
-- `cursor`, `grok`, `antigravity` (ACP) — `{toolCallId, kind, rawInput, rawOutput, content,
-locations}` and no tool name: a call of kind `other` or none is named by its title
-  (`mcp__zerops__zerops_deploy`, `Running zerops_deploy`, `zerops-zerops_deploy`, a bare
-  `enter_plan_mode`), any other by its kind; the arguments are `rawInput`, the result the MCP
-  result in `rawOutput` first (the call's own `content` is cut to its 8 000-character tail), else
-  `content`. An ACP call sends no `item.started`: a consumer that waits for a start (the stand-up
-  relay) begins at its first `item.updated`.
+  at the first `_` — OpenCode's own underscored tools (`apply_patch`, `plan_exit`, `plan_enter`,
+  `lsp_*`) are never split; the result is `state.output`, a failure `state.error`, a picture a
+  data-URL attachment.
+- `cursor`, `grok`, `antigravity` (ACP) — `{toolCallId, kind, title, rawInput, rawOutput, content,
+locations}` and no tool name (`AcpRuntimeModel.ts` keeps the agent's own `title` in `data`, since
+  a later update's presentation says "Tool"). A title names an MCP tool only WHOLE, by the rule the
+  crew's gate reads it by (`mcpToolTitle.ts`: `mcp__server__tool`, `server: tool`, `server/tool`,
+  a bare name, after `Running `); a title that merely mentions `zerops_import.yaml` names nothing.
+  A call of a native kind is that kind's (`read`, `edit`, `execute`, `search` — `websearch` when
+  it asks for words with nowhere to look — ...) unless its title says for certain it is an MCP tool
+  (the `mcp__` spelling, a `zerops_*`/`crew_*` name) or its `rawInput` names `{server, toolName}`.
+  The arguments are `rawInput`, the result the MCP result in `rawOutput` first (the call's own
+  `content` is cut to its 8 000-character tail), else `content`. An ACP call sends no
+  `item.started`: a consumer that waits for a start (the stand-up relay) begins at its first
+  `item.updated`. Golden: `fixtures/cursor/mcp-calls` (synthetic, from the ACP spec's shapes).
 
-`ActivityPayloadProjection.ts` gives the client one form for all of them — `data.toolName`, the
+`ActivityPayloadProjection.ts` gives the client one form for all of them — `data.toolName` (an MCP
+tool as `mcp__<server>__<tool>`, so it is never taken for a native tool of its name), the
 input in Claude's keys at `data.input`, `data.files`, `data.imagePath` and a Zerops call's
 `data.zerops` — by the same shape-sniff (`sniffToolCallShape`, the activity's summary as an ACP
 call's title).
@@ -292,7 +301,8 @@ Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `cl
 1 synthetic Claude crew fixture (`crew-hooks`: a gate allow and deny, a first-prompt session start, a
 `terminal_reason`), 1 Codex fixture (`multi-agent-wire`, converted once from the upstream
 ported-zone test fixture `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) and 4 live
-baselines (cursor, grok, antigravity, opencode, each `synthetic: true`) = 10 goldens total. The
+baselines (cursor, grok, antigravity, opencode, each `synthetic: true`) and 1 synthetic Cursor MCP
+fixture (`mcp-calls`) = 11 goldens total. The
 no-crew goldens (`fixtures/claude-options/no-crew.expected.json`,
 `fixtures/codex-options/no-crew.expected.json`, §1a) are not replay goldens.
 
