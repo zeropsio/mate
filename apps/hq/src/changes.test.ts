@@ -106,7 +106,7 @@ describe("a Mate's changes in HQ", () => {
           addProject(fake, "P_MATE2");
           const second = yield* call("POST", `/api/apps/${appId}/projects`, {
             session: owner,
-            body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+            body: { projectId: "P_MATE2", kind: "mate", mate: { face: "face-2" } },
           });
           assert.strictEqual(second.status, 201);
           const other = { authorization: `Mate ${yield* enrollMate(call, fake, "P_MATE2")}` };
@@ -240,7 +240,7 @@ describe("a Mate's changes in HQ", () => {
         addProject(fake, "P_LONE");
         yield* call("POST", "/api/mates", {
           session: owner,
-          body: { projectId: "P_LONE", name: "Cy", face: "face-3" },
+          body: { projectId: "P_LONE", face: "face-3" },
         });
         const lone = yield* enrollMate(call, fake, "P_LONE");
         const refused = yield* call("POST", "/api/mate/repos", {
@@ -456,7 +456,7 @@ describe("a Mate's changes in HQ", () => {
           fake.projects.push({ ...fake.projects.find((p) => p.id === "P_MATE")!, id: "P_MATE2" });
           yield* call("POST", `/api/apps/${appId}/projects`, {
             session: owner,
-            body: { projectId: "P_MATE2", kind: "mate", mate: { name: "Bo", face: "face-2" } },
+            body: { projectId: "P_MATE2", kind: "mate", mate: { face: "face-2" } },
           });
           const other = { authorization: `Mate ${yield* enrollMate(call, fake, "P_MATE2")}` };
           const foreign = yield* call("PATCH", "/api/mate/changes/appdev/1", {
@@ -502,7 +502,7 @@ describe("a Mate's changes in HQ", () => {
           );
           const record = {
             projectId: "P_MATE",
-            name: "Ada",
+            name: "P_MATE",
             face: "face-1",
             standupRequestedBy: null,
             closedOff: false,

@@ -57,13 +57,12 @@ const anotherMate = (
   owner: string,
   appId: string,
   projectId: string,
-  name: string,
 ) =>
   Effect.gen(function* () {
     addProject(fake, projectId);
     yield* call("POST", `/api/apps/${appId}/projects`, {
       session: owner,
-      body: { projectId, kind: "mate", mate: { name, face: "face-2" } },
+      body: { projectId, kind: "mate", mate: { face: "face-2" } },
     });
     return { authorization: `Mate ${yield* enrollMate(call, fake, projectId)}` };
   });
@@ -94,7 +93,7 @@ describe("a takeover after git moved past HQ's records", () => {
             session: owner,
           });
           yield* open(ada.auth, "Ada's second");
-          const bo = yield* anotherMate(first.call, first.fake, owner, appId, "P_MATE2", "Bo");
+          const bo = yield* anotherMate(first.call, first.fake, owner, appId, "P_MATE2");
           yield* open(bo, "Bo's first");
           yield* first.stop;
 

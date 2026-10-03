@@ -362,15 +362,16 @@ describe("the migration's import", () => {
 
         const mates = yield* rowsWhere(
           url,
-          `SELECT project_id, name, face, standup_requested_by, closed_off_at IS NOT NULL AS closed
+          `SELECT project_id, face, standup_requested_by, closed_off_at IS NOT NULL AS closed
            FROM hq_mate ORDER BY project_id`,
           (rows) => rows.length === 2,
         );
+        // Main's name of a Mate is its project's in Zerops: HQ keeps none of it (D3).
         assert.deepStrictEqual(
           mates.map((row) => Object.values(row)),
           [
-            ["P_BEA", "Bea", "", "owner", true],
-            ["P_MATE", "Ada", "sky:pick", null, true],
+            ["P_BEA", "", "owner", true],
+            ["P_MATE", "sky:pick", null, true],
           ],
         );
       }).pipe(Effect.scoped),

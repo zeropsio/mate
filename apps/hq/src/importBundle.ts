@@ -72,8 +72,8 @@ export type Manifest = typeof Manifest.Type;
 /** A Zerops user's id, as main's `mate:by:<userId>` tag names the person who made a Mate. */
 const PERSON_ID = /^[A-Za-z0-9_-]{22}$/u;
 
+/** A Mate as main held it, its name aside: that is its project's in Zerops (D3). */
 export const BundleMate = Schema.Struct({
-  name: Name,
   face: Schema.String,
   standupRequestedBy: Schema.NullOr(Id),
   closedOff: Schema.Boolean,

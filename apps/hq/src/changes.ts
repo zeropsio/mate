@@ -581,8 +581,15 @@ export const changesLayer: Layer.Layer<
         // Read before the squash, from every commit of the change; a push since moves the head
         // the squash checks.
         const crew = onceEach(yield* git.changeTrailers(at, mate, number, CREW_TRAILERS));
-        const [record] = yield* sql<{ readonly name: string }>`
-          SELECT name FROM hq_mate WHERE project_id = ${mate}`;
+        // The Mate by its project's name in Zerops (D3), as the org's view has it; unnamed while
+        // that view cannot be read.
+        const name = yield* Effect.orElseSucceed(
+          Effect.map(
+            roles.view,
+            (view) => view.projects.find((project) => project.id === mate)?.name,
+          ),
+          () => undefined,
+        );
         const message =
           change.body.trim() === ""
             ? mergeSubject(change.title, number)
@@ -597,7 +604,7 @@ export const changesLayer: Layer.Layer<
             expectedHead,
             message,
             trailers: crew,
-            author: { name: record?.name ?? "Mate", email: `${mate}@mate.hq.invalid` },
+            author: { name: name ?? "Mate", email: `${mate}@mate.hq.invalid` },
           });
         });
         return yield* touched(

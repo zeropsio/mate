@@ -79,7 +79,7 @@ describe("HQ API", () => {
           const appId = (created.body as { readonly id: string }).id;
           const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
             session,
-            body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-3" } },
+            body: { projectId: "P_MATE", kind: "mate", mate: { face: "face-3" } },
           });
           assert.strictEqual(attached.status, 201);
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session })).body, {
@@ -94,7 +94,7 @@ describe("HQ API", () => {
                     name: "P_MATE",
                     kind: "mate",
                     mate: {
-                      name: "Ada",
+                      name: "P_MATE",
                       face: "face-3",
                       madeBy: "owner",
                       standupRequestedBy: null,
@@ -190,7 +190,7 @@ describe("HQ API", () => {
         const team = yield* made("Team");
         yield* call("POST", `/api/apps/${team}/projects`, {
           session,
-          body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-3" } },
+          body: { projectId: "P_MATE", kind: "mate", mate: { face: "face-3" } },
         });
         const onDisk = () => Effect.promise(() => NodeFSP.readdir(gitRoot));
         assert.include(yield* onDisk(), empty);
@@ -749,9 +749,9 @@ describe("HQ API", () => {
           }
           yield* call("POST", `/api/apps/${appId}/projects`, {
             session,
-            body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "sky:flower" } },
+            body: { projectId: "P_MATE", kind: "mate", mate: { face: "sky:flower" } },
           });
-          const shopWith = (mate: { readonly name: string; readonly face: string }) => ({
+          const shopWith = (face: string) => ({
             key: appId,
             value: {
               id: appId,
@@ -761,27 +761,27 @@ describe("HQ API", () => {
                   projectId: "P_MATE",
                   name: "P_MATE",
                   kind: "mate",
-                  mate: { ...mate, madeBy: "owner", standupRequestedBy: null, closedOff: false },
+                  mate: {
+                    name: "P_MATE",
+                    face,
+                    madeBy: "owner",
+                    standupRequestedBy: null,
+                    closedOff: false,
+                  },
                 },
               ],
               environments: [],
               births: [],
             },
           });
-          assert.deepStrictEqual(
-            yield* owner.next("change"),
-            shopWith({ name: "Ada", face: "sky:flower" }),
-          );
+          assert.deepStrictEqual(yield* owner.next("change"), shopWith("sky:flower"));
           // Its maker is named beside the structure, by the name Zerops gives them, with the member
           // id a project's OWNER entry would name them by.
           assert.deepStrictEqual(yield* owner.next("people"), {
             people: { owner: { name: "owner", clientUserId: "C-owner" } },
           });
-          yield* call("PATCH", "/api/mates/P_MATE", { session, body: { name: "Ada 2" } });
-          assert.deepStrictEqual(
-            yield* owner.next("change"),
-            shopWith({ name: "Ada 2", face: "sky:flower" }),
-          );
+          yield* call("PATCH", "/api/mates/P_MATE", { session, body: { face: "rose:seal" } });
+          assert.deepStrictEqual(yield* owner.next("change"), shopWith("rose:seal"));
 
           // Deleted in Zerops: the reconcile drops it, and the socket says so.
           fake.projects.splice(
@@ -820,21 +820,21 @@ describe("HQ API", () => {
           Effect.map(
             call("POST", "/api/births", {
               session,
-              body: { appId, name: "Gus", face: "rose:seal", standUp },
+              body: { appId, face: "rose:seal", standUp },
             }),
             (answer) => (answer.body as { readonly id: string }).id,
           );
         const attach = (projectId: string, extra: Record<string, unknown>) =>
           call("POST", `/api/apps/${appId}/projects`, {
             session,
-            body: { projectId, kind: "mate", mate: { name: "Gus", face: "rose:seal" }, ...extra },
+            body: { projectId, kind: "mate", mate: { face: "rose:seal" }, ...extra },
           });
         yield* attach("P_ASKED", { birth: yield* intent(true) });
         yield* attach("P_UNASKED", { birth: yield* intent(false) });
-        yield* attach("P_PLAIN", { mate: { name: "Gus", face: "rose:seal", standUp: true } });
+        yield* attach("P_PLAIN", { mate: { face: "rose:seal", standUp: true } });
         yield* call("POST", "/api/mates", {
           session,
-          body: { projectId: "P_MATE", name: "Ada", face: "face-1", standUp: true },
+          body: { projectId: "P_MATE", face: "face-1", standUp: true },
         });
         const read = (yield* call("GET", "/api/structure", { session })).body as {
           readonly apps: ReadonlyArray<{
@@ -861,6 +861,50 @@ describe("HQ API", () => {
       }),
     );
 
+    // D3: a client from before it still names the Mate in its writes. HQ takes them and keeps no
+    // name: the Mate goes by its project's in Zerops. A rename HQ no longer takes.
+    it.effect(
+      "takes a write that names a Mate, as a client before D3 sends it, keeping no name",
+      () =>
+        Effect.gen(function* () {
+          const { call } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, "door-owner");
+          const appId = (
+            (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
+              readonly id: string;
+            }
+          ).id;
+          const birth = yield* call("POST", "/api/births", {
+            session,
+            body: { appId, name: "Gus", face: "rose:seal" },
+          });
+          const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
+            session,
+            body: {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { name: "Gus", face: "rose:seal" },
+              birth: (birth.body as { readonly id: string }).id,
+            },
+          });
+          const renamed = yield* call("PATCH", "/api/mates/P_MATE", {
+            session,
+            body: { name: "Gus 2" },
+          });
+          assert.deepStrictEqual(
+            [birth.status, attached.status, renamed.status, renamed.body],
+            [201, 201, 400, { code: "invalid" }],
+          );
+          const read = (yield* call("GET", "/api/structure", { session })).body as {
+            readonly apps: ReadonlyArray<{
+              readonly projects: ReadonlyArray<{ readonly mate: { readonly name: string } | null }>;
+            }>;
+          };
+          assert.strictEqual(read.apps[0]?.projects[0]?.mate?.name, "P_MATE");
+        }),
+    );
+
     it.effect("records a Mate's birth intent in its application, and its attach closes it", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(true);
@@ -883,21 +927,18 @@ describe("HQ API", () => {
 
         const recorded = yield* call("POST", "/api/births", {
           session,
-          body: { appId, name: "Gus", face: "rose:seal" },
+          body: { appId, face: "rose:seal" },
         });
         const { id } = recorded.body as { readonly id: string };
-        assert.deepStrictEqual(
-          [recorded.status, recorded.body],
-          [201, { id, name: "Gus", face: "rose:seal" }],
-        );
-        assert.deepStrictEqual(yield* birthsOf, [{ id, name: "Gus", face: "rose:seal" }]);
+        assert.deepStrictEqual([recorded.status, recorded.body], [201, { id, face: "rose:seal" }]);
+        assert.deepStrictEqual(yield* birthsOf, [{ id, name: "", face: "rose:seal" }]);
 
         const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
           session,
           body: {
             projectId: "P_MATE",
             kind: "mate",
-            mate: { name: "Gus", face: "rose:seal" },
+            mate: { face: "rose:seal" },
             birth: id,
           },
         });
@@ -924,9 +965,15 @@ describe("HQ API", () => {
             mates: {},
             people: {},
           });
-          const ada = { name: "Ada", face: "sky:flower" };
+          const ada = { face: "sky:flower" };
           // Who made it is the session that set it up, never a field the client sends.
-          const adaView = { ...ada, madeBy: "owner", standupRequestedBy: null, closedOff: false };
+          const adaView = {
+            name: "P_MATE",
+            ...ada,
+            madeBy: "owner",
+            standupRequestedBy: null,
+            closedOff: false,
+          };
           const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: adaView }];
 
           const setUp = yield* call("POST", "/api/mates", {
@@ -1267,7 +1314,7 @@ describe("HQ API", () => {
         });
         const named = yield* call("POST", "/api/mates", {
           session,
-          body: { projectId: "P_NAMED", name: "Bo", face: "face-1", serviceId: "S4" },
+          body: { projectId: "P_NAMED", face: "face-1", serviceId: "S4" },
         });
         assert.strictEqual(named.status, 201);
         for (const [id, projectId] of [
@@ -1453,7 +1500,7 @@ describe("HQ API", () => {
           // Its stand-up asked in the write that sets it up (B3): no mark of its own any more.
           const created = yield* call("POST", "/api/mates", {
             session: owner,
-            body: { projectId: "P_MATE", name: "Ada", face: "face-1", standUp: true },
+            body: { projectId: "P_MATE", face: "face-1", standUp: true },
           });
           assert.strictEqual(created.status, 201);
           const credential = yield* enrollMate(call, fake, "P_MATE");
@@ -1461,7 +1508,8 @@ describe("HQ API", () => {
             call("GET", "/api/mate/self", { headers: { authorization: `Mate ${credential}` } }),
             (answer) => [answer.status, answer.body],
           );
-          const born = { projectId: "P_MATE", name: "Ada", face: "face-1" };
+          // Named as its project is in Zerops (D3).
+          const born = { projectId: "P_MATE", name: "P_MATE", face: "face-1" };
           // A Mate in no application: no changes beside its record.
           const none = { appId: null, appName: null, changes: [] };
           assert.deepStrictEqual(yield* self, [
@@ -1509,7 +1557,7 @@ describe("HQ API", () => {
           // A Mate in no application: no changes beside its record.
           const state = {
             projectId: "P_MATE",
-            name: "Ada",
+            name: "P_MATE",
             face: "face-1",
             appId: null,
             appName: null,
@@ -1604,7 +1652,7 @@ describe("HQ API", () => {
           const [a, b] = [yield* made("A"), yield* made("B")];
           const attached = yield* call("POST", `/api/apps/${a}/projects`, {
             session: owner,
-            body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-1" } },
+            body: { projectId: "P_MATE", kind: "mate", mate: { face: "face-1" } },
           });
           assert.strictEqual(attached.status, 201);
           assert.deepStrictEqual(yield* appOf, [a, "A"]);
@@ -1642,7 +1690,7 @@ describe("HQ API", () => {
         const [a, b] = [yield* appOf("A"), yield* appOf("B")];
         yield* call("POST", `/api/apps/${a}/projects`, {
           session: owner,
-          body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-1" } },
+          body: { projectId: "P_MATE", kind: "mate", mate: { face: "face-1" } },
         });
         const credential = yield* enrollMate(call, fake, "P_MATE");
         const advertised = yield* call(
