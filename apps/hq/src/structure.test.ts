@@ -18,7 +18,7 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { mateLiveLayer } from "./mateLive.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
-import { type OrgView, Roles } from "./roles.ts";
+import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
 import { type MateRecord, Structure, structureLayer } from "./structure.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import {
@@ -100,7 +100,7 @@ const withStructure = <A, E, B = never>(
     down: Ref.Ref<boolean>,
     zerops: FakeWorld,
     /** How each read of the org was asked for, in order. */
-    asked: Ref.Ref<ReadonlyArray<"view" | "fresh" | "recent">>,
+    asked: Ref.Ref<ReadonlyArray<string>>,
   ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
   before?: Effect.Effect<void, B, SqlClient.SqlClient>,
 ) =>
@@ -112,18 +112,20 @@ const withStructure = <A, E, B = never>(
     const view = yield* Ref.make(VIEW);
     const down = yield* Ref.make(false);
     const zerops = emptyWorld();
-    const asked = yield* Ref.make<ReadonlyArray<"view" | "fresh" | "recent">>([]);
-    const ask = (how: "view" | "fresh" | "recent") =>
-      Ref.update(asked, (before) => [...before, how]);
+    const asked = yield* Ref.make<ReadonlyArray<string>>([]);
+    const ask = (how: string) => Ref.update(asked, (before) => [...before, how]);
     const roles = Layer.succeed(Roles, {
       view: Effect.andThen(
         ask("view"),
         Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
       ),
-      fresh: Effect.andThen(
-        ask("fresh"),
-        Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "fresh" as const })),
-      ),
+      // A write's first pass over the recent view, its confirmation over a fresh read (F22).
+      forWrite: Effect.gen(function* () {
+        const { fresh } = yield* WriteConfirm;
+        yield* ask(fresh ? "write fresh" : "write recent");
+        const org = yield* Ref.get(view);
+        return { ...org, freshness: fresh ? ("fresh" as const) : ("recent" as const) };
+      }),
       recent: Effect.andThen(
         ask("recent"),
         Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
@@ -1566,6 +1568,29 @@ describe("structure", () => {
           }
         }),
       ),
+    );
+
+    // F22 (2026-10-03): a write waited on a fresh read while KRLS's org-wide reads stalled, and fell
+    // with its client. It is decided over the view at most 30 s old; a refusal of its facts is
+    // confirmed over a fresh read, and stands.
+    it.effect(
+      "decides a write over the recent view, and confirms its refusal over a fresh read",
+      () =>
+        withStructure((_view, _down, _zerops, asked) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            yield* Ref.set(asked, []);
+            yield* structure.createApp("admin", "Shop");
+            assert.deepStrictEqual(yield* Ref.get(asked), ["write recent"]);
+            yield* Ref.set(asked, []);
+            assert.strictEqual(yield* outcome(structure.createApp("dev", "Blog")), "forbidden");
+            assert.deepStrictEqual(yield* Ref.get(asked), ["write recent", "write fresh"]);
+            // A refusal the facts did not decide is not asked again.
+            yield* Ref.set(asked, []);
+            assert.strictEqual(yield* outcome(structure.createApp("admin", "Shop")), "conflict");
+            assert.deepStrictEqual(yield* Ref.get(asked), ["write recent"]);
+          }),
+        ),
     );
 
     it.effect("an org owner or admin renames an application; a taken name is a conflict", () =>

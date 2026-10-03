@@ -17,8 +17,11 @@
  *   every other: what Core does by itself is a named actor's, never a person's verb.
  * - **The target carries its current kind** (`held`), never only the requested one: a change between a
  *   Mate and an environment is the structure's writers' alone, whoever owns the project.
- * - **Freshness is a type:** every verb that writes takes `Facts<"fresh">`, read at the moment of
- *   use; only the reads take facts up to the cache's age, and Core's landing, which reads none.
+ * - **Freshness is a type:** every verb that writes takes `Facts<"fresh" | "recent">` — read at
+ *   the moment of use, or at most 30 s before it: whoever enforces lets an allow stand on a recent
+ *   read and confirms a refusal over a fresh one (F22, 2026-10-03: under Zerops' stalls every
+ *   write waited on a fresh read and fell over). Only the reads take facts up to the cache's age,
+ *   and Core's landing, which reads none.
  * - **The checks run in one order** — an active member, the role, the project's existence, its
  *   kind — so a project id tells someone without the role nothing about whether it exists; for a
  *   Mate, being HQ's Mate stands in for the role.
@@ -54,9 +57,15 @@ export interface FactProject {
   readonly userRoles: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
 }
 
-export type Freshness = "fresh" | "cached";
+export type Freshness = "fresh" | "recent" | "cached";
 
-/** The org as Zerops gave it: read now (`fresh`), or from a cache (`cached`). */
+/** How fresh a write's facts are: read now, or at most 30 s before it. */
+export type WriteFreshness = "fresh" | "recent";
+
+/**
+ * The org as Zerops gave it: read now (`fresh`), at most 30 s ago (`recent`), or from a cache that
+ * may be older (`cached`).
+ */
 export interface Facts<F extends Freshness = Freshness> {
   readonly freshness: F;
   readonly members: ReadonlyArray<FactMember>;
@@ -170,7 +179,7 @@ export interface Targets {
 
 export type Verb = keyof Targets;
 
-/** The verbs that only read; every other one writes and takes `Facts<"fresh">`. */
+/** The verbs that only read; every other one writes and takes `Facts<WriteFreshness>`. */
 export type ReadVerb = "read_project" | "read_app" | "read_change" | "observe_mate" | "fetch_repo";
 
 /** The verbs decided by their target alone, whatever the org: Core's own. */
@@ -178,11 +187,11 @@ export type FactlessVerb = "land_recipe";
 
 /**
  * Facts of any age for a read or a verb that reads none; not distributive: a verb known only as
- * `Verb` may be a write, so it takes `Facts<"fresh">`.
+ * `Verb` may be a write, so it takes `Facts<WriteFreshness>`.
  */
 export type FactsFor<V extends Verb> = [V] extends [ReadVerb | FactlessVerb]
   ? Facts
-  : Facts<"fresh">;
+  : Facts<WriteFreshness>;
 
 export const REASONS = [
   "wrong_principal",

@@ -36,6 +36,7 @@ import { officialLayer } from "./official.ts";
 import { recipeTiersLayer } from "./recipeTiers.ts";
 import { releasesLayer } from "./releases.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
+import { writesLayer } from "./writes.ts";
 import { rolesLayer } from "./roles.ts";
 import { sessionsLayer } from "./sessions.ts";
 import {
@@ -110,6 +111,7 @@ const services = (options: CoreOptions) => {
     mateCredentialsLayer({ credential: options.credential }),
     streamTicketsLayer,
     mateLinkTicketsLayer,
+    writesLayer,
     liveSocketsLayer,
     Layer.mergeAll(
       importsLayer({

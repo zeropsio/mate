@@ -100,6 +100,7 @@ import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
+import { Writes } from "./writes.ts";
 import { Roles } from "./roles.ts";
 import { Sessions } from "./sessions.ts";
 import {
@@ -320,6 +321,17 @@ const holderOf = (token: string | undefined) =>
 
 const principal = Effect.flatMap(bearer, holderOf);
 
+/**
+ * A write's work, outliving its client (F22, 2026-10-03: a release whose client gave up at 20 s
+ * went with it — Node's server interrupts a request's fiber when its client closes). Run once its
+ * body is read, so nothing of the request is touched after the client left; its result is there
+ * to read whether or not anybody hears its answer.
+ */
+const outliving = <A, E, R>(write: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    return yield* (yield* Writes).outliving(write);
+  });
+
 /** A token of the client address's bucket at `door`; none left is `429`. */
 const knock = (door: "person" | "mate" | "git") =>
   Effect.gen(function* () {
@@ -421,7 +433,8 @@ const gitCredential = (authorization: string | undefined) => {
  * git at `/git/<appId>/<repo>.git` for a Mate, decided before the git layer serves the request:
  * its credential (a `401` asks git for it, and a client address's misses are limited as a door's
  * knocks are); then, on the service as the layer reads the request (`gitHost.ts`), a push by
- * `can`'s `open_change` over the org read now; and any request by `fetch_repo` on the repository's
+ * `can`'s `open_change` over the org as a write is decided (`roles.ts`); and any request by
+ * `fetch_repo` on the repository's
  * application, which also decides every repository the layer serves it.
  */
 const serveGit = Effect.gen(function* () {
@@ -512,10 +525,17 @@ const routes = (
       "/api/apps/:appId/changes/:repo/:n/comments",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const { appId, repo, number } = yield* appChangePath;
           const { body } = yield* jsonBody(PostCommentRequest, TEXT_BODY_LIMIT);
-          return json(yield* (yield* Changes).postComment(userId, appId, repo, number, body), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const { appId, repo, number } = yield* appChangePath;
+              return json(
+                yield* (yield* Changes).postComment(userId, appId, repo, number, body),
+                200,
+              );
+            }),
+          );
         }),
       ),
     ),
@@ -524,12 +544,16 @@ const routes = (
       "/api/apps/:appId/changes/:repo/:n/merge",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const { appId, repo, number } = yield* appChangePath;
           const { expectedHead } = yield* jsonBody(MergeChangeRequest, BODY_LIMIT);
-          return json(
-            yield* (yield* Changes).mergeChange(userId, appId, repo, number, expectedHead),
-            200,
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const { appId, repo, number } = yield* appChangePath;
+              return json(
+                yield* (yield* Changes).mergeChange(userId, appId, repo, number, expectedHead),
+                200,
+              );
+            }),
           );
         }),
       ),
@@ -539,9 +563,13 @@ const routes = (
       "/api/apps/:appId/changes/:repo/:n/close",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const { appId, repo, number } = yield* appChangePath;
-          return json(yield* (yield* Changes).closeChange(userId, appId, repo, number), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const { appId, repo, number } = yield* appChangePath;
+              return json(yield* (yield* Changes).closeChange(userId, appId, repo, number), 200);
+            }),
+          );
         }),
       ),
     ),
@@ -609,9 +637,13 @@ const routes = (
       "/api/mate/repos",
       handle(
         Effect.gen(function* () {
-          const { projectId } = yield* mate;
           const { name } = yield* jsonBody(EnsureRepoRequest, BODY_LIMIT);
-          return json(yield* (yield* Changes).ensureRepo(projectId, name), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { projectId } = yield* mate;
+              return json(yield* (yield* Changes).ensureRepo(projectId, name), 200);
+            }),
+          );
         }),
       ),
     ),
@@ -620,9 +652,13 @@ const routes = (
       "/api/mate/changes",
       handle(
         Effect.gen(function* () {
-          const { projectId } = yield* mate;
           const { repo, title } = yield* jsonBody(OpenChangeRequest, BODY_LIMIT);
-          return json(yield* (yield* Changes).openChange(projectId, repo, title), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { projectId } = yield* mate;
+              return json(yield* (yield* Changes).openChange(projectId, repo, title), 200);
+            }),
+          );
         }),
       ),
     ),
@@ -631,10 +667,14 @@ const routes = (
       "/api/mate/changes/:repo/:n",
       handle(
         Effect.gen(function* () {
-          const { projectId } = yield* mate;
-          const { repo, number } = yield* changePath;
           const edit = yield* jsonBody(EditChangeRequest, TEXT_BODY_LIMIT);
-          return json(yield* (yield* Changes).editChange(projectId, repo, number, edit), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { projectId } = yield* mate;
+              const { repo, number } = yield* changePath;
+              return json(yield* (yield* Changes).editChange(projectId, repo, number, edit), 200);
+            }),
+          );
         }),
       ),
     ),
@@ -643,10 +683,14 @@ const routes = (
       "/api/mate/changes/:repo/:n/attachments",
       handle(
         Effect.gen(function* () {
-          const { projectId } = yield* mate;
-          const { repo, number } = yield* changePath;
           const png = yield* pngBody;
-          return json(yield* (yield* Changes).attach(projectId, repo, number, png), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { projectId } = yield* mate;
+              const { repo, number } = yield* changePath;
+              return json(yield* (yield* Changes).attach(projectId, repo, number, png), 200);
+            }),
+          );
         }),
       ),
     ),
@@ -725,12 +769,14 @@ const routes = (
         "POST",
         `/api/mates/:projectId/${path}`,
         handle(
-          Effect.gen(function* () {
-            const { userId } = yield* principal;
-            const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
-            const mark = path === "standup" ? "standup" : "closed_off";
-            return json(yield* (yield* Structure).markBirth(userId, projectId, mark), 200);
-          }),
+          outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+              const mark = path === "standup" ? "standup" : "closed_off";
+              return json(yield* (yield* Structure).markBirth(userId, projectId, mark), 200);
+            }),
+          ),
         ),
       ),
     ),
@@ -751,18 +797,24 @@ const routes = (
       "/api/apps",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
           const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
-          // Its recipe repository comes with it, and HQ answers once it is made: git, opening a
-          // moment after the lead, is waited for before anything is written (`503 not_active`
-          // past the wait, for the client to ask again). One that still fails is made on first
-          // need.
-          yield* (yield* GitHost).opened(GIT_OPEN_WAIT);
-          const app = yield* (yield* Structure).createApp(userId, name);
-          yield* (yield* Changes)
-            .ensureGroupRepo(app.id)
-            .pipe(Effect.catch((error) => Effect.logWarning("recipe repository not made", error)));
-          return json(app, 201);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              // Its recipe repository comes with it, and HQ answers once it is made: git, opening a
+              // moment after the lead, is waited for before anything is written (`503 not_active`
+              // past the wait, for the client to ask again). One that still fails is made on first
+              // need.
+              yield* (yield* GitHost).opened(GIT_OPEN_WAIT);
+              const app = yield* (yield* Structure).createApp(userId, name);
+              yield* (yield* Changes)
+                .ensureGroupRepo(app.id)
+                .pipe(
+                  Effect.catch((error) => Effect.logWarning("recipe repository not made", error)),
+                );
+              return json(app, 201);
+            }),
+          );
         }),
       ),
     ),
@@ -771,14 +823,20 @@ const routes = (
       "/api/apps/:id",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const appId = (yield* HttpRouter.params)["id"] ?? "";
-          yield* (yield* Structure).deleteApp(userId, appId);
-          // Its repositories go after it; should they not now, they are only on disk, unnamed.
-          yield* (yield* Changes)
-            .removeAppRepos(appId)
-            .pipe(Effect.catch((error) => Effect.logWarning("repositories not removed", error)));
-          return HttpServerResponse.empty({ status: 204 });
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const appId = (yield* HttpRouter.params)["id"] ?? "";
+              yield* (yield* Structure).deleteApp(userId, appId);
+              // Its repositories go after it; should they not now, they are only on disk, unnamed.
+              yield* (yield* Changes)
+                .removeAppRepos(appId)
+                .pipe(
+                  Effect.catch((error) => Effect.logWarning("repositories not removed", error)),
+                );
+              return HttpServerResponse.empty({ status: 204 });
+            }),
+          );
         }),
       ),
     ),
@@ -787,11 +845,15 @@ const routes = (
       "/api/apps/:id/projects",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const appId = (yield* HttpRouter.params)["id"] ?? "";
           const input = yield* jsonBody(AttachBody, BODY_LIMIT);
-          yield* (yield* Structure).attachProject(userId, appId, input);
-          return json({ appId, projectId: input.projectId, kind: input.kind }, 201);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const appId = (yield* HttpRouter.params)["id"] ?? "";
+              yield* (yield* Structure).attachProject(userId, appId, input);
+              return json({ appId, projectId: input.projectId, kind: input.kind }, 201);
+            }),
+          );
         }),
       ),
     ),
@@ -838,10 +900,14 @@ const routes = (
       "/api/apps/:id",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const appId = (yield* HttpRouter.params)["id"] ?? "";
           const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
-          return json(yield* (yield* Structure).renameApp(userId, appId, name), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const appId = (yield* HttpRouter.params)["id"] ?? "";
+              return json(yield* (yield* Structure).renameApp(userId, appId, name), 200);
+            }),
+          );
         }),
       ),
     ),
@@ -850,17 +916,21 @@ const routes = (
       "/api/apps/:appId/environments/:name/redeploy",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const params = yield* HttpRouter.params;
           const { service, sha } = yield* jsonBody(RedeployBody, BODY_LIMIT);
-          yield* (yield* Deploys).redeploy(
-            userId,
-            params["appId"] ?? "",
-            params["name"] ?? "",
-            service,
-            sha,
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const params = yield* HttpRouter.params;
+              yield* (yield* Deploys).redeploy(
+                userId,
+                params["appId"] ?? "",
+                params["name"] ?? "",
+                service,
+                sha,
+              );
+              return HttpServerResponse.empty({ status: 202 });
+            }),
           );
-          return HttpServerResponse.empty({ status: 202 });
         }),
       ),
     ),
@@ -913,10 +983,14 @@ const routes = (
       "/api/apps/:appId/releases",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const appId = (yield* HttpRouter.params)["appId"] ?? "";
           const request = yield* jsonBody(CreateReleaseRequest, BODY_LIMIT);
-          return json(yield* (yield* Releases).release(userId, appId, request), 201);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const appId = (yield* HttpRouter.params)["appId"] ?? "";
+              return json(yield* (yield* Releases).release(userId, appId, request), 201);
+            }),
+          );
         }),
       ),
     ),
@@ -925,17 +999,21 @@ const routes = (
       "/api/apps/:appId/releases/:tag/rollback",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const params = yield* HttpRouter.params;
           const request = yield* jsonBody(RollbackRequest, BODY_LIMIT);
-          return json(
-            yield* (yield* Releases).rollback(
-              userId,
-              params["appId"] ?? "",
-              params["tag"] ?? "",
-              request,
-            ),
-            201,
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const params = yield* HttpRouter.params;
+              return json(
+                yield* (yield* Releases).rollback(
+                  userId,
+                  params["appId"] ?? "",
+                  params["tag"] ?? "",
+                  request,
+                ),
+                201,
+              );
+            }),
           );
         }),
       ),
@@ -945,16 +1023,20 @@ const routes = (
       "/api/apps/:appId/environments/:name/deploy-token",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const params = yield* HttpRouter.params;
           const { token } = yield* jsonBody(DeployTokenBody, BODY_LIMIT);
-          yield* (yield* Structure).keepDeployToken(
-            userId,
-            params["appId"] ?? "",
-            params["name"] ?? "",
-            Redacted.make(token),
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const params = yield* HttpRouter.params;
+              yield* (yield* Structure).keepDeployToken(
+                userId,
+                params["appId"] ?? "",
+                params["name"] ?? "",
+                Redacted.make(token),
+              );
+              return HttpServerResponse.empty({ status: 204 });
+            }),
           );
-          return HttpServerResponse.empty({ status: 204 });
         }),
       ),
     ),
@@ -963,10 +1045,14 @@ const routes = (
       "/api/projects/:projectId/app",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
           const target = yield* jsonBody(MoveBody, BODY_LIMIT);
-          return json(yield* (yield* Structure).moveProject(userId, projectId, target), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+              return json(yield* (yield* Structure).moveProject(userId, projectId, target), 200);
+            }),
+          );
         }),
       ),
     ),
@@ -975,9 +1061,13 @@ const routes = (
       "/api/mates",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
           const mate = yield* jsonBody(NewMateBody, BODY_LIMIT);
-          return json(yield* (yield* Structure).createMate(userId, mate), 201);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              return json(yield* (yield* Structure).createMate(userId, mate), 201);
+            }),
+          );
         }),
       ),
     ),
@@ -986,10 +1076,14 @@ const routes = (
       "/api/mates/:projectId",
       handle(
         Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
           const patch = yield* jsonBody(MateBody, BODY_LIMIT);
-          return json(yield* (yield* Structure).patchMate(userId, projectId, patch), 200);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+              return json(yield* (yield* Structure).patchMate(userId, projectId, patch), 200);
+            }),
+          );
         }),
       ),
     ),

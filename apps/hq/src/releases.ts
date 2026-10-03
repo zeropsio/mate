@@ -49,7 +49,7 @@ import { appendEvent } from "./gitEvents.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { RecipeTiers, type RecipeTierUnreadable } from "./recipeTiers.ts";
-import { Roles } from "./roles.ts";
+import { Roles, confirmingRefusal } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -159,18 +159,20 @@ export const releasesLayer: Layer.Layer<
         return projects;
       });
 
-    /** Whether the person may release the application, over the org read now. */
+    /** Whether the person may release the application, over the org as a write is decided. */
     const releaser = (userId: string, appId: string) =>
-      Effect.gen(function* () {
-        const facts = yield* roles.fresh;
-        const projects = yield* seenApp(userId, appId, facts);
-        const target = {
-          projectIds: projects.map((row) => row.project_id),
-          productionProjectId:
-            projects.find((row) => row.kind === "production")?.project_id ?? null,
-        };
-        yield* allowed(userId, appId, can(person(userId), "release", target, facts));
-      });
+      confirmingRefusal(
+        Effect.gen(function* () {
+          const facts = yield* roles.forWrite;
+          const projects = yield* seenApp(userId, appId, facts);
+          const target = {
+            projectIds: projects.map((row) => row.project_id),
+            productionProjectId:
+              projects.find((row) => row.kind === "production")?.project_id ?? null,
+          };
+          yield* allowed(userId, appId, can(person(userId), "release", target, facts));
+        }),
+      );
 
     /** The application's releases, by version, newest first. */
     const releasesOf = (appId: string) =>

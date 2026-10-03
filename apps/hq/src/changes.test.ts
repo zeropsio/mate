@@ -940,9 +940,10 @@ describe("a Mate's changes in HQ", () => {
       "git decides a push as the git layer reads the request, however its address is spelled",
       () =>
         Effect.gen(function* () {
-          // The org's view kept long, no reconcile: a fetch reads it as kept, a push as it is now.
+          // The org's view kept a second, no reconcile: a fetch reads it as kept, a push as a write
+          // is decided (F22) — over the view at most that old, read again past it.
           const { call, fake } = yield* startCore(true, {
-            viewTtl: Duration.minutes(5),
+            viewTtl: Duration.seconds(1),
             reconcileEvery: Duration.minutes(5),
           });
           yield* untilHealth(call, "active");
@@ -962,7 +963,9 @@ describe("a Mate's changes in HQ", () => {
           );
           assert.strictEqual((yield* advertise("service=git-upload-pack")).status, 200);
           // The layer reads everything past the first `?` as the query: this is a push's
-          // advertisement, so `open_change` decides it, over the org read now.
+          // advertisement, so `open_change` decides it — past the view's second, over the org read
+          // again, its refusal confirmed fresh.
+          yield* Effect.sleep(Duration.millis(1200));
           const push = yield* advertise("x=1?&service=git-receive-pack");
           assert.deepStrictEqual(
             [push.status, push.body],

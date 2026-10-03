@@ -1217,10 +1217,23 @@ describe("can — one table per verb", () => {
     ).toBe("not_your_project");
   });
 
+  // F22 (2026-10-03): under Zerops' stalls every write waited on a fresh read and fell over. A
+  // write's allow stands on facts at most 30 s old (`recent`); its refusal is confirmed fresh, by
+  // whoever enforces. Cached ones never.
+  it("a write verb takes facts read now or at most 30 s ago, never cached ones", () => {
+    const recent: Facts<"recent"> = { ...factsOf(BASE), freshness: "recent" };
+    expect(can(PERSON, "create_app", null, recent).allow).toBe(false);
+    expect(
+      can(MATE_P, "open_change", { projectId: "P", appId: "A", held: "mate" }, recent).allow,
+    ).toBe(
+      can(MATE_P, "open_change", { projectId: "P", appId: "A", held: "mate" }, factsOf(BASE)).allow,
+    );
+  });
+
   it("a write verb takes facts read now, not cached ones", () => {
     const cached: Facts<"cached"> = { ...factsOf(BASE), freshness: "cached" };
     expect(can(PERSON, "read_app", { projectIds: [] }, cached).allow).toBe(false);
-    // @ts-expect-error -- creating an application is a write: it takes `Facts<"fresh">`.
+    // @ts-expect-error -- creating an application is a write: it takes `Facts<"fresh" | "recent">`.
     can(PERSON, "create_app", null, cached);
     expect(can(PERSON, "read_change", { projectIds: [] }, cached).allow).toBe(false);
     // @ts-expect-error -- a comment is a write.
@@ -1241,7 +1254,7 @@ describe("can — one table per verb", () => {
     // Core's landing reads no fact of the org: any it has will do.
     expect(can(CORE, "land_recipe", landing().target, cached).allow).toBe(true);
     // Nor when the verb is known only at run time: it may be a write.
-    // @ts-expect-error -- `can` over any verb takes `Facts<"fresh">`.
+    // @ts-expect-error -- `can` over any verb takes `Facts<"fresh" | "recent">`.
     const anyVerb: Parameters<typeof can<Verb>>[3] = cached;
     expect(anyVerb.freshness).toBe("cached");
   });
