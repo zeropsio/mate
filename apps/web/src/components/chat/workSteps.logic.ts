@@ -475,14 +475,44 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
         : say(`Searching the web for ${query}`, `Searched the web for ${query}`);
     }
     case "tool": {
-      const zerops = ZEROPS_WORDS[entry.label] ?? ZEROPS_WORDS[entry.toolTitle ?? ""];
+      const named = namedToolCall(entry) ?? entry.toolTitle ?? titleName(entry.label);
+      const zerops =
+        ZEROPS_WORDS[named ?? ""] ??
+        ZEROPS_WORDS[entry.label] ??
+        ZEROPS_WORDS[entry.toolTitle ?? ""];
       if (zerops !== undefined) return running ? zerops[0] : zerops[1];
-      const named = namedToolCall(entry) ?? entry.toolTitle ?? null;
       if (named === null) return say("Using a tool", "Used a tool");
       const words = toolCallWords(named, entry.detail);
-      return running ? words : words.replace(/^Using /, "Used ");
+      return running ? words : pastWords(words);
     }
   }
+}
+
+/** The verbs a call's words open with as it runs, as they read once it is done. */
+const DONE_VERBS: Readonly<Record<string, string>> = {
+  Using: "Used",
+  Reading: "Read",
+  Editing: "Edited",
+  Writing: "Wrote",
+  Searching: "Searched",
+  Looking: "Looked",
+  Running: "Ran",
+  Starting: "Started",
+  Updating: "Updated",
+  Finishing: "Finished",
+  Waiting: "Waited",
+};
+
+/** A call's words once it is done: "Updating its list" is "Updated its list". */
+function pastWords(words: string): string {
+  const [verb = "", ...rest] = words.split(" ");
+  const done = DONE_VERBS[verb];
+  return done === undefined ? words : [done, ...rest].join(" ");
+}
+
+/** A title that is a tool's name alone (Grok titles a call `enter_plan_mode`). */
+function titleName(label: string): string | null {
+  return /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(label.trim()) ? label.trim() : null;
 }
 
 function stepState(entry: WorkLogEntry, live: boolean): StepState {
