@@ -7422,9 +7422,27 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   row's `userRoles` holding only `{mine: true, roleCode}`; `GET /project/{id}` answered the whole
   list (`[{mine: false, BASIC_USER}, {mine: true, OWNER}]`) for a project it holds, 403 for any
   other.
-- **The organization's member list carries every integration token** — KRLS's `user/list` held
-  181 entries: 5 people and 176 `ACTIVE/NO_ACCESS` entries, one per integration token (179 listed).
-  63 of the tokens were named `zerops-zcp-zcp`.
+- **The organization's member list carries every integration token, with the token's own org
+  role** — at 12:07Z KRLS listed 192 integration tokens and `user/list` held 194 entries: 189
+  `ACTIVE/NO_ACCESS`, 2 `ADMIN`, 2 `READ_ONLY`, 1 `OWNER`. Exactly four tokens hold an org role,
+  each with no project grant: `mate-hq:…` (HQ's anchor) and `ttt` `ADMIN`, `mate-hq-org:…` and
+  `r` `READ_ONLY`; the four non-NO_ACCESS non-owner entries are theirs. A role does not tell a
+  person from a token. 63 tokens were named `zerops-zcp-zcp`. An earlier count the same day (181
+  entries, 179 tokens) took the five non-NO_ACCESS entries for people.
+- **An integration token's `/user/info` id is its own token id, and its member entry's `userId`**
+  — a `mate-probe-*` NO_ACCESS token minted on KRLS at 12:08Z: `GET /user/info` with it answered
+  200 with `id` equal to the id the mint returned; its one `clientUserList` row (KRLS, NO_ACCESS)
+  carried `userId` equal to that id; `user/list` held exactly one entry with that `userId`
+  (`ACTIVE/NO_ACCESS`); the token list's row has the same `id`. Deleted at once (200).
+- **Door throwaways outlive their door** — at 12:07Z KRLS listed 8 `mate-door:…` tokens,
+  `NO_ACCESS` with no grant, all minted by one user between 08:34:47Z and 08:35:08Z; none was
+  deleted.
+- **HQ's structure socket is cut at 120 s while it is busy** — a Node client held KRLS HQ's
+  structure socket through the project's own domain (`<publicZone>`) for 5 min from 11:56Z, answering
+  every ping: sockets 1 and 2 each ended at 120.02 s with `1006`, not clean, after 5 pings; a
+  reconnect got a fresh snapshot within 15 ms; socket 3, closed by the client at 59 s, ended
+  `1000`. Which hop cuts it is not measured (HQ then ran Core `e53e911ffd`, which does not log a
+  socket's end).
 - **A production imported without code reads `source: NONE` only from the version list** — the
   `activeAppVersion` embedded in `POST /service-stack/search` carries `base, created, id,
 lastUpdate, os, status` only; `/app-version/search` gives the same version `source: NONE`,
