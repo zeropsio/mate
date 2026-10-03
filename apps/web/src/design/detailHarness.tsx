@@ -10,6 +10,7 @@
  * Fixtures only. Nothing here ships — `design-detail.html` is not
  * `index.html`, and no route imports this module.
  */
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -482,6 +483,8 @@ const STAGE_RUNNING: Deployment = {
 };
 
 interface StopFixture {
+  readonly deployAnswer?: HqDeployAnswer;
+  readonly notInZerops?: ReadonlyArray<string>;
   readonly tier: EnvironmentRow["tier"];
   /** The project's name; Shop unless the fixture is Beviro's. */
   readonly group?: string;
@@ -640,6 +643,10 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       : { ...failedDeploy, mayRunAgain: fixture.mayRunAgain ?? false };
   return (
     <ZeropsStopPane
+      deployAnswer={fixture.deployAnswer}
+      notInZerops={fixture.notInZerops}
+      addService={{ running: () => false, onAdd: () => {} }}
+      deployAgain={{ running: () => false, onDeployAgain: () => {} }}
       carried={production ? fixture.carried : undefined}
       crumbs={crumbs(group)}
       deployed={new Map(stop.version.sha === undefined ? [] : [[name, stop.version.sha]])}
@@ -701,7 +708,7 @@ function State({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-detail-harness-state={label}>
       <div className="px-2">
         <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
           {label}
@@ -718,6 +725,70 @@ function State({
 function Harness() {
   return (
     <div className="flex flex-col gap-10 bg-background p-6">
+      {(["building", "queued", "refused", "skipped"] as const).map((state) => (
+        <State
+          key={state}
+          label={`Deploy answer · ${state}`}
+          note="Run again / Deploy again: the answer replaces the service's streamed job line."
+        >
+          <StopState
+            fixture={{
+              tier: "stage",
+              services: [service("api", "b21d904c", undefined, state)],
+              deployAnswer: {
+                jobs: [
+                  {
+                    environment: "stage",
+                    kind: "deploy",
+                    service: "api",
+                    sha: sha("b21d904c"),
+                    job: "1",
+                    state,
+                    processId: state === "building" ? "process-1" : null,
+                    behind: state === "queued" ? "0" : null,
+                    reason:
+                      state === "refused"
+                        ? "Zerops did not answer: timeout."
+                        : state === "skipped"
+                          ? "No recipe at this commit."
+                          : null,
+                  },
+                ],
+                note: null,
+              },
+            }}
+          />
+        </State>
+      ))}
+      <State
+        label="Deploy answer · Add service"
+        note="A service not yet listed keeps its answer in Services, beside Add."
+      >
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [service("api", "b21d904c", undefined)],
+            notInZerops: ["db"],
+            deployAnswer: {
+              jobs: [
+                {
+                  environment: "stage",
+                  kind: "delta",
+                  service: null,
+                  sha: null,
+                  job: "2",
+                  state: "building",
+                  processId: "process-2",
+                  behind: null,
+                  reason: null,
+                },
+              ],
+              note: "The preview tier could not be read.",
+            },
+          }}
+        />
+      </State>
+
       <State label="A project, running" note="Two stops, one change in flight, three waiting.">
         <ZeropsGroupPane
           attention={ATTENTION}

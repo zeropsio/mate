@@ -13,6 +13,9 @@ import { shortCommit } from "../release.ts";
 /** One job of the answer, said. */
 export interface DeployAnswerJob {
   readonly state: HqDeployOutcome["state"];
+  readonly service: string | null;
+  /** The commit and outcome, for a row that already names the service. */
+  readonly line: string;
   readonly text: string;
 }
 
@@ -34,29 +37,37 @@ const subjectOf = (outcome: HqDeployOutcome) =>
     ? "The recipe's services"
     : `${outcome.service ?? "A service"}${outcome.sha === null ? "" : ` ${shortCommit(outcome.sha)}`}`;
 
-const jobText = (outcome: HqDeployOutcome, answer: HqDeployAnswer): string => {
-  const subject = subjectOf(outcome);
+const jobText = (
+  outcome: HqDeployOutcome,
+  answer: HqDeployAnswer,
+  subject = subjectOf(outcome),
+): string => {
   const reason = outcome.reason?.trim() || undefined;
+  const prefix = subject === "" ? "" : `${subject} `;
   switch (outcome.state) {
     // A delta's import runs: its services are being added.
     case "building":
-      return outcome.kind === "delta" ? `${subject} being added` : `${subject} building`;
+      return outcome.kind === "delta" ? `${prefix}being added` : `${prefix}building`;
     case "submitting":
-      return `${subject} submitted; HQ reads where it stands`;
+      return `${prefix}submitted; HQ reads where it stands`;
     case "queued": {
       const ahead = answer.jobs.find((other) => other.job !== null && other.job === outcome.behind);
-      return `${subject} queued behind ${ahead === undefined ? "the build under way" : subjectOf(ahead)}`;
+      return `${prefix}queued behind ${ahead === undefined ? "the build under way" : subjectOf(ahead)}`;
     }
     case "live":
-      return reason === undefined ? `${subject} live` : `${subject}: ${reason}`;
+      return reason === undefined
+        ? `${prefix}live`
+        : `${subject === "" ? "" : `${subject}: `}${reason}`;
     case "failed":
-      return reason === undefined ? `${subject} failed` : `${subject} failed: ${reason}`;
+      return reason === undefined ? `${prefix}failed` : `${prefix}failed: ${reason}`;
     case "refused":
-      return reason === undefined ? `HQ refused ${subject}` : `HQ refused ${subject}: ${reason}`;
+      return reason === undefined
+        ? `HQ refused${subject === "" ? "" : ` ${subject}`}`
+        : `HQ refused${subject === "" ? "" : ` ${subject}`}: ${reason}`;
     case "skipped":
-      return reason === undefined ? `${subject} skipped` : `${subject} skipped: ${reason}`;
+      return reason === undefined ? `${prefix}skipped` : `${prefix}skipped: ${reason}`;
     case "superseded":
-      return `${subject} superseded`;
+      return `${prefix}superseded`;
   }
 };
 
@@ -65,7 +76,15 @@ export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
   const environments = new Map<string, Array<DeployAnswerJob>>();
   for (const outcome of answer.jobs) {
     const jobs = environments.get(outcome.environment) ?? [];
-    jobs.push({ state: outcome.state, text: jobText(outcome, answer) });
+    jobs.push({
+      state: outcome.state,
+      service: outcome.service,
+      line:
+        outcome.service === null
+          ? jobText(outcome, answer)
+          : jobText(outcome, answer, outcome.sha === null ? "" : shortCommit(outcome.sha)).trim(),
+      text: jobText(outcome, answer),
+    });
     environments.set(outcome.environment, jobs);
   }
   return {

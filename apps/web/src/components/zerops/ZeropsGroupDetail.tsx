@@ -142,6 +142,7 @@ import { MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
+import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
@@ -1357,6 +1358,25 @@ export function ZeropsStopPane({
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
   const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
   const verb = verdict.verb;
+  const answer = deployAnswer === undefined ? undefined : deployAnswerSaid(deployAnswer);
+  const answered = new Map(
+    answer?.environments
+      .find(({ environment }) => environment === stop.name)
+      ?.jobs.map((job) => [job.service, job] as const),
+  );
+  // Jobs of services not listed yet (including a recipe import), and HQ's note, stay in Services.
+  const otherDeploys =
+    deployAnswer === undefined
+      ? undefined
+      : {
+          ...deployAnswer,
+          jobs: deployAnswer.jobs.filter(
+            ({ environment, service }) =>
+              environment !== stop.name ||
+              (!services.some((row) => row.hostname === service) &&
+                !notInZerops.includes(service ?? "")),
+          ),
+        };
   return (
     <DetailShell
       actions={
@@ -1396,11 +1416,6 @@ export function ZeropsStopPane({
             {runAgain.refused}
           </p>
         )}
-        {deployAnswer === undefined ? null : (
-          <div className="mt-1.5 px-3">
-            <ZeropsDeployAnswer answer={deployAnswer} />
-          </div>
-        )}
       </div>
 
       <FlatCard className="flex flex-col divide-y divide-border px-4">
@@ -1433,6 +1448,7 @@ export function ZeropsStopPane({
               {services.map((row) => (
                 <StopServiceLine
                   deployAgain={deployAgain}
+                  answer={answered.get(row.hostname)}
                   enablingServiceId={enablingServiceId ?? null}
                   key={row.hostname}
                   onEnableRoute={onEnableRoute}
@@ -1447,7 +1463,14 @@ export function ZeropsStopPane({
               {notInZerops.map((hostname) => (
                 <li className={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")} key={hostname}>
                   <span className="min-w-0 truncate text-sm text-muted-foreground">
-                    {hostname} · declared in the recipe, not in Zerops
+                    {hostname} ·{" "}
+                    {answered.get(hostname) === undefined ? (
+                      "declared in the recipe, not in Zerops"
+                    ) : (
+                      <span data-zerops-job-state={answered.get(hostname)?.state}>
+                        {answered.get(hostname)?.line}
+                      </span>
+                    )}
                   </span>
                   {addService === undefined ? (
                     <span />
@@ -1466,6 +1489,14 @@ export function ZeropsStopPane({
                 </li>
               ))}
             </ul>
+          )}
+          {otherDeploys === undefined ? null : (
+            <ZeropsDeployAnswer
+              answer={otherDeploys}
+              showEnvironment={otherDeploys.jobs.some(
+                ({ environment }) => environment !== stop.name,
+              )}
+            />
           )}
           {routeTrouble === null || routeTrouble === undefined ? null : (
             <p className="py-2 text-sm text-[var(--zerops-status-failed-text)]">{routeTrouble}</p>
@@ -1584,9 +1615,11 @@ function StopServiceLine({
   onEnableRoute,
   enablingServiceId,
   deployAgain,
+  answer,
   said,
 }: {
   readonly row: StopServiceRow;
+  readonly answer: DeployAnswerJob | undefined;
   readonly onEnableRoute: ((serviceId: string) => void) | undefined;
   readonly enablingServiceId: string | null;
   readonly deployAgain: StopDeployAgain | undefined;
@@ -1622,7 +1655,9 @@ function StopServiceLine({
           )}
         </span>
         <span className="col-start-2 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-3">
-          {row.status === undefined ? null : dot === undefined ? (
+          {row.status === undefined ||
+          (answer !== undefined &&
+            (row.runs === undefined || row.job !== undefined)) ? null : dot === undefined ? (
             <span className="truncate text-muted-foreground">{row.status}</span>
           ) : (
             <StatusDot label={row.status} sentence tone={dot} />
@@ -1674,7 +1709,14 @@ function StopServiceLine({
         </span>
       </div>
       {/* Its newest job, where it is not what the service runs: where it stands, and why. */}
-      {row.job === undefined ? null : (
+      {answer !== undefined ? (
+        <span
+          className="pb-2 text-xs leading-4 text-muted-foreground"
+          data-zerops-job-state={answer.state}
+        >
+          {answer.line}
+        </span>
+      ) : row.job === undefined ? null : (
         <span
           className="flex min-w-0 flex-col pb-2 text-xs leading-4 text-muted-foreground"
           data-zerops-surface="stop-service-job"

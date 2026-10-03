@@ -1,40 +1,67 @@
-/**
- * What HQ answered of the deploys a verb asked for (`deployAnswerSaid`): said where the verb was
- * pressed — a merge's review, a release's, a stop's Run again — at once, by environment, before
- * HQ's stream brings the jobs to their rows.
- */
+/** HQ's answer replaces a service's planned deploy line, inside the section that names it. */
 import type { ReviewPress } from "@t3tools/client-runtime/zerops";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import type { ReactNode } from "react";
+import { Fragment } from "react";
 
-export function ZeropsDeployAnswer({ answer }: { readonly answer: HqDeployAnswer }) {
-  const said = deployAnswerSaid(answer);
-  if (said.environments.length === 0 && said.note === undefined) return null;
+export function ZeropsDeployAnswer({
+  answer,
+  rows,
+  showEnvironment,
+}: {
+  readonly answer?: HqDeployAnswer | undefined;
+  readonly showEnvironment?: boolean | undefined;
+  readonly rows?: ReadonlyArray<{ readonly service: string; readonly line: string }> | undefined;
+}) {
+  const said = answer === undefined ? undefined : deployAnswerSaid(answer);
+  const environments = said?.environments ?? [];
+  const services = new Set(environments.flatMap(({ jobs }) => jobs.map(({ service }) => service)));
+  const fallback = (rows ?? []).filter(({ service }) => !services.has(service));
+  if (fallback.length === 0 && environments.length === 0 && said?.note === undefined) return null;
   return (
-    <div
-      className="flex flex-col gap-1 text-xs leading-4 text-muted-foreground"
-      data-zerops-surface="deploy-answer"
-    >
-      {said.environments.map(({ environment, jobs }) => (
-        <p key={environment}>
-          <span className="text-foreground">{environment}</span>
-          {jobs.map((job, index) => (
-            <span data-zerops-job-state={job.state} key={`${String(index)} ${job.text}`}>
-              {" · "}
+    <>
+      <div className="rv-where">
+        {environments.map(({ environment, jobs }) =>
+          jobs
+            .filter(({ service }) => service !== null)
+            .map((job, index) => (
+              <Fragment key={`${environment} ${String(index)}`}>
+                <b>
+                  {(showEnvironment ?? environments.length > 1) ? `${environment} · ` : ""}
+                  {job.service}
+                </b>
+                <span data-zerops-job-state={job.state}>{job.line}</span>
+              </Fragment>
+            )),
+        )}
+        {fallback.map(({ service, line }) => (
+          <Fragment key={service}>
+            <b>{service}</b>
+            <span>{line}</span>
+          </Fragment>
+        ))}
+      </div>
+      {environments.map(({ environment, jobs }) =>
+        jobs
+          .filter(({ service }) => service === null)
+          .map((job, index) => (
+            <p
+              className="rv-words"
+              data-zerops-job-state={job.state}
+              key={`${environment} ${String(index)}`}
+            >
+              {(showEnvironment ?? environments.length > 1) ? `${environment} · ` : ""}
               {job.text}
-            </span>
-          ))}
-        </p>
-      ))}
-      {said.note === undefined ? null : <p>{said.note}</p>}
-    </div>
+            </p>
+          )),
+      )}
+      {said?.note === undefined ? null : <p className="rv-words">{said.note}</p>}
+    </>
   );
 }
 
-/** What a press that is done says of its deploys, where HQ answered them; nothing else. */
-export function answeredDeploys(press: ReviewPress): ReactNode {
-  return press.kind === "done" && press.deploys !== undefined ? (
-    <ZeropsDeployAnswer answer={press.deploys} />
-  ) : undefined;
+/** The press's answer, only once HQ has answered it. */
+export function answeredDeploys(press: ReviewPress): HqDeployAnswer | undefined {
+  if (press.kind !== "done" || press.deploys === undefined) return undefined;
+  return press.deploys.jobs.length > 0 || press.deploys.note?.trim() ? press.deploys : undefined;
 }

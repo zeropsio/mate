@@ -24,6 +24,7 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -703,30 +704,38 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
     expect(told).not.toContain("Add db");
   });
 
-  it("says where HQ answered the deploys a verb pressed here stand", () => {
-    const markup = renderStop({
-      tier: "stage",
-      services: TWO_LIVE,
-      deployAnswer: {
-        jobs: [
-          {
-            environment: "stage",
-            kind: "deploy",
-            service: "api",
-            sha: fullSha("a1"),
-            job: "8",
-            state: "building",
-            processId: "process-8",
-            behind: null,
-            reason: null,
-          },
-        ],
-        note: null,
-      },
-    });
-    expect(markup).toContain('data-zerops-surface="deploy-answer"');
-    expect(markup).toContain("api a100000 building");
-  });
+  it.each(["building", "queued", "refused", "skipped"] as const)(
+    "says a %s answer once on its service row",
+    (state) => {
+      const markup = renderStop({
+        tier: "stage",
+        services: [service("api", "a1", "v0.1.13", state)],
+        deployAnswer: {
+          jobs: [
+            {
+              environment: "stage",
+              kind: "deploy",
+              service: "api",
+              sha: fullSha("a1"),
+              job: "8",
+              state,
+              processId: "process-8",
+              behind: null,
+              reason: null,
+            },
+          ],
+          note: null,
+        },
+      });
+      const document = new Window().document;
+      document.body.innerHTML = markup;
+      const jobs = document.querySelectorAll(`[data-zerops-job-state="${state}"]`);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]?.closest("li")?.textContent).toContain("api");
+      expect(jobs[0]?.textContent).toContain("a100000");
+      expect(document.body.textContent.match(new RegExp(state, "gi"))).toHaveLength(1);
+    },
+  );
 
   it("says no drift while the service runs what HQ put live", () => {
     const markup = renderStop({

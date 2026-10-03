@@ -416,6 +416,8 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     productionMoved: props.productionMoved,
     now: props.now,
   });
+  const answer = answeredDeploys(press);
+  const answered = new Set(answer?.jobs.map(({ service }) => service));
   const fix = model.verdict.fix;
   const refused = press.kind === "refused" ? press.reason : undefined;
   // While it releases, a service it redeploys is deploying: its version names what is going, or
@@ -424,7 +426,10 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     props.outcome.kind === "releasing"
       ? props.untold.filter((service) => props.services.includes(service))
       : [];
-  const untold = props.untold.filter((service) => !deploying.includes(service));
+  const untold = props.untold.filter(
+    (service) => !deploying.includes(service) && !answered.has(service),
+  );
+  const untoldDeploying = deploying.filter((service) => !answered.has(service));
   return (
     <ZeropsReviewSurface
       consequence={refused ?? model.consequence}
@@ -462,25 +467,24 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       title={`${props.name ?? "Production"} ${tag}`}
       titleId={props.titleId}
       verdict={model.verdict}
-      deploys={answeredDeploys(press)}
     >
-      {rows.length === 0 && props.untold.length === 0 ? null : (
+      {rows.length === 0 && untold.length === 0 && untoldDeploying.length === 0 ? null : (
         <ReviewSection
           aside={`${String(rows.length)} ${rows.length === 1 ? "change" : "changes"}`}
           title="What goes out"
         >
           {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
-          {deploying.length === 0 ? null : (
-            <p className="text-sm text-muted-foreground">{servicesDeploying(deploying)}.</p>
+          {untoldDeploying.length === 0 ? null : (
+            <p className="text-sm text-muted-foreground">{servicesDeploying(untoldDeploying)}.</p>
           )}
           {untold.length === 0 ? null : (
             <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
           )}
         </ReviewSection>
       )}
-      {props.where.length === 0 ? null : (
+      {props.where.length === 0 && answer === undefined ? null : (
         <ReviewSection title="Where">
-          <ReviewWhere rows={props.where} />
+          <ReviewWhere answer={answer} rows={props.where} />
         </ReviewSection>
       )}
       {model.ifWrong === undefined ? null : (
@@ -752,6 +756,9 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
   });
   const fix = model.verdict.fix;
   const onFix = props.onFix;
+  const answer = answeredDeploys(press);
+  const answered = new Set(answer?.jobs.map(({ service }) => service));
+  const untold = props.untold.filter((service) => !answered.has(service));
   return (
     <ZeropsReviewSurface
       consequence={model.consequence}
@@ -794,7 +801,6 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       title={`${props.name ?? "Production"} ${tag}`}
       titleId={props.titleId}
       verdict={model.verdict}
-      deploys={answeredDeploys(press)}
     >
       <RollbackListSection
         list={props.leaving}
@@ -802,8 +808,8 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
         side="leaving"
         title="Leaves production"
       >
-        {props.untold.length === 0 ? null : (
-          <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(props.untold)}.</p>
+        {untold.length === 0 ? null : (
+          <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
         )}
       </RollbackListSection>
       <RollbackListSection
@@ -812,9 +818,9 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
         side="coming-back"
         title="Comes back"
       />
-      {props.where.length === 0 ? null : (
+      {props.where.length === 0 && answer === undefined ? null : (
         <ReviewSection title="Where">
-          <ReviewWhere rows={props.where} />
+          <ReviewWhere answer={answer} rows={props.where} />
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
