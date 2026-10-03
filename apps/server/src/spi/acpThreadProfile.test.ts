@@ -63,6 +63,21 @@ describe("decideAcpPermission", () => {
       expected: "once",
     },
     {
+      name: "Antigravity's command line in the session's directory",
+      call: { kind: "execute", rawInput: { CommandLine: "npm test", Cwd: CWD } },
+      expected: "once",
+    },
+    {
+      name: "a command run outside the session's directory",
+      call: { kind: "execute", rawInput: { CommandLine: "npm test", Cwd: "/etc" } },
+      expected: "no",
+    },
+    {
+      name: "an edit named by a file URI",
+      call: { kind: "edit", locations: [{ path: `file://${CWD}/src/a.ts` }] },
+      expected: "once",
+    },
+    {
       name: "a command the gate refuses",
       call: { kind: "execute", rawInput: { command: "rm -rf /" } },
       expected: "no",

@@ -59,9 +59,12 @@ const shellWord = (word: string): string =>
  * The command a call runs, as the gate judges it: a string as it is, inside
  * a `<shell> -c|-lc` wrapper; an argv the same, or its words quoted for sh.
  */
+const COMMAND_KEYS = ["command", "cmd", "CommandLine", "commandLine", "command_line"] as const;
+const CWD_KEYS = ["cwd", "Cwd", "WorkingDirectory", "workingDir", "working_dir"] as const;
+
 const commandOf = (rawInput: unknown): string | undefined => {
   if (!isRecord(rawInput)) return undefined;
-  const command = rawInput.command ?? rawInput.cmd;
+  const command = COMMAND_KEYS.map((key) => rawInput[key]).find((value) => value !== undefined);
   if (typeof command === "string") {
     return command.trim().length > 0 ? shellCommand(command.trim()) : undefined;
   }
@@ -82,8 +85,27 @@ const commandOf = (rawInput: unknown): string | undefined => {
 
 const PATH_KEYS = ["file_path", "filePath", "path", "target_file", "notebook_path"] as const;
 
-const absoluteIn = (cwd: string, path: string): string =>
-  path.startsWith("/") ? path : `${cwd.replace(/\/+$/u, "")}/${path}`;
+/** A path as the gate reads it: a `file://` URI's path, a relative one against the session. */
+const absoluteIn = (cwd: string, path: string): string => {
+  const plain = path.startsWith("file://") ? decodeURIComponent(new URL(path).pathname) : path;
+  return plain.startsWith("/") ? plain : `${cwd.replace(/\/+$/u, "")}/${plain}`;
+};
+
+/** Where a command says it runs, when it says so. */
+const commandCwdOf = (rawInput: unknown, cwd: string): string | undefined => {
+  if (!isRecord(rawInput)) return undefined;
+  const value = CWD_KEYS.map((key) => rawInput[key]).find((entry) => typeof entry === "string");
+  return typeof value === "string" && value.trim().length > 0
+    ? absoluteIn(cwd, value.trim())
+    : undefined;
+};
+
+/** `path` is the session's directory or inside it. */
+const within = (cwd: string, path: string): boolean => {
+  const root = cwd.replace(/\/+$/u, "");
+  const normalized = path.replace(/\/+$/u, "");
+  return normalized === root || normalized.startsWith(`${root}/`);
+};
 
 /** Every file a call names: its locations and the path its input carries. */
 const pathsOf = (toolCall: AcpToolCall, cwd: string): ReadonlyArray<string> => {
@@ -141,6 +163,10 @@ export const acpGateCalls = (
       : paths.map((path) => ({ toolName, input: { file_path: path } }));
   switch (toolCall.kind) {
     case "execute": {
+      // The gate judges a command as run in the session's directory; one
+      // that runs elsewhere is not the command it judged.
+      const elsewhere = commandCwdOf(toolCall.rawInput, cwd);
+      if (elsewhere !== undefined && !within(cwd, elsewhere)) return undefined;
       const command = commandOf(toolCall.rawInput);
       return command === undefined ? undefined : [{ toolName: "Bash", input: { command } }];
     }
