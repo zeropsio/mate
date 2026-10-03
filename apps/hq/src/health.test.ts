@@ -1,4 +1,5 @@
 import * as PgClient from "@effect/sql-pg/PgClient";
+import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -15,7 +16,7 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { Backup, type BackupStatus } from "./backup.ts";
 import { GitHost, type GitState, type Quarantined } from "./gitHost.ts";
 import { healthRoute } from "./health.ts";
-import { Leader, type LeaderStatus } from "./leader.ts";
+import { LOCK_KEY, Leader, type LeaderStatus } from "./leader.ts";
 import { LoopWatch, type LoopStatus } from "./loopWatch.ts";
 import { Official, type OfficialStatus } from "./official.ts";
 import { Recomputes } from "./recomputes.ts";
@@ -88,19 +89,58 @@ const getHealth = (
     return { status: response.status, body, retryAfter: response.headers["retry-after"] };
   }).pipe(Effect.scoped);
 
+/**
+ * H5a: the readiness a rolling deploy waits on before it retires the Core that runs. An active Core
+ * is ready once its git is open. A standby is ready while its database answers and either no Core
+ * holds the lock — HQ's birth deploys Core before its anchor, and nothing runs to retire — or it
+ * could lead itself, the official HQ by its own verdict.
+ */
 const cases: ReadonlyArray<{
   readonly leader: LeaderStatus;
   readonly official: OfficialStatus["official"];
   readonly database: "up" | "down";
+  /** git as this Core holds it; open while active, else closed, unless given. */
+  readonly git?: GitState;
+  /** Another Core holds the lock: the one a deploy would retire. */
+  readonly lockHeld?: true;
   readonly status: number;
 }> = [
   { leader: { state: "active", epoch: 3 }, official: "ok", database: "up", status: 200 },
-  // A Core that is not the official HQ is a healthy standby: its deploy must pass.
+  // Leading, its takeover not through: nothing to retire the old Core for yet.
+  {
+    leader: { state: "active", epoch: 3 },
+    official: "ok",
+    database: "up",
+    git: "opening",
+    status: 503,
+  },
+  // No Core holds the lock, as at HQ's birth: a standby that is not the official HQ passes.
   {
     leader: { state: "standby", epoch: null },
     official: "anchor_missing",
     database: "up",
     status: 200,
+  },
+  // Another Core leads: only a standby that could lead itself may retire it.
+  {
+    leader: { state: "standby", epoch: null },
+    official: "anchor_missing",
+    database: "up",
+    lockHeld: true,
+    status: 503,
+  },
+  {
+    leader: { state: "standby", epoch: null },
+    official: "ok",
+    database: "up",
+    lockHeld: true,
+    status: 200,
+  },
+  {
+    leader: { state: "standby", epoch: null },
+    official: "anchor_missing",
+    database: "down",
+    status: 503,
   },
   {
     leader: { state: "standby", epoch: null },
@@ -119,15 +159,31 @@ const cases: ReadonlyArray<{
 
 describe("GET /health", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    for (const { leader, official, database, status } of cases) {
+    for (const { leader, official, database, git, lockHeld, status } of cases) {
       it.effect(
-        `answers ${String(status)} for ${leader.state}, ${official}, the database ${database}`,
+        `answers ${String(status)} for ${leader.state}, ${official}, the database ${database}${
+          git === undefined ? "" : `, git ${git}`
+        }${lockHeld ? ", another Core leading" : ""}`,
         () =>
           Effect.gen(function* () {
             const postgres = yield* TempPostgres;
             const url =
               database === "up" ? yield* postgres.createDatabase : yield* postgres.deadUrl;
-            const response = yield* getHealth(leader, official, url);
+            if (lockHeld) {
+              const other = yield* PgConnection.make({ url: Redacted.make(url) });
+              yield* other.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
+            }
+            const gitNow = git ?? (leader.state === "active" ? "open" : "closed");
+            const response = yield* getHealth(
+              leader,
+              official,
+              url,
+              null,
+              { state: "off" },
+              QUIET,
+              0,
+              { git: gitNow, quarantined: [] },
+            );
             assert.strictEqual(response.status, status);
             // Every 503 HQ answers says when to try again.
             assert.strictEqual(response.retryAfter, status === 503 ? "5" : undefined);
@@ -135,7 +191,7 @@ describe("GET /health", () => {
               state: leader.state,
               official,
               db: database,
-              git: leader.state === "active" ? "open" : "closed",
+              git: gitNow,
               backup: { state: "off" },
               loop: QUIET,
               recomputes: 0,

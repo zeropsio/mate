@@ -1,8 +1,11 @@
 /**
  * `GET /health`: what this instance is doing, for the platform's readiness check and for people.
- * 200 for `standby` and `active` — a healthy standby must pass, or a rolling deploy could never
- * cut over to an instance that waits for the old one's lock — 503 otherwise. A Core that is not
- * the official HQ (`official`, see `official.ts`) is such a standby. A Core that holds the lock
+ * A rolling deploy retires the Core that runs once the new one answers 200 (`zerops.yml`), so 200
+ * means it may (H5a): an active Core once its git is open; a standby while its database answers
+ * and either no Core holds the lock — nothing runs to retire, as at HQ's birth, which deploys Core
+ * before its anchor — or it could lead itself, the official HQ by its own verdict (`official.ts`).
+ * A standby that could not, beside a Core that leads, answers 503: the deploy waits, and the old
+ * Core serves on until the new one could lead or the deploy fails. 503 otherwise. A Core that holds the lock
  * serving nothing says why (`reason`, `leader.ts` `hold`). `git` is where git stands on this Core —
  * open, opening (leading, its takeover not through) or closed — and `quarantined` the repositories
  * it withholds until they converge, if any (`gitHost.ts`). `db` is a fresh `SELECT 1` on the pool,
@@ -20,7 +23,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { Backup } from "./backup.ts";
 import { GitHost } from "./gitHost.ts";
-import { Leader, RETRY_AFTER } from "./leader.ts";
+import { LOCK_KEY, Leader, RETRY_AFTER } from "./leader.ts";
 import { LoopWatch } from "./loopWatch.ts";
 import { Official } from "./official.ts";
 import { Recomputes } from "./recomputes.ts";
@@ -36,7 +39,7 @@ export const healthRoute = (build: string) =>
       const leader = yield* Leader;
       const { state, epoch } = yield* leader.status;
       const held = yield* leader.held;
-      const { official } = yield* (yield* Official).status;
+      const { official, allowed } = yield* (yield* Official).status;
       const sql = yield* SqlClient.SqlClient;
       const db = yield* sql`SELECT 1`.pipe(
         Effect.timeout(PROBE_TIMEOUT),
@@ -47,7 +50,21 @@ export const healthRoute = (build: string) =>
       const backup = yield* (yield* Backup).status;
       const loop = yield* (yield* LoopWatch).status;
       const recomputes = yield* (yield* Recomputes).lastMinute;
-      const serving = state === "standby" || state === "active";
+      // Another Core holds the lock: the one a deploy would retire. Not known counts as held.
+      const lockHeld = sql<{ readonly held: boolean }>`
+        SELECT EXISTS (
+          SELECT 1 FROM pg_locks
+          WHERE locktype = 'advisory' AND classid = 0 AND objid::bigint = ${LOCK_KEY}
+            AND objsubid = 1 AND granted
+        ) AS held`.pipe(
+        Effect.timeout(PROBE_TIMEOUT),
+        Effect.map((rows) => rows[0]?.held !== false),
+        Effect.orElseSucceed(() => true),
+      );
+      const ready =
+        state === "active"
+          ? git.git === "open"
+          : state === "standby" && db === "up" && (allowed || !(yield* lockHeld));
       return HttpServerResponse.jsonUnsafe(
         {
           state,
@@ -62,7 +79,7 @@ export const healthRoute = (build: string) =>
           epoch,
           build,
         },
-        serving ? { status: 200 } : { status: 503, headers: RETRY_AFTER },
+        ready ? { status: 200 } : { status: 503, headers: RETRY_AFTER },
       );
     }),
   );
