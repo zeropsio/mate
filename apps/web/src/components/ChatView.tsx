@@ -6239,6 +6239,8 @@ export default function ChatView(props: ChatViewProps) {
     queuedMessage?: QueuedComposerMessage,
     /** The ids a requested send carries, so clients making the same send make one command. */
     sendIds?: ComposerSendIds,
+    /** The person's own send, or a queued message leaving by itself at a boundary. */
+    sentBy: "person" | "queue" = "person",
   ) => {
     e?.preventDefault();
     // Typed out in full rather than picked from the menu. Attachments or contexts
@@ -6739,7 +6741,14 @@ export default function ChatView(props: ChatViewProps) {
         threadKey: scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
         messageId: messageIdForSend,
       });
-    } else {
+    } else if (
+      // Only the person's own send pins the end; a queued message leaving by
+      // itself leaves a reader above where they are.
+      nextTimelineFollow(
+        liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+        { type: "sent", byPerson: sentBy === "person" },
+      )
+    ) {
       scrollToEnd();
     }
     setOptimisticUserMessages((existing) => [
@@ -7049,7 +7058,7 @@ export default function ChatView(props: ChatViewProps) {
   // after it was queued, or the turn ended. Only one leaves per boundary; the
   // take inside onSend re-anchors the rest.
   const sendQueuedMessage = useEffectEvent((message: QueuedComposerMessage) => {
-    void onSend(undefined, message.submissionIntent, message);
+    void onSend(undefined, message.submissionIntent, message, undefined, "queue");
   });
   const nextQueuedMessage = queuedMessages[0] ?? null;
   const latestToolActivityId = useMemo(
