@@ -169,6 +169,7 @@ import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./zerops/ZeropsOrgRead.ts";
+import * as ZeropsProjectAccessModule from "./zerops/ZeropsProjectAccess.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -1100,17 +1101,21 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         Layer.mergeAll(
           otlpSerializationLayer(config.otlpTracesExport.protocol),
-          // The door (`zerops/http.ts`) requires these three directly, outside
+          // The door (`zerops/http.ts`) requires these directly, outside
           // the fixture/feeds bundle the next `Layer.provide` supplies: a
           // test machine has no live env store either, so the reader
           // answers the boot snapshot (`undefined`, same as `config.zerops`
-          // being unset), the member list has no key to be read with, and
-          // the status starts `"unknown"`.
-          ZeropsOrgReadModule.layer.pipe(
+          // being unset), the member list has no key to be read with, no HQ
+          // relays who the project lets in, and the status starts `"unknown"`.
+          ZeropsProjectAccessModule.layer.pipe(
             Layer.provideMerge(
-              Layer.succeed(
-                ZeropsMateKeyModule.ZeropsMateKey,
-                ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+              ZeropsOrgReadModule.layer.pipe(
+                Layer.provideMerge(
+                  Layer.succeed(
+                    ZeropsMateKeyModule.ZeropsMateKey,
+                    ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+                  ),
+                ),
               ),
             ),
           ),

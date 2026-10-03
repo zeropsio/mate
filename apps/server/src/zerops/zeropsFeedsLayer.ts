@@ -37,6 +37,7 @@ import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
+import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
@@ -169,6 +170,10 @@ const liveLayer = Layer.mergeAll(
   // platform to re-read.
   ZeropsMembershipWatchModule.layer,
 ).pipe(
+  // Who the project lets in — HQ's relay while it holds, else this Mate's own
+  // read — for the watch, the signers and the door alike, written by the link
+  // to HQ above; it reaches the door the same way the reader below does.
+  Layer.provideMerge(ZeropsProjectAccessModule.layer),
   // The org's member list, read once for the watch, the signers and the door
   // alike (`ZeropsOrgRead`), over the one own-key reader below; it reaches
   // the door the same way that reader does.

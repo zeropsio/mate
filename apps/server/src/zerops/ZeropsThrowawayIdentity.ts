@@ -71,12 +71,14 @@ import {
 import { ZEROPS_ACTIVE_MEMBER_STATUS, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { readMemberEntries, ZeropsOrgRead, type OwnKeyRead } from "./ZeropsOrgRead.ts";
+import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import {
   readJson,
   responseDateEpochMs,
@@ -360,6 +362,20 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   //    DOOR_MEMBER_LIST_RETRY_ATTEMPTS). A failed read is never kept, so each
   //    asking reads again.
   if (record.createdByUser.length === 0) return yield* refused("not_member");
+  // HQ's relay while it holds (`ZeropsProjectAccess`, R6): a creator it opens for is let in,
+  // and the member list is not read. Whomever it lists or leaves out, the read below decides —
+  // its refusals tell a non-member from one this project hides or only lists.
+  const relayed = Option.getOrUndefined(yield* (yield* ZeropsProjectAccess).relay);
+  const opened = relayed?.members.find(
+    (entry) => entry.userId === record.createdByUser && entry.visibility === "open",
+  );
+  if (opened !== undefined) {
+    return {
+      userId: opened.userId,
+      clientId: project.clientId,
+      role: opened.role,
+    } satisfies ZeropsThrowawayCaller;
+  }
   const readMembers = orgRead.members({ apiBaseUrl, clientId: project.clientId });
   let members = yield* readMembers;
   for (

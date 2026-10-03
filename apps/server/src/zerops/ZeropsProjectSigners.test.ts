@@ -32,8 +32,9 @@ import {
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
+import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
+import { isMemberListComplete } from "./ZeropsProjectAccess.ts";
 import {
-  isMemberListComplete,
   loginTurnRefusal,
   isTurnStartingCommand,
   make as makeProjectSigners,
@@ -303,11 +304,15 @@ describe("the turn gate", () => {
     Effect.gen(function* () {
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
-          Layer.mergeAll(
-            httpLayer(() => json({ message: "down" }, 500)).layer,
-            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-            NodeServices.layer,
-            Layer.succeed(ZeropsSignIns, signIns),
+          ZeropsProjectAccessModule.layer.pipe(
+            Layer.provideMerge(
+              Layer.mergeAll(
+                httpLayer(() => json({ message: "down" }, 500)).layer,
+                ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+                NodeServices.layer,
+                Layer.succeed(ZeropsSignIns, signIns),
+              ),
+            ),
           ),
         ),
       );
@@ -586,21 +591,31 @@ describe("hasProjectAccess", () => {
       let members = initial.members;
       let status = 200;
       const signIns = yield* memorySignInStore();
-      const signers = yield* makeProjectSigners.pipe(
+      const zerops = httpLayer((url) =>
+        url.endsWith("/user/list") ? json(members, status) : json(project, status),
+      );
+      const { signers, projectAccess } = yield* Effect.all({
+        signers: makeProjectSigners,
+        projectAccess: ZeropsProjectAccessModule.ZeropsProjectAccess,
+      }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            httpLayer((url) =>
-              url.endsWith("/user/list") ? json(members, status) : json(project, status),
-            ).layer,
-            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-            NodeServices.layer,
-            Layer.succeed(ZeropsSignIns, signIns),
+          ZeropsProjectAccessModule.layer.pipe(
+            Layer.provideMerge(
+              Layer.mergeAll(
+                zerops.layer,
+                ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+                NodeServices.layer,
+                Layer.succeed(ZeropsSignIns, signIns),
+              ),
+            ),
           ),
         ),
       );
       yield* TestClock.adjust(Duration.zero);
       return {
         signers,
+        relayed: projectAccess.relayed,
+        seen: zerops.seen,
         set: (next: {
           readonly project?: unknown;
           readonly members?: unknown;
@@ -645,6 +660,42 @@ describe("hasProjectAccess", () => {
       }).pipe(Effect.scoped),
     );
   }
+
+  // R6: HQ's relay answers while it holds, and Zerops is not read for it.
+  it.effect("answers from HQ's relay while it holds, reading nothing of Zerops", () =>
+    Effect.gen(function* () {
+      const { signers, relayed, seen } = yield* access({
+        project: projectWith([]),
+        members: { clientUserList: [member(EVA, "OWNER")] },
+      });
+      yield* relayed({
+        members: [{ userId: JAN, role: "BASIC_USER", visibility: "open" }],
+        ageMs: 0,
+      });
+      assert.isTrue(yield* signers.hasProjectAccess(JAN));
+      assert.isFalse(yield* signers.hasProjectAccess(EVA));
+      assert.deepStrictEqual(seen, []);
+    }).pipe(Effect.scoped),
+  );
+
+  // HQ's answer holds five minutes from HQ's read of Zerops, never from when it arrived.
+  it.effect(
+    "holds HQ's answer five minutes from HQ's read while nothing answers, then nothing",
+    () =>
+      Effect.gen(function* () {
+        const { signers, relayed, set } = yield* access({ project: projectWith([]), members: {} });
+        set({ status: 500 });
+        yield* relayed({
+          members: [{ userId: JAN, role: "BASIC_USER", visibility: "open" }],
+          ageMs: 4 * 60_000,
+        });
+        assert.isTrue(yield* signers.hasProjectAccess(JAN));
+        yield* TestClock.adjust(Duration.minutes(1));
+        assert.isTrue(yield* signers.hasProjectAccess(JAN));
+        yield* TestClock.adjust(Duration.millis(1));
+        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
+      }).pipe(Effect.scoped),
+  );
 
   it.effect("answers no for somebody the org does not list", () =>
     Effect.gen(function* () {

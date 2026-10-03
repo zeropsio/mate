@@ -113,6 +113,8 @@ const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number }
     const sockets: Array<FakeSocket> = [];
     const asked: Array<string | undefined> = [];
     const hq = { refusing: false, tickets: 0 };
+    /** What HQ relayed of the project's access, as the link handed it on. */
+    const relayed: Array<unknown> = [];
     const http = HttpClient.make((request) =>
       Effect.sync(() => {
         asked.push(request.headers.authorization);
@@ -141,6 +143,10 @@ const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number }
         reads.count += 1;
       }).pipe(Effect.andThen(Ref.get(current)), Effect.map(Option.some)),
       changes: Stream.fromPubSub(changes),
+      relayAccess: (access) =>
+        Effect.sync(() => {
+          relayed.push(access);
+        }),
       reconnectDelaysMs: [20],
       ...(options.everyMs === undefined ? {} : { overviewEveryMs: options.everyMs }),
     }).pipe(Effect.provideService(HttpClient.HttpClient, http));
@@ -154,7 +160,19 @@ const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number }
         Effect.timeout(Duration.seconds(3)),
         Effect.orDie,
       );
-    return { link, enrollment, outcome, current, changes, sockets, asked, hq, until, reads };
+    return {
+      link,
+      enrollment,
+      outcome,
+      current,
+      changes,
+      sockets,
+      asked,
+      hq,
+      until,
+      reads,
+      relayed,
+    };
   });
 
 describe("ZeropsHqLink", () => {
@@ -190,6 +208,22 @@ describe("ZeropsHqLink", () => {
           assert.deepStrictEqual(held, STATE);
         }),
       ),
+  );
+
+  // R6: HQ relays who the project lets in, and how old its read of Zerops is; the link hands it
+  // on as it lands (`ZeropsProjectAccess`).
+  it.live("hands on the access HQ relays, with its age", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { enrollment, sockets, until, relayed } = yield* rig({ everyMs: 10 });
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        const members = [{ userId: "owner", role: "OWNER", visibility: "open" }];
+        socket.hear({ type: "access", ageMs: 1_500, members });
+        assert.deepStrictEqual(yield* until(() => relayed[0]), { members, ageMs: 1_500 });
+      }),
+    ),
   );
 
   // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.
@@ -411,6 +445,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         sockets.push(socket);
         return socket;
       },
+      relayAccess: () => Effect.void,
       ...feed,
     }).pipe(Effect.provideService(HttpClient.HttpClient, http));
     yield* TestClock.adjust(Duration.zero);

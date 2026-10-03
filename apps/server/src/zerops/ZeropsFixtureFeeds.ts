@@ -20,6 +20,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -36,6 +37,7 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
+import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
@@ -575,6 +577,16 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ZeropsOrgReadModule.ZeropsOrgRead.of({
         project: () => Effect.succeed({ kind: "no-key" }),
         members: () => Effect.succeed({ kind: "no-key" }),
+      }),
+    ),
+    // No HQ relays to a fixture scene, and nothing is read for it either.
+    Layer.succeed(
+      ZeropsProjectAccessModule.ZeropsProjectAccess,
+      ZeropsProjectAccessModule.ZeropsProjectAccess.of({
+        relayed: () => Effect.void,
+        relay: Effect.succeed(Option.none()),
+        read: Effect.succeed({ ok: false }),
+        changes: Stream.empty,
       }),
     ),
   );

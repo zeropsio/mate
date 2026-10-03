@@ -11,11 +11,13 @@ import type * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
+import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import {
   DOOR_MEMBER_LIST_RETRY_ATTEMPTS,
   DOOR_THROWAWAY_MAX_AGE_MS,
@@ -75,24 +77,29 @@ const stub = (
   ),
 ) => {
   const seen: Array<SeenRequest> = [];
-  const layer = ZeropsOrgReadModule.layer.pipe(
+  const layer = ZeropsProjectAccessModule.layer.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(
-        Layer.succeed(
-          HttpClient.HttpClient,
-          HttpClient.make((request) => {
-            const authorization = request.headers.authorization;
-            seen.push({ url: request.url, authorization });
-            return Effect.succeed(
-              HttpClientResponse.fromWeb(
-                request,
-                route(request.url, authorization?.replace("Bearer ", "")),
-              ),
-            );
-          }),
+      ZeropsOrgReadModule.layer.pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(
+            Layer.succeed(
+              HttpClient.HttpClient,
+              HttpClient.make((request) => {
+                const authorization = request.headers.authorization;
+                seen.push({ url: request.url, authorization });
+                return Effect.succeed(
+                  HttpClientResponse.fromWeb(
+                    request,
+                    route(request.url, authorization?.replace("Bearer ", "")),
+                  ),
+                );
+              }),
+            ),
+            Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+            ZeropsIdentityStatusModule.layer,
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+          ),
         ),
-        Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-        ZeropsIdentityStatusModule.layer,
       ),
     ),
   );
@@ -624,13 +631,67 @@ describe("verifyThrowawayCaller", () => {
         environment: { ...environment, apiToken: "boot-snapshot" },
         token: PRESENTED,
       }).pipe(
-        Effect.provide(ZeropsOrgReadModule.layer.pipe(Layer.provideMerge(layer))),
+        Effect.provide(
+          ZeropsProjectAccessModule.layer.pipe(
+            Layer.provideMerge(
+              ZeropsOrgReadModule.layer.pipe(
+                Layer.provideMerge(
+                  Layer.mergeAll(
+                    layer,
+                    ServerConfig.layer({
+                      zerops: environment,
+                    } as ServerConfig.ServerConfig["Service"]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
         Effect.provide(ZeropsIdentityStatusModule.layer),
       );
       assert.strictEqual(caller.userId, USER_ID);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
   });
+
+  // R6: HQ's relay, while it holds, lets in a creator it opens for, and the member list is not
+  // read; whomever it lists or leaves out, this Mate's own read decides, with today's refusals.
+  for (const [name, relayed, admitted, readsList] of [
+    [
+      "lets in a creator HQ's relay opens for, reading no member list",
+      { userId: USER_ID, role: "OWNER", visibility: "open" },
+      { role: "OWNER" },
+      false,
+    ],
+    [
+      "asks its own read about a creator HQ's relay only lists",
+      { userId: USER_ID, role: "READ_ONLY", visibility: "listed" },
+      { role: "BASIC_USER" },
+      true,
+    ],
+    [
+      "asks its own read about a creator HQ's relay leaves out",
+      { userId: "another-person", role: "OWNER", visibility: "open" },
+      { role: "BASIC_USER" },
+      true,
+    ],
+  ] as const) {
+    it.effect(name, () => {
+      const { layer, seen } = scene();
+      return Effect.gen(function* () {
+        yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
+          members: [relayed],
+          ageMs: 0,
+        });
+        const caller = yield* verifyThrowawayCaller({ environment, token: PRESENTED });
+        assert.deepStrictEqual({ role: caller.role }, admitted);
+        assert.strictEqual(
+          seen.some((request) => request.url.endsWith("/user/list")),
+          readsList,
+        );
+      }).pipe(Effect.provide(layer));
+    });
+  }
 
   it.effect("records the identity status of its own-project read", () => {
     const { layer } = scene();

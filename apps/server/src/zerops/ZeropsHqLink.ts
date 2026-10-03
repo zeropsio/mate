@@ -14,7 +14,8 @@
  *   only the sections that changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when
  *   something it is made of moves — a domain event, the crew's snapshot, a login, the update line —
  *   and never on a timer; `pong` to each of HQ's pings.
- * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks.
+ * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks;
+ *   and who its project lets in (`access`), handed on to `ZeropsProjectAccess` with its age.
  *
  * A link that closes or never opens is tried again after a growing wait.
  *
@@ -58,6 +59,7 @@ import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
+import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
@@ -104,6 +106,8 @@ export interface ZeropsHqLinkOptions {
   readonly overview: Effect.Effect<Option.Option<MateOverview>>;
   /** Fires whenever the overview may have changed. */
   readonly changes: Stream.Stream<unknown>;
+  /** Hands on who HQ says the project lets in, and how old HQ's read of Zerops is. */
+  readonly relayAccess: ZeropsProjectAccess["Service"]["relayed"];
   /** The waits before each next attempt; the last one repeats. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
   /** The least time between two frames of the overview (`MATE_OVERVIEW_EVERY_MS`). */
@@ -245,8 +249,10 @@ export const makeZeropsHqLink = (
               case "state":
                 return SubscriptionRef.set(state, Option.some(message.value.mate));
               case "access":
-                // The Mate's access is read off its own read of Zerops by this build.
-                return Effect.void;
+                return options.relayAccess({
+                  members: message.value.members,
+                  ageMs: message.value.ageMs,
+                });
             }
           }),
         );
@@ -414,6 +420,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
           .readFileString(paths.join(paths.dirname(path), "outcome.json"))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
         connect: (url) => new WebSocket(url) as unknown as LinkSocket,
+        relayAccess: (yield* ZeropsProjectAccess).relayed,
         ...feed,
       });
     }),
