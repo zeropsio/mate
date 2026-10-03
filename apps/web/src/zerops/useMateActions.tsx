@@ -668,7 +668,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                     birth: {
                       standUp:
                         candidate.service !== undefined && interrupted.has(candidate.service.id),
-                      closedOff: true,
                     },
                   }
                 : placed !== undefined
@@ -686,8 +685,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                               ? undefined
                               : { tint: tags.face.tint, shape: tags.face.shape },
                         },
-                        // Closed off by the close-off before its registration.
-                        birth: { standUp: false, closedOff: true },
+                        birth: { standUp: false },
                       },
             hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),

@@ -23,20 +23,21 @@ const hqOf = (refuse: Partial<Record<keyof HqApi, string>> = {}) => {
 };
 
 describe("a Mate's birth at HQ", () => {
+  // The record comes before the container (F6b), so its birth is the ask alone: the close-off is
+  // marked by the press's close-off step, after the isolation it marks — zcp imports the runtimes
+  // on the mark.
   it.each([
-    { birth: { standUp: true, closedOff: true }, writes: ["standup p1", "closed-off p1"] },
-    { birth: { standUp: false, closedOff: true }, writes: ["closed-off p1"] },
-    { birth: { standUp: true, closedOff: false }, writes: ["standup p1"] },
-    { birth: { standUp: false, closedOff: false }, writes: [] },
-  ])("records the ask, then the close-off, as asked: $birth", async ({ birth, writes }) => {
+    { birth: { standUp: true }, writes: ["standup p1"] },
+    { birth: { standUp: false }, writes: [] },
+  ])("records the ask, as asked, and never the close-off: $birth", async ({ birth, writes }) => {
     const hq = hqOf();
     await recordMateBirth(hq.api, "p1", birth);
     expect(hq.writes).toEqual(writes);
   });
 
-  // The close-off step runs before the registration writes the record: a Mate HQ holds no record of
-  // yet is marked with it, by the registration after.
-  it("leaves a close-off to the registration where HQ holds no record yet", async () => {
+  // A Mate whose attach was refused has no record to mark: Finish setup, which writes its record
+  // first, marks it at its own close-off.
+  it("marks nothing where HQ holds no record of the Mate", async () => {
     const hq = hqOf({ recordClosedOff: "mate_not_found" });
     await expect(markClosedOffAtHq(hq.api, "p1")).resolves.toBeUndefined();
   });

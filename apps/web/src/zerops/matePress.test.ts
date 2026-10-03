@@ -47,6 +47,12 @@ vi.mock("./accountHq", () => ({
     recordClosedOff: async () => {
       hq.calls?.push("mark");
     },
+    attachProject: async (appId: string, attach: { readonly mate?: { readonly name: string } }) => {
+      hq.calls?.push(`attach ${appId} ${attach.mate?.name ?? ""}`);
+    },
+    recordStandUp: async () => {
+      hq.calls?.push("standup");
+    },
   }),
 }));
 
@@ -123,10 +129,11 @@ describe("interruptedPresses", () => {
 // Finish setup drawn as the Add dialog draws a press, then a clear end (live, 2026-10-01: Hugo's
 // view went "could not be added", "isn't running", "coming up", and never said it was done).
 describe("finishSetupView — Finish setup on a Mate's own view", () => {
+  // As Finish setup runs (F6b): its record in its application before its container.
   const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "register" },
     { kind: "import-container", agents: [] },
     { kind: "close-off" },
-    { kind: "register" },
   ];
   const progress = (
     states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>,
@@ -159,21 +166,21 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: { done: false, line: "Finishing its setup…", steps: [] },
     },
     {
-      case: "its container being imported",
-      made: press({ kind: "pressing" }, { progress: progress(["running", "queued", "queued"]) }),
+      case: "registered, its container being imported",
+      made: press({ kind: "pressing" }, { progress: progress(["done", "running", "queued"]) }),
       want: {
         done: false,
         line: "Finishing its setup…",
-        steps: ["Container:active", "Closed off:waiting", "Registered:waiting"],
+        steps: ["Registered:done", "Container:active", "Closed off:waiting"],
       },
     },
     {
-      case: "closed off, being registered",
+      case: "being closed off",
       made: press({ kind: "pressing" }, { progress: progress(["done", "done", "running"]) }),
       want: {
         done: false,
         line: "Finishing its setup…",
-        steps: ["Container:done", "Closed off:done", "Registered:active"],
+        steps: ["Registered:done", "Container:done", "Closed off:active"],
       },
     },
     {
@@ -182,16 +189,16 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: true,
         line: "Its setup is finished. It comes up on its own now, with no browser needed.",
-        steps: ["Container:done", "Closed off:done", "Registered:done"],
+        steps: ["Registered:done", "Container:done", "Closed off:done"],
       },
     },
     {
       case: "through, its registration refused",
-      made: press({ kind: "pressed" }, { progress: progress(["done", "done", "failed"]) }),
+      made: press({ kind: "pressed" }, { progress: progress(["failed", "done", "done"]) }),
       want: {
         done: true,
         line: "Its setup is finished. It comes up on its own now, with no browser needed. It still needs an owner to register it.",
-        steps: ["Container:done", "Closed off:done", "Registered:failed"],
+        steps: ["Registered:failed", "Container:done", "Closed off:done"],
       },
     },
   ])("$case", ({ made, want }) => {
@@ -209,9 +216,9 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
     });
     progressPress("p-hugo", progress(["done", "running", "queued"]));
     expect(drawn(finishSetupView(readMatePress("p-hugo")!))?.steps).toEqual([
-      "Container:done",
-      "Closed off:active",
-      "Registered:waiting",
+      "Registered:done",
+      "Container:active",
+      "Closed off:waiting",
     ]);
     forgetPress("p-hugo");
     // A press nobody holds keeps nothing.
@@ -434,19 +441,20 @@ describe("withPressTries — the harden, tried again", () => {
 // A press record ended only with the tab (pass 28 review): it ends at the mark — the Mate needs no
 // browser from then — or, for Finish setup, whose view says it is done, at its first connect.
 describe("a press's end", () => {
+  // As a Mate's press runs (F6b): its record in its application before its container.
   const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "register" },
     { kind: "import-container", agents: [] },
     { kind: "close-off" },
-    { kind: "register" },
   ];
   const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>) =>
     STEPS.map((step, index) => ({ step, state: states[index]! }));
 
   it.each([
-    { case: "before its mark", states: ["done", "running", "queued"], want: false },
-    { case: "marked, registering", states: ["done", "done", "running"], want: false },
-    { case: "marked and registered", states: ["done", "done", "done"], want: true },
-    { case: "marked, its registration refused", states: ["done", "done", "failed"], want: true },
+    { case: "registering", states: ["running", "queued", "queued"], want: false },
+    { case: "registered, before its mark", states: ["done", "done", "running"], want: false },
+    { case: "registered and marked", states: ["done", "done", "done"], want: true },
+    { case: "its registration refused, marked", states: ["failed", "done", "done"], want: true },
   ] as const)("$case: $want", ({ states, want }) => {
     expect(pressDoneAt(at(states))).toBe(want);
   });
@@ -696,6 +704,61 @@ describe("finishMateSetup — the harden path", () => {
       finishing: true,
     });
 
+  // F6b (2026-10-03): its record in its application before its container, so a Finish setup
+  // that stops after leaves a Mate HQ holds there; the close-off marked once, after the isolation
+  // it marks — never with the record, which comes before it.
+  it("writes its record in its application before its container, and marks it closed off after", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const withContainer = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            importDevelopmentContainer: () => {
+              calls.push("container");
+              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+            },
+          },
+        },
+      },
+    };
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: withContainer as never,
+        projectId: "p-old",
+        projectName: "mate-rig-e2e-d - Dan",
+        container: { agents: [] },
+        registration: {
+          hq: { projectId: "hq-project", address: "https://hq.test" },
+          groupId: "app-d",
+          kind: "mate",
+          mate: { name: "Dan", face: undefined },
+          birth: { standUp: false },
+        },
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      "attach app-d Dan",
+      "container",
+      "read isolation",
+      "read isolation",
+      "mark",
+    ]);
+    forgetPress("p-old");
+  });
+
   it("hardens, then marks it closed off without reading the isolation again", async () => {
     begin();
     const calls: Array<string> = [];
@@ -818,14 +881,14 @@ describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of"
         kind: "mate",
         groupId: "app-d",
         mate: { name: "Dan", face: FACE },
-        birth: { standUp: false, closedOff: true },
+        birth: { standUp: false },
       },
     },
     {
       name: "as a new Mate in no application where no press here placed it",
       press: undefined,
       project: DAN,
-      expected: { kind: "mate-record", birth: { standUp: false, closedOff: true } },
+      expected: { kind: "mate-record", birth: { standUp: false } },
     },
     {
       name: "as a new Mate in no application where the press here made a stage",

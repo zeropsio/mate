@@ -307,8 +307,7 @@ export function matePressPlacement(press: MatePress | undefined): BirthPlacement
 
 /**
  * A Mate HQ holds no record of, finished into the application its press placed it in, under the
- * name and the face it was made with — never a new Mate in none (F6b, 2026-10-03). Closed off by
- * the close-off before its registration.
+ * name and the face it was made with — never a new Mate in none (F6b, 2026-10-03).
  */
 export function placedMateRegistration(
   hq: HqEndpoint,
@@ -319,7 +318,7 @@ export function placedMateRegistration(
     groupId: placement.groupId,
     kind: "mate",
     mate: { name: placement.botName ?? placement.displayName, face: placement.face },
-    birth: { standUp: false, closedOff: true },
+    birth: { standUp: false },
   };
 }
 
@@ -342,7 +341,7 @@ export function setUpMateRegistration(input: {
   const record = setUpMateRecord(input);
   return record === undefined
     ? null
-    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: false, closedOff: true } };
+    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: false } };
 }
 
 /** The project is gone: nothing more is said of it. */
@@ -916,6 +915,10 @@ async function finishLocked(
     }
   }
   const steps: ReadonlyArray<EnvironmentCreationStep> = [
+    // Its record in its application before its container (F6b, 2026-10-03): a Finish setup that
+    // stops after leaves a Mate HQ holds there. A refused one stops nothing: the container and
+    // the close-off still run, and the Mate stays bare, waiting for an owner.
+    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     ...(input.container === null
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
@@ -924,8 +927,6 @@ async function finishLocked(
     input.harden === true && input.container === null
       ? { kind: "close-off", isolated: true }
       : { kind: "close-off" },
-    // After the close-off: a refused registration leaves the Mate closed off and running.
-    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     { kind: "await-ready", withAgent: true },
   ];
   return runPress({

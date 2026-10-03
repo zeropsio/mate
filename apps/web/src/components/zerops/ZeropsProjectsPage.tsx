@@ -1094,9 +1094,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         if (!isCurrent()) return;
         const project = projectRef(activeOrganization.id, projectId);
         const hq = officialHq(accountHq);
-        // Its record in HQ, written by the press's registration after the close-off its birth
-        // records: into the application a press this tab still holds placed it in, under its name
-        // and face (F6b); else in no application until somebody moves it into one.
+        // Its record in HQ, written by the press's registration before its container: into the
+        // application a press this tab still holds placed it in, under its name and face (F6b);
+        // else in no application until somebody moves it into one.
         const held = readMatePress(projectId);
         const registration = setUpMateRegistration({
           hq,

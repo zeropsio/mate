@@ -906,11 +906,12 @@ describe("recipeChangeView — where Review the change goes", () => {
 // The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
 // closed 2 s after the dialog left a Mate with no container).
 describe("pressSteps — the press as the Add dialog draws it", () => {
+  // As a Mate's press runs (F6b): its record in its application before its container.
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
+    { kind: "register" },
     { kind: "import-container", agents: [] },
     { kind: "close-off" },
-    { kind: "register" },
     { kind: "await-ready", withAgent: true },
   ];
   const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
@@ -926,17 +927,17 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     {
       case: "creating the project",
       states: ["running", "queued", "queued", "queued", "queued"],
-      want: ["Project:active", "Container:waiting", "Closed off:waiting", "Registered:waiting"],
+      want: ["Project:active", "Registered:waiting", "Container:waiting", "Closed off:waiting"],
     },
     {
-      case: "registering it, closed off",
-      states: ["done", "done", "done", "running", "queued"],
-      want: ["Project:done", "Container:done", "Closed off:done", "Registered:active"],
+      case: "registering it, before its container",
+      states: ["done", "running", "queued", "queued", "queued"],
+      want: ["Project:done", "Registered:active", "Container:waiting", "Closed off:waiting"],
     },
     {
       case: "a container that would not come",
-      states: ["done", "failed", "queued", "queued", "queued"],
-      want: ["Project:done", "Container:failed", "Closed off:waiting", "Registered:waiting"],
+      states: ["done", "done", "failed", "queued", "queued"],
+      want: ["Project:done", "Registered:done", "Container:failed", "Closed off:waiting"],
     },
   ] as const)("draws $case", ({ states, want }) => {
     expect(drawn(at(states))).toEqual(want);
@@ -957,23 +958,23 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
 
   it.each([
     {
-      case: "closing off",
-      states: ["done", "done", "running", "queued", "queued"],
+      case: "registering",
+      states: ["done", "running", "queued", "queued", "queued"],
       want: false,
     },
     {
-      case: "registering",
+      case: "closing off",
       states: ["done", "done", "done", "running", "queued"],
       want: false,
     },
     {
-      case: "registered",
+      case: "registered and closed off",
       states: ["done", "done", "done", "done", "running"],
       want: true,
     },
     {
-      case: "its registration refused",
-      states: ["done", "done", "done", "failed", "running"],
+      case: "its registration refused, closed off",
+      states: ["done", "failed", "done", "done", "running"],
       want: true,
     },
   ] as const)(
@@ -985,10 +986,7 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
 
   it("says a refused registration in the dialog: the Mate runs, an owner registers it", () => {
     expect(
-      pressRegistrationRefused(
-        "Ada",
-        at(["done", "done", "done", "failed", "running", "queued"], "No."),
-      ),
+      pressRegistrationRefused("Ada", at(["done", "failed", "done", "done", "running"], "No.")),
     ).toBe("Ada is running. An owner needs to register it before it can use Git.");
     expect(
       pressRegistrationRefused("Ada", at(["done", "done", "done", "done", "running"])),

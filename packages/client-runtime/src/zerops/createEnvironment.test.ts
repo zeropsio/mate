@@ -103,8 +103,10 @@ describe("planEnvironmentCreation", () => {
     {
       case: "a Mate",
       input: { role: "dev" as const, name: "dev", register: true },
-      // Closed off before it is registered: a refused registration never keeps a Mate open.
-      steps: ["create-project", "import-container", "close-off", "register", "await-ready"],
+      // Its record in its application before its container (F6b, 2026-10-03): a press that stops
+      // after leaves a Mate HQ holds there, which any browser finishes under its name. Closed off
+      // after, as before: a refused registration never keeps a Mate open.
+      steps: ["create-project", "register", "import-container", "close-off", "await-ready"],
     },
     {
       case: "a production",

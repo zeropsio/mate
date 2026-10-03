@@ -204,8 +204,8 @@ export type EnvironmentCreationPlan =
  * (`splitRecipeTier`). The project goes in with its managed services alone —
  * its variables and generated secrets evaluated there and nowhere else — and
  * then the container, holding its key and the runtimes for zcp to import on
- * its first boot (`MATE_SETUP_RUNTIMES`). The press then closes the project
- * off and registers it, so nothing after it needs this browser. Measured on
+ * its first boot (`MATE_SETUP_RUNTIMES`) — registered in its application before it — and the
+ * press then closes the project off, so nothing after it needs this browser. Measured on
  * the add of 2026-09-30, the whole tier in one import cost the container's
  * build a queue behind the services' priority waves, and closing off
  * afterwards restarted nine services, a storage's restart failing: closed off
@@ -261,6 +261,11 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     );
   }
 
+  // A Mate's record in its application before its container (F6b, 2026-10-03): a press that
+  // stops after it leaves a Mate HQ holds there, which any browser finishes under its name. A
+  // registration refused — a member who may not write the registry — stops nothing: the
+  // container and the close-off still run, and the Mate waits for an owner, bare.
+  if (withAgent && input.register === true) steps.push({ kind: "register" });
   if (withAgent) {
     steps.push({
       kind: "import-container",
@@ -268,10 +273,9 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       ...(tier?.runtimes === undefined ? {} : { runtimes: tier.runtimes }),
     });
   }
-  // The close-off first: it is what makes the Mate need no browser, and a registration refused
-  // — a member who may not write the registry — never keeps the Mate open.
+  // The close-off after the container: it is what makes the Mate need no browser.
   if (withAgent) steps.push({ kind: "close-off" });
-  if (input.register === true) steps.push({ kind: "register" });
+  if (!withAgent && input.register === true) steps.push({ kind: "register" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
   steps.push({ kind: "await-ready", withAgent });
