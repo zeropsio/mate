@@ -25,6 +25,7 @@
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
+  agentIdForDriverKind,
   isProviderAvailable,
   type ModelSelection,
   ProviderDriverKind,
@@ -136,6 +137,19 @@ export const pickBootstrapProvider = (
   }
   return ready[0];
 };
+
+/**
+ * The first ready instance of an agent Mate signs nobody in to — Cursor, OpenCode, Grok,
+ * Antigravity — in the registry's order, or `undefined`. Claude Code and Codex never answer here:
+ * on a Zerops project their sign-in is the feed's to say, and the person's (D6).
+ */
+export const pickReadyAgentWithoutSignIn = (
+  providers: ReadonlyArray<ServerProvider>,
+): ServerProvider | undefined =>
+  providers.find(
+    (snapshot) =>
+      agentIdForDriverKind(snapshot.driver) === undefined && isBootstrapReadyProvider(snapshot),
+  );
 
 /**
  * The bootstrap model selection for a Zerops container, or `undefined` when

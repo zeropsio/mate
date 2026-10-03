@@ -8,6 +8,7 @@ import {
   detectComposerTrigger,
   expandCollapsedComposerCursor,
   isCollapsedCursorAdjacentToInlineToken,
+  isStandaloneMcpCommand,
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
 } from "./composer-logic";
@@ -476,6 +477,18 @@ describe("isCollapsedCursorAdjacentToInlineToken", () => {
 
     expect(isCollapsedCursorAdjacentToInlineToken(text, tokenEnd, "left")).toBe(true);
     expect(isCollapsedCursorAdjacentToInlineToken(text, tokenStart, "right")).toBe(true);
+  });
+});
+
+describe("isStandaloneMcpCommand — /mcp typed out and sent opens the MCP tab", () => {
+  it.each([
+    ["/mcp", true],
+    ["  /MCP \n", true],
+    ["/mcp list", false],
+    ["tell me about /mcp", false],
+    ["/mcpx", false],
+  ])("%j → %s", (text, expected) => {
+    expect(isStandaloneMcpCommand(text)).toBe(expected);
   });
 });
 

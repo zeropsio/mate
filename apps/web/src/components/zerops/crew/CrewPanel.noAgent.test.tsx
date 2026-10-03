@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const feed = vi.hoisted(() => ({
   agentAuth: undefined as unknown,
+  providers: [] as ReadonlyArray<{ driver: string; enabled: boolean; status: string }>,
 }));
 
 vi.mock("~/zerops/useZeropsFeeds", () => ({
@@ -40,7 +41,7 @@ vi.mock("~/zerops/useAskMate", () => ({
   useAskMate: () => () => undefined,
 }));
 vi.mock("~/state/entities", () => ({
-  useServerConfigs: () => new Map(),
+  useServerConfigs: () => new Map([["env-fen", { cwd: "/var/www", providers: feed.providers }]]),
   useThreadShells: () => [],
 }));
 vi.mock("../ZeropsMateEmptyState", () => ({
@@ -80,6 +81,7 @@ const known = (value: ZeropsAgentAuthSnapshot) => ({
 
 beforeEach(() => {
   feed.agentAuth = undefined;
+  feed.providers = [];
 });
 
 describe("CrewPanel — a Mate nobody has signed in", () => {
@@ -87,8 +89,16 @@ describe("CrewPanel — a Mate nobody has signed in", () => {
     { name: "no agent signed in", auth: known(agents(false)), stage: true },
     { name: "an agent signed in", auth: known(agents(true)), stage: false },
     { name: "its sign-in not read yet", auth: undefined, stage: false },
-  ])("$name: the no-agent stage $stage", ({ auth, stage }) => {
+    // Mate signs people in to Claude Code and Codex only: a ready Cursor is an agent to run.
+    {
+      name: "no agent signed in, Cursor ready",
+      auth: known(agents(false)),
+      providers: [{ driver: "cursor", enabled: true, status: "ready" }],
+      stage: false,
+    },
+  ])("$name: the no-agent stage $stage", ({ auth, providers, stage }) => {
     feed.agentAuth = auth;
+    feed.providers = providers ?? [];
     const html = renderToStaticMarkup(<CrewPanel onSignIn={() => undefined} threadRef={THREAD} />);
     expect(html.includes("data-no-agent-stage")).toBe(stage);
   });

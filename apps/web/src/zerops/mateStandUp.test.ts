@@ -316,8 +316,37 @@ describe("mateStandUpSignedIn", () => {
       local: {},
       expected: true,
     },
-  ])("$name: $expected", ({ agents, local, expected }) => {
-    expect(mateStandUpSignedIn(agents, ADA, local)).toBe(expected);
+    // An agent Mate never signs anybody in to runs for whoever is looking.
+    {
+      name: "nobody signed in, Cursor ready",
+      agents: snapshot(),
+      local: {},
+      providers: [{ driver: "cursor", enabled: true, status: "ready" }],
+      expected: true,
+    },
+    {
+      name: "a colleague's agent, OpenCode ready",
+      agents: snapshot(
+        agent({
+          credPresent: true,
+          flagOAuth: true,
+          state: "authorized",
+          authorizedBy: { subject: FEN },
+        }),
+      ),
+      local: {},
+      providers: [{ driver: "opencode", enabled: true, status: "ready" }],
+      expected: true,
+    },
+    {
+      name: "nobody signed in, Cursor not signed in either",
+      agents: snapshot(),
+      local: {},
+      providers: [{ driver: "cursor", enabled: true, status: "error" }],
+      expected: false,
+    },
+  ])("$name: $expected", ({ agents, local, providers, expected }) => {
+    expect(mateStandUpSignedIn(agents, ADA, local, providers)).toBe(expected);
   });
 });
 

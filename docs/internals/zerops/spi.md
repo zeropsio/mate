@@ -173,15 +173,33 @@ still misses only what a late ProviderService subscriber would miss").
 
 `apps/server/src/spi/toolCall.ts` is the one place that reads `payload.data`. `readToolCall`
 returns `toolCall` (recognized), `notATool` (the item's classified `itemType` is not
-tool-lifecycle, or the provider has no reader — cursor/grok/opencode have none), or
+tool-lifecycle, or the provider has no reader), or
 `unrecognized` — only when `isToolLifecycleItemType(payload.itemType)` is true (the driver itself
 classified this as a tool call) but the reader could not decode `data`. `unrecognized` never
 collapses to a silent `undefined`: the bus's `enrich` publishes every occurrence onto
 `enrichmentFailures` and logs `Effect.logWarning` once per `(provider, itemType, reason)`
 signature over its lifetime — pinned by "reports an enrichment failure..." and "logs the
 enrichment-failure warning once per ... signature, even across many events". The event itself is
-never dropped; a failed enrichment just leaves `event.toolCall` absent. Readers exist for
-`claudeAgent` and `codex` only (`toolCall.ts`'s `READERS` map).
+never dropped; a failed enrichment just leaves `event.toolCall` absent. Readers exist for every
+driver (`toolCall.ts`'s `READERS` map):
+
+- `claudeAgent` — `{toolName, input, result}`; an MCP tool is `mcp__<server>__<tool>`.
+- `codex` — the `mcpToolCall` item only (see below).
+- `opencode` — `{tool, state}`; an MCP tool is `<server>_<tool>` (`zerops_zerops_deploy`), split
+  at the first `_` (`apply_patch` is native); the result is `state.output`, a failure
+  `state.error`, a picture a data-URL attachment.
+- `cursor`, `grok`, `antigravity` (ACP) — `{toolCallId, kind, rawInput, rawOutput, content,
+locations}` and no tool name: a call of kind `other` or none is named by its title
+  (`mcp__zerops__zerops_deploy`, `Running zerops_deploy`, `zerops-zerops_deploy`, a bare
+  `enter_plan_mode`), any other by its kind; the arguments are `rawInput`, the result the MCP
+  result in `rawOutput` first (the call's own `content` is cut to its 8 000-character tail), else
+  `content`. An ACP call sends no `item.started`: a consumer that waits for a start (the stand-up
+  relay) begins at its first `item.updated`.
+
+`ActivityPayloadProjection.ts` gives the client one form for all of them — `data.toolName`, the
+input in Claude's keys at `data.input`, `data.files`, `data.imagePath` and a Zerops call's
+`data.zerops` — by the same shape-sniff (`sniffToolCallShape`, the activity's summary as an ACP
+call's title).
 
 ## 6. Typed capabilities
 

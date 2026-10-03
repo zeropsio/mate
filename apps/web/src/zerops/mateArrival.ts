@@ -100,6 +100,11 @@ export interface ArrivalSentenceContext {
   readonly addedBy?: string | undefined;
   /** Its creation stopped, or a step outlasted its cap: why, in its own words. */
   readonly why?: string | undefined;
+  /**
+   * It runs on an agent Mate signs nobody in to (Cursor, OpenCode…), and no sign-in of the
+   * viewer's is what made it ready: the stand-up's words say its agent is ready, not signed in.
+   */
+  readonly agentReady?: boolean | undefined;
 }
 
 /** How long a Mate takes from the press until it answers, measured (a wizard birth, 2026-09-22). */
@@ -141,9 +146,13 @@ export function arrivalSentence(
         ? `Nobody has signed ${name} in yet. Sign it in with your own account and it's yours.`
         : `${context.addedBy} added ${name} but hasn't signed it in. Sign it in with your own account and it's yours.`;
     case "standing-up":
-      return "Signed in. It starts in a moment.";
+      return context.agentReady === true
+        ? "Its agent is ready. It starts in a moment."
+        : "Signed in. It starts in a moment.";
     case "failed":
-      return `${name} is signed in, but your ask to stand up development didn't reach it.`;
+      return context.agentReady === true
+        ? `${name}'s agent is ready, but your ask to stand up development didn't reach it.`
+        : `${name} is signed in, but your ask to stand up development didn't reach it.`;
     case "reaching":
     case "unreachable":
     case "question":
@@ -254,6 +263,11 @@ export function arrivalSteps(
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
     readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
+    /**
+     * An agent Mate signs nobody in to (Cursor, OpenCode, Grok, Antigravity) is ready on it, and
+     * no sign-in of the viewer's is (`MateEmptyState.agentReady`): nothing is theirs to sign in.
+     */
+    readonly agentReady?: boolean | undefined;
   },
   mate: Named,
   nowMs: number,
@@ -331,13 +345,17 @@ export function arrivalSteps(
       state: setup.git === "done" ? "done" : "active",
     });
   }
-  const phrase = signInPhrase(mate.name);
-  steps.push({
-    id: "you",
-    label: signInPhraseWords(phrase),
-    phrase,
-    state: setup?.signin === "done" ? "done" : "you",
-  });
+  if (progress.agentReady === true) {
+    steps.push({ id: "you", label: `${mate.name}'s agent is ready`, state: "done" });
+  } else {
+    const phrase = signInPhrase(mate.name);
+    steps.push({
+      id: "you",
+      label: signInPhraseWords(phrase),
+      phrase,
+      state: setup?.signin === "done" ? "done" : "you",
+    });
+  }
   // A Mate with no stand-up to run (a New project's first) has no step for one.
   if (setup?.standup !== undefined && setup.standup !== "none") {
     steps.push({

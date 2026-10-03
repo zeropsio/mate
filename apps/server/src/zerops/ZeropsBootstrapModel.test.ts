@@ -12,6 +12,7 @@ import {
   isBootstrapReadyProvider,
   isProbePendingProvider,
   pickBootstrapProvider,
+  pickReadyAgentWithoutSignIn,
   resolveBootstrapModelSlug,
   resolveZeropsBootstrapModelSelection,
 } from "./ZeropsBootstrapModel.ts";
@@ -221,4 +222,29 @@ describe("isBootstrapDecidable", () => {
     assert.isTrue(isBootstrapDecidable([unauthenticatedCodex, readyClaude]));
     assert.isTrue(isBootstrapDecidable([unauthenticatedCodex]));
   });
+});
+
+// Mate signs people in to Claude Code and Codex only: the stand-up's other way in is an agent it
+// signs nobody in to, ready by its own probe.
+describe("pickReadyAgentWithoutSignIn", () => {
+  const OPENCODE = ProviderDriverKind.make("opencode");
+  const cases: ReadonlyArray<[string, ReadonlyArray<ServerProvider>, string | undefined]> = [
+    ["a ready Cursor", [provider({ driver: CURSOR })], "cursor"],
+    ["never Claude Code or Codex, however ready", [readyClaude, readyCodex], undefined],
+    [
+      "the first ready one, after a Claude Code the feed answers for",
+      [readyClaude, provider({ driver: CURSOR, status: "error" }), provider({ driver: OPENCODE })],
+      "opencode",
+    ],
+    ["not a signed-out Cursor", [provider({ driver: CURSOR, status: "error" })], undefined],
+    ["not a Cursor still probing", [provider({ driver: CURSOR, status: "warning" })], undefined],
+    ["not a turned-off Cursor", [provider({ driver: CURSOR, enabled: false })], undefined],
+    ["not a Cursor listing no models", [provider({ driver: CURSOR, models: [] })], undefined],
+    ["nothing configured", [], undefined],
+  ];
+  for (const [name, providers, expected] of cases) {
+    it(name, () =>
+      assert.strictEqual(pickReadyAgentWithoutSignIn(providers)?.instanceId, expected),
+    );
+  }
 });

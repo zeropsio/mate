@@ -179,6 +179,14 @@ export interface WorkLogEntry {
   changedFiles?: ReadonlyArray<string>;
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
+  /**
+   * The tool the call ran, as the server names it for every driver
+   * (`ActivityPayloadProjection.ts`, `data.toolName`): Claude's own
+   * (`Read`, `mcp__zerops__zerops_deploy`), OpenCode's (`read`, `grep`), an
+   * ACP agent's kind (`read`, `search`, `execute`) or the MCP tool its title
+   * named. `namedToolCall` reads it in Claude's words.
+   */
+  toolName?: string;
   toolData?: unknown;
   /**
    * The tool call's own arguments, when the driver reported them as a flat
@@ -1083,6 +1091,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     entry.toolTitle = title;
   }
   const data = asRecord(payload?.data);
+  const toolName = isTaskActivity ? null : asTrimmedString(data?.toolName);
+  if (toolName) {
+    entry.toolName = toolName;
+  }
   if (itemType === "mcp_tool_call") {
     if (data?.item !== undefined) {
       entry.toolData = data.item;
@@ -1320,6 +1332,7 @@ function mergeDerivedWorkLogEntries(
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
+  const toolName = next.toolName ?? previous.toolName;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next[workLogCollapseKey] ?? previous[workLogCollapseKey];
@@ -1346,6 +1359,7 @@ function mergeDerivedWorkLogEntries(
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(toolTitle ? { toolTitle } : {}),
+    ...(toolName ? { toolName } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { [workLogCollapseKey]: collapseKey } : {}),

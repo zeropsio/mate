@@ -4,7 +4,7 @@ import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill" | "crewmate";
-export type ComposerSlashCommand = "model" | "plan" | "default";
+export type ComposerSlashCommand = "model" | "plan" | "default" | "mcp";
 export type ComposerSubmissionIntent = "foreground" | "background";
 
 export interface ComposerTrigger {
@@ -304,9 +304,14 @@ export function composerStateAtPromptEnd(text: string): {
   };
 }
 
+/** `/mcp` alone is Mate's own: it opens the MCP tab and never reaches the agent. */
+export function isStandaloneMcpCommand(text: string): boolean {
+  return /^\/mcp$/i.test(text.trim());
+}
+
 export function parseStandaloneComposerSlashCommand(
   text: string,
-): Exclude<ComposerSlashCommand, "model"> | null {
+): Extract<ComposerSlashCommand, "plan" | "default"> | null {
   const match = /^\/(plan|default)\s*$/i.exec(text.trim());
   if (!match) {
     return null;

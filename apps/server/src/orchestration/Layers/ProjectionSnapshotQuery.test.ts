@@ -3249,7 +3249,8 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         const projectedIds = new Set(
           projectedFullSnapshot.thread.activities.map((activity) => activity.id),
         );
-        assert.equal(projectedIds.has(asEventId("activity-0002")), false);
+        // The call's first sight, with no start before it: where its step starts.
+        assert.equal(projectedIds.has(asEventId("activity-0002")), true);
         assert.equal(projectedIds.has(asEventId("activity-0003")), false);
         assert.equal(projectedIds.has(asEventId("activity-0070")), true);
 

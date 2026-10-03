@@ -31,6 +31,10 @@
  */
 import { CommandId, MessageId } from "@t3tools/contracts";
 import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import {
+  zeropsOtherAgentReady,
+  type OtherAgentFields,
+} from "@t3tools/client-runtime/zerops/agentLogin";
 import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ComposerSendIds } from "../composerDraftStore";
@@ -96,13 +100,13 @@ export function mateStandUpHoldsComposer(input: {
 
 /**
  * Whether an empty conversation with a Mate holds its composer back: while the stand-up waits on
- * its person, and wherever no agent is signed in at all — nothing typed there could be acted on,
+ * its person, and wherever the Mate has no agent to run at all — nothing typed there could be acted on,
  * and the stage's sign-in is the one thing to do (the owner, of a composer under an unsigned
  * Mate: "this state shouldn't exist").
  */
 export function mateArrivalHoldsComposer(input: {
   readonly standUpHolds: boolean;
-  /** No agent of the Mate is signed in (`zeropsAgentSignInRequired`). */
+  /** The Mate has no agent to run (`zeropsAgentSignInRequired`). */
   readonly signInRequired: boolean;
   /** The conversation holds no message yet. */
   readonly empty: boolean;
@@ -144,13 +148,17 @@ export function mateStandUpSendIds(threadId: string, attempt: number): ComposerS
 /**
  * Whether one of the Mate's agents is signed in and this person's to run: recorded as theirs, or
  * written by this client and not read back yet, or their own sign-in that just succeeded with its
- * record on its way; a token belongs to the project and runs for anybody.
+ * record on its way; a token belongs to the project and runs for anybody, and so does an agent
+ * Mate never signs anybody in to (Cursor, OpenCode…) that is ready (`zeropsOtherAgentReady`).
  */
 export function mateStandUpSignedIn(
   snapshot: ZeropsAgentAuthSnapshot,
   viewer: string,
   localSigners: LocalAgentSigners,
+  /** The environment's provider instances; undefined while unread. */
+  providers: ReadonlyArray<OtherAgentFields> | undefined,
 ): boolean {
+  if (zeropsOtherAgentReady(providers)) return true;
   return snapshot.agents.some((agent) => {
     const kind = classifyZeropsAgentAuth(agent).kind;
     if (kind !== "authorized" && kind !== "registering") return false;

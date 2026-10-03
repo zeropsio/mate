@@ -105,6 +105,8 @@ export class ProviderInstances extends Context.Service<
      * an id no live instance carries (unknown, or its driver failed).
      */
     readonly agentOf: (instanceId: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
+    /** The configured instances as the registry holds them now (`ServerProvider` each). */
+    readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
   }
 >()("t3/spi/providerInstances") {}
 
@@ -147,6 +149,7 @@ export const layer = Layer.effect(
             threadProfile: instance.adapter.capabilities.threadProfile,
           };
         }),
+      providers: registry.getProviders,
     } satisfies ProviderInstances["Service"];
   }),
 );

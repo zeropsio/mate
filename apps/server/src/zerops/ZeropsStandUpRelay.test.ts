@@ -75,13 +75,14 @@ describe("standUpProgressOf", () => {
 });
 
 const standUpEvent = (
-  type: "item.started" | "item.completed",
+  type: "item.started" | "item.updated" | "item.completed",
   createdAt: string,
   itemId = "call-1",
+  provider = "claudeAgent",
 ): SpiEvent =>
   ({
     eventId: EventId.make(`event-${type}`),
-    provider: ProviderDriverKind.make("claudeAgent"),
+    provider: ProviderDriverKind.make(provider),
     threadId: ThreadId.make("thread-main"),
     turnId: TurnId.make("turn-1"),
     itemId,
@@ -200,6 +201,62 @@ describe("ZeropsStandUpRelay", () => {
         yield* Ref.set(status, section({ state: "failed" }));
         yield* Effect.sleep(Duration.seconds(2.5));
         assert.strictEqual((yield* appends).length, 2, "a settled call is followed no more");
+      }).pipe(Effect.provide(layer), Effect.scoped);
+    }),
+  );
+});
+
+// An ACP agent (Cursor, Grok, Antigravity) sends no start: its call's first
+// update is where the stand-up began.
+describe("ZeropsStandUpRelay: a call first seen running", () => {
+  it.live("follows it from its first update, once, and never after its end", () =>
+    Effect.gen(function* () {
+      const events = yield* Queue.unbounded<SpiEvent>();
+      const status = yield* Ref.make<ZcpStatus | undefined>(section());
+      const appended = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
+      const appends = Effect.map(Ref.get(appended), (all) =>
+        all.flatMap((command) => (command.type === "thread.activity.append" ? [command] : [])),
+      );
+      const layer = relayLayer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ProviderRuntimeEventBus, {
+              version: PROVIDER_RUNTIME_SPI_VERSION,
+              events: Stream.fromQueue(events),
+              enrichmentFailures: Stream.empty,
+            }),
+            Layer.mock(ZeropsSetup)({ status: Ref.get(status) }),
+            Layer.mock(OrchestrationEngineService)({
+              dispatch: (command) =>
+                Ref.update(appended, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
+              streamDomainEvents: Stream.never,
+            }),
+            NodeServices.layer,
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        yield* Queue.offer(events, standUpEvent("item.updated", CALL_AT, "call-1", "cursor"));
+        yield* Queue.offer(
+          events,
+          standUpEvent("item.updated", "2026-10-01T10:01:00.000Z", "call-1", "cursor"),
+        );
+        yield* Effect.sleep(Duration.millis(200));
+        assert.strictEqual((yield* appends).length, 1, "its first update follows it");
+        yield* Ref.set(status, section({ state: "done" }));
+        yield* Queue.offer(
+          events,
+          standUpEvent("item.completed", "2026-10-01T10:05:00.000Z", "call-1", "cursor"),
+        );
+        yield* Effect.sleep(Duration.millis(200));
+        assert.strictEqual((yield* appends).length, 2, "its end writes once more");
+        yield* Queue.offer(
+          events,
+          standUpEvent("item.updated", "2026-10-01T10:06:00.000Z", "call-1", "cursor"),
+        );
+        yield* Ref.set(status, section({ state: "failed" }));
+        yield* Effect.sleep(Duration.seconds(2.5));
+        assert.strictEqual((yield* appends).length, 2, "a late update follows it no more");
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
   );

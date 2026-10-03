@@ -152,6 +152,13 @@ describe("batchesByTiming", () => {
   it.each([
     { driver: "claudeAgent", byTiming: false },
     { driver: "codex", byTiming: true },
+    // OpenCode runs a response's calls side by side, and the ACP agents say
+    // nothing of how they run theirs: a call that started after another
+    // returned may be of the same response, so none goes stale by timing.
+    { driver: "opencode", byTiming: false },
+    { driver: "cursor", byTiming: false },
+    { driver: "grok", byTiming: false },
+    { driver: "antigravity", byTiming: false },
     { driver: null, byTiming: false },
     { driver: undefined, byTiming: false },
   ])("$driver times its batches: $byTiming", ({ driver, byTiming }) => {
