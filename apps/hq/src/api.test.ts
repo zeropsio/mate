@@ -6,6 +6,9 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
+import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+
+import { GitError } from "@t3tools/hq-git";
 
 import {
   CLIENT,
@@ -41,6 +44,23 @@ describe("HQ's failures", () => {
           error._tag,
         );
       }
+    }),
+  );
+
+  // H2: a repository git quarantined is refused as such, with the reason it is withheld.
+  it.effect("answers a quarantined repository 503 repo_unavailable, naming why", () =>
+    Effect.gen(function* () {
+      const response = yield* failure(
+        new GitError({ operation: "serve", reason: "unavailable", message: "converge_git_failed" }),
+      );
+      assert.deepStrictEqual(
+        [
+          response.status,
+          response.headers["retry-after"],
+          yield* Effect.promise(() => HttpServerResponse.toWeb(response).json()),
+        ],
+        [503, "5", { code: "repo_unavailable", reason: "converge_git_failed" }],
+      );
     }),
   );
 });

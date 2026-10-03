@@ -61,6 +61,7 @@
  *
  * @module api
  */
+import { GitError } from "@t3tools/hq-git";
 import * as ByteSize from "effect/ByteSize";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -219,6 +220,7 @@ const isReleaseRefused = Schema.is(ReleaseRefused);
 const isDeployRefused = Schema.is(DeployRefused);
 const isChangeRefused = Schema.is(ChangeRefused);
 const isMateRefused = Schema.is(MateRefused);
+const isGitError = Schema.is(GitError);
 
 /**
  * A JSON body of at most `limit` bytes. A declared `Content-Length` above it is refused before a
@@ -258,6 +260,15 @@ export const failure = (error: {
   if (isChangeRefused(error)) {
     return Effect.succeed(
       json({ code: error.code, reason: error.reason }, CHANGE_STATUS[error.code]),
+    );
+  }
+  // A repository git quarantined (`gitHost.ts`): withheld until it converges, and why.
+  if (isGitError(error) && error.reason === "unavailable") {
+    return Effect.succeed(
+      HttpServerResponse.jsonUnsafe(
+        { code: "repo_unavailable", reason: error.message },
+        { status: 503, headers: RETRY_AFTER },
+      ),
     );
   }
   if (isMateRefused(error)) {

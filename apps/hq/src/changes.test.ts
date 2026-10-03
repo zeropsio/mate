@@ -133,6 +133,42 @@ describe("a Mate's changes in HQ", () => {
         }),
     );
 
+    // H2: a repository that did not converge at the takeover is refused its Mate, why named, while
+    // the application's others serve.
+    it.effect("git refuses a quarantined repository, naming why, and serves the others", () =>
+      Effect.gen(function* () {
+        const first = yield* startCore(true);
+        yield* untilHealth(first.call, "active");
+        const owner = yield* sessionFor(first.call, "door-owner");
+        const shop = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+        for (const name of ["appdev", "web"]) {
+          yield* first.call("POST", "/api/mate/repos", { headers: shop.auth, body: { name } });
+        }
+        yield* first.stop;
+        // web's config is no file git can read: it cannot converge.
+        const config = NodePath.join(first.gitRoot, shop.appId, "web.git", "config");
+        NodeFS.rmSync(config);
+        NodeFS.mkdirSync(config);
+        const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+        const refs = (repo: string) =>
+          next.call("GET", `/git/${shop.appId}/${repo}.git/info/refs?service=git-upload-pack`, {
+            headers: {
+              authorization: `Basic ${Buffer.from(`mate:${shop.credential}`).toString("base64")}`,
+            },
+          });
+        yield* refs("appdev").pipe(
+          Effect.filterOrFail((answer) => answer.status === 200),
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
+        );
+        const web = yield* refs("web");
+        assert.deepStrictEqual(
+          [web.status, web.body],
+          [503, { code: "repo_unavailable", reason: "converge_git_failed" }],
+        );
+      }),
+    );
+
     it.effect("git serves a Mate only its own application's repositories", () =>
       Effect.gen(function* () {
         const { call, fake, origin } = yield* startCore(true);

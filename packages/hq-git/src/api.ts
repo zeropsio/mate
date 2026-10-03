@@ -113,6 +113,8 @@ export class GitError extends Schema.TaggedError<GitError>()("GitError", {
     /** A ref write found the ref locked and changed nothing; retrying is safe. */
     "busy",
     "git_failed",
+    /** The host withholds the repository for now; the message says why. */
+    "unavailable",
   ]),
   /** Never carries server paths, stderr, or credentials. */
   message: Schema.String,
