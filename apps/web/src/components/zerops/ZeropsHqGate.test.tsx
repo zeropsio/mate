@@ -10,7 +10,6 @@ const screen = (props: Partial<Parameters<typeof HqGateScreen>[0]>) =>
       gate={{ kind: "birth" }}
       birth={undefined}
       onTryAgain={() => undefined}
-      onStartOver={() => undefined}
       onReadAgain={() => undefined}
       {...props}
     />,
@@ -35,30 +34,29 @@ describe("HqGateScreen", () => {
       "waiting:Marking it this organization's HQ",
       "waiting:Waiting for HQ to answer",
     ]);
-    expect(html).not.toContain("Try again");
+    expect(html).not.toContain("<button");
   });
 
   it("names the step that stopped it, and offers Try again", () => {
     const html = screen({
-      birth: { kind: "failed", step: "deploy", reason: "offline.", startOver: false },
+      birth: { kind: "failed", step: "deploy", reason: "offline." },
     });
     expect(steps(html)).toContain("failed:Deploying HQ");
     expect(html).toContain("offline.");
-    expect(html).toContain("Try again");
+    expect(html).toContain("Again");
     expect(html).not.toContain("Start over");
   });
 
-  it("offers Start over beside Try again where Zerops may have made HQ's project unseen", () => {
+  it("an uncertain import offers Again without discarding the birth's identity", () => {
     const html = screen({
       birth: {
         kind: "failed",
         step: "project",
         reason: "Look for a Headquarters project in Zerops first.",
-        startOver: true,
       },
     });
-    expect(html).toContain("Try again");
-    expect(html).toContain("Start over");
+    expect(html).toContain("Again");
+    expect(html).not.toContain("Start over");
   });
 
   it("tells anybody else whom to ask, and offers nothing", () => {

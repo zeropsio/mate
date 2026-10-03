@@ -4,6 +4,12 @@ Sign in with your Zerops account to use Mate. Before sign-in, Mate shows only th
 Zerops handles your password, registration and second factor. There are no pairing codes or manual
 server connections.
 
+When your organization has no HQ, an organization owner or admin's first visit starts it
+as a Headquarters project in Zerops. Other members are told whom to ask. Setup progress stays in
+that project, so another admin's browser can continue it after a tab closes. If a step fails,
+Mate shows why and stops. Fix the cause in Zerops, then press **Again**. If Zerops did not confirm
+an operation, **Again** checks its recorded progress rather than sending the operation again.
+
 Mate lists projects your account can operate. Changes made elsewhere appear when the inventory
 refreshes. A removed project or lost permission does not reopen from an old local list. If a
 platform read fails, Mate shows a retry state instead of pretending your projects were deleted.
