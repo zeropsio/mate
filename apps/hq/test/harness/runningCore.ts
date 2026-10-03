@@ -27,6 +27,7 @@ import * as HttpServer from "effect/unstable/http/HttpServer";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { coreApp } from "../../src/core.ts";
 import { GitHost } from "../../src/gitHost.ts";
+import { MateOverviews } from "../../src/mateOverviews.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
 import {
   ZeropsApi,
@@ -132,7 +133,7 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
  * free port, as the container serves it; requests as `{ status, body, headers }`. `stop` ends it —
  * drain included — before the test does. `gitHost` is its git host, for what only it shows: whether
  * it holds git open, and its record of git's events (`recorded`); `backup` takes a set, staged in
- * `stagingDir`, into `storeDir`.
+ * `stagingDir`, into `storeDir`; `overviews` holds its Mates' overviews.
  */
 export const startCore = (
   anchored: boolean,
@@ -311,6 +312,7 @@ export const startCore = (
       stop,
       socket,
       gitHost: Context.get(context, GitHost),
+      overviews: Context.get(context, MateOverviews),
       backup: Context.get(context, Backup),
       storeDir,
       stagingDir,

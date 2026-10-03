@@ -14,12 +14,13 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
+import { memoryStore } from "../test/harness/overviews.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { mateLiveLayer } from "./mateLive.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
 import { type MateRecord, Structure, structureLayer } from "./structure.ts";
+import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import {
   ZeropsApi,
@@ -143,7 +144,7 @@ const withStructure = <A, E, B = never>(
       structureLayer({ hqProjectId: "HQ" }).pipe(
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(roles),
-        Layer.provide(mateLiveLayer),
+        Layer.provide(Layer.effect(MateOverviews, makeMateOverviews(memoryStore().store))),
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(zerops))),
       ),
     );

@@ -48,7 +48,7 @@ import {
 import { reachesOnly } from "./deployTokens.ts";
 import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
-import { MateLive, type MateLiveEntry } from "./mateLive.ts";
+import { MateOverviews } from "./mateOverviews.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
@@ -147,8 +147,8 @@ export interface MateRecord {
 }
 
 /**
- * A Mate as a reader sees it: its record and its birth, and — to whoever may operate it
- * (`observe_mate`), once HQ has heard from it — its live summary (`mateLive.ts`).
+ * A Mate as a reader sees it: its record and its birth. What it does goes beside the structure, to
+ * whoever may observe it (`stream.ts`, `mateOverviews.ts`).
  */
 export interface MateView {
   readonly name: string;
@@ -161,16 +161,6 @@ export interface MateView {
   /** Who asked for its stand-up (`markBirth`), or nobody yet. */
   readonly standupRequestedBy: string | null;
   /** Whether its project is closed off, so its runtimes may be imported. */
-  readonly closedOff: boolean;
-  readonly live?: MateLiveEntry;
-}
-
-/** A Mate's record and birth as its row holds them. */
-interface MateRow {
-  readonly name: string;
-  readonly face: string;
-  readonly madeBy: string | null;
-  readonly standupRequestedBy: string | null;
   readonly closedOff: boolean;
 }
 
@@ -353,13 +343,17 @@ export const structureLayer = (options: {
   readonly hqProjectId: string;
   /** How often the leader reconciles with Zerops (SPEC §4); 60 s. */
   readonly reconcileEvery?: Duration.Duration;
-}): Layer.Layer<Structure, never, Leader | MateLive | Roles | SqlClient.SqlClient | ZeropsApi> =>
+}): Layer.Layer<
+  Structure,
+  never,
+  Leader | MateOverviews | Roles | SqlClient.SqlClient | ZeropsApi
+> =>
   Layer.effect(
     Structure,
     Effect.gen(function* () {
       const leader = yield* Leader;
       const roles = yield* Roles;
-      const live = yield* MateLive;
+      const overviews = yield* MateOverviews;
       const zerops = yield* ZeropsApi;
       const sql = yield* SqlClient.SqlClient;
       const version = yield* SubscriptionRef.make(0);
@@ -473,6 +467,7 @@ export const structureLayer = (options: {
         );
         if (gone.length === 0) return 0;
         yield* leader.write(dropRows(gone));
+        yield* overviews.forget(gone);
         yield* changed;
         return gone.length;
       });
@@ -503,7 +498,7 @@ export const structureLayer = (options: {
 
       return Structure.of({
         reconcile,
-        changes: Stream.merge(SubscriptionRef.changes(version), live.changes),
+        changes: SubscriptionRef.changes(version),
         mateChanges: Stream.fromPubSub(mateChanged),
         mateState: stateOf,
         keepDeployToken: confirmed((userId, appId, name, token) =>
@@ -928,7 +923,7 @@ export const structureLayer = (options: {
               readonly project_id: string;
               readonly app_id: string;
               readonly kind: string;
-              readonly mate: MateRow | null;
+              readonly mate: MateView | null;
             }>`
               SELECT p.project_id, p.app_id::text AS app_id, p.kind,
                      CASE WHEN m.project_id IS NULL THEN NULL ELSE json_build_object(
@@ -937,7 +932,7 @@ export const structureLayer = (options: {
                        'closedOff', m.closed_off_at IS NOT NULL) END AS mate
               FROM hq_app_project p LEFT JOIN hq_mate m USING (project_id)
               ORDER BY p.seq`;
-            const alone = yield* sql<{ readonly project_id: string; readonly mate: MateRow }>`
+            const alone = yield* sql<{ readonly project_id: string; readonly mate: MateView }>`
               SELECT m.project_id, json_build_object(
                        'name', m.name, 'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
@@ -1028,21 +1023,13 @@ export const structureLayer = (options: {
             const reads = (projectId: string) =>
               can(person, "read_project", { projectId }, view).allow;
             const visible = rows.filter((row) => reads(row.project_id));
-            const summaries = yield* live.all;
-            /** The Mate's record and birth, with its live summary for whoever may operate it. */
-            const mateView = (projectId: string, mate: MateRow): MateView => {
-              const entry = summaries.get(projectId);
-              return entry !== undefined && can(person, "observe_mate", { projectId }, view).allow
-                ? { ...mate, live: entry }
-                : mate;
-            };
             return {
               ungrouped: alone
                 .filter((row) => reads(row.project_id))
                 .map((row) => ({
                   projectId: row.project_id,
                   name: names.get(row.project_id) ?? "",
-                  mate: mateView(row.project_id, row.mate),
+                  mate: row.mate,
                 })),
               apps: apps
                 .map((app) => ({
@@ -1054,7 +1041,7 @@ export const structureLayer = (options: {
                       projectId: row.project_id,
                       name: names.get(row.project_id) ?? "",
                       kind: row.kind,
-                      mate: row.mate === null ? null : mateView(row.project_id, row.mate),
+                      mate: row.mate,
                     })),
                   environments: can(
                     person,

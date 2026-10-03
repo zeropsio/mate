@@ -17,6 +17,7 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
+import { mainAt, overviewOf } from "../test/harness/overviews.ts";
 import { tempDir } from "../test/harness/tempDir.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
@@ -700,10 +701,13 @@ describe("HQ API", () => {
           const owner = yield* socket(
             `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
           );
-          // What `GET /api/structure` answers, and beside it the changes of what the caller reads.
+          // What `GET /api/structure` answers, and beside it the changes of what the caller reads,
+          // the Mates they observe and the people the view names.
           assert.deepStrictEqual(yield* owner.next("snapshot"), {
             ...((yield* call("GET", "/api/structure", { session })).body as object),
             changes: {},
+            mates: {},
+            people: {},
           });
           const appId = (
             (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
@@ -738,6 +742,10 @@ describe("HQ API", () => {
             yield* owner.next("change"),
             shopWith({ name: "Ada", face: "sky:flower" }),
           );
+          // Its maker is named beside the structure, by the name Zerops gives them.
+          assert.deepStrictEqual(yield* owner.next("people"), {
+            people: { owner: { name: "owner" } },
+          });
           yield* call("PATCH", "/api/mates/P_MATE", { session, body: { name: "Ada 2" } });
           assert.deepStrictEqual(
             yield* owner.next("change"),
@@ -753,6 +761,8 @@ describe("HQ API", () => {
             key: appId,
             value: { id: appId, name: "Shop", projects: [], environments: [] },
           });
+          // Nothing names its maker any more.
+          assert.deepStrictEqual(yield* owner.next("people"), { people: {} });
           // Three pings answered: still open.
           yield* Effect.sleep(Duration.millis(1100));
           assert.isAtLeast(owner.pings.seen, 3);
@@ -775,6 +785,8 @@ describe("HQ API", () => {
             ungrouped: [],
             apps: [],
             changes: {},
+            mates: {},
+            people: {},
           });
           const ada = { name: "Ada", face: "sky:flower" };
           // Who made it is the session that set it up, never a field the client sends.
@@ -863,6 +875,8 @@ describe("HQ API", () => {
           ungrouped: [],
           apps: [],
           changes: {},
+          mates: {},
+          people: {},
         });
         const appId = (
           (yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } })).body as {
@@ -922,6 +936,8 @@ describe("HQ API", () => {
           ungrouped: [],
           apps: [{ id: appId, name: "Shop", projects: [], environments: [] }],
           changes: { [appId]: [] },
+          mates: {},
+          people: {},
         });
 
         // Zerops lowers the reader to no access: the open socket drops the application.
@@ -974,6 +990,8 @@ describe("HQ API", () => {
             ungrouped: [],
             apps: [],
             changes: {},
+            mates: {},
+            people: {},
           });
           assert.deepStrictEqual(
             [
@@ -1193,7 +1211,7 @@ describe("HQ API", () => {
     );
 
     it.effect(
-      "a Mate's link brings its state down at once and on each change, and its summary up to whoever may operate it",
+      "a Mate's link brings its state down at once and on each change, and its overview up to whoever may operate it",
       () =>
         Effect.gen(function* () {
           const { call, fake, socket } = yield* startCore(true);
@@ -1222,7 +1240,7 @@ describe("HQ API", () => {
             mate: { ...state, standupRequestedBy: null, closedOff: true },
           });
 
-          // The owner operates the Mate and follows its summary; a reader only sees it listed.
+          // The owner operates the Mate and follows its overview; a reader only sees it listed.
           const ownerSocket = yield* socket(
             `/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`,
           );
@@ -1232,40 +1250,37 @@ describe("HQ API", () => {
             `/api/structure/ws?ticket=${yield* ticketFor(call, reader)}`,
           );
           yield* readerSocket.next("snapshot");
-          const summary = {
-            main: {
-              threadId: "t1",
-              status: "working",
-              lastRequest: "Add a login page",
-              lastWords: null,
-              lastTurnAt: "2026-10-02T10:00:00Z",
-              waitingQuestion: null,
-              firstError: null,
-              liveStep: "Reading src/app.ts",
-            },
-            running: 1,
-            waiting: 0,
-            signers: { "claude-code": "owner" },
+          const overview = overviewOf({ main: mainAt("Read the schema") });
+          yield* link.send({ type: "overview", full: true, overview });
+          type Seen = {
+            readonly projectId: string;
+            readonly value: {
+              readonly presence?: { readonly online: boolean; readonly overview: string };
+            } & Record<string, unknown>;
           };
-          yield* link.send({ type: "summary", summary });
-          const seen = (yield* ownerSocket.next("change")) as {
-            readonly key: string;
-            readonly value: ReadonlyArray<{
-              readonly mate: {
-                readonly live?: { readonly online: boolean; readonly summary: unknown };
-              };
-            }>;
-          };
-          assert.strictEqual(seen.key, "ungrouped");
-          assert.deepStrictEqual(seen.value[0]?.mate.live?.summary, summary);
-          assert.strictEqual(seen.value[0]?.mate.live?.online, true);
-          assert.deepStrictEqual(yield* readerSocket.quiet("500 millis"), []);
+          const seen = (yield* ownerSocket.next("mate")) as Seen;
+          assert.strictEqual(seen.projectId, "P_MATE");
+          assert.deepStrictEqual(
+            { ...seen.value, presence: undefined },
+            { ...overview, presence: undefined },
+          );
+          assert.deepStrictEqual(
+            [seen.value.presence?.online, seen.value.presence?.overview],
+            [true, "live"],
+          );
+          assert.deepStrictEqual(
+            (yield* readerSocket.quiet("700 millis")).filter((message) => message.type === "mate"),
+            [],
+          );
 
-          // The link goes: the Mate is offline, its last summary kept.
+          // The link goes: the Mate is offline, its last overview kept.
           yield* link.close;
-          const gone = (yield* ownerSocket.next("change")) as typeof seen;
-          assert.strictEqual(gone.value[0]?.mate.live?.online, false);
-          assert.deepStrictEqual(gone.value[0]?.mate.live?.summary, summary);
+          const gone = (yield* ownerSocket.next("mate")) as Seen;
+          assert.deepStrictEqual(Object.keys(gone.value), ["presence"]);
+          assert.deepStrictEqual(
+            [gone.value.presence?.online, gone.value.presence?.overview],
+            [false, "stored"],
+          );
 
           // Without a Mate's credential there is no ticket, and a ticket opens one link.
           assert.strictEqual(
