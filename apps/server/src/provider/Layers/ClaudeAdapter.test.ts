@@ -2479,6 +2479,71 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Block indexes count per response, and a helper's response streams beside
+  // the Mate's: a helper's block stop at the index of the Mate's open text
+  // block must not close that block early (D9).
+  it.effect("keeps the Mate's text block open through a helper's block stop at its index", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "say", attachments: [] });
+      const stream = (uuid: string, parent: string | null, event: Record<string, unknown>) =>
+        ({
+          type: "stream_event",
+          session_id: "sdk-session-stop",
+          uuid,
+          parent_tool_use_id: parent,
+          event,
+        }) as unknown as SDKMessage;
+      const text = (uuid: string, words: string) =>
+        stream(uuid, null, {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: words },
+        });
+      harness.query.emit(
+        stream("s1", null, {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "text", text: "" },
+        }),
+      );
+      harness.query.emit(text("s2", "The schema "));
+      harness.query.emit(stream("s3", "tool-task-p", { type: "content_block_stop", index: 0 }));
+      harness.query.emit(text("s4", "is fine."));
+      harness.query.emit(stream("s5", null, { type: "content_block_stop", index: 0 }));
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-stop",
+        uuid: "result-stop",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const lastDelta = events.findLastIndex((event) => event.type === "content.delta");
+      const firstEnd = events.findIndex(
+        (event) =>
+          event.type === "item.completed" && event.payload.itemType === "assistant_message",
+      );
+      assert.ok(lastDelta >= 0 && firstEnd > lastDelta, "the text block ends after its words");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   // A call still open when its turn's result comes never returned: the turn's
   // end closes it as unreturned, never as a call that came back (D4).
   it.effect("closes a call left open at the turn's end as unreturned", () => {
