@@ -1488,6 +1488,42 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  // A park closes a link nothing holds: it is no drop, so the platform is asked nothing.
+  it.effect("a park of a connected Mate reads no inventory", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, rig, built, environments } = yield* granted([REMEMBERED_A]);
+        rig.catalog().environments(registered(ENV_A));
+        environments.setRoute(ENV_A);
+        yield* settle;
+        rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: true })));
+        yield* settle;
+        rig.catalog().link(ENV_A, { phase: "connected" });
+        yield* settle;
+        const heard: Array<Invalidation> = [];
+        const subscription = yield* built.invalidations.subscribe;
+        yield* Stream.fromSubscription(subscription).pipe(
+          Stream.runForEach((invalidation) => Effect.sync(() => heard.push(invalidation))),
+          Effect.forkScoped,
+        );
+
+        environments.setRoute(null);
+        yield* settle;
+        rig.fire(5 * MINUTE);
+        yield* settle;
+        expect(rig.parked()).toEqual([ENV_A]);
+        // The registry closes the parked link: its supervisor publishes it as idle.
+        rig.catalog().link(ENV_A, { phase: "idle" });
+        yield* settle;
+        yield* clock.advance(250);
+        yield* settle;
+
+        expect(heard).toEqual([]);
+        expect(environments.machines().get(MATE)?.linkLostAt).toBeNull();
+      }),
+    ),
+  );
+
   it.effect("an action holds a parked Mate connected until it answers", () =>
     Effect.scoped(
       Effect.gen(function* () {

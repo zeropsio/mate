@@ -88,7 +88,10 @@ export type ContainerVerdict =
 
 // ── Region L: link ────────────────────────────────────────────────────────────────────────────
 
-/** What the supervisor says, before this machine stamps a connect. */
+/**
+ * What the supervisor says, before this machine stamps a connect. `idle` is a link the registry
+ * holds closed — not opened yet, or parked (krok-a-hub §3): no drop.
+ */
 export type LinkPhase =
   | { readonly phase: "idle" }
   | { readonly phase: "connecting" }
@@ -237,8 +240,9 @@ export interface EnvironmentMachine {
   readonly credential: Credential;
   readonly link: Link;
   /**
-   * When the link last stopped being connected; null while it is connected, or before it first
-   * was. DESIGN §9 C1b bounds a conversation shown without verified access by it.
+   * When the link last dropped — stopped being connected while the registry still held it open;
+   * null while it is connected, before it first was, and after a park. DESIGN §9 C1b bounds a
+   * conversation shown without verified access by it.
    */
   readonly linkLostAt: Instant | null;
   readonly container: ContainerVerdict;
@@ -821,7 +825,8 @@ const onLink = (
         }
       : next;
   }
-  const dropped = machine.link.phase === "connected";
+  // A park closes the link on purpose: only a link lost while the registry holds it open drops.
+  const dropped = machine.link.phase === "connected" && phase.phase !== "idle";
   // A drop is a question for the platform: its inventory is read again at once, so a restart it
   // reports (the service RESTARTING) reads as one within a read's time, whatever a push does.
   if (dropped) {
