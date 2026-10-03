@@ -8528,6 +8528,7 @@ export default function ChatView(props: ChatViewProps) {
                     }
                   >
                     <div
+                      data-room-held={zeropsFooter === "held" ? "" : undefined}
                       data-slot="composer-shell"
                       className={cn(
                         "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",

@@ -60,7 +60,7 @@ export function ConversationFooterStandIn({
       );
     case "held":
       return (
-        <ComposerStandInDock>
+        <ComposerStandInDock held>
           <ComposerRoomHeld />
         </ComposerStandInDock>
       );

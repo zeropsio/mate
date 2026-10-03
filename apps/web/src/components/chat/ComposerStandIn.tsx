@@ -137,7 +137,14 @@ export function ComposerStandIn({
  * dock: what stands in it — the composer, its room held, someone else's strip — takes the
  * conversation's place in the same frame.
  */
-export function ComposerStandInDock({ children }: { readonly children: ReactNode }) {
+export function ComposerStandInDock({
+  children,
+  held = false,
+}: {
+  readonly children: ReactNode;
+  /** The room held unseen (`ComposerRoomHeld`). */
+  readonly held?: boolean;
+}) {
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
@@ -147,6 +154,7 @@ export function ComposerStandInDock({ children }: { readonly children: ReactNode
         <div className="pointer-events-auto relative z-10">
           <div className="relative">
             <div
+              data-room-held={held ? "" : undefined}
               data-slot="composer-shell"
               className="chat-composer-glass-shell relative mx-auto w-full max-w-3xl"
             >
@@ -168,8 +176,9 @@ export function ComposerStandInDock({ children }: { readonly children: ReactNode
 /**
  * The composer's room while who writes in the conversation is not known
  * (`conversationFooter`): the card at the composer's size with nothing in it — no field, no
- * caret, no words, no buttons — so whichever comes, the composer or someone else's strip, takes
- * its place without the page moving.
+ * caret, no words, no buttons — its shell unseen (`data-room-held`), so whichever comes, the
+ * composer or someone else's strip, takes its place without the page moving or anything taken
+ * back.
  */
 export function ComposerRoomHeld() {
   return (
