@@ -170,6 +170,9 @@ function buildStandaloneOperation(
     phase,
     ...anchorOf(call),
     ...(phase !== "running" ? { settledAt: call.settledAt ?? call.startedAt } : {}),
+    ...(call.settledAt !== undefined ? { returnedAt: call.settledAt } : {}),
+    ...(call.status === "inProgress" ? { openedAt: call.startedAt } : {}),
+    ...(call.responseId !== undefined ? { responseId: call.responseId } : {}),
     turnId: call.turnId,
     subject: fields.subject,
     kicker: fields.kicker,
@@ -337,12 +340,19 @@ function buildBootstrapOperation(group: BootstrapGroup): ZeropsOperation {
   const fields = buildBootstrapFields(group.members, phase, group.joinedImports, group.intent);
   const plan = bootstrapLatestPlanCard(group.members);
   const latest = group.members[group.members.length - 1]!;
+  const firstReturn = group.members.find((member) => member.call.settledAt !== undefined)?.call
+    .settledAt;
+  const waitedOn = latest.call.status === "inProgress" ? latest : founder;
   return {
     key: `bootstrap:${group.founderCallId}`,
     kind: "bootstrap",
     phase,
     ...anchorOf(founder.call),
     ...(phase !== "running" ? { settledAt: latest.call.settledAt ?? latest.call.startedAt } : {}),
+    // Where it first returned: a follow-up call of its session never moves its line.
+    ...(firstReturn !== undefined ? { returnedAt: firstReturn } : {}),
+    ...(latest.call.status === "inProgress" ? { openedAt: latest.call.startedAt } : {}),
+    ...(waitedOn.call.responseId !== undefined ? { responseId: waitedOn.call.responseId } : {}),
     turnId: founder.call.turnId,
     subject: fields.subject,
     kicker: fields.kicker,

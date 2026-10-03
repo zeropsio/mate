@@ -900,6 +900,37 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: undefined,
     },
     {
+      case: "its project still being made (run 5): the import first, never the runner",
+      over: { projectStatus: "CREATING", services: [] },
+      runner: stuck,
+      mainHasCode: true,
+      first: { kind: "setting-up", step: "project" },
+    },
+    {
+      case: "its app still being added: the import first, never the runner",
+      over: { services: [{ hostname: "app", status: "CREATING", runtime: true }] },
+      runner: stuck,
+      mainHasCode: true,
+      first: { kind: "setting-up", step: "app" },
+    },
+    {
+      case: "its app being added, what runs there unread: setting up, never Checking",
+      over: {
+        services: [{ hostname: "app", status: "NEW", runtime: true }],
+        deployment: undefined,
+      },
+      runner: stuck,
+      mainHasCode: true,
+      first: { kind: "setting-up", step: "app" },
+    },
+    {
+      case: "its import done: the runner",
+      over: { services: [{ hostname: "app", status: "ACTIVE", runtime: true }] },
+      runner: stuck,
+      mainHasCode: true,
+      first: { kind: "runner", why: "not-started" },
+    },
+    {
       case: "running a deploy: none to wait for",
       over: { deployment: runs(STAGE_SHA) },
       runner: stuck,
@@ -957,6 +988,92 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
   it("promises nothing without a clock", () => {
     const flow = groupFlow(group({ stops: [stageStop()], mainHasCode: true, runner: able }));
     expect(flow.stages[0]?.firstDeploy).toBeUndefined();
+  });
+
+  describe("a failure on main's head (run 5: the workflow failed before any build)", () => {
+    const failing = (reason?: string, over: Partial<GroupFlowStopInput> = {}) =>
+      stageStop({
+        row: {
+          ...declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
+          firstDeployFailure: { reason },
+        },
+        ...over,
+      });
+    const first = (stop: GroupFlowStopInput, over: Partial<GroupFlowInput> = {}) =>
+      groupFlow(group({ stops: [stop], mainHasCode: true, runner: able, nowMs: NOW, ...over }))
+        .stages[0]?.firstDeploy;
+
+    it.each([
+      {
+        // H1: the push job failed before Add stage; the broker's dispatch of the same workflow on
+        // the same commit fails too and posts nothing.
+        case: "the push job failed before the stage was made: failed once its import is done",
+        stop: failing(undefined, { createdAt: at(MINUTE) }),
+        over: {},
+        first: { kind: "failed" },
+      },
+      {
+        case: "with the job's own words: failed, and why",
+        stop: failing("the build step exited with 1"),
+        over: {},
+        first: { kind: "failed", reason: "the build step exited with 1" },
+      },
+      {
+        case: "a merge into another repository after it: still failed",
+        stop: failing(),
+        over: {
+          merged: [
+            pull({ kind: "code", merged: true, mergedAt: at(MINUTE / 2), repository: "workerdev" }),
+          ],
+        },
+        first: { kind: "failed" },
+      },
+      {
+        case: "past the window: still failed — a fact, however long ago",
+        stop: failing(undefined, { createdAt: at(40 * MINUTE) }),
+        over: {},
+        first: { kind: "failed" },
+      },
+      {
+        case: "while the stage is still being made: the import first",
+        stop: failing(undefined, {
+          services: [{ hostname: "app", status: "CREATING", runtime: true }],
+        }),
+        over: {},
+        first: { kind: "setting-up", step: "app" },
+      },
+    ])("$case", ({ stop, over, first: expected }) => {
+      expect(first(stop, over)).toEqual(expected);
+    });
+
+    it("starts again with a newer commit on main: its head has no failure, then it builds", () => {
+      const fix = [pull({ kind: "code", merged: true, mergedAt: at(MINUTE / 2) })];
+      expect(first(stageStop(), { merged: fix })).toEqual({ kind: "on-its-way" });
+      expect(first(failing(undefined, { deployment: runs(STAGE_SHA) }), { merged: fix })).toBe(
+        undefined,
+      );
+    });
+  });
+
+  it("is setting up while its own import runs, and only then", () => {
+    const settingUp = (over: Partial<GroupFlowStopInput>) =>
+      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true, runner: stuck, nowMs: NOW }))
+        .stages[0]?.firstDeploy?.kind === "setting-up"
+        ? true
+        : undefined;
+    const making = { hostname: "app", status: "NEW", runtime: true };
+    expect(settingUp({ projectStatus: "CREATING", services: [] })).toBe(true);
+    expect(settingUp({ services: [making] })).toBe(true);
+    expect(settingUp({ services: [making], deployment: undefined })).toBe(true);
+    // Done, unread or long ago: what it runs says it.
+    expect(settingUp({ services: [{ ...making, status: "ACTIVE" }] })).toBeUndefined();
+    expect(settingUp({ services: undefined })).toBeUndefined();
+    // Its project's own status first: one being made is set up whatever its services say.
+    expect(settingUp({ projectStatus: "CREATING", services: undefined })).toBe(true);
+    expect(settingUp({ projectStatus: "DELETING", services: [making] })).toBeUndefined();
+    expect(settingUp({ services: [making], createdAt: at(20 * MINUTE) })).toBeUndefined();
+    // Something runs there: never setting up again.
+    expect(settingUp({ services: [making], deployment: runs(STAGE_SHA) })).toBeUndefined();
   });
 });
 

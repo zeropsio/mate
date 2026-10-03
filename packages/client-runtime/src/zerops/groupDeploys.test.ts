@@ -1,5 +1,7 @@
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
+import { STATUS_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import {
   buildGroupEnvironmentRowInputs,
@@ -8,6 +10,10 @@ import {
   deployWord,
   planDeployStatusReads,
   planDeployedVersionReads,
+  FIRST_DEPLOY_QUIET_LADDER_MS,
+  firstDeployHeadLadder,
+  firstDeployHeadSettled,
+  planFirstDeployHeadReads,
   planMainHeadReads,
   releaseDeploys,
 } from "./groupDeploys.ts";
@@ -387,5 +393,232 @@ describe("what a release has to read", () => {
 
   it("asks for nothing where no production is declared", () => {
     expect(planMainHeadReads({ declarations: [], services, repositories })).toEqual([]);
+  });
+});
+
+describe("what a stage's first deploy has to read", () => {
+  const repositories = new Map([
+    ["api", "apidev"],
+    ["web", "webdev"],
+  ]);
+  const NOTHING = new Map<string, string>();
+  it.each([
+    {
+      case: "a declared stage that runs nothing: each service's repository's main",
+      declarations: [stage, production],
+      versions: NOTHING,
+      reads: ["p-stage stage api@apidev", "p-stage stage web@webdev"],
+    },
+    {
+      case: "the stage runs a deploy: nothing",
+      declarations: [stage, production],
+      versions: new Map([["s1", `main ${API.slice(0, 7)}`]]),
+      reads: [],
+    },
+    {
+      case: "the import's no-code version, which names no commit: still its first deploy",
+      declarations: [stage],
+      versions: new Map([["s1", ""]]),
+      reads: ["p-stage stage api@apidev", "p-stage stage web@webdev"],
+    },
+    {
+      case: "no stage declared: nothing",
+      declarations: [production],
+      versions: NOTHING,
+      reads: [],
+    },
+    { case: "nothing declared: nothing", declarations: [], versions: NOTHING, reads: [] },
+    {
+      case: "a stage deployed on request: nothing — nobody asked for its deploy",
+      declarations: [{ ...stage, deploy: "on-request" as const }],
+      versions: NOTHING,
+      reads: [],
+    },
+    {
+      case: "a stage fed by another branch: nothing — main is not what it deploys",
+      declarations: [{ ...stage, sources: ["develop"] }],
+      versions: NOTHING,
+      reads: [],
+    },
+    {
+      case: "a mixed stage, deployed from its own merge commit: nothing",
+      declarations: [{ ...stage, sources: ["main", "feature"] }],
+      versions: NOTHING,
+      reads: [],
+    },
+  ])("$case", ({ declarations, versions, reads }) => {
+    expect(
+      planFirstDeployHeadReads({ declarations, services, versions, repositories }).map(
+        (read) => `${read.projectId} ${read.environment} ${read.hostname}@${read.repo}`,
+      ),
+    ).toEqual(reads);
+  });
+
+  it("asks nothing of a service the tiers build from no repository of the group", () => {
+    expect(
+      planFirstDeployHeadReads({
+        declarations: [stage],
+        services,
+        versions: NOTHING,
+        repositories: new Map(),
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("how often a first deploy's head is read again", () => {
+  const NOW = Date.parse("2026-10-02T22:30:00Z");
+  const ago = (minutes: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - minutes * 60_000));
+  const madeAgo = ago;
+  const posted = (
+    context: string,
+    state: GiteaCommitStatus["state"],
+    minutes: number | undefined,
+    description?: string,
+  ) => ({
+    context,
+    state,
+    ...(minutes === undefined ? {} : { created_at: ago(minutes) }),
+    ...(description === undefined ? {} : { description }),
+  });
+  const BROKER = "mate/deploy/stage/api";
+  const PUSH = "Zerops deploy / deploy (push)";
+  const head = (statuses: ReadonlyArray<GiteaCommitStatus>, firstSeen?: number) => ({
+    sha: API,
+    statuses,
+    ...(firstSeen === undefined ? {} : { firstSeenAtMs: NOW - firstSeen * 60_000 }),
+  });
+  it.each([
+    {
+      case: "a head not read before",
+      previous: undefined,
+      sha: API,
+      asked: undefined,
+      ladder: "busy",
+    },
+    {
+      case: "a new head on main",
+      previous: head([posted(PUSH, "failure", 60)], 60),
+      sha: WEB,
+      asked: madeAgo(60),
+      ladder: "busy",
+    },
+    {
+      case: "a head whose job posted a minute ago",
+      previous: head([posted(PUSH, "pending", 1)], 50),
+      sha: API,
+      asked: madeAgo(50),
+      ladder: "busy",
+    },
+    {
+      // H1: the push job failed long before; the stage made a moment ago asks for its deploy now.
+      case: "an old head, the stage just made",
+      previous: head([posted(PUSH, "failure", 50)], 1),
+      sha: API,
+      asked: madeAgo(1),
+      ladder: "busy",
+    },
+    {
+      // A fix merged late: Gitea has posted nothing on its head yet.
+      case: "the same head, nothing posted, first seen a minute ago, the stage long made",
+      previous: head([], 1),
+      sha: API,
+      asked: madeAgo(40),
+      ladder: "busy",
+    },
+    {
+      case: "the broker's grant a minute ago",
+      previous: head([posted(BROKER, "pending", 1, "deploying 3f9c1b2")], 50),
+      sha: API,
+      asked: madeAgo(50),
+      ladder: "busy",
+    },
+    {
+      // The broker's own retries do not move the clock: a hard stop.
+      case: "the broker re-dispatching a minute ago, all else quiet past its patience",
+      previous: head([posted(BROKER, "pending", 1, "dispatched"), posted(PUSH, "failure", 40)], 40),
+      sha: API,
+      asked: madeAgo(50),
+      ladder: "resting",
+    },
+    {
+      case: "the broker refusing a minute ago, all else quiet past its patience",
+      previous: head([posted(BROKER, "failure", 1, "the runner is busy")], 40),
+      sha: API,
+      asked: madeAgo(50),
+      ladder: "resting",
+    },
+    {
+      case: "a head quiet past the window",
+      previous: head([posted(PUSH, "pending", 15)], 20),
+      sha: API,
+      asked: madeAgo(20),
+      ladder: "quiet",
+    },
+    {
+      case: "a head quiet past the broker's patience: no more reads",
+      previous: head([posted(PUSH, "pending", 35)], 40),
+      sha: API,
+      asked: madeAgo(40),
+      ladder: "resting",
+    },
+    {
+      case: "a head that says not when, its ask unknown: no more reads",
+      previous: head([posted(PUSH, "pending", undefined)]),
+      sha: API,
+      asked: undefined,
+      ladder: "resting",
+    },
+  ])("$case", ({ previous, sha, asked, ladder }) => {
+    expect(
+      firstDeployHeadLadder(previous, { environment: "stage", hostname: "api" }, sha, asked, NOW),
+    ).toBe(
+      ladder === "busy"
+        ? STATUS_RECHECK_LADDER_MS
+        : ladder === "quiet"
+          ? FIRST_DEPLOY_QUIET_LADDER_MS
+          : undefined,
+    );
+  });
+
+  it.each([
+    { case: "still pending", statuses: [status("mate/deploy/stage/api", "pending")], done: false },
+    {
+      // Rule 3: a dispatch that gets past its steps after a push failure turns it.
+      case: "the push job failed: read on",
+      statuses: [
+        { context: "Zerops deploy / deploy (push)", state: "failure" as const },
+        status("mate/deploy/stage/api", "pending"),
+      ],
+      done: false,
+    },
+    {
+      case: "the push job failed and nothing else is posted: read on",
+      statuses: [{ context: "Zerops deploy / deploy (push)", state: "failure" as const }],
+      done: false,
+    },
+    {
+      case: "the broker's own job report: final",
+      statuses: [
+        { context: "mate/deploy/stage/api", state: "failure" as const, description: "failed: x" },
+      ],
+      done: true,
+    },
+    {
+      // H2: the broker retries a refusal; its retry must be read.
+      case: "a refusal the broker retries: read on",
+      statuses: [
+        {
+          context: "mate/deploy/stage/api",
+          state: "failure" as const,
+          description: "has no workflow zerops.yml",
+        },
+      ],
+      done: false,
+    },
+    { case: "deployed", statuses: [status("mate/deploy/stage/api", "success")], done: true },
+    { case: "nothing posted yet", statuses: [], done: false },
+  ])("is settled where $case", ({ statuses, done }) => {
+    expect(firstDeployHeadSettled({ environment: "stage", hostname: "api" }, statuses)).toBe(done);
   });
 });

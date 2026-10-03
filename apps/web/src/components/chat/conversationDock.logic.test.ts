@@ -8,10 +8,16 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { assistant, at, operation, tool, user } from "./conversationFixtures";
 import {
+  bandKeys,
+  bandSeenNext,
+  type BandSeen,
   deriveDock,
+  endedSince,
+  withEndingsHeld,
   dockHelpers,
   foldBackgroundTasks,
   latestUsagePause,
+  type DockModel,
 } from "./conversationDock.logic";
 
 function agent(id: string, status: RuntimeSubagent["status"], title: string): RuntimeSubagent {
@@ -51,6 +57,23 @@ const panel = (agents: RuntimeSubagent[]): AgentPanelModel => ({
   directAgents: agents,
   hasAgents: agents.length > 0,
 });
+
+/** A stand-up step as its report left it. */
+const standupStep = (label: string, state: "done" | "running") => ({
+  id: label,
+  label,
+  state,
+  stateLabel: state === "done" ? "Done" : "Running",
+});
+
+/** A stand-up whose call returned while a service of its own still builds, as the builder settles it. */
+const standupRunningOn = (id: string, minute: number) =>
+  operation(id, "t1", minute, {
+    kind: "standup",
+    phase: "done",
+    returnedAt: at(minute, 5),
+    steps: [standupStep("appdev", "done"), standupStep("apidev", "running")],
+  });
 
 describe("dockHelpers", () => {
   it("names each helper by its task, never its model, with its state in words", () => {
@@ -254,7 +277,9 @@ describe("deriveDock", () => {
     pause: null,
   };
 
-  it("holds the running turn's running and failed background tasks, and any still running from before", () => {
+  // The band holds only what runs now (pass 35): a failure is told once, as
+  // its row in the record, red until a later step undoes it.
+  it("holds the background tasks that run now, this turn's and any from before, never a failed one", () => {
     const dock = deriveDock({
       ...base,
       backgroundTasks: foldBackgroundTasks([
@@ -268,8 +293,8 @@ describe("deriveDock", () => {
         task("task.started", "b2", 4, { detail: "Test" }),
       ]),
     });
-    expect(dock?.background).toMatchObject({ running: 2, done: 0, failed: 1 });
-    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["old-running", "b1", "b2"]);
+    expect(dock?.background).toMatchObject({ running: 2, done: 0, failed: 0 });
+    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["old-running", "b2"]);
     expect(dock?.afterTurn).toBeNull();
   });
 
@@ -296,21 +321,88 @@ describe("deriveDock", () => {
     expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b2"]);
   });
 
-  // A bar stands for what runs: a finished one leaves the panel — its line
-  // stays in the stream and its result goes to the report — and one that
-  // failed stays until the turn ends.
-  it("holds the running turn's running and failed pipelines, not finished ones, quick calls or older turns", () => {
+  // A bar stands for what runs without the Mate waiting on it (pass 35): a
+  // pipeline whose call returned and runs on. One it still waits on is the
+  // live slot's; a finished or failed one leaves — its line stays in the
+  // record and what is still broken goes to the result.
+  it("holds the running turn's pipelines whose call returned, not one it waits on, a finished or failed one, quick calls or older turns", () => {
     const dock = deriveDock({
       ...base,
       timelineEntries: [
         operation("d0", "t1", 0, { kind: "deploy", phase: "done" }),
         operation("d1", "t1", 1, { kind: "deploy", phase: "running" }),
         operation("d3", "t1", 1, { kind: "deploy", phase: "failed" }),
-        operation("v1", "t1", 2, { kind: "verify", phase: "running" }),
-        operation("d2", "t0", 2, { kind: "deploy", phase: "running" }),
+        standupRunningOn("s1", 1),
+        operation("s2", "t1", 1, { kind: "standup", phase: "running" }),
+        operation("s3", "t1", 1, {
+          kind: "standup",
+          phase: "done",
+          returnedAt: at(1, 5),
+          steps: [standupStep("appdev", "done")],
+        }),
+        operation("v1", "t1", 2, { kind: "verify", phase: "running", returnedAt: at(2, 5) }),
+        operation("d2", "t0", 2, { kind: "deploy", phase: "running", returnedAt: at(2, 5) }),
+        // A session whose follow-up call the Mate waits on is the slot's (D2).
+        operation("bs1", "t1", 2, {
+          kind: "bootstrap",
+          phase: "running",
+          returnedAt: at(2, 5),
+          openedAt: at(3, 0),
+        }),
+        operation("bs2", "t1", 2, { kind: "bootstrap", phase: "running", returnedAt: at(2, 5) }),
       ],
     });
-    expect(dock?.operations.map((op) => op.key)).toEqual(["op:d1", "op:d3"]);
+    expect(dock?.operations.map((op) => op.key)).toEqual(["op:s1", "op:bs2"]);
+  });
+
+  // The stand-up's report froze as its call returned; the store's reading of
+  // its services says when its builds are done.
+  it("lets a stand-up whose builds the store reads as done leave the band", () => {
+    const entries = [standupRunningOn("s1", 1)];
+    const reading = deriveDock({ ...base, timelineEntries: entries });
+    expect(reading?.operations.map((op) => op.key)).toEqual(["op:s1"]);
+    const done = deriveDock({
+      ...base,
+      timelineEntries: entries,
+      standupsDone: new Set(["op:s1"]),
+    });
+    expect(done?.operations ?? []).toEqual([]);
+    expect(endedSince(bandKeys(reading), done)).toEqual(["op:s1"]);
+  });
+
+  // A bar the person watched run shows how it ended a moment, then leaves
+  // (pass 35): what ended is the band's to hold, never the dock's to keep.
+  it("says what the band drew running that has ended since, and draws it as it ended while held", () => {
+    const running = deriveDock({
+      ...base,
+      timelineEntries: [standupRunningOn("s1", 1)],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+      ]),
+    });
+    expect([...bandKeys(running)]).toEqual(["op:s1", "task:b1"]);
+    const ended = deriveDock({
+      ...base,
+      timelineEntries: [
+        operation("s1", "t1", 1, {
+          kind: "standup",
+          phase: "done",
+          returnedAt: at(1, 5),
+          steps: [standupStep("appdev", "done")],
+        }),
+      ],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+        task("task.completed", "b1", 3, { status: "failed" }),
+      ]),
+    });
+    expect(ended?.operations).toEqual([]);
+    expect(ended?.background).toBeNull();
+    expect(endedSince(bandKeys(running), ended)).toEqual(["op:s1", "task:b1"]);
+    const held = withEndingsHeld(ended, new Set(["op:s1", "task:b1"]));
+    expect(held?.operations.map((op) => [op.key, op.phase])).toEqual([["op:s1", "done"]]);
+    expect(held?.background).toMatchObject({ running: 0, failed: 1 });
+    expect(withEndingsHeld(ended, new Set())).toBe(ended);
   });
 
   it("drops the helpers' bar once none works, and the task list's once all is done", () => {
@@ -326,7 +418,9 @@ describe("deriveDock", () => {
         ],
       },
     });
-    expect(dock).toBeNull();
+    // Ended, they are the band's to hold a moment (`withEndingsHeld`), not its bars.
+    expect(dock?.helpers ?? null).toBeNull();
+    expect(dock?.tasks ?? null).toBeNull();
   });
 
   it("gives each service of a batch deploy its own status bar", () => {
@@ -337,6 +431,7 @@ describe("deriveDock", () => {
           kind: "deploy",
           batch: true,
           phase: "running",
+          returnedAt: at(1, 5),
           subject: "apistage, webstage",
           steps: [
             { id: "apistage", label: "apistage", state: "running", stateLabel: "Running" },
@@ -409,5 +504,156 @@ describe("latestUsagePause", () => {
     ["nothing yet", [], false],
   ])("%s", (_label, entries, paused) => {
     expect(latestUsagePause(entries) !== null).toBe(paused);
+  });
+});
+
+// A resync brings what ended while nobody watched: the band lets it go
+// without holding its ending (pass 35).
+describe("bandSeenNext", () => {
+  const base = {
+    timelineEntries: [],
+    isWorking: true,
+    runningTurnId: "t1",
+    agentPanelModel: emptyAgentPanelModel(),
+    plan: null,
+    pause: null,
+  };
+  const runningDock = () =>
+    deriveDock({
+      ...base,
+      timelineEntries: [],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+      ]),
+    });
+  const endedDock = () =>
+    deriveDock({
+      ...base,
+      timelineEntries: [],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+        task("task.completed", "b1", 3, { status: "failed" }),
+      ]),
+    });
+  it.each([
+    { name: "watched: the ending is held", syncing: false, held: ["task:b1"] },
+    { name: "a resync: nothing is held", syncing: true, held: [] },
+  ])("$name", ({ syncing, held }) => {
+    const before: BandSeen = {
+      running: bandKeys(runningDock()),
+      held: new Set<string>(),
+      ends: new Map<string, number>(),
+    };
+    const next = bandSeenNext(before, endedDock(), syncing);
+    expect([...next.held]).toEqual(held);
+    expect([...next.running]).toEqual([]);
+  });
+
+  // A bar that runs again and ends again while its first ending is still
+  // held shows its second ending its whole time (E15): each ending counts.
+  it("counts each ending of a bar, so a second one restarts its hold", () => {
+    let seen: BandSeen = {
+      running: bandKeys(runningDock()),
+      held: new Set<string>(),
+      ends: new Map<string, number>(),
+    };
+    seen = bandSeenNext(seen, endedDock(), false);
+    expect(seen.ends.get("task:b1")).toBe(1);
+    seen = bandSeenNext(seen, runningDock(), false);
+    seen = bandSeenNext(seen, endedDock(), false);
+    expect([...seen.held]).toEqual(["task:b1"]);
+    expect(seen.ends.get("task:b1")).toBe(2);
+  });
+});
+
+// Each bar the band drew running shows how it ended a moment (pass 35): a
+// batch deploy's row per service, the helpers, the to-do list, and a
+// background task started before this turn.
+describe("the band's endings", () => {
+  const base = {
+    timelineEntries: [],
+    isWorking: true,
+    runningTurnId: "t1",
+    turnStartedAt: at(0),
+    agentPanelModel: emptyAgentPanelModel(),
+    plan: null,
+    pause: null,
+  };
+  const batch = (phase: "running" | "done", apistage: "running" | "done") =>
+    operation("b1", "t1", 1, {
+      kind: "deploy",
+      batch: true,
+      phase,
+      returnedAt: at(1, 5),
+      steps: [
+        { id: "apidev", label: "apidev", state: "done", stateLabel: "Done" },
+        { id: "apistage", label: "apistage", state: apistage, stateLabel: apistage },
+      ],
+    });
+  const plan = (last: "inProgress" | "completed") => ({
+    createdAt: at(0),
+    turnId: TurnId.make("t1"),
+    steps: [
+      { step: "Wire the shields", status: "completed" as const },
+      { step: "Scale the titans", status: last },
+    ],
+  });
+  it.each([
+    {
+      name: "a batch deploy's service whose own step ended while the batch runs on",
+      before: { ...base, timelineEntries: [batch("running", "running")] },
+      after: { ...base, timelineEntries: [batch("running", "done")] },
+      ended: ["op:b1:apistage"],
+      shows: (dock: DockModel | null) => dock?.operations.map((op) => `${op.key} ${op.phase}`),
+      shown: ["op:b1:apistage done"],
+    },
+    {
+      name: "a whole batch deploy that ended: a row per service",
+      before: { ...base, timelineEntries: [batch("running", "running")] },
+      after: { ...base, timelineEntries: [batch("done", "done")] },
+      ended: ["op:b1:apistage"],
+      shows: (dock: DockModel | null) => dock?.operations.map((op) => `${op.key} ${op.phase}`),
+      shown: ["op:b1:apistage done"],
+    },
+    {
+      name: "the helpers, the last one done",
+      before: { ...base, agentPanelModel: panel([agent("h1", "running", "Audit")]) },
+      after: { ...base, agentPanelModel: panel([agent("h1", "completed", "Audit")]) },
+      ended: ["helpers"],
+      shows: (dock: DockModel | null) => dock?.helpers?.rows.map((row) => row.word),
+      shown: ["Done"],
+    },
+    {
+      name: "the to-do list, its last step done",
+      before: { ...base, plan: plan("inProgress") },
+      after: { ...base, plan: plan("completed") },
+      ended: ["tasks"],
+      shows: (dock: DockModel | null) => [dock?.tasks?.done ?? null],
+      shown: [2],
+    },
+    {
+      name: "a background task started before this turn",
+      before: {
+        ...base,
+        backgroundTasks: foldBackgroundTasks([
+          task("task.started", "b0", 0, { detail: "Watch the logs" }, "t0"),
+        ]),
+      },
+      after: {
+        ...base,
+        backgroundTasks: foldBackgroundTasks([
+          task("task.started", "b0", 0, { detail: "Watch the logs" }, "t0"),
+          task("task.completed", "b0", 3, { status: "failed" }, "t0"),
+        ]),
+      },
+      ended: ["task:b0"],
+      shows: (dock: DockModel | null) => dock?.background?.tasks.map((item) => item.state),
+      shown: ["failed"],
+    },
+  ])("holds $name", ({ before, after, ended, shows, shown }) => {
+    const running = deriveDock(before);
+    const now = deriveDock(after);
+    expect(endedSince(bandKeys(running), now)).toEqual(ended);
+    expect(shows(withEndingsHeld(now, new Set(ended)))).toEqual(shown);
   });
 });

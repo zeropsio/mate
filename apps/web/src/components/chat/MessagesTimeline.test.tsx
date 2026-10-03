@@ -1563,16 +1563,13 @@ describe("MessagesTimeline — the conversation", () => {
       assistant("a1", 5, "Reading the docs first."),
       call("c1", 8, 'WebFetch: {"url":"https://docs.example.dev/guides"}'),
     ]);
-    expect(markup).not.toContain('data-chat-kind="step:web"');
-    expect(markup).toContain('data-run-now="step"');
+    // In the live slot, as the row it becomes: said plainly, sweeping.
+    expect(markup.match(/data-chat-kind="step:web"/g)).toHaveLength(1);
     expect(markup).toContain('data-mate-face-state="working"');
-    // Once on the line, and once more for a screen reader, in its words alone.
+    // Once in the slot, and once more for a screen reader, in its words alone.
     expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
     expect(markup).toContain(
       '<span class="sr-only" role="status">Reading docs.example.dev/guides</span>',
-    );
-    expect(markup).toMatch(
-      />Reading(?:<!-- -->)? <span class="run-now-mono">docs\.example\.dev\/guides</u,
     );
     expect(markup).not.toContain("WebFetch");
   });

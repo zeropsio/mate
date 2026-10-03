@@ -68,6 +68,15 @@
  *   reason reached owned code only as `errorMessage` prose. Added for the
  *   crew engine to tell how a crew turn ended; no owned code reads it yet.
  *   Claude emits it, the other drivers do not yet. Additive.
+ * - 2.6 (2026-10-03): an item's lifecycle payload gains an optional
+ *   `responseId` — the model response a call was written in, on the start of
+ *   each of the agent's own calls (never a helper's) — and an optional
+ *   `unreturned` on the completion a turn's end gives a call that never
+ *   returned, its `status` kept for older readers. The live run card and the
+ *   menu row's live step read a batch as one model response by it, and close
+ *   an unreturned call as "No result". Claude emits both, the other drivers
+ *   do not; a driver that names no response keeps the order of starts and
+ *   returns. Additive.
  *
  * @module providerRuntimeSpi
  */
@@ -81,7 +90,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.5";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.6";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

@@ -21,7 +21,7 @@ export {
   type ZeropsOperationsReduction,
 } from "./operations.ts";
 export { composeSession } from "./session.ts";
-export { standupStepRole } from "./builders/standup.ts";
+export { standupRunsOn, standupStepRole } from "./builders/standup.ts";
 export {
   deriveZeropsThreadModel,
   type ZeropsThreadModel,

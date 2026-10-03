@@ -8,6 +8,8 @@ import {
   deployStatusContext,
   deployTone,
   environmentRow,
+  firstDeployFailure,
+  firstDeployOnHead,
   jobDuration,
   GROUP_BEING_SET_UP_LINE,
   mateRow,
@@ -506,5 +508,153 @@ describe("jobDuration", () => {
 
   it("never reads a clock skew as a negative duration", () => {
     expect(jobDuration(at(10), at(4))).toBe("0s");
+  });
+});
+
+describe("firstDeployOnHead — the one truth table for the head a stage deploys", () => {
+  const HEAD = "9a8b7c6d5e4f30211203f4e5d6c7b8a9f0e1d2c3";
+  const at = (minute: number) => `2026-10-02T22:${String(minute).padStart(2, "0")}:00Z`;
+  const posted = (
+    context: string,
+    state: "pending" | "success" | "failure" | "error",
+    minute: number | undefined,
+    description?: string,
+    id?: number,
+  ) => ({
+    context,
+    state,
+    ...(minute === undefined ? {} : { created_at: at(minute) }),
+    ...(description === undefined ? {} : { description }),
+    ...(id === undefined ? {} : { id }),
+  });
+  const BROKER = "mate/deploy/abacus-stage/app";
+  const PUSH = "Zerops deploy / deploy (push)";
+  const on = (statuses: ReadonlyArray<ReturnType<typeof posted>>) =>
+    firstDeployOnHead({ environment: "abacus-stage", hostname: "app", statuses });
+
+  it.each([
+    {
+      // Run 5: the push job's Test step failed; the dispatch, posting nothing, failed too.
+      case: "3: the push job failed, the broker asked: failed, no reason, read on",
+      statuses: [
+        posted(PUSH, "failure", 12, "Failing after 9s"),
+        posted(BROKER, "pending", 7, "dispatched"),
+      ],
+      verdict: { kind: "failed", reason: undefined, final: false },
+    },
+    {
+      case: "3: the push job failed with no time posted: failed all the same",
+      statuses: [posted(PUSH, "failure", undefined)],
+      verdict: { kind: "failed", reason: undefined, final: false },
+    },
+    {
+      case: "1: the broker's own job report: failed, final, and why",
+      statuses: [posted(BROKER, "failure", 14, "failed: the build step exited with 1")],
+      verdict: { kind: "failed", reason: "the build step exited with 1", final: true },
+    },
+    {
+      case: "4: a refusal the broker retries: not failed",
+      statuses: [posted(BROKER, "failure", 14, "has no workflow zerops.yml for the stage")],
+      verdict: { kind: "open" },
+    },
+    {
+      case: "4: a read the broker failed and retries: not failed",
+      statuses: [posted(BROKER, "error", 14, "could not read the environments")],
+      verdict: { kind: "open" },
+    },
+    {
+      case: "2: the grant's deploying newer than a push failure: past Test, not failed",
+      statuses: [posted(BROKER, "pending", 15, "deploying 9a8b7c6"), posted(PUSH, "failure", 12)],
+      verdict: { kind: "granted" },
+    },
+    {
+      case: "the broker deployed it: not failed, nothing more to read",
+      statuses: [posted(BROKER, "success", 16, "deployed"), posted(PUSH, "failure", 12)],
+      verdict: { kind: "deployed" },
+    },
+    {
+      case: "a push failure, then a success of the same context: only the newest counts",
+      statuses: [posted(PUSH, "success", 15), posted(PUSH, "failure", 12)],
+      verdict: { kind: "open" },
+    },
+    {
+      case: "listed out of order: the newest by time, not the first listed",
+      statuses: [posted(PUSH, "failure", 12), posted(PUSH, "success", 15)],
+      verdict: { kind: "open" },
+    },
+    {
+      case: "listed out of order in one second: the newest by id",
+      statuses: [
+        posted(BROKER, "failure", 14, "failed: it broke", 7),
+        posted(BROKER, "pending", 14, "deploying", 9),
+      ],
+      verdict: { kind: "granted" },
+    },
+    {
+      case: "another environment's deploy failing: not this stage's",
+      statuses: [posted("mate/deploy/abacus-production/app", "failure", 12, "failed: no")],
+      verdict: { kind: "open" },
+    },
+    { case: "nothing posted yet", statuses: [], verdict: { kind: "open" } },
+    {
+      // The grant's job died; the broker dispatched again: the old push failure is not this try's.
+      case: "deploying, then a newer dispatch, an older push failure: not failed",
+      statuses: [
+        posted(BROKER, "pending", 20, "dispatched"),
+        posted(BROKER, "pending", 15, "deploying 9a8b7c6"),
+        posted(PUSH, "failure", 12),
+      ],
+      verdict: { kind: "open" },
+    },
+    {
+      // deploy.sh exits 1 on a refused grant: the push run fails with the refusal.
+      case: "a refusal echoed by the push job: failed for that try",
+      statuses: [posted(PUSH, "failure", 15), posted(BROKER, "failure", 14, "the runner is busy")],
+      verdict: { kind: "failed", reason: undefined, final: false },
+    },
+    {
+      case: "a push failure after the broker's last grant: failed",
+      statuses: [
+        posted(PUSH, "failure", 22),
+        posted(BROKER, "pending", 20, "dispatched"),
+        posted(BROKER, "pending", 15, "deploying 9a8b7c6"),
+      ],
+      verdict: { kind: "failed", reason: undefined, final: false },
+    },
+    {
+      case: "a push failure that says not when, the broker granted once: not failed",
+      statuses: [
+        posted(BROKER, "pending", 20, "dispatched"),
+        posted(BROKER, "pending", 15, "deploying 9a8b7c6"),
+        posted(PUSH, "failure", undefined),
+      ],
+      verdict: { kind: "open" },
+    },
+  ])("$case", ({ statuses, verdict }) => {
+    expect(on(statuses as ReadonlyArray<ReturnType<typeof posted>>)).toEqual(verdict);
+  });
+
+  it("is carried on the stage's row as its failure, and only there", () => {
+    const failing = [
+      {
+        hostname: "app",
+        repository: "appdev",
+        head: { sha: HEAD, statuses: [posted(PUSH, "failure", 12)] },
+      },
+    ];
+    const row = (tier: "stage" | "production") =>
+      environmentRow({
+        projectId: "p-abacus-stage",
+        name: "Abacus - stage",
+        tier,
+        sources: tier === "stage" ? ["main"] : "release",
+        services: failing,
+        environment: "abacus-stage",
+      });
+    expect(row("stage").firstDeployFailure).toEqual({ reason: undefined });
+    expect(row("production").firstDeployFailure).toBeUndefined();
+    expect(firstDeployFailure({ environment: "abacus-stage", services: failing })).toEqual({
+      reason: undefined,
+    });
   });
 });

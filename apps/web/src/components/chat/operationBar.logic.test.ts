@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   importLines,
   lineSegments,
-  opensTo,
+  detailLines,
   operationLineWord,
   operationSubject,
   processReasons,
@@ -237,19 +237,37 @@ describe("settledOperationBar — a settled operation's bar carries what it foun
   });
 });
 
-describe("opensTo — a row offers to open only when opening adds something", () => {
+describe("detailLines — how much an operation opens to", () => {
   it.each([
     {
-      name: "a failed stand-up with no services yet and its reason whole on its line",
+      name: "a deploy with no steps, no log and no version yet",
+      overrides: { kind: "deploy" as const },
       lines: 0,
-      reasonCut: false,
-      opens: false,
     },
-    { name: "the same, its reason cut short on its line", lines: 0, reasonCut: true, opens: true },
-    { name: "a stand-up with its services' lines", lines: 3, reasonCut: false, opens: true },
-    { name: "an import with nothing to list", lines: 0, reasonCut: false, opens: false },
-    { name: "a kind that opens to its own card", lines: null, reasonCut: false, opens: true },
-  ])("$name", ({ lines, reasonCut, opens }) => {
-    expect(opensTo({ lines, reasonCut })).toBe(opens);
+    {
+      name: "a deploy with its pipeline's steps",
+      overrides: {
+        kind: "deploy" as const,
+        steps: [step("Build", "done"), step("Deploy", "running")],
+      },
+      lines: 2,
+    },
+    {
+      name: "a deploy whose version names the pipeline and log it reads",
+      overrides: { kind: "deploy" as const, version: { id: "v-1", name: "v0.1.2" } },
+      lines: 1,
+    },
+    {
+      name: "a failure with its reason",
+      overrides: {
+        kind: "deploy" as const,
+        phase: "failed" as const,
+        explanation: { reason: "Build failed" },
+      },
+      lines: 1,
+    },
+    { name: "an import: its services", overrides: { steps: [step("db", "done")] }, lines: 1 },
+  ])("$name", ({ overrides, lines }) => {
+    expect(detailLines(operation(overrides as Partial<ZeropsOperation>), null)).toBe(lines);
   });
 });

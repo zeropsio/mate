@@ -78,6 +78,8 @@ export interface EnvironmentRow {
   readonly versionRepository: string | undefined;
   readonly line: string;
   readonly tone: GroupRowTone;
+  /** A stage's first deploy failing on `main`'s head (`firstDeployFailure`); absent otherwise. */
+  readonly firstDeployFailure?: FirstDeployFailure;
 }
 
 export interface PullRequestRow {
@@ -227,6 +229,157 @@ export interface EnvironmentServiceState {
   readonly appVersionName?: string | undefined;
   /** Every commit status on that commit, as Gitea returned them. */
   readonly statuses?: ReadonlyArray<GiteaCommitStatus> | undefined;
+  /**
+   * Its repository's `main` head and every status on it — read only while its stage runs
+   * nothing (`planFirstDeployHeadReads`): where its first deploy failed before any build.
+   */
+  readonly head?: MainHeadStatuses | undefined;
+}
+
+/** A repository's `main` head, and every commit status on it as Gitea returned them. */
+export interface MainHeadStatuses {
+  readonly sha: string;
+  readonly statuses: ReadonlyArray<GiteaCommitStatus>;
+  /** When the reader first saw `main` at this commit: a head nobody posted to yet still waits. */
+  readonly firstSeenAtMs?: number | undefined;
+}
+
+/** A stage's first deploy failing on `main`'s head (`firstDeployOnHead`). */
+export interface FirstDeployFailure {
+  /** What the job reported, where the broker's status carries its words; `undefined` otherwise. */
+  readonly reason: string | undefined;
+}
+
+/** What the statuses on the head a stage deploys say of its first deploy. */
+export type FirstDeployOnHead =
+  /** `final`: the job's own report, which nothing after it changes for this commit. */
+  | { readonly kind: "failed"; readonly reason: string | undefined; readonly final: boolean }
+  /** The job got past its own steps and holds the broker's grant: the build shows next. */
+  | { readonly kind: "granted" }
+  /** The broker deployed it. */
+  | { readonly kind: "deployed" }
+  /** Nothing says it failed or got past its steps: pass 34's words stand. */
+  | { readonly kind: "open" };
+
+/** How the broker opens a job's own failure report (gitea-mate `DescriptionFailed`). */
+const JOB_REPORT = "failed: ";
+/** How the broker opens the status its grant writes (gitea-mate `DescriptionDeploying`). */
+const GRANTED = "deploying";
+
+const failing = (status: GiteaCommitStatus) =>
+  status.state === "failure" || status.state === "error";
+
+/**
+ * Whether `candidate` is newer than `held`, by when it was posted, then by id; by Gitea's own
+ * order — newest first — only where neither says.
+ */
+function newer(candidate: GiteaCommitStatus, held: GiteaCommitStatus): boolean {
+  const [at, heldAt] = [candidate.created_at, held.created_at].map((value) =>
+    value === undefined ? Number.NaN : Date.parse(value),
+  ) as [number, number];
+  if (!Number.isNaN(at) && !Number.isNaN(heldAt) && at !== heldAt) return at > heldAt;
+  if (candidate.id !== undefined && held.id !== undefined) return candidate.id > held.id;
+  return false;
+}
+
+const postedAt = (status: GiteaCommitStatus): number =>
+  status.created_at === undefined ? Number.NaN : Date.parse(status.created_at);
+
+/** A status of the broker's that says the job got past its steps: its grant, or its deploy. */
+const grantedOrDeployed = (status: GiteaCommitStatus): boolean =>
+  status.state === "success" ||
+  (status.state === "pending" && (status.description?.trim() ?? "").startsWith(GRANTED));
+
+/** Each context's newest status, whatever order Gitea listed them in. */
+export function newestByContext(
+  statuses: ReadonlyArray<GiteaCommitStatus>,
+): ReadonlyMap<string, GiteaCommitStatus> {
+  const newest = new Map<string, GiteaCommitStatus>();
+  for (const status of statuses) {
+    const held = newest.get(status.context);
+    if (held === undefined || newer(status, held)) newest.set(status.context, status);
+  }
+  return newest;
+}
+
+/**
+ * The one truth table for the head `H` a stage deploys (pass 35, after run 5), on each context's
+ * newest status:
+ *
+ * 1. The broker's `mate/deploy/{environment}/{service}` is a `failure` opening "failed: " — the
+ *    job's own report: failed, final, and the rest is why.
+ * 2. The broker's is `pending` opening "deploying" — the job got past its steps and holds the
+ *    grant: not failed, whatever else failed (and `success`: deployed).
+ * 3. The group's workflow's own context — any the broker does not write — is a `failure` posted
+ *    after the broker's last grant or deploy on `H`, or with none on it: failed, not final. Gitea
+ *    posts no status for the broker's `workflow_dispatch` run, which runs the same workflow on the
+ *    same commit (run 5: run 280 failed beside the push run's status and left none), so the push
+ *    run's failure is the one sign of it; a dispatch that gets past its steps turns it by rule 2,
+ *    and one from before the broker's last grant is an earlier try's. `deploy.sh` exits 1 on any
+ *    refused grant, so a refusal fails the push run too: the stage reads failed for that try until
+ *    the broker's retry writes "deploying" (2–7 min) — that try did fail.
+ * 4. The broker's is a `failure` or `error` without "failed: " — a refusal it retries: not failed.
+ * 5. Otherwise nothing is said.
+ *
+ * The exact signal would be the broker writing its own `failure` with "failed: <step>" as the run
+ * it dispatched fails (a later gitea-mate pass); rule 1 reads it as it lands.
+ */
+export function firstDeployOnHead(input: {
+  readonly environment: string;
+  readonly hostname: string;
+  readonly statuses: ReadonlyArray<GiteaCommitStatus>;
+}): FirstDeployOnHead {
+  const newest = newestByContext(input.statuses);
+  const broker = newest.get(deployStatusContext(input.environment, input.hostname));
+  const words = broker?.description?.trim() ?? "";
+  if (broker !== undefined && failing(broker) && words.startsWith(JOB_REPORT)) {
+    const reason = words.slice(JOB_REPORT.length).trim();
+    return { kind: "failed", reason: reason.length === 0 ? undefined : reason, final: true };
+  }
+  if (broker?.state === "success") return { kind: "deployed" };
+  if (broker?.state === "pending" && words.startsWith(GRANTED)) return { kind: "granted" };
+  // The broker's last grant or deploy on this head: a push failure from before it is an earlier
+  // try's, not the one the broker dispatched since.
+  const context = deployStatusContext(input.environment, input.hostname);
+  let movedOnAt: number | undefined;
+  for (const status of input.statuses) {
+    if (status.context !== context || !grantedOrDeployed(status)) continue;
+    const at = postedAt(status);
+    movedOnAt = Math.max(
+      movedOnAt ?? Number.NEGATIVE_INFINITY,
+      Number.isNaN(at) ? Number.POSITIVE_INFINITY : at,
+    );
+  }
+  for (const [name, status] of newest) {
+    if (name.startsWith("mate/") || !failing(status)) continue;
+    const at = postedAt(status);
+    if (movedOnAt === undefined || (!Number.isNaN(at) && at > movedOnAt))
+      return { kind: "failed", reason: undefined, final: false };
+  }
+  return { kind: "open" };
+}
+
+/**
+ * Whether a stage's first deploy failed on the head of any of its services' repositories
+ * (`firstDeployOnHead`), with the job's own words where one says them.
+ */
+export function firstDeployFailure(input: {
+  readonly environment: string;
+  readonly services: ReadonlyArray<EnvironmentServiceState>;
+}): FirstDeployFailure | undefined {
+  let failure: FirstDeployFailure | undefined;
+  for (const service of input.services) {
+    if (service.head === undefined) continue;
+    const verdict = firstDeployOnHead({
+      environment: input.environment,
+      hostname: service.hostname,
+      statuses: service.head.statuses,
+    });
+    if (verdict.kind !== "failed") continue;
+    if (failure === undefined || (failure.reason === undefined && verdict.reason !== undefined))
+      failure = { reason: verdict.reason };
+  }
+  return failure;
 }
 
 /**
@@ -280,6 +433,10 @@ export function environmentRow(input: {
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
   const tone = deployTone({ environment: input.environment, services: input.services });
+  const failure =
+    input.tier === "stage"
+      ? firstDeployFailure({ environment: input.environment, services: input.services })
+      : undefined;
   return {
     kind: "environment",
     projectId: input.projectId,
@@ -295,6 +452,7 @@ export function environmentRow(input: {
     versionRepository: named?.service.repository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
+    ...(failure === undefined ? {} : { firstDeployFailure: failure }),
   };
 }
 

@@ -58,6 +58,12 @@ export interface WorkStep {
   readonly entries: ReadonlyArray<WorkLogEntry>;
   /** The pictures it looked at, by path. */
   readonly images: ReadonlyArray<string>;
+  /**
+   * A call that never returned (`liveBatch`): "stale" once a newer batch
+   * started while it still ran — it stands in the record with no time — and
+   * "closed" once the run settled without it: "No result".
+   */
+  readonly noResult?: "stale" | "closed";
 }
 
 /** A command a task tracked: the task's words, and the task (its end is the command's). */
@@ -295,7 +301,8 @@ const ZEROPS_WORDS: Readonly<Record<string, readonly [running: string, done: str
   zerops_events: ["Reading the project's events", "Read the project's events"],
 };
 
-function webTarget(url: string): string {
+/** A page as a line names it: its host and its path. */
+export function webTarget(url: string): string {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname === "/" ? "" : parsed.pathname;
@@ -474,9 +481,12 @@ export function stepOf(
   const taskRuns = track !== undefined && live && track.task.toolLifecycleStatus === "inProgress";
   const state = taskRuns ? "running" : stepState(entry, live);
   const running = state === "running";
-  const ended = running
-    ? null
-    : new Date(Math.max(endOf(entry), track === undefined ? 0 : endOf(track.task))).toISOString();
+  // The run is over and the call never returned: it has no end to time.
+  const unreturned = !running && state !== "failed" && entry.toolLifecycleStatus === "inProgress";
+  const ended =
+    running || unreturned
+      ? null
+      : new Date(Math.max(endOf(entry), track === undefined ? 0 : endOf(track.task))).toISOString();
   // The command as it was written, out of the shell the runtime ran it in.
   const unwrapped =
     kind === "command" && entry.command ? unwrapShell(entry.rawCommand ?? entry.command) : null;
@@ -497,6 +507,7 @@ export function stepOf(
     endedAt: ended,
     entries: [entry],
     images: look === null ? [] : [look],
+    ...(unreturned ? { noResult: "closed" as const } : {}),
   };
 }
 
@@ -514,34 +525,31 @@ export function foldSteps(
   for (const entry of entries) {
     const step = stepOf(entry, tracked, live);
     const previous = steps.at(-1);
-    if (
+    // A call that never returned — the slot's while it runs, "No result" once
+    // the run is over — is a step of its own, never folded either way.
+    const folds =
       previous !== undefined &&
+      entry.toolLifecycleStatus !== "inProgress" &&
+      previous.entries.every((earlier) => earlier.toolLifecycleStatus !== "inProgress");
+    if (
+      folds &&
       previous.kind === "look" &&
       step.kind === "look" &&
       previous.state !== "running" &&
+      step.state !== "running" &&
       step.state !== "failed" &&
       previous.state !== "failed"
     ) {
+      // A look still running is the slot's, never folded: these ended.
       const images = [...previous.images, ...step.images];
-      const running = step.state === "running";
       const names = images.map(basename);
       steps[steps.length - 1] = {
         ...previous,
-        words:
-          names.length === 0
-            ? running
-              ? "Looking at pictures"
-              : "Looked at pictures"
-            : `${running ? "Looking at" : "Looked at"} ${listed(names)}`,
+        words: names.length === 0 ? "Looked at pictures" : `Looked at ${listed(names)}`,
         phrase:
           names.length === 0
-            ? {
-                verb: running ? "Looking at pictures" : "Looked at pictures",
-                targets: [],
-                more: 0,
-                code: false,
-              }
-            : phraseOf(running ? "Looking at" : "Looked at", names),
+            ? { verb: "Looked at pictures", targets: [], more: 0, code: false }
+            : phraseOf("Looked at", names),
         state: step.state,
         endedAt: step.endedAt,
         entries: [...previous.entries, entry],
@@ -550,19 +558,20 @@ export function foldSteps(
       continue;
     }
     if (
-      previous !== undefined &&
+      folds &&
       previous.kind === "edit" &&
       step.kind === "edit" &&
       previous.state === "done" &&
+      step.state !== "running" &&
       step.state !== "failed" &&
-      step.words === plainWords(entry, "edit", step.state === "running") &&
+      step.words === plainWords(entry, "edit", false) &&
       previous.entries.every((earlier) => earlier.callInput?.description === undefined)
     ) {
       const merged = [...previous.entries, entry];
       steps[steps.length - 1] = {
         ...previous,
-        words: editWords(merged, step.state === "running"),
-        phrase: editPhrase(merged, step.state === "running"),
+        words: editWords(merged, false),
+        phrase: editPhrase(merged, false),
         state: step.state,
         endedAt: step.endedAt,
         entries: merged,

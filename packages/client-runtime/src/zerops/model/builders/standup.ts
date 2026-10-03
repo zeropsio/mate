@@ -18,6 +18,7 @@ import { readString } from "../../cards/decode.ts";
 import type { StandupHalf } from "../../activity/standupReading.ts";
 import type {
   ZeropsCall,
+  ZeropsOperation,
   ZeropsOperationLink,
   ZeropsOperationPhase,
   ZeropsOperationStep,
@@ -103,6 +104,20 @@ const NEXT_LABEL = "Next";
 export function standupStepRole(step: ZeropsOperationStep): "own" | "next" | "held" {
   if (step.state !== "queued") return "own";
   return step.stateLabel === HELD_LABEL ? "held" : "next";
+}
+
+/**
+ * A stand-up whose call returned while a service of its own still builds, as
+ * its report says: the Mate waits on it no more, and its builds run on. The
+ * live reading of its services says when they are done.
+ */
+export function standupRunsOn(operation: ZeropsOperation): boolean {
+  return (
+    operation.kind === "standup" &&
+    operation.returnedAt !== undefined &&
+    operation.phase !== "running" &&
+    operation.steps.some((step) => step.state === "running" && standupStepRole(step) === "own")
+  );
 }
 
 interface Report {

@@ -238,10 +238,14 @@ ledger row or a test.
     repository made with the delivered token); `TestPassDeliversAMatesAccessOnceAndNeverRestarts`
 - **1.6** — The runner pool
   - _State:_ partial — imported on a group's first workflow and removed with the group (live); woken
-    and slept on `workflow_job` (built); the cross-org `runs-on` proof not measured
-  - _Built in:_ gitea-mate `6933c4d`, `runnerPool`
-  - _Proven by:_ ledger _The backbone's first live run_ (a runner in 117 s, the job green in 71 s);
-    `TestWorkflowJobWakesAndSleepsTheRunner`
+    and slept on `workflow_job` (built); a runner whose build failed is replaced within bounds and
+    every download in its build retries (gitea-mate #7, live on the test org's broker 2026-10-02;
+    run 5's new runner built at the first try in 103 s, so the replacement is proven by its tests
+    only); the cross-org `runs-on` proof not measured
+  - _Built in:_ gitea-mate `6933c4d`, `runnerPool`; #7 `76f259c`
+  - _Proven by:_ ledger _The backbone's first live run_ (a runner in 117 s, the job green in 71 s),
+    _Run 4 as measured_ (the failed download, never rebuilt); `TestWorkflowJobWakesAndSleepsTheRunner`,
+    `TestABuildThatAlwaysFailsIsBoundedAndStops`, `TestARunnerDeletedButNotImportedIsOwedOne`
 - **2.1** — Git per dev pair, as early as possible
   - _State:_ live
   - _Built in:_ zcp v9.176.0 `3e344982` `0daca3f1` `d85814ed`
@@ -775,6 +779,20 @@ ledger row or a test.
     `nowLineCalm.logic.test.ts`, `standupReading.test.ts`, `operationBar.logic.test.ts`,
     `inventoryTrouble.logic.test.ts`, `ZeropsReleaseSteps.logic.test.ts`,
     `SidebarMateRow.logic.test.ts`
+- **—** — Pass 34: a stage coming up, a deploy, a release and a new Mate say what is true while
+  they happen
+  - _State:_ **live** in mate 0.11.87 (2026-10-02), re-checked live in run 5 on mate.zerops.io:
+    every step of a stage coming up was true, including the wait for a group's first runner; a
+    deploy's "Deployed" held through a stale pending status; a release kept "replaces v0.1.0 · 1
+    change" and its roll back to v0.1.0 through Released; a new Mate read "Coming up", then
+    "Waiting for your sign-in", in the window that had not made it, and both flows' Mates read the
+    same words; a merge reached the other window in 10 s (run 4: 48 s), idle cost unchanged (16 and
+    18 requests a minute). A deploy job that fails before the broker stays invisible (§7, 23)
+  - _Built in:_ mate 0.11.87 (PR #87 `e46b4a07f`); gitea-mate #7 `76f259c`
+  - _Proven by:_ `stopComing.test.ts`, `stageComingUp.replay.test.ts`, `deployment.test.ts`,
+    `deploymentStore.test.ts`, `pullWatch.test.ts`, `releaseFacts.test.ts`, `reviewVerdict.test.ts`,
+    `candidates.test.ts`, `mateComing.test.ts`, `mateLink.test.ts`, `SidebarMateRow.logic.test.ts`;
+    ledger _Run 4 as measured_, _Run 5 as measured_
 - **6** — Adopting an existing app
   - _State:_ **open** — nothing built; _New project_ has no _I have code_
 - **7** — The raw-token door and the client's re-mint
@@ -1000,26 +1018,6 @@ In the order the owner ranked them, then the rest:
     before v9.179.1 names the dev half's setup for the group's stage and production (Kai's
     `todo/group` `main`: `zeropsSetup: appdev`, start `zsc noop`); the correction as the bot was
     refused by the session's classifier and waits on the owner (ledger, _The owner's Todo run_).
-
-## 8. Working on it
-
-- **Run it on localhost.** The root `dev` script starts the pair (server on 13774, web on 5734); the
-  owner's runs go through it against the test org, so a fix lands without a release. Delivery to a
-  running container is the push loop (`../zcp/eval/scripts/mate-dev-push.sh`), not a release.
-- **Release.** Fork: bump the three `package.json` versions, tag `vX.Y.Z` on `main`; the workflow
-  publishes the tarball, `SHA256SUMS` and `stable.json`; zcp installs it at the next boot or
-  `zcp mate update` (manifest cache one hour). The hosted app at mate.zerops.io rebuilds from a push
-  to `main` by itself (the root `zerops.yml`, setup `prod`), a new bundle within about two minutes
-  (measured 2026-09-17); it does not wait for the tag. zcp: its own release ritual, v9.176.0 carries the
-  backbone. gitea-mate: a push to `main` is live for every new import; tag it as a marker.
-- **Live checks.** Single-person probes in the Onboarding org, two-person and empty-org runs in the
-  test org `Mate`; resources tagged `probe:<topic>-<date>`, listed, deleted, counts diffed. Empty-org
-  runs are driven end to end by the scratch driver (`probe_d20_run.py`), the org wiped by the
-  cleanup probe (`probe_mateorg_cleanup.py --apply`); both take credentials from the environment
-  only. Read sensitive service variables with an integration token: a person's session reads
-  `REDACTED`.
-- **Where to write.** A decision → the spec. A measured fact → the ledger, one writer. A screen note
-  → the journal. A change of state → this page, in the same commit as the change.
 
 23. **A signer recorded in another browser is not seen by an open session** — the owner signed
     Claude in from their browser; the audit browser, open on the same Mate, refused the first message
@@ -1281,3 +1279,46 @@ In the order the owner ranked them, then the rest:
     stage half is imported empty, the dev half's first deploys run one at a time, zcp's checks fail
     on a basic-auth inbox and on a dev service idling before its dev server — are the next pass's
     input.
+41. **A deploy job that fails before it reaches the broker is invisible** (run 5, 2026-10-02).
+    Closed in pass 35 (mate 0.11.88), unmeasured live until run 6: while a declared stage runs
+    nothing, the group's deploy reader reads `main`'s head and its statuses — the broker's `failed: …`
+    report, or the deploy workflow's own failure whenever posted, until the broker says `deploying` —
+    and the menu says "Stage didn't come up · its first deploy failed", the cell "First deploy
+    failed" (design decisions, 2026-10-03). Open: the broker writing `failed: <step>` when the run it
+    dispatched fails, the exact signal (gitea-mate).
+42. **zcp's workflow template leaves the runner's runtime to the Mate** (run 5). Closed in zcp
+    v9.189.0: the workflow sets Node.js, Go or Java up at the dev half's version before the Test
+    step; Bun, Deno, Python and PHP get a comment naming what works on the runner (it has no `unzip`
+    and no hosted tool cache); a file still exactly zcp's old template is brought up to it, and a
+    file a project touched is left as it is. Open: `unzip` in the runner image and one live run per
+    runtime.
+43. **Two short blips in a stage's first deploy** (run 5). Closed in pass 35, unmeasured live until
+    run 6: a build's end holds "deploying" until its version is known or the 20 s grace ends, the
+    grace's timer kept through a re-check of the listing; the stage's own import comes before the
+    first deploy and the runner on every surface ("Setting up a stage…").
+44. **A tainted runner's replacement may register with the org's same token.** Partly closed in
+    gitea-mate#8: Gitea 1.27.2's API returns the org's latest active token and only its web UI
+    resets one, so every runner import first deletes every runner registration in the group's org,
+    which removes the tainted container's own credential and anything registered before the import.
+    Open, the owner's call: a copied token still registers a new runner (deactivating it in Gitea's
+    database once per taint, or the broker registering runners itself).
+
+## 8. Working on it
+
+- **Run it on localhost.** The root `dev` script starts the pair (server on 13774, web on 5734); the
+  owner's runs go through it against the test org, so a fix lands without a release. Delivery to a
+  running container is the push loop (`../zcp/eval/scripts/mate-dev-push.sh`), not a release.
+- **Release.** Fork: bump the three `package.json` versions, tag `vX.Y.Z` on `main`; the workflow
+  publishes the tarball, `SHA256SUMS` and `stable.json`; zcp installs it at the next boot or
+  `zcp mate update` (manifest cache one hour). The hosted app at mate.zerops.io rebuilds from a push
+  to `main` by itself (the root `zerops.yml`, setup `prod`), a new bundle within about two minutes
+  (measured 2026-09-17); it does not wait for the tag. zcp: its own release ritual, v9.176.0 carries the
+  backbone. gitea-mate: a push to `main` is live for every new import; tag it as a marker.
+- **Live checks.** Single-person probes in the Onboarding org, two-person and empty-org runs in the
+  test org `Mate`; resources tagged `probe:<topic>-<date>`, listed, deleted, counts diffed. Empty-org
+  runs are driven end to end by the scratch driver (`probe_d20_run.py`), the org wiped by the
+  cleanup probe (`probe_mateorg_cleanup.py --apply`); both take credentials from the environment
+  only. Read sensitive service variables with an integration token: a person's session reads
+  `REDACTED`.
+- **Where to write.** A decision → the spec. A measured fact → the ledger, one writer. A screen note
+  → the journal. A change of state → this page, in the same commit as the change.

@@ -175,6 +175,35 @@ describe("stopVerdict", () => {
       expected: { tone: "busy", text: "First deploy on its way.", detail: undefined, verb: null },
     },
     {
+      name: "a stage whose first deploy failed on main's head says why, where the job said",
+      input: {
+        tier: "stage",
+        view: EMPTY,
+        firstDeploy: { kind: "failed", reason: "the build step exited with 1" },
+      },
+      expected: {
+        tone: "failed",
+        text: "First deploy failed.",
+        detail: "the build step exited with 1",
+        verb: null,
+      },
+    },
+    {
+      name: "a stage whose first deploy failed with no words for why says only that",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "failed" } },
+      expected: { tone: "failed", text: "First deploy failed.", detail: undefined, verb: null },
+    },
+    {
+      name: "a stage being set up says so, never Checking, nor that a merge deploys it",
+      input: { tier: "stage", view: CHECKING, firstDeploy: { kind: "setting-up", step: "app" } },
+      expected: { tone: "busy", text: "Setting up a stage…", detail: undefined, verb: null },
+    },
+    {
+      name: "a stage being set up, nothing deployed there yet: setting up",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "setting-up", step: "project" } },
+      expected: { tone: "busy", text: "Setting up a stage…", detail: undefined, verb: null },
+    },
+    {
       name: "still checking",
       input: { view: CHECKING, waiting: 3 },
       expected: { tone: "off", text: CHECKING_WHAT_RUNS, detail: undefined, verb: null },

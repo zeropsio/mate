@@ -3,7 +3,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
@@ -11,6 +11,7 @@ import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
+import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
@@ -99,9 +100,20 @@ function command(id: string, text: string, extra: Partial<WorkLogEntry> = {}): W
   };
 }
 
+/** A call that says no command: an edit, or a command whose input has not streamed in yet. */
+function withoutCommand(entry: WorkLogEntry): WorkLogEntry {
+  const { command: _command, ...rest } = entry;
+  return rest;
+}
+
 const LONG = Array.from({ length: 12 }, (_, index) => `Line ${index + 1} of what it thought.`).join(
   "\n",
 );
+/** A thought past its four lines at any width. */
+const LONG_THOUGHT = Array.from(
+  { length: 16 },
+  (_, index) => `Line ${index + 1} of what it thought, and why it matters here.`,
+).join("\n");
 const SCRIPT = [
   "cat > status.ts <<'EOF'",
   ...Array.from({ length: 14 }, (_, i) => `line ${i}`),
@@ -232,60 +244,6 @@ describe("RunChat", () => {
     // What merely happened is no one's bubble: a caption across the chat.
     expect(markup).toMatch(/<div[^>]*data-chat-kind="event"[^>]*>/);
     expect(markup).toContain("Context condensed");
-  });
-
-  // Every element of the chat is one bubble (the owner, 2026-09-28: "the
-  // design of every element has to be largely the same, differences subtle but
-  // obvious"): one round, 14 px in, 10 px down, at the prose size. Only the
-  // surface tells them apart — its words the fullest fill, a thought half of
-  // it, what it did the card's white in a hairline — and the mark each wears
-  // in the Mate's column, beside it rather than in it, so every bubble's words
-  // start on one edge.
-  // Five weights, strongest first (K14): what anyone said at the prose size in
-  // its bubble; what the Mate did as compact 13 px rows in a light outline;
-  // what it thought quietest, 13 px on the faintest fill.
-  it("draws its words at the prose size, its calls and thoughts quieter", () => {
-    const markup = draw(
-      record([
-        {
-          kind: "note",
-          key: "note:a1",
-          at: at(10),
-          message: message("a1", "assistant", "Found it."),
-        },
-        thought("r1", "The build script is missing."),
-        step(command("w1", "npm test", { callInput: { description: "Run the tests" } })),
-      ]),
-    );
-    const classes = (tag: string | undefined) => /class="([^"]*)"/u.exec(tag ?? "")?.[1] ?? "";
-    const [said, thought_] = bubbles(markup);
-    const card = /<div class="([^"]*)" data-chat-calls="true">/u.exec(markup)?.[1] ?? "";
-    expect(classes(said?.tag).split(" ")).toEqual(
-      expect.arrayContaining(["w-full", "rounded-2xl", "text-prose", "px-3.5", "py-2.5"]),
-    );
-    expect(classes(thought_?.tag).split(" ")).toEqual(
-      expect.arrayContaining(["w-full", "rounded-2xl", "text-line", "px-3", "py-2"]),
-    );
-    expect(card.split(" ")).toEqual(expect.arrayContaining(["w-full", "rounded-2xl"]));
-    // Its words wear its tint, lightly; the face beside them says who spoke.
-    expect(classes(said?.tag)).toContain("run-speech");
-    expect(markup).toContain("--run-speaker-tint:var(--zerops-mate-tint-sky)");
-    expect(markup).toMatch(
-      /<span class="flex h-\[1lh\] items-center"><svg[^>]*class="[^"]*size-5[^"]*"[^>]*data-mate-face-tint="sky"/u,
-    );
-    expect(classes(thought_?.tag)).toContain("bg-foreground/3");
-    // Outlined on the tray, never filled: the composer keeps the only white.
-    expect(card).toContain("ring-1 ring-foreground/9");
-    expect(card).not.toContain("bg-card");
-    // Each mark stands in the Mate's column, out of its bubble.
-    const column = (line: string, icon: string) =>
-      new RegExp(
-        `<span aria-hidden="true" class="w-7 shrink-0 flex justify-center ${line}"><span class="flex h-\\[1lh\\] items-center"><svg[^>]*lucide-${icon}`,
-        "u",
-      );
-    expect(markup).toMatch(column("pt-2 text-line", "asterisk"));
-    expect(markup).toMatch(column("pt-1\\.75 text-line", "square-terminal"));
-    expect(markup).not.toMatch(/data-chat-bubble="speech"[^>]*>\s*<span aria-hidden/u);
   });
 
   // Open, the card is one scroll holding everything the run said and did
@@ -456,7 +414,6 @@ describe("RunChat", () => {
     expect(markup).toMatch(
       /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Should \/status be public\?</u,
     );
-    expect(markup).toMatch(/<li class="[^"]*-mt-1\.5[^"]*" data-chat-row="true">/u);
     // Its answer stands nowhere else: whole, never cut to a line.
     expect(markup).toMatch(/<p class="[^"]*whitespace-pre-wrap[^"]*" data-chat-kind="person">/u);
     expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
@@ -480,8 +437,9 @@ describe("RunChat", () => {
     expect(markup).toMatch(/<span class="sr-only" role="status">Thinking<\/span>/u);
   });
 
-  // Several at once (K10): how many on the line, a still line each under it.
-  it("says several steps at once by how many, a still line each under it", () => {
+  // Several at once (pass 35): a row each in the live slot, three at most,
+  // then how many more run.
+  it("draws several steps at once as a row each, three at most, then how many more", () => {
     const runningCommand = (id: string, text: string) =>
       stepOf(
         command(id, text, { toolLifecycleStatus: "inProgress", updatedAt: undefined as never }),
@@ -492,15 +450,24 @@ describe("RunChat", () => {
         status: status(),
         now: {
           kind: "step",
-          step: runningCommand("w3", "pnpm lint"),
-          others: [runningCommand("w1", "pnpm build"), runningCommand("w2", "pnpm test")],
+          step: runningCommand("w4", "pnpm typecheck"),
+          others: [
+            { kind: "step", step: runningCommand("w1", "pnpm build") },
+            { kind: "step", step: runningCommand("w2", "pnpm test") },
+            { kind: "step", step: runningCommand("w3", "pnpm lint") },
+          ],
         },
       }),
     );
-    expect(markup).toContain('data-run-now="several"');
-    expect(markup).toContain(">Running 3 commands<");
-    expect(markup.match(/<li><span class="run-now-verb run-now-mono">/g)).toHaveLength(3);
-    expect(markup).not.toContain("data-run-shimmer");
+    expect(bubbles(markup).map(({ kind }) => kind)).toEqual([
+      "step:command",
+      "step:command",
+      "step:command",
+    ]);
+    expect(markup).toContain(">+1 more running<");
+    // Each one running sweeps; none wears a chevron or a time of its own.
+    expect(markup.match(/data-run-shimmer/g)).toHaveLength(3);
+    expect(markup).not.toContain("data-chat-disclose");
   });
 
   // Blue means something to click (S3): the run's clock counts in ink, and a
@@ -574,28 +541,27 @@ describe("RunChat", () => {
   // A thought is the quietest thing in the card: two lines of it, and where
   // it runs on, the thought itself is the way to the rest (D4) — never a
   // scroll inside the card.
-  it("clamps a thought to two lines, the whole of it a click away", () => {
-    const long = draw(record([thought("r1", LONG)]));
-    expect(long).toMatch(/<span class="line-clamp-2 italic" data-chat-folded="true">/u);
-    expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show the whole thought"/u);
-    expect(long).not.toMatch(
-      /data-chat-bubble="thought"[^>]*>(?:(?!data-chat-row).)*overflow-y-auto/su,
-    );
+  // One cap, live and in the history (pass 35): four lines, read from the
+  // head, "Show full thought" past them.
+  it("says Show full thought on a thought past its four lines, and nothing on a short one", () => {
+    const long = draw(record([thought("r1", LONG_THOUGHT)]));
+    expect(long).toContain(">Show full thought<");
+    expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show full thought"/u);
     const short = draw(record([thought("r1", "The route and the check disagree.")]));
-    expect(short).toContain('<span class="line-clamp-2 italic">The route and the check disagree.');
-    expect(short).not.toContain("Show the whole thought");
+    expect(short).toContain("The route and the check disagree.");
+    expect(short).not.toContain("Show full thought");
   });
 
   it("folds what the chat opens onto past the limits, and leaves the rest whole", () => {
     const markup = draw(
       record([
-        thought("r1", LONG),
+        thought("r1", LONG_THOUGHT),
         thought("r2", "Short."),
         { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", LONG) },
       ]),
     );
     expect(markup.match(/data-chat-folded="true"/g)).toHaveLength(2);
-    expect(markup.match(/Show the whole thought"/g)).toHaveLength(1);
+    expect(markup.match(/Show full thought"/g)).toHaveLength(1);
     expect(markup.match(/>Show full message</g)).toHaveLength(1);
   });
 
@@ -652,11 +618,30 @@ describe("RunChat", () => {
         },
       }),
     );
-    // Running, the command is the now line's: its words and code, not a row.
-    expect(running).not.toContain('data-chat-kind="step:command"');
-    expect(running).toContain(
-      '<span class="run-now-verb" data-run-shimmer="">Write the status route',
+    // Running, the command stands in the live slot as the row it becomes:
+    // its words sweeping, its code folded at the history's cap, and the way
+    // to the rest under it, so it lands as it stood.
+    expect(bubbles(running).map(({ kind }) => kind)).toEqual(["step:command"]);
+    expect(running).toContain('data-chat-folded="true"');
+    expect(running).toContain(">Show all 16 lines<");
+    // A command that says nothing of itself stands open to its cap in the slot.
+    const bare = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w8", SCRIPT, {
+              toolLifecycleStatus: "inProgress",
+              sourceActivityKind: "tool.started",
+            }),
+          ),
+        },
+      }),
     );
+    expect(bare).toContain('data-chat-folded="true"');
+    expect(bare).toContain(">Show all 16 lines<");
   });
 
   // The call running now is the card's "this, now": a light sweeps across
@@ -786,7 +771,8 @@ describe("RunChat", () => {
     const live = draw(
       record([], { live: true, now: { kind: "operation", operation: running }, status: status() }),
     );
-    expect(bubbles(live)).toEqual([]);
+    // Being taken, it stands in the live slot as the row it becomes.
+    expect(bubbles(live).map(({ kind }) => kind)).toEqual(["checks"]);
     expect(live).toContain(">Checking /health in the browser<");
     const done = draw(
       record([
@@ -804,6 +790,37 @@ describe("RunChat", () => {
     expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
   });
 
+  // An operation whose call never returned is behind the newer batch: it says
+  // what was asked, never "Running"; once the run is over, "No result" (D3).
+  it.each([
+    { noResult: "stale" as const, time: null },
+    { noResult: "closed" as const, time: "No result" },
+  ])("draws an operation whose call never returned: $noResult", ({ noResult, time }) => {
+    const entry = operation("d1", "turn-1", 1, {
+      kind: "deploy",
+      subject: "appdev",
+      phase: "running",
+      voice: "Deploying appdev.",
+    });
+    if (entry.kind !== "operation") throw new Error("an operation");
+    const html = draw(
+      record([
+        {
+          kind: "operation",
+          key: "operation:op:d1",
+          at: at(1),
+          operation: entry.operation,
+          noResult,
+        },
+      ]),
+    );
+    expect(html).toContain(">Deploy appdev<");
+    expect(html).not.toContain("Deploying appdev");
+    expect(html).not.toContain(">Running<");
+    if (time === null) expect(html).not.toContain("No result");
+    else expect(html).toContain(`>${time}<`);
+  });
+
   // Before anything is in the chat the card is its status line alone, the
   // first thing seen after every message: the face as far from the card's
   // top as from its foot, where the empty list's room stood it 31 px down
@@ -811,33 +828,9 @@ describe("RunChat", () => {
   it("draws no scroll before anything is in the chat, so its status line stands alone", () => {
     const alone = draw(record([], { live: true, status: status() }));
     expect(alone).not.toContain("data-run-scroll");
-    expect(alone).not.toContain("<ol");
+    expect(alone).toContain(">Thinking<");
     const said = draw(record([thought("r1", "The route and the check disagree.")]));
     expect(said).toContain('data-run-scroll=""');
-    expect(said).toContain('<ol class="flex min-w-0 flex-col gap-3">');
-  });
-
-  // The Mate's column lines its bubbles up over the face at the chat's foot,
-  // and holds the marks that tell them apart: one grid for the whole card, a
-  // 28 px column 8 px off the bubbles (K1).
-  it("keeps the Mate's column beside every bubble, 8 px off it", () => {
-    const markup = draw(
-      record([
-        { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", "Hi.") },
-      ]),
-    );
-    // One container holds the chat's scroll and its status line, so both keep
-    // one gap; the scroll stands in the box it folds away in as the run settles.
-    expect(markup).toMatch(
-      /<div class="@container\/chat min-w-0" data-run-chat="true" style="[^"]*"><div class="run-above"><div [^>]*data-run-scroll=""[^>]*><ol /u,
-    );
-    const row =
-      /<li class="([^"]*)" data-chat-row="true"><span aria-hidden="true" class="([^"]*)"/u.exec(
-        markup,
-      );
-    expect(row?.[1]?.split(" ")).toContain("gap-2");
-    expect(row?.[1]).not.toContain("gap-2.5");
-    expect(row?.[2]?.split(" ").slice(0, 2)).toEqual(["w-7", "shrink-0"]);
   });
 
   // Two pages of one host are said by name, as one is; more by their count,
@@ -987,6 +980,374 @@ describe("RunChat, as the person uses it", () => {
             (child) => typeof child.children[0] === "string" && child.children[0] === words,
           ).length > 0),
     );
+
+  // The Claude adapter starts a call before its input streams in: a bare
+  // command stands open to its cap once its code arrives, and lands so (E3).
+  it("opens a bare command in the slot once its code streams in, and lands it so", () => {
+    vi.useFakeTimers();
+    try {
+      const running = (text: string | undefined) =>
+        record([], {
+          live: true,
+          status: status(),
+          now: {
+            kind: "step",
+            step: stepOf(
+              (text === undefined ? withoutCommand : (entry: WorkLogEntry) => entry)(
+                command("w8", text ?? "", {
+                  toolLifecycleStatus: "inProgress",
+                  sourceActivityKind: "tool.started",
+                }),
+              ),
+            ),
+          },
+        });
+      const renderer = mount(running(undefined));
+      const shown = () => JSON.stringify(renderer.toJSON());
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={running(SCRIPT)} />
+          </Rows>,
+        ),
+      );
+      expect(shown()).toContain('"data-chat-folded":"true"');
+      expect(shown()).toContain("Show all 16 lines");
+      // It returned: it lands in the history as it stood, open to its cap.
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat
+              row={record([step(command("w8", SCRIPT))], { live: true, status: status() })}
+            />
+          </Rows>,
+        ),
+      );
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      expect(shown()).toContain('"data-chat-folded":"true"');
+      expect(shown()).toContain("Show all 16 lines");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Two edits in a row fold into one line: the second stands in the slot as
+  // it ended, the first in the history on its own, and they fold once it
+  // lands (E6).
+  it("folds the second of two edits into the first only once it lands", () => {
+    vi.useFakeTimers();
+    try {
+      const edit = (id: string, running: boolean) =>
+        withoutCommand(
+          command(id, "", {
+            itemType: "file_change",
+            label: "File change",
+            detail: `Edit: {"file_path":"/srv/app/${id}.ts"}`,
+            ...(running
+              ? { toolLifecycleStatus: "inProgress", sourceActivityKind: "tool.started" }
+              : {}),
+          }),
+        );
+      const first = step(edit("e1", false));
+      const renderer = mount(
+        record([first], {
+          live: true,
+          status: status(),
+          now: { kind: "step", step: stepOf(edit("e2", true)) },
+        }),
+      );
+      const said = () => JSON.stringify(renderer.toJSON());
+      // It returned: the record folds it into the line before it.
+      const done = stepOf(edit("e2", false), undefined, false);
+      const folded: RecordItem = {
+        kind: "step",
+        key: "step:e1",
+        at: at(2),
+        step: {
+          ...(first.kind === "step" ? first.step : done),
+          words: "Edited e1.ts and e2.ts",
+          entries: [edit("e1", false), edit("e2", false)],
+        },
+        parts: [
+          first as Extract<RecordItem, { kind: "step" }>,
+          {
+            kind: "step",
+            key: "step:e2",
+            at: at(2),
+            step: done,
+          },
+        ],
+      };
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={record([folded], { live: true, status: status() })} />
+          </Rows>,
+        ),
+      );
+      const rows = () =>
+        renderer.root
+          .findAll((node) => node.type === "li" && node.props["data-run-key"] !== undefined)
+          .map((node) => String(node.props["data-run-key"]));
+      // Each its own line, the second as it ended: never running, never gone.
+      expect(rows().filter((key) => key.endsWith("step:e1"))).toHaveLength(1);
+      expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(1);
+      expect(said()).not.toContain("data-run-shimmer");
+      expect(said()).not.toContain("2 edits");
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // Landed, it folds in.
+      expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(0);
+      expect(said()).toContain("2 edits");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A card of calls in the slot keeps the identity it formed with: its first
+  // call leaving first never remounts the rest, and nothing rises in again
+  // (B4); a new batch's card is a new card, and rises in (E5).
+  it("keeps a slot card whole when its first call leaves first, and lets a new one rise in", () => {
+    vi.useFakeTimers();
+    try {
+      const running = (id: string) =>
+        stepOf(
+          command(id, `pnpm ${id}`, {
+            callInput: { description: `Run ${id}` },
+            toolLifecycleStatus: "inProgress",
+            sourceActivityKind: "tool.started",
+          }),
+        );
+      const live = (items: ReadonlyArray<RecordItem>, ids: ReadonlyArray<string>) =>
+        record(items, {
+          live: true,
+          status: status(),
+          now:
+            ids.length === 0
+              ? null
+              : {
+                  kind: "step",
+                  step: running(ids.at(-1)!),
+                  ...(ids.length > 1
+                    ? {
+                        others: ids
+                          .slice(0, -1)
+                          .map((id) => ({ kind: "step" as const, step: running(id) })),
+                      }
+                    : {}),
+                },
+        });
+      const draw = (row: RecordRow) =>
+        act(() =>
+          renderer.update(
+            <Rows>
+              <RunChat row={row} />
+            </Rows>,
+          ),
+        );
+      const renderer = mount(live([], ["w1", "w2", "w3"]));
+      const card = () =>
+        renderer.root.findAll(
+          (node) =>
+            node.type === "li" && String(node.props["data-run-key"] ?? "").startsWith("calls#"),
+        );
+      const rising = () =>
+        renderer.root.findAll((node) => node.props["data-run-rises"] !== undefined).length;
+      const before = card();
+      expect(before.map((node) => node.props["data-run-key"])).toEqual(["calls#step:w1"]);
+      const rows = (id: string) =>
+        renderer.root.find(
+          (node) =>
+            node.props["data-chat-kind"] === "step:command" &&
+            node.findAll((child) => child.children.includes(`Run ${id}`)).length > 0,
+        );
+      const w2 = rows("w2");
+      const risingBefore = rising();
+      // The first call returns and lands; the other two run on.
+      draw(live([step(command("w1", "pnpm w1"))], ["w2", "w3"]));
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      draw(live([step(command("w1", "pnpm w1"))], ["w2", "w3"]));
+      expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w1"]);
+      expect(card()[0]).toBe(before[0]);
+      expect(rows("w2")).toBe(w2);
+      expect(rising()).toBeLessThanOrEqual(risingBefore);
+      // They return; a new batch's card is a new card, and rises in.
+      const landed = [
+        step(command("w1", "pnpm w1")),
+        step(command("w2", "pnpm w2")),
+        step(command("w3", "pnpm w3")),
+      ];
+      draw(live(landed, []));
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      draw(live(landed, ["w4"]));
+      expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w4"]);
+      expect(
+        card()[0]!.findAll((node) => node.props["data-run-rises"] !== undefined).length,
+      ).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A call that joins the slot while the person watches rises in (E5).
+  it("lets a call joining the live slot rise in", () => {
+    const rising = (renderer: ReactTestRenderer) =>
+      renderer.root.findAll(
+        (node) =>
+          node.props["data-run-rises"] !== undefined &&
+          node.findAll((child) => child.props["data-chat-kind"] === "step:command").length > 0,
+      ).length;
+    const running = (id: string, text: string) =>
+      stepOf(
+        command(id, text, {
+          callInput: { description: `Run ${text}` },
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      );
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: { kind: "step", step: running("w1", "pnpm build") },
+      }),
+    );
+    expect(rising(renderer)).toBe(0);
+    act(() =>
+      renderer.update(
+        <Rows>
+          <RunChat
+            row={record([], {
+              live: true,
+              status: status(),
+              now: {
+                kind: "step",
+                step: running("w2", "pnpm test"),
+                others: [{ kind: "step", step: running("w1", "pnpm build") }],
+              },
+            })}
+          />
+        </Rows>,
+      ),
+    );
+    expect(rising(renderer)).toBe(1);
+  });
+
+  // A resync brings what nobody watched happen: it is simply there, never a
+  // rise-in, in the history or in the slot (E2).
+  it("lets nothing a resync brings rise in", () => {
+    const rising = (renderer: ReactTestRenderer) =>
+      renderer.root.findAll((node) => node.props["data-run-rises"] !== undefined).length;
+    const synced = (row: RecordRow, syncing: boolean) => (
+      <TimelineRowCtx value={{ ...SHARED, syncing }}>
+        <TimelineRowActivityCtx value={ACTIVITY}>
+          <RunChat row={row} />
+        </TimelineRowActivityCtx>
+      </TimelineRowCtx>
+    );
+    const first = record([thought("r1", "The route is fine.")], {
+      live: true,
+      status: status(),
+    });
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(synced(first, false));
+    });
+    const caughtUp = record(
+      [
+        thought("r1", "The route is fine."),
+        step(command("w2", "pnpm build")),
+        thought("r3", "The build passed."),
+        step(command("w4", "pnpm test")),
+      ],
+      { live: true, status: status() },
+    );
+    act(() => renderer.update(synced(caughtUp, true)));
+    expect(rising(renderer)).toBe(0);
+  });
+
+  // A helper's one-line report opens only when the card's width cuts it, as
+  // measured on the page (A7, E17).
+  it.each([
+    { name: "cut at the card's width", scrollWidth: 480, opens: true },
+    { name: "whole on its line", scrollWidth: 120, opens: false },
+  ])("opens a helper's one-line report only when it is $name", ({ scrollWidth, opens }) => {
+    const agent = {
+      ...emptyAgentPanelModel(),
+      directAgents: [
+        {
+          id: "a1",
+          kind: "subagent" as const,
+          title: "Check the schema",
+          role: null,
+          model: null,
+          effort: null,
+          status: "completed" as const,
+          activationCount: 1,
+          usage: null,
+          progress: null,
+          lastToolName: null,
+          result: "Wrote three tests for the schema and its migrations",
+          error: null,
+          outputFile: null,
+          parentAgentId: null,
+          agentIndex: null,
+          phaseIndex: null,
+          phaseTitle: null,
+          attempt: null,
+          workflowName: null,
+          phases: [],
+          runHandles: null,
+          recentActivity: [],
+          firstSeenAt: at(1),
+          startedAt: at(1),
+          completedAt: at(2),
+          updatedAt: at(2),
+        },
+      ],
+      hasAgents: true,
+    };
+    const helpers: RecordItem = {
+      kind: "helpers",
+      key: "helpers:h1",
+      at: at(1),
+      entry: {
+        ...command("h1", ""),
+        itemType: "collab_agent_tool_call",
+        agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
+      },
+    };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: agent }}>
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={record([helpers])} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+        {
+          // The preview's line, as the page lays it out.
+          createNodeMock: (element) =>
+            element.type === "span"
+              ? { scrollWidth, clientWidth: 200, scrollHeight: 20, clientHeight: 20 }
+              : null,
+        },
+      );
+    });
+    act(() =>
+      button(renderer, "Started a helper").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
+    );
+    // The helper's own line: a button where it opens onto its report.
+    const title = renderer.root.find(
+      (node) => node.type === "span" && node.children.includes("Check the schema"),
+    );
+    let holder = title.parent;
+    while (holder !== null && holder.type !== "button" && holder.type !== "li") {
+      holder = holder.parent;
+    }
+    expect(holder?.type === "button").toBe(opens);
+  });
 
   it("opens what a step printed under its words, in place, and closes it again", () => {
     const renderer = mount(
@@ -1202,63 +1563,6 @@ describe("RunChat, as the person uses it", () => {
     });
   });
 
-  // D4: what the now line holds is never out of reach while it runs — its
-  // one line opens to the whole of it in place: a script's every line, the
-  // thought so far; still one clock.
-  it("opens the now line to the whole of what runs, one clock still", () => {
-    const renderer = mount(
-      record([], {
-        live: true,
-        status: status(),
-        now: {
-          kind: "step",
-          step: stepOf(
-            command("w9", SCRIPT, {
-              callInput: { description: "Write the status route" },
-              toolLifecycleStatus: "inProgress",
-              updatedAt: undefined as never,
-            }),
-          ),
-        },
-      }),
-    );
-    const words = () =>
-      renderer.root.find(
-        (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
-      );
-    expect(words().props["aria-expanded"]).toBe(false);
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("line 13");
-    act(() => words().props.onClick());
-    expect(words().props["aria-expanded"]).toBe(true);
-    const shown = JSON.stringify(renderer.toJSON());
-    expect(shown).toContain("line 13");
-    expect(shown).toContain("EOF");
-    expect(
-      renderer.root.findAll((node) => node.props["data-work-line-clock"] !== undefined),
-    ).toHaveLength(1);
-  });
-
-  it("opens a thought on the now line to the whole of it so far", () => {
-    const thinking = "The app is a Hono server. So the page belongs on the server as its own route";
-    const renderer = mount(
-      record([], {
-        live: true,
-        status: status(),
-        now: {
-          kind: "thinking",
-          key: "thought:r9",
-          messages: [message("r9", "reasoning", thinking)],
-        },
-      }),
-    );
-    const words = renderer.root.find(
-      (node) => node.type === "button" && node.props["data-run-now-words"] !== undefined,
-    );
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("The app is a Hono server.");
-    act(() => words.props.onClick());
-    expect(JSON.stringify(renderer.toJSON())).toContain(thinking);
-  });
-
   // A control that goes once pressed hands the focus on: the thought's way to
   // the rest to its "Show less" and back, the last "Show N earlier" to the
   // lines it drew — never to the page's body.
@@ -1321,9 +1625,80 @@ describe("RunChat, as the person uses it", () => {
           },
         }),
       );
-      expect(focused.at(-1)).toMatch(/Show the whole thought$/u);
+      expect(focused.at(-1)).toMatch(/Show full thought$/u);
     } finally {
       (globalThis as { window?: unknown }).window = savedWindow;
+    }
+  });
+
+  // An entry that ended with no line of its own in the record yet — a call
+  // the record folds or files elsewhere — stands its minimum as it last
+  // showed, never a gap that blocks what comes next (pass 35).
+  it("draws a slot entry that ended with no record line as it ended", () => {
+    vi.useFakeTimers();
+    try {
+      const running = stepOf(
+        command("w1", "pnpm build", {
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      );
+      const renderer = mount(
+        record([], { live: true, status: status(), now: { kind: "step", step: running } }),
+      );
+      const commands = () =>
+        renderer.root.findAll(
+          (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+        );
+      expect(commands()).toHaveLength(1);
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={record([], { live: true, status: status(), now: null })} />
+          </Rows>,
+        ),
+      );
+      expect(commands()).toHaveLength(1);
+      // Ended, never still running (E17).
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("data-run-shimmer");
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      expect(commands()).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // What the person opened in the slot lands opened (pass 35): the row's
+  // plop moves it and never resizes it.
+  it("lands a row the person opened in the slot opened", () => {
+    vi.useFakeTimers();
+    try {
+      const live = command("w9", SCRIPT, {
+        callInput: { description: "Write the status route" },
+        toolLifecycleStatus: "inProgress",
+        sourceActivityKind: "tool.started",
+      });
+      const renderer = mount(
+        record([], { live: true, status: status(), now: { kind: "step", step: stepOf(live) } }),
+      );
+      act(() => button(renderer, "Show all 16 lines").props.onClick({ currentTarget: null }));
+      const landed = step(
+        command("w9", SCRIPT, { callInput: { description: "Write the status route" } }),
+      );
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={record([landed], { live: true, status: status(), now: null })} />
+          </Rows>,
+        ),
+      );
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      const folds = renderer.root.findAll(
+        (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
+      );
+      expect(folds.map((node) => node.props["data-chat-folded"])).toEqual(["false"]);
+    } finally {
+      vi.useRealTimers();
     }
   });
 
@@ -1332,6 +1707,7 @@ describe("RunChat, as the person uses it", () => {
   // mounted with nothing drew no box, the watch on its foot was never set,
   // and the scroll stood still as the run went on).
   it("follows its foot from the first line of a run that started empty", () => {
+    vi.useFakeTimers();
     const saved = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
     const list = { lines: true };
     // What each observer watches: the scroll's is the one on its list.
@@ -1374,6 +1750,9 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
+      // Seen only once it returned, it stands its minimum in the live slot,
+      // then plops into the history: the scroll's first line.
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
       expect(heard).toHaveLength(1);
       box.scrollHeight = 900;
       box.clientHeight = 440;
@@ -1381,6 +1760,7 @@ describe("RunChat, as the person uses it", () => {
       expect(box.scrollTop).toBe(900);
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = saved;
+      vi.useRealTimers();
     }
   });
 
