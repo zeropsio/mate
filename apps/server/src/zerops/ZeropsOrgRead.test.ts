@@ -16,7 +16,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { readProjectMembership } from "./ZeropsMembershipWatch.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import { ORG_READ_MAX_AGE } from "./ZeropsOrgRead.ts";
-import { make as makeProjectSigners, readActiveMemberIds } from "./ZeropsProjectSigners.ts";
+import { make as makeProjectSigners } from "./ZeropsProjectSigners.ts";
 import { verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 import { memorySignInStore, ZeropsSignIns } from "./zeropsSignIns.ts";
 
@@ -99,7 +99,7 @@ function platform(held?: Deferred.Deferred<void>) {
   return { layer, count };
 }
 
-/** The signers gate over no recorded sign-in, so its own leave check reads nothing. */
+/** The signers gate over no recorded sign-in. */
 const signersGate = Effect.gen(function* () {
   const signIns = yield* memorySignInStore();
   return yield* makeProjectSigners.pipe(
@@ -162,16 +162,15 @@ describe("the org, as this Mate reads it", () => {
       return yield* Effect.gen(function* () {
         const both = yield* Effect.forkChild(
           Effect.all(
-            [readProjectMembership({ environment }), readActiveMemberIds({ environment })],
+            [readProjectMembership({ environment }), readProjectMembership({ environment })],
             { concurrency: "unbounded" },
           ),
         );
         yield* TestClock.adjust(Duration.zero);
         assert.strictEqual(zerops.count("/user/list"), 1);
         yield* Deferred.succeed(held, undefined);
-        const [watched, active] = yield* Fiber.join(both);
-        assert.isTrue(watched.ok);
-        assert.deepStrictEqual(active === undefined ? [] : [...active], [USER_ID]);
+        const [first, second] = yield* Fiber.join(both);
+        assert.deepStrictEqual([first.ok, second.ok], [true, true]);
         assert.strictEqual(zerops.count("/user/list"), 1);
       }).pipe(Effect.provide(zerops.layer));
     }),

@@ -37,8 +37,6 @@ import {
   loginTurnRefusal,
   isTurnStartingCommand,
   make as makeProjectSigners,
-  planAgentSignOut,
-  readActiveMemberIds,
   SIGN_IN_CHECK_WAIT,
   turnRefusal,
 } from "./ZeropsProjectSigners.ts";
@@ -233,38 +231,6 @@ describe("isTurnStartingCommand", () => {
   }
 });
 
-describe("planAgentSignOut", () => {
-  it("signs out the agent whose signer the org no longer knows", () => {
-    assert.deepStrictEqual(
-      planAgentSignOut({
-        signers: { "claude-code": JAN, codex: EVA },
-        activeMemberIds: new Set([EVA]),
-      }),
-      ["claude-code"],
-    );
-  });
-
-  it("leaves an agent whose signer is still a member", () => {
-    assert.deepStrictEqual(
-      planAgentSignOut({ signers: { "claude-code": JAN }, activeMemberIds: new Set([JAN]) }),
-      [],
-    );
-  });
-
-  // Absence of evidence is not evidence of a leaver, and this read is the one
-  // thing between a platform blip and a room full of deleted logins.
-  it("signs nobody out when the member list could not be read", () => {
-    assert.deepStrictEqual(
-      planAgentSignOut({ signers: { "claude-code": JAN }, activeMemberIds: undefined }),
-      [],
-    );
-  });
-
-  it("signs nobody out when nothing is recorded", () => {
-    assert.deepStrictEqual(planAgentSignOut({ signers: {}, activeMemberIds: new Set() }), []);
-  });
-});
-
 describe("isMemberListComplete", () => {
   for (const [name, body, entriesLength, expected] of [
     ["no totalCount at all", {}, 3, true],
@@ -320,85 +286,6 @@ const httpLayer = (
   );
   return { layer, seen } as const;
 };
-
-describe("readActiveMemberIds", () => {
-  const route =
-    (members: unknown, status = 200) =>
-    (url: string) =>
-      url.endsWith("/user/list")
-        ? json(members, status)
-        : json({ id: PROJECT_ID, clientId: CLIENT_ID });
-
-  it.effect("names every ACTIVE member and nobody else", () =>
-    readActiveMemberIds({ environment }).pipe(
-      Effect.tap((ids) =>
-        Effect.sync(() =>
-          assert.deepStrictEqual(
-            ids === undefined ? [] : [...ids].toSorted(),
-            [EVA, JAN].toSorted(),
-          ),
-        ),
-      ),
-      Effect.provide(
-        httpLayer(
-          route({
-            clientUserList: [
-              { id: "cu-jan", userId: JAN, status: "ACTIVE" },
-              { id: "cu-eva", userId: EVA, status: "ACTIVE" },
-              { id: "cu-gone", userId: "gone", status: "INVITED" },
-            ],
-          }),
-        ).layer,
-      ),
-    ),
-  );
-
-  // An empty list is an outage dressed as an answer, and acting on it would
-  // delete every login in the container.
-  for (const [name, members, status] of [
-    ["the member list cannot be read", {}, 500],
-    ["the member list comes back empty", { clientUserList: [] }, 200],
-    ["the member list is not a list", { members: [] }, 200],
-  ] as const) {
-    it.effect(`answers nothing when ${name}`, () =>
-      readActiveMemberIds({ environment }).pipe(
-        Effect.tap((ids) => Effect.sync(() => assert.isUndefined(ids))),
-        Effect.provide(httpLayer(route(members, status)).layer),
-      ),
-    );
-  }
-
-  // S6: a page is not the whole org, so nobody merely off it counts as gone.
-  it.effect("a partial member list signs nobody out", () =>
-    readActiveMemberIds({ environment }).pipe(
-      Effect.tap((ids) => Effect.sync(() => assert.isUndefined(ids))),
-      Effect.provide(
-        httpLayer(
-          route({
-            clientUserList: [{ id: "cu-jan", userId: JAN, status: "ACTIVE" }],
-            totalCount: 2,
-          }),
-        ).layer,
-      ),
-    ),
-  );
-
-  it.effect("a totalCount that matches the row count is not partial", () =>
-    readActiveMemberIds({ environment }).pipe(
-      Effect.tap((ids) =>
-        Effect.sync(() => assert.deepStrictEqual(ids === undefined ? [] : [...ids], [JAN])),
-      ),
-      Effect.provide(
-        httpLayer(
-          route({
-            clientUserList: [{ id: "cu-jan", userId: JAN, status: "ACTIVE" }],
-            totalCount: 1,
-          }),
-        ).layer,
-      ),
-    ),
-  );
-});
 
 describe("the turn gate", () => {
   const signedIn = {
@@ -784,6 +671,21 @@ describe("hasProjectAccess", () => {
       assert.isUndefined(yield* signers.hasProjectAccess(JAN));
     }).pipe(Effect.scoped),
   );
+
+  // An empty list is an outage dressed as an answer, and a page is not the whole org (S6): acting
+  // on either would take somebody's access, and with it their logins (`ZeropsOffboarding`).
+  for (const [name, members] of [
+    ["comes back empty", { clientUserList: [] }],
+    ["is not a list", { members: [] }],
+    ["is a partial page", { clientUserList: [member(JAN, "BASIC_USER")], totalCount: 2 }],
+  ] as const) {
+    it.effect(`answers nothing when the member list ${name}`, () =>
+      Effect.gen(function* () {
+        const { signers } = yield* access({ project: projectWith([]), members });
+        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
+      }).pipe(Effect.scoped),
+    );
+  }
 
   it.effect("answers nothing when nothing could be read", () =>
     Effect.gen(function* () {

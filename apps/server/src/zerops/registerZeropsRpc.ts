@@ -26,13 +26,12 @@ import type { ZeropsCli } from "./ZeropsCli.ts";
 import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import type * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import type * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
+import type * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 
 type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsLifecycleGet
@@ -69,18 +68,8 @@ export interface RegisterZeropsRpcDeps {
   readonly zeropsLifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"];
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
-  readonly zeropsAgentSignOut: ZeropsAgentSignOutModule.ZeropsAgentSignOut["Service"];
-  /**
-   * Stops `agentId`'s live provider sessions, dispatched through the
-   * orchestration layer `ws.ts` owns — see `ZeropsAgentSignOut.ts`'s own
-   * "Why `stopAgentSessions` is a parameter" doc comment. Never fails: `ws.ts`
-   * catches its own dispatch/read errors before handing this in.
-   */
-  readonly stopAgentSessions: (agentId: ZeropsAgentId) => Effect.Effect<void>;
+  readonly zeropsSignOut: ZeropsSignOutModule.ZeropsSignOut["Service"];
   readonly zeropsLogins: ZeropsLoginsModule.ZeropsLogins["Service"];
-  readonly zeropsLoginSignOut: ZeropsLoginSignOutModule.ZeropsLoginSignOut["Service"];
-  /** {@link stopAgentSessions} for a login beyond the defaults, by its id. */
-  readonly stopLoginSessions: (loginId: string) => Effect.Effect<void>;
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
   readonly zeropsCli: ZeropsCli["Service"];
   readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
@@ -212,11 +201,8 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsLifecycle,
     zeropsAgentAuth,
     zeropsAgentLogin,
-    zeropsAgentSignOut,
-    stopAgentSessions,
+    zeropsSignOut,
     zeropsLogins,
-    zeropsLoginSignOut,
-    stopLoginSessions,
     zeropsBrowserStream,
     zeropsDataConsole,
     zeropsGitRemoteProbe,
@@ -260,9 +246,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       const loginId = input.loginId;
       return observeRpcEffect(
         WS_METHODS.zeropsAgentLoginSignOut,
-        loginId === undefined
-          ? zeropsAgentSignOut.signOut(input.agentId, () => stopAgentSessions(input.agentId))
-          : zeropsLoginSignOut.signOut(loginId, () => stopLoginSessions(loginId)),
+        zeropsSignOut.signOut(loginId === undefined ? { agentId: input.agentId } : { loginId }),
         { "rpc.aggregate": "zerops" },
       );
     },
@@ -273,11 +257,9 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
         "rpc.aggregate": "zerops",
       }),
     [WS_METHODS.zeropsLoginRemove]: (input) =>
-      observeRpcEffect(
-        WS_METHODS.zeropsLoginRemove,
-        zeropsLoginSignOut.remove(input.id, () => stopLoginSessions(input.id)),
-        { "rpc.aggregate": "zerops" },
-      ),
+      observeRpcEffect(WS_METHODS.zeropsLoginRemove, zeropsSignOut.remove(input.id), {
+        "rpc.aggregate": "zerops",
+      }),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
       observeRpcStream(
         WS_METHODS.subscribeZeropsLifecycle,

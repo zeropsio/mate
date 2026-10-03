@@ -265,7 +265,7 @@ export class ZeropsAgentAuth extends Context.Service<
      */
     readonly recheckNow: (agentId: ZeropsAgentId) => Effect.Effect<void>;
     /**
-     * Called by sign-out BEFORE it clears the platform flag (`ZeropsAgentSignOut.ts`):
+     * Called by sign-out BEFORE it clears the platform flag (`ZeropsSignOut.ts`):
      * bumps this agent's epoch and resets `markedOAuth` directly, so a
      * provider probe already in flight when the sign-out started cannot
      * re-mark the flag sign-out is about to clear — `checkProviderAuth`

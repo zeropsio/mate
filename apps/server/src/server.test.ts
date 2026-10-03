@@ -153,11 +153,10 @@ import {
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
-import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
-import * as ZeropsLoginSignOutModule from "./zerops/ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./zerops/ZeropsSetup.ts";
+import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
@@ -549,9 +548,8 @@ const buildAppUnderTest = (options?: {
     | ZeropsLifecycle.ZeropsLifecycle
     | ZeropsAgentAuth.ZeropsAgentAuth
     | ZeropsAgentLoginModule.ZeropsAgentLogin
-    | ZeropsAgentSignOutModule.ZeropsAgentSignOut
+    | ZeropsSignOutModule.ZeropsSignOut
     | ZeropsLoginsModule.ZeropsLogins
-    | ZeropsLoginSignOutModule.ZeropsLoginSignOut
     | ZeropsBrowserStreamModule.ZeropsBrowserStream
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
@@ -613,7 +611,6 @@ const buildAppUnderTest = (options?: {
     zeropsLifecycle?: Partial<ZeropsLifecycle.ZeropsLifecycle["Service"]>;
     zeropsAgentAuth?: Partial<ZeropsAgentAuth.ZeropsAgentAuth["Service"]>;
     zeropsAgentLogin?: Partial<ZeropsAgentLoginModule.ZeropsAgentLogin["Service"]>;
-    zeropsAgentSignOut?: Partial<ZeropsAgentSignOutModule.ZeropsAgentSignOut["Service"]>;
     zeropsBrowserStream?: Partial<ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"]>;
     zeropsCli?: Partial<ZeropsCliModule.ZeropsCli["Service"]>;
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
@@ -628,8 +625,7 @@ const buildAppUnderTest = (options?: {
       options?.fixtureZeropsLayer !== undefined &&
       (options.layers?.zeropsLifecycle !== undefined ||
         options.layers?.zeropsAgentAuth !== undefined ||
-        options.layers?.zeropsAgentLogin !== undefined ||
-        options.layers?.zeropsAgentSignOut !== undefined)
+        options.layers?.zeropsAgentLogin !== undefined)
     ) {
       return yield* Effect.die(
         new Error("fixtureZeropsLayer cannot be combined with per-feed Zerops layer overrides"),
@@ -1185,24 +1181,11 @@ const buildAppUnderTest = (options?: {
             // Same "unavailable" shape start/cancel report outside a Zerops
             // environment — sign-out is a real action against a container
             // this test suite never has.
-            Layer.mock(ZeropsAgentSignOutModule.ZeropsAgentSignOut)({
-              signOut: () =>
-                Effect.fail(
-                  new ZeropsAgentLoginError({
-                    reason: "unavailable",
-                    detail: "This environment does not offer a server-driven sign-out.",
-                  }),
-                ),
-              ...options?.layers?.zeropsAgentSignOut,
-            }),
+            Layer.succeed(ZeropsSignOutModule.ZeropsSignOut, ZeropsSignOutModule.unavailable),
             // No logins beyond the two defaults outside a Zerops environment,
             // and none to add, sign out or remove — the real services' own
             // answer there.
             Layer.effect(ZeropsLoginsModule.ZeropsLogins, ZeropsLoginsModule.unavailable),
-            Layer.succeed(
-              ZeropsLoginSignOutModule.ZeropsLoginSignOut,
-              ZeropsLoginSignOutModule.unavailable,
-            ),
             // A test machine saw nobody sign anything in, and signs nothing out.
             Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
               signers: Effect.succeed({}),
@@ -1219,7 +1202,6 @@ const buildAppUnderTest = (options?: {
                     subject,
                   }),
                 ),
-              checkLeaversNow: Effect.succeed(0),
             }),
             // A test machine has no agent-browser daemon — mocked to
             // `no-browser` so the suite never opens a real socket or reads
