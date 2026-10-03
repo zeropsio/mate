@@ -25,7 +25,10 @@ import {
   readZeropsGroupTags,
   type MatePoseFacts,
 } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  candidateContainerRuns,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -116,7 +119,7 @@ export function zeropsMateIdentityOf(
     project: tags.label,
     projectUrl: zeropsProjectUrl(candidate.project.id),
     connected: candidate.group === "connected",
-    running: candidate.group === "connected" || candidate.group === "ready",
+    running: candidateContainerRuns(candidate),
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
     ...(arrivingUntil === undefined ? {} : { arrivingUntil }),

@@ -22,6 +22,15 @@ import { normalizeBasePath } from "@t3tools/shared/basePath";
 
 export type ZeropsCandidateGroup = "connected" | "ready" | "provisioning" | "unavailable";
 
+/**
+ * Whether a candidate's container runs, as a face wears it: connected, or ready — ACTIVE with its
+ * address — while this browser's socket to it is not open yet. That wait is the browser's, not the
+ * Mate's sleep, so a reload never shows every face asleep before it wakes them.
+ */
+export function candidateContainerRuns(candidate: Pick<ZeropsCandidate, "group">): boolean {
+  return candidate.group === "connected" || candidate.group === "ready";
+}
+
 export interface ZeropsCandidateService {
   readonly id: string;
   readonly name: string;

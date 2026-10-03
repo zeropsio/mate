@@ -82,7 +82,10 @@ import {
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  candidateContainerRuns,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
@@ -1215,7 +1218,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             const live = getActivity?.(item);
             const coming = getComing?.(item);
             const read = mateRowReading({
-              connected: item.group === "connected",
+              connected: candidateContainerRuns(item),
               activity: live,
               reviewWaits: reviewWaits(item),
               mine: mateIsViewers(item.project, viewer),
@@ -2447,7 +2450,7 @@ function MateRow<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const nowMs = useNowMs();
   const read = mateRowReading({
-    connected: candidate.group === "connected",
+    connected: candidateContainerRuns(candidate),
     activity,
     reviewWaits,
     mine: mateIsViewers(candidate.project, viewer),

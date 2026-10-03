@@ -116,6 +116,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
@@ -425,7 +426,7 @@ function useGroupMates(groupId: string): {
           // Its row's face (`mateFaceOf`): needing you while it asks, or while its own change
           // waits for your review — your own Mate only; another's waits on its owner.
           face: mateFaceOf({
-            connected: item.group === "connected",
+            connected: candidateContainerRuns(item),
             activity: live,
             reviewWaits: mateReviewWaits(flow, item.project.id),
             mine,
