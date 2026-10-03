@@ -126,7 +126,7 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
 ]);
 
-const NO_CREW = { status: "none", view: null, attention: [] } as const;
+const NO_CREW = { status: "none", crew: null, logins: {} } as const;
 
 declare global {
   interface Window {

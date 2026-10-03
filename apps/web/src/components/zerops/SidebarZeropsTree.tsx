@@ -515,9 +515,9 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly shown?: ((candidate: T) => boolean) | undefined;
   /**
    * A Mate's crew as a fixture draws it (a harness): its crew line, and
-   * whether its menu offers *Set up a crew* or *Crew*. Absent, each connected
-   * Mate's crew line and menu read its own crew feed (`useCrew`,
-   * `useCrewStatus`).
+   * whether its menu offers *Set up a crew* or *Crew*. Absent, each Mate's
+   * crew line and menu read its crew from HQ (`useMateCrew`, `useCrewStatus`),
+   * the open Mate's menu its own feed for a crew not set up yet.
    */
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
@@ -1443,11 +1443,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   timestampFormat={timestampFormat}
                   {...faceOf(item.project)}
                 />
-                {/* Its crew, one line right under it, before its changes — read
-                    once its Mate is connected, and until then where this
-                    browser last saw it, so a reload moves no row. */}
+                {/* Its crew, one line right under it, before its changes — as HQ
+                    holds it, at rest while HQ's answer is not now. */}
                 <SidebarCrewLine
-                  environmentId={item.group === "connected" ? item.environmentId : undefined}
                   mine={mateIsViewers(item.project, viewer)}
                   projectId={item.project.id}
                   read={getCrew?.(item)}
@@ -2541,12 +2539,12 @@ function MateRow<T extends RosterCandidate>({
     read: conversationsRead,
   });
   const warmIntent = useWarmIntent(activity?.threadKey);
-  // Its menu's door to its crew (`mateCrewItem`): whether crew mode is on and
-  // a crew applied — a fixture's, or its feed's once it is connected.
+  // Its menu's door to its crew (`mateCrewItem`): a crew applied, as HQ holds it,
+  // or crew mode on with none yet, as the open Mate's feed says — or a fixture's.
+  const reads = onOpenCrew !== undefined && crew === undefined;
   const liveCrewStatus = useCrewStatus(
-    onOpenCrew !== undefined && crew === undefined && candidate.group === "connected"
-      ? (candidate.environmentId ?? null)
-      : null,
+    reads ? candidate.project.id : null,
+    reads && candidate.group === "connected" ? (candidate.environmentId ?? null) : null,
   );
   const crewStatus = crew === undefined ? liveCrewStatus : crew.status;
   // Setting a crew up is the viewer's only on a login they may run (D6): read where it is offered.

@@ -14,7 +14,6 @@ import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
-import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
@@ -23,7 +22,8 @@ import { create, type ReactTestInstance, type ReactTestRenderer } from "react-te
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
@@ -281,6 +281,24 @@ function press(tree: ReactTestRenderer, name: string): void {
 /** Everything a node says, as text. */
 function text(node: ReactTestInstance): string {
   return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
+}
+
+/** A crew snapshot as HQ holds it in its Mate's overview: faces at rest, nothing waiting. */
+function crewDigestOf(snapshot: CrewSnapshot): CrewDigest {
+  return {
+    crewmates: snapshot.crewmates.map((mate) => ({
+      handle: mate.handle,
+      displayName: mate.displayName,
+      tint: mate.tint,
+      lead: mate.kind === "lead",
+      threadId: mate.currentThreadId,
+      threadKind: null,
+      loginKey: null,
+    })),
+    attention: [],
+    readyTasks: [],
+    personLands: true,
+  };
 }
 
 describe("SidebarZeropsTree", () => {
@@ -1374,13 +1392,11 @@ describe("the project's flow under it", () => {
 // under the pointer, while a menu of its is open and by the selected band
 // (`SidebarSelectedBand.test.tsx`), and its changes rows of their own.
 describe("a Mate and its crew, one unit in the menu", () => {
-  const crew = (): SidebarCrewRead => {
-    const fixture = crewSnapshotFixture();
-    const view = deriveCrewView(fixture, [], () => {
-      throw new Error("no shells here");
-    });
-    return { status: "applied", view, attention: [] };
-  };
+  const crew = (): SidebarCrewRead => ({
+    status: "applied",
+    crew: crewDigestOf(crewSnapshotFixture()),
+    logins: {},
+  });
   const drawn = (options: { readonly crew: boolean; readonly open?: boolean }) =>
     mount(
       <SidebarZeropsTree
@@ -3311,19 +3327,11 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
     avatarUrl: null,
     isViewer: false,
   };
-  const crew = (status: "none" | "applied"): SidebarCrewRead => {
-    const fixture = crewSnapshotFixture({ status });
-    return {
-      status,
-      view:
-        status === "none"
-          ? null
-          : deriveCrewView(fixture, [], () => {
-              throw new Error("no shells here");
-            }),
-      attention: [],
-    };
-  };
+  const crew = (status: "none" | "applied"): SidebarCrewRead => ({
+    status,
+    crew: status === "none" ? null : crewDigestOf(crewSnapshotFixture({ status })),
+    logins: {},
+  });
   const drawn = (options: {
     readonly crew: SidebarCrewRead | undefined;
     readonly owner: ZeropsMateOwner | undefined;

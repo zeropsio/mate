@@ -1,32 +1,22 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import { EnvironmentId } from "@t3tools/contracts";
+import type { CrewDigest, OverviewLogins } from "@t3tools/shared/mateLink";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { closeAccountLifetime, openAccountLifetime } from "../../../zerops/accountLifetime";
-import { menuMemory, rememberedCrewOf, rememberMenu, withCrews } from "../../../zerops/menuMemory";
+import type { MateCrewRead } from "../../../zerops/crew/useCrew";
 import { ReviewContext } from "../../../zerops/review";
 import { SidebarCrewLine } from "./SidebarCrewLine";
 
-const read = vi.hoisted(() => ({ current: null as unknown, closed: false }));
-vi.mock("../../../zerops/crew/useCrew", () => ({ useCrew: () => read.current }));
-// Whose the crew's logins are: every one somebody else's while `closed` (D6).
-vi.mock("../../../zerops/crew/useCrewAccess", async () => {
-  const { crewAccess } = await import("@t3tools/client-runtime/zerops/crew/crewAccess");
-  return {
-    useCrewAccess: (_environmentId: unknown, snapshot: never) =>
-      crewAccess({
-        snapshot,
-        lockOf: (login) =>
-          read.closed ? { login, agentId: "claude-code", ownership: "someone-else" } : null,
-        defaultLogin: "claudeAgent",
-        reading: false,
-      }),
-  };
-});
+/** What HQ holds of the Mate's crew, as a test sets it. */
+const hq = vi.hoisted(() => ({ read: undefined as unknown }));
+vi.mock("../../../zerops/crew/useCrew", () => ({ useMateCrew: () => hq.read }));
+// Who is looking: Ada.
+vi.mock("../../../zerops/ZeropsSessionProvider", () => ({
+  useZeropsSessionOptional: () => ({ user: { id: "ada" } }),
+}));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => undefined }));
 
 const ENVIRONMENT = EnvironmentId.make("env-crew");
@@ -36,32 +26,43 @@ function text(node: ReactTestInstance): string {
   return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
 }
 
-/** The fixture's crew with nothing waiting on you, and task 13 ready for your Land. */
-function applied(overrides: { readonly ready?: boolean; readonly waiting?: boolean } = {}) {
+/**
+ * The fixture's crew as its Mate's overview carries it: nothing waiting on you unless `waiting`,
+ * task 13 ready for your Land when `ready`, every crewmate on Claude Code's login, Ada's.
+ */
+function hqCrew(
+  input: { readonly ready?: boolean; readonly waiting?: boolean } = {},
+  read: Partial<MateCrewRead> = {},
+): MateCrewRead {
   const fixture = crewSnapshotFixture();
-  const snapshot = {
-    ...fixture,
-    attention: overrides.waiting === true ? fixture.attention.slice(0, 1) : [],
-    board: {
-      tasks: fixture.board.tasks.map((task) =>
-        overrides.ready === true && task.id === "task-13"
-          ? { ...task, state: "ready" as const }
-          : task,
-      ),
-    },
+  const crew: CrewDigest = {
+    crewmates: fixture.crewmates.map((mate) => ({
+      handle: mate.handle,
+      displayName: mate.displayName,
+      tint: mate.tint,
+      lead: mate.kind === "lead",
+      threadId: mate.currentThreadId,
+      threadKind: "idle",
+      loginKey: "claude-code",
+    })),
+    attention:
+      input.waiting === true
+        ? fixture.attention.slice(0, 1).map(({ id, kind, handle }) => ({ id, kind, handle }))
+        : [],
+    readyTasks: input.ready === true ? [{ id: "task-13", owner: "frontend" }] : [],
+    personLands: true,
   };
-  const view = deriveCrewView(snapshot, [], () => {
-    throw new Error("no shells here");
-  });
-  return { status: "applied", snapshot, view, current: true };
+  const logins: OverviewLogins = {
+    "claude-code": { signedInBy: "ada", present: true, token: false },
+  };
+  return { crew, logins, current: true, environmentId: ENVIRONMENT, ...read };
 }
 
 describe("SidebarCrewLine", () => {
-  it("draws every crewmate's face whole, the lead first, each opening its chat", () => {
-    read.current = applied();
-    const markup = renderToStaticMarkup(
-      <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
-    );
+  it("draws the crew of a Mate it holds no socket to, from HQ's overview", () => {
+    hq.read = hqCrew();
+    const markup = renderToStaticMarkup(<SidebarCrewLine mine projectId="crm-dev" />);
+    // Each face opens its crewmate's chat, on the Mate HQ names: the route connects it.
     expect(markup.match(/aria-label="Open [^"]+"/gu)).toEqual([
       'aria-label="Open Lead, the lead"',
       'aria-label="Open Backend"',
@@ -77,16 +78,14 @@ describe("SidebarCrewLine", () => {
   });
 
   it("says who needs you, in the words' second ink, with no Review", () => {
-    read.current = applied({ waiting: true, ready: true });
-    const markup = renderToStaticMarkup(
-      <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
-    );
+    hq.read = hqCrew({ waiting: true, ready: true });
+    const markup = renderToStaticMarkup(<SidebarCrewLine mine projectId="crm-dev" />);
     expect(markup).toContain(">Erik needs you</span>");
     expect(markup).not.toContain("sidebar-crew-review");
   });
 
   it("offers Review where a task waits for your Land, opening that task's review", () => {
-    read.current = applied({ ready: true });
+    hq.read = hqCrew({ ready: true });
     const openReview = vi.fn();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     // Mounted for pressing with no DOM: an event target stands in for the
@@ -100,7 +99,7 @@ describe("SidebarCrewLine", () => {
     act(() => {
       tree = create(
         <ReviewContext.Provider value={openReview}>
-          <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />
+          <SidebarCrewLine mine projectId="crm-dev" />
         </ReviewContext.Provider>,
       );
     });
@@ -130,126 +129,41 @@ describe("SidebarCrewLine", () => {
   });
 
   it("offers no Review where the task's crewmate is not the viewer's to run (D6)", () => {
-    read.current = applied({ ready: true });
-    read.closed = true;
-    try {
-      const markup = renderToStaticMarkup(
-        <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
-      );
-      expect(markup).toContain('data-zerops-surface="sidebar-crew-fact"');
-      expect(markup).not.toContain("sidebar-crew-review");
-    } finally {
-      read.closed = false;
-    }
+    hq.read = hqCrew(
+      { ready: true },
+      { logins: { "claude-code": { signedInBy: "bo", present: true, token: false } } },
+    );
+    const markup = renderToStaticMarkup(<SidebarCrewLine mine projectId="crm-dev" />);
+    expect(markup).toContain('data-zerops-surface="sidebar-crew-fact"');
+    expect(markup).not.toContain("sidebar-crew-review");
   });
 
-  it("draws a crew handed in instead of reading the feed", () => {
-    read.current = { status: null, snapshot: null, view: null, current: true };
-    const { view, snapshot } = applied({ ready: true });
+  it("draws a crew handed in instead of reading HQ's", () => {
+    hq.read = hqCrew({}, { crew: null });
+    const { crew, logins } = hqCrew({ ready: true });
     const markup = renderToStaticMarkup(
-      <SidebarCrewLine
-        mine
-        environmentId={ENVIRONMENT}
-        projectId="crm-dev"
-        read={{ status: "applied", view, attention: snapshot.attention }}
-      />,
+      <SidebarCrewLine mine projectId="crm-dev" read={{ status: "applied", crew, logins }} />,
     );
     expect(markup).toContain(">Frontend&#x27;s work is ready</span>");
   });
 
   it("draws nothing without an applied crew", () => {
-    read.current = { status: "none", snapshot: null, view: null, current: true };
-    expect(
-      renderToStaticMarkup(
-        <SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />,
-      ),
-    ).toBe("");
+    hq.read = hqCrew({}, { crew: null });
+    expect(renderToStaticMarkup(<SidebarCrewLine mine projectId="crm-dev" />)).toBe("");
   });
-});
 
-// A reload draws the line where it stood, so no row moves when the crew's
-// feed answers: the faces this browser last read, at rest, with nothing that
-// is only true now — no fact, no Review — until the feed says them again.
-describe("SidebarCrewLine across a reload", () => {
-  const stored = new Map<string, string>();
-  const withStorage = () => {
-    stored.clear();
-    const noDom = Object.fromEntries(
-      ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
-    );
-    vi.stubGlobal(
-      "window",
-      Object.assign(new EventTarget(), noDom, {
-        localStorage: {
-          getItem: (key: string) => stored.get(key) ?? null,
-          setItem: (key: string, value: string) => stored.set(key, value),
-          removeItem: (key: string) => stored.delete(key),
-        },
-      }),
-    );
-    for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    openAccountLifetime("user-ada");
-  };
-  afterEach(() => {
-    closeAccountLifetime();
-    vi.unstubAllGlobals();
-  });
-  const unread = { status: null, snapshot: null, view: null, current: false };
-
-  it("keeps the line's place with the faces it last read, until the feed answers", () => {
-    withStorage();
-    const { view } = applied();
-    const crew = rememberedCrewOf(
-      view.crewmates.map((row) => ({
-        handle: row.crewmate.handle,
-        displayName: row.crewmate.displayName,
-        tint: row.crewmate.tint,
-        lead: row.crewmate.kind === "lead",
-      })),
-    );
-    rememberMenu((memory) => withCrews(memory, { "crm-dev": crew }));
-    read.current = unread;
-    // Not connected yet: no environment to read a crew from.
-    const markup = renderToStaticMarkup(
-      <SidebarCrewLine environmentId={undefined} mine projectId="crm-dev" />,
-    );
+  // HQ not answering now, or the Mate asleep: the faces keep the line's place, at rest, with
+  // nothing that is only true now — no chat opened from them, no fact and no Review.
+  it.each([
+    { case: "HQ's answer is not current", read: { current: false } },
+    { case: "its Mate sleeps", read: { current: false, environmentId: undefined } },
+  ])("draws the crew at rest where what it does is not known now: $case", ({ read }) => {
+    hq.read = hqCrew({ waiting: true, ready: true }, read);
+    const markup = renderToStaticMarkup(<SidebarCrewLine mine projectId="crm-dev" />);
     expect(markup).toContain('data-zerops-surface="sidebar-crew"');
     expect(markup.match(/data-mate-face-state="idle"/gu)).toHaveLength(4);
-    // At rest: no chat opened from memory, no fact and no Review.
     expect(markup).not.toContain("<button");
     expect(markup).toContain('data-zerops-surface="sidebar-crew-fact"></span>');
     expect(markup).not.toContain("sidebar-crew-review");
-  });
-
-  it("draws nothing where no crew was read or remembered", () => {
-    withStorage();
-    read.current = unread;
-    expect(
-      renderToStaticMarkup(<SidebarCrewLine environmentId={undefined} mine projectId="crm-dev" />),
-    ).toBe("");
-  });
-
-  it("remembers the crew it reads, and forgets one that is gone", () => {
-    withStorage();
-    read.current = applied();
-    let tree: ReturnType<typeof create> | undefined;
-    act(() => {
-      tree = create(<SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />);
-    });
-    expect(menuMemory().crews["crm-dev"]?.faces.map((face) => face.handle)).toEqual([
-      "lead",
-      "backend",
-      "frontend",
-      "erik",
-    ]);
-    read.current = { status: "none", snapshot: null, view: null, current: true };
-    act(() => {
-      tree?.update(<SidebarCrewLine environmentId={ENVIRONMENT} mine projectId="crm-dev" />);
-    });
-    expect(menuMemory().crews["crm-dev"]).toBeUndefined();
-    act(() => {
-      tree?.unmount();
-    });
   });
 });
