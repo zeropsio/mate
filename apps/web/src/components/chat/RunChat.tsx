@@ -3255,9 +3255,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (landing === null) return;
     if (prefersReducedMotion()) {
       for (const key of landing.from.keys()) {
+        // Faded from its first frame: never a frame at full opacity first.
         rowByKey(aboveRef.current, key)?.animate([{ opacity: 0 }, { opacity: 1 }], {
           duration: 200,
           easing: "ease",
+          fill: "backwards",
         });
       }
       return;
@@ -3910,6 +3912,7 @@ function plop(row: HTMLElement, from: number) {
     row.animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: 200,
       easing: "ease",
+      fill: "backwards",
     }).currentTime = 0;
     return;
   }

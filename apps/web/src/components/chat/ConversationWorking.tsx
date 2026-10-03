@@ -399,7 +399,8 @@ function keyedSteps<T extends { readonly step: string }>(steps: ReadonlyArray<T>
 function Arriving({ children }: { readonly children: ReactNode }) {
   const arrived = useArrivedLive();
   return (
-    <li className={cn("grid", arrived && "animate-room-in motion-reduce:animate-none")}>
+    // Under reduced motion it fades in: every arrival does.
+    <li className={cn("grid", arrived && "animate-room-in motion-reduce:animate-run-fade")}>
       <div className="min-h-0 overflow-hidden">{children}</div>
     </li>
   );

@@ -207,6 +207,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      once. */
   --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
   --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  /* Reduced motion's arrival: a fade only (`run-fade`). */
+  --animate-run-fade: run-fade 200ms ease both;
   --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) both;
   /* The run's chat. A bubble that arrives while the person watches rises in
      from the spine, once — quick, since one arrives every few seconds; what
