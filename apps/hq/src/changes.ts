@@ -51,7 +51,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
-import { appendEvent } from "./gitEvents.ts";
+import { appendEvent, releaseRevisions } from "./gitEvents.ts";
 import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
@@ -247,6 +247,11 @@ export class Changes extends Context.Service<
     readonly readable: (userId: string) => Effect.Effect<ChangesSnapshot, SqlError | ZeropsError>;
     /** Ticks after any change's record moved, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
+    /**
+     * Where each application's releases and its repositories' `main` last moved, by id
+     * (`releaseRevisions`): what the structure socket carries, beside each application's changes.
+     */
+    readonly releaseRevisions: Effect.Effect<ReadonlyMap<string, string>, SqlError>;
     /** A picture of a change, its PNG's bytes. */
     readonly attachment: (
       userId: string,
@@ -964,6 +969,7 @@ export const changesLayer: Layer.Layer<
           return { id, path: attachmentPath(appId, repo, number, id) };
         }),
       changes: Stream.merge(SubscriptionRef.changes(ticks), gitHost.recorded),
+      releaseRevisions: Effect.provideService(releaseRevisions, SqlClient.SqlClient, sql),
       readable: (userId) =>
         Effect.gen(function* () {
           const view = yield* roles.view;

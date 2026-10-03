@@ -5,7 +5,8 @@
  *
  * @module gitEvents
  */
-import type * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as Effect from "effect/Effect";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 export type GitEventKind =
   | "pushed"
@@ -31,3 +32,18 @@ export const appendEvent = (
     INSERT INTO hq_git_event (kind, app_id, repo, number, data)
     VALUES (${event.kind}, ${event.appId}::uuid, ${event.repo}, ${event.number},
       ${JSON.stringify(event.data)}::jsonb)`;
+
+/**
+ * Where each application's releases and its repositories' `main` last moved (audit R4): the
+ * sequence of its log's last release, merge or move of `main`, by application id. A reader reads
+ * them again only when it moves; an application none moved yet has none.
+ */
+export const releaseRevisions = Effect.flatMap(SqlClient.SqlClient, (sql) =>
+  Effect.map(
+    sql<{ readonly app_id: string; readonly revision: string }>`
+      SELECT app_id::text AS app_id, max(seq)::text AS revision
+      FROM hq_git_event WHERE kind IN ('main_moved', 'merged', 'released')
+      GROUP BY app_id`,
+    (rows) => new Map(rows.map((row) => [row.app_id, row.revision])),
+  ),
+);

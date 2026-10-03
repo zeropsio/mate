@@ -1,8 +1,9 @@
 /**
  * How often HQ computes a structure socket's view again, over the last minute (`/health`): every
- * change of the structure, of a change or of a deploy, and every recheck, computes every open
- * socket's view again (`stream.ts`) — a cost that grows with the sockets and the Mates' summaries,
- * made a number (F22, 2026-10-03: a 52 s stall of every answer, its cause to be measured).
+ * change of the structure, of a change, of a release or of a deploy, and every recheck, computes
+ * every open socket's view again (`stream.ts`) — a cost that grows with the sockets and the Mates'
+ * summaries, made a number (F22, 2026-10-03: a 52 s stall of every answer, its cause to be
+ * measured).
  *
  * A reference, so a stream counts without naming it among its requirements; outside a Core that
  * provides one, nothing is counted.

@@ -31,6 +31,8 @@
  *   by whoever develops the application → the change, merged or closed;
  * - `GET` {@link attachmentPath} → the picture, `image/png`;
  * - the structure socket carries changes too: {@link ChangesSnapshot}, {@link ChangesMessage};
+ *   and where each application's releases and repositories last moved: {@link ReleaseRevisions},
+ *   {@link ReleaseRevisionMessage};
  * - a change's address, {@link changeUrl}, is HQ's: `GET /changes/<appId>/<repo>/<n>` redirects
  *   (`302`) to the first client origin HQ answers, at {@link changeRoutePath}.
  *
@@ -429,6 +431,26 @@ export const ChangesMessage = Schema.Struct({
   changes: Schema.NullOr(Schema.Array(HqChange)),
 });
 export type ChangesMessage = typeof ChangesMessage.Type;
+
+/**
+ * The snapshot carries this too, under `releaseRevisions`: for each application whose changes the
+ * reader may read, where its releases and its repositories' `main` last moved (audit R4) — an
+ * opaque revision, so a reader reads them again only when it moves; `null` before anything did.
+ */
+export const ReleaseRevisions = Schema.Record(Schema.String, Schema.NullOr(Schema.String));
+export type ReleaseRevisions = typeof ReleaseRevisions.Type;
+
+/**
+ * After the snapshot, the socket sends an application's revision whenever it moves: `revision:
+ * null` once the reader may no longer read its changes. A type of its own, passed by a client
+ * that does not know it.
+ */
+export const ReleaseRevisionMessage = Schema.Struct({
+  type: Schema.Literal("release-revision"),
+  appId: Schema.String,
+  revision: Schema.NullOr(Schema.String),
+});
+export type ReleaseRevisionMessage = typeof ReleaseRevisionMessage.Type;
 
 /** The official address as the anchor names it, without a trailing slash (`hq/anchor.ts`). */
 const addressOf = (address: string) => address.replace(/\/+$/u, "");
