@@ -101,6 +101,19 @@ describe("a kept session's check", () => {
   });
 });
 
+// t10, 2026-10-03: a deleted project's kept session went on being read on every load.
+describe("a Mate gone from the platform's listing", () => {
+  it("has its kept session dropped where it is kept, with nothing sent to the Mate", () => {
+    lifetime.openAccountLifetime("person-1");
+    kept.keptSessions.keep("project-dan:zcp", session("dan"));
+
+    kept.forgetKeptMateSession("project-dan:zcp");
+
+    expect(kept.keptSessions.read("project-dan:zcp")).toBeNull();
+    expect(fetched).toEqual([]);
+  });
+});
+
 describe("no kept session outlives the login it was opened under", () => {
   it("the account's close ends every live kept session at its Mate, each once", () => {
     lifetime.openAccountLifetime("person-1");

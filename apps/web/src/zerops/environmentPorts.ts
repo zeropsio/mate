@@ -58,7 +58,12 @@ import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { hqMatesAtom, hqMatesViewAtom, hqOfficialAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
-import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
+import {
+  endKeptSession,
+  forgetKeptMateSession,
+  keptSessionHeld,
+  keptSessions,
+} from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
 import { makeDoorCaps } from "./doorCaps";
 import { pressesInFlight } from "./matePress";
@@ -490,6 +495,7 @@ export function webEnvironmentPorts(input: {
       remove: (environmentId) => {
         void runAtomCommand(registry, environmentCatalog.remove, environmentId, quiet);
       },
+      forgetKept: forgetKeptMateSession,
       park: (environmentId) => {
         void runAtomCommand(registry, parkCommand, environmentId, quiet);
       },

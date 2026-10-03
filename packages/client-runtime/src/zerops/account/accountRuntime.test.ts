@@ -221,6 +221,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
+  /** Every target whose kept session the stage dropped. */
+  const forgotten: Array<string> = [];
   const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
   const listening = { records: 0, catalog: 0 };
@@ -256,6 +258,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
       readDescriptor: (origin, signal) => pending(descriptors, origin, signal),
       retryLink: () => undefined,
       remove: (environmentId) => void removed.push(environmentId),
+      forgetKept: (key) => void forgotten.push(key),
       park: (environmentId) => void parked.set(environmentId, true),
       unpark: (environmentId) => void parked.set(environmentId, false),
     },
@@ -320,6 +323,7 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     descriptors,
     probes,
     removed,
+    forgotten,
     listening,
     /** The records as they are stored now. */
     records: () =>
@@ -2241,6 +2245,9 @@ describe("the post-grant stage's Mate environments", () => {
           evidence: "complete-scope-omits-verified",
         });
         expect(rig.removed).toEqual([ENV_DELETED]);
+        // Its record and its kept session go with it: no later load reads a Mate that is gone.
+        expect(rig.records().map((record) => record.targetKey)).not.toContain(deleted.targetKey);
+        expect(rig.forgotten).toEqual([deleted.targetKey]);
         // The listed Mate beside it is untouched.
         expect(environments.machines().get(MATE)?.presence.kind).toBe("present");
       }),

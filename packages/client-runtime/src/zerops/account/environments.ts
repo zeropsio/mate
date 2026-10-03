@@ -144,6 +144,11 @@ export interface AccountEnvironmentPorts {
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
     readonly remove: (environmentId: EnvironmentId) => void;
+    /**
+     * Drops the session kept for the target (`keptSessions.ts`) where it is, never ending it at a
+     * Mate that is gone. Absent: none is kept.
+     */
+    readonly forgetKept?: (key: TargetKey) => void;
     /** `registry.park`: the socket closes; the registration, its session and its data stay. */
     readonly park: (environmentId: EnvironmentId) => void;
     /** `registry.unpark`: the socket opens on the credential the registration holds, no door. */
@@ -605,8 +610,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         }),
       );
     },
-    retire: (_key, environmentId) => {
+    // A Mate gone from where the platform lists it — or removed by its person — leaves the
+    // catalog, and its record and kept session with it: no later load reads it again.
+    retire: (key, environmentId) => {
       if (environmentId !== null) ports.door.remove(environmentId);
+      stores?.records.forget(key);
+      ports.door.forgetKept?.(key);
     },
   };
 
