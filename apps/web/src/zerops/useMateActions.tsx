@@ -88,6 +88,7 @@ import {
 import { ZeropsDeleteMateDialog } from "../components/zerops/ZeropsDeleteMateDialog";
 import {
   deleteMateOffered,
+  deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,
   landingAfterDelete,
@@ -1109,7 +1110,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           words={deleteMateWords({
             name: mateName(dialog.candidate),
             environment: dialog.candidate.project.name,
-            services: dialog.candidate.services?.hostnames.length,
+            services: deleteMateServiceCount(dialog.candidate),
             owner: colleagueOf(dialog.candidate),
           })}
         />

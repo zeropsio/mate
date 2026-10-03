@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deleteMateConfirmed,
   deleteMateOffered,
+  deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,
   landingAfterDelete,
@@ -33,7 +34,7 @@ describe("deleteMateWords — what the dialog says", () => {
       body: "The environment Acme Docs - Quinn goes from Zerops with its 1 service and everything in it, and Quinn's conversations go with it. Anything Quinn hasn't pushed is lost. This can't be undone.",
     },
     {
-      case: "none of the developer's own, only the Mate's",
+      case: "no service at all",
       services: 0,
       body: "The environment Acme Docs - Quinn goes from Zerops with everything in it, and Quinn's conversations go with it. Anything Quinn hasn't pushed is lost. This can't be undone.",
     },
@@ -54,6 +55,32 @@ describe("deleteMateWords — what the dialog says", () => {
 
   it("names the verb in a menu with the Mate's name and the dialog it opens", () => {
     expect(deleteMateVerb("Quinn")).toBe("Delete Quinn…");
+  });
+});
+
+// e2e 2026-10-03: Cyd's project held zcp, appdev and appstage, and its dialog said "its 2 services":
+// the Mate's own container goes from Zerops too.
+describe("deleteMateServiceCount — every service the deletion takes", () => {
+  const CONTAINER = { id: "zcp-1", name: "zcp", status: "ACTIVE" };
+  it.each([
+    {
+      case: "the developer's services and the Mate's container",
+      over: { service: CONTAINER, services: { hostnames: ["appdev", "appstage"] } },
+      count: 3,
+    },
+    {
+      case: "the Mate's container alone",
+      over: { service: CONTAINER, services: { hostnames: [] } },
+      count: 1,
+    },
+    {
+      case: "no container came",
+      over: { services: { hostnames: ["appdev"] } },
+      count: 1,
+    },
+    { case: "services not read yet", over: { service: CONTAINER }, count: undefined },
+  ])("$case → $count", ({ over, count }) => {
+    expect(deleteMateServiceCount(over)).toBe(count);
   });
 });
 
