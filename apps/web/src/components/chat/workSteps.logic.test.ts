@@ -480,6 +480,15 @@ describe("foldSteps", () => {
   ])("never folds $name still running into the step before it", ({ make }) => {
     const steps = foldSteps([make("e1", false), make("e2", true)]);
     expect(steps.map((step) => step.key)).toEqual(["e1", "e2"]);
+    // Settled, it never returned: "No result" on a line of its own (D5),
+    // and nothing that came after folds into it.
+    for (const order of [
+      [make("e1", false), make("e2", true)],
+      [make("e1", true), make("e2", false)],
+    ]) {
+      const settled = foldSteps(order, undefined, false);
+      expect(settled.map((step) => step.key)).toEqual(["e1", "e2"]);
+    }
   });
 
   it("counts past three pictures", () => {

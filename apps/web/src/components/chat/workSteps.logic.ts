@@ -525,8 +525,14 @@ export function foldSteps(
   for (const entry of entries) {
     const step = stepOf(entry, tracked, live);
     const previous = steps.at(-1);
-    if (
+    // A call that never returned — the slot's while it runs, "No result" once
+    // the run is over — is a step of its own, never folded either way.
+    const folds =
       previous !== undefined &&
+      entry.toolLifecycleStatus !== "inProgress" &&
+      previous.entries.every((earlier) => earlier.toolLifecycleStatus !== "inProgress");
+    if (
+      folds &&
       previous.kind === "look" &&
       step.kind === "look" &&
       previous.state !== "running" &&
@@ -552,7 +558,7 @@ export function foldSteps(
       continue;
     }
     if (
-      previous !== undefined &&
+      folds &&
       previous.kind === "edit" &&
       step.kind === "edit" &&
       previous.state === "done" &&
