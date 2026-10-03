@@ -441,6 +441,30 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_structure_writer",
     ],
   ],
+  // An application with nothing in it, which a stopped New project leaves (E2E 2026-10-03, F5):
+  // whoever writes the structure removes it, as they make and rename one.
+  delete_app: [
+    ["org owner", { orgRole: "OWNER" }, { verb: "delete_app", target: null }, "allow"],
+    ["org admin", { orgRole: "ADMIN" }, { verb: "delete_app", target: null }, "allow"],
+    [
+      "org Basic user",
+      { orgRole: "BASIC_USER" },
+      { verb: "delete_app", target: null },
+      "not_structure_writer",
+    ],
+    [
+      "an admin of one project",
+      P_ADMIN,
+      { verb: "delete_app", target: null },
+      "not_structure_writer",
+    ],
+    [
+      "an invited admin",
+      { orgRole: "ADMIN", status: "INVITED" },
+      { verb: "delete_app", target: null },
+      "not_active_member",
+    ],
+  ],
   attach: [
     [
       "can create projects, no grant of their own, held as a production: told only the role",

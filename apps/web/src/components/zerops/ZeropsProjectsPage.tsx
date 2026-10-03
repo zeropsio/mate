@@ -159,6 +159,7 @@ import {
 } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
+import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
@@ -194,7 +195,7 @@ import {
   withoutOfficialHq,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
-import { emptyApplications, groupIsEmpty } from "./projects/emptyApps.logic";
+import { deleteOffered, emptyApplications, groupIsEmpty } from "./projects/emptyApps.logic";
 import { lastGroupPlacement } from "./projects/groupPlacementMemory";
 import {
   type ZeropsRowAction,
@@ -1188,6 +1189,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
+    | { readonly kind: "delete-group"; readonly group: ZeropsGroup }
     | null
   >(null);
   // The same write an environment's own page uses, so one way to open a
@@ -2372,6 +2374,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               },
             ]
           : []),
+        // A project with nothing in it goes, at whoever writes the structure's word.
+        ...(deleteOffered(group, mayOffer(asker, "delete_app", null))
+          ? [
+              {
+                id: "delete-group",
+                label: `Delete ${group.name}…`,
+                variant: "destructive" as const,
+                onSelect: () => {
+                  setRowDialog({ kind: "delete-group", group });
+                },
+              },
+            ]
+          : []),
       ]}
       label={`More for ${group.name}`}
     />
@@ -2703,6 +2718,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         <ZeropsRenameProjectDialog
           group={rowDialog.group}
           key={`rename-group:${rowDialog.group.groupId}`}
+          onClose={() => {
+            setRowDialog(null);
+          }}
+        />
+      ) : null}
+      {rowDialog?.kind === "delete-group" ? (
+        <ZeropsDeleteProjectDialog
+          group={rowDialog.group}
+          key={`delete-group:${rowDialog.group.groupId}`}
           onClose={() => {
             setRowDialog(null);
           }}

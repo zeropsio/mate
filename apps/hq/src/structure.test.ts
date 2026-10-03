@@ -1420,6 +1420,126 @@ describe("structure", () => {
       ),
     );
 
+    // E2E 2026-10-03 (F5): a New project that stopped before its Mate left an application with its
+    // recipe repository and nothing else, for good. Whoever writes the structure deletes it; its
+    // name is free again.
+    it.effect("an org owner or admin deletes an application that holds nothing", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          // What its New project left: its recipe repository, what HQ saw of it, its git log.
+          yield* sql`
+            INSERT INTO hq_repo (app_id, name, created_by) VALUES (${shop.id}::uuid, 'group', 'core')`;
+          yield* sql`
+            INSERT INTO hq_recipe_seen (app_id, tier, digest, blocks)
+            VALUES (${shop.id}::uuid, 'stage', 'd', '[]'::jsonb)`;
+          yield* sql`
+            INSERT INTO hq_git_event (kind, app_id, repo) VALUES ('main_moved', ${shop.id}::uuid, 'group')`;
+          assert.deepStrictEqual(
+            yield* Effect.all([
+              outcome(structure.deleteApp("dev", shop.id)),
+              outcome(structure.deleteApp("admin", "00000000-0000-0000-0000-000000000000")),
+              outcome(structure.deleteApp("admin", shop.id)),
+            ]),
+            ["forbidden", "app_not_found", "ok"],
+          );
+          assert.deepStrictEqual((yield* structure.read("owner")).apps, []);
+          const left = yield* sql<{ readonly n: number }>`
+            SELECT (SELECT count(*) FROM hq_repo)::int + (SELECT count(*) FROM hq_recipe_seen)::int
+                 + (SELECT count(*) FROM hq_git_event)::int AS n`;
+          assert.strictEqual(left[0]?.n, 0);
+          assert.strictEqual(yield* outcome(structure.createApp("owner", "Shop")), "ok");
+        }),
+      ),
+    );
+
+    it.effect(
+      "refuses to delete an application holding a Mate, an environment, a change, a release or code",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const holding = (
+              name: string,
+              fill: (appId: string) => Effect.Effect<unknown, { readonly _tag: string }, never>,
+            ) =>
+              Effect.gen(function* () {
+                const app = yield* structure.createApp("owner", name);
+                yield* fill(app.id);
+                return yield* reasonOf(structure.deleteApp("owner", app.id));
+              });
+            const repo = (appId: string, name: string) =>
+              sql`INSERT INTO hq_repo (app_id, name, created_by) VALUES (${appId}::uuid, ${name}, 'core')`;
+            assert.deepStrictEqual(
+              yield* Effect.all([
+                holding("Mate", (appId) =>
+                  structure.attachProject("owner", appId, {
+                    projectId: "P_MATE",
+                    kind: "mate",
+                    mate: { name: "Ada", face: "face-1" },
+                  }),
+                ),
+                holding("Stage", (appId) =>
+                  structure.attachProject("owner", appId, { projectId: "P_STAGE", kind: "stage" }),
+                ),
+                holding("Change", (appId) =>
+                  Effect.andThen(
+                    repo(appId, "group"),
+                    sql`
+                      INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
+                      VALUES (${appId}::uuid, 'group', 1, 'P_OTHER', 'A recipe')`,
+                  ),
+                ),
+                holding(
+                  "Release",
+                  (appId) => sql`
+                    INSERT INTO hq_release (app_id, tag, sha, entries, released_by, state)
+                    VALUES (${appId}::uuid, 'v1.0.0', ${"a".repeat(40)}, '[]'::jsonb, 'owner',
+                            'approved')`,
+                ),
+                holding("Code", (appId) => repo(appId, "appdev")),
+              ]),
+              Array.from({ length: 5 }, () => "app_not_empty"),
+            );
+            assert.strictEqual((yield* structure.read("owner")).apps.length, 5);
+          }),
+        ),
+    );
+
+    it.effect("an attach and a delete racing for one empty application: exactly one lands", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          for (let round = 0; round < 4; round += 1) {
+            const app = yield* structure.createApp("owner", `Race ${String(round)}`);
+            const [attached, deleted] = yield* Effect.all(
+              [
+                reasonOf(
+                  structure.attachProject("owner", app.id, {
+                    projectId: "P_STAGE",
+                    kind: "stage",
+                  }),
+                ),
+                reasonOf(structure.deleteApp("owner", app.id)),
+              ],
+              { concurrency: "unbounded" },
+            );
+            assert.isTrue(
+              (attached === "ok" && deleted === "app_not_empty") ||
+                (attached === "app_not_found" && deleted === "ok"),
+              `${attached} / ${deleted}`,
+            );
+            if (attached === "ok") {
+              yield* structure.moveProject("owner", "P_STAGE", { appId: null, kind: "stage" });
+            }
+          }
+        }),
+      ),
+    );
+
     it.effect("an org owner or admin renames an application; a taken name is a conflict", () =>
       withStructure(() =>
         Effect.gen(function* () {

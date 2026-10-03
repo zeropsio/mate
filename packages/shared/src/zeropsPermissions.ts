@@ -151,6 +151,8 @@ export interface Targets {
   readonly release: ReleaseTarget;
   readonly create_app: null;
   readonly rename_app: null;
+  /** An application deleted: HQ removes only one that holds nothing (`app_not_empty`). */
+  readonly delete_app: null;
   /** An environment's deploy token handed to HQ (SPEC §3.2b): by who may attach the project. */
   readonly keep_deploy_token: { readonly projectId: string };
   readonly attach: AttachTarget;
@@ -383,6 +385,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
         : deny("not_mate_operator");
     case "create_app":
     case "rename_app":
+    case "delete_app":
       return writer ? ALLOW : deny("not_structure_writer");
     // The token is minted by the person who attaches the environment, on their own client (main
     // E03): whoever has Full access on its project, or the structure's writer.

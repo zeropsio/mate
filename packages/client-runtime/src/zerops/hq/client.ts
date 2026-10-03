@@ -152,6 +152,8 @@ export interface HqApi {
   ) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
   readonly renameApp: (appId: string, name: string) => Promise<void>;
+  /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
+  readonly deleteApp: (appId: string) => Promise<void>;
   /**
    * A project into an application as `kind`, or a Mate out of every one — `appId: null` (`PUT
    * /api/projects/{projectId}/app`).
@@ -559,6 +561,9 @@ export function makeHqApi(input: {
         method: "PATCH",
         body: JSON.stringify({ name }),
       });
+    },
+    deleteApp: async (appId) => {
+      await authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" });
     },
     moveProject: async (projectId, to) => {
       await authorized(`/api/projects/${encodeURIComponent(projectId)}/app`, {
