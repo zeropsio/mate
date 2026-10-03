@@ -850,11 +850,18 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
   > = [
     ["a Mate not connected is unknown", "ready", undefined, false, undefined],
     [
-      "a Mate not connected is unknown, even with a cached read",
+      "a Mate not connected is unknown, even with a word at rest",
+      "ready",
+      { ...activity("Fix it"), remembered: true },
+      true,
+      undefined,
+    ],
+    [
+      "a Mate HQ holds live, no socket to it, was spoken to",
       "ready",
       activity("Fix it"),
       true,
-      undefined,
+      true,
     ],
     ["a connected Mate with a subject was spoken to", "connected", activity("Fix it"), true, true],
     [

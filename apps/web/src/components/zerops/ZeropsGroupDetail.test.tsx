@@ -20,16 +20,18 @@ import {
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import type { HqDeploy } from "@t3tools/client-runtime/zerops/hq";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 
-import { ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
+import { groupMateOf, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -983,5 +985,47 @@ describe("ZeropsStopPane", () => {
       "Deploys",
     );
     expect(renderStop({ tier: "stage", services: [] })).not.toContain("Releases");
+  });
+});
+
+describe("groupMateOf — a Mate on the project, as its page draws it", () => {
+  /** Iris's project, listed and not connected: this page holds no socket to her. */
+  const IRIS = {
+    key: "iris:zcp",
+    project: { id: "iris", name: "Shop - Iris", status: "ACTIVE", tagList: ["mate"] },
+    group: "ready",
+    service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+  } as unknown as ZeropsCandidate;
+  const SPLITTING = {
+    kind: "working",
+    face: "working",
+    subject: "Split the checkout",
+    snippet: "Moved the cart into its own module.",
+    at: "2026-09-25T11:00:00.000Z",
+  } as ZeropsAgentActivity;
+  const draw = (read: ZeropsAgentActivity | undefined) =>
+    groupMateOf({
+      item: IRIS,
+      read,
+      tint: "amber",
+      reviewWaits: false,
+      mine: true,
+      update: undefined,
+    });
+
+  it("draws an unopened Mate from HQ's live word: awake, on its task", () => {
+    expect(draw(SPLITTING)).toMatchObject({
+      projectId: "iris",
+      face: "working",
+      subject: "Split the checkout",
+      snippet: "Moved the cart into its own module.",
+    });
+  });
+
+  it("draws it asleep, saying nothing, where only a word at rest is known", () => {
+    expect(draw({ ...SPLITTING, remembered: true })).toMatchObject({
+      face: "sleep",
+      subject: undefined,
+    });
   });
 });

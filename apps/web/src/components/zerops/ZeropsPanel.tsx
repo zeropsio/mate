@@ -38,6 +38,7 @@ import { useAgentSignOut } from "../../zerops/useAgentSignOut";
 import { useCrew } from "../../zerops/crew/useCrew";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
+import { activityOfNow, mateFaceFor } from "../../zerops/agentActivity";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
@@ -120,6 +121,8 @@ export function ZeropsPanel({
   // Mate, and no service is marked as its container until one is known.
   const whoLivesHere = environmentId === undefined ? null : zeropsMateAt(mates, environmentId);
   const mateIdentity = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
+  // What it does now, where a word of now says it: HQ's live word, or its standing socket's.
+  const live = environmentId === undefined ? undefined : activityOfNow(activity.get(environmentId));
   const mate =
     mateIdentity === undefined || environmentId === undefined
       ? undefined
@@ -127,12 +130,10 @@ export function ZeropsPanel({
           name: mateIdentity.name,
           tint: mateIdentity.tint,
           shape: mateIdentity.shape,
-          // Asleep until the socket is up, as the lists draw it: a Mate is
-          // known from its project's tags and its container's origin before
-          // there is anything to resolve — see `ChatHeader`.
-          face: mateIdentity.connected
-            ? (activity.get(environmentId)?.face ?? "idle")
-            : ("sleep" as const),
+          // Asleep until its socket is up or HQ's live word says what it does, as the
+          // lists draw it: a Mate is known from its project's tags and its container's
+          // origin before there is anything to resolve — see `ChatHeader`.
+          face: mateFaceFor(mateIdentity.connected || live !== undefined, live),
         };
   const signOutPending = new Set<ZeropsAgentId>(
     (agentAuthCard?.agents ?? [])

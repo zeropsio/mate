@@ -238,22 +238,27 @@ export function mateReviewWaits(
 }
 
 /**
- * The face a Mate wears wherever it is drawn (`mateFaceFor`), needing the person while its own
+ * The face a Mate wears wherever it is drawn (`mateFaceFor`), from what is known of it: awake while
+ * its container is connected or a word of now says what it does — HQ's live word, a standing
+ * socket's reading; a word at rest says nothing of now — and needing the person while its own
  * change waits for their review (`mateFaceAwaitingReview`).
  */
 export function mateFaceOf(input: {
   readonly connected: boolean;
   readonly activity:
-    | (Pick<ZeropsAgentActivity, "face"> & { readonly pausedUntil?: string | undefined })
+    | (Pick<ZeropsAgentActivity, "face" | "remembered"> & {
+        readonly pausedUntil?: string | undefined;
+      })
     | undefined;
   readonly reviewWaits: boolean;
   /** The viewer's own Mate (`mateIsViewers`). */
   readonly mine: boolean;
 }): MateMarkState {
+  const live = input.activity?.remembered === true ? undefined : input.activity;
   return mateFaceAwaitingReview(
-    mateFaceFor(input.connected, input.activity),
+    mateFaceFor(input.connected || live !== undefined, live),
     input.reviewWaits,
-    input.activity?.pausedUntil !== undefined,
+    live?.pausedUntil !== undefined,
     input.mine,
   );
 }
@@ -443,6 +448,16 @@ export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActiv
     pausedUntil: undefined,
     remembered: true,
   };
+}
+
+/**
+ * The activity, where it is a word of now — HQ's live word, a standing socket's reading — and not
+ * one at rest (`restingActivity`), which says nothing of what the Mate does now.
+ */
+export function activityOfNow(
+  activity: ZeropsAgentActivity | undefined,
+): ZeropsAgentActivity | undefined {
+  return activity?.remembered === true ? undefined : activity;
 }
 
 /**

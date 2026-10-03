@@ -78,6 +78,7 @@ import {
   type StopVerdict,
   type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   candidatesNotice,
@@ -94,7 +95,14 @@ import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/bra
 
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { mateFaceFor, mateFaceOf, mateReviewWaits } from "~/zerops/agentActivity";
+import {
+  activityOfNow,
+  mateFaceFor,
+  mateFaceOf,
+  mateReviewWaits,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
+import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useAddMate } from "~/zerops/newMate";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useListingPatience } from "~/zerops/useListingPatience";
@@ -363,7 +371,8 @@ function useGroupMates(groupId: string): {
   readonly refresh: () => void;
 } {
   const { listing, refresh } = useZeropsCandidates();
-  const activity = useZeropsAgentActivity();
+  // Each Mate as its menu row reads it: HQ's word, or its socket's.
+  const activityOf = useMateRowActivity(useZeropsAgentActivity());
   const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
   const flow = useZeropsProjectFlowOptional()?.flows.get(groupId);
@@ -382,40 +391,17 @@ function useGroupMates(groupId: string): {
     // (the owner, 2026-09-19).
     return (group?.environments ?? [])
       .filter(({ item }) => hasMate(item))
-      .map(({ item }) => {
-        const tags = readZeropsMembership(item.project);
-        const live =
-          item.group === "connected" && item.environmentId !== undefined
-            ? activity.get(item.environmentId)
-            : undefined;
-        const subject = live?.subject;
-        const tint = tints.get(item.project.id) ?? "slate";
-        const mine = mateIsViewers(item.project, viewer);
-        return {
-          projectId: item.project.id,
-          name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-          tint,
-          shape: mateShapeOf(item.project, tint),
-          // Its row's face (`mateFaceOf`): needing you while it asks, or while its own change
-          // waits for your review — your own Mate only; another's waits on its owner.
-          face: mateFaceOf({
-            connected: item.group === "connected",
-            activity: live,
-            reviewWaits: mateReviewWaits(flow, item.project.id),
-            mine,
-          }),
-          asks: mine && mateFaceFor(item.group === "connected", live) === "needs",
-          ...(live?.kind === "failed" ? { failed: true } : {}),
-          subject,
-          snippet: subject === undefined ? undefined : live?.snippet,
-          when:
-            live === undefined || subject === undefined
-              ? undefined
-              : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
+      .map(({ item }) =>
+        groupMateOf({
+          item,
+          read: activityOf(item),
+          tint: tints.get(item.project.id) ?? "slate",
+          reviewWaits: mateReviewWaits(flow, item.project.id),
+          mine: mateIsViewers(item.project, viewer),
           update: mateUpdateStatus(updates.of(item)),
-        };
-      });
-  }, [activity, flow, groupId, listing, updates, viewer]);
+        }),
+      );
+  }, [activityOf, flow, groupId, listing, updates, viewer]);
   const patient = useListingPatience(listing);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),
@@ -1867,6 +1853,45 @@ const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
 };
 
 /** One Mate on a project's page: who it is and what it is on. */
+/**
+ * A Mate on the project as its page draws it: what it is on while a word of now says it — HQ's
+ * live word or its socket's reading — and asleep, saying nothing, otherwise. Its face is its row's
+ * (`mateFaceOf`): needing you while it asks, or while its own change waits for your review — your
+ * own Mate only; another's waits on its owner.
+ */
+export function groupMateOf(input: {
+  readonly item: ZeropsCandidate;
+  /** What its menu row reads (`useMateRowActivity`). */
+  readonly read: ZeropsAgentActivity | undefined;
+  readonly tint: MateTintId;
+  readonly reviewWaits: boolean;
+  /** The viewer's own Mate (`mateIsViewers`). */
+  readonly mine: boolean;
+  readonly update: MateUpdateStatus | null | undefined;
+}): GroupMate {
+  const { item, tint, mine } = input;
+  const tags = readZeropsMembership(item.project);
+  const live = activityOfNow(input.read);
+  const connected = item.group === "connected" || live !== undefined;
+  const subject = live?.subject;
+  return {
+    projectId: item.project.id,
+    name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+    tint,
+    shape: mateShapeOf(item.project, tint),
+    face: mateFaceOf({ connected, activity: live, reviewWaits: input.reviewWaits, mine }),
+    asks: mine && mateFaceFor(connected, live) === "needs",
+    ...(live?.kind === "failed" ? { failed: true } : {}),
+    subject,
+    snippet: subject === undefined ? undefined : live?.snippet,
+    when:
+      live === undefined || subject === undefined
+        ? undefined
+        : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
+    update: input.update,
+  };
+}
+
 export interface GroupMate {
   readonly projectId: string;
   readonly name: string;

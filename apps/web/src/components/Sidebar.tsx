@@ -2389,15 +2389,6 @@ export default function Sidebar() {
   }, []);
   // "Ask <your Mate> to fix it" from the production chip's menu (S6).
   const askMateToFix = useAskMateToFix();
-  // The Mates waiting on the viewer, for the header's faces and ⌥↓.
-  const zeropsActivityOf = useCallback(
-    (candidate: (typeof zeropsCandidates)[number]) =>
-      candidate.environmentId === undefined
-        ? undefined
-        : zeropsAgentActivity.get(candidate.environmentId),
-    [zeropsAgentActivity],
-  );
-
   // A Mate still coming up is open in its own view (`/mate/$projectId`) — a New
   // project's first Mate, before its project exists, by the creation's id.
   const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
@@ -2434,9 +2425,10 @@ export default function Sidebar() {
       ),
     [activeZeropsProjectId, zeropsMateOwner, zeropsMateScope],
   );
+  // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
     candidates: zeropsCandidates,
-    activityOf: zeropsActivityOf,
+    activityOf: zeropsRowActivity,
     shown: zeropsShown,
     activeProjectId: activeZeropsProjectId,
     beforeReveal: isMobile

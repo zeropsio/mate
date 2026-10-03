@@ -103,7 +103,12 @@ import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
-import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  activityOfNow,
+  mateFaceOf,
+  mateReviewWaits,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
@@ -155,6 +160,7 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
@@ -950,7 +956,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     apps: emptyApplications(hqStructure, activeOrganization?.id),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
-  const activity = useZeropsAgentActivity();
+  // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
+  const activityOf = useMateRowActivity(useZeropsAgentActivity());
   const updates = useZeropsMateUpdateStates();
   const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the
@@ -1336,7 +1343,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
-    if (candidate.group === "connected") {
+    if (candidate.group === "connected" || live !== undefined) {
       return live?.subject === undefined ? null : (
         <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
           {live.subject}
@@ -1626,16 +1633,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const changeOffersOf = useChangeOffers();
 
   /**
-   * The face a Mate wears (`mateFaceOf`): the state of its conversation when its socket is up,
-   * else asleep — and needing you while its own change waits for your review, as its row in the
-   * menu and its conversation's composer say.
+   * The face a Mate wears (`mateFaceOf`): the state of its conversation while a word of now says
+   * it — HQ's, or its socket's — else asleep, and needing you while its own change waits for your
+   * review, as its row in the menu and its conversation's composer say.
    */
   const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
     const groupId = readZeropsMembership(candidate.project).groupId;
     return mateFaceOf({
       connected: candidate.group === "connected" && candidate.environmentId !== undefined,
-      activity:
-        candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
+      activity: activityOf(candidate),
       reviewWaits: mateReviewWaits(
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
@@ -2219,10 +2225,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const tags = readZeropsMembership(candidate.project);
     const connected = candidate.group === "connected";
     const busy = busyKeys.has(candidate.key);
-    const live =
-      connected && candidate.environmentId !== undefined
-        ? activity.get(candidate.environmentId)
-        : undefined;
+    const live = activityOfNow(activityOf(candidate));
     const select = mateOpenerOf(candidate);
     // Not a hover-only verb on the line: a real, always-visible button
     // at the card's trailing edge, next to where the menu sits.
@@ -2554,7 +2557,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       });
       const members = groupMemberFactsOf(
         environments,
-        (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
+        activityOf,
         (item) => item.environmentId !== undefined && withConversations.has(item.environmentId),
         user?.id,
       );

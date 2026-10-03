@@ -141,11 +141,36 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
       review: false,
       shown: "sleep",
     },
-  ] as const)("$case", ({ connected, face, review, shown }) => {
+    {
+      case: "not connected, HQ's live word says it asks",
+      connected: false,
+      face: "needs",
+      review: false,
+      shown: "needs",
+    },
+    {
+      case: "not connected, only a word at rest",
+      connected: false,
+      face: "needs",
+      atRest: true,
+      review: false,
+      shown: "sleep",
+    },
+    {
+      case: "connected, only a word at rest",
+      connected: true,
+      face: "working",
+      atRest: true,
+      review: false,
+      shown: "idle",
+    },
+  ] as const)("$case", (row) => {
+    const { connected, face, review, shown } = row;
+    const atRest = "atRest" in row ? { remembered: true as const } : {};
     expect(
       mateFaceOf({
         connected,
-        activity: face === undefined ? undefined : { face },
+        activity: face === undefined ? undefined : { face, ...atRest },
         reviewWaits: review,
         mine: true,
       }),

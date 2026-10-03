@@ -311,12 +311,19 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
       subject: "Run the build",
       conversation: { threadId: "thread-shop-nova", kind: "working" },
     });
+    // Its last word, at rest: nothing of now.
+    expect(
+      jumpMateOf({ ...base, connected: false, activity: activity({ remembered: true }) }),
+    ).toMatchObject({ face: "sleep", subject: undefined, conversation: undefined });
+    expect(jumpMateOf({ ...base, connected: true, activity: undefined }).face).toBe("idle");
+  });
+
+  it("reads an unopened Mate's words from HQ's live word, and offers no conversation to write to", () => {
     expect(jumpMateOf({ ...base, connected: false, activity: activity() })).toMatchObject({
-      face: "sleep",
-      subject: undefined,
+      face: "working",
+      subject: "Run the build",
       conversation: undefined,
     });
-    expect(jumpMateOf({ ...base, connected: true, activity: undefined }).face).toBe("idle");
   });
 
   // Its change waiting for review needs you in the box as on its row (`mateFaceOf`).
@@ -348,8 +355,8 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
   });
 
   it("puts each Mate's live conversation over what the menu last drew", () => {
-    const fresh = withLiveMates(INDEX, (environmentId) =>
-      environmentId === "env-shop-nova"
+    const fresh = withLiveMates(INDEX, (mate) =>
+      mate.projectId === "shop-nova"
         ? activity({ kind: "input", face: "needs", subject: "Only the items?" })
         : undefined,
     );
