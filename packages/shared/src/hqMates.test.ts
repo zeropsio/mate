@@ -23,7 +23,7 @@ describe("hqMates", () => {
           main: null,
           threads: { list: [], omitted: 0 },
           logins: { codex: { signedInBy: "U1", present: true, token: false } },
-          crew: null,
+          crew: { status: "off" },
         },
         // Online, and no overview from it: a Mate from before the overview.
         P_BEA: { presence: { online: true, since: AT, overview: "none" } },
@@ -38,7 +38,7 @@ describe("hqMates", () => {
         projectId: "P_ADA",
         value: { presence: { online: true, since: AT, overview: "live" } },
       },
-      { type: "mate", projectId: "P_ADA", value: { main: null, crew: null } },
+      { type: "mate", projectId: "P_ADA", value: { main: null, crew: { status: "none" } } },
       { type: "mate", projectId: "P_BEA", value: null },
       { type: "people", people: { U1: { name: "Ada Lovelace" } } },
     ]) {

@@ -104,7 +104,7 @@ const VERA = Schema.decodeUnknownSync(MateLiveView)({
   },
   threads: { list: [], omitted: 0 },
   logins: {},
-  crew: null,
+  crew: { status: "off" },
 });
 
 describe("zeropsAgentActivityOf", () => {

@@ -19,7 +19,7 @@ const VERA = view({
   main: null,
   threads: { list: [], omitted: 0 },
   logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
-  crew: null,
+  crew: { status: "off" },
 });
 /** Ada, asleep: her last overview as HQ stored it. */
 const ADA = view({
@@ -28,7 +28,7 @@ const ADA = view({
   main: null,
   threads: { list: [], omitted: 0 },
   logins: {},
-  crew: null,
+  crew: { status: "off" },
 });
 
 describe("applyMatesEvent", () => {

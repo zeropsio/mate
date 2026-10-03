@@ -266,6 +266,23 @@ describe("mateOverviewOf", () => {
     expect(threads.omitted).toBe(8);
   });
 
+  // The menu's door to the crew (`mateCrewItem`) for a Mate nobody opened: crew mode off, on with
+  // no crew yet, or a crew applied — its digest only then.
+  it.each([
+    { case: "crew mode off", crew: CREW_OFF_SNAPSHOT, status: "off" },
+    {
+      case: "crew mode on, no crew yet",
+      crew: { ...CREW_OFF_SNAPSHOT, status: "none" as const },
+      status: "none",
+    },
+    { case: "the engine not heard from yet", crew: undefined, status: "off" },
+  ])("says the crew's status, and no digest without a crew: $case", ({ crew, status }) => {
+    const overview = decodeOverview(
+      mateOverviewOf({ identity: IDENTITY, threads: [], auth: NO_LOGINS, crew }),
+    );
+    expect(overview.crew).toEqual({ status });
+  });
+
   // A crewmate's chat is the crew's, never the person's: it speaks through the crew digest.
   it("leaves crewmates' threads out of the list and in the crew", () => {
     const leadsChat = shell("crew-lead-1", {
@@ -275,6 +292,7 @@ describe("mateOverviewOf", () => {
     const overview = overviewOf([shell("main"), leadsChat], CREW);
     expect(overview.threads.list.map((entry) => entry.id)).toEqual(["main"]);
     expect(overview.crew).toEqual({
+      status: "applied",
       crewmates: [
         {
           handle: "lead",

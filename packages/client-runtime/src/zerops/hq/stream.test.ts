@@ -103,7 +103,7 @@ const VERA_VIEW = {
     omitted: 0,
   },
   logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
-  crew: null,
+  crew: { status: "off" },
 } as unknown as MateLiveView;
 
 describe("structureEventOf", () => {

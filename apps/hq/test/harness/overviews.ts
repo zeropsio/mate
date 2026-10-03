@@ -29,7 +29,7 @@ export const overviewOf = (patch: Partial<MateOverview> = {}): MateOverview =>
     main: null,
     threads: { list: [digest("t1")], omitted: 0 },
     logins: {},
-    crew: null,
+    crew: { status: "off" },
     ...patch,
   }) as MateOverview;
 

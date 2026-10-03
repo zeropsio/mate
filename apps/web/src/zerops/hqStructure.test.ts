@@ -23,7 +23,7 @@ const VERA = Schema.decodeUnknownSync(MateLiveView)({
   main: null,
   threads: { list: [], omitted: 0 },
   logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
-  crew: null,
+  crew: { status: "off" },
 });
 
 /** HQ's ping, this long after what came before it. */
@@ -190,7 +190,7 @@ describe("driveHqStructure", () => {
             mates: new Map([["p1", VERA]]),
             people: { "u-ada": { name: "Ada Lovelace" } },
           },
-          { kind: "mate", projectId: "p1", value: { crew: null, main: null } },
+          { kind: "mate", projectId: "p1", value: { crew: { status: "off" }, main: null } },
           { kind: "mate", projectId: "p2", value: VERA },
           { kind: "people", people: renamed },
         ],

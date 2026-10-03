@@ -128,7 +128,7 @@ export function useMateCrew(projectId: string | null): MateCrewRead {
   const current = view?.current === true && mate?.presence.online === true;
   return useMemo(
     () => ({
-      crew: mate?.crew ?? null,
+      crew: mate?.crew?.status === "applied" ? mate.crew : null,
       logins: mate?.logins ?? NO_LOGINS,
       current,
       environmentId: mate?.identity?.environmentId,

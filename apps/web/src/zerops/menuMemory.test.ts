@@ -28,7 +28,7 @@ const VERA = Schema.decodeUnknownSync(MateLiveView)({
   main: null,
   threads: { list: [], omitted: 0 },
   logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
-  crew: null,
+  crew: { status: "off" },
 });
 
 const PULL: FlowPullRequest = {

@@ -79,7 +79,7 @@ const overview = (title: string): MateOverview => ({
     omitted: 0,
   },
   logins: {},
-  crew: null,
+  crew: { status: "off" },
 });
 
 /** A Mate in no application, with no changes yet. */
@@ -433,7 +433,15 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         yield* SubscriptionRef.set(crew, APPLIED);
         yield* TestClock.adjust(Duration.seconds(1));
         assert.deepStrictEqual(sectionsSent(socket), [
-          { crew: { crewmates: [], attention: [], readyTasks: [], personLands: true } },
+          {
+            crew: {
+              status: "applied",
+              crewmates: [],
+              attention: [],
+              readyTasks: [],
+              personLands: true,
+            },
+          },
         ]);
       }),
     ),
