@@ -106,5 +106,25 @@ export const admitCrewTurn = (
     .admit({ command, principal })
     .pipe(Effect.mapError((error) => refuse("not-allowed", error.message)));
 
+/**
+ * Dispatches a crew turn, its attachments claimed into its thread first as a
+ * thread message's are: the turn carries stored attachments of its own, which
+ * outlive the sender's upload; a turn not sent leaves no copy behind.
+ */
 export const dispatchCrewTurn = (core: CrewCore, command: OrchestrationCommand) =>
-  asRefusal(core.orchestration.dispatch(command)).pipe(Effect.asVoid);
+  Effect.gen(function* () {
+    if (command.type !== "thread.turn.start" || command.message.attachments.length === 0) {
+      yield* asRefusal(core.orchestration.dispatch(command));
+      return;
+    }
+    const attachments = yield* core.attachments.claim(
+      command.threadId,
+      command.message.attachments,
+    );
+    yield* asRefusal(
+      core.orchestration.dispatch({
+        ...command,
+        message: { ...command.message, attachments },
+      }),
+    ).pipe(Effect.tapError(() => core.attachments.release(attachments)));
+  });

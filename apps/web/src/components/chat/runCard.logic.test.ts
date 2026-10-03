@@ -8,10 +8,16 @@ import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeli
 import {
   CHAT_OPENS_WITH,
   chatOpensAt,
+  cutEdges,
   EARLIER_CHUNK,
   EARLIER_REACH_PX,
   earlierShown,
+  FOLLOW_SLACK_PX,
+  followAfter,
+  type RunScrollFollow,
+  footTop,
   forgetRunFolds,
+  laidOutPosition,
   formatClock,
   nowLineFace,
   nowLineOf,
@@ -22,6 +28,7 @@ import {
   runFoldOf,
   setRunFold,
   severalWords,
+  slotModelOf,
   standsAtFoot,
   subscribeRunFolds,
   thoughtRunText,
@@ -203,6 +210,129 @@ const deploy = (() => {
   return entry.kind === "operation" ? entry.operation : null;
 })()!;
 
+// The live slot (pass 35): what the Mate is doing, each thing as the record
+// item it becomes — the same key, so it plops into the history as itself —
+// and what the slot says when nothing stands in it.
+describe("the live slot's model", () => {
+  const question: RecordItem = {
+    kind: "question",
+    key: "question:q1",
+    at: at(3),
+    questions: ["Should /status be public?"],
+  };
+  it.each<{
+    readonly name: string;
+    readonly now: TurnHeaderActivity | null;
+    readonly answering?: boolean;
+    readonly compacting?: boolean;
+    readonly items?: ReadonlyArray<RecordItem>;
+    readonly live: ReadonlyArray<string>;
+    readonly filler: string;
+  }>([
+    { name: "nothing yet: it thinks", now: null, live: [], filler: "thinking" },
+    {
+      name: "a thought with words: the thought, keyed as the record keys it",
+      now: thinking("The app is a Hono server."),
+      live: ["thought:r1"],
+      filler: "thinking",
+    },
+    {
+      name: "a thought with no words yet: Thinking, never an empty bubble",
+      now: thinking("  "),
+      live: [],
+      filler: "thinking",
+    },
+    {
+      name: "calls at once: a row each, oldest first",
+      now: {
+        kind: "step",
+        step: command("w2", "pnpm test"),
+        others: [{ kind: "step", step: read("w1", "index.ts") }],
+      },
+      live: ["step:w1", "step:w2"],
+      filler: "thinking",
+    },
+    {
+      name: "a deploy and a command at once: a row each, the operation's too",
+      now: {
+        kind: "step",
+        step: command("w2", "pnpm test"),
+        others: [{ kind: "operation", operation: deploy }],
+      },
+      live: ["operation:op:d1", "step:w2"],
+      filler: "thinking",
+    },
+    {
+      name: "a command and a check in the browser at once: the step's row, then the takes",
+      now: {
+        kind: "operation",
+        operation: browser,
+        others: [{ kind: "step", step: command("w1", "pnpm build") }],
+      },
+      live: ["step:w1", "operation:op:b1"],
+      filler: "thinking",
+    },
+    {
+      name: "a deploy it waits on: the operation's row",
+      now: { kind: "operation", operation: deploy },
+      live: ["operation:op:d1"],
+      filler: "thinking",
+    },
+    {
+      // Its line stands in the record where its first call returned; the
+      // follow-up it waits on is a line of its own (D2).
+      name: "a session's follow-up call: a row of its own, apart from the session's line",
+      now: {
+        kind: "operation",
+        operation: {
+          ...deploy,
+          key: "op:bs1",
+          kind: "bootstrap",
+          returnedAt: "2026-09-24T20:01:30.000Z",
+          openedAt: "2026-09-24T20:03:00.000Z",
+        },
+      },
+      live: ["operation:op:bs1#2026-09-24T20:03:00.000Z"],
+      filler: "thinking",
+    },
+    {
+      name: "a check in the browser: the row of takes it becomes",
+      now: { kind: "operation", operation: browser },
+      live: ["operation:op:b1"],
+      filler: "thinking",
+    },
+    {
+      name: "an approval: what it asks stands in the slot",
+      now: {
+        kind: "waiting",
+        on: "approval",
+        asked: [{ kind: "step", step: command("w1", "pnpm build") }],
+      },
+      live: ["step:w1"],
+      filler: "thinking",
+    },
+    {
+      name: "a question in its own words: the question waits in the slot",
+      now: { kind: "waiting", on: "answer", key: "question:q1" },
+      items: [question],
+      live: ["question:q1"],
+      filler: "thinking",
+    },
+    {
+      name: "an approval: what it waits on, in words",
+      now: { kind: "waiting", on: "approval" },
+      live: [],
+      filler: "waiting",
+    },
+    { name: "its answer on its way", now: null, answering: true, live: [], filler: "writing" },
+    { name: "condensing its context", now: null, compacting: true, live: [], filler: "condensing" },
+  ])("$name", ({ now, answering = false, compacting = false, items = [], live, filler }) => {
+    const model = slotModelOf({ now, answering, compacting, items });
+    expect(model.live.map((item) => item.key)).toEqual(live);
+    expect(model.filler.kind).toBe(filler);
+  });
+});
+
 // The now line, the card's foot, says what is happening in words (K10): the
 // step itself, never "Nova is working"; the face and the one clock beside it.
 describe("the now line", () => {
@@ -254,9 +384,22 @@ describe("the now line", () => {
       now: {
         kind: "step",
         step: command("w3", "pnpm lint"),
-        others: [command("w1", "pnpm build"), command("w2", "pnpm test")],
+        others: [
+          { kind: "step", step: command("w1", "pnpm build") },
+          { kind: "step", step: command("w2", "pnpm test") },
+        ],
       },
       words: "Running 3 commands",
+      face: { state: "working" },
+    },
+    {
+      name: "a command beside a deploy",
+      now: {
+        kind: "operation",
+        operation: deploy,
+        others: [{ kind: "step", step: command("w1", "pnpm build") }],
+      },
+      words: "Running 2 steps",
       face: { state: "working" },
     },
     {
@@ -408,6 +551,8 @@ describe("standsAtFoot", () => {
   it.each([
     { name: "at its foot", scrollTop: 560, foot: true },
     { name: "a pixel short of it", scrollTop: 559, foot: true },
+    { name: "its slack short of it", scrollTop: 560 - FOLLOW_SLACK_PX, foot: true },
+    { name: "past its slack", scrollTop: 559 - FOLLOW_SLACK_PX, foot: false },
     { name: "scrolled up a line", scrollTop: 520, foot: false },
     { name: "at its top", scrollTop: 0, foot: false },
   ])("$name: $foot", ({ scrollTop, foot }) => {
@@ -416,6 +561,294 @@ describe("standsAtFoot", () => {
 
   it("stands at its foot while nothing overflows", () => {
     expect(standsAtFoot({ scrollTop: 0, scrollHeight: 300, clientHeight: 300 })).toBe(true);
+  });
+});
+
+// While the run goes on its scroll follows its newest line: every arrival
+// keeps the foot in view. Only the person moving it up stops it — told by
+// the move itself, a pixel and a half or more from where it last stood,
+// whatever made it (a wheel, keys, a find, a drag-select, focus) — and only
+// the person moving it down onto its foot follows again; growth, a plop, a
+// resync, a re-measure, its own follow or the browser clamping it keeps it as
+// it was. Opening something in it stops it; closing the last thing they
+// opened follows again, if it followed then and they did not move it up since.
+describe("followAfter", () => {
+  const at = (follows: boolean, stood: number): RunScrollFollow => ({
+    follows,
+    stood,
+    opened: new Set(),
+    resumes: false,
+    reach: null,
+    foot: null,
+  });
+  const foot = { scrollTop: 560, scrollHeight: 1000, clientHeight: 440 };
+  const nearFoot = { ...foot, scrollTop: 560 - FOLLOW_SLACK_PX };
+  const up = { ...foot, scrollTop: 300 };
+  // An arrival grew it under where it stood: the foot moved on, it did not.
+  const grownUnder = { scrollTop: 560, scrollHeight: 1065, clientHeight: 440 };
+  // A row's travel ended, or the card grew taller: the browser clamped it
+  // onto the shorter foot.
+  const clamped = { scrollTop: 500, scrollHeight: 940, clientHeight: 440 };
+  // A card below its cap: it cannot scroll, so it always stands at its foot.
+  const belowCap = { scrollTop: 0, scrollHeight: 420, clientHeight: 420 };
+  it.each([
+    { name: "moved up, away from the foot", follows: true, stood: 560, position: up, after: false },
+    {
+      name: "moved up inside the slack",
+      follows: true,
+      stood: 560,
+      position: nearFoot,
+      after: false,
+    },
+    { name: "moved back to the foot", follows: false, stood: 300, position: foot, after: true },
+    { name: "moved back near it", follows: false, stood: 300, position: nearFoot, after: true },
+    { name: "moved down, still above", follows: false, stood: 120, position: up, after: false },
+    { name: "moved further up", follows: false, stood: 400, position: up, after: false },
+    { name: "an arrival under it", follows: true, stood: 560, position: grownUnder, after: true },
+    {
+      name: "its own follow, read late",
+      follows: true,
+      stood: 500,
+      position: grownUnder,
+      after: true,
+    },
+    {
+      name: "a clamp onto a shorter foot",
+      follows: true,
+      stood: 560,
+      position: clamped,
+      after: true,
+    },
+    { name: "moved down, while following", follows: true, stood: 120, position: up, after: true },
+    { name: "a sub-pixel settle", follows: true, stood: 300.4, position: up, after: true },
+    // Stopped, nothing but the person's move down brings it back.
+    { name: "stopped, read at its foot", follows: false, stood: 560, position: foot, after: false },
+    {
+      name: "stopped, grown under it",
+      follows: false,
+      stood: 560,
+      position: grownUnder,
+      after: false,
+    },
+    {
+      name: "stopped, clamped onto its foot",
+      follows: false,
+      stood: 560,
+      position: clamped,
+      after: false,
+    },
+    {
+      name: "stopped below its cap, re-read",
+      follows: false,
+      stood: 0,
+      position: belowCap,
+      after: false,
+    },
+    {
+      name: "following below its cap, re-read",
+      follows: true,
+      stood: 0,
+      position: belowCap,
+      after: true,
+    },
+  ])("$name: $after", ({ follows, stood, position, after }) => {
+    expect(followAfter(at(follows, stood), { kind: "scrolled", position }).follows).toBe(after);
+  });
+
+  it.each([
+    { name: "a move it heard", stood: 560, position: up, top: 300 },
+    { name: "a move down", stood: 120, position: up, top: 300 },
+    { name: "a clamp", stood: 560, position: clamped, top: 500 },
+    // Read again from where it stood, so a slow drag adds up to a move.
+    { name: "less than a pixel and a half up", stood: 301.4, position: up, top: 301.4 },
+  ])("stands where $name left it", ({ stood, position, top }) => {
+    expect(followAfter(at(true, stood), { kind: "scrolled", position }).stood).toBe(top);
+  });
+
+  it("creeping up a fraction of a pixel at a time stops following once it adds up", () => {
+    let state = at(true, 560);
+    for (const scrollTop of [559.6, 559.2, 558.8]) {
+      state = followAfter(state, { kind: "scrolled", position: { ...foot, scrollTop } });
+    }
+    expect(state.follows).toBe(true);
+    state = followAfter(state, { kind: "scrolled", position: { ...foot, scrollTop: 558.4 } });
+    expect(state.follows).toBe(false);
+  });
+
+  // Each line arriving moves its foot on and its own follow puts it there;
+  // the person dragging up between them still moved it up.
+  it("a slow drag up between arrivals stops following", () => {
+    let state = at(true, 560);
+    let height = 1000;
+    let top = 560;
+    for (let wrap = 0; wrap < 5; wrap += 1) {
+      top -= 3;
+      state = followAfter(state, {
+        kind: "scrolled",
+        position: { scrollTop: top, scrollHeight: height, clientHeight: 440 },
+      });
+      height += 20;
+      if (state.follows) {
+        top = height - 440;
+        state = followAfter(state, { kind: "set", top });
+      }
+    }
+    expect(state.follows).toBe(false);
+  });
+
+  it.each([
+    { follows: true, after: true },
+    { follows: false, after: false },
+  ])("its own move keeps it as it was ($follows)", ({ follows, after }) => {
+    expect(followAfter(at(follows, 0), { kind: "set", top: 460 })).toEqual(at(after, 460));
+  });
+
+  it("stops when the person opens something in it", () => {
+    expect(followAfter(at(true, 560), { kind: "opened", key: "a" }).follows).toBe(false);
+  });
+
+  // The person opened a call to read it, and closed it again: what they
+  // stopped it for is done.
+  // Each thing is counted once, by its own switch: a close of something they
+  // never opened (a command that opened itself in the slot, a switch that
+  // closes what was closed) is not theirs to count.
+  it.each([
+    { name: "closing what they opened at its foot", steps: ["open a", "close a"], after: true },
+    {
+      name: "closing the last of two",
+      steps: ["open a", "open b", "close a", "close b"],
+      after: true,
+    },
+    { name: "closing one of two", steps: ["open a", "open b", "close b"], after: false },
+    { name: "closing one twice", steps: ["open a", "open b", "close b", "close b"], after: false },
+    {
+      name: "closing one opened twice",
+      steps: ["open a", "open a", "open b", "close a"],
+      after: false,
+    },
+    { name: "closing what opened itself", steps: ["open a", "close b"], after: false },
+    {
+      name: "closing what they opened scrolled up",
+      steps: ["up", "open a", "close a"],
+      after: false,
+    },
+    { name: "closing it after moving up", steps: ["open a", "up", "close a"], after: false },
+    { name: "closing what was open before", steps: ["close a"], after: true },
+    { name: "closing, stopped, what was open before", steps: ["up", "close a"], after: false },
+    {
+      name: "closing it after moving up and back down",
+      steps: ["open a", "up", "down", "close a"],
+      after: true,
+    },
+    {
+      name: "closing what was opened before following again",
+      steps: ["open a", "up", "down", "open b", "close a"],
+      after: false,
+    },
+  ])("$name: follows $after", ({ steps, after }) => {
+    let state = at(true, 560);
+    for (const step of steps) {
+      if (step === "up") {
+        state = followAfter(state, { kind: "scrolled", position: up });
+      } else if (step === "down") {
+        state = followAfter(state, { kind: "scrolled", position: foot });
+      } else {
+        const [verb, key = ""] = step.split(" ");
+        state = followAfter(state, { kind: verb === "open" ? "opened" : "closed", key });
+      }
+    }
+    expect(state.follows).toBe(after);
+  });
+
+  // End, or a wheel run to the bottom, glides to the foot as it stood when
+  // the move began; a line arriving meanwhile moves the foot on under it.
+  describe("a move down to the foot while lines arrive", () => {
+    const read = (scrollTop: number, scrollHeight: number) => ({
+      kind: "scrolled" as const,
+      position: { scrollTop, scrollHeight, clientHeight: 440 },
+    });
+    it.each([
+      { name: "reaching the foot it set out for", to: 560, after: true },
+      { name: "its slack short of it", to: 560 - FOLLOW_SLACK_PX, after: true },
+      { name: "stopping short of it", to: 500, after: false },
+    ])("$name: follows $after", ({ to, after }) => {
+      let state = at(false, 0);
+      state = followAfter(state, read(200, 1000));
+      // A line arrives under it as it glides.
+      state = followAfter(state, read(400, 1035));
+      state = followAfter(state, read(to, 1035));
+      expect(state.follows).toBe(after);
+    });
+
+    // End pressed at a foot of 560; a line lands before the first read of
+    // the glide, which reads it grown already.
+    it("sets out for the foot it read last before the move", () => {
+      let state = at(false, 0);
+      state = followAfter(state, read(0, 1000));
+      state = followAfter(state, read(200, 1035));
+      state = followAfter(state, read(560, 1035));
+      expect(state.follows).toBe(true);
+    });
+
+    it("sets out anew once its move ends", () => {
+      let state = at(false, 0);
+      state = followAfter(state, read(200, 1000));
+      state = followAfter(state, { kind: "ended" });
+      state = followAfter(state, read(200, 1300));
+      state = followAfter(state, read(560, 1300));
+      expect(state.follows).toBe(false);
+    });
+
+    it("sets out anew once it moved up", () => {
+      let state = at(false, 0);
+      state = followAfter(state, read(300, 1000));
+      state = followAfter(state, read(100, 1300));
+      state = followAfter(state, read(560, 1300));
+      expect(state.follows).toBe(false);
+    });
+  });
+});
+
+// A row travelling into its place (a plop from the live slot, a rise) paints
+// past the lines' own foot for a moment; that is no content: the scroll's foot
+// and its fades are read from the lines as laid out.
+describe("laidOutPosition", () => {
+  it.each([
+    { name: "a plop under the foot", scrollHeight: 549, laidHeight: 511, laid: 511 },
+    { name: "nothing travelling", scrollHeight: 511, laidHeight: 511, laid: 511 },
+    { name: "a fractional box", scrollHeight: 511, laidHeight: 511.4, laid: 511 },
+  ])("$name: $laid", ({ scrollHeight, laidHeight, laid }) => {
+    expect(laidOutPosition({ scrollTop: 18, scrollHeight, clientHeight: 493, laidHeight })).toEqual(
+      { scrollTop: 18, scrollHeight: laid, clientHeight: 493 },
+    );
+  });
+});
+
+describe("footTop", () => {
+  it.each([
+    { name: "overflowing", scrollHeight: 1000, clientHeight: 440, top: 560 },
+    { name: "fitting", scrollHeight: 300, clientHeight: 440, top: 0 },
+  ])("$name: $top", ({ scrollHeight, clientHeight, top }) => {
+    expect(footTop({ scrollTop: 0, scrollHeight, clientHeight })).toBe(top);
+  });
+});
+
+// A fade at an edge says lines are cut past it, and nothing else does.
+describe("cutEdges", () => {
+  it.each([
+    { name: "at the foot", scrollTop: 560, scrollHeight: 1000, above: true, below: false },
+    { name: "at the top", scrollTop: 0, scrollHeight: 1000, above: false, below: true },
+    { name: "between", scrollTop: 300, scrollHeight: 1000, above: true, below: true },
+    {
+      name: "a pixel short of the foot",
+      scrollTop: 559,
+      scrollHeight: 1000,
+      above: true,
+      below: false,
+    },
+    { name: "fitting", scrollTop: 0, scrollHeight: 440, above: false, below: false },
+  ])("$name", ({ scrollTop, scrollHeight, above, below }) => {
+    expect(cutEdges({ scrollTop, scrollHeight, clientHeight: 440 })).toEqual({ above, below });
   });
 });
 

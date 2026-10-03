@@ -144,6 +144,17 @@ describe("MateFace", () => {
     expect(html).toContain("size-3.5");
   });
 
+  // Waking — a Mate on its way up (`matePose`) — draws asleep's closed eyes; only its state, and
+  // the stylesheet's breath for it, tell the two apart.
+  it("shuts its eyes waking as asleep, and says it is waking", () => {
+    const html = renderToStaticMarkup(<MateFace size="sm" state="waking" tint="sky" />);
+    const face = parts(html);
+    const asleep = parts(renderToStaticMarkup(<MateFace size="sm" state="sleep" tint="sky" />));
+    expect(face.shut.map((line) => line.opacity)).toEqual(["1", "1"]);
+    expect(face.eyes).toEqual(asleep.eyes);
+    expect(html).toContain('data-mate-face-state="waking"');
+  });
+
   // A face greets an arrival while it is on screen: a run done after work or
   // a question, a question raised — never marking a Mate unread (idle to done),
   // never a state it already held.

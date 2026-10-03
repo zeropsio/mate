@@ -168,6 +168,30 @@ export type AttachmentClaimPlan =
     }
   | { readonly ok: false; readonly reason: string };
 
+/**
+ * The upload an id names, when a message may claim it: only a pending upload
+ * (its id is the sender's to hold), never an attachment another message stored.
+ */
+export function pendingUploadOf(input: {
+  readonly attachmentsDir: string;
+  readonly attachmentId: string;
+}):
+  | { readonly ok: true; readonly currentPath: string }
+  | { readonly ok: false; readonly reason: string } {
+  const segment = parseThreadSegmentFromAttachmentId(input.attachmentId);
+  if (!parseAttachmentUuid(input.attachmentId) || !segment) {
+    return { ok: false, reason: "invalid attachment id" };
+  }
+  if (segment !== PENDING_ATTACHMENT_THREAD_SEGMENT) {
+    return { ok: false, reason: "attachment must be a pending upload" };
+  }
+  const currentPath = resolveAttachmentPathById(input);
+  if (!currentPath) {
+    return { ok: false, reason: "attachment not found (removed or expired)" };
+  }
+  return { ok: true, currentPath };
+}
+
 export function planAttachmentClaim(input: {
   readonly attachmentsDir: string;
   readonly threadId: string;
@@ -182,17 +206,9 @@ export function planAttachmentClaim(input: {
   if (!toSafeThreadAttachmentSegment(input.threadId)) {
     return { ok: false, reason: "invalid thread id" };
   }
-  if (requestedSegment !== PENDING_ATTACHMENT_THREAD_SEGMENT) {
-    return { ok: false, reason: "attachment must be a pending upload" };
-  }
-
-  const currentPath = resolveAttachmentPathById({
-    attachmentsDir: input.attachmentsDir,
-    attachmentId: input.attachmentId,
-  });
-  if (!currentPath) {
-    return { ok: false, reason: "attachment not found (removed or expired)" };
-  }
+  const pending = pendingUploadOf(input);
+  if (!pending.ok) return pending;
+  const { currentPath } = pending;
   const fileExtension = parseAttachmentFileExtension(input.attachmentId) ?? undefined;
   const finalId = createAttachmentId(input.threadId, fileExtension);
   if (!finalId) {

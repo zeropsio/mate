@@ -521,6 +521,7 @@
       "status": "inProgress",
       "title": "Tool call",
       "detail": "ToolSearch: {}",
+      "responseId": "msg_011CeWiUZRvtK86asHxy2qwU",
       "data": {
         "toolName": "ToolSearch",
         "input": {}
@@ -886,6 +887,7 @@
       "status": "inProgress",
       "title": "MCP tool call",
       "detail": "mcp__zerops__zerops_workflow: {}",
+      "responseId": "msg_011CeWiUjGGgFEubXDRoafne",
       "data": {
         "toolName": "mcp__zerops__zerops_workflow",
         "input": {}
@@ -1235,6 +1237,7 @@
       "status": "inProgress",
       "title": "MCP tool call",
       "detail": "mcp__zerops__zerops_mount: {}",
+      "responseId": "msg_011CeWiUqCxU6JnFJNLpj5rU",
       "data": {
         "toolName": "mcp__zerops__zerops_mount",
         "input": {}

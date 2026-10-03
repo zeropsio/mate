@@ -49,6 +49,7 @@ export type StopComing =
 
 /** Where a stage's first deploy stands while it runs nothing. */
 export type FirstDeploy =
+  | { readonly kind: "setting-up"; readonly step: "project" | "database" | "app" }
   /** HQ has none queued or under way: nothing to promise. */
   | { readonly kind: "awaited" }
   /** HQ has it queued or deploying, its record changed within the window. */
@@ -62,7 +63,7 @@ export type FirstDeploy =
    * A build of it was seen to end with nothing running (`Deployment.afterBuild`), or HQ says its
    * build failed.
    */
-  | { readonly kind: "failed" };
+  | { readonly kind: "failed"; readonly reason?: string | undefined };
 
 /**
  * How long after its project was made an environment may still be coming up. The owner's stage
@@ -87,7 +88,9 @@ export function firstDeploy(input: {
   readonly keyGap: boolean;
   readonly nowMs: number;
 }): FirstDeploy {
-  if (input.deploys.some(({ failure }) => failure === "job")) return { kind: "failed" };
+  const failed = input.deploys.find(({ failure }) => failure === "job");
+  if (failed !== undefined)
+    return { kind: "failed", ...(failed.message == null ? {} : { reason: failed.message }) };
   if (input.keyGap) return { kind: "held", why: "key" };
   const recent = input.deploys.filter(
     ({ at }) => input.nowMs - Date.parse(at) < COMING_UP_WINDOW_MS,
@@ -125,6 +128,9 @@ const coming = (step: ComingStep): StopComing => ({ kind: "coming", step });
 
 const AWAITED: FirstDeploy = { kind: "awaited" };
 
+/** A project the platform is still making; any other status but ACTIVE is no step of coming up. */
+const MAKING_PROJECT = "CREATING";
+
 /** A runtime the platform is still making: its container, then the import's no-code deploy. */
 const MAKING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
 
@@ -147,13 +153,7 @@ export function stopComing(input: {
   readonly createdAt: string | undefined;
   readonly nowMs: number;
   /** Its services as the platform lists them; `undefined` while unread. */
-  readonly services:
-    | ReadonlyArray<{
-        readonly hostname: string;
-        readonly status: string;
-        readonly runtime: boolean;
-      }>
-    | undefined;
+  readonly services: ReadonlyArray<PlatformService> | undefined;
   /** A deploy runs on it (`deployBuilding`). */
   readonly building: boolean;
   /** It has run a deploy (`stopDeployed`); `undefined` while that is not known. */
@@ -164,13 +164,13 @@ export function stopComing(input: {
   readonly firstDeploy: FirstDeploy | undefined;
 }): StopComing | undefined {
   if (input.pending) return coming("project");
-  if (input.projectStatus === "STOPPED") return undefined;
-  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") {
-    return coming("project");
-  }
   const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
   if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
-  if (input.services === undefined) return coming("project");
+  if (input.projectStatus === MAKING_PROJECT) return coming("project");
+  // Stopped, being deleted, or a status nobody named: not a step of its coming up.
+  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return undefined;
+  // Its services unread (a reload): nothing is said until they are, never "making the project".
+  if (input.services === undefined) return undefined;
   const runtimes = input.services.filter((service) => service.runtime);
   const others = input.services.filter((service) => !service.runtime);
   const running = (status: string) => status === "ACTIVE";
@@ -193,13 +193,18 @@ export function stopComing(input: {
       : { kind: "failed", reason: `the ${broken.hostname}’s build failed` };
   }
   if (input.building) return coming("build");
-  // The import's own deploy carries no code: the app being added, never a build.
+  // The import's own deploy carries no code: the app being added, never a build — and a stage
+  // listing no runtime yet is still having it added (run 5: "awaits the runner" at +696 s, while
+  // the import ran until +710 s).
+  if (runtimes.length === 0 && deployed !== true) return coming("app");
   if (runtimes.some(({ status }) => MAKING.has(status))) return coming("app");
   if (deployed !== true) {
     if (input.tier === "production") return undefined;
     // What runs there not known yet: the neutral wait, never a claim about its deploy.
     const first = deployed === false ? (input.firstDeploy ?? { kind: "awaited" }) : AWAITED;
     switch (first.kind) {
+      case "setting-up":
+        return coming(first.step);
       case "awaited":
         return coming("awaiting-deploy");
       case "on-its-way":
@@ -212,6 +217,43 @@ export function stopComing(input: {
   }
   if (runtimes.some(({ status }) => !running(status))) return coming("build");
   if (input.routes === 0) return coming("address");
+  return undefined;
+}
+
+/** One service of an environment, as the platform lists it (`summarizeEnvironmentServices`). */
+export interface PlatformService {
+  readonly hostname: string;
+  readonly status: string;
+  readonly runtime: boolean;
+}
+
+/**
+ * Where an environment's own import has got, from what the platform says of it alone — the
+ * coming-up steps that come before any word about its first deploy, in {@link stopComing}'s order:
+ * its project being made (CREATING), a database not running yet, its app being added (none listed
+ * yet, or being made). `undefined` once the import is done, where something failed, its project
+ * is stopped or being deleted, its services are unread under an active project (a reload), or its
+ * window went by. A surface that cannot read the platform's steps still keeps their order by it:
+ * the projects page's cell says nothing of a first deploy, or of the runner, before this is done.
+ */
+export function stopImport(input: {
+  readonly projectStatus: string | undefined;
+  readonly createdAt: string | undefined;
+  readonly nowMs: number;
+  /** Its services as the platform lists them; `undefined` while unread. */
+  readonly services: ReadonlyArray<PlatformService> | undefined;
+}): "project" | "database" | "app" | undefined {
+  const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
+  if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
+  if (input.projectStatus === MAKING_PROJECT) return "project";
+  if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return undefined;
+  if (input.services === undefined) return undefined;
+  if (input.services.some(({ status }) => failing(status))) return undefined;
+  const runtimes = input.services.filter((service) => service.runtime);
+  if (input.services.some((service) => !service.runtime && service.status !== "ACTIVE")) {
+    return "database";
+  }
+  if (runtimes.length === 0 || runtimes.some(({ status }) => MAKING.has(status))) return "app";
   return undefined;
 }
 
@@ -284,12 +326,23 @@ export function comingLine(
 }
 
 /**
- * The tone a stage's first deploy line wears beside its dot: busy while on its way, failed where it
- * failed, off while it waits.
+ * The tone a stage's first deploy line wears beside its dot: busy while on its way or being set up,
+ * failed where it failed, off while it waits.
  */
 export function firstDeployTone(first: FirstDeploy | undefined): "busy" | "failed" | "off" {
-  return first?.kind === "on-its-way" ? "busy" : first?.kind === "failed" ? "failed" : "off";
+  switch (first?.kind) {
+    case "on-its-way":
+    case "setting-up":
+      return "busy";
+    case "failed":
+      return "failed";
+    default:
+      return "off";
+  }
 }
+
+/** A stage's line while its creation, or its own import, is under way. */
+export const STAGE_SETTING_UP = "Setting up a stage…";
 
 /** A stage whose first build was seen to end with nothing running. */
 export const FIRST_DEPLOY_FAILED = "First deploy failed";
@@ -315,6 +368,8 @@ export function firstDeployLine(first: FirstDeploy | undefined): string | undefi
       return first.why === "key" ? FIRST_DEPLOY_AWAITS_KEY : FIRST_DEPLOY_ZEROPS_RETRYING;
     case "failed":
       return FIRST_DEPLOY_FAILED;
+    case "setting-up":
+      return STAGE_SETTING_UP;
     default:
       return undefined;
   }

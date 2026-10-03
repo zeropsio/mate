@@ -66,6 +66,40 @@ describe("attachmentUploadBlockReason", () => {
   });
 });
 
+describe("attachmentUploadBlockReason with files", () => {
+  const uploading = { status: "uploading", environmentId, progress: 0 } as const;
+  const failed = { status: "failed", environmentId, reason: "Upload failed" } as const;
+  it.each([
+    ["a file uploading", ["image-1"], ["file-1"], { "file-1": uploading }, "File still uploading"],
+    ["files uploading", [], ["file-1", "file-2"], {}, "Files still uploading"],
+    [
+      "a file and a picture uploading",
+      ["image-1"],
+      ["file-1"],
+      { "image-1": uploading, "file-1": uploading },
+      "Attachments still uploading",
+    ],
+    ["a failed file", [], ["file-1"], { "file-1": failed }, "Retry or remove the failed file"],
+    [
+      "a failed file and a failed picture",
+      ["image-1"],
+      ["file-1"],
+      { "image-1": failed, "file-1": failed },
+      "Retry or remove the failed attachments",
+    ],
+  ])("%s", (_label, imageIds, fileIds, uploads, expected) => {
+    const ready = { status: "ready", environmentId, attachmentId: "x" } as const;
+    expect(
+      attachmentUploadBlockReason({
+        imageIds,
+        fileIds,
+        environmentId,
+        uploadsByImageId: { "image-1": ready, ...uploads },
+      }),
+    ).toBe(expected);
+  });
+});
+
 describe("formatAttachmentUploadProgress", () => {
   it("formats bounded whole percentages", () => {
     expect(formatAttachmentUploadProgress(0.429)).toBe("42%");

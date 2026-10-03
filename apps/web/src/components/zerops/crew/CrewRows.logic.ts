@@ -19,6 +19,7 @@
  * Pure: the thread's facts are handed in (`CrewRowThread`), read by the one
  * status resolver where the tab draws.
  */
+import { matePose } from "@t3tools/client-runtime/zerops";
 import {
   CREW_CARRY_ON_MESSAGE,
   CREW_CHECKING_ITS_WORK,
@@ -551,7 +552,7 @@ export function crewRowModel(input: {
     servedHost === undefined ? null : crewServedWord(servedHost, snapshot.crewmates, mateName);
 
   // The face: at work while it works; asking while it needs you — happy while all it has is
-  // finished work to review; else its thread's own.
+  // finished work to review; waking while its copy is made (`matePose`); else its thread's own.
   const finished = asked.length > 0 && asked.every((entry) => entry.kind === "ready-to-land");
   const pose: MateMarkState = thread.working
     ? "working"
@@ -559,9 +560,9 @@ export function crewRowModel(input: {
       ? finished && !plan
         ? "done"
         : "needs"
-      : thread.face === "sleep"
-        ? "idle"
-        : thread.face;
+      : matePose(thread.face === "sleep" ? "idle" : thread.face, {
+          life: readying ? "coming" : "up",
+        });
 
   return {
     handle: mate.handle,

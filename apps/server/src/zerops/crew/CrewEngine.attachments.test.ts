@@ -1,0 +1,130 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import { assert, describe, it } from "@effect/vitest";
+import type { ChatAttachment } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+
+import {
+  createAttachmentId,
+  createPendingAttachmentId,
+  parseThreadSegmentFromAttachmentId,
+  resolveAttachmentPath,
+  toSafeThreadAttachmentSegment,
+} from "../../attachmentStore.ts";
+import {
+  eventually,
+  withCrewEngine,
+  writeCrewHome,
+  type CrewWorld,
+} from "./testing/crewEngineFixture.ts";
+import { command, dispatchedOf, everyCopyReady, latest } from "./testing/crewEngineSteps.ts";
+
+/** A crew of a lead and a writer, applied. */
+const withLead = (world: CrewWorld) =>
+  Effect.gen(function* () {
+    writeCrewHome(world.workspace, {
+      "crew.yaml": [
+        "name: Game team",
+        "briefTitle: Space shooter",
+        "members:",
+        "  - handle: lead",
+        "    displayName: Lead",
+        "    kind: lead",
+        "  - handle: backend",
+        "    displayName: Backend",
+        "    host: appdev",
+        "",
+      ].join("\n"),
+      "jobs/lead.md": "Plan the work.\n",
+    });
+    yield* command({ _tag: "apply" });
+    yield* eventually(Effect.map(latest, everyCopyReady));
+  });
+
+const attachmentsDir = (world: CrewWorld) => NodePath.join(world.workspace, "attachments");
+
+/** A file stored under `id`, as an upload or a sent message stores it. */
+const storedFile = (world: CrewWorld, id: string, bytes = "spec"): ChatAttachment => {
+  const attachment: ChatAttachment = {
+    type: "file",
+    id,
+    name: "spec.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: Buffer.byteLength(bytes),
+  };
+  const path = resolveAttachmentPath({ attachmentsDir: attachmentsDir(world), attachment })!;
+  NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
+  NodeFS.writeFileSync(path, bytes);
+  return attachment;
+};
+
+const leadTurns = (world: CrewWorld) =>
+  Effect.gen(function* () {
+    const creates = yield* dispatchedOf(world, "thread.crew.create");
+    const lead = creates.find((entry) => entry.crew.crewmate === "lead")?.threadId;
+    const turns = yield* dispatchedOf(world, "thread.turn.start");
+    return turns.filter((turn) => turn.threadId === lead);
+  });
+
+describe("a crew message's attachments", () => {
+  it.live(
+    "are claimed as a thread message's: stored in the crewmate's thread, there after the upload goes",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          const upload = storedFile(world, createPendingAttachmentId(".pdf"));
+          yield* command({
+            _tag: "message",
+            handle: "lead",
+            text: "Read [File 1]",
+            attachments: [upload],
+          });
+          const turn = (yield* leadTurns(world)).at(-1)!;
+          const sent = turn.message.attachments[0]!;
+          // The client lets its upload go once the send succeeded.
+          NodeFS.rmSync(
+            resolveAttachmentPath({ attachmentsDir: attachmentsDir(world), attachment: upload })!,
+          );
+          const stored = resolveAttachmentPath({
+            attachmentsDir: attachmentsDir(world),
+            attachment: sent,
+          })!;
+          assert.deepStrictEqual(
+            [
+              sent.id === upload.id,
+              parseThreadSegmentFromAttachmentId(sent.id),
+              NodeFS.readFileSync(stored, "utf8"),
+            ],
+            [false, toSafeThreadAttachmentSegment(turn.threadId), "spec"],
+          );
+        }),
+      ),
+  );
+
+  it.live("are refused when one names another thread's stored attachment", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* withLead(world);
+        const theirs = storedFile(world, createAttachmentId("someone-elses-thread", ".pdf")!);
+        const before = (yield* leadTurns(world)).length;
+        const refused = yield* command({
+          _tag: "message",
+          handle: "lead",
+          text: "Read [File 1]",
+          attachments: [theirs],
+        }).pipe(Effect.flip);
+        assert.deepStrictEqual(
+          [
+            refused._tag,
+            refused.detail?.includes("pending upload") ?? false,
+            (yield* leadTurns(world)).length,
+          ],
+          ["CrewCommandError", true, before],
+        );
+      }),
+    ),
+  );
+});

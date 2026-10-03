@@ -7,7 +7,7 @@
  * (`frontend-legacy` `trlog.utils.ts`) and its build-log query
  * (`pipeline-detail.feature.ts` `buildLogParams$`: `serviceStackId` = the
  * build container's own service, `tags=zbuilder@<appVersionId>`,
- * `from` = `pipelineStart − 5s`).
+ * `from` = `pipelineStart − 5s`, the backfill's only).
  *
  * Live-verified against the log backend (2026-09-03, from a container, a
  * real project's access URL): the access URL's own query already carries
@@ -27,6 +27,8 @@
  * `decodeBuildLogItems` reads either, for both the HTTP body and a stream
  * frame (identical top-level `{items:[…]}` shape).
  */
+
+import type { PipelineStepStatus } from "./pipelineState.ts";
 
 export interface BuildLogQuery {
   readonly buildServiceStackId: string;
@@ -68,20 +70,38 @@ export function buildLogUrls(
   const wsUrl = new URL(httpUrl.toString());
   wsUrl.protocol = "wss:";
   wsUrl.pathname = `${wsUrl.pathname}/stream`;
-  // The live stream is not paginated the same way as the backfill — always
-  // `limit=100`, independent of whatever backfill page size was asked for.
+  // The stream is asked for as the GUI asks for it (`trlog.store.ts`
+  // `_openLogStream$`): always `limit=100` and `desc=0`, and a `from` only
+  // as a line's id (`withStreamFrom`), never the backfill's time — a stream
+  // opened with `from=<time>` stood through a whole build and answered no
+  // line (live run, 2026-10-03).
   wsUrl.searchParams.set("limit", String(STREAM_LIMIT));
+  wsUrl.searchParams.set("desc", "0");
+  wsUrl.searchParams.delete("from");
 
   // The HTTP backfill wants the newest `limit` lines: the GUI's default
   // tail params always send `desc=1` (trlog.store.ts's `_toStateApiParams`)
   // and zcp's own log fetcher sets it unconditionally (logfetcher.go) —
   // without it, a log over `limit` lines backfills the OLDEST `limit`
   // lines instead. `mergeBuildLogLines` re-sorts ascending regardless of
-  // what order the backend answers in. Set after cloning `wsUrl` — the
-  // GUI's live-stream request never carries `desc`, so it stays off `ws`.
+  // what order the backend answers in.
   httpUrl.searchParams.set("desc", "1");
 
   return { http: httpUrl.toString(), ws: wsUrl.toString() };
+}
+
+/**
+ * The build's stream url as the GUI opens it (`trlog.store.ts`
+ * `_openLogStream$`), which also names the project the log belongs to.
+ */
+export function buildLogStreamUrl(
+  access: { readonly url: string },
+  query: BuildLogQuery,
+  projectId: string,
+): string {
+  const url = new URL(buildLogUrls(access, query).ws);
+  url.searchParams.set("projectId", projectId);
+  return url.toString();
 }
 
 /**
@@ -430,4 +450,21 @@ export function foldBuildLogLines(
     });
   }
   return runs.map(({ id, text, severity, count }) => ({ id, text, severity, count }));
+}
+
+/**
+ * Whether a running build's room says it waits for the build's first line —
+ * only while that is what the client knows: the pipeline's build step itself
+ * runs (not the container before it, not the deploy after it), the log's
+ * stream is open and has stood a moment (`live`: the session publishes it
+ * after the handshake and a settle, or with its first frame's lines), and no
+ * line has come. A build step that ended with no line received says nothing:
+ * the stream may have missed what the build wrote.
+ */
+export function buildLogWaitsForFirstLine(input: {
+  readonly buildStep: PipelineStepStatus | undefined;
+  readonly status: "idle" | "loading" | "live" | "ended" | "error";
+  readonly lineCount: number;
+}): boolean {
+  return input.buildStep === "running" && input.status === "live" && input.lineCount === 0;
 }

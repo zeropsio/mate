@@ -129,6 +129,11 @@ class FakeTransport implements BuildLogTransport {
     this.followers[index]?.request.callbacks.onLines(lines, rejectedItems);
   }
 
+  /** The stream's handshake is done: the backend answered the socket's open. */
+  handshake(index: number): void {
+    this.followers[index]?.request.callbacks.onOpen();
+  }
+
   closeFromServer(index: number): void {
     this.followers[index]?.request.callbacks.onClose();
   }
@@ -171,8 +176,8 @@ function harness(
 }
 
 describe("shared build log registry", () => {
-  it("keys by the full ProjectRef and filter, shares ref-counted sessions, and disposes on last release", async () => {
-    const { registry, transport } = harness();
+  it("keys by the full ProjectRef and filter, shares ref-counted sessions, and disposes a grace after the last release", async () => {
+    const { registry, transport, timers } = harness();
     transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
     const first = registry.acquire(project(), QUERY, { follow: true });
     const second = registry.acquire(project(), { ...QUERY }, { follow: true });
@@ -205,9 +210,13 @@ describe("shared build log registry", () => {
     expect(transport.followers[0]?.closed).toBe(false);
     second.release();
     expect(transport.followers[0]?.closed).toBe(true);
+    expect(registry.diagnostics().activeSessions).toBe(3);
+    timers.flushOne();
     expect(registry.diagnostics().activeSessions).toBe(2);
     otherProjectLease.release();
     otherFilterLease.release();
+    timers.flushOne();
+    timers.flushOne();
     expect(registry.diagnostics().activeSessions).toBe(0);
 
     expect(buildLogSessionKeyOf(project(), QUERY)).not.toBe(
@@ -240,6 +249,105 @@ describe("shared build log registry", () => {
     expect(passive.session.getSnapshot().status).toBe("ended");
     passive.release();
     follower.release();
+  });
+
+  // A running build's room says it waits for the first line only once its
+  // stream is known to stand: not while the socket only exists (a stream that
+  // never handshook said "waiting" through a whole build), and not in the
+  // moment between the handshake and the first frame, which replays the lines
+  // written since the backfill (they would flash the words, then replace them).
+  it.each([
+    {
+      name: "the socket exists, no handshake",
+      handshake: false,
+      frame: false,
+      settle: false,
+      status: "loading",
+      lines: [],
+    },
+    {
+      name: "handshake, not yet a moment",
+      handshake: true,
+      frame: false,
+      settle: false,
+      status: "loading",
+      lines: [],
+    },
+    {
+      name: "handshake, then a moment with no frame",
+      handshake: true,
+      frame: false,
+      settle: true,
+      status: "live",
+      lines: [],
+    },
+    {
+      name: "handshake, then a frame with lines",
+      handshake: true,
+      frame: true,
+      settle: false,
+      status: "live",
+      lines: ["l2"],
+    },
+  ] as const)("a followed build's stream is live: $name", async (row) => {
+    const { registry, transport, timers } = harness();
+    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const published: Array<{ status: string; lines: number }> = [];
+    lease.session.subscribe(() => {
+      const snapshot = lease.session.getSnapshot();
+      published.push({ status: snapshot.status, lines: snapshot.lines.length });
+    });
+    await registry.drain();
+    expect(transport.followRequests).toHaveLength(1);
+
+    if (row.handshake) transport.handshake(0);
+    if (row.frame) {
+      transport.emit(0, [line("l2")]);
+      timers.flushOne();
+    }
+    if (row.settle) timers.flushOne();
+
+    const snapshot = lease.session.getSnapshot();
+    expect(snapshot.status).toBe(row.status);
+    expect(snapshot.lines.map(({ id }) => id)).toEqual(row.lines);
+    // Never a live stream without its lines while the frame carrying them is on its way.
+    if (row.frame) expect(published).not.toContainEqual({ status: "live", lines: 0 });
+    lease.release();
+  });
+
+  // A stream that stops being followed before its handshake has ended too.
+  it("a stream let go before its handshake ends", async () => {
+    const { registry, transport } = harness();
+    const lease = registry.acquire(project(), QUERY, { follow: true });
+    await registry.drain();
+    lease.setFollow(false);
+    expect(transport.followers[0]?.closed).toBe(true);
+    expect(lease.session.getSnapshot().status).toBe("ended");
+    lease.release();
+  });
+
+  // A card that draws a build's log hands it to the next one drawn for it (a
+  // row that plops from the live slot into the history): the build is not
+  // read twice, and nothing is followed while nobody holds it.
+  it.each([
+    { name: "acquired again within the grace", wait: false, pages: 1, same: true },
+    { name: "acquired again after the grace", wait: true, pages: 2, same: false },
+  ])("a build's released log, $name", async ({ wait, pages, same }) => {
+    const { registry, transport, timers } = harness();
+    transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
+    const first = registry.acquire(project(), QUERY, { follow: true });
+    await registry.drain();
+    first.release();
+    expect(transport.followers[0]?.closed).toBe(true);
+    if (wait) timers.flushOne();
+    const next = registry.acquire(project(), QUERY);
+    await registry.drain();
+    expect(transport.pageRequests).toHaveLength(pages);
+    expect(next.session === first.session).toBe(same);
+    expect(next.session.getSnapshot().lines.map(({ id }) => id)).toEqual(same ? ["l1"] : []);
+    next.release();
+    timers.flushOne();
+    expect(registry.diagnostics().activeSessions).toBe(0);
   });
 
   it("retries a rejected grant without retaining its error and reacquires successfully", async () => {
@@ -358,8 +466,8 @@ describe("shared build log registry", () => {
     expect(() => registry.acquire(project(), QUERY)).toThrow(BuildLogRegistryError);
   });
 
-  it("aborts pending transport work when the final lease releases", async () => {
-    const { registry, transport } = harness();
+  it("aborts pending transport work a grace after the final lease releases", async () => {
+    const { registry, transport, timers } = harness();
     const latePage = deferred<BuildLogTransportPage>();
     transport.pages.push(latePage.promise);
     const first = registry.acquire(project(), QUERY, { follow: true });
@@ -369,6 +477,8 @@ describe("shared build log registry", () => {
     first.release();
     expect(signal?.aborted).toBe(false);
     second.release();
+    expect(signal?.aborted).toBe(false);
+    timers.flushOne();
     expect(signal?.aborted).toBe(true);
     expect(registry.diagnostics()).toEqual({ activeSessions: 0, leases: 0, closed: false });
 
@@ -395,6 +505,29 @@ describe("shared build log registry", () => {
     expect(lease.session.getSnapshot().lines).toEqual([]);
     expect(JSON.stringify(lease.session.getSnapshot())).not.toContain("signature");
     expect(transport.followers[0]?.closeCalls).toBe(1);
+  });
+
+  // A log kept only for its grace never holds a seat another build asks for:
+  // at capacity it closes at once, and the one asked for opens (pass 36).
+  it.each([
+    { name: "one only kept for its grace gives way", held: false, opens: true },
+    { name: "one still held does not", held: true, opens: false },
+  ])("at capacity, a build's log asked for: $name", async ({ held, opens }) => {
+    const { registry, transport } = harness(undefined, { activeLogSessionsPerAccount: 1 });
+    transport.pages.push({ lines: [], rejectedItems: 0 }, { lines: [], rejectedItems: 0 });
+    const first = registry.acquire(project(), QUERY);
+    await registry.drain();
+    if (!held) first.release();
+    const other = { ...QUERY, appVersionId: "version-2" };
+    if (!opens) {
+      expect(() => registry.acquire(project(), other)).toThrow(BuildLogRegistryError);
+      return;
+    }
+    const next = registry.acquire(project(), other);
+    await registry.drain();
+    expect(next.session === first.session).toBe(false);
+    expect(registry.diagnostics()).toMatchObject({ activeSessions: 1, leases: 1 });
+    expect(transport.pageRequests).toHaveLength(2);
   });
 
   it("rejects foreign accounts and session over-capacity with sanitized errors", async () => {

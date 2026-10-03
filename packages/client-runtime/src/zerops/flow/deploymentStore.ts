@@ -37,6 +37,7 @@ import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retry
 import {
   afterBuilds,
   buildNames,
+  buildsListed,
   heldThroughRecheck,
   stopServices,
   unnamedVersions,
@@ -141,7 +142,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       ports.nowMs(),
     );
     // A build seen to end with nothing running is the first deploy failing; no listing keeps it.
-    const after = afterBuilds(entry.built, next, ports.nowMs());
+    const after = afterBuilds(entry.built, next, ports.nowMs(), buildsListed(processes));
     entry.built = after.built;
     // A grace running: read the stop again as it ends, so a failure shows without a push.
     entry.disarmGrace();

@@ -1,16 +1,24 @@
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import type {
+  PipelineReadout,
+  PipelineSpokenState,
+} from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   importLines,
   lineSegments,
-  opensTo,
+  detailLines,
+  liveOperationBar,
+  observedLinesOf,
   operationLineWord,
   operationSubject,
   processReasons,
   settledOperationBar,
   settledOperationWords,
+  showsCardInSlot,
+  slotOpenDeployLine,
 } from "./operationBar.logic";
 
 type Step = ZeropsOperation["steps"][number];
@@ -237,19 +245,246 @@ describe("settledOperationBar — a settled operation's bar carries what it foun
   });
 });
 
-describe("opensTo — a row offers to open only when opening adds something", () => {
+describe("detailLines — how much an operation opens to", () => {
   it.each([
     {
-      name: "a failed stand-up with no services yet and its reason whole on its line",
+      name: "a deploy with no steps, no log and no version yet",
+      overrides: { kind: "deploy" as const },
       lines: 0,
-      reasonCut: false,
-      opens: false,
     },
-    { name: "the same, its reason cut short on its line", lines: 0, reasonCut: true, opens: true },
-    { name: "a stand-up with its services' lines", lines: 3, reasonCut: false, opens: true },
-    { name: "an import with nothing to list", lines: 0, reasonCut: false, opens: false },
-    { name: "a kind that opens to its own card", lines: null, reasonCut: false, opens: true },
-  ])("$name", ({ lines, reasonCut, opens }) => {
-    expect(opensTo({ lines, reasonCut })).toBe(opens);
+    {
+      name: "a deploy with its pipeline's steps",
+      overrides: {
+        kind: "deploy" as const,
+        steps: [step("Build", "done"), step("Deploy", "running")],
+      },
+      lines: 2,
+    },
+    {
+      name: "a deploy whose version names the pipeline and log it reads",
+      overrides: { kind: "deploy" as const, version: { id: "v-1", name: "v0.1.2" } },
+      lines: 1,
+    },
+    {
+      name: "a failure with its reason",
+      overrides: {
+        kind: "deploy" as const,
+        phase: "failed" as const,
+        explanation: { reason: "Build failed" },
+      },
+      lines: 1,
+    },
+    { name: "an import: its services", overrides: { steps: [step("db", "done")] }, lines: 1 },
+  ])("$name", ({ overrides, lines }) => {
+    expect(detailLines(operation(overrides as Partial<ZeropsOperation>), null)).toBe(lines);
+  });
+});
+
+/** A deploy's pipeline as the card reads it off the platform: a step per id, in its state. */
+function pipeline(
+  states: ReadonlyArray<PipelineSpokenState>,
+  calculating = false,
+): PipelineReadout {
+  const ids = [
+    ["INIT_BUILD_CONTAINER", "Build container"],
+    ["RUN_BUILD_COMMANDS", "Build"],
+    ["INIT_PREPARE_CONTAINER", "Prepare container"],
+    ["RUN_PREPARE_COMMANDS", "Prepare runtime"],
+    ["DEPLOY", "Deploy"],
+  ] as const;
+  const steps = states.map((state, index) => ({
+    id: ids[index]![0],
+    label: ids[index]![1],
+    state,
+    sentence: `${ids[index]![1]} ${state}`,
+  }));
+  const current = steps.find((one) => one.state === "running" || one.state === "failed");
+  return {
+    status: { tone: "running", word: "Running" },
+    calculating,
+    ...(current === undefined ? {} : { currentStepId: current.id }),
+    steps: calculating ? [] : steps,
+  };
+}
+
+const LOG = { log: "the build log" };
+
+// The card of an operation the platform runs reads it off the account
+// store: its pipeline's steps and its build log are there before the call
+// returns, so they are what it opens to (pass 36: "the running builds,
+// their logs ... seem to be completely gone").
+describe("detailLines — what the card read of the platform counts", () => {
+  const deploy = (overrides: Partial<ZeropsOperation> = {}) =>
+    operation({ kind: "deploy", phase: "running", subject: "appdev", ...overrides });
+  it.each([
+    {
+      name: "a running deploy whose pipeline is read: its steps",
+      op: deploy(),
+      observed: { steps: [], chips: [], pipeline: pipeline(["finished", "running", "waiting"]) },
+      lines: 3,
+    },
+    {
+      name: "and its build log",
+      op: deploy(),
+      observed: {
+        steps: [],
+        chips: [],
+        pipeline: pipeline(["finished", "running", "waiting"]),
+        ...LOG,
+      },
+      lines: 4,
+    },
+    {
+      name: "a pipeline still calculating its steps: the steps the call reserved",
+      op: deploy({ steps: [step("Build", "queued"), step("Deploy", "queued")] }),
+      observed: { steps: [], chips: [], pipeline: pipeline([], true) },
+      lines: 2,
+    },
+    {
+      name: "a subdomain's observed steps and the processes beside it",
+      op: deploy({ kind: "subdomain" }),
+      observed: { steps: [step("Enable", "running")], chips: [step("Restart", "done")] },
+      lines: 2,
+    },
+    {
+      name: "nothing read yet: what the call says",
+      op: deploy({ steps: [step("Build", "queued")] }),
+      observed: undefined,
+      lines: 1,
+    },
+  ])("$name", ({ op, observed, lines }) => {
+    expect(detailLines(op, null, observedLinesOf(observed))).toBe(lines);
+  });
+});
+
+describe("liveOperationBar — a running deploy's bar reads its pipeline", () => {
+  const running = operation({
+    kind: "deploy",
+    phase: "running",
+    steps: [step("Build", "queued"), step("Deploy", "queued")],
+  });
+  it.each([
+    {
+      name: "the call's reserved steps while nothing is read",
+      read: undefined,
+      tones: ["waiting", "waiting"],
+      word: null,
+    },
+    {
+      name: "a segment per pipeline step, the step it is on in words",
+      read: pipeline(["finished", "running", "waiting", "waiting", "waiting"]),
+      tones: ["done", "running", "waiting", "waiting", "waiting"],
+      word: "Build",
+    },
+    {
+      name: "a step activating runs",
+      read: pipeline(["finished", "finished", "finished", "finished", "activating"]),
+      tones: ["done", "done", "done", "done", "running"],
+      word: "Deploy",
+    },
+    {
+      name: "a step that failed says it failed",
+      read: pipeline(["finished", "failed", "waiting", "waiting", "waiting"]),
+      tones: ["done", "failed", "waiting", "waiting", "waiting"],
+      word: "Build failed",
+    },
+    {
+      name: "a pipeline working out its steps says so",
+      read: pipeline([], true),
+      tones: ["waiting", "waiting"],
+      word: "Calculating steps",
+    },
+  ])("$name", ({ read, tones, word }) => {
+    const bar = liveOperationBar(running, read);
+    expect(bar.segments.map((segment) => segment.tone)).toEqual(tones);
+    expect(bar.word).toBe(word);
+  });
+});
+
+describe("showsCardInSlot — the live slot opens an operation onto what it read", () => {
+  const read = { steps: [], chips: [], pipeline: pipeline(["running"]) };
+  it.each([
+    { name: "a running deploy whose pipeline is read", observed: read, open: true },
+    {
+      name: "a running deploy with only its log so far",
+      observed: { steps: [], chips: [], ...LOG },
+      open: true,
+    },
+    {
+      name: "a running deploy nothing is read of yet: its line says it all",
+      observed: undefined,
+      open: false,
+    },
+    {
+      name: "a pipeline still calculating: nothing new to show",
+      observed: { steps: [], chips: [], pipeline: pipeline([], true) },
+      open: false,
+    },
+    {
+      name: "only the processes beside it: its line says it",
+      observed: { steps: [], chips: [step("Restart", "done")] },
+      open: false,
+    },
+  ] as const)("$name", ({ observed, open }) => {
+    expect(showsCardInSlot(observedLinesOf(observed))).toBe(open);
+  });
+});
+
+// Three deploys running at once in the live slot would outgrow its room: the
+// newest running one stands open on its card, the others stay a line each.
+describe("slotOpenDeployLine — the one deploy that stands open in the live slot", () => {
+  const deploy = (key: string, overrides: Partial<ZeropsOperation> = {}) => ({
+    key: `operation:${key}`,
+    operation: operation({ key, kind: "deploy", phase: "running", subject: key, ...overrides }),
+  });
+  it.each([
+    { name: "none in the slot", lines: [], open: null },
+    { name: "the one running", lines: [deploy("d1")], open: "operation:d1" },
+    {
+      name: "the newest of those running",
+      lines: [deploy("d1"), deploy("d2"), deploy("d3")],
+      open: "operation:d3",
+    },
+    {
+      name: "the newest running, not one that ended after it",
+      lines: [deploy("d1"), deploy("d2", { phase: "done" })],
+      open: "operation:d1",
+    },
+    {
+      name: "none running: the newest, as it ended there",
+      lines: [deploy("d1", { phase: "done" }), deploy("d2", { phase: "failed" })],
+      open: "operation:d2",
+    },
+    { name: "never another kind", lines: [deploy("s1", { kind: "subdomain" })], open: null },
+    {
+      name: "a batch: one line, like any call",
+      lines: [deploy("b1", { batch: true, subject: "apidev, webdev" })],
+      open: "operation:b1",
+    },
+    {
+      name: "the one standing open, ended before an older one: until it plops",
+      lines: [deploy("d1"), deploy("d2", { phase: "done" })],
+      held: "operation:d2",
+      open: "operation:d2",
+    },
+    {
+      name: "the one standing open, still running: gives way to a newer one running",
+      lines: [deploy("d1"), deploy("d2")],
+      held: "operation:d1",
+      open: "operation:d2",
+    },
+    {
+      name: "the one standing open plopped: the newest running",
+      lines: [deploy("d1")],
+      held: "operation:d2",
+      open: "operation:d1",
+    },
+  ] as ReadonlyArray<{
+    name: string;
+    lines: ReadonlyArray<ReturnType<typeof deploy>>;
+    held?: string;
+    open: string | null;
+  }>)("$name", ({ lines, held, open }) => {
+    expect(slotOpenDeployLine(lines, held ?? null)).toBe(open);
   });
 });

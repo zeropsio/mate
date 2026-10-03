@@ -26,6 +26,7 @@
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import { isSlashCommand } from "@t3tools/shared/userAsk";
 
 import { pullRequestBlocked } from "./gitTab.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
@@ -233,6 +234,17 @@ export function agentTurnNotes(
   });
 }
 
+/**
+ * The notes a message carries: none on a slash command, which the agent runs
+ * only when it stands first. A Mate keeps them off a command itself; an older
+ * one would put them in front of it, and tell them again with the next message.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function agentNotesFor(text: string, notes: ReadonlyArray<string>): ReadonlyArray<string> {
+  return isSlashCommand(text) ? [] : notes;
+}
+
 type ChangeLabelOf = Pick<FlowPullRequest, "repository" | "number" | "title" | "mateProjectId">;
 
 /**
@@ -247,6 +259,38 @@ export function changeNamesRepository(
   return among.some(
     (entry) => entry.mateProjectId === pull.mateProjectId && entry.repository !== pull.repository,
   );
+}
+
+/**
+ * When the agent last spoke in a turn that told it something — the `since`
+ * of `agentTurnNotes`, read from the conversation's messages.
+ *
+ * A slash command's turn carries no notes (the server keeps them off it, or
+ * the agent would not run the command), so its reply is not the agent hearing
+ * them: what landed before it is still news for the next message. Where every
+ * reply so far answered a command, the first one bounds the notes, so what
+ * landed after it is still told.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function agentLastSpokeAt(
+  messages: ReadonlyArray<{
+    readonly role: string;
+    readonly text: string;
+    readonly createdAt: string;
+  }>,
+): string | undefined {
+  let answersCommand = false;
+  let spokeAt: string | undefined;
+  let firstSpokeAt: string | undefined;
+  for (const message of messages) {
+    if (message.role === "user") answersCommand = isSlashCommand(message.text);
+    else if (message.role === "assistant") {
+      firstSpokeAt ??= message.createdAt;
+      if (!answersCommand) spokeAt = message.createdAt;
+    }
+  }
+  return spokeAt ?? firstSpokeAt;
 }
 
 /**

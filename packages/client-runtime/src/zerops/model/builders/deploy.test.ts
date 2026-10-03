@@ -320,6 +320,24 @@ describe("buildDeployFields — zerops_deploy_batch, one entry per service", () 
     expect(buildDeployFields(call, CONTEXT).batch).toBe(expected);
   });
 
+  // A settled batch is read by the versions its entries named, never guessed
+  // by time and service (pass 36).
+  it.each([
+    { name: "none while it runs", result: undefined, ids: undefined },
+    {
+      name: "each entry's that named one",
+      result: {
+        entries: [
+          entry("apistage", { status: "DEPLOYED", appVersionId: "av-a1" }),
+          entry("webstage", undefined, "ssh: connection refused"),
+        ],
+      },
+      ids: ["av-a1"],
+    },
+  ])("names the app versions its entries named: $name", ({ result, ids }) => {
+    expect(buildDeployFields(batchCall(result), CONTEXT).appVersionIds).toEqual(ids);
+  });
+
   it("explains the first failed target with its own reason and log", () => {
     const fields = buildDeployFields(
       batchCall({

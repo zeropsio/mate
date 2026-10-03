@@ -22,6 +22,7 @@ vi.mock("react", async (importOriginal) => {
   const { reactHookHarness } = await import("../../test/reactHookHarness");
   return {
     ...actual,
+    useEffect: reactHookHarness.useEffect,
     useRef: reactHookHarness.useRef,
     useState: reactHookHarness.useState,
   };
@@ -117,34 +118,62 @@ describe("observationTargetFor — building the ObservationTarget from an operat
     expect(target?.hostnames).toEqual(["weatherdash", "mariadb"]);
   });
 
-  it("a settled operation carries running: false", () => {
-    const target = observationTargetFor(operation({ phase: "done" }));
+  it("a settled deploy its result named carries running: false and those ids", () => {
+    const target = observationTargetFor(
+      operation({ phase: "done", version: { id: "av-1", name: "abc123" } }),
+    );
     expect(target?.running).toBe(false);
+    expect(target?.exact).toEqual({ appVersionId: "av-1" });
   });
 
+  // A settled operation is read only by the ids its result named, and only a
+  // deploy: a guess by time and service took a later deploy's pipeline (pass 36).
   it.each([
-    { name: "nothing named yet", fields: {}, exact: undefined },
-    {
-      name: "the version a deploy shipped",
-      fields: { version: { id: "av-1", name: "abc123" } },
-      exact: { appVersionId: "av-1" },
-    },
-    {
-      name: "a version name alone pins nothing",
-      fields: { version: { name: "abc123" } },
-      exact: undefined,
-    },
-    {
-      name: "the processes an import started",
-      fields: { kind: "import" as const, processIds: ["p-1", "p-2"] },
-      exact: { processIds: ["p-1", "p-2"] },
-    },
-  ])("the result's own ids pin the observation: $name", ({ fields, exact }) => {
-    expect(observationTargetFor(operation({ phase: "done", ...fields }))?.exact).toEqual(exact);
+    { name: "a deploy that named nothing", fields: {} },
+    { name: "a deploy that named only its version's name", fields: { version: { name: "abc" } } },
+    { name: "a failed deploy that named nothing", fields: { phase: "failed" as const } },
+    { name: "an import, named or not", fields: { kind: "import" as const, processIds: ["p-1"] } },
+    { name: "a subdomain toggle", fields: { kind: "subdomain" as const, processIds: ["p-1"] } },
+    { name: "a scale", fields: { kind: "scale" as const } },
+  ])("a settled one with no read: $name", ({ fields }) => {
+    expect(observationTargetFor(operation({ phase: "done", ...fields }))).toBeNull();
   });
 
-  it("a batch deploy has no target: its per-target rows stand from birth to settle", () => {
-    expect(observationTargetFor(operation({ batch: true, subject: "api, web" }))).toBeNull();
+  it("a running one is read by its services, whatever its result named", () => {
+    expect(
+      observationTargetFor(operation({ kind: "import", processIds: ["p-1", "p-2"] }))?.exact,
+    ).toEqual({ processIds: ["p-1", "p-2"] });
+  });
+
+  // A batch's card follows the service the platform says is building; once
+  // settled it is read by the versions its entries named, or not at all.
+  it.each([
+    {
+      name: "running: by all its services",
+      fields: {},
+      target: { hostnames: ["api", "web"], batch: true, running: true },
+    },
+    {
+      name: "settled, its entries' versions named: by those",
+      fields: { phase: "done" as const, appVersionIds: ["av-a", "av-w"] },
+      target: { batch: true, running: false, exact: { appVersionIds: ["av-a", "av-w"] } },
+    },
+    { name: "settled, none named: not read", fields: { phase: "done" as const }, target: null },
+  ])("a batch deploy $name", ({ fields, target }) => {
+    const batch = operation({
+      batch: true,
+      subject: "api, web",
+      steps: ["api", "web"].map((host) => ({
+        id: host,
+        label: host,
+        state: "running" as const,
+        stateLabel: "Running",
+      })),
+      ...fields,
+    });
+    const built = observationTargetFor(batch);
+    if (target === null) expect(built).toBeNull();
+    else expect(built).toMatchObject(target);
   });
 
   it("a non-observed kind (verify) has no target at all", () => {
@@ -470,6 +499,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     const state: ObservationState = { kind: "off", reason: "ceiling" };
     const history = observation({
       pipeline: BUILDING,
+      outcome: "finished",
       buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
     });
     const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
@@ -479,12 +509,30 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
   });
 
+  // A read from mid-run that nobody reads on is never drawn as live under the
+  // verdict: its steps leave, what it named of the build stays (pass 36).
+  it.each([
+    { name: "the read stopped", state: { kind: "off", reason: "ceiling" } as const },
+    {
+      name: "the read is stale",
+      state: { kind: "stale", observation: observation(), ageMs: 20_000 } as const,
+    },
+  ])("settled, a remembered mid-run read: $name", ({ state }) => {
+    const history = observation({
+      pipeline: BUILDING,
+      buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+    });
+    const region = deriveObservedStepsRegion("deploy", "done", state, history, NOW);
+    expect(region?.pipeline).toBeUndefined();
+    expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
+  });
+
   it("settled operation, no history at all: undefined", () => {
     const state: ObservationState = { kind: "off", reason: "ceiling" };
     expect(deriveObservedStepsRegion("import", "failed", state, undefined, NOW)).toBeUndefined();
   });
 
-  it("a settled operation prefers its history over a live state that might still be computing", () => {
+  it("a settled operation still being read draws the newest read", () => {
     const state: ObservationState = {
       kind: "observing",
       observation: observation({ pipeline: { appVersion: { status: "DEPLOYING" } } }),
@@ -492,7 +540,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     };
     const history = observation({ pipeline: BUILDING });
     const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
-    expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("RUN_BUILD_COMMANDS");
+    expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("DEPLOY");
   });
 });
 
@@ -650,12 +698,12 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
     ]);
   });
 
-  it("a settled deploy keeps the readout it last saw", () => {
+  it("a settled deploy keeps the readout it last saw once its outcome was read", () => {
     const region = deriveObservedStepsRegion(
       "deploy",
       "done",
       { kind: "off", reason: "ceiling" },
-      observation({ pipeline: BUILDING }),
+      observation({ pipeline: BUILDING, outcome: "failed" }),
       NOW,
       SERVICE,
     );
@@ -810,10 +858,11 @@ describe("useOperationCard — the whole build log opens in a dialog, only when 
     pipeline: BUILDING,
     buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
   });
-  const observed = (status: string) => ({
+  const LINE = { id: "l1", at: "2026-09-01T00:00:10.000Z", text: "> npm ci", severity: 6 };
+  const observed = (status: string, lines: ReadonlyArray<typeof LINE> = [LINE]) => ({
     state: { kind: "off", reason: "stale-timeout" },
-    history,
-    buildLog: { status, lines: [] },
+    history: { ...history, outcome: "finished" },
+    buildLog: { status, lines },
   });
   const logOf = (region: ReturnType<typeof useOperationCard>) =>
     region.observed?.log as { props: { open: boolean; onToggle: () => void } } | undefined;
@@ -830,6 +879,44 @@ describe("useOperationCard — the whole build log opens in a dialog, only when 
     hooks.beginRender();
     const region = useOperationCard(operation({ phase }), ENVIRONMENT_ID);
     expect(logOf(region)?.props.open).toBe(false);
+  });
+
+  // The log stands as soon as the card knows the build — a running one's
+  // newest lines' room, a settled one's way to it — so the card's height is
+  // final as it opens and as it lands (pass 36).
+  it.each([
+    {
+      name: "a running build that wrote nothing yet",
+      phase: "running" as const,
+      lines: 0,
+      log: true,
+    },
+    { name: "a running build's lines", phase: "running" as const, lines: 1, log: true },
+    {
+      name: "a settled build before its lines are read",
+      phase: "done" as const,
+      lines: 0,
+      log: true,
+    },
+  ])("the way to the log: $name", ({ phase, lines, log }) => {
+    observationSpy.mockReturnValueOnce(observed("idle", lines === 0 ? [] : [LINE]));
+    hooks.beginRender();
+    expect(logOf(useOperationCard(operation({ phase }), ENVIRONMENT_ID)) !== undefined).toBe(log);
+  });
+
+  // The person opened it: whoever holds its open state (its line, through a
+  // plop) keeps it open, and closing it reaches them.
+  it("holds it open where its caller keeps it", () => {
+    observationSpy.mockReturnValueOnce(observed("live"));
+    const kept: boolean[] = [];
+    hooks.beginRender();
+    const region = useOperationCard(operation({ phase: "done" }), ENVIRONMENT_ID, [
+      true,
+      (open) => kept.push(open),
+    ]);
+    expect(logOf(region)?.props.open).toBe(true);
+    logOf(region)?.props.onToggle();
+    expect(kept).toEqual([false]);
   });
 
   it("opens it when asked", () => {

@@ -1243,7 +1243,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           `;
         }
         // The relay holds a step for every one of them: only a running turn's shell says it.
-        liveSteps.observe(row.id, { type: "turn-started", at: "2026-09-29T08:00:00.000Z" });
+        liveSteps.observe(row.id, {
+          type: "turn-started",
+          at: "2026-09-29T08:00:00.000Z",
+          byTiming: false,
+        });
         liveSteps.observe(row.id, { type: "writing", at: "2026-09-29T08:00:04.000Z" });
       }
 

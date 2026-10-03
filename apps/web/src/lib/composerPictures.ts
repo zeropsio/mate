@@ -10,6 +10,7 @@
  */
 import {
   escapePictureWords,
+  fileLabel,
   pictureBlockText,
   readsAsPictureNote,
 } from "@t3tools/shared/composerPictures";
@@ -22,6 +23,12 @@ import type { ChatAttachment } from "../types";
  * matched to their own lists by order, so they cannot share one.
  */
 export const INLINE_PICTURE_PLACEHOLDER = "￻";
+
+/**
+ * A file's place (`./composerFiles`), defined here beside the picture's so a
+ * row knows both without the two modules reaching into each other.
+ */
+export const INLINE_FILE_PLACEHOLDER = "\uFFFA";
 
 export interface PictureRect {
   readonly x: number;
@@ -84,19 +91,53 @@ export function countInlinePicturePlaceholders(prompt: string): number {
   return count;
 }
 
+/** Whether a character of the prompt is the place of a picture or a file: what a row is made of. */
+export function isAttachmentPlaceholder(char: string | undefined): boolean {
+  return char === INLINE_PICTURE_PLACEHOLDER || char === INLINE_FILE_PLACEHOLDER;
+}
+
+/**
+ * A picture or file put in at the caret, on a row with the ones written right
+ * next to it: on the empty line under a row it joins that row, and a line
+ * break follows it unless one already does, so the caret goes on below the
+ * row, never beside it.
+ */
+export function insertAttachmentPlaceholder(
+  prompt: string,
+  cursorInput: number,
+  placeholder: string,
+): { prompt: string; cursor: number; at: number } {
+  const cursor = Math.max(0, Math.min(prompt.length, Math.floor(cursorInput)));
+  const onEmptyLineUnderRow =
+    prompt[cursor - 1] === "\n" &&
+    isAttachmentPlaceholder(prompt[cursor - 2]) &&
+    (cursor === prompt.length || prompt[cursor] === "\n");
+  const at = onEmptyLineUnderRow ? cursor - 1 : cursor;
+  const rest = prompt.slice(at);
+  return {
+    prompt: `${prompt.slice(0, at)}${placeholder}${rest.startsWith("\n") ? "" : "\n"}${rest}`,
+    cursor: at + 2,
+    at,
+  };
+}
+
 /** A picture pasted at the caret: its place in the prompt and its index among the pictures. */
 export function insertInlinePicturePlaceholder(
   prompt: string,
   cursorInput: number,
 ): { prompt: string; cursor: number; pictureIndex: number } {
-  const cursor = Math.max(0, Math.min(prompt.length, Math.floor(cursorInput)));
+  const insertion = insertAttachmentPlaceholder(prompt, cursorInput, INLINE_PICTURE_PLACEHOLDER);
   return {
-    prompt: `${prompt.slice(0, cursor)}${INLINE_PICTURE_PLACEHOLDER}${prompt.slice(cursor)}`,
-    cursor: cursor + 1,
-    pictureIndex: countInlinePicturePlaceholders(prompt.slice(0, cursor)),
+    prompt: insertion.prompt,
+    cursor: insertion.cursor,
+    pictureIndex: countInlinePicturePlaceholders(prompt.slice(0, insertion.at)),
   };
 }
 
+/**
+ * A picture's place taken out; alone on its line, the line goes with it, so
+ * removing what was just pasted leaves the words as they were.
+ */
 export function removeInlinePicturePlaceholder(
   prompt: string,
   pictureIndex: number,
@@ -105,7 +146,11 @@ export function removeInlinePicturePlaceholder(
   for (let index = 0; index < prompt.length; index += 1) {
     if (prompt[index] !== INLINE_PICTURE_PLACEHOLDER) continue;
     if (seen === pictureIndex) {
-      return { prompt: prompt.slice(0, index) + prompt.slice(index + 1), cursor: index };
+      const alone = (index === 0 || prompt[index - 1] === "\n") && prompt[index + 1] === "\n";
+      return {
+        prompt: prompt.slice(0, index) + prompt.slice(index + (alone ? 2 : 1)),
+        cursor: index,
+      };
     }
     seen += 1;
   }
@@ -188,43 +233,56 @@ export function stripInlinePicturePlaceholders(prompt: string): string {
 }
 
 /**
- * The prompt with each picture's place written out as its label and notes on
- * lines of their own, numbered in the order the pictures sit. A place without
- * a picture says nothing. Terminal-context places are left for their own
- * materializer. The person's own words never read as a picture's lines.
+ * The prompt with each picture's place written out as its label and notes, and
+ * each file's as its label, on lines of their own: pictures numbered in the
+ * order they sit, files in theirs. A place without a picture or a file says
+ * nothing. Terminal-context places are left for their own materializer. The
+ * person's own words never read as a picture's or a file's lines.
  */
 export function materializePicturePrompt(
   prompt: string,
   images: ReadonlyArray<{ readonly picture?: Pick<ComposerPicture, "marks"> | undefined }>,
+  files: ReadonlyArray<unknown> = [],
 ): string {
   const placed = ensureInlinePicturePlaceholders(prompt, images.length);
-  if (countInlinePicturePlaceholders(placed) === 0) return placed;
+  if (countInlinePicturePlaceholders(placed) === 0 && !placed.includes(INLINE_FILE_PLACEHOLDER)) {
+    return placed;
+  }
   const parts: string[] = [];
   let words = "";
-  let placeIndex = 0;
-  let pictureNumber = 0;
+  let pictureIndex = 0;
+  let fileIndex = 0;
+  let blocks = 0;
   let afterNotes = false;
   const flush = (text: string) => {
     if (text.trim().length === 0) return;
     if (afterNotes && readsAsPictureNote(text)) parts.push("");
     parts.push(escapePictureWords(text));
   };
-  for (const char of placed) {
-    if (char !== INLINE_PICTURE_PLACEHOLDER) {
-      words += char;
-      continue;
-    }
-    const image = images[placeIndex];
-    placeIndex += 1;
-    if (!image) continue;
-    flush(pictureNumber === 0 && parts.length === 0 ? words.replace(/\s+$/u, "") : trimBoth(words));
+  const place = (block: string, notes: boolean) => {
+    flush(blocks === 0 && parts.length === 0 ? words.replace(/\s+$/u, "") : trimBoth(words));
     words = "";
-    pictureNumber += 1;
-    const notes = image.picture?.marks.map((mark) => mark.note) ?? [];
-    parts.push(pictureBlockText(pictureNumber, notes));
-    afterNotes = notes.length > 0;
+    blocks += 1;
+    parts.push(block);
+    afterNotes = notes;
+  };
+  for (const char of placed) {
+    if (char === INLINE_PICTURE_PLACEHOLDER) {
+      const image = images[pictureIndex];
+      pictureIndex += 1;
+      if (!image) continue;
+      const notes = image.picture?.marks.map((mark) => mark.note) ?? [];
+      place(pictureBlockText(pictureIndex, notes), notes.length > 0);
+    } else if (char === INLINE_FILE_PLACEHOLDER) {
+      const file = files[fileIndex];
+      fileIndex += 1;
+      if (file === undefined) continue;
+      place(fileLabel(fileIndex), false);
+    } else {
+      words += char;
+    }
   }
-  flush(pictureNumber === 0 ? words : words.replace(/^\s+/u, ""));
+  flush(blocks === 0 ? words : words.replace(/^\s+/u, ""));
   return parts.join("\n");
 }
 

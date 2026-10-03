@@ -59,6 +59,8 @@ export interface ZeropsCall {
   readonly agentInternal: boolean;
   /** A stand-up call's progress as its Mate relays it (`standupProgress.ts`); absent from an older Mate. */
   readonly standUpProgress?: StandUpProgress;
+  /** The model response it was written in; absent where the provider names none. */
+  readonly responseId?: string;
 }
 
 export type ZeropsOperationKind =
@@ -262,6 +264,22 @@ export interface ZeropsOperation {
   readonly anchorAt: string;
   readonly anchorActivityId: string;
   readonly settledAt?: string;
+  /**
+   * When its call returned — a session's latest call — absent while the Mate
+   * waits on it. A stand-up's call returns while its builds run on: the
+   * operation still runs, but the Mate is no longer waiting on it.
+   */
+  readonly returnedAt?: string;
+  /**
+   * When the call the Mate waits on now started — a session's open follow-up
+   * call, not its founder's — absent while it waits on none.
+   */
+  readonly openedAt?: string;
+  /**
+   * The model response of its call the Mate waits on, else of the call that
+   * started it; absent where the provider names none.
+   */
+  readonly responseId?: string;
   readonly turnId: string | null;
   /** Hostname / project / session target. */
   readonly subject: string;
@@ -293,6 +311,8 @@ export interface ZeropsOperation {
   readonly version?: ZeropsOperationVersion;
   /** `import` only: the platform processes the result says it started — exact attribution keys. */
   readonly processIds?: ReadonlyArray<string>;
+  /** A batch `deploy` only: the app versions its entries' results named — exact attribution keys. */
+  readonly appVersionIds?: ReadonlyArray<string>;
   /** A failed or timed-out card's reason and log tail. */
   readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. Absent when the result carried none, or the provider dropped the image content block. */

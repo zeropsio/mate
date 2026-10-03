@@ -372,6 +372,18 @@ export const ItemLifecyclePayload = Schema.Struct({
    */
   agentId: Schema.optional(TrimmedNonEmptyStringSchema),
   parentToolUseId: Schema.optional(TrimmedNonEmptyStringSchema),
+  /**
+   * The model response a call was written in, on its start: the calls of one
+   * response are one batch, and a call from a newer response tells that the
+   * older calls returned. Absent where a provider names no response.
+   */
+  responseId: Schema.optional(TrimmedNonEmptyStringSchema),
+  /**
+   * On a completion: the call never returned — the turn ended with it still
+   * open, and its end closed it. Clients read it as no result, never as a
+   * call that came back.
+   */
+  unreturned: Schema.optional(Schema.Boolean),
 });
 export type ItemLifecyclePayload = typeof ItemLifecyclePayload.Type;
 

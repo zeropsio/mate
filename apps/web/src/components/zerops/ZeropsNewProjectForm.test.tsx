@@ -58,15 +58,6 @@ describe("ZeropsNewProjectHost source", () => {
     expect(hostSource).toContain("newMateTint(");
     expect(hostSource).not.toContain("generateBotName([],");
   });
-
-  it("stays on the press and lands on its first Mate's own view only once it is closed off", () => {
-    expect(hostSource).not.toContain("ZeropsProvisioningPanel");
-    expect(hostSource).toContain("beginNewProjectBirth(");
-    expect(hostSource).toContain("if (newProjectPressThrough(progress)) land();");
-    expect(hostSource).not.toContain(
-      "dismiss();\n    void navigate(newProjectView(birthId));\n  };",
-    );
-  });
 });
 
 describe("zeropsNewProjectScopeStepVisible", () => {

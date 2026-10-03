@@ -10,8 +10,11 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
+import { beginPress, forgetPress } from "~/zerops/matePress";
+import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
-import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 
 const ENV_QUINN = EnvironmentId.make("env-quinn");
 
@@ -76,6 +79,7 @@ const app = vi.hoisted(() => ({
   told: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
   creations: {} as Record<string, unknown>,
   processes: [] as Array<unknown>,
+  birthProgress: false,
 }));
 vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
 
@@ -129,12 +133,25 @@ vi.mock("~/zerops/zeropsDataContext", () => ({
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
 }));
-vi.mock("~/zerops/useZeropsBirthProgress", () => ({ useZeropsBirthProgress: () => null }));
+// Off unless a test reads how far a birth has got: then the real derivation, at a fixed clock.
+vi.mock("~/zerops/useZeropsBirthProgress", async () => {
+  const { deriveBirthFacts } = await import("~/zerops/birthFacts");
+  const { deriveBirthProgress } = await import("@t3tools/client-runtime/zerops/birthProgress");
+  return {
+    useZeropsBirthProgress: (input: Parameters<typeof deriveBirthFacts>[0] | null) =>
+      !app.birthProgress || input === null
+        ? null
+        : {
+            progress: deriveBirthProgress(deriveBirthFacts({ ...input, processes: [] }), 0),
+            nowMs: 0,
+          },
+  };
+});
 vi.mock("~/zerops/useMateSetup", () => ({ useMateSetup: () => undefined }));
 vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));
-vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0 }));
+vi.mock("~/zerops/useNowMs", () => ({ useSecondsNowMs: () => 0, useNowMs: () => Date.now() }));
 // A slow first connect lists its project's processes; none are read here.
 vi.mock("~/zerops/activity/useProjectActivity", () => ({
   useProjectActivity: () => ({ processes: app.processes }),
@@ -162,8 +179,11 @@ vi.mock("./ZeropsMateEmptyState", () => ({
 }));
 vi.mock("../chat/ConversationStrip", () => ({
   // What the header's line says after the Mate's name: what it is on.
-  ConversationStripView: ({ mate }: { readonly mate: { readonly tooltip: string | null } }) =>
-    h("span", null, mate.tooltip),
+  ConversationStripView: ({
+    mate,
+  }: {
+    readonly mate: { readonly tooltip: string | null; readonly face: string };
+  }) => h("span", { "data-header-face": mate.face }, mate.tooltip),
 }));
 vi.mock("../chat/ChatHeader", () => ({ ZeropsProjectLink: () => null }));
 vi.mock("../chat/PanelLayoutControls", () => ({ PanelLayoutControls: () => null }));
@@ -228,6 +248,7 @@ beforeEach(() => {
   app.told = undefined;
   app.creations = {};
   app.processes = [];
+  app.birthProgress = false;
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -540,7 +561,9 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
   } as unknown as ZeropsCandidate;
   const QUINN_MADE = {
     projectId: PROJECT,
-    groupId: "beviro",
+    appId: "beviro",
+    intent: null,
+    hq: { projectId: "hq", address: "https://hq.example" },
     groupName: "Beviro",
     botName: "Quinn",
     face: { tint: "sky", shape: "pick" },
@@ -553,6 +576,18 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("coming");
     expect(said()).not.toContain("Reconnecting");
     expect(composer()).toHaveLength(0);
+  });
+
+  // One pose wherever its face shows (`matePose`): the header wears the stage's, waking.
+  it("wears its waking face in the header while it comes up", () => {
+    app.creations = { [PROJECT]: QUINN_MADE };
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    openView();
+    const faces =
+      tree?.root
+        .findAll((node) => node.type === "span" && node.props["data-header-face"] !== undefined)
+        .map((node) => node.props["data-header-face"]) ?? [];
+    expect(faces).toEqual(["waking"]);
   });
 
   it.each([
@@ -807,5 +842,279 @@ describe("ComingBelow — a Mate half made", () => {
     expect(said).not.toContain("139:30");
     expect(said).not.toContain("about 2 min");
     expect(said).toContain("Stopped");
+  });
+});
+
+// Run 6's second review: a registration refused read as an owner's, with no reason and nothing to
+// finish it. It says what is not done and why, with this person's Finish setup, while it comes up.
+describe("ComingBelow — a registration not finished while it comes up", () => {
+  const COMING = { kind: "coming", line: "Coming up." } as const;
+  const progress = {
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press: [
+      { id: "closed-off", label: "Closed off", state: "done" },
+      {
+        id: "registered",
+        label: "Not registered",
+        state: "unfinished",
+        why: "Its grant timed out.",
+      },
+    ],
+  } as const;
+  const render = (onFinishSetup: (() => void) | undefined) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: COMING,
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
+        }),
+      );
+    });
+    return rendered!;
+  };
+  const text = (rendered: ReactTestRenderer) =>
+    rendered.root
+      .findAll((node) => node.props["data-press-note"] !== undefined)
+      .map((node) => node.children.join(""));
+
+  it("says what is not done and why, under the steps, with Finish setup at once", () => {
+    let finished = 0;
+    const rendered = render(() => {
+      finished += 1;
+    });
+    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
+    const button = rendered.root.findByType("button");
+    expect(button.children).toEqual(["Finish setup"]);
+    act(() => button.props.onClick());
+    expect(finished).toBe(1);
+  });
+
+  it("still says why to someone who cannot finish it", () => {
+    const rendered = render(undefined);
+    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
+    expect(rendered.root.findAllByType("button")).toHaveLength(0);
+  });
+});
+
+// Run 6's second review: a stop's whole reason lived in a hover tooltip on a span that took no
+// focus — on a phone, or by keyboard, it could not be read. Its step keeps one line; the reason is
+// read whole under the steps, over Try again.
+describe("ComingBelow — a stop's reason, whole, under the steps", () => {
+  const REASON =
+    "The organization has reached its limit of projects; remove one or ask an owner for room.";
+  const progress = {
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press: [
+      { id: "created", label: "Created", state: "failed", why: REASON },
+      { id: "container", label: "Container", state: "waiting" },
+    ],
+  } as const;
+  const render = (coming: Parameters<typeof ComingBelow>[0]["coming"]) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming,
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          onTryAgain: () => undefined,
+        }),
+      );
+    });
+    return rendered!;
+  };
+  const notes = (rendered: ReactTestRenderer) =>
+    rendered.root
+      .findAll((node) => node.props["data-press-note"] !== undefined)
+      .map((node) => node.children.join(""));
+
+  it("reads it whole over Try again, with no hover", () => {
+    const rendered = render({ kind: "failed", line: REASON, verb: "try-again" });
+    expect(notes(rendered)).toEqual([REASON]);
+    expect(rendered.root.findAllByType("button").map((button) => button.children)).toEqual([
+      ["Try again"],
+    ]);
+  });
+
+  it("leaves it to the sentence where Zerops may have made it", () => {
+    const rendered = render({ kind: "failed", line: REASON, verb: "go-to-projects" });
+    expect(notes(rendered)).toEqual([]);
+  });
+
+  // Run 6's second review: a create Zerops may have made had no way to end but the projects.
+  it("lets one Zerops may have made be dismissed beside the way to the projects, never started over", () => {
+    let dismissed = 0;
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: { kind: "failed", line: REASON, verb: "go-to-projects" },
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          ends: {
+            onDismiss: () => {
+              dismissed += 1;
+            },
+          },
+          projects: h("a", { href: "/zerops" }),
+        }),
+      );
+    });
+    const buttons = rendered!.root.findAllByType("button");
+    expect(buttons.map((button) => button.children)).toEqual([["Go to projects"], ["Dismiss"]]);
+    act(() => buttons[1]!.props.onClick());
+    expect(dismissed).toBe(1);
+  });
+});
+
+// The stop's words come from what made the stop: a step this tab ran says why in its place, and
+// the sentence only that it did; anything else, the sentence says why.
+describe("comingSentenceOf — the sentence over a stop", () => {
+  const sub = (id: string, state: "done" | "failed" | "unfinished", why?: string) => ({
+    id,
+    label: id,
+    state,
+    ...(why === undefined ? {} : { why }),
+  });
+  const progressOf = (press: ReadonlyArray<ReturnType<typeof sub>>) => ({
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press,
+  });
+
+  it.each([
+    {
+      case: "a step this tab ran stopped it, certain: the step says why",
+      coming: { kind: "failed", line: "No room in this account.", verb: "try-again" },
+      press: [sub("created", "failed", "No room in this account.")],
+      want: NOT_SET_UP_LINE,
+    },
+    {
+      case: "a create Zerops may have made: the reason, with the way to the projects",
+      coming: {
+        kind: "failed",
+        line: "Zerops may have created it. Check your projects before trying again.",
+        verb: "go-to-projects",
+      },
+      press: [sub("created", "failed", "Zerops may have created it.")],
+      want: "Zerops may have created it. Check your projects before trying again.",
+    },
+    {
+      case: "a registration not finished, then the container stopped: the container's reason",
+      coming: { kind: "failed", line: "Its container stopped.", verb: "remove" },
+      press: [sub("closed-off", "done"), sub("registered", "unfinished", "Refused.")],
+      want: "Its container stopped.",
+    },
+  ] as const)("$case", ({ coming, press, want }) => {
+    expect(comingSentenceOf({ coming, progress: progressOf(press), nowMs: 0 })).toBe(want);
+  });
+});
+
+// Run 6's review: an Add's runtimes were drawn from its press alone, so its rows moved when the
+// press ended. The creation this tab holds names them from the press until the project's own read.
+describe("an added Mate's own view, after its hand-over", () => {
+  const IDA: NewProjectBirth = {
+    birthId: "add-1",
+    organizationId: "org-beviro",
+    appId: "beviro",
+    intent: null,
+    hq: { projectId: "hq", address: "https://hq.example" },
+    name: "Beviro",
+    botName: "Quinn",
+    face: { tint: "sky", shape: "pick" },
+    locationId: null,
+    agents: [],
+    startedAt: 0,
+    step: "created",
+    failed: null,
+    projectId: PROJECT,
+    progress: null,
+    adds: {
+      appId: "beviro",
+      displayName: "Beviro - Quinn",
+      registers: true,
+      managed: ["db"],
+      runtimes: [{ hostname: "appdev", role: "dev" }],
+    },
+  };
+  /** Each row with its services and the steps this tab runs under it: `id[…]{…}`. */
+  const rows = () =>
+    tree?.root
+      .findAll((node) => node.props["data-arrival-step"] !== undefined)
+      .map((node) => {
+        const services = node
+          .findAll((inner) => inner.props["data-zerops-surface"] === "arrival-services")
+          .flatMap((list) => list.findAllByType("li"))
+          .map((service) => String(service.props["aria-label"]).split(":")[0]);
+        const substeps = node
+          .findAll((inner) => inner.props["data-arrival-substep"] !== undefined)
+          .map((inner) => String(inner.props["data-arrival-substep"]));
+        return `${String(node.props["data-arrival-step"])}[${services.join(",")}]{${substeps.join(",")}}`;
+      }) ?? [];
+
+  beforeEach(() => {
+    app.birthProgress = true;
+    app.listing = listingOf([]);
+    app.creations = {
+      [PROJECT]: {
+        projectId: PROJECT,
+        appId: "beviro",
+        intent: null,
+        hq: { projectId: "hq", address: "https://hq.example" },
+        groupName: "Beviro",
+        botName: "Quinn",
+        face: IDA.face,
+      },
+    };
+    useNewProjectBirths.setState({ births: { [IDA.birthId]: IDA } });
+  });
+  afterEach(() => {
+    forgetPress(PROJECT);
+    useNewProjectBirths.setState({ births: {} });
+  });
+
+  it("draws its copy's and its workspace's lines and its steps from its press, and keeps them when the press ends", () => {
+    beginPress({
+      projectId: PROJECT,
+      organizationId: "org-beviro",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      managed: ["db"],
+      runtimes: [{ hostname: "appdev", role: "dev" }],
+    });
+    openView();
+    const held = rows();
+    expect(held).toEqual([
+      "copy[db]{created,registered,container,closed-off}",
+      "workspace[appdev]{}",
+      "you[]{}",
+    ]);
+    // Closed off and registered: the press is over (`endPress`).
+    act(() => forgetPress(PROJECT));
+    expect(rows()).toEqual(held);
   });
 });

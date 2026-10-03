@@ -5,6 +5,7 @@ import {
   isFreeMate,
   jumpGroups,
   jumpKey,
+  EMPTY_JUMP_INDEX,
   jumpMateOf,
   jumpWritePlan,
   readJumpQuery,
@@ -324,6 +325,58 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
       subject: "Run the build",
       conversation: undefined,
     });
+  });
+
+  // Its pose as on its row (`mateFaceFor`): waking while it comes up and arrives, read afresh too.
+  it.each([
+    {
+      case: "coming up",
+      pose: { life: "coming" },
+      connected: false,
+      read: undefined,
+      face: "waking",
+    },
+    {
+      case: "did not come",
+      pose: { life: "failed" },
+      connected: false,
+      read: undefined,
+      face: "sleep",
+    },
+    {
+      case: "arriving, its sign-in to come",
+      pose: { arriving: true },
+      connected: true,
+      read: undefined,
+      face: "waking",
+    },
+    {
+      case: "arrived, at rest",
+      pose: { arriving: false },
+      connected: true,
+      read: undefined,
+      face: "idle",
+    },
+    {
+      case: "arriving, talked to: its conversation's own",
+      pose: { arriving: true },
+      connected: true,
+      read: activity({ kind: "working", face: "working" }),
+      face: "working",
+    },
+    {
+      case: "arrived, not running",
+      pose: { arriving: false },
+      connected: false,
+      read: undefined,
+      face: "sleep",
+    },
+  ] as const)("$case: $face", ({ pose, connected, read, face }) => {
+    const listed = jumpMateOf({ ...base, connected, activity: read, pose });
+    expect(listed.face).toBe(face);
+    // Read afresh, it keeps the pose.
+    const fresh = withLiveMates({ ...EMPTY_JUMP_INDEX, mates: [listed] }, () => read);
+    expect(fresh.mates[0]?.face).toBe(face);
   });
 
   // Its change waiting for review needs you in the box as on its row (`mateFaceOf`).

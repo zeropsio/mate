@@ -291,6 +291,8 @@ export interface BirthPlacement {
  * press.
  */
 export interface ZeropsPlacedBirth {
+  /** HQ's intent id, when recorded before the platform accepted the project. */
+  readonly intent?: string | undefined;
   /** The project the platform made for it; a creation still being made, the client's own id for it. */
   readonly projectId: string;
   /** When the platform accepted the creation, wall ms — or the client began it. */
@@ -483,9 +485,19 @@ export function deriveZeropsGroups(
   // A creation stays pending until a group of the listing holds its project;
   // its group exists from the moment it started, members listed or not.
   const listed = new Set([...members.values()].flat().map(({ project }) => project.id));
+  const listedIntents = new Set(
+    projects.flatMap((project) => {
+      const birth = readZeropsMembership(project).birth;
+      return birth === undefined ? [] : [birth];
+    }),
+  );
   const pending = new Map<string, Array<ZeropsPlacedBirth>>();
   for (const birth of births) {
-    if (listed.has(birth.projectId)) continue;
+    if (
+      listed.has(birth.projectId) ||
+      (birth.intent !== undefined && listedIntents.has(birth.intent))
+    )
+      continue;
     const { groupId } = birth.placement;
     const bucket = pending.get(groupId);
     if (bucket) bucket.push(birth);

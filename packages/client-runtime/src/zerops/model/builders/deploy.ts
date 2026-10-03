@@ -587,6 +587,9 @@ function buildDeployBatchFields(call: ZeropsCall, context: OperationBuildContext
           ? resultExplanation(failedEntry.result)
           : {};
   const firstHost = hostnames[0];
+  const appVersionIds = entries.flatMap((entry) =>
+    entry.result?.appVersionId === undefined ? [] : [entry.result.appVersionId],
+  );
 
   return {
     subject,
@@ -604,6 +607,7 @@ function buildDeployBatchFields(call: ZeropsCall, context: OperationBuildContext
     links: [],
     ...(firstHost !== undefined ? { target: { hostname: firstHost } } : {}),
     batch: true,
+    ...(appVersionIds.length > 0 ? { appVersionIds } : {}),
     hasResult: decoded.document !== undefined,
     ...explanation,
     phaseOverride: phase,

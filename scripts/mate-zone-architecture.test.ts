@@ -1568,6 +1568,7 @@ const CREW_WIRING_FILES: ReadonlySet<string> = new Set([
 const CREW_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   "apps/server/src/config.ts",
   "apps/server/src/processRunner.ts",
+  "apps/server/src/orchestration/Services/MessageAttachments.ts",
   "apps/server/src/orchestration/Services/OrchestrationEngine.ts",
   "apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
   "apps/server/src/spi/ProviderRuntimeEventBus.ts",

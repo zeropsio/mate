@@ -148,6 +148,7 @@ import {
   offerAsker,
   firstDeployLine,
   type FirstDeploy,
+  matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { sessionOfferViewer } from "~/zerops/offerViewer";
@@ -476,6 +477,8 @@ export function declaredEnvironmentSummary(
   /** A stage that runs nothing: where its first deploy stands, as its cell says it. */
   firstDeploy?: FirstDeploy | undefined,
 ): string {
+  if (row.version.label === undefined && firstDeploy !== undefined)
+    return firstDeployLine(firstDeploy) ?? row.line;
   return row.version.label === undefined && row.tone === "neutral"
     ? (firstDeployLine(firstDeploy) ?? NOTHING_DEPLOYED)
     : row.line;
@@ -1639,6 +1642,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         candidate.project.id,
       ),
       mine: mateIsViewers(candidate.project, user?.id),
+      // Waking while it comes up and arrives, as its row in the menu.
+      pose: matePoseOf(candidate, nowMs),
     });
   };
   const openReview = useOpenReview();

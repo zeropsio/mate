@@ -13,7 +13,15 @@
  * `index.html`, and no route imports this module.
  */
 import { interleavePictures, type PictureContentPart } from "@t3tools/shared/composerPictures";
-import { StrictMode, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  StrictMode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 
 import { EnvironmentId } from "@t3tools/contracts";
@@ -37,6 +45,7 @@ import {
   pictureTypeName,
 } from "~/components/chat/ComposerPictureView";
 import { MessagePictureBody } from "~/components/chat/MessagePictures";
+import { useComposerFiles } from "~/components/chat/useComposerFiles";
 import { useComposerPictures } from "~/components/chat/useComposerPictures";
 import { placeMessagePictures } from "~/components/chat/messagePictures.logic";
 import {
@@ -47,6 +56,8 @@ import {
   type ComposerPicture,
   type PictureMark,
 } from "~/lib/composerPictures";
+import type { AttachmentUploadState } from "~/lib/attachmentUploadState";
+import { composerAttachmentRoute, optimisticFileAttachments } from "~/lib/composerFiles";
 import { fitPictureCopy, pictureCanvasEncoder } from "~/lib/imageCompression";
 import { drawPictureComposite } from "~/lib/pictureDrawing";
 import type { ChatAttachment } from "~/types";
@@ -312,6 +323,44 @@ function LiveComposer() {
   const promptRef = useRef(draft.prompt);
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // Uploads as the harness plays them: a file is halfway at once and up a
+  // moment later, or fails when asked to.
+  const [uploads, setUploads] = useState<Record<string, AttachmentUploadState>>({});
+  const files = useComposerFiles({
+    draftTarget: LIVE_DRAFT,
+    environmentId: LIVE_ENVIRONMENT,
+    files: draft.files,
+    uploadsByImageId: uploads,
+    editorRef,
+    promptRef,
+    onPromptWritten: (_prompt, nextCursor) => setCursor(nextCursor),
+    refusal: () => null,
+    onError: setError,
+  });
+  const playUploads = useCallback((outcome: "ready" | "failed") => {
+    const known = new Set(
+      useComposerDraftStore
+        .getState()
+        .getComposerDraft(LIVE_DRAFT)
+        ?.files.map((file) => file.id),
+    );
+    const settle = (status: "uploading" | "ready" | "failed") =>
+      setUploads((current) => {
+        const next = { ...current };
+        for (const id of known) {
+          if (current[id]?.status === "ready") continue;
+          next[id] =
+            status === "uploading"
+              ? { status, environmentId: LIVE_ENVIRONMENT, progress: 0.42 }
+              : status === "ready"
+                ? { status, environmentId: LIVE_ENVIRONMENT, attachmentId: `att-${id}` }
+                : { status, environmentId: LIVE_ENVIRONMENT, reason: "Upload failed" };
+        }
+        return next;
+      });
+    settle("uploading");
+    window.setTimeout(() => settle(outcome), 1200);
+  }, []);
   const pictures = useComposerPictures({
     draftTarget: LIVE_DRAFT,
     environmentId: LIVE_ENVIRONMENT,
@@ -329,7 +378,16 @@ function LiveComposer() {
       const file = await screenshot(3024, 1964, 0, "home-page.png");
       await pictures.add([file]);
     };
-  }, [pictures]);
+    // `window.pasteFile("spec.pdf", 482000, "failed")`: a file that is not a picture.
+    (
+      window as unknown as {
+        pasteFile: (name?: string, bytes?: number, outcome?: "ready" | "failed") => void;
+      }
+    ).pasteFile = (name = "quarterly-report-final-v2.pdf", bytes = 482_000, outcome = "ready") => {
+      files.add([new File([new Uint8Array(bytes)], name)]);
+      window.setTimeout(() => playUploads(outcome), 0);
+    };
+  }, [files, pictures, playUploads]);
   return (
     <div className="grid gap-3">
       <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
@@ -343,32 +401,61 @@ function LiveComposer() {
           onOpenPicture={pictures.open}
           onRemovePicture={pictures.remove}
           onRetryPicture={pictures.retry}
+          files={files.chips}
+          onRemoveFile={files.remove}
+          onRetryFile={() => playUploads("ready")}
           disabled={false}
-          placeholder="Paste a picture here…"
+          placeholder="Paste a picture or a file here…"
           onRemoveTerminalContext={() => undefined}
-          onChange={(value, nextCursor, _expanded, _adjacent, _contexts, pictureIds) => {
-            const next = pictures.sync(pictureIds, value) ?? value;
+          onChange={(value, nextCursor, _expanded, _adjacent, _contexts, pictureIds, fileIds) => {
+            const healed = pictures.sync(pictureIds, value);
+            const next = files.sync(fileIds, healed ?? value) ?? healed ?? value;
             promptRef.current = next;
             setPrompt(LIVE_DRAFT, next);
             setCursor(nextCursor);
           }}
           onPaste={(event) => {
-            const files = Array.from(event.clipboardData.files).filter((file) =>
-              file.type.startsWith("image/"),
-            );
-            if (files.length === 0) return;
+            const pasted = Array.from(event.clipboardData.files);
+            if (pasted.length === 0) return;
             event.preventDefault();
-            void pictures.add(files);
+            const routes = pasted.map((file) => [file, composerAttachmentRoute(file)] as const);
+            files.add(routes.flatMap(([file, route]) => (route.kind === "file" ? [file] : [])));
+            void pictures.add(
+              routes.flatMap(([file, route]) => (route.kind === "picture" ? [file] : [])),
+            );
+            window.setTimeout(() => playUploads("ready"), 0);
           }}
         />
       </div>
       <pre className="whitespace-pre-wrap font-mono text-muted-foreground text-xs" data-live-wire>
-        {materializePicturePrompt(draft.prompt, draft.images)}
+        {materializePicturePrompt(draft.prompt, draft.images, draft.files)}
       </pre>
+      <LiveSent
+        text={materializePicturePrompt(draft.prompt, draft.images, draft.files)}
+        attachments={[...optimisticFileAttachments(draft.files), ...draft.images]}
+      />
       <p className="text-muted-foreground text-xs" data-live-status>
         {error ?? pictures.blockReason ?? "Ready to send"}
       </p>
       {pictures.view}
+    </div>
+  );
+}
+
+/** The live draft as the conversation draws it once sent. */
+function LiveSent(props: { readonly text: string; readonly attachments: ChatAttachment[] }) {
+  const placed = placeMessagePictures(props.text, props.attachments);
+  if (!placed) return null;
+  return (
+    <div className="flex justify-end" data-live-sent>
+      <div className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+        <MessagePictureBody
+          segments={placed.segments}
+          dimensions={new Map()}
+          onOpen={() => undefined}
+          renderText={(words) => <p className="whitespace-pre-wrap">{words.text}</p>}
+        />
+      </div>
     </div>
   );
 }
@@ -476,10 +563,10 @@ function Harness() {
   const placed = made ? placeMessagePictures(text, attachments) : null;
   const pathLines = made
     ? [
-        "[Picture 1 is saved at: /home/zerops/.t3/userdata/attachments/thread-1-8f2c.png]",
+        '[Picture 1 is saved at: "/home/zerops/.t3/userdata/attachments/thread-1-8f2c.png"]',
         ...(made.image.picture.keepOriginal
           ? [
-              '[Picture 1\'s original, "home-page.png", is saved at: /home/zerops/.t3/userdata/attachments/thread-1-a91d.png]',
+              '[Picture 1\'s original, "home-page.png", is saved at: "/home/zerops/.t3/userdata/attachments/thread-1-a91d.png"]',
             ]
           : []),
       ]

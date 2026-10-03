@@ -275,6 +275,15 @@ export {
 } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
+  MATE_ARRIVAL_WINDOW_MS,
+  mateArriving,
+  mateArrivingUntil,
+  matePose,
+  matePoseOf,
+  type MateLife,
+  type MatePoseFacts,
+} from "./matePose.ts";
+export {
   compareForRelease,
   flowReleaseOf,
   isReleaseTag,
@@ -358,6 +367,7 @@ export {
   PRODUCTION_SETTING_UP,
   STAGE_SETTING_UP,
   stageFirstDeploy,
+  stageSettingUp,
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowInput,
@@ -384,9 +394,11 @@ export {
   listedStopComing,
   stopComing,
   stopDeployed,
+  stopImport,
   stopServes,
   type ComingStep,
   type FirstDeploy,
+  type PlatformService,
   type ListedStop,
   type StopComing,
 } from "./stopComing.ts";
@@ -474,6 +486,8 @@ export {
   isRecipeProposal,
   pullRequestLineWith,
   pullRequestsByMate,
+  agentLastSpokeAt,
+  agentNotesFor,
   agentTurnNotes,
   changeLandedEvents,
   type ChangeLandedEvent,

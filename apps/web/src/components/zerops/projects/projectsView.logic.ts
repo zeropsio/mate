@@ -19,6 +19,7 @@ import {
   deployWord,
   environmentNameUnderGroup,
   firstDeployLine,
+  STAGE_SETTING_UP,
   firstDeployTone,
   flowVerbKey,
   flowVerbLabel,
@@ -40,6 +41,7 @@ import {
   type GroupNextStepKind,
   type GroupRowTone,
   type MissingEnvironmentRow,
+  type PlatformService,
   type ReleaseGate,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -490,6 +492,9 @@ export function stopLine(stop: GroupFlowStop): {
   readonly tone: ServiceStatusToneId;
 } {
   const tone = STOP_TONE[stop.state];
+  // Its own import still runs: set up first, as the menu says, before any first deploy.
+  if (stop.firstDeploy?.kind === "setting-up")
+    return { word: STAGE_SETTING_UP, version: undefined, tone: "busy" };
   switch (stop.state) {
     case "checking":
       return { word: CHECKING_WHAT_RUNS, version: undefined, tone };
@@ -569,6 +574,9 @@ export function productionCell(flow: GroupFlow): ProductionCell {
 
 /** One Zerops project of a group, as the page already holds it. */
 export interface GroupMemberFacts {
+  readonly createdAt?: string | undefined;
+  readonly projectStatus?: string | undefined;
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
   readonly role: ZeropsEnvironmentRole | undefined;
   /** Its name under the group's (`environmentNameUnderGroup`). */
@@ -626,6 +634,9 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
     const connected =
       (item.group === "connected" && item.environmentId !== undefined) || activity !== undefined;
     return {
+      createdAt: item.project.created,
+      projectStatus: item.project.status,
+      services: item.services?.statuses,
       projectId: item.project.id,
       role,
       name: environmentNameUnderGroup(tags.label, item.project.name),
@@ -759,6 +770,9 @@ export function groupFlowInputOf(input: {
       return [
         {
           projectId: member.projectId,
+          createdAt: member.createdAt,
+          projectStatus: member.projectStatus,
+          services: member.services,
           name: row?.name ?? member.name,
           tier,
           row,

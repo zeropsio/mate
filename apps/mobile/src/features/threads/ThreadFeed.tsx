@@ -218,6 +218,8 @@ export interface ThreadFeedProps {
   readonly freeze: SharedValue<boolean>;
   readonly anchorMessageId: MessageId | null;
   readonly submittedMessageId: MessageId | null;
+  /** Counts the person's presses of the jump-to-latest button. */
+  readonly jumpToLatestRequest: number;
   readonly contentInsetEndAdjustment: SharedValue<number>;
   readonly contentTopInset?: number;
   readonly contentBottomInset?: number;
@@ -2058,6 +2060,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   // momentum; scroll events only break follow inside that session, so MVCP
   // compensations and programmatic scrolls never strand a follower.
   const userScrollSessionRef = useRef(false);
+  // Where the person's drag began, to tell which way the drag and its glide went.
+  const userScrollStartOffsetRef = useRef<number | null>(null);
   const setEndFollow = useCallback(
     (enabled: boolean) => {
       if (endFollowEnabledRef.current === enabled) {
@@ -2340,17 +2344,22 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const handleScrollBeginDrag = useCallback(() => {
     clearUserScrollSettle();
     userScrollSessionRef.current = true;
+    userScrollStartOffsetRef.current = props.listRef.current?.getState().scroll ?? null;
     // Pause before the first scroll event. Otherwise a stream update can run
     // maintainScrollAtEnd between touch-down and the drag leaving its threshold.
     transitionEndFollow({ type: "user-scroll-begin" });
-  }, [clearUserScrollSettle, transitionEndFollow]);
+  }, [clearUserScrollSettle, props.listRef, transitionEndFollow]);
   const finishUserScroll = useCallback(
     (releaseIsAtEnd?: boolean) => {
       clearUserScrollSettle();
       const userScrollSessionActive = userScrollSessionRef.current;
       userScrollSessionRef.current = false;
+      const startOffset = userScrollStartOffsetRef.current;
+      userScrollStartOffsetRef.current = null;
       transitionEndFollow({
         type: "user-scroll-end",
+        startOffset,
+        endOffset: props.listRef.current?.getState().scroll ?? null,
         // With no momentum, preserve the finger-release position. Streaming
         // growth during the native momentum-detection window must not turn a
         // release at the live edge into an opt-out from follow.
@@ -2418,6 +2427,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       transitionEndFollow({ type: "reset" });
     }
   }, [clearUserScrollSettle, props.submittedMessageId, transitionEndFollow]);
+  // The person pressed jump-to-latest: they are back, wherever they stood.
+  useEffect(() => {
+    if (props.jumpToLatestRequest === 0) return;
+    clearUserScrollSettle();
+    userScrollSessionRef.current = false;
+    transitionEndFollow({ type: "jump-to-latest" });
+  }, [clearUserScrollSettle, props.jumpToLatestRequest, transitionEndFollow]);
 
   const expandedWorkGroupIds = useMemo(() => {
     const ids = new Set<string>();

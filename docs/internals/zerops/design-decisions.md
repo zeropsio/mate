@@ -3500,3 +3500,151 @@ no-cache`.
   `design-system.md` §2). **Supersedes:** the word "group" in the 2026-09-05 group-model row.
   - _Why:_ the menus that open the Move dialog already said "project", and the dialog spoke of
     groups and explained that a group is what you call the application
+- **2026-10-02** — **A Mate names who made it** (the owner, on pass 34's open choices: "use
+  recommended"; the entries below take the same answer). New project and Add a Mate tag a
+  development Mate's project `mate:by:<userId>` at birth; the tag is never cleared and shows in the
+  Zerops dashboard. The Mate's row reads "Waiting for your sign-in" to its maker and "Waiting for
+  sign-in" to anyone else. Stage and production Mates name nobody and keep "Nobody has signed in
+  yet"; Mates made before 0.11.87 are not backfilled. The maker of a half-made New-project Mate gets
+  Finish setup on it, as Add a Mate already allowed.
+  - _Why:_ the two flows made the same Mate and said two things about it; the service's
+    `createdByUser` is on the REST record but not on the socket's, and a tag reaches every window
+    through the store the sockets feed
+- **2026-10-02** — **A merge reaches the other window within 15 s.** While a group has an open pull
+  request, each window lists that group's Gitea org every 15 s (`PULL_WATCH_MS`), one org a tick, at
+  most +4 requests a minute per window; a pull request that hasn't moved for 30 min leaves the
+  watch. Nothing runs while none is open or the page is hidden. The clock sits in the web forge hook
+  beside the 60 s Gitea refresh; the rule lives in client-runtime.
+  - _Why:_ a merge took 48 s to clear the Mate's "needs you" face in another window (run 4); run 5
+    measured 10.0 s
+- **2026-10-02** — **A stage's first deploy counts as asked for once the stage is declared and
+  `main` has code**, bounded at 15 min from the later of the stage's making and `main`'s last code
+  landing; past the bound the line reads "Nothing deployed yet". No new request.
+  - _Why:_ no reader held the broker's pending status on `main`, and the broker deploys exactly when
+    a declaration lands on a `main` with code
+- **2026-10-02** — **A release review holds the facts of its press.** From the press, or from the
+  first look at a release already on its way, the dialog keeps what it showed ("replaces v0.1.0 · 1
+  change" and its roll back) through the landing or the failure. A roll back that landed heads
+  "replaces v0.1.1", the shape of a release's; a production that no single release runs in full
+  reads "replaces what production runs", with the generic roll-back line.
+  - _Why:_ read from the project, "production runs v0.1.1" turned false the moment the release
+    landed, and the review turned to the next offer without saying how its own release ended
+- **2026-10-02** — **Every release review ends.** A tag with neither a landing nor a failure 30 min
+  after it was tagged reads "v0.1.1 hasn't landed · Tagged … · production doesn't run it", its next
+  step "find out why", and its clock stops. A newer tag above it reads "v0.1.2 was tagged after
+  v0.1.1", and the project's line in the menu follows the newer one.
+  - _Why:_ a release with no final state kept "Releasing" and its clock running for as long as the
+    dialog was open
+- **2026-10-02** — **A failure on the version a stop runs still reads Failed.** Until the broker
+  marks that version live, a rare Deployed → Failed → Deployed flicker stays; reading the failure on
+  the version the broker tried is a new read, for later.
+  - _Why:_ reading it as Deployed would switch off the failed deploy's next step (2026-09-25),
+    production's deploy-failed state and the stage chip's failed state
+- **2026-10-02** — **A reload during a Mate's arrival paints the asleep row.** A reload in the ~15 s
+  between ACTIVE and the Mate's first answer shows the asleep row with its sign-in line; the arrival
+  window stays 2 min from first seen ACTIVE. A Mate whose close-off is still pending arrives like
+  any other: "Coming up", Finish setup hidden, until its server answers its first probe.
+  - _Why:_ a reload paints nothing it takes back, and excluding a close-off-pending Mate would bring
+    the asleep row back for a normal press
+- **2026-10-03** — **A stage's first deploy that fails says so** (run 5: a group workflow's own step
+  failed, and both windows said "first deploy on its way" for 4.3 min). While a declared stage runs
+  nothing, the group's deploy reader reads `main`'s head of each repository the stage builds from,
+  and its statuses, and takes the newest status of each context. The broker's own
+  `mate/deploy/<env>/<svc>` saying `failed: …` (the job's report) is failed, with its reason, and
+  final. The same context saying `deploying` or success is not failed. The deploy workflow's own
+  context failing, whenever it was posted, is failed until the broker says `deploying`: the
+  broker's dispatched run leaves no status and runs the same workflow on the same commit. A refusal
+  the broker retries is never failed. The menu reads "Stage didn't come up · its first deploy
+  failed", the cell "First deploy failed"; a new head starts again. Reads: one a minute for 15 min
+  after the later of the stage's making and the head's newest status, one every 5 min to 35 min,
+  then none until a push; nothing for a deployed stage, production, or a group with no stage
+  declared. This supersedes the 2026-10-02 entry's "no new request" for the failure.
+  - _Why:_ the broker's pending status on the merge commit was the only thing read, and a job that
+    fails before it asks the broker for its grant never touches it; the exact signal, the broker
+    writing `failed: <step>` when the run it dispatched fails, is a gitea-mate change for later
+- **2026-10-03** — **The live card shows the moment whole, then plops it into the history** (the
+  owner: "always show the things that is happening in full, at least up to some height … when this
+  thing is done, it would animatedly 'plop' to the history"; "question what we show in the 'live'
+  field: sometimes it shows something that failed 4 iterations ago"). The one-line now line becomes
+  the live slot: what the Mate is doing, drawn as the row it becomes, with the face, a sweep and the
+  run's one clock. It holds the open calls of the newest batch, one model response (each of the
+  Mate's own calls names the response it was written in; a call still open once a call of a newer
+  response has started is stale and closes as "No result"; a provider that names none keeps the
+  order of starts and returns); else its words; else what it waits on; else "Thinking", 300 ms late.
+  An item plops once it has ended and stood 800 ms, landing exactly as it stood (the same toggles,
+  cap and open state), and a burst rides along with the item that stands; history and slot share
+  `min(560px, 60svh)` once full. The band holds only what runs without the Mate waiting on it, shows
+  an ending for 800 ms, then leaves; a failure is told once, in the record. A control that opens is
+  drawn only when it opens onto something not on screen. An approval puts what it asks to run in the
+  slot; the controls stay in the composer.
+  - _Why:_ the slot promises that this is happening now, and one stale line breaks the promise; the
+    band kept a failed deploy until the turn ended, the line walked back to any call still marked
+    open, and a stand-up whose call had returned took the line back between steps. The batch rule
+    makes staleness follow from times alone. The board measured coalescing at 0.7 s of lag against
+    4.7 s for a queue
+- **2026-10-03** — **The live card keeps to its newest line; a scroll is the person's when its top
+  moved up** (the owner: "sometimes stuff is faded at the bottom, there is no proper concept of
+  keeping the 'working' card scrolled to the bottom"). While a card is live its history scroll
+  follows its newest line, catching up in the frame it grows, before paint. Following stops when
+  the top ends above where it last stood and is not at the foot (4 px), whatever moved it: wheel,
+  keys, find, drag-select, focus; or when the person opens something in the card. It follows
+  again only when the person brings it back: their move down onto the foot, or closing the last thing
+  they opened if it followed as they opened it and they have not moved it up since. Growth, the
+  card's own moves, a clamp from a shrinking scroll height and a re-read at the foot never change it. The foot and the fades come from where the lines end as laid out, so a row moving
+  into place is never more content; a fade shows only at an edge with lines cut past it. The wheel
+  chains from the card's edges to the conversation.
+  - _Why:_ a time window after input read the card's own catch-up as the person's scroll and
+    missed every scroll with no wheel or key; movement is what the person did.
+- **2026-10-03** — **The conversation follows only a person's way back to its end** (the owner:
+  "when I scroll up in the main chat and a new message is received it interrupts me and jumps to
+  the bottom"). Follow holds while the person is at the end. A scroll of theirs that leaves it turns
+  follow off at once, and nothing that arrives turns it on again; only their own scroll toward the
+  end that reaches it, the jump to latest, their own send, or opening the thread does. A move the
+  content change explains (rows growing push it down, content shrinking pulls it up) is never
+  theirs; a queued message leaving by itself moves no one who reads above. One rule in
+  client-runtime, read by web and mobile.
+  - _Why:_ the turn-off landed a render late, after a jump to the end the list had already
+    scheduled; and "at the end" re-armed follow on the first frame of a smooth scroll up.
+- **2026-10-03** — **A running deploy shows its pipeline and build log in the live slot; a settled
+  one reads them from the account store** (the owner: "the running builds, their logs etc all the
+  more advanced details of async flows seems to be completely gone now"). In the slot a deploy reads
+  the store from start to plop: its steps, the step it is on, the build's newest lines and the way
+  to its whole log; a batch stands as one line, its card on the service the store says is building;
+  only the newest running deploy stands open. A settled deploy reads its process once per open, by the ids its result named, so any
+  window and any reload show the same details within the project's last 100 processes; with no id it
+  shows what its call returned, never a guess by time and service. Only deploys read; a landed card keeps its height; a log dialog the person opened stays
+  open through the plop.
+  - _Why:_ 0.11.88 moved a running deploy from the band into the slot, whose row read only the
+    call's placeholder steps; a page-held memory of the read would tie the details to one tab.
+- **2026-10-03** — **A Mate on its way up wears its waking face; asleep is for a Mate at rest**
+  (run 6: each coming-up Mate wore the asleep face in the other window until its sign-in; the owner
+  left the call to the lead: "for my calls do whats best"). While a Mate arrives — from the press
+  until it is signed in, at most 30 minutes from its creation (the existing bound past which a first
+  build is not coming up) — it wears `waking`: closed eyes that breathe, a slow swell of the whole
+  face as one composited box, still under reduced motion. Failed, deleting, or a container that is
+  down: asleep, as before; past the window an unsigned Mate rests with its sign-in line and dot. One
+  face function applies the rule for every surface (rows, ⌘K, the projects page and overview, the
+  conversation header, the panel, the arrival page), reading one fact from the Mate's own records.
+  - _Why:_ asleep also means a Mate at rest or going away, so a Mate on its way up read like one that
+    stopped; a breath that never ended would make a menu of faces fidget.
+- **2026-10-03** — **One screen for a Mate coming up** (the owner, run 6: "why are these two screens
+  separate?"). Create and Add close their dialog at once and the person is on the Mate's coming-up
+  page. The steps the browser runs with the person's session (registered, created, closed off, the
+  Mate registered) are the first row's sub-steps there; "Keep this tab open for about half a minute"
+  shows only while they run. They live in the account's creations store, so moving to another page
+  stops nothing; a stop says its reason in its step's place without moving the rows above.
+  - _Why:_ the dialog and the page showed one coming-up twice, and the dialog's own steps held the
+    person on a modal for the half minute that needed them.
+- **2026-10-03** — **One Gitea listing a minute for the whole account** (run 6: idle windows made 22
+  and 20 requests a minute, 13.4 of them one repository list per group org). The forge reads tick
+  together; at each tick one id-ordered listing of the person's repositories (`/repos/search` as the
+  person, with Gitea's count) feeds every group's slice. A group the listing does not name yet, a
+  listing Gitea's count does not confirm, or any failure but a 401 falls back to that group's own
+  listing; the pull watch lists only its own group. 14 groups idle: 14 requests a minute → 1.
+  - _Why:_ idle cost had grown with the account's groups; one listing carries the same repository
+    objects in one response.
+- **2026-10-03** — **A running build's log streams as the Zerops GUI asks for it** (the live look on
+  0.11.89: a stream opened with a time as `from` stood through a 94-line build and delivered none).
+  The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
+  the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
+  runs and the stream's handshake has stood.

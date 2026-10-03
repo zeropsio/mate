@@ -23,6 +23,7 @@ import { Link } from "@tanstack/react-router";
 import { Children, Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { mateBirthFace } from "~/zerops/agentActivity";
 import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { MateFace, StatusDot } from "../primitives";
@@ -294,17 +295,25 @@ export function MateChip({
 
 /**
  * A Mate being created wears the face its person picked in the New Mate
- * dialog — slate where it was given none — asleep, as every Mate's is while it
- * comes up: the face is where that is read.
+ * dialog — slate where it was given none — waking, as every Mate's is while it
+ * comes up (`mateBirthFace`), asleep once its birth stopped: the face is where
+ * that is read.
  */
 export function ComingMateFace({
   size,
-  face,
+  coming,
 }: {
   readonly size: "sm" | "md";
-  readonly face?: GroupFlowComing["face"];
+  readonly coming: GroupFlowComing;
 }) {
-  return <MateFace shape={face?.shape} size={size} state="sleep" tint={face?.tint ?? "slate"} />;
+  return (
+    <MateFace
+      shape={coming.face?.shape}
+      size={size}
+      state={mateBirthFace(coming.failed === true)}
+      tint={coming.face?.tint ?? "slate"}
+    />
+  );
 }
 
 /**
@@ -325,7 +334,7 @@ export function ComingMateCard({
   return (
     <ZeropsMateCard
       busy={coming.failed !== true}
-      face="sleep"
+      face={mateBirthFace(coming.failed === true)}
       layout={layout}
       shape={coming.face?.shape}
       line={

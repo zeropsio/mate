@@ -236,7 +236,7 @@ function MatesCell<T>({
               chip.kind === "coming" ? (
                 <MateChip
                   coming={comingMateLine(chip.coming)}
-                  face={<ComingMateFace face={chip.coming.face} size="sm" />}
+                  face={<ComingMateFace coming={chip.coming} size="sm" />}
                   key={`coming:${chip.mate.projectId}`}
                   name={chip.mate.name}
                   onOpen={undefined}
@@ -480,7 +480,7 @@ function MateTile<T>({
             {first.kind === "listed" ? (
               props.renderMateFace(first.item, "md")
             ) : (
-              <ComingMateFace face={first.coming.face} size="md" />
+              <ComingMateFace coming={first.coming} size="md" />
             )}
           </span>
         )}
