@@ -52,6 +52,7 @@ import {
   generateZeropsGroupId,
   newMateTint,
   resolveAddProjectVerb,
+  mateBirthTag,
   withZeropsMateTag,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
@@ -272,21 +273,23 @@ function NewProjectDialog() {
         registerGroup: async ({ hq, name: groupName }) => ({
           appId: (await accountHqApi(client, organizationId, hq).createApp(groupName)).id,
         }),
-        // The project alone, born a Mate (its marker on before anything else): its press attaches
-        // it to its application, then imports its container (F6b). In flight as a press: the
-        // background mints no throwaway while it reads the token list.
-        createProject: ({ name: projectName, location }) =>
+        recordBirth: ({ hq, ...birth }) =>
+          accountHqApi(client, organizationId, hq).recordBirth(birth),
+        // The project alone, born a Mate under its birth intent (its marker on before anything
+        // else): its press attaches it to its application, then imports its container (F6b). In
+        // flight as a press: the background mints no throwaway while it reads the token list.
+        createProject: ({ name: projectName, location, birth }) =>
           whilePressing(() =>
             runZeropsCommand(
               runtime.commands.createProject({
                 organization,
                 name: projectName,
-                tagList: withZeropsMateTag([]),
+                tagList: withZeropsMateTag([mateBirthTag(birth)]),
                 ...(location === undefined ? {} : { location }),
               }),
             ),
           ).then((project) => ({ project })),
-        accepted: (projectId, { hq, appId }, startedAt) => {
+        accepted: (projectId, { hq, appId, intent }, startedAt) => {
           // The press goes on: the Mate attached to its application in HQ, its container imported
           // and the project closed off. The listing is read again so the project's group catches
           // up with it. Its row stands where the creation's stood, with the same face and name.
@@ -312,6 +315,7 @@ function NewProjectDialog() {
               kind: "mate",
               mate: { name: botName, face },
               birth: { standUp: false },
+              intent,
             },
             hq,
             isCurrent,

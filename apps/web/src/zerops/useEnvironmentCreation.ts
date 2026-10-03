@@ -10,6 +10,7 @@
  * The container does the rest whether this tab stays or not.
  */
 import {
+  formatMateFace,
   planEnvironmentCreation,
   recipeTierServices,
   unionAgents,
@@ -23,10 +24,12 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useEffect, useRef } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
-import { officialHq, useAccountHq } from "./accountHq";
+import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
@@ -86,6 +89,31 @@ export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
   };
 }
 
+/**
+ * The birth intent a Mate added to a group is pressed under (F6c): recorded at HQ before its
+ * project exists — its application, its name and its face — so a press cut off between the
+ * project and its attach is finished where and as it was asked for, in any browser. None for a
+ * stage or a production, or an environment with no agent: no Mate is born.
+ */
+export async function addedMateBirth(
+  hq: Pick<HqApi, "recordBirth">,
+  input: {
+    readonly groupId: string;
+    readonly role: ZeropsEnvironmentRole;
+    readonly choice: Pick<EnvironmentCreationChoice, "name" | "botName" | "face" | "withAgent">;
+  },
+): Promise<string | undefined> {
+  const { choice } = input;
+  if ((input.role !== "dev" && input.role !== "devstage") || !choice.withAgent) return undefined;
+  const { id } = await hq.recordBirth({
+    appId: input.groupId,
+    name: choice.botName ?? choice.name,
+    // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
+    face: choice.face === undefined ? "" : formatMateFace(choice.face),
+  });
+  return id;
+}
+
 export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
 ) => Promise<EnvironmentCreationRun> {
@@ -142,6 +170,17 @@ export function useEnvironmentCreation(): (
       const { name } = choice;
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
 
+      // A Mate's birth intent before its project: an HQ that cannot record it takes no project.
+      let intent: string | undefined;
+      try {
+        intent = await addedMateBirth(accountHqApi(client, organization.id, hq), {
+          groupId: group.groupId,
+          role,
+          choice,
+        });
+      } catch (cause) {
+        return { kind: "refused", reason: zeropsErrorMessage(cause) };
+      }
       const plan = planEnvironmentCreation({
         clientId: organization.id,
         role,
@@ -150,6 +189,7 @@ export function useEnvironmentCreation(): (
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         register: true,
+        ...(intent === undefined ? {} : { birth: intent }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
@@ -172,6 +212,7 @@ export function useEnvironmentCreation(): (
                 // The person adding a dev Mate with its agent asks for its stand-up; the press's
                 // close-off marks it closed off, after its record (`planEnvironmentCreation`).
                 birth: { standUp: role === "dev" && withAgent },
+                ...(intent === undefined ? {} : { intent }),
               }
             : { hq, groupId: group.groupId, kind: tier },
         ),

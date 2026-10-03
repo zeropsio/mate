@@ -8,7 +8,8 @@
  * A New project's creation takes, in order — over the organization's HQ, which stands before
  * any project does (ADR 0001):
  * - `registry` — the project's application in HQ, which is what makes the project exist. HQ names
- *   it: its id is the project's group from then on.
+ *   it: its id is the project's group from then on. Then its first Mate's birth intent there —
+ *   its name and face, before its project exists — which the project is created under (F6c).
  * - `create` — its first Mate's Zerops project, tagged into the project at birth. Once the platform
  *   takes it the Mate's birth carries the rest (`zeropsBirths.ts`), and the view hands the route to
  *   the Mate's own (`/mate/$projectId`), in its place.
@@ -20,6 +21,7 @@
  * have taken anyway (`uncertain`), which a second try could make twice.
  */
 import {
+  formatMateFace,
   ZeropsApiError,
   type BirthPlacement,
   type EnvironmentCreationStep,
@@ -79,6 +81,8 @@ export interface NewProjectBirth extends NewProjectAsk {
   readonly hq: HqEndpoint;
   /** The project's application in HQ — its group — once registered. */
   readonly appId: string | null;
+  /** Its first Mate's birth intent in that application, once HQ recorded it (`recordBirth`). */
+  readonly intent: string | null;
   /** The step running, or — `failed` — the one that stopped it; `created` once the platform took the Mate's project. */
   readonly step: NewProjectStep | "created";
   readonly failed: NewProjectFailure | null;
@@ -87,22 +91,29 @@ export interface NewProjectBirth extends NewProjectAsk {
 }
 
 export type NewProjectPatch = Partial<
-  Pick<NewProjectBirth, "step" | "appId" | "failed" | "projectId">
+  Pick<NewProjectBirth, "step" | "appId" | "intent" | "failed" | "projectId">
 >;
 
 /**
- * What the first Mate's project is created with: the project alone. Its application, name and
- * face are HQ's, written by its press's registration before its container (F6b).
+ * What the first Mate's project is created with: the project alone, under its birth intent. Its
+ * application, name and face are HQ's, written by its press's registration before its container
+ * (F6b) — and its intent's before that (F6c).
  */
 export interface NewProjectCreation {
   readonly name: string;
   readonly location?: string;
+  /** The birth intent HQ holds of its Mate: the project is tagged with it (`mateBirthTag`). */
+  readonly birth: string;
 }
 
-/** Where the project stands once registered: its organization's HQ, and its application in it. */
+/**
+ * Where the project stands once registered: its organization's HQ, its application in it, and its
+ * first Mate's birth intent there, which the Mate's attach closes.
+ */
 export interface NewProjectRegistration {
   readonly hq: HqEndpoint;
   readonly appId: string;
+  readonly intent: string;
 }
 
 /** What a New project's creation acts through: the platform, HQ, and the birth it hands over to. */
@@ -112,6 +123,16 @@ export interface NewProjectPorts {
     readonly hq: HqEndpoint;
     readonly name: string;
   }) => Promise<{ readonly appId: string }>;
+  /**
+   * Records the first Mate's birth intent in its application (`POST /api/births`): its name and
+   * face, before its project exists, under HQ's id.
+   */
+  readonly recordBirth: (birth: {
+    readonly hq: HqEndpoint;
+    readonly appId: string;
+    readonly name: string;
+    readonly face: string;
+  }) => Promise<{ readonly id: string }>;
   /**
    * Creates the first Mate's project, alone: its press attaches it to its application, then
    * imports its container (F6b).
@@ -324,7 +345,25 @@ export async function runNewProjectBirth(
       stop(zeropsErrorMessage(cause));
       return;
     }
-    moved({ step: "create", appId });
+    moved({ appId });
+  }
+  // Recorded once: a creation tried again goes on under the intent it holds.
+  let intent = birth.intent;
+  if (intent === null) {
+    try {
+      intent = (
+        await ports.recordBirth({
+          hq,
+          appId,
+          name: birth.botName,
+          face: formatMateFace(birth.face),
+        })
+      ).id;
+    } catch (cause) {
+      stop(zeropsErrorMessage(cause));
+      return;
+    }
+    moved({ step: "create", intent });
   }
 
   let created: Awaited<ReturnType<NewProjectPorts["createProject"]>>;
@@ -332,6 +371,7 @@ export async function runNewProjectBirth(
     created = await ports.createProject({
       name: newProjectPlacement(birth).displayName,
       ...(birth.locationId === null ? {} : { location: birth.locationId }),
+      birth: intent,
     });
   } catch (cause) {
     stop(zeropsErrorMessage(cause), isUncertain(cause));
@@ -340,7 +380,7 @@ export async function runNewProjectBirth(
   const projectId = created.project.id;
   // Its birth begins, and its view moves to it, in one breath: the menu draws its row from one or
   // the other, never neither.
-  ports.accepted(projectId, { hq, appId }, birth.startedAt);
+  ports.accepted(projectId, { hq, appId, intent }, birth.startedAt);
   moved({ step: "created", projectId });
 }
 
@@ -410,6 +450,7 @@ export function beginNewProjectBirth(input: {
     startedAt: input.now,
     hq: input.hq,
     appId: null,
+    intent: null,
     step: "registry",
     failed: null,
     projectId: null,

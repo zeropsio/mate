@@ -68,6 +68,7 @@ const ACME: NewProjectBirth = {
   startedAt: Date.parse("2026-09-30T10:00:00.000Z"),
   hq: { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" },
   appId: null,
+  intent: null,
   step: "registry",
   failed: null,
   projectId: null,

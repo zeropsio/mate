@@ -569,6 +569,8 @@ export type PressRegistration = {
       /** Its face as picked; none where the press gives it its name's own. */
       readonly mate: { readonly name: string; readonly face: ZeropsMateFace | undefined };
       readonly birth: MateBirth;
+      /** The birth intent its project was created under: the attach closes it. */
+      readonly intent?: string;
     }
   | {
       /** A Mate HQ holds no record of, set up in no application (`POST /api/mates`). */
@@ -609,6 +611,7 @@ export function pressRegistration(
           // Empty where none was picked: the Mate wears its name's tint.
           face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
         },
+        ...(registration.intent === undefined ? {} : { birth: registration.intent }),
       });
       await recordMateBirth(hq, projectId, registration.birth);
       return;

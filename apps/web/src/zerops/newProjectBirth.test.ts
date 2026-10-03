@@ -46,6 +46,7 @@ function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
     startedAt: PRESSED_AT,
     hq: HQ,
     appId: null,
+    intent: null,
     step: "registry",
     failed: null,
     projectId: null,
@@ -292,6 +293,7 @@ describe("the menu draws it from the press", () => {
 const PROJECT = { id: "p-vera", name: "Acme CRM - Vera", status: "ACTIVE" } as const;
 
 type RegisterArgs = Parameters<NewProjectPorts["registerGroup"]>[0];
+type IntentArgs = Parameters<NewProjectPorts["recordBirth"]>[0];
 type AcceptedArgs = Parameters<NewProjectPorts["accepted"]>;
 
 /** Ports that do what they are asked, each call written down in `order`. */
@@ -301,6 +303,10 @@ function ports(over: Partial<NewProjectPorts> = {}) {
     registerGroup: vi.fn(async ({ hq, name }: RegisterArgs) => {
       order.push(`register:${hq.projectId}:${name}`);
       return { appId: "app-acme" };
+    }),
+    recordBirth: vi.fn(async ({ appId, name, face }: IntentArgs) => {
+      order.push(`intent:${appId}:${name}:${face}`);
+      return { id: "b-vera" };
     }),
     createProject: vi.fn(async () => {
       order.push("create");
@@ -321,7 +327,12 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
     // The registry lives in HQ: the project is registered there before anything is created in it,
     // and its Mate goes into the application HQ named.
-    expect(order).toEqual(["register:hq-1:Acme CRM", "create", "accepted:p-vera:hq-1:app-acme"]);
+    expect(order).toEqual([
+      "register:hq-1:Acme CRM",
+      "intent:app-acme:Vera:rose:seal",
+      "create",
+      "accepted:p-vera:hq-1:app-acme",
+    ]);
     // Its Mate's row counts on from the press, not from when the platform answered; its container
     // is its press's, after its attach (F6b).
     expect(made.accepted).toHaveBeenCalledWith(
@@ -330,9 +341,39 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       PRESSED_AT,
     );
     expect(moved).toEqual([
-      { step: "create", appId: "app-acme" },
+      { appId: "app-acme" },
+      { step: "create", intent: "b-vera" },
       { step: "created", projectId: "p-vera" },
     ]);
+  });
+
+  // F6c (2026-10-03): a press cut off between its project and its attach left a Mate another
+  // browser finished under a new name in no application. Its birth intent is HQ's before its
+  // project exists, and the project names it, so any browser finishes it where and as asked.
+  it("records its first Mate's birth intent between its application and its project, once, and creates the project under it", async () => {
+    const { order, ports: made } = ports();
+    const moved: Array<NewProjectPatch> = [];
+    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
+    expect(order.slice(0, 3)).toEqual([
+      "register:hq-1:Acme CRM",
+      "intent:app-acme:Vera:rose:seal",
+      "create",
+    ]);
+    expect(made.createProject).toHaveBeenCalledWith({ name: "Acme CRM - Vera", birth: "b-vera" });
+    expect(made.accepted).toHaveBeenCalledWith(
+      "p-vera",
+      expect.objectContaining({ appId: "app-acme", intent: "b-vera" }),
+      PRESSED_AT,
+    );
+    // Held by the creation, so a creation tried again records none twice.
+    expect(moved).toContainEqual(expect.objectContaining({ intent: "b-vera" }));
+    const again = ports();
+    await runNewProjectBirth(
+      birth({ step: "create", appId: "app-acme", intent: "b-vera" }),
+      again.ports,
+      () => undefined,
+    );
+    expect(again.ports.recordBirth).not.toHaveBeenCalled();
   });
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
@@ -340,18 +381,18 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       // Its application, name and face are HQ's: the press's registration writes them.
       case: "named after its Mate, and nothing of its place on the project",
       ask: {},
-      args: { name: "Acme CRM - Vera" },
+      args: { name: "Acme CRM - Vera", birth: "b-1" },
     },
     {
       // Its agents are its container's, which its press imports.
       case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: { name: "Acme CRM - Vera", location: "prg1" },
+      args: { name: "Acme CRM - Vera", location: "prg1", birth: "b-1" },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made } = ports();
     await runNewProjectBirth(
-      birth({ step: "create", appId: "app-acme", ...ask }),
+      birth({ step: "create", appId: "app-acme", intent: "b-1", ...ask }),
       made,
       () => undefined,
     );
@@ -375,10 +416,17 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       failed: { reason: "An application named Acme CRM exists.", uncertain: false },
     },
     {
+      case: "a birth intent HQ refuses leaves a registered project, and creates no Mate project",
+      birth: birth(),
+      over: { recordBirth: () => Promise.reject(new Error("HQ is not answering right now.")) },
+      order: ["register:hq-1:Acme CRM"],
+      failed: { reason: "HQ is not answering right now.", uncertain: false },
+    },
+    {
       case: "a creation the platform refused leaves a registered project, and no Mate",
       birth: birth(),
       over: { createProject: () => Promise.reject(new Error("Project name is taken.")) },
-      order: ["register:hq-1:Acme CRM"],
+      order: ["register:hq-1:Acme CRM", "intent:app-acme:Vera:rose:seal"],
       failed: { reason: "Project name is taken.", uncertain: false },
     },
     {
@@ -392,7 +440,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
             message: "The project may already exist.",
           }),
       },
-      order: ["register:hq-1:Acme CRM"],
+      order: ["register:hq-1:Acme CRM", "intent:app-acme:Vera:rose:seal"],
       failed: { reason: "The project may already exist.", uncertain: true },
     },
   ])("stops where it fails: $case", async ({ birth: made, over, order: expected, failed }) => {
@@ -412,11 +460,21 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     {
       case: "a registration",
       birth: birth(),
-      order: ["register:hq-1:Acme CRM", "create", "accepted:p-vera:hq-1:app-acme"],
+      order: [
+        "register:hq-1:Acme CRM",
+        "intent:app-acme:Vera:rose:seal",
+        "create",
+        "accepted:p-vera:hq-1:app-acme",
+      ],
+    },
+    {
+      case: "its Mate's birth intent, its application not made again",
+      birth: birth({ appId: "app-1" }),
+      order: ["intent:app-1:Vera:rose:seal", "create", "accepted:p-vera:hq-1:app-1"],
     },
     {
       case: "its Mate's creation, with nothing before it made again",
-      birth: birth({ step: "create", appId: "app-1" }),
+      birth: birth({ step: "create", appId: "app-1", intent: "b-1" }),
       order: ["create", "accepted:p-vera:hq-1:app-1"],
     },
     { case: "nothing, once the platform took it", birth: birth({ step: "created" }), order: [] },
@@ -470,7 +528,12 @@ describe("the tab holds a New project's creation until the platform takes it", (
     retryNewProjectBirth("b-acme");
     expect(held()?.failed).toBeNull();
     await vi.waitFor(() => expect(held()?.step).toBe("created"));
-    expect(order).toEqual(["register", "create", "accepted:p-vera:hq-1:app-acme"]);
+    expect(order).toEqual([
+      "register",
+      "intent:app-acme:Vera:rose:seal",
+      "create",
+      "accepted:p-vera:hq-1:app-acme",
+    ]);
     expect(fake.registerGroup).toHaveBeenLastCalledWith({ hq: HQ, name: "Acme CRM" });
   });
 

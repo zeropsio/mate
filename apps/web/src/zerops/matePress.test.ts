@@ -47,8 +47,13 @@ vi.mock("./accountHq", () => ({
     recordClosedOff: async () => {
       hq.calls?.push("mark");
     },
-    attachProject: async (appId: string, attach: { readonly mate?: { readonly name: string } }) => {
-      hq.calls?.push(`attach ${appId} ${attach.mate?.name ?? ""}`);
+    attachProject: async (
+      appId: string,
+      attach: { readonly mate?: { readonly name: string }; readonly birth?: string },
+    ) => {
+      hq.calls?.push(
+        `attach ${appId} ${attach.mate?.name ?? ""}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}`,
+      );
     },
     recordStandUp: async () => {
       hq.calls?.push("standup");
@@ -756,6 +761,36 @@ describe("finishMateSetup — the harden path", () => {
       "read isolation",
       "mark",
     ]);
+    forgetPress("p-old");
+  });
+
+  // F6c (2026-10-03): a Mate whose project names its birth intent closes it with its attach.
+  it("attaches a Mate born under an intent closing the intent", async () => {
+    begin();
+    const calls: Array<string> = [];
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: inputs(() => true, calls),
+        projectId: "p-old",
+        projectName: "mate-rig-e2e-g - Gus",
+        container: null,
+        registration: {
+          hq: { projectId: "hq-project", address: "https://hq.test" },
+          groupId: "app-g",
+          kind: "mate",
+          mate: { name: "Gus", face: undefined },
+          birth: { standUp: false },
+          intent: "b-gus",
+        },
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        harden: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toContain("attach app-g Gus closing b-gus");
     forgetPress("p-old");
   });
 
