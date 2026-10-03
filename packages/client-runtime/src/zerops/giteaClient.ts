@@ -82,6 +82,16 @@ export interface GiteaRepository {
 }
 
 /**
+ * Every repository a person can see, in one listing (`GiteaClient.listAccountRepositories`), with
+ * what each page said the whole holds.
+ */
+export interface GiteaAccountListing {
+  readonly repositories: ReadonlyArray<GiteaRepository>;
+  /** Each page's `X-Total-Count`, in order; `undefined` where a page sent none. */
+  readonly counts: ReadonlyArray<number | undefined>;
+}
+
+/**
  * One hit of `GET /repos/issues/search` — an issue or a pull request across
  * every repository the person can see, with the repository named on it. Not
  * a `GiteaPullRequest`: the search carries neither the head nor whether it
@@ -407,6 +417,13 @@ export interface GiteaClient {
   listOrganizationRepositories(org: string): Promise<ReadonlyArray<GiteaRepository>>;
   /** Every repository this person has access to, page by page. */
   listUserRepositories(): Promise<ReadonlyArray<GiteaRepository>>;
+  /**
+   * Every repository the person `personId` can see — the same ones `GET /user/repos` names, its
+   * own and those of every org they are on a team of — ordered by id, page by page
+   * (`GET /repos/search?uid=…&sort=id`, Gitea 1.27.2). `/user/repos` orders by name, and every
+   * group has a repository named `group`: pages of equal names can drop or repeat one.
+   */
+  listAccountRepositories(personId: number): Promise<GiteaAccountListing>;
   /**
    * The pull requests across every repository the person can see, page by
    * page — open ones unless told otherwise, one org's when `owner` is given.
@@ -780,6 +797,33 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
 
     listUserRepositories: () =>
       paged<GiteaRepository>({ method: "GET", path: "/user/repos" }, "list your repositories"),
+
+    listAccountRepositories: async (personId) => {
+      const repositories: Array<GiteaRepository> = [];
+      const counts: Array<number | undefined> = [];
+      for (let page = 1; page <= MAX_PAGES; page += 1) {
+        const answer = await send(
+          {
+            method: "GET",
+            path: "/repos/search",
+            query: { uid: personId, sort: "id", order: "asc", limit: PAGE_SIZE, page },
+          },
+          async (response) => {
+            if (!response.ok) return fail(response, "list your repositories");
+            const count = Number.parseInt(response.headers.get("x-total-count") ?? "", 10);
+            const body = (await response.json()) as {
+              readonly data?: ReadonlyArray<GiteaRepository>;
+            };
+            return { data: body.data ?? [], count: Number.isNaN(count) ? undefined : count };
+          },
+        );
+        repositories.push(...answer.data);
+        counts.push(answer.count);
+        if (answer.data.length < PAGE_SIZE) break;
+        if (answer.count !== undefined && repositories.length >= answer.count) break;
+      }
+      return { repositories, counts };
+    },
 
     searchPullRequests: (searchOptions) =>
       paged<GiteaIssueSearchHit>(
