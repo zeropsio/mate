@@ -11,6 +11,9 @@
  * still float over the timeline; only what waits on the person joins the
  * composer, where they act on it.
  *
+ * Its × puts it away for that change: it folds out of the composer and stays
+ * away, a reload included, until another change of the Mate's waits.
+ *
  * It gives way while a question or an approval waits on the person: the Mate
  * cannot go on until that is answered, and the review would be a second ask
  * stacked on the first. It comes back once the answer is in.
@@ -27,7 +30,8 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { XIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useReducer, type ReactNode } from "react";
 
 import {
   rememberComposerTop,
@@ -36,6 +40,7 @@ import {
 } from "../../zerops/composerTopMemory";
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateFace } from "./primitives";
 
 /** What waits on the person in the composer right now. */
@@ -123,7 +128,8 @@ export function zeropsComposerTop(input: {
   switch (nextStep.kind) {
     case "unknown":
       return {
-        strip: held || remembered === undefined ? null : stripOf(remembered),
+        strip:
+          held || remembered === undefined || remembered.dismissed ? null : stripOf(remembered),
         remember: undefined,
       };
     case "none":
@@ -131,6 +137,11 @@ export function zeropsComposerTop(input: {
     case "review": {
       // The face keeps the tint and the shape it was painted in until the Mate is known.
       const shape = nextStep.tint === undefined ? remembered?.shape : nextStep.shape;
+      const dismissed =
+        remembered?.dismissed === true &&
+        remembered.groupId === nextStep.target.groupId &&
+        remembered.repository === nextStep.target.repository &&
+        remembered.number === nextStep.target.number;
       const shown: RememberedComposerTop = {
         groupId: nextStep.target.groupId,
         repository: nextStep.target.repository,
@@ -149,8 +160,9 @@ export function zeropsComposerTop(input: {
               })),
             }),
         ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
+        ...(dismissed ? { dismissed: true as const } : {}),
       };
-      return { strip: held ? null : stripOf(shown), remember: shown };
+      return { strip: held || dismissed ? null : stripOf(shown), remember: shown };
     }
   }
 }
@@ -159,12 +171,15 @@ export function ZeropsNextStepStrip({
   strip,
   onReview,
   onMore,
+  onDismiss,
 }: {
   readonly strip: ZeropsNextStepStripModel;
   /** Opens the review, from the button that was pressed. */
   readonly onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
   /** Opens the project's page, where every change waiting is listed. */
   readonly onMore?: ((groupId: string) => void) | undefined;
+  /** Puts the strip away for this change, from the button that was pressed. */
+  readonly onDismiss?: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
 }) {
   const lines = strip.lines ?? [];
   if (lines.length > 0) {
@@ -216,7 +231,7 @@ export function ZeropsNextStepStrip({
   return (
     <section
       aria-label={strip.title}
-      className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-3.5 pb-3 ps-4"
+      className="grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-2 pb-3 ps-4"
       data-composer-top="review"
     >
       <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
@@ -233,8 +248,46 @@ export function ZeropsNextStepStrip({
       >
         Review
       </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              aria-label="Dismiss"
+              className="composer-top-dismiss"
+              onClick={(event) => {
+                onDismiss?.(strip.target, event.currentTarget);
+              }}
+              type="button"
+            >
+              <XIcon aria-hidden="true" />
+            </button>
+          }
+        />
+        <TooltipPopup side="top">Hide until another change waits</TooltipPopup>
+      </Tooltip>
     </section>
   );
+}
+
+/**
+ * Folds the composer's top away — its height, padding and edge to nothing —
+ * then `done`; at once where the person asked for less motion.
+ */
+function foldAway(top: HTMLElement | null, done: () => void): void {
+  if (top === null || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    done();
+    return;
+  }
+  top.style.height = `${top.offsetHeight}px`;
+  top.style.overflow = "hidden";
+  void top.offsetHeight;
+  top.style.transition =
+    "height 200ms cubic-bezier(0.23, 1, 0.32, 1), padding 200ms cubic-bezier(0.23, 1, 0.32, 1), border-width 200ms cubic-bezier(0.23, 1, 0.32, 1), opacity 120ms ease-out";
+  top.style.height = "0px";
+  top.style.paddingBlock = "0px";
+  top.style.borderBottomWidth = "0px";
+  top.style.opacity = "0";
+  setTimeout(done, 200);
 }
 
 /** This conversation's composer top: the strip, or nothing. */
@@ -245,6 +298,20 @@ export function useZeropsNextStepStrip(
   const openReview = useOpenReview();
   const navigate = useNavigate();
   const threadKey = threadRef === null ? null : scopedThreadKey(threadRef);
+  // A dismissal lives in the memory, which nothing watches: this draws it.
+  const [, redraw] = useReducer((count: number) => count + 1, 0);
+  const dismiss = useCallback(
+    (_target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
+      if (threadKey === null) return;
+      foldAway(from.closest<HTMLElement>("[data-composer-top]"), () => {
+        const remembered = rememberedComposerTop(threadKey);
+        if (remembered === undefined) return;
+        rememberComposerTop(threadKey, { ...remembered, dismissed: true });
+        redraw();
+      });
+    },
+    [threadKey],
+  );
   const { strip, remember } = zeropsComposerTop({
     nextStep: useZeropsMateNextStep(threadRef),
     remembered: threadKey === null ? undefined : rememberedComposerTop(threadKey),
@@ -267,12 +334,13 @@ export function useZeropsNextStepStrip(
           onMore={(groupId) => {
             void navigate({ to: "/group/$groupId/flow", params: { groupId } });
           }}
+          onDismiss={dismiss}
           onReview={(target, from) => {
             openReview(target, { from });
           }}
           strip={JSON.parse(shown) as ZeropsNextStepStripModel}
         />
       ),
-    [navigate, openReview, shown],
+    [dismiss, navigate, openReview, shown],
   );
 }

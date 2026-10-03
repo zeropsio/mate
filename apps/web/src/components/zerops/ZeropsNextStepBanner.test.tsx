@@ -75,6 +75,19 @@ const REMEMBERED: RememberedComposerTop = {
   shape: "squircle",
 };
 
+const DISMISSED: RememberedComposerTop = { ...REMEMBERED, dismissed: true };
+
+/** Another change of the same Mate, waiting after #2 was dismissed. */
+const WAITING_3 = {
+  ...WAITING,
+  step: {
+    ...WAITING.step,
+    title: "Nova is waiting for your review of #3",
+    detail: "Fix the footer",
+  },
+  target: { kind: "change", groupId: "g-1", repository: "app", number: 3 },
+} as ZeropsMateNextStep;
+
 const SHOWN: ZeropsNextStepStripModel = {
   title: "Nova is waiting for your review of #2",
   detail: "Add a status page",
@@ -222,6 +235,43 @@ describe("zeropsComposerTop", () => {
       threadKey: "env-nova:thread-1",
       answers: [UNANSWERED],
       shown: [null],
+      remembered: undefined,
+    },
+    {
+      case: "dismissed, and the same change still waits: it stays away",
+      memory: { "env-nova:thread-1": DISMISSED },
+      threadKey: "env-nova:thread-1",
+      answers: [UNANSWERED, WAITING],
+      shown: [null, null],
+      remembered: DISMISSED,
+    },
+    {
+      case: "dismissed, then another change waits: that one shows",
+      memory: { "env-nova:thread-1": DISMISSED },
+      threadKey: "env-nova:thread-1",
+      answers: [UNANSWERED, WAITING_3],
+      shown: [
+        null,
+        {
+          ...SHOWN,
+          title: "Nova is waiting for your review of #3",
+          detail: "Fix the footer",
+          target: { ...SHOWN.target, number: 3 },
+        },
+      ],
+      remembered: {
+        ...REMEMBERED,
+        number: 3,
+        title: "Fix the footer",
+        words: "Nova is waiting for your review of #3",
+      },
+    },
+    {
+      case: "dismissed, then nothing waits: forgotten",
+      memory: { "env-nova:thread-1": DISMISSED },
+      threadKey: "env-nova:thread-1",
+      answers: [UNANSWERED, NOTHING],
+      shown: [null, null],
       remembered: undefined,
     },
     {
@@ -378,6 +428,29 @@ describe("ZeropsNextStepStrip", () => {
     });
     expect(onReview).toHaveBeenCalledWith(
       { kind: "change", groupId: "g-1", repository: "appdev", number: 1 },
+      pressed,
+    );
+  });
+
+  it("puts the strip away from its dismiss button, until another change waits", () => {
+    const onDismiss = vi.fn();
+    const tree = ZeropsNextStepStrip({
+      onReview: () => {},
+      onDismiss,
+      strip: STRIP,
+    }) as ReactElement;
+    const button = visitElements(
+      tree,
+      (element) => element.type === "button" && element.props["aria-label"] === "Dismiss",
+    );
+    if (button === null) throw new Error("the strip has no dismiss button");
+    const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
+    (button.props.onClick as (event: { currentTarget: HTMLElement }) => void)({
+      currentTarget: pressed,
+    });
+
+    expect(onDismiss).toHaveBeenCalledWith(
+      { kind: "change", groupId: "g-1", repository: "app", number: 2 },
       pressed,
     );
   });

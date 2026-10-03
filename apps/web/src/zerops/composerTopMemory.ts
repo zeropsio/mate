@@ -40,6 +40,8 @@ const StripSchema = Schema.Struct({
   ),
   /** How many more waited past the lines. */
   more: Schema.optionalKey(Schema.Number),
+  /** The person put the strip away: it stays away until another change waits. */
+  dismissed: Schema.optionalKey(Schema.Literal(true)),
 });
 
 const MemorySchema = Schema.Record(Schema.String, StripSchema);

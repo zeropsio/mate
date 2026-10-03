@@ -5040,6 +5040,35 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   transform: scale(0.97);
 }
 
+/* The strip's ×: quiet beside Review, the one button that asks for anything. */
+.composer-top-dismiss {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.composer-top-dismiss svg {
+  width: 14px;
+  height: 14px;
+}
+
+.composer-top-dismiss:hover {
+  color: var(--color-foreground);
+  background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+}
+
+.composer-top-dismiss:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
 .composer-review-button:focus-visible {
   box-shadow:
     0 0 0 2px var(--card),
