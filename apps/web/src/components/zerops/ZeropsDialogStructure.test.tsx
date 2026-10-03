@@ -113,7 +113,7 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
           role="stage"
           takenBotNames={{ names: [], complete: true }}
           tier={undefined}
-          tierLoading={false}
+          recipe="absent"
           tierServices={[]}
         />,
       ),
@@ -134,7 +134,7 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
           role="dev"
           takenBotNames={{ names: [], complete: true }}
           tier={undefined}
-          tierLoading={false}
+          recipe="absent"
           tierServices={[]}
         />,
       ),

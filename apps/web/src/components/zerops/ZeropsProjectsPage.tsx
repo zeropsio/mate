@@ -157,7 +157,7 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
@@ -2730,7 +2730,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         <ZeropsEnvironmentCreationDialog
           tier={groupRecipe.tier}
           tierServices={groupRecipe.services}
-          tierLoading={groupRecipe.loading}
+          recipe={creationRecipe(groupRecipe)}
+          recipeRereading={groupRecipe.rereading}
+          onRecipeRetry={groupRecipe.reread}
           defaultBotName={creationRequest.botName}
           defaultName={proposedEnvironmentName({
             groupName: requestedGroup.group.name,

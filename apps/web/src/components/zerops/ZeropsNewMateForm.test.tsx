@@ -44,7 +44,7 @@ function form(props: Partial<Props> = {}): ReactElement {
         role="dev"
         takenBotNames={{ names: ["Fen"], complete: true }}
         tier={TIER}
-        tierLoading={false}
+        recipe="present"
         tierServices={["app"]}
         {...props}
       />
@@ -321,7 +321,7 @@ describe("the New Mate dialog", () => {
   it("waits while the recipe is read, says so, and adds the Mate the moment it arrives", () => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     expect(lineText(tree)).toBe("Reading the project's recipe…");
     press(tree);
     expect(made).toEqual([]);
@@ -329,7 +329,7 @@ describe("the New Mate dialog", () => {
       host(tree, (node) => node.type === "button" && node.props.type === "submit").props,
     ).toMatchObject({ disabled: true, "aria-busy": true });
     act(() => {
-      tree.update(form({ onCreate, tier: TIER, tierLoading: false }));
+      tree.update(form({ onCreate, tier: TIER, recipe: "present" }));
     });
     expect(made.map((choice) => choice.recipe)).toEqual([TIER]);
   });
@@ -337,10 +337,10 @@ describe("the New Mate dialog", () => {
   it("does not add an empty Mate for a press made before the project was read as having no recipe", () => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     press(tree);
     act(() => {
-      tree.update(form({ onCreate, tier: undefined, tierLoading: false }));
+      tree.update(form({ onCreate, tier: undefined, recipe: "absent" }));
     });
     expect(made).toEqual([]);
     expect(lineText(tree)).toBe("");
@@ -350,7 +350,7 @@ describe("the New Mate dialog", () => {
   });
 
   it("tells a project with nothing to deploy yet that its person says what to build", () => {
-    const tree = mount(form({ tier: undefined, tierLoading: false }));
+    const tree = mount(form({ tier: undefined, recipe: "absent" }));
     expect(next(tree)).toEqual({
       steps: [
         ["Otto comes up", "about 1½–2 min"],
@@ -364,7 +364,7 @@ describe("the New Mate dialog", () => {
   // Learning the project has nothing to deploy changes the block's words in its one place: both
   // versions stand there, one out of sight, so the dialog keeps its height.
   it("holds both versions of what happens next in one place while the recipe is read", () => {
-    const tree = mount(form({ tier: undefined, tierLoading: true }));
+    const tree = mount(form({ tier: undefined, recipe: "reading" }));
     const versions = tree.root.findAll(
       (node) => typeof node.type === "string" && node.props["data-zerops-next"] !== undefined,
     );
@@ -394,12 +394,12 @@ describe("the New Mate dialog", () => {
   ])("lets a press go once $case: only a press adds", ({ name, refused }) => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     if (refused) type(tree, "Fen");
     press(tree);
     type(tree, name);
     act(() => {
-      tree.update(form({ onCreate, tier: TIER, tierLoading: false }));
+      tree.update(form({ onCreate, tier: TIER, recipe: "present" }));
     });
     expect(made).toEqual([]);
     press(tree);
@@ -570,7 +570,7 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
   it("drops a press made while the recipe was read once it says why, and adds only on a new one", () => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     type(tree, "Ada");
     press(tree);
     act(() => {

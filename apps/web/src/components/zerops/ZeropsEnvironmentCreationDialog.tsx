@@ -31,14 +31,15 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Radio, RadioGroup } from "../ui/radio-group";
 import { Switch } from "../ui/switch";
-import { Skeleton } from "../ui/skeleton";
 import { cn } from "~/lib/utils";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
+  creationRecipeHold,
   hasCreationErrors,
   recipeOptions,
   validateCreationForm,
   type CreationFormErrors,
+  type CreationRecipe,
   type NewMateDoorAction,
   type NewMateDoorClosed,
   type PressStepView,
@@ -76,8 +77,15 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
   /** The services that tier declares, for the line under the option. */
   readonly tierServices: ReadonlyArray<string>;
-  /** True while the group repo is still being read. */
-  readonly tierLoading: boolean;
+  /**
+   * Where the project's recipe stands (`creationRecipe`): being read, or what HQ answered — a
+   * recipe, none on `main`, or a read that failed. Only "none" says there is no recipe.
+   */
+  readonly recipe: CreationRecipe;
+  /** A recipe that could not be read is being read again (`useZeropsGroupRecipe`). */
+  readonly recipeRereading?: boolean | undefined;
+  /** Reads a recipe that could not be read again: *Try again*. */
+  readonly onRecipeRetry?: (() => void) | undefined;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
   /** A Mate's Add went through and the platform is taking its project (`ZeropsNewMateForm`). */
@@ -226,7 +234,7 @@ export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFo
 
 function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
-  const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
+  const { groupName, defaultBotName, proposeName, takenBotNames, tier, recipe } = props;
   const { defaultTintFor, adding, addError, closed, onDoorAction, onCancel, onCreate } = props;
   return (
     <ZeropsNewMateForm
@@ -245,7 +253,7 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       proposeName={proposeName}
       takenBotNames={takenBotNames}
       tier={tier}
-      tierLoading={tierLoading}
+      tierLoading={recipe === "reading"}
     />
   );
 }
@@ -261,16 +269,20 @@ function EnvironmentForm({
   takenBotNames,
   tier,
   tierServices,
-  tierLoading,
+  recipe,
+  recipeRereading,
+  onRecipeRetry,
   onCancel,
   onCreate,
 }: ZeropsEnvironmentCreationFormProps) {
   const id = useId();
   const what = environmentWord(role);
   const options = useMemo(
-    () => recipeOptions({ roleLabel: what, tier, services: tierServices }),
-    [what, tier, tierServices],
+    () => recipeOptions({ roleLabel: what, tier, services: tierServices, recipe }),
+    [what, tier, tierServices, recipe],
   );
+  // A recipe being read, or one that could not be read, holds Add: what is created comes from it.
+  const held = creationRecipeHold(recipe);
   const [name, setName] = useState(defaultName);
   const [nameTouched, setNameTouched] = useState(false);
   const [withAgent, setWithAgent] = useState(defaultWithAgent);
@@ -283,7 +295,7 @@ function EnvironmentForm({
 
   const errors: CreationFormErrors = validateCreationForm(
     { name, withAgent, botName, recipeId },
-    { takenBotNames, options },
+    { takenBotNames, options, recipe },
   );
   const showErrors = submitted;
 
@@ -391,18 +403,24 @@ function EnvironmentForm({
                 </span>
               </label>
             ))}
-            {tierLoading ? (
-              <div
-                aria-label="Reading the project's recipe"
-                className="flex items-center gap-3 px-3 py-2.5"
-                role="status"
-              >
-                <Skeleton shape="pill" className="size-4" />
-                <Skeleton className="h-3.5 w-48" />
+            {held === undefined ? null : (
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5" role="status">
+                <span className="text-xs text-muted-foreground">{held}</span>
+                {recipe === "unreadable" && onRecipeRetry !== undefined ? (
+                  <Button
+                    aria-busy={recipeRereading === true || undefined}
+                    disabled={recipeRereading === true}
+                    onClick={onRecipeRetry}
+                    type="button"
+                    variant="outline"
+                  >
+                    Try again
+                  </Button>
+                ) : null}
               </div>
-            ) : null}
+            )}
           </RadioGroup>
-          {showErrors && errors.recipe !== undefined ? (
+          {showErrors && held === undefined && errors.recipe !== undefined ? (
             <FieldError>{errors.recipe}</FieldError>
           ) : null}
         </div>
@@ -412,7 +430,7 @@ function EnvironmentForm({
         <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
-        <Button type="submit">
+        <Button disabled={held !== undefined} type="submit">
           Add {what} to {groupName}
         </Button>
       </DialogFooter>
