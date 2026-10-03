@@ -31,7 +31,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
-import { Roles } from "./roles.ts";
+import { Roles, confirmingRefusal } from "./roles.ts";
 import { ZeropsApi, type ZeropsError, ZeropsRefused } from "./zerops/api.ts";
 
 /** The project env key zcp writes the nonce into. */
@@ -115,20 +115,22 @@ export const mateCredentialsLayer = (options: {
                   : Effect.fail(error),
           ),
         );
-      /** Whether HQ holds the project as a Mate now, over the org read fresh. */
+      /** Whether HQ holds the project as a Mate now, over the org as a write is decided. */
       const enrollable = (projectId: string) =>
-        Effect.gen(function* () {
-          const decision = can(
-            { kind: "mate", projectId },
-            "enroll_mate",
-            { projectId, held: yield* heldOf(sql, projectId) },
-            yield* roles.fresh,
-          );
-          if (decision.allow) return;
-          return yield* new MateRefused({
-            code: decision.reason === "project_gone" ? "project_gone" : "not_a_mate",
-          });
-        });
+        confirmingRefusal(
+          Effect.gen(function* () {
+            const decision = can(
+              { kind: "mate", projectId },
+              "enroll_mate",
+              { projectId, held: yield* heldOf(sql, projectId) },
+              yield* roles.forWrite,
+            );
+            if (decision.allow) return;
+            return yield* new MateRefused({
+              code: decision.reason === "project_gone" ? "project_gone" : "not_a_mate",
+            });
+          }),
+        );
       return MateCredentials.of({
         challenge: (projectId) =>
           Effect.gen(function* () {

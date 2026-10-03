@@ -4,7 +4,8 @@
  *
  * A Mate works only in the application HQ holds it in: it names a repository by its name, and HQ
  * finds it there. Whether it may is `can` (`@t3tools/shared/zeropsPermissions`), asked here and
- * nowhere else — a Mate's writes over the org read fresh (`mateApp`, `mateChange`), its fetches
+ * nowhere else — a Mate's writes over the org as every write is decided (`mateApp`, `mateChange`:
+ * `roles.ts` `confirmingRefusal`), its fetches
  * over the org up to 30 s old (`mateFetch`); a person's reads and comments in `personApp`. Every
  * write is fenced by the leader.
  *
@@ -53,7 +54,7 @@ import { appendEvent } from "./gitEvents.ts";
 import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
-import { Roles } from "./roles.ts";
+import { Roles, confirmingRefusal } from "./roles.ts";
 import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -98,7 +99,7 @@ export class Changes extends Context.Service<
   {
     /**
      * The application the Mate of `projectId` does `verb` in: the one HQ holds it in, as `can`
-     * decides it over the org read now.
+     * decides it over the org as a write is decided (`roles.ts` `confirmingRefusal`).
      */
     readonly mateApp: (projectId: string, verb: MateVerb) => Effect.Effect<string, MateError>;
     /**
@@ -429,36 +430,40 @@ export const changesLayer: Layer.Layer<
     const mate = (projectId: string) => ({ kind: "mate", projectId }) as const;
 
     const mateApp = (projectId: string, verb: MateVerb) =>
-      Effect.gen(function* () {
-        const target = yield* mateHeld(projectId);
-        return yield* enforced(
-          verb,
-          target,
-          can(mate(projectId), verb, target, yield* roles.fresh),
-        );
-      });
+      confirmingRefusal(
+        Effect.gen(function* () {
+          const target = yield* mateHeld(projectId);
+          return yield* enforced(
+            verb,
+            target,
+            can(mate(projectId), verb, target, yield* roles.forWrite),
+          );
+        }),
+      );
 
     /** The application the Mate edits its change `number` of `repo` in: its own change only. */
     const mateChange = (projectId: string, repo: string, number: number) =>
-      Effect.gen(function* () {
-        const held = yield* mateHeld(projectId);
-        const [row] =
-          held.appId === null
-            ? []
-            : yield* sql<{ readonly mate_project_id: string }>`
+      confirmingRefusal(
+        Effect.gen(function* () {
+          const held = yield* mateHeld(projectId);
+          const [row] =
+            held.appId === null
+              ? []
+              : yield* sql<{ readonly mate_project_id: string }>`
                 SELECT mate_project_id FROM hq_change
                 WHERE app_id = ${held.appId}::uuid AND repo = ${repo} AND number = ${number}`;
-        const target = {
-          ...held,
-          change: row === undefined ? null : { mateProjectId: row.mate_project_id },
-        };
-        const facts = yield* roles.fresh;
-        return yield* enforced(
-          "edit_change",
-          target,
-          can(mate(projectId), "edit_change", target, facts),
-        );
-      });
+          const target = {
+            ...held,
+            change: row === undefined ? null : { mateProjectId: row.mate_project_id },
+          };
+          const facts = yield* roles.forWrite;
+          return yield* enforced(
+            "edit_change",
+            target,
+            can(mate(projectId), "edit_change", target, facts),
+          );
+        }),
+      );
 
     const mateFetch = (projectId: string, repoAppId: string) =>
       Effect.gen(function* () {
@@ -473,7 +478,7 @@ export const changesLayer: Layer.Layer<
 
     /**
      * Whether the person `userId` may `verb` the changes of the application `appId`: `can` over
-     * all of its projects — a read over the org up to 30 s old, a comment over the org read now.
+     * all of its projects — a read over the org up to 30 s old, a comment as every write is decided.
      * Decided before the application's existence, so an id tells nobody without the right whether
      * it names an application. Applications are compared by their id's text, which a path may
      * spell any way.
@@ -486,15 +491,15 @@ export const changesLayer: Layer.Layer<
       userId: string,
       appId: string,
       verb: "read_change" | "comment_change" | "merge_change" | "close_change",
-    ) =>
-      Effect.gen(function* () {
+    ) => {
+      const check = Effect.gen(function* () {
         const projects = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
         const projectIds = projects.map((row) => row.project_id);
         const decision =
           verb === "read_change"
             ? readsChanges(userId, projectIds, yield* roles.view)
-            : can({ kind: "person", userId }, verb, { projectIds }, yield* roles.fresh);
+            : can({ kind: "person", userId }, verb, { projectIds }, yield* roles.forWrite);
         if (!decision.allow) {
           yield* Effect.logInfo("change refused", { userId, verb, appId, reason: decision.reason });
           return yield* refuse("forbidden", decision.reason);
@@ -502,6 +507,9 @@ export const changesLayer: Layer.Layer<
         const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
         if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
       });
+      // A read is decided over the cached view; a write as every write is (F22).
+      return verb === "read_change" ? check : confirmingRefusal(check);
+    };
 
     /** A change of the application, or `change_not_found`. */
     const changeIn = (appId: string, repo: string, number: number) =>

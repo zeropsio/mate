@@ -4,10 +4,12 @@
  * the environment record of a stage's or a production's (`environments.ts`).
  * A `devstage` project is a Mate that also serves as its application's stage (main's "Dev /
  * Stage"): a Mate by its record and its rules, a stage by the one-production rule. HQ is its
- * only writer; every write is fenced by the leader and checks the writer against Zerops read fresh.
+ * only writer; every write is fenced by the leader and checks the writer against Zerops, as every
+ * write is decided (`roles.ts` `confirmingRefusal`).
  *
  * Who may is `can` (`@t3tools/shared/zeropsPermissions`), asked with the project's kind as HQ holds
- * it now and, for a write, the org read fresh. A refusal answers a code and a reason code, and is
+ * it now and, for a write, the org at most 30 s old, its refusal confirmed fresh. A refusal answers
+ * a code and a reason code, and is
  * logged with who asked what.
  *
  * @module structure
@@ -47,7 +49,7 @@ import { reachesOnly } from "./deployTokens.ts";
 import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateLive, type MateLiveEntry } from "./mateLive.ts";
-import { Roles } from "./roles.ts";
+import { Roles, confirmingRefusal } from "./roles.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
 export class StructureRefused extends Schema.TaggedError<StructureRefused>()("StructureRefused", {
@@ -457,8 +459,8 @@ export const structureLayer = (options: {
               ${environment.userId})`;
         });
 
-      // Over the org as recently read: a fresh read is a write's (the lead, 2026-10-03: forcing one
-      // every minute read KRLS's member and project lists for nothing).
+      // Over the org as recently read, never forcing a fresh read (the lead, 2026-10-03: forcing
+      // one every minute read KRLS's member and project lists for nothing).
       const reconcile = Effect.gen(function* () {
         const listed = new Set((yield* roles.recent).projects.map((project) => project.id));
         const rows = yield* sql<{ readonly project_id: string }>`
@@ -491,14 +493,22 @@ export const structureLayer = (options: {
         );
       }
 
+      /** A write's method, decided over the org as `confirmingRefusal` decides one (F22). */
+      const confirmed =
+        <Args extends ReadonlyArray<unknown>, A, E, R>(
+          method: (...args: Args) => Effect.Effect<A, E, R>,
+        ) =>
+        (...args: Args) =>
+          confirmingRefusal(method(...args));
+
       return Structure.of({
         reconcile,
         changes: Stream.merge(SubscriptionRef.changes(version), live.changes),
         mateChanges: Stream.fromPubSub(mateChanged),
         mateState: stateOf,
-        keepDeployToken: (userId, appId, name, token) =>
+        keepDeployToken: confirmed((userId, appId, name, token) =>
           Effect.gen(function* () {
-            const view = yield* roles.fresh;
+            const view = yield* roles.forWrite;
             // Whether the application has an environment of that name is told only to whoever sees
             // the application.
             const appProjects = yield* sql<{ readonly project_id: string }>`
@@ -545,9 +555,10 @@ export const structureLayer = (options: {
             }
             yield* changed;
           }),
-        markBirth: (userId, projectId, mark) =>
+        ),
+        markBirth: confirmed((userId, projectId, mark) =>
           Effect.gen(function* () {
-            const view = yield* roles.fresh;
+            const view = yield* roles.forWrite;
             const marked = yield* leader.write(
               Effect.gen(function* () {
                 const held = yield* heldOf(sql, projectId);
@@ -568,11 +579,12 @@ export const structureLayer = (options: {
             if (Option.isNone(state)) return yield* refuse("mate_not_found", "mate_not_found");
             return state.value;
           }),
-        createApp: (userId, rawName) =>
+        ),
+        createApp: confirmed((userId, rawName) =>
           Effect.gen(function* () {
             const name = rawName.trim();
             if (!fitsName(name)) return yield* refuse("invalid", "name_length");
-            yield* allowed(userId, "create_app", null, yield* roles.fresh);
+            yield* allowed(userId, "create_app", null, yield* roles.forWrite);
             const rows = yield* conflictOnUnique(
               leader.write(sql<{ readonly id: string; readonly name: string }>`
                 INSERT INTO hq_app (name, created_by) VALUES (${name}, ${userId})
@@ -583,12 +595,13 @@ export const structureLayer = (options: {
             // `INSERT … RETURNING` answers the row it inserted, or fails.
             return rows[0]!;
           }),
+        ),
 
-        renameApp: (userId, appId, rawName) =>
+        renameApp: confirmed((userId, appId, rawName) =>
           Effect.gen(function* () {
             const name = rawName.trim();
             if (!fitsName(name)) return yield* refuse("invalid", "name_length");
-            yield* allowed(userId, "rename_app", null, yield* roles.fresh);
+            yield* allowed(userId, "rename_app", null, yield* roles.forWrite);
             const rows = yield* conflictOnUnique(
               leader.write(sql<{ readonly id: string; readonly name: string }>`
                 UPDATE hq_app SET name = ${name} WHERE id::text = ${appId}
@@ -607,10 +620,11 @@ export const structureLayer = (options: {
             );
             return rows[0];
           }),
+        ),
 
-        deleteApp: (userId, appId) =>
+        deleteApp: confirmed((userId, appId) =>
           Effect.gen(function* () {
-            yield* allowed(userId, "delete_app", null, yield* roles.fresh);
+            yield* allowed(userId, "delete_app", null, yield* roles.forWrite);
             yield* leader.write(
               Effect.gen(function* () {
                 // Locked against an attach, which takes the row's weaker lock: whichever comes
@@ -633,8 +647,9 @@ export const structureLayer = (options: {
             );
             yield* changed;
           }),
+        ),
 
-        attachProject: (userId, appId, input) =>
+        attachProject: confirmed((userId, appId, input) =>
           Effect.gen(function* () {
             if (isMateKind(input.kind) !== (input.mate !== undefined)) {
               return yield* refuse("invalid", "mate_record_with_kind");
@@ -651,7 +666,7 @@ export const structureLayer = (options: {
             if (input.projectId === options.hqProjectId) {
               return yield* refuse("invalid", "hq_project");
             }
-            const view = yield* roles.fresh;
+            const view = yield* roles.forWrite;
             /**
              * `can`'s answer on the application's projects and the project's kind as they stand:
              * whether the application has its project of this kind already counts too — a
@@ -738,13 +753,14 @@ export const structureLayer = (options: {
             yield* changed;
             yield* PubSub.publish(mateChanged, input.projectId);
           }),
+        ),
 
-        moveProject: (userId, projectId, { appId, kind }) =>
+        moveProject: confirmed((userId, projectId, { appId, kind }) =>
           Effect.gen(function* () {
             if (projectId === options.hqProjectId) {
               return yield* refuse("invalid", "hq_project");
             }
-            const view = yield* roles.fresh;
+            const view = yield* roles.forWrite;
             // The kind is read and decided on in the write that changes it, and the change lands
             // only on the row still of that kind: a writer's change in between makes a conflict.
             if (appId === null) {
@@ -838,8 +854,9 @@ export const structureLayer = (options: {
             yield* PubSub.publish(mateChanged, projectId);
             return { projectId, appId, kind };
           }),
+        ),
 
-        createMate: (userId, mate) =>
+        createMate: confirmed((userId, mate) =>
           Effect.gen(function* () {
             const name = mate.name.trim();
             if (!fitsName(name) || mate.face.length < 1 || mate.face.length > 64) {
@@ -848,7 +865,7 @@ export const structureLayer = (options: {
             if (mate.projectId === options.hqProjectId) {
               return yield* refuse("invalid", "hq_project");
             }
-            const view = yield* roles.fresh;
+            const view = yield* roles.forWrite;
             yield* conflictOnUnique(
               leader.write(
                 Effect.gen(function* () {
@@ -872,8 +889,9 @@ export const structureLayer = (options: {
             yield* PubSub.publish(mateChanged, mate.projectId);
             return { projectId: mate.projectId, name, face: mate.face };
           }),
+        ),
 
-        patchMate: (userId, projectId, patch) =>
+        patchMate: confirmed((userId, projectId, patch) =>
           Effect.gen(function* () {
             const name = patch.name?.trim();
             if (name === undefined && patch.face === undefined) {
@@ -882,7 +900,7 @@ export const structureLayer = (options: {
             if ((name !== undefined && !fitsName(name)) || (patch.face?.length ?? 1) > 64) {
               return yield* refuse("invalid", "name_length");
             }
-            const view = yield* roles.fresh;
+            const view = yield* roles.forWrite;
             const rows = yield* leader.write(
               Effect.gen(function* () {
                 const held = yield* heldOf(sql, projectId);
@@ -899,6 +917,7 @@ export const structureLayer = (options: {
             yield* PubSub.publish(mateChanged, projectId);
             return { projectId, ...rows[0] };
           }),
+        ),
 
         read: (userId) =>
           Effect.gen(function* () {

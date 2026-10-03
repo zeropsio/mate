@@ -421,7 +421,8 @@ const gitCredential = (authorization: string | undefined) => {
  * git at `/git/<appId>/<repo>.git` for a Mate, decided before the git layer serves the request:
  * its credential (a `401` asks git for it, and a client address's misses are limited as a door's
  * knocks are); then, on the service as the layer reads the request (`gitHost.ts`), a push by
- * `can`'s `open_change` over the org read now; and any request by `fetch_repo` on the repository's
+ * `can`'s `open_change` over the org as a write is decided (`roles.ts`); and any request by
+ * `fetch_repo` on the repository's
  * application, which also decides every repository the layer serves it.
  */
 const serveGit = Effect.gen(function* () {

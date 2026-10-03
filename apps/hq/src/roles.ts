@@ -1,9 +1,12 @@
 /**
  * The facts every permission is decided over, from Zerops at the moment of use: HQ reads its org's
  * members and projects with its own Read only credential and keeps that view for at most 30 s
- * (SPEC §4). `view` serves it up to that age as `Facts<"cached">`, `fresh` reads it now as
- * `Facts<"fresh">` — what every writing verb of `can` (`@t3tools/shared/zeropsPermissions`)
- * requires. The decisions themselves are `can`'s; nothing about people is stored in HQ.
+ * (SPEC §4). `view` serves it up to that age as `Facts<"cached">`. A write is decided over
+ * `forWrite`, inside `confirmingRefusal`: first over the view at most 30 s old (`recent`), and
+ * where the facts refuse it once more over a fresh read, whose refusal stands; its waits on Zerops
+ * end within 35 s (F22, 2026-10-03: a release waited on a fresh read while KRLS's org-wide reads
+ * stalled 25 s, and went with its client at 20 s). The decisions themselves are `can`'s
+ * (`@t3tools/shared/zeropsPermissions`); nothing about people is stored in HQ.
  *
  * While Zerops does not answer, `view` serves the last good view for five minutes from its read,
  * at once, and asks Zerops again behind it at most every 30 s: a read verb is decided over it, a
@@ -15,16 +18,22 @@
  * 2026-10-03: doors re-entered behind a fresh read of KRLS's slow member list hung 55 s and 77 s).
  *
  * A view's age counts from when Zerops answered it: a read slower than 30 s — one a door gave up
- * on at its budget — lands fresh enough for the door asked again. A `fresh` read is only one begun
- * after it was asked.
+ * on at its budget — lands fresh enough for the door asked again. A write's fresh read is only one
+ * begun after it was asked.
  *
  * @module roles
  */
-import type { Facts, Freshness } from "@t3tools/shared/zeropsPermissions";
+import {
+  type Facts,
+  type Freshness,
+  REASONS,
+  type WriteFreshness,
+} from "@t3tools/shared/zeropsPermissions";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
@@ -40,7 +49,10 @@ import {
   ZeropsUnavailable,
 } from "./zerops/api.ts";
 
-/** HQ's org as read, and how: read for this call (`fresh`) or up to 30 s old (`cached`). */
+/**
+ * HQ's org as read, and how: read for this call (`fresh`), Zerops' answer at most 30 s old
+ * (`recent`), or served from what HQ holds (`cached`).
+ */
 export interface OrgView<F extends Freshness = Freshness> extends Facts<F> {
   readonly orgId: string;
   readonly members: ReadonlyArray<ZeropsMember>;
@@ -54,8 +66,12 @@ export class Roles extends Context.Service<
   {
     /** The org's view, at most 30 s old. */
     readonly view: Effect.Effect<OrgView<"cached">, ZeropsError>;
-    /** The org's view read now, for a write. */
-    readonly fresh: Effect.Effect<OrgView<"fresh">, ZeropsError>;
+    /**
+     * The org's view a write is decided over: at most 30 s old, or read now where the write is
+     * being confirmed (`confirmingRefusal`); never the last good one served. Its wait ends with
+     * the write's budget, past which it is `ZeropsUnavailable`; the read it left goes on.
+     */
+    readonly forWrite: Effect.Effect<OrgView<WriteFreshness>, ZeropsError>;
     /** The org's view at most 30 s old, read now past that — never the last good one served. */
     readonly recent: Effect.Effect<OrgView<"cached">, ZeropsError>;
     /**
@@ -67,6 +83,45 @@ export class Roles extends Context.Service<
 >()("@t3tools/hq/roles") {}
 
 const VIEW_TTL = Duration.seconds(30);
+
+/** How long a write waits on Zerops for its facts: under the client's 45 s, as the door. */
+export const WRITE_BUDGET = Duration.seconds(35);
+
+/**
+ * The write running: whether it is being confirmed over a fresh read, and when its waits on
+ * Zerops end, wall ms (`confirmingRefusal`). Outside one, a write's own read starts its budget.
+ */
+export const WriteConfirm = Context.Reference<{
+  readonly fresh: boolean;
+  readonly until: number | undefined;
+}>("@t3tools/hq/roles/WriteConfirm", { defaultValue: () => ({ fresh: false, until: undefined }) });
+
+const REASON_SET: ReadonlySet<string> = new Set(REASONS);
+
+/** A refusal the org's facts decided: a permission's reason (`can`), or a Mate's refusal. */
+const refusedByFacts = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  (("reason" in error && typeof error.reason === "string" && REASON_SET.has(error.reason)) ||
+    ("_tag" in error && error._tag === "MateRefused"));
+
+/**
+ * A write decided over the org: first over the view at most 30 s old (`Roles.forWrite`), and where
+ * its facts refuse it, once more over a fresh read, whose refusal stands — an allow needs no fresh
+ * read, a refusal is confirmed by one (F22). Both passes' waits on Zerops end within
+ * `WRITE_BUDGET` of the write's start. Its refusal comes before anything is written: the second
+ * pass runs the write again whole.
+ */
+export const confirmingRefusal = <A, E, R>(write: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    const until = (yield* Clock.currentTimeMillis) + Duration.toMillis(WRITE_BUDGET);
+    return yield* write.pipe(
+      Effect.provideService(WriteConfirm, { fresh: false, until }),
+      Effect.catchIf(refusedByFacts, () =>
+        write.pipe(Effect.provideService(WriteConfirm, { fresh: true, until })),
+      ),
+    );
+  });
 
 /** How long after its read the last good view is served while Zerops does not answer. */
 const VIEW_GRACE = Duration.minutes(5);
@@ -160,14 +215,33 @@ export const rolesLayer = (options: {
       /** A view Zerops answered within the last 30 s. */
       const answeredWithin = (now: number) => (hit: { readonly answered: number }) =>
         hit.answered > now - ttl;
-      const fresh = Effect.flatMap(Clock.currentTimeMillis, (now) =>
-        Semaphore.withPermits(permit, 1)(readUnderPermit(begunAfter(now), now)),
-      ).pipe(Effect.map((read): OrgView<"fresh"> => ({ ...read, freshness: "fresh" })));
+      const freshAt = (now: number) =>
+        Semaphore.withPermits(permit, 1)(readUnderPermit(begunAfter(now), now));
       const recentAt = (now: number) =>
         Semaphore.withPermits(permit, 1)(readUnderPermit(answeredWithin(now), now));
       const recent = Effect.flatMap(Clock.currentTimeMillis, recentAt).pipe(
         Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })),
       );
+      const forWrite = Effect.gen(function* () {
+        const { fresh, until } = yield* WriteConfirm;
+        const now = yield* Clock.currentTimeMillis;
+        const ends = until ?? now + Duration.toMillis(WRITE_BUDGET);
+        // In the layer's scope: a write that gave up on its read leaves it to land for the next.
+        const reading = yield* Effect.forkIn(fresh ? freshAt(now) : recentAt(now), scope);
+        const read = yield* Fiber.join(reading).pipe(
+          Effect.timeoutOrElse({
+            duration: Duration.millis(Math.max(0, ends - now)),
+            orElse: () =>
+              Effect.fail(
+                new ZeropsUnavailable({
+                  operation: "write",
+                  message: "Zerops did not answer within the write's budget.",
+                }),
+              ),
+          }),
+        );
+        return { ...read, freshness: fresh ? "fresh" : "recent" } as OrgView<WriteFreshness>;
+      });
       const view = Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
         const good = yield* Ref.get(cached);
@@ -202,6 +276,6 @@ export const rolesLayer = (options: {
           ),
         );
       }).pipe(Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })));
-      return Roles.of({ view, fresh, recent, exists });
+      return Roles.of({ view, forWrite, recent, exists });
     }),
   );

@@ -70,7 +70,7 @@ import { Leader, NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Releases } from "./releases.ts";
-import { Roles } from "./roles.ts";
+import { Roles, confirmingRefusal } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import { sameCommit, versionName, versionSha } from "./versionNames.ts";
 import { ZeropsApi, ZeropsDeploy, type ZeropsError, type ZeropsService } from "./zerops/api.ts";
@@ -1012,31 +1012,32 @@ export const deploysLayer = (
         ),
         changes: SubscriptionRef.changes(ticks),
         redeploy: (userId, appId, name, service, sha) =>
-          Effect.gen(function* () {
-            const view = yield* roles.fresh;
-            const person = { kind: "person", userId } as const;
-            const projectIds = (yield* sql<{ readonly project_id: string }>`
+          confirmingRefusal(
+            Effect.gen(function* () {
+              const view = yield* roles.forWrite;
+              const person = { kind: "person", userId } as const;
+              const projectIds = (yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`).map(
-              (row) => row.project_id,
-            );
-            const refuse = (code: DeployRefused["code"], reason: DeployRefused["reason"]) =>
-              Effect.andThen(
-                Effect.logInfo("redeploy refused", { userId, appId, name, service, reason }),
-                Effect.fail(new DeployRefused({ code, reason })),
+                (row) => row.project_id,
               );
-            // Whether the application has an environment of that name is told only to whoever
-            // sees it.
-            const seen = can(person, "read_app", { projectIds }, view);
-            if (!seen.allow) return yield* refuse("forbidden", seen.reason);
-            const [environment] = yield* sql<{ readonly project_id: string }>`
+              const refuse = (code: DeployRefused["code"], reason: DeployRefused["reason"]) =>
+                Effect.andThen(
+                  Effect.logInfo("redeploy refused", { userId, appId, name, service, reason }),
+                  Effect.fail(new DeployRefused({ code, reason })),
+                );
+              // Whether the application has an environment of that name is told only to whoever
+              // sees it.
+              const seen = can(person, "read_app", { projectIds }, view);
+              if (!seen.allow) return yield* refuse("forbidden", seen.reason);
+              const [environment] = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_environment
               WHERE app_id::text = ${appId} AND name = ${name}`;
-            if (environment === undefined) {
-              return yield* refuse("environment_not_found", "environment_not_found");
-            }
-            const may = can(person, "redeploy", { projectIds }, view);
-            if (!may.allow) return yield* refuse("forbidden", may.reason);
-            const [deployed] = yield* sql<{ readonly state: string; readonly newest: boolean }>`
+              if (environment === undefined) {
+                return yield* refuse("environment_not_found", "environment_not_found");
+              }
+              const may = can(person, "redeploy", { projectIds }, view);
+              if (!may.allow) return yield* refuse("forbidden", may.reason);
+              const [deployed] = yield* sql<{ readonly state: string; readonly newest: boolean }>`
               SELECT state, created_at = (
                 SELECT max(created_at) FROM hq_deploy
                 WHERE project_id = ${environment.project_id} AND service = ${service}
@@ -1044,21 +1045,22 @@ export const deploysLayer = (
               FROM hq_deploy
               WHERE project_id = ${environment.project_id} AND service = ${service}
                 AND sha = ${sha}`;
-            if (deployed === undefined)
-              return yield* refuse("deploy_not_found", "deploy_not_found");
-            if (!deployed.newest) return yield* refuse("conflict", "deploy_superseded");
-            const asked = yield* leader.write(sql`
+              if (deployed === undefined)
+                return yield* refuse("deploy_not_found", "deploy_not_found");
+              if (!deployed.newest) return yield* refuse("conflict", "deploy_superseded");
+              const asked = yield* leader.write(sql`
               UPDATE hq_deploy
               SET state = 'pending', failure = NULL, message = NULL, requested_by = ${userId},
                   updated_at = now()
               WHERE project_id = ${environment.project_id} AND service = ${service}
                 AND sha = ${sha} AND state = 'failed'
               RETURNING 1`);
-            if (asked.length === 0) return yield* refuse("conflict", "deploy_not_failed");
-            yield* tick;
-            const pass = yield* Ref.get(leading);
-            if (Option.isSome(pass)) yield* pass.value(true, environment.project_id);
-          }),
+              if (asked.length === 0) return yield* refuse("conflict", "deploy_not_failed");
+              yield* tick;
+              const pass = yield* Ref.get(leading);
+              if (Option.isSome(pass)) yield* pass.value(true, environment.project_id);
+            }),
+          ),
       });
     }),
   );
