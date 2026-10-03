@@ -93,6 +93,11 @@ export class Leader extends Context.Service<
 export interface LeaderOptions {
   readonly databaseUrl: Redacted.Redacted;
   readonly migrations: ReadonlyArray<Migration>;
+  /**
+   * What the migrations leave for code, run after them under the lock before this Core leads: the
+   * deploy tokens kept before they were sealed (`deployKeys.ts`). Its failure is a migration's.
+   */
+  readonly afterMigrations?: Effect.Effect<void, SqlError, SqlClient.SqlClient>;
   /** How often the lock connection and the official verdict are checked. */
   readonly heartbeat?: Duration.Duration;
   /** A heartbeat that takes longer ends the session: the connection is presumed gone. */
@@ -253,6 +258,7 @@ export const leaderLayer = (
           "UPDATE hq_leader SET epoch = epoch + 1, acquired_at = now() WHERE id = 1 RETURNING epoch",
         );
         const runMigrations = migrate(options.migrations).pipe(
+          Effect.andThen(options.afterMigrations ?? Effect.void),
           Effect.tapError(() => SubscriptionRef.set(status, MIGRATION_FAILED)),
         );
         const schemaThere = yield* connection

@@ -14,8 +14,10 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
+import { testKey } from "../test/harness/deployKeys.ts";
 import { memoryStore } from "../test/harness/overviews.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { type KeySecret, deployKeysLayer, keySecretOf, openToken } from "./deployKeys.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
@@ -104,6 +106,8 @@ const withStructure = <A, E, B = never>(
     asked: Ref.Ref<ReadonlyArray<string>>,
   ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
   before?: Effect.Effect<void, B, SqlClient.SqlClient>,
+  /** HQ's key; the test key by default. */
+  keySecret: KeySecret = testKey(),
 ) =>
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createDatabase;
@@ -143,6 +147,7 @@ const withStructure = <A, E, B = never>(
     });
     const context = yield* Layer.build(
       structureLayer({ hqProjectId: "HQ" }).pipe(
+        Layer.provide(deployKeysLayer(keySecret)),
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(roles),
         Layer.provide(Layer.effect(MateOverviews, makeMateOverviews(memoryStore().store))),
@@ -1450,12 +1455,53 @@ describe("structure", () => {
             assert.strictEqual(yield* keyInvalid, true);
             assert.strictEqual(yield* keep("maker", "stage", "key-stage"), "ok");
             assert.strictEqual(yield* keyInvalid, false);
-            const [kept] = yield* sql<{ readonly token: string }>`
-              SELECT token FROM hq_deploy_token WHERE project_id = 'P_OWNED'`;
-            assert.strictEqual(kept?.token, "key-stage");
+            // Kept sealed: bytes that hold no value, opening under HQ's key on its own row alone.
+            const [kept] = yield* sql<{ readonly key_id: string; readonly sealed: Uint8Array }>`
+              SELECT key_id, sealed FROM hq_deploy_token WHERE project_id = 'P_OWNED'`;
+            assert.notInclude(Buffer.from(kept?.sealed ?? []).toString("latin1"), "key-stage");
+            const opened = openToken(testKey(), "P_OWNED", {
+              keyId: kept?.key_id ?? "",
+              sealed: kept?.sealed ?? new Uint8Array(),
+            });
+            assert.strictEqual(opened && Redacted.value(opened), "key-stage");
             assert.notInclude(encodeJson(yield* structure.read("owner")), "key-stage");
           }),
         ),
+    );
+
+    // HQ keeps a deploy token only sealed (`deployKeys.ts`): without its key it keeps none, before
+    // it asks Zerops anything of the token.
+    it.effect.each<[string, string | undefined]>([
+      ["no key", undefined],
+      ["a key that is no key", "not-a-key"],
+    ])("keeps no deploy token while HQ has %s", ([, raw]) =>
+      withStructure(
+        (_view, _down, zerops) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_OWNED",
+              kind: "stage",
+              environment: { name: "stage" },
+            });
+            const asked = zerops.calls.length;
+            const kept = yield* structure
+              .keepDeployToken("owner", shop.id, "stage", Redacted.make("key-stage"))
+              .pipe(Effect.flip);
+            assert.deepStrictEqual(
+              kept._tag === "StructureRefused" ? [kept.code, kept.reason] : kept._tag,
+              ["conflict", "no_key_secret"],
+            );
+            assert.deepStrictEqual(zerops.calls.slice(asked), []);
+            assert.strictEqual(
+              (yield* environmentsOf(structure, "Shop"))["P_OWNED"]?.keyHeld,
+              false,
+            );
+          }),
+        undefined,
+        keySecretOf(raw === undefined ? Option.none() : Option.some(Redacted.make(raw))),
+      ),
     );
 
     // An application's environments and their deploys (SPEC §3.2b, main B26–B36) go to whoever

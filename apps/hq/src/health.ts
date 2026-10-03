@@ -9,7 +9,8 @@
  * serving nothing says why (`reason`, `leader.ts` `hold`). `git` is where git stands on this Core —
  * open, opening (leading, its takeover not through) or closed — and `quarantined` the repositories
  * it withholds until they converge, if any (`gitHost.ts`). `db` is a fresh `SELECT 1` on the pool,
- * `backup` the newest set's outcome (`backup.ts` `BackupStatus`), `loop` the event loop's delay and
+ * `backup` the newest set's outcome (`backup.ts` `BackupStatus`), `keys` where HQ's key for its
+ * deploy tokens stands (`deployKeys.ts` `KeysStatus`), `loop` the event loop's delay and
  * its newest stall (`loopWatch.ts`), and `recomputes` the structure sockets' views computed in the
  * last minute (`recomputes.ts`): all reported, never judged.
  *
@@ -22,6 +23,7 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { Backup } from "./backup.ts";
+import { DeployKeys } from "./deployKeys.ts";
 import { GitHost } from "./gitHost.ts";
 import { LOCK_KEY, Leader, RETRY_AFTER } from "./leader.ts";
 import { LoopWatch } from "./loopWatch.ts";
@@ -50,6 +52,12 @@ export const healthRoute = (build: string) =>
       const backup = yield* (yield* Backup).status;
       const loop = yield* (yield* LoopWatch).status;
       const recomputes = yield* (yield* Recomputes).lastMinute;
+      const deployKeys = yield* DeployKeys;
+      // A database that does not answer says nothing of the tokens: the key as the env gives it.
+      const keys = yield* deployKeys.status.pipe(
+        Effect.timeout(PROBE_TIMEOUT),
+        Effect.orElseSucceed(() => deployKeys.state),
+      );
       // Another Core holds the lock: the one a deploy would retire. Not known counts as held.
       const lockHeld = sql<{ readonly held: boolean }>`
         SELECT EXISTS (
@@ -74,6 +82,7 @@ export const healthRoute = (build: string) =>
           git: git.git,
           ...(git.quarantined.length === 0 ? {} : { quarantined: git.quarantined }),
           backup,
+          keys,
           loop,
           recomputes,
           epoch,

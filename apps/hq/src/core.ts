@@ -23,6 +23,7 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import { apiRoutes } from "./api.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
+import { deployKeysLayer, keySecretOf, sealPlainTokens } from "./deployKeys.ts";
 import { deploysLayer } from "./deploys.ts";
 import { doorLayer } from "./door.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
@@ -62,6 +63,8 @@ export interface CoreOptions {
   readonly hqProjectId: string;
   /** `HQ_ORG_TOKEN`. */
   readonly credential: Option.Option<Redacted.Redacted>;
+  /** `HQ_KEY_SECRET`, the key HQ seals its environments' deploy tokens with (`deployKeys.ts`). */
+  readonly keySecret: Option.Option<Redacted.Redacted>;
   readonly clientOrigins: ReadonlyArray<string>;
   readonly build: string;
   /** How long the server still answers after the lead is given up on shutdown; 10 s. */
@@ -92,9 +95,11 @@ const routes = (options: CoreOptions) =>
   );
 
 const services = (options: CoreOptions) => {
+  const keySecret = keySecretOf(options.keySecret);
   const leader = leaderLayer({
     databaseUrl: options.databaseUrl,
     migrations: options.migrations,
+    afterMigrations: sealPlainTokens(keySecret),
     ...(options.heartbeat === undefined ? {} : { heartbeat: options.heartbeat }),
     ...(options.retryAfter === undefined ? {} : { retryAfter: options.retryAfter }),
   }).pipe(
@@ -149,6 +154,7 @@ const services = (options: CoreOptions) => {
     // One set of buckets for the API's addresses and the door's people.
     Layer.provideMerge(doorRateLimitLayer),
     Layer.provideMerge(leader),
+    Layer.provideMerge(deployKeysLayer(keySecret)),
     // Below the leader: its official check reads the org through the view every reader shares.
     Layer.provideMerge(
       rolesLayer({

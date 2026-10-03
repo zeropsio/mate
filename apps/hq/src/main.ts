@@ -3,7 +3,8 @@
  * HQ Core's entry. From the environment: `DATABASE_URL`, a direct connection to Postgres (an
  * advisory lock does not survive the pooler on 6432); `PORT` (8080); the platform's `projectId`,
  * whose own domain is this Core's address, which the anchor must name (`official.ts`); `HQ_ORG_TOKEN`, the org Read only credential HQ reads Zerops with (absent
- * means `credentials_wrong`); `HQ_ZEROPS_API`, the region's REST API; `HQ_CLIENT_ORIGINS`, the
+ * means `credentials_wrong`); `HQ_KEY_SECRET`, the key its environments' deploy tokens are sealed
+ * with (`deployKeys.ts`; absent, HQ deploys nothing); `HQ_ZEROPS_API`, the region's REST API; `HQ_CLIENT_ORIGINS`, the
  * client origins the API answers; `HQ_DRAIN_SECONDS`, how long the server still answers on shutdown (`core.ts`);
  * `HQ_BACKUP_*`, the bucket backup sets are kept in (`bucketStore.ts`; without it backup is off). The
  * server answers from the first moment; the official check and the leader work behind it. The
@@ -93,6 +94,7 @@ const core = Layer.unwrap(
       migrations: bundledMigrations(),
       hqProjectId: yield* Config.String("projectId"),
       credential: yield* Config.option(Config.Redacted("HQ_ORG_TOKEN")),
+      keySecret: yield* Config.option(Config.Redacted("HQ_KEY_SECRET")),
       clientOrigins: origins.split(",").map((origin) => origin.trim()),
       build: BUILD,
     };
