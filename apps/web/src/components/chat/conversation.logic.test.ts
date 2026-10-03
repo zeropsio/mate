@@ -28,7 +28,6 @@ import {
   readUsageLimitNotice,
   stretchFace,
   stretchIncidents,
-  stretchNotes,
   stretchOperations,
   activityCounts,
 } from "./conversation.logic";
@@ -313,7 +312,6 @@ describe("deriveConversationStructure", () => {
       last: true,
       startedAt: at(0),
     });
-    expect(stretchNotes(only!.stretches[0]!, only!.answer).map((note) => note.id)).toEqual(["a1"]);
   });
 
   it("starts a stretch at every message sent into the turn", () => {
@@ -360,7 +358,6 @@ describe("deriveConversationStructure", () => {
     expect(only!.answer).toBeNull();
     expect(only!.stretches.map((stretch) => stretch.live)).toEqual([false, true]);
     expect(only!.stretches[1]!.endedAt).toBeNull();
-    expect(stretchNotes(only!.stretches[1]!, only!.answer).map((note) => note.id)).toEqual(["a2"]);
   });
 
   it("gives messages sent back to back a stretch each, the empty one included", () => {

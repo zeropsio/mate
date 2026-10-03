@@ -892,17 +892,6 @@ export function readsAsAnswer(text: string): boolean {
   );
 }
 
-/** A message on the way to the answer — every assistant message but the turn's answer. */
-export function stretchNotes(stretch: Stretch, answer: MessageEntry | null): MessageEntry[] {
-  return stretch.entries.filter(
-    (entry): entry is MessageEntry =>
-      entry.kind === "message" &&
-      entry.message.role === "assistant" &&
-      entry !== answer &&
-      entry.message.text.trim().length > 0,
-  );
-}
-
 type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "other";
 
 /** What a run's calls did, by kind: the effort its worked line counts. */
