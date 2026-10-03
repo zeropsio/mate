@@ -512,7 +512,7 @@ describe("buildThreadActionItems — chats HQ lists", () => {
     main: null,
     threads: { list, omitted: 0 },
     logins: {},
-    crew: null,
+    crew: { status: "off" },
   });
 
   const hq = (mates: HqMates) => ({
