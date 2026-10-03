@@ -28,7 +28,14 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { OpencodeClient, Part, PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2";
+import type {
+  McpLocalConfig,
+  McpRemoteConfig,
+  OpencodeClient,
+  Part,
+  PermissionRequest,
+  QuestionRequest,
+} from "@opencode-ai/sdk/v2";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
@@ -58,6 +65,7 @@ import {
   toOpenCodeQuestionAnswers,
   type OpenCodeServerConnection,
 } from "../opencodeRuntime.ts";
+import { openCodeMcpControl, type OpenCodeMcpClient } from "../../spi/mcpLive.ts";
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
@@ -332,6 +340,16 @@ type OpenCodeTextPartState = Pick<OpenCodeTextPart, "id" | "messageID" | "type" 
   emittedText: string | undefined;
   completed: boolean;
 };
+
+/** The MCP calls of a session's OpenCode server, for the MCP tab. */
+const openCodeMcpClient = (client: OpencodeClient): OpenCodeMcpClient => ({
+  status: () => client.mcp.status().then((result) => result.data),
+  connect: (name) => client.mcp.connect({ name }),
+  disconnect: (name) => client.mcp.disconnect({ name }),
+  // The entry is the one the MCP tab wrote into opencode.json, so it is OpenCode's own shape.
+  add: (name, config) =>
+    client.mcp.add({ name, config: config as unknown as McpLocalConfig | McpRemoteConfig }),
+});
 
 interface OpenCodeSessionContext {
   session: ProviderSession;
@@ -3861,6 +3879,16 @@ export function makeOpenCodeAdapter(
       readThread,
       rollbackThread,
       stopAll,
+      mcp: openCodeMcpControl({
+        get: (threadId) => {
+          const context = sessions.get(threadId);
+          return context === undefined ? undefined : openCodeMcpClient(context.client);
+        },
+        all: () =>
+          [...new Map([...sessions.values()].map((c) => [c.server, c.client])).values()].map(
+            openCodeMcpClient,
+          ),
+      }),
       get streamEvents() {
         return Stream.fromQueue(runtimeEvents);
       },

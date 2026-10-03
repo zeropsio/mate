@@ -573,10 +573,10 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
         expect(yield* fs.readLink(configLink)).toBe(configSkills);
         expect(yield* fs.readLink(cliLink)).toBe(cliSkills);
         expect(yield* fs.exists(path.join(configLink, "review"))).toBe(true);
-        // Only the skill directories are shared; the rest of the profile stays private.
-        expect(yield* fs.exists(path.join(profileDirectory, "config", "mcp_config.json"))).toBe(
-          false,
-        );
+        // Only the skill directories and the MCP servers are shared; the rest stays private.
+        expect(
+          yield* fs.exists(path.join(profileDirectory, "antigravity-cli", "settings.json")),
+        ).toBe(false);
 
         // A stale link is repointed; a real directory the user placed there is kept.
         yield* fs.remove(cliLink);
@@ -587,6 +587,41 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
         expect(yield* fs.readLink(cliLink)).toBe(cliSkills);
         expect(yield* fs.exists(path.join(configLink, "own-skill"))).toBe(true);
         expect((yield* fs.stat(configLink)).type).toBe("Directory");
+      }),
+  );
+
+  it.effect.skipIf(!symlinksSupported)(
+    "links the user's MCP servers into the profile, so zcp's and the MCP tab's servers reach the agent",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+        const userHome = path.join(temporaryDirectory, "home");
+        const profileDirectory = path.join(temporaryDirectory, "profile");
+        const userConfig = path.join(userHome, ".gemini", "config", "mcp_config.json");
+        const link = path.join(profileDirectory, "config", "mcp_config.json");
+        yield* fs.makeDirectory(path.dirname(userConfig), { recursive: true });
+        yield* fs.writeFileString(userConfig, '{"mcpServers":{"zerops":{"command":"zcp"}}}');
+
+        yield* prepareAntigravityProfile({ profileDirectory, userHome });
+        expect(yield* fs.readLink(link)).toBe(userConfig);
+        expect(yield* fs.readFileString(link)).toContain("zerops");
+
+        // A server written later (the file replaced by a rename) is read through the same link.
+        yield* fs.writeFileString(`${userConfig}.tmp`, '{"mcpServers":{"linear":{"command":"x"}}}');
+        yield* fs.rename(`${userConfig}.tmp`, userConfig);
+        expect(yield* fs.readFileString(link)).toContain("linear");
+
+        // A stale link is repointed; a real file the user placed there is kept.
+        yield* fs.remove(link);
+        yield* fs.symlink(path.join(temporaryDirectory, "elsewhere.json"), link);
+        yield* prepareAntigravityProfile({ profileDirectory, userHome });
+        expect(yield* fs.readLink(link)).toBe(userConfig);
+        yield* fs.remove(link);
+        yield* fs.writeFileString(link, "{}");
+        yield* prepareAntigravityProfile({ profileDirectory, userHome });
+        expect(yield* fs.readFileString(link)).toBe("{}");
       }),
   );
 

@@ -146,6 +146,7 @@ import { threadsToStopForAgent, waitUntilNotLive } from "./zerops/ZeropsAgentSig
 import * as ZeropsLoginSignOutModule from "./zerops/ZeropsLoginSignOut.ts";
 import { threadsToStopForLogin } from "./zerops/ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
+import { McpServers } from "./zerops/mcp/McpServers.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
@@ -660,6 +661,17 @@ const makeWsRpcLayer = (
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsAgentSignOut = yield* ZeropsAgentSignOutModule.ZeropsAgentSignOut;
       const zeropsLogins = yield* ZeropsLoginsModule.ZeropsLogins;
+      // The MCP tab's servers; absent where no Zerops layer runs.
+      const mcpServers = yield* Effect.serviceOption(McpServers);
+      const withMcpServers = <A>(
+        operation: string,
+        run: (service: McpServers["Service"]) => Effect.Effect<A, McpServersError>,
+      ) =>
+        Option.isSome(mcpServers)
+          ? run(mcpServers.value)
+          : Effect.fail(
+              new McpServersError({ operation, detail: "MCP servers can't be managed here." }),
+            );
       const zeropsLoginSignOut = yield* ZeropsLoginSignOutModule.ZeropsLoginSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsCli = yield* ZeropsCli;
@@ -2099,35 +2111,36 @@ const makeWsRpcLayer = (
             }),
             { "rpc.aggregate": "server" },
           ),
-        // The MCP tab's methods; the mcp server part fills them in.
-        [WS_METHODS.mcpServersList]: () =>
-          Effect.fail(
-            new McpServersError({ operation: WS_METHODS.mcpServersList, detail: "Not built yet." }),
+        // The MCP tab's methods (`zerops/mcp/McpServers.ts`).
+        [WS_METHODS.mcpServersList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersList,
+            withMcpServers(WS_METHODS.mcpServersList, (mcp) => mcp.list(input)),
+            { "rpc.aggregate": "server" },
           ),
-        [WS_METHODS.mcpServersAdd]: () =>
-          Effect.fail(
-            new McpServersError({ operation: WS_METHODS.mcpServersAdd, detail: "Not built yet." }),
+        [WS_METHODS.mcpServersAdd]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersAdd,
+            withMcpServers(WS_METHODS.mcpServersAdd, (mcp) => mcp.add(input)),
+            { "rpc.aggregate": "server" },
           ),
-        [WS_METHODS.mcpServersRemove]: () =>
-          Effect.fail(
-            new McpServersError({
-              operation: WS_METHODS.mcpServersRemove,
-              detail: "Not built yet.",
-            }),
+        [WS_METHODS.mcpServersRemove]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersRemove,
+            withMcpServers(WS_METHODS.mcpServersRemove, (mcp) => mcp.remove(input)),
+            { "rpc.aggregate": "server" },
           ),
-        [WS_METHODS.mcpServersSetEnabled]: () =>
-          Effect.fail(
-            new McpServersError({
-              operation: WS_METHODS.mcpServersSetEnabled,
-              detail: "Not built yet.",
-            }),
+        [WS_METHODS.mcpServersSetEnabled]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersSetEnabled,
+            withMcpServers(WS_METHODS.mcpServersSetEnabled, (mcp) => mcp.setEnabled(input)),
+            { "rpc.aggregate": "server" },
           ),
-        [WS_METHODS.mcpServersReconnect]: () =>
-          Effect.fail(
-            new McpServersError({
-              operation: WS_METHODS.mcpServersReconnect,
-              detail: "Not built yet.",
-            }),
+        [WS_METHODS.mcpServersReconnect]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersReconnect,
+            withMcpServers(WS_METHODS.mcpServersReconnect, (mcp) => mcp.reconnect(input)),
+            { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.providerUploadFeedback]: (input) =>
           observeRpcEffect(

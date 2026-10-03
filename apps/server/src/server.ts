@@ -31,6 +31,7 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import { ZeropsLayerLive } from "./zerops/zeropsFeedsLayer.ts";
+import { McpServersLayerLive } from "./zerops/mcp/McpServers.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import { ProviderRuntimeEventBusLive } from "./spi/ProviderRuntimeEventBus.ts";
 import { ClaudeThreadExtensionRegistry } from "./spi/claudeThreadProfile.ts";
@@ -563,7 +564,7 @@ const ProviderRuntimeEventBusLayerLive = ProviderRuntimeEventBusLive.pipe(
  * would be treated as a dependency OF the runtime, and their own
  * requirements would leak out to every caller instead of being satisfied.
  */
-const RuntimeDependenciesLive = ZeropsLayerLive.pipe(
+const RuntimeDependenciesLive = Layer.merge(ZeropsLayerLive, McpServersLayerLive).pipe(
   Layer.provideMerge(ProviderRuntimeEventBusLayerLive),
   Layer.provideMerge(RuntimeBaseDependenciesLive),
 );
