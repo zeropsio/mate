@@ -160,19 +160,18 @@ export const mateCredentialsLayer = (options: {
       /**
        * Whether `keyTokenId` names a key whose one grant is the project `projectId`, read by its id
        * with HQ's own credential — never a deploy key, a person's token, nor another Mate's key. A
-       * token Zerops does not have is none.
+       * token Zerops refuses to show HQ, whatever its reason, is none.
        */
       const keyOfProject = (projectId: string, keyTokenId: string) =>
         Effect.gen(function* () {
           const { orgId } = yield* roles.view;
-          const projects = yield* Effect.flatMap(own, api.tokenProjects(orgId, keyTokenId));
-          return projects.length === 1 && projects[0]?.projectId === projectId;
-        }).pipe(
-          Effect.catchIf(
-            (error) => error._tag === "ZeropsRefused" && error.reason === "not_found",
-            () => Effect.succeed(false),
-          ),
-        );
+          const credential = yield* own;
+          const grants = api.tokenProjects(orgId, keyTokenId);
+          return yield* grants(credential).pipe(
+            Effect.map((projects) => projects.length === 1 && projects[0]?.projectId === projectId),
+            Effect.catchTag("ZeropsRefused", () => Effect.succeed(false)),
+          );
+        });
       const keyOf = (projectId: string) =>
         Effect.map(
           sql<{ readonly key_token_id: string | null }>`

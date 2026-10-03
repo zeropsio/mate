@@ -108,12 +108,12 @@ const isMateRefused = Schema.is(MateRefused);
 const refusalOf = <A, E extends { readonly _tag: string }, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.map(Effect.flip(effect), (error) => (isMateRefused(error) ? error.code : error._tag));
 
-/** A Mate's key on the platform, by its id, granting `projectIds` (no value is ever read). */
-const keyOn = (fake: FakeWorld, id: string, ...projectIds: ReadonlyArray<string>) =>
+/** A key of the org `orgId`, by its id, granting `projectIds` (no value is ever read). */
+const keyIn = (fake: FakeWorld, orgId: string, id: string, ...projectIds: ReadonlyArray<string>) =>
   fake.tokens.set(`value-of-${id}`, {
     id,
     name: "zerops-zcp-zcp",
-    orgId: "ORG",
+    orgId,
     roleCode: "NO_ACCESS",
     canCreateProjects: false,
     canViewFinances: false,
@@ -122,6 +122,10 @@ const keyOn = (fake: FakeWorld, id: string, ...projectIds: ReadonlyArray<string>
     createdMs: 0,
     createdByUser: "owner",
   });
+
+/** A Mate's key on the platform, in HQ's org. */
+const keyOn = (fake: FakeWorld, id: string, ...projectIds: ReadonlyArray<string>) =>
+  keyIn(fake, "ORG", id, ...projectIds);
 
 /** What zcp does with its own key: writes the nonce into its project's env, unmarked. */
 const writeChallenge = (fake: FakeWorld, projectId: string, value: string, sensitive = false) =>
@@ -283,6 +287,23 @@ describe("mate credentials", () => {
           );
           yield* mates.keepKey(credential, "tok-own");
           assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-own");
+        }),
+      ),
+    );
+
+    it.effect("an id Zerops will not show HQ is none, and never stops its Mate's enrollment", () =>
+      withMates((fake) =>
+        Effect.gen(function* () {
+          keyIn(fake, "OTHER", "tok-foreign", "P_MATE");
+          const mates = yield* MateCredentials;
+          const { nonce } = yield* mates.challenge("P_MATE");
+          writeChallenge(fake, "P_MATE", nonce);
+          const { credential } = yield* mates.issue("P_MATE", nonce, "tok-foreign");
+          assert.isNull(yield* mates.keyOf("P_MATE"));
+          assert.strictEqual(
+            yield* refusalOf(mates.keepKey(credential, "tok-foreign")),
+            "key_not_its_own",
+          );
         }),
       ),
     );
