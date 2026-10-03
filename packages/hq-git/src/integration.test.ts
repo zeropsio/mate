@@ -255,6 +255,29 @@ describe("repositories and real smart HTTP", () => {
     ),
   );
 
+  // An application HQ deleted takes its repositories with it: what `list` no longer names is
+  // neither reconciled nor bundled again.
+  it.live("removes a repository, and its application's directory with its last one", () =>
+    fixture(
+      Effect.gen(function* () {
+        const recipe = yield* git.create({ appId: "app", id: "group" });
+        const code = yield* git.create({ appId: "app", id: "appdev" });
+        yield* git.remove(code);
+        expect(yield* git.list()).toEqual([recipe]);
+        yield* git.remove(recipe);
+        expect(yield* git.list()).toEqual([]);
+        expect(
+          yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(dir, "repos"))),
+        ).not.toContain("app");
+        // A repository already gone is removed already.
+        yield* git.remove(recipe);
+        expect((yield* Effect.flip(git.remove({ appId: "../app", id: "group" }))).reason).toBe(
+          "invalid_id",
+        );
+      }),
+    ),
+  );
+
   it.live("clones, pushes a change, fetches it, and clones as a reader", () =>
     fixture(
       Effect.gen(function* () {
@@ -838,6 +861,7 @@ describe("repositories and real smart HTTP", () => {
           for (const debris of [
             ".home-old/x",
             "app/.build-old/repo.git/HEAD",
+            "app/.removed-old/HEAD",
             "app/kept.git/HEAD",
             "app/kept.git/.index-old/index",
             "app/kept.git/.archive-old/index",

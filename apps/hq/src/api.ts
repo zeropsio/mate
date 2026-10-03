@@ -3,7 +3,8 @@
  *
  * - `POST /api/door` `{ token }`: a throwaway through the door (`door.ts`) → `{ session, expiresAt }`.
  * - `DELETE /api/session`: revokes the presented session.
- * - `POST /api/apps` `{ name }` → the application.
+ * - `POST /api/apps` `{ name }` → the application; `DELETE /api/apps/:id` → `204`, only one that
+ *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it.
  * - `POST /api/apps/:id/projects` `{ projectId, kind, mate?, environment? }`: attaches a project; a
  *   stage or a production is its application's environment, named `environment.name` or after
  *   its project (`environments.ts`).
@@ -755,6 +756,22 @@ const routes = (
             .ensureGroupRepo(app.id)
             .pipe(Effect.catch((error) => Effect.logWarning("recipe repository not made", error)));
           return json(app, 201);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "DELETE",
+      "/api/apps/:id",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const appId = (yield* HttpRouter.params)["id"] ?? "";
+          yield* (yield* Structure).deleteApp(userId, appId);
+          // Its repositories go after it; should they not now, they are only on disk, unnamed.
+          yield* (yield* Changes)
+            .removeAppRepos(appId)
+            .pipe(Effect.catch((error) => Effect.logWarning("repositories not removed", error)));
+          return HttpServerResponse.empty({ status: 204 });
         }),
       ),
     ),

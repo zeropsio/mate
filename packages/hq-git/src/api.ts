@@ -247,6 +247,12 @@ export interface HqGit {
     changeHeads?: ReadonlyArray<ImportedChangeHead>,
   ) => Effect.Effect<Repo, GitError>;
   readonly list: (appId?: string) => Effect.Effect<ReadonlyArray<Repo>, GitError>;
+  /**
+   * The repository gone: moved out of `list`'s sight at once, then deleted; its application's
+   * directory with its last repository. One already gone is removed already. What a crash leaves of
+   * it is swept on the next open.
+   */
+  readonly remove: (repo: Repo) => Effect.Effect<void, GitError>;
   /** Core calls this on takeover: converges config and sweeps stale locks, quarantines, scratch. */
   readonly convergeRepo: (repo: Repo) => Effect.Effect<void, GitError>;
   readonly changeHead: (

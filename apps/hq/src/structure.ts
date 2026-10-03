@@ -21,6 +21,7 @@ import {
   can,
 } from "@t3tools/shared/zeropsPermissions";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
@@ -70,6 +71,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "nothing_to_change",
     "app_name_taken",
     "app_not_found",
+    "app_not_empty",
     "mate_not_found",
     "placed_or_production_taken",
     "production_taken",
@@ -209,6 +211,12 @@ export class Structure extends Context.Service<
       appId: string,
       name: string,
     ) => Effect.Effect<{ readonly id: string; readonly name: string }, WriteError>;
+    /**
+     * An application deleted, with what HQ keeps of its recipe repository — only one that holds
+     * nothing: no project, no change, no release, no repository but its recipe's (`app_not_empty`).
+     * Its repositories on disk are the caller's to remove, after it.
+     */
+    readonly deleteApp: (userId: string, appId: string) => Effect.Effect<void, WriteError>;
     readonly attachProject: (
       userId: string,
       appId: string,
@@ -596,6 +604,32 @@ export const structureLayer = (options: {
               mates.map((row) => row.project_id),
             );
             return rows[0];
+          }),
+
+        deleteApp: (userId, appId) =>
+          Effect.gen(function* () {
+            yield* allowed(userId, "delete_app", null, yield* roles.fresh);
+            yield* leader.write(
+              Effect.gen(function* () {
+                // Locked against an attach, which takes the row's weaker lock: whichever comes
+                // second sees what the first left — a project, or no application.
+                const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR UPDATE`;
+                if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                const held = yield* sql<{ readonly held: boolean }>`
+                  SELECT EXISTS (SELECT 1 FROM hq_app_project WHERE app_id::text = ${appId})
+                      OR EXISTS (SELECT 1 FROM hq_change WHERE app_id::text = ${appId})
+                      OR EXISTS (SELECT 1 FROM hq_release WHERE app_id::text = ${appId})
+                      OR EXISTS (SELECT 1 FROM hq_repo
+                                 WHERE app_id::text = ${appId} AND name <> ${RECIPE_REPO})
+                    AS held`;
+                if (held[0]?.held !== false) return yield* refuse("conflict", "app_not_empty");
+                yield* sql`DELETE FROM hq_recipe_seen WHERE app_id::text = ${appId}`;
+                yield* sql`DELETE FROM hq_git_event WHERE app_id::text = ${appId}`;
+                yield* sql`DELETE FROM hq_repo WHERE app_id::text = ${appId}`;
+                yield* sql`DELETE FROM hq_app WHERE id::text = ${appId}`;
+              }),
+            );
+            yield* changed;
           }),
 
         attachProject: (userId, appId, input) =>

@@ -117,6 +117,11 @@ export class Changes extends Context.Service<
       appId: string,
     ) => Effect.Effect<HqRepo, NotLeader | SqlError | GitError>;
     /**
+     * A deleted application's repositories, gone from disk (`Structure.deleteApp` drops HQ's record
+     * of them first): what `list` no longer names is neither reconciled nor bundled again.
+     */
+    readonly removeAppRepos: (appId: string) => Effect.Effect<void, NotLeader | GitError>;
+    /**
      * A tier of the application's recipe as `main` holds it, bounded — what every reader of a tier
      * reads, a person's, a Mate's, a deploy's: `absent` without the repository, the file, or a
      * service in it.
@@ -833,6 +838,11 @@ export const changesLayer: Layer.Layer<
           makeRepo(appId, name, name === RECIPE_REPO ? "core" : projectId),
         ),
       ensureGroupRepo: (appId) => makeRepo(appId, RECIPE_REPO, "core"),
+      removeAppRepos: (appId) =>
+        Effect.gen(function* () {
+          const git = yield* gitHost.git;
+          for (const repo of yield* git.list(appId)) yield* git.remove(repo);
+        }),
       recipeTier,
       readRecipe: (userId, appId, tier) =>
         Effect.andThen(personApp(userId, appId, "read_change"), recipeTier(appId, tier)),

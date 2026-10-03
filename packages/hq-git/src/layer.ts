@@ -35,7 +35,8 @@ const recover = async (root: string) => {
     if (!entry.isDirectory() || !validId(entry.name)) continue;
     for (const name of await NodeFSP.readdir(path)) {
       const child = NodePath.join(path, name);
-      if (name.startsWith(".build-")) await NodeFSP.rm(child, { recursive: true, force: true });
+      if (name.startsWith(".build-") || name.startsWith(".removed-"))
+        await NodeFSP.rm(child, { recursive: true, force: true });
       else if (name.endsWith(".git")) {
         for (const debris of (await NodeFSP.readdir(child).catch(() => [])).filter(scratch))
           await NodeFSP.rm(NodePath.join(child, debris), { recursive: true, force: true });
@@ -300,6 +301,23 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
         }
         return repos.sort((a, b) => `${a.appId}/${a.id}`.localeCompare(`${b.appId}/${b.id}`));
       });
+    const remove: HqGit["remove"] = (repo) =>
+      attempt("remove", async () => {
+        const dir = directory(repo);
+        const app = NodePath.dirname(dir);
+        // Out of `list`'s sight in one rename, its deletion after it: a crash between is swept.
+        const doomed = NodePath.join(app, `.removed-${repo.id}-${String(process.hrtime.bigint())}`);
+        const moved = await NodeFSP.rename(dir, doomed).then(
+          () => true,
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return false;
+            throw error;
+          },
+        );
+        if (moved) await NodeFSP.rm(doomed, { recursive: true, force: true });
+        // The application's directory goes with its last repository; rmdir refuses one holding more.
+        await NodeFSP.rmdir(app).catch(() => {});
+      });
     const convergeRepo: HqGit["convergeRepo"] = (repo) =>
       attempt("converge", async (signal) => {
         const dir = await locate(repo);
@@ -318,5 +336,14 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       try: () => makeHandler(options, runner, locate, emit),
       catch: (error) => failure("handler", error),
     });
-    return { create, restore, import: importRepo, list, convergeRepo, handler, ...operations };
+    return {
+      create,
+      restore,
+      import: importRepo,
+      list,
+      remove,
+      convergeRepo,
+      handler,
+      ...operations,
+    };
   });

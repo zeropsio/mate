@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- the tests reach Core as a client does: over HTTP and a WebSocket.
 import { assert, describe, it } from "@effect/vitest";
+import * as NodeFSP from "node:fs/promises";
 import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
@@ -82,6 +83,56 @@ describe("HQ API", () => {
             ],
           });
         }),
+    );
+
+    // E2E 2026-10-03 (F5): an application a stopped New project left holds its recipe repository
+    // only. Deleted, it goes from disk too: nothing reconciles or bundles it again.
+    it.effect("deletes an application that holds nothing, its repository with it; no other", () =>
+      Effect.gen(function* () {
+        const { call, gitRoot } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const made = (name: string) =>
+          Effect.map(
+            call("POST", "/api/apps", { session, body: { name } }),
+            (answer) => (answer.body as { readonly id: string }).id,
+          );
+        const empty = yield* made("Shop");
+        const team = yield* made("Team");
+        yield* call("POST", `/api/apps/${team}/projects`, {
+          session,
+          body: { projectId: "P_MATE", kind: "mate", mate: { name: "Ada", face: "face-3" } },
+        });
+        const onDisk = () => Effect.promise(() => NodeFSP.readdir(gitRoot));
+        assert.include(yield* onDisk(), empty);
+
+        const dev = yield* sessionFor(call, "door-dev");
+        const answers = yield* Effect.all([
+          call("DELETE", `/api/apps/${empty}`, { session: dev }),
+          call("DELETE", `/api/apps/${team}`, { session }),
+          call("DELETE", `/api/apps/${empty}`, { session }),
+        ]);
+        assert.deepStrictEqual(
+          answers.map((answer) => {
+            const body = answer.body as { readonly code?: string; readonly reason?: string } | null;
+            return [answer.status, body?.code, body?.reason];
+          }),
+          [
+            [403, "forbidden", "not_structure_writer"],
+            [409, "conflict", "app_not_empty"],
+            [204, undefined, undefined],
+          ],
+        );
+        assert.notInclude(yield* onDisk(), empty);
+        assert.deepStrictEqual(
+          (
+            (yield* call("GET", "/api/structure", { session })).body as {
+              readonly apps: ReadonlyArray<{ readonly name: string }>;
+            }
+          ).apps.map((app) => app.name),
+          ["Team"],
+        );
+      }),
     );
 
     it.effect("attaches an environment named as asked, and refuses a name main refused", () =>
