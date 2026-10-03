@@ -11,7 +11,12 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { HqMatesView, HqPeopleView, HqStructureView } from "../state/zerops";
-import { driveHqStructure, hqOutageLine } from "./hqStructure";
+import {
+  driveHqStructure,
+  HQ_OUTAGE_GRACE_MS,
+  HQ_STREAM_SILENCE_MS,
+  hqOutageLine,
+} from "./hqStructure";
 
 const ACME: HqStructure = { ungrouped: [], apps: [{ id: "app-1", name: "Acme", projects: [] }] };
 const BETA = { id: "app-2", name: "Beta", projects: [] };
@@ -247,61 +252,133 @@ describe("driveHqStructure", () => {
   });
 
   it("says since when HQ is unavailable, keeps the last structure, and starts over from a fresh snapshot", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = streamingApi([
+        {
+          events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+          end: "fail",
+        },
+        // HQ does not answer: the stream is given up past the heartbeats, and fails once more.
+        { events: [], end: "hang" },
+        { events: [], end: "fail" },
+        {
+          events: [
+            {
+              kind: "snapshot",
+              structure: { ungrouped: [], apps: [BETA] },
+              changes: null,
+              mates: null,
+              people: null,
+            },
+          ],
+          end: "hang",
+        },
+      ]);
+      const h = harness();
+      const stop = new AbortController();
+      const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+      await vi.advanceTimersByTimeAsync(HQ_STREAM_SILENCE_MS + 1_000);
+      expect(api.attempts()).toBe(4);
+      stop.abort();
+      await driving;
+
+      const outage = h.views.filter((view) => view.unavailableSince !== null);
+      expect(outage.length).toBeGreaterThan(0);
+      // The outage began when the first stream broke, and kept that time through the next failure.
+      expect(new Set(outage.map((view) => view.unavailableSince)).size).toBe(1);
+      expect(outage.every((view) => view.structure === ACME && !view.current)).toBe(true);
+      expect(h.views.at(-1)).toMatchObject({
+        structure: { ungrouped: [], apps: [BETA] },
+        unavailableSince: null,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // F26: a stream cut on its way (measured every 120 s) and read again at once is no outage.
+  it("shows no outage for a stream that breaks and answers again within the grace", async () => {
     const api = streamingApi([
       {
         events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
         end: "fail",
       },
-      { events: [], end: "fail" },
       {
-        events: [
-          {
-            kind: "snapshot",
-            structure: { ungrouped: [], apps: [BETA] },
-            changes: null,
-            mates: null,
-            people: null,
-          },
-        ],
+        events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
         end: "hang",
       },
     ]);
     const h = harness();
     const stop = new AbortController();
     const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
-    await vi.waitFor(() => expect(api.attempts()).toBe(3));
-    await vi.waitFor(() => expect(h.views.at(-1)?.current).toBe(true));
-    stop.abort();
-    await driving;
-
-    const outage = h.views.filter((view) => view.unavailableSince !== null);
-    expect(outage.length).toBeGreaterThan(0);
-    // The outage began when the first stream broke, and kept that time through the next failure.
-    expect(new Set(outage.map((view) => view.unavailableSince)).size).toBe(1);
-    expect(outage.every((view) => view.structure === ACME && !view.current)).toBe(true);
-    expect(h.views.at(-1)).toMatchObject({
-      structure: { ungrouped: [], apps: [BETA] },
-      unavailableSince: null,
-    });
-  });
-
-  it("dates the structure by the last time HQ answered, its pings included", async () => {
-    const h = harness();
-    const api = streamingApi([
-      {
-        events: [
-          { kind: "snapshot", structure: ACME, changes: null, mates: null, people: null },
-          { pingAfterMs: 20_000, tick: h.tick },
-        ],
-        end: "fail",
-      },
-      { events: [], end: "hang" },
-    ]);
-    const stop = new AbortController();
-    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
     await vi.waitFor(() => expect(api.attempts()).toBe(2));
     stop.abort();
     await driving;
+
+    expect(h.views.filter((view) => view.unavailableSince !== null)).toEqual([]);
+    const answered = h.views.findIndex((view) => view.current);
+    expect(h.views.slice(answered).every((view) => view.current)).toBe(true);
+    const live = h.mates.findIndex((view) => view.current);
+    expect(h.mates.slice(live).every((view) => view.current)).toBe(true);
+  });
+
+  it("says since when HQ stopped answering once it has not answered for the grace", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = streamingApi([
+        {
+          events: [{ kind: "snapshot", structure: ACME, changes: null, mates: null, people: null }],
+          end: "fail",
+        },
+        { events: [], end: "hang" },
+      ]);
+      const h = harness();
+      const stop = new AbortController();
+      const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+      await vi.advanceTimersByTimeAsync(HQ_OUTAGE_GRACE_MS - 1);
+      expect(api.attempts()).toBe(2);
+      expect(h.views.at(-1)).toMatchObject({ current: true, unavailableSince: null });
+      expect(h.mates.at(-1)?.current).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+      // The stream broke at 10 000, before its retry's second.
+      expect(h.views.at(-1)).toMatchObject({
+        structure: ACME,
+        current: false,
+        unavailableSince: 10_000,
+      });
+      expect(h.mates.at(-1)?.current).toBe(false);
+      stop.abort();
+      await driving;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dates the structure by the last time HQ answered, its pings included", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    try {
+      const api = streamingApi([
+        {
+          events: [
+            { kind: "snapshot", structure: ACME, changes: null, mates: null, people: null },
+            { pingAfterMs: 20_000, tick: h.tick },
+          ],
+          end: "fail",
+        },
+        { events: [], end: "hang" },
+      ]);
+      const stop = new AbortController();
+      const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+      await vi.advanceTimersByTimeAsync(HQ_OUTAGE_GRACE_MS);
+      expect(api.attempts()).toBe(2);
+      stop.abort();
+      await driving;
+    } finally {
+      vi.useRealTimers();
+    }
 
     // Read at 10 000, pinged at 30 000, and then the stream broke.
     expect(h.views.find((view) => view.unavailableSince !== null)).toMatchObject({
