@@ -2655,7 +2655,7 @@ describe("operationLineWords — a stand-up call, by what its report said", () =
       name: "the development call returned, its builds running on",
       fields: {
         subject: "development",
-        phase: "running",
+        phase: "done",
         voice: "Standing development up.",
         returnedAt: "2026-09-24T20:01:05.000Z",
         steps: [building("apidev"), building("db")],

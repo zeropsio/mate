@@ -55,6 +55,23 @@ const panel = (agents: RuntimeSubagent[]): AgentPanelModel => ({
   hasAgents: agents.length > 0,
 });
 
+/** A stand-up step as its report left it. */
+const standupStep = (label: string, state: "done" | "running") => ({
+  id: label,
+  label,
+  state,
+  stateLabel: state === "done" ? "Done" : "Running",
+});
+
+/** A stand-up whose call returned while a service of its own still builds, as the builder settles it. */
+const standupRunningOn = (id: string, minute: number) =>
+  operation(id, "t1", minute, {
+    kind: "standup",
+    phase: "done",
+    returnedAt: at(minute, 5),
+    steps: [standupStep("appdev", "done"), standupStep("apidev", "running")],
+  });
+
 describe("dockHelpers", () => {
   it("names each helper by its task, never its model, with its state in words", () => {
     expect(
@@ -312,7 +329,14 @@ describe("deriveDock", () => {
         operation("d0", "t1", 0, { kind: "deploy", phase: "done" }),
         operation("d1", "t1", 1, { kind: "deploy", phase: "running" }),
         operation("d3", "t1", 1, { kind: "deploy", phase: "failed" }),
-        operation("s1", "t1", 1, { kind: "standup", phase: "running", returnedAt: at(1, 5) }),
+        standupRunningOn("s1", 1),
+        operation("s2", "t1", 1, { kind: "standup", phase: "running" }),
+        operation("s3", "t1", 1, {
+          kind: "standup",
+          phase: "done",
+          returnedAt: at(1, 5),
+          steps: [standupStep("appdev", "done")],
+        }),
         operation("v1", "t1", 2, { kind: "verify", phase: "running", returnedAt: at(2, 5) }),
         operation("d2", "t0", 2, { kind: "deploy", phase: "running", returnedAt: at(2, 5) }),
       ],
@@ -320,14 +344,27 @@ describe("deriveDock", () => {
     expect(dock?.operations.map((op) => op.key)).toEqual(["op:s1"]);
   });
 
+  // The stand-up's report froze as its call returned; the store's reading of
+  // its services says when its builds are done.
+  it("lets a stand-up whose builds the store reads as done leave the band", () => {
+    const entries = [standupRunningOn("s1", 1)];
+    const reading = deriveDock({ ...base, timelineEntries: entries });
+    expect(reading?.operations.map((op) => op.key)).toEqual(["op:s1"]);
+    const done = deriveDock({
+      ...base,
+      timelineEntries: entries,
+      standupsDone: new Set(["op:s1"]),
+    });
+    expect(done?.operations ?? []).toEqual([]);
+    expect(endedSince(bandKeys(reading), done)).toEqual(["op:s1"]);
+  });
+
   // A bar the person watched run shows how it ended a moment, then leaves
   // (pass 35): what ended is the band's to hold, never the dock's to keep.
   it("says what the band drew running that has ended since, and draws it as it ended while held", () => {
     const running = deriveDock({
       ...base,
-      timelineEntries: [
-        operation("s1", "t1", 1, { kind: "standup", phase: "running", returnedAt: at(1, 5) }),
-      ],
+      timelineEntries: [standupRunningOn("s1", 1)],
       backgroundTasks: foldBackgroundTasks([
         task("task.started", "b1", 2, { detail: "Smoke tests" }),
       ]),
@@ -336,7 +373,12 @@ describe("deriveDock", () => {
     const ended = deriveDock({
       ...base,
       timelineEntries: [
-        operation("s1", "t1", 1, { kind: "standup", phase: "done", returnedAt: at(1, 5) }),
+        operation("s1", "t1", 1, {
+          kind: "standup",
+          phase: "done",
+          returnedAt: at(1, 5),
+          steps: [standupStep("appdev", "done")],
+        }),
       ],
       backgroundTasks: foldBackgroundTasks([
         task("task.started", "b1", 2, { detail: "Smoke tests" }),

@@ -10,7 +10,7 @@ import type {
   AgentPanelModel,
   RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { standupRunsOn, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { INERT_TASK_TYPES, type OrchestrationThreadActivity } from "@t3tools/contracts";
 
 /** Task types that watch something rather than run once: the Monitor tool's. */
@@ -326,6 +326,11 @@ export function deriveDock(input: {
   readonly backgroundLiveness?: "working" | "monitoring" | null;
   /** The thread is held by a usage limit: when it resets, if known. */
   readonly pause: { readonly resetsAt: string | null } | null;
+  /**
+   * Stand-ups whose builds ran on after their call returned and that the
+   * store's reading of their services says are done, by key (`useStandupsDone`).
+   */
+  readonly standupsDone?: ReadonlySet<string>;
 }): DockModel | null {
   const backgroundTasks = input.backgroundTasks ?? [];
   // Work that outlived the turn: what still runs, and nothing else.
@@ -349,15 +354,22 @@ export function deriveDock(input: {
   // builds). One the Mate waits on is the live slot's; one that ended leaves
   // — its line stays in the record, what is still broken goes to the result.
   // A batch deploy is a row per service.
+  // A stand-up's call settles it as its report said (`standupRunsOn`): it
+  // runs on while that report says a service builds, until the store's
+  // reading of its services says they are done.
+  const runsOn = (operation: ZeropsOperation) =>
+    (operation.phase === "running" && operation.returnedAt !== undefined) ||
+    (standupRunsOn(operation) && !(input.standupsDone?.has(operation.key) ?? false));
   const operations =
     input.isWorking && input.runningTurnId !== null
       ? input.timelineEntries.flatMap((entry) =>
           entry.kind === "operation" &&
           DOCKED_KINDS.has(entry.operation.kind) &&
           entry.operation.turnId === input.runningTurnId &&
-          entry.operation.phase === "running" &&
-          entry.operation.returnedAt !== undefined
-            ? splitBatchDeploy(entry.operation).filter((operation) => operation.phase === "running")
+          runsOn(entry.operation)
+            ? splitBatchDeploy(entry.operation).filter(
+                (operation) => operation.phase === "running" || runsOn(operation),
+              )
             : [],
         )
       : [];

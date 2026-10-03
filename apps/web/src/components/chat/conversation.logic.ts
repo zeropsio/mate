@@ -1161,9 +1161,7 @@ export type WorkLineFace = "working" | "idle" | "produced" | "failed" | "paused"
 export function operationLineWords(operation: ZeropsOperation): string {
   const voice = operation.voice.replace(/\.$/, "");
   const { subject, statusWord } = operation;
-  // A stand-up whose call returned says what it stood up while its builds run on.
-  const runsOn = operation.kind === "standup" && operation.returnedAt !== undefined;
-  if (operation.kind === "error" || (operation.phase === "running" && !runsOn)) return voice;
+  if (operation.kind === "error" || operation.phase === "running") return voice;
   const failed = operation.phase === "failed";
   switch (operation.kind) {
     case "verify": {
