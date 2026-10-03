@@ -697,8 +697,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         standsInComposer ? (
           <ConversationFooterStandIn
             composer={<ComposerStandIn onType={type} typed={typed} />}
+            // Its conversation's remembered answer: the one it opens on, or the one its menu row
+            // stands for before that is known.
             footer={standInFooter(
-              environmentId ?? rememberedMateOfProject(projectId)?.environmentId ?? null,
+              threadRef ?? (standInKey === null ? null : parseScopedThreadKey(standInKey)),
             )}
           />
         ) : null

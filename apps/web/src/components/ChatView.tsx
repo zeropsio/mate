@@ -3915,18 +3915,15 @@ export default function ChatView(props: ChatViewProps) {
     viewerSubject: zeropsViewerSubject,
     ownership: zeropsAgentOwnership,
   });
-  const zeropsFooter = conversationFooter(
-    zeropsWriter,
-    activeThreadEnvironmentId === null ? undefined : rememberedWriter(activeThreadEnvironmentId),
-  );
+  // Remembered by the conversation: another chat of the same Mate runs on its own login.
+  const zeropsFooter = conversationFooter(zeropsWriter, rememberedWriter(routeThreadRef));
   const zeropsShownReadOnly =
     zeropsFooter === "read-only" ? (zeropsReadOnly ?? REMEMBERED_READ_ONLY) : null;
   const zeropsWriterKind = zeropsWriter.kind;
   const zeropsKnownWriter = rememberableWriter(zeropsWriter, zeropsAgentAuthRead);
   useEffect(() => {
-    if (zeropsKnownWriter === undefined || activeThreadEnvironmentId === null) return;
-    rememberWriter(activeThreadEnvironmentId, zeropsKnownWriter);
-  }, [activeThreadEnvironmentId, zeropsKnownWriter]);
+    if (zeropsKnownWriter !== undefined) rememberWriter(routeThreadRef, zeropsKnownWriter);
+  }, [routeThreadRef, zeropsKnownWriter]);
   // On a started thread the selection stays locked to the agent the session
   // began with even when it is not runnable (the picker offers sign-in
   // there); Send is disabled with that agent's own reason instead — see

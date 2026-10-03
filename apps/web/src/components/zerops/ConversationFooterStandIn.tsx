@@ -9,7 +9,7 @@ import {
   conversationFooter,
   type ConversationFooter,
 } from "@t3tools/client-runtime/zerops/conversationWriter";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
 import { rememberedWriter } from "~/zerops/writerMemory";
@@ -17,11 +17,14 @@ import { resolveZeropsConversationReadOnly } from "../ChatView.logic";
 import { ComposerRoomHeld, ComposerStandInDock } from "../chat/ComposerStandIn";
 import { ZeropsReadOnlyConversationFooter } from "./ZeropsReadOnlyConversationFooter";
 
-/** The footer a not-yet-open conversation in `environmentId` stands in with. */
-export function standInFooter(environmentId: EnvironmentId | null): ConversationFooter {
+/**
+ * The footer a not-yet-open conversation stands in with: its own remembered answer — a page that
+ * knows no conversation yet passes the Mate's main one, the one it opens on.
+ */
+export function standInFooter(conversation: ScopedThreadRef | null): ConversationFooter {
   return conversationFooter(
     { kind: "unknown" },
-    environmentId === null ? undefined : rememberedWriter(environmentId),
+    conversation === null ? undefined : rememberedWriter(conversation),
   );
 }
 

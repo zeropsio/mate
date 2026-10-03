@@ -28,7 +28,7 @@ export function RouteStandIn({ threadRef }: { readonly threadRef: ScopedThreadRe
   return (
     <ConversationFooterStandIn
       composer={<RouteComposerStandIn threadRef={threadRef} />}
-      footer={standInFooter(threadRef.environmentId)}
+      footer={standInFooter(threadRef)}
     />
   );
 }
