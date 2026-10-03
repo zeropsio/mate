@@ -268,8 +268,8 @@ const NO_PROJECTS: ReadonlySet<string> = new Set();
 
 /**
  * The projects whose Mate HQ holds online, as HQ tells this tab now — in whatever organization
- * it streams, as a Mate it holds online is up wherever the person looks. None while what this tab
- * holds is only what was last known of them.
+ * it streams, as a Mate it holds online is up wherever the person looks. Null while what this
+ * tab holds is not HQ's answer now: nothing yet, or only what was last known of them.
  */
 export function onlinePort(
   registry: AtomRegistry.AtomRegistry,
@@ -277,7 +277,8 @@ export function onlinePort(
   return {
     read: () => {
       const view = registry.get(hqMatesViewAtom);
-      if (view === null || !view.current || view.mates === null) return NO_PROJECTS;
+      if (view === null || !view.current) return null;
+      if (view.mates === null) return NO_PROJECTS;
       return new Set(
         [...view.mates].flatMap(([projectId, mate]) => (mate.presence.online ? [projectId] : [])),
       );

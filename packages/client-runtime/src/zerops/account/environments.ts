@@ -187,10 +187,11 @@ export interface AccountEnvironmentPorts {
   };
   /**
    * The projects whose Mate HQ holds online now: each proves its container up without a probe
-   * (`ContainerStore.setOnline`). Without it, every container is read as before.
+   * (`ContainerStore.setOnline`). Null while HQ's word is not current: a Mate first listed
+   * meanwhile waits for it, a bounded while. Without it, every container is read as before.
    */
   readonly online?: {
-    readonly read: () => ReadonlySet<string>;
+    readonly read: () => ReadonlySet<string> | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
 }
@@ -834,7 +835,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     driver.setVisible(!options.hidden);
     containers.setVisible(!options.hidden);
     // HQ's word before the listing's first targets, so no Mate it holds online is read on sight.
-    const updateOnline = () => containers.setOnline(ports.online?.read() ?? new Set());
+    const updateOnline = () =>
+      containers.setOnline(ports.online === undefined ? new Set() : ports.online.read());
     updateOnline();
     const holdBackground = () => driver.holdBackground(ports.pressInFlight?.read() ?? false);
     holdBackground();

@@ -257,15 +257,18 @@ describe("onlinePort: the projects whose Mate HQ holds online", () => {
 
   it.each([
     ["HQ's answer now, whatever organization is in view", { mates, current: true }, ["p-up"]],
-    ["what was last known of them", { mates, current: false }, []],
     ["HQ naming no Mates", { mates: null, current: true }, []],
   ] as const)("reads %s", (_name, view, expected) => {
     const read = onlinePort(registryWith({ organizationId: "org-2", ...view })).read();
-    expect([...read]).toEqual(expected);
+    expect(read === null ? null : [...read]).toEqual(expected);
   });
 
-  it("reads none while nothing is known", () => {
-    expect([...onlinePort(registryWith(null)).read()]).toEqual([]);
+  // HQ's word is not current: the container store waits for it, a bounded while.
+  it.each([
+    ["what was last known of them", { organizationId: "org-1", mates, current: false }],
+    ["nothing", null],
+  ] as const)("reads no word while all it holds is %s", (_name, view) => {
+    expect(onlinePort(registryWith(view)).read()).toBeNull();
   });
 });
 
