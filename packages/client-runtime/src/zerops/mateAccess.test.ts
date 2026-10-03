@@ -270,17 +270,31 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       tagList: ["mate:signer:claudeAgent-work:u-jan"],
       records: { named: false, signedIn: false },
     },
+    // Its roles not read (the account's store holds no `userRoles`): whether it names anybody is
+    // not known, never "nobody's" — only a signer settles it before they are read.
     {
-      name: "a signer tag that names no user",
+      name: "a signer tag that names no user, its roles not read: not known",
       userRoles: undefined,
       tagList: ["mate:signer:codex:"],
-      records: { named: false, signedIn: false },
+      records: { named: undefined, signedIn: false },
     },
     {
-      name: "no records at all",
+      name: "no records at all: not known",
       userRoles: undefined,
       tagList: undefined,
-      records: { named: false, signedIn: false },
+      records: { named: undefined, signedIn: false },
+    },
+    {
+      name: "its roles not read, nobody signed in: not known",
+      userRoles: undefined,
+      tagList: ["mate", "mate:bot:Kai"],
+      records: { named: undefined, signedIn: false },
+    },
+    {
+      name: "its roles not read, its agent's signer names the person: theirs",
+      userRoles: undefined,
+      tagList: ["mate", "mate:signer:claude-code:u-jan"],
+      records: { named: true, signedIn: true, signer: "u-jan" },
     },
     // Two records for one login (two sign-ins racing their tag writes): signed in, by somebody
     // the records do not settle — never the first tag's person (the server reads it the same way).

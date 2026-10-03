@@ -121,8 +121,8 @@ export function mateOwnerView(input: {
   readonly owner:
     | { readonly name: string; readonly initials: string; readonly avatarUrl: string | null }
     | undefined;
-  /** What its records say (`mateOwnerRecords`). */
-  readonly records: { readonly named: boolean; readonly signedIn: boolean };
+  /** What its records say (`mateOwnerRecords`); `named` unknown while its roles are not read. */
+  readonly records: { readonly named: boolean | undefined; readonly signedIn: boolean };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
   /** Who added it, as its stand-up tag names them (`readZeropsGroupTags(…).standUp`). */
@@ -142,9 +142,9 @@ export function mateOwnerView(input: {
   const seat: OwnerSeat =
     owner !== undefined
       ? { kind: "person", mark: ownerMark(owner) }
-      : records.named
-        ? { kind: "unnamed" }
-        : { kind: "nobody", label: NOBODY_OWNS };
+      : records.named === false
+        ? { kind: "nobody", label: NOBODY_OWNS }
+        : { kind: "unnamed" };
   if (records.signedIn || input.asked) return { seat, signInLine: undefined, waitsOnViewer: false };
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
   const awaited = input.madeBy ?? input.standUpBy;

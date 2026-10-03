@@ -273,6 +273,11 @@ import {
   type RememberedRow,
 } from "../zerops/menuMemory";
 import {
+  menuRowsOf,
+  rememberedMenuCandidates,
+  rememberMenuCandidates,
+} from "../zerops/menuSkeleton";
+import {
   candidatesNotice,
   findCandidate,
   heldCandidates,
@@ -1807,6 +1812,19 @@ export default function Sidebar() {
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
   const zeropsCandidates = zeropsHeld.rows;
+  // What the tree draws: until the listing holds its rows, the tree this browser last drew for
+  // the person and the organization (`menuSkeleton.ts`) — a reload paints the menu at once, and
+  // the listing replaces it in place when it lands.
+  const zeropsOrganizationId = zeropsSession.activeOrganization?.id;
+  const zeropsMenu = useMemo(
+    () =>
+      menuRowsOf(
+        zeropsListing,
+        zeropsHeld,
+        zeropsSignedIn ? rememberedMenuCandidates(zeropsOrganizationId) : undefined,
+      ),
+    [zeropsHeld, zeropsListing, zeropsOrganizationId, zeropsSignedIn],
+  );
   // The creations under way in the organization in view, drawn in their
   // groups before the listing holds them — the projects page's own placing —
   // and the New projects this tab is making, from the press.
@@ -2339,6 +2357,15 @@ export default function Sidebar() {
   // forget whatever the listing no longer holds — and a Mate on its way off
   // Zerops, which a reload must not paint as it stood.
   const zeropsDeleting = useDeletingMates();
+  // The tree as drawn of a read listing, for the next reload to paint before it lands again —
+  // never a Mate on its way off Zerops.
+  useEffect(() => {
+    if (!zeropsMenu.settled || zeropsOrganizationId === undefined) return;
+    rememberMenuCandidates(
+      zeropsOrganizationId,
+      zeropsMenu.rows.filter((candidate) => !mateDeleting(candidate.project, zeropsDeleting)),
+    );
+  }, [zeropsDeleting, zeropsMenu, zeropsOrganizationId]);
   useEffect(() => {
     if (!zeropsHeld.complete) return;
     const rows: Record<string, RememberedRow> = {};
@@ -2413,13 +2440,20 @@ export default function Sidebar() {
       zeropsListing,
       (candidate) => candidate.environmentId === environmentId,
     );
-    return open.kind === "found" ? open.row.project.id : null;
+    if (open.kind === "found") return open.row.project.id;
+    // The remembered tree's row for it, while the menu draws from memory.
+    if (!zeropsMenu.fromMemory) return null;
+    return (
+      zeropsMenu.rows.find((candidate) => candidate.environmentId === environmentId)?.project.id ??
+      null
+    );
   }, [
     comingMateRoute,
     newProjectRoute,
     routeDraftThread?.environmentId,
     routeThreadRef?.environmentId,
     zeropsListing,
+    zeropsMenu,
   ]);
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
@@ -4174,11 +4208,11 @@ export default function Sidebar() {
             <SidebarZeropsTree
               activeProjectId={activeZeropsProjectId}
               births={zeropsPlacedBirths}
-              candidates={zeropsCandidates}
+              candidates={zeropsMenu.rows}
               health={zeropsHealth}
               mayCreate={zeropsMayCreate}
               className="mb-2"
-              complete={zeropsHeld.complete}
+              complete={zeropsMenu.complete}
               notice={zeropsNotice}
               onNoticeAct={(affordance) => {
                 if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
@@ -4205,7 +4239,9 @@ export default function Sidebar() {
               getActivity={zeropsRowActivity}
               getConversationsRead={zeropsConversationsRead}
               remembered={zeropsRemembered}
-              onDrawn={rememberZeropsDrawn}
+              // A tree drawn from memory teaches the memory nothing: its chips and changes are
+              // what it drew of them last time.
+              onDrawn={zeropsMenu.fromMemory ? undefined : rememberZeropsDrawn}
               onSelect={(candidate) => {
                 if (isMobile) {
                   setOpenMobile(false);
