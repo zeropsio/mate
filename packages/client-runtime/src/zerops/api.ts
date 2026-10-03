@@ -2367,12 +2367,11 @@ export class ZeropsApiClient {
     for (const tokenId of keys) {
       this.#assertGeneration(generation);
       // The write replaces the token's whole project list: it is planned from the token as read
-      // under its lock. Only the Mate's own grant is lowered, every other kept as it is
-      // (`planMateKey`). A key already lowered is left alone.
+      // by its id under its lock — one small answer, never the organization's whole list again.
+      // Only the Mate's own grant is lowered, every other kept as it is (`planMateKey`). A key
+      // already lowered is left alone.
       const lowered = await this.#holdToken(tokenId, async () => {
-        const current = (await this.listIntegrationTokens(clientId, signal)).find(
-          (listed) => listed.id === tokenId,
-        );
+        const current = await this.readIntegrationToken(clientId, tokenId, signal);
         if (current === undefined) return false;
         this.#assertGeneration(generation);
         const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
