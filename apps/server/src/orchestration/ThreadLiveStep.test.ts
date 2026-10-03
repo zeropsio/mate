@@ -581,7 +581,10 @@ describe("liveStepObservationOf", () => {
       data: { toolName: "Bash", input: { command: "pnpm build" } },
     },
   });
-  const running = (title: string, activityKind = "tool.updated"): LiveStepObservation => ({
+  const running = (
+    title: string,
+    activityKind = "tool.updated",
+  ): Extract<LiveStepObservation, { readonly type: "call-running" }> => ({
     type: "call-running",
     call: {
       id: "call-1",
