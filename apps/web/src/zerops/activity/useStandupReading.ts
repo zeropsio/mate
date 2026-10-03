@@ -197,7 +197,8 @@ const NONE: ReadonlySet<string> = new Set();
 /**
  * A call's reading: a running one from the project as it stands (not read
  * yet: null — the bar says it is getting ready); a settled one as the call
- * left it (`settledStandupReading`).
+ * left it (`settledStandupReading`) — one whose builds ran on, read as they
+ * stand only while its turn runs (`live`).
  */
 export function standupReadingFor(
   operation: ZeropsOperation,
@@ -205,11 +206,13 @@ export function standupReadingFor(
     readonly services?: ReadonlyArray<StandupService>;
     readonly processes?: ReadonlyArray<ActivityProcess>;
     readonly nowMs: number;
+    /** Its turn runs: builds it ran on with are read as they stand. */
+    readonly live?: boolean;
   },
 ): StandupReading | null {
   if (operation.phase !== "running") {
     // Its builds run on after its call returned: read as they stand.
-    if (standupRunsOn(operation)) {
+    if ((read.live ?? true) && standupRunsOn(operation)) {
       const reading = ranOnReading(operation, read);
       if (reading !== null) return reading;
     }
@@ -234,12 +237,17 @@ export function standupReadingFor(
   });
 }
 
+/**
+ * A stand-up's reading, the project read while `turnRuns` — its turn runs —
+ * and no longer: once the turn is over it stands as the call left it.
+ */
 export function useStandupReading(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
+  turnRuns: boolean,
 ): StandupReading | null {
   const fixtures = use(StandupReadings);
-  const running = operation.phase === "running" || standupRunsOn(operation);
+  const running = operation.phase === "running" || (turnRuns && standupRunsOn(operation));
   const topology = useZeropsTopology(environmentId);
   const { processes } = useProjectActivity(running ? (topology?.project.id ?? null) : null);
   const nowMs = useNowMs();
@@ -249,8 +257,9 @@ export function useStandupReading(
         ...(topology === undefined ? {} : { services: standupServices(topology.services) }),
         ...(processes === undefined ? {} : { processes }),
         nowMs,
+        live: turnRuns,
       }),
-    [nowMs, operation, processes, topology],
+    [nowMs, operation, processes, topology, turnRuns],
   );
   return fixtures?.get(operation.key) ?? live;
 }

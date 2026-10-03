@@ -1516,13 +1516,18 @@ export function OperationDetail({
   operation,
   environmentId,
   threadRef,
+  turnRuns,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
+  /** Its turn runs: a stand-up's builds that ran on are read as they stand. */
+  readonly turnRuns: boolean;
 }) {
   if (operation.kind === "standup") {
-    return <StandupDetail environmentId={environmentId} operation={operation} />;
+    return (
+      <StandupDetail environmentId={environmentId} operation={operation} turnRuns={turnRuns} />
+    );
   }
   if (operation.kind === "import") {
     return <ImportDetail environmentId={environmentId} operation={operation} />;
@@ -1555,6 +1560,12 @@ function ZeropsOperationDetail({
  * runs, what the Mate waits on beside its face (the bar under the chat has
  * its clock). Its card — the pipeline, the build log — opens under it.
  */
+/** Whether the turn an operation ran in still runs: what it started may still be read live. */
+function useTurnRuns(operation: ZeropsOperation): boolean {
+  const activity = use(TimelineRowActivityCtx);
+  return activity.isWorking && activity.latestTurnId === operation.turnId;
+}
+
 /** A stand-up's row: it opens to its services' lines only when there are any. */
 function StandupBubble({
   operation,
@@ -1564,7 +1575,11 @@ function StandupBubble({
   readonly undone: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
-  const reading = useStandupReading(operation, ctx.activeThreadEnvironmentId);
+  const reading = useStandupReading(
+    operation,
+    ctx.activeThreadEnvironmentId,
+    useTurnRuns(operation),
+  );
   return (
     <OperationBubble
       lines={detailLines(operation, reading?.rows.length ?? null)}
@@ -1592,6 +1607,7 @@ function OperationBubble({
   readonly lines?: number;
 }) {
   const ctx = use(TimelineRowCtx);
+  const turnRuns = useTurnRuns(operation);
   const disclosure = useDisclosure();
   const inSlot = use(InSlotContext);
   const failed = operation.phase === "failed";
@@ -1672,6 +1688,7 @@ function OperationBubble({
             environmentId={ctx.activeThreadEnvironmentId}
             operation={operation}
             threadRef={ctx.threadRef}
+            turnRuns={turnRuns}
           />
         </div>
       ) : null}

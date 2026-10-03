@@ -289,4 +289,19 @@ describe("standupBuildsDone — a stand-up that ran on after its call returned",
       }),
     ).toBe(done);
   });
+
+  // Its turn over, it stands as the call left it: never the project as it is
+  // today, and no reading of it (E7).
+  it.each([
+    { live: true, apidev: "up" },
+    { live: false, apidev: "building" },
+  ])("reads its builds only while its turn runs: $live", ({ live, apidev }) => {
+    const reading = standupReadingFor(ranOn, {
+      services,
+      processes: [build("s-apidev", "FINISHED", "2026-09-02T10:07:00.000Z")],
+      nowMs,
+      live,
+    });
+    expect(reading?.rows.find((row) => row.hostname === "apidev")?.state).toBe(apidev);
+  });
 });

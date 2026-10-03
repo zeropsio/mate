@@ -357,7 +357,8 @@ function StandupInstrument({
   /** What it opens to, under it. */
   readonly detail: ReactNode;
 }) {
-  const reading = useStandupReading(operation, environmentId);
+  // The band draws it only while its turn runs.
+  const reading = useStandupReading(operation, environmentId, true);
   const { words, figure, segments, failed } = standupBar(reading);
   const subject = operationSubject(operation);
   // No service read yet: nothing to open to.
@@ -619,6 +620,7 @@ function Instruments({
             environmentId={environmentId}
             operation={operation}
             threadRef={threadRef}
+            turnRuns
           />
         );
         return (
