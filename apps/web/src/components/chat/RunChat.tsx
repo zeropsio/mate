@@ -320,6 +320,34 @@ const InSlotContext = createContext(false);
 /** The key of the chat's line a bubble is drawn for: what its plop finds it by. */
 const ChatLineContext = createContext<string | null>(null);
 
+/**
+ * What the person opened in the run's card, by its line's key: a row the slot
+ * showed lands in the history as it stood — opened, or at its cap — so its
+ * plop moves it and never resizes it (pass 35).
+ */
+const CarriedOpenContext = createContext<Map<string, boolean> | null>(null);
+
+/** A state of a line's, kept across its slot row and its history row. */
+function useCarried(part: string, initial: () => boolean): [boolean, (next: boolean) => void] {
+  const carried = use(CarriedOpenContext);
+  const line = use(ChatLineContext);
+  const key = line === null ? null : `${line}#${part}`;
+  const [value, setValue] = useState(() => {
+    const kept = key === null ? undefined : carried?.get(key);
+    if (kept !== undefined) return kept;
+    const first = initial();
+    if (key !== null) carried?.set(key, first);
+    return first;
+  });
+  return [
+    value,
+    (next) => {
+      if (key !== null) carried?.set(key, next);
+      setValue(next);
+    },
+  ];
+}
+
 /** Whether the line lands by a plop from the live slot: then it never rises in on its own. */
 const PlopsContext = createContext(false);
 
@@ -462,8 +490,8 @@ interface Fold {
 function useFold(eligible: boolean, foldsLive = false): Fold {
   const arrived = useArrivedLive();
   const hold = useHoldReading();
-  const [folded, setFolded] = useState(() => eligible && (foldsLive || !arrived));
-  const [opened, setOpened] = useState(false);
+  const [folded, setFolded] = useCarried("folded", () => eligible && (foldsLive || !arrived));
+  const [opened, setOpened] = useCarried("opened", () => false);
   return {
     eligible,
     folded: eligible && folded,
@@ -516,8 +544,7 @@ function MoreToggle({
   readonly ref?: Ref<HTMLButtonElement>;
   readonly children: ReactNode;
 }) {
-  // The slot shows a thing whole up to its cap, the history's: nothing opens there.
-  if (use(InSlotContext)) return null;
+  // The slot draws it as the history does, so a row lands as it stood.
   return (
     <button
       ref={ref}
@@ -570,14 +597,18 @@ function FoldToggle({
 // ---------------------------------------------------------------------------
 
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
-function useDisclosure() {
+function useDisclosure(initial = false, part = "open") {
   const hold = useHoldReading();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useCarried(part, () => initial);
   return {
     open,
+    set: (next: boolean) => {
+      hold();
+      setOpen(next);
+    },
     toggle: () => {
       hold();
-      setOpen((value) => !value);
+      setOpen(!open);
     },
   };
 }
@@ -1327,18 +1358,23 @@ function StepBubble({
   /** It failed, and a later step undid it: quiet, not red (K9). */
   readonly undone?: boolean;
 }) {
-  const disclosure = useDisclosure();
+  const inSlot = use(InSlotContext);
+  const script = step.kind === "command" ? (step.script ?? step.code) : null;
+  // A command that said nothing of itself is its own title (K4): its first
+  // line, in mono, and the rest of it opens under it. In the live slot it
+  // stands open to its cap, and lands so.
+  const bare = script !== null && step.words === null;
+  const disclosure = useDisclosure(bare && inSlot && step.codeLines > 1);
+  // A bare command opened to its cap, then whole.
+  const whole = useDisclosure(false, "whole");
   const outputs = stepOutput(step);
   const failure: Failure | null = step.state !== "failed" ? null : undone ? "undone" : "broken";
   const running = step.state === "running";
   const time = stepTime(step);
-  const script = step.kind === "command" ? (step.script ?? step.code) : null;
-  // A command that said nothing of itself is its own title (K4): its first
-  // line, in mono, and the rest of it opens under it.
-  const bare = script !== null && step.words === null;
   const [taller, watchCode] = useTallerThan(CODE_CAP_PX, step.codeLines > CODE_CAP_LINES);
   const cut = script !== null && (bare ? step.codeLines > 1 : taller);
   const showsCode = script !== null && (!bare || disclosure.open);
+  const bareCapped = bare && disclosure.open && step.codeLines > CODE_CAP_LINES && !whole.open;
   const opens = opensOnto({ control: "step", step, codeCut: cut });
   const title = step.words ?? step.code ?? "A command";
   const headline = (
@@ -1395,7 +1431,7 @@ function StepBubble({
       {showsCode ? (
         <div className={cn("px-3", cut ? "pb-0.5" : "pb-1.75")}>
           <CommandCode
-            folded={cut && !bare ? !disclosure.open : null}
+            folded={cut && !bare ? !disclosure.open : bare && cut ? bareCapped : null}
             script={script}
             watch={watchCode}
           />
@@ -1414,13 +1450,26 @@ function StepBubble({
       ) : null}
       {cut ? (
         <div className="px-3 pb-1.75">
-          <MoreToggle onToggle={disclosure.toggle} open={disclosure.open}>
-            {disclosure.open
-              ? "Show less"
-              : bare || step.codeLines > CODE_CAP_LINES
-                ? `Show all ${step.codeLines} lines`
-                : "Show the whole command"}
-          </MoreToggle>
+          {bareCapped ? (
+            <MoreToggle onToggle={() => whole.set(true)} open={false}>
+              {`Show all ${step.codeLines} lines`}
+            </MoreToggle>
+          ) : (
+            <MoreToggle
+              onToggle={() => {
+                if (bare && disclosure.open) whole.set(false);
+                else if (bare) whole.set(true);
+                disclosure.toggle();
+              }}
+              open={disclosure.open}
+            >
+              {disclosure.open
+                ? "Show less"
+                : bare || step.codeLines > CODE_CAP_LINES
+                  ? `Show all ${step.codeLines} lines`
+                  : "Show the whole command"}
+            </MoreToggle>
+          )}
         </div>
       ) : null}
     </CallRow>
@@ -2369,6 +2418,8 @@ function ChatRow({
   readonly children: ReactNode;
 }) {
   const rises = useRisesIn();
+  // What it opens is kept by its key, across its slot row and its history row.
+  children = <ChatLineContext value={lineKey}>{children}</ChatLineContext>;
   if (across) {
     return (
       <li className="min-w-0" data-chat-row data-run-key={lineKey}>
@@ -2919,6 +2970,8 @@ function LiveSlot({
  * closed to that line, and "Show work" opens the scroll under it.
  */
 export function RunChat({ row }: { readonly row: RecordRow }) {
+  // What the person opened, kept as a row lands from the slot in the history.
+  const [carriedOpen] = useState(() => new Map<string, boolean>());
   const ctx = use(TimelineRowCtx);
   const hold = useHoldReading();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -3054,75 +3107,77 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
     // scroll the person watched is the one that folds away.
-    <div
-      ref={rootRef}
-      className="@container/chat min-w-0"
-      data-run-chat
-      data-run-fold={settled ? fold : undefined}
-      data-run-live={slotted ? "" : undefined}
-      style={
-        { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
-      }
-    >
-      {above && scroll !== null ? (
-        <div
-          key="above"
-          ref={aboveRef}
-          className="run-above"
-          data-folding={fold === "folding" ? "" : undefined}
-        >
-          {scroll}
-          {/* The hairline over the line, folding away with the work. */}
-          {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
+    <CarriedOpenContext value={carriedOpen}>
+      <div
+        ref={rootRef}
+        className="@container/chat min-w-0"
+        data-run-chat
+        data-run-fold={settled ? fold : undefined}
+        data-run-live={slotted ? "" : undefined}
+        style={
+          { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
+        }
+      >
+        {above && scroll !== null ? (
+          <div
+            key="above"
+            ref={aboveRef}
+            className="run-above"
+            data-folding={fold === "folding" ? "" : undefined}
+          >
+            {scroll}
+            {/* The hairline over the line, folding away with the work. */}
+            {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
+          </div>
+        ) : null}
+        {row.status === null ? null : settled ? (
+          <NowLine
+            key="line"
+            answering={false}
+            outcome={row.outcome}
+            end={
+              // A chat opens from its first thing the Mate did (`chatLines`),
+              // and only onto a line that shows something.
+              shows.toggle !== null &&
+              opensOnto({ control: "work", lines: chatLines(row.items, undone).length }) ? (
+                <WorkToggle
+                  onToggle={() => {
+                    hold();
+                    // Watched to its end and still open over its line: it
+                    // folds into the line as a run settling does.
+                    if (fold === "watched") {
+                      foldNow();
+                      return;
+                    }
+                    fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
+                    setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+                  }}
+                  open={!folded}
+                />
+              ) : null
+            }
+            now={null}
+            status={row.status}
+          />
+        ) : (
+          <LiveSlot
+            key="slot"
+            ref={slotRef}
+            items={row.items}
+            live={model.live}
+            filler={model.filler}
+            now={row.now}
+            answering={row.answering}
+            slot={slot}
+            status={row.status}
+            undone={undone}
+          />
+        )}
+        <div key="below" ref={feedRef} className="run-later-feed">
+          {above ? null : scroll}
         </div>
-      ) : null}
-      {row.status === null ? null : settled ? (
-        <NowLine
-          key="line"
-          answering={false}
-          outcome={row.outcome}
-          end={
-            // A chat opens from its first thing the Mate did (`chatLines`),
-            // and only onto a line that shows something.
-            shows.toggle !== null &&
-            opensOnto({ control: "work", lines: chatLines(row.items, undone).length }) ? (
-              <WorkToggle
-                onToggle={() => {
-                  hold();
-                  // Watched to its end and still open over its line: it
-                  // folds into the line as a run settling does.
-                  if (fold === "watched") {
-                    foldNow();
-                    return;
-                  }
-                  fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
-                  setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
-                }}
-                open={!folded}
-              />
-            ) : null
-          }
-          now={null}
-          status={row.status}
-        />
-      ) : (
-        <LiveSlot
-          key="slot"
-          ref={slotRef}
-          items={row.items}
-          live={model.live}
-          filler={model.filler}
-          now={row.now}
-          answering={row.answering}
-          slot={slot}
-          status={row.status}
-          undone={undone}
-        />
-      )}
-      <div key="below" ref={feedRef} className="run-later-feed">
-        {above ? null : scroll}
       </div>
-    </div>
+    </CarriedOpenContext>
   );
 }
 

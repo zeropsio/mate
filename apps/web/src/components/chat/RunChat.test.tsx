@@ -613,10 +613,29 @@ describe("RunChat", () => {
       }),
     );
     // Running, the command stands in the live slot as the row it becomes:
-    // its words sweeping, its code folded at the history's cap, nothing to open.
+    // its words sweeping, its code folded at the history's cap, and the way
+    // to the rest under it, so it lands as it stood.
     expect(bubbles(running).map(({ kind }) => kind)).toEqual(["step:command"]);
     expect(running).toContain('data-chat-folded="true"');
-    expect(running).not.toContain(">Show all 16 lines<");
+    expect(running).toContain(">Show all 16 lines<");
+    // A command that says nothing of itself stands open to its cap in the slot.
+    const bare = draw(
+      record([], {
+        live: true,
+        status: status(),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w8", SCRIPT, {
+              toolLifecycleStatus: "inProgress",
+              sourceActivityKind: "tool.started",
+            }),
+          ),
+        },
+      }),
+    );
+    expect(bare).toContain('data-chat-folded="true"');
+    expect(bare).toContain(">Show all 16 lines<");
   });
 
   // The call running now is the card's "this, now": a light sweeps across
@@ -1237,6 +1256,40 @@ describe("RunChat, as the person uses it", () => {
       expect(commands()).toHaveLength(1);
       act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
       expect(commands()).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // What the person opened in the slot lands opened (pass 35): the row's
+  // plop moves it and never resizes it.
+  it("lands a row the person opened in the slot opened", () => {
+    vi.useFakeTimers();
+    try {
+      const live = command("w9", SCRIPT, {
+        callInput: { description: "Write the status route" },
+        toolLifecycleStatus: "inProgress",
+        sourceActivityKind: "tool.started",
+      });
+      const renderer = mount(
+        record([], { live: true, status: status(), now: { kind: "step", step: stepOf(live) } }),
+      );
+      act(() => button(renderer, "Show all 16 lines").props.onClick({ currentTarget: null }));
+      const landed = step(
+        command("w9", SCRIPT, { callInput: { description: "Write the status route" } }),
+      );
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={record([landed], { live: true, status: status(), now: null })} />
+          </Rows>,
+        ),
+      );
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      const folds = renderer.root.findAll(
+        (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
+      );
+      expect(folds.map((node) => node.props["data-chat-folded"])).toEqual(["false"]);
     } finally {
       vi.useRealTimers();
     }
