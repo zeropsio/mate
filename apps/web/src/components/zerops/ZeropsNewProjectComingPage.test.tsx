@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer, type ReactTestRendererJSON } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

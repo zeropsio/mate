@@ -856,7 +856,7 @@ export function comingSentenceOf(input: {
 
 /**
  * In the slot while it comes up: the Mate's own steps (`arrivalSteps`), with their times — and
- * over them, for one that did not come, the view's one verb: *Remove*, *Try again* where a press
+ * under them, for one that did not come, the view's one verb: *Remove*, *Try again* where a press
  * stopped at a step safe to ask again, or *Go to projects* where the platform may have made it
  * anyway.
  */
@@ -929,10 +929,12 @@ export function ComingBelow({
   if (verb === null) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
+  // Under the steps, where nothing is read yet: a stop, and *Try again* taking it back, never move
+  // the rows they stand under.
   return (
     <div className="flex flex-col gap-5.5" data-zerops-surface="mate-coming-failed">
-      <div className="arrival-acts">{verb}</div>
       {steps}
+      <div className="arrival-acts">{verb}</div>
     </div>
   );
 }

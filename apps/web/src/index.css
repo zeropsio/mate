@@ -7361,6 +7361,9 @@ button.rv-relrow:hover .rv-relrow-go {
 
 .arrival-substep-label {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The copy's services, one name and one dot each, quieter than the steps. */
