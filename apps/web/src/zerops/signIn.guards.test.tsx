@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { AppRouter } from "../router";
 import { resolveZeropsAccountGate } from "../routes/-accountGate";
-import { mountTab, settle, unmountTabs } from "./__fixtures__/harnessTabs";
+import { mountTab, preloadTabs, settle, unmountTabs } from "./__fixtures__/harnessTabs";
+
+preloadTabs(
+  () => import("./accountEnvironments"),
+  () => import("./__fixtures__/harnessRuntime"),
+);
 
 /**
  * What `AppRoot`'s tree reaches outside itself in a harness tab: the fixture's

@@ -3,8 +3,19 @@ import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowled
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { mountTab, settle, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
+import {
+  mountTab,
+  preloadTabs,
+  settle,
+  unmountTabs,
+  type MountedTab,
+} from "./__fixtures__/harnessTabs";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
+
+preloadTabs(
+  () => import("./__fixtures__/accountProduct"),
+  () => import("../state/zerops"),
+);
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsFrameWait: ({

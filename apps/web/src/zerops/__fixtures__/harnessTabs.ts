@@ -25,7 +25,7 @@ import type {
 } from "@t3tools/client-runtime/zerops/testing";
 import { act, createElement, Fragment, useEffect, type ComponentType, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { vi } from "vite-plus/test";
+import { beforeAll, vi } from "vite-plus/test";
 
 import type { ZeropsSessionValue } from "../ZeropsSessionProvider";
 import { readableText, TestNode } from "./testDom";
@@ -43,11 +43,37 @@ const mounted = new Set<MountedTab>();
 const reloading = new Set<Promise<void>>();
 /** Points the globals at the tab that holds them now; `null` before any tab opens. */
 let active: (() => void) | null = null;
+/**
+ * The test the tabs opened now belong to: `unmountTabs` ends it. A tab its test left opening — a
+ * test past its time, its page's modules still loading — never opens after that, nor takes the
+ * globals from the next test's tabs.
+ */
+let generation = 0;
 
 interface TabGraph {
   readonly ZeropsSessionProvider: typeof import("../ZeropsSessionProvider").ZeropsSessionProvider;
   readonly useZeropsSession: typeof import("../ZeropsSessionProvider").useZeropsSession;
   readonly currentAccountId: typeof import("../accountLifetime").currentAccountId;
+}
+
+/** A file's first load of its tabs' modules is setup, with this much time: never a test's. */
+const PRELOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * Loads the tabs' modules — the session provider's graph, and `modules`, what the file's pages
+ * import — once before the file's tests, in a hook with its own time. Each tab imports them again
+ * for its own module graph, from source the run has transformed by then: tens of milliseconds,
+ * where the first load took 10 s and more under load (8 workers beside client-runtime's, measured
+ * 2026-10-03) inside the 15 s of the test that paid for it.
+ */
+export function preloadTabs(...modules: ReadonlyArray<() => Promise<unknown>>): void {
+  beforeAll(async () => {
+    await Promise.all([
+      import("../ZeropsSessionProvider"),
+      import("../accountLifetime"),
+      ...modules.map((load) => load()),
+    ]);
+  }, PRELOAD_TIMEOUT_MS);
 }
 
 async function loadTabGraph(): Promise<TabGraph> {
@@ -208,6 +234,11 @@ export async function mountTab(
   tab: HarnessTab,
   options: MountTabOptions = {},
 ): Promise<MountedTab> {
+  const opened = generation;
+  /** Throws once the test that opened this tab has ended. */
+  const ownTest = () => {
+    if (generation !== opened) throw new Error(`${tab.id} was opened by a test that has ended.`);
+  };
   let root: Root | null = null;
   let graph: TabGraph | null = null;
   let session: ZeropsSessionValue | null = null;
@@ -265,6 +296,7 @@ export async function mountTab(
   async function openPage() {
     activate();
     graph = await loadTabGraph();
+    ownTest();
     const { ZeropsSessionProvider, useZeropsSession } = graph;
     function Probe() {
       const value = useZeropsSession();
@@ -285,6 +317,7 @@ export async function mountTab(
             ),
           })
         : await options.app(Probe);
+    ownTest();
     tab.signals.subscribe(deliver);
     activate();
     container = window.document.body.appendChild(new TestNode("div", window.document));
@@ -331,6 +364,7 @@ export async function mountTab(
     location: () => window.location,
     navigations: () => [...navigations],
     run: async (work) => {
+      ownTest();
       activate();
       let result!: Awaited<ReturnType<typeof work>>;
       await act(async () => {
@@ -348,8 +382,9 @@ export async function mountTab(
   return page;
 }
 
-/** Closes every mounted tab's page; for `afterEach`. */
+/** Closes every mounted tab's page and ends their test; for `afterEach`. */
 export async function unmountTabs(): Promise<void> {
+  generation += 1;
   await Promise.all(reloading);
   for (const page of mounted) await page.unmount();
   active = null;
