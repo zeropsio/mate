@@ -54,7 +54,7 @@ import {
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
-import { flowVerbInvalidations, type Deployment } from "@t3tools/client-runtime/zerops/flow";
+import { type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import { ZeropsProjectId, ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -193,16 +193,6 @@ function groupChangesOf(
 
 /** What the flow says while HQ has never told it any change, and does not answer. */
 export const HQ_CHANGES_UNANSWERED = "HQ is not answering right now.";
-
-/** The newest landed change of an application's recipe: what `main`'s tiers may have moved with. */
-function recipeRevision(changes: ReadonlyArray<HqChange> | undefined): string | undefined {
-  let newest: HqChange | undefined;
-  for (const change of changes ?? []) {
-    if (change.repo !== RECIPE_REPO || change.mergedAt === null) continue;
-    if (newest?.mergedAt == null || change.mergedAt > newest.mergedAt) newest = change;
-  }
-  return newest?.mergedSha ?? undefined;
-}
 
 /** Each group's stops as last built, with the content they were built from. */
 const builtStops = new Map<string, { readonly key: string; readonly stops: GroupStops }>();
@@ -556,19 +546,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [registry.registry.groups],
   );
 
-  // Each group's recipe, read again once a change of it lands.
+  const hqStructure = useAtomValue(hqStructureAtom);
   const hqChanges = useAtomValue(hqChangesAtom);
-  const recipeApps = useMemo(
-    () =>
-      new Map(
-        registry.registry.groups.map(({ groupId }) => [
-          groupId,
-          hqChanges === null ? undefined : recipeRevision(hqChanges.get(groupId)),
-        ]),
-      ),
-    [hqChanges, registry.registry.groups],
-  );
-  const recipes = useZeropsAppRecipes({ apps: recipeApps, enabled: signedInToMate });
+  const recipes = useZeropsAppRecipes();
 
   // Each group's stops, from HQ's environments and the account's half.
   const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
@@ -639,40 +619,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const [trouble, setTrouble] = useState<string | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
 
-  const hqStructure = useAtomValue(hqStructureAtom);
-  const releaseRevisions = hqStructure?.releaseRevisions ?? null;
-  // Each group's releases, read again when HQ says its releases or repositories moved (audit R4),
-  // and when its production's deploys move: a release in flight is over when production runs it
-  // or its deploy fails. The first environment snapshot supplies the bootstrap signature;
-  // an HQ that says no revision has them read once, after that snapshot.
-  const releaseApps = useMemo(
-    () =>
-      new Map(
-        heldEnvironments === null
-          ? []
-          : flowGroups.flatMap(({ groupId }) => {
-              const environments = heldEnvironments.get(groupId);
-              if (environments === undefined) return [];
-              const production = environments.filter((entry) => entry.tier === "production");
-              return [
-                [
-                  groupId,
-                  JSON.stringify([
-                    releaseRevisions?.get(groupId) ?? null,
-                    production.map((entry) => entry.deploys),
-                  ]),
-                ] as const,
-              ];
-            }),
-      ),
-    [flowGroups, heldEnvironments, releaseRevisions],
-  );
   const {
     releases: releaseRecords,
     repos: appRepos,
     failures: releaseFailures,
-    refresh: refreshReleases,
-  } = useZeropsAppReleases(releaseApps);
+  } = useZeropsAppReleases();
 
   /**
    * Why the grant withholds each project it withholds alone; a lapse withholds every flow below
@@ -847,16 +798,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const running = useRef(new Set<string>());
 
   /**
-   * Holds the verb's key in `pending` while it runs, then re-reads what it changed, in its own
-   * group and nothing else (`flow/verbs.ts`); how it went is `act`'s answer, and a verb already
-   * running answers that it is.
+   * Holds the verb's key in `pending` while it runs. Its effect arrives through HQ's stream;
+   * how it went is `act`'s answer, and a verb already running answers that it is.
    */
   const run = useCallback(
-    async (
-      verb: FlowVerb,
-      groupId: string | undefined,
-      act: () => Promise<FlowVerbOutcome>,
-    ): Promise<FlowVerbOutcome> => {
+    async (verb: FlowVerb, act: () => Promise<FlowVerbOutcome>): Promise<FlowVerbOutcome> => {
       const key = flowVerbKey(verb);
       if (running.current.has(key)) return refused(VERB_ALREADY_RUNNING);
       running.current.add(key);
@@ -870,7 +816,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           next.delete(key);
           return next;
         });
-        if (groupId !== undefined && flowVerbInvalidations(verb).releases) refreshReleases(groupId);
       }
     },
     [],
@@ -930,7 +875,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       const { groupHead } = offer;
       if (groupHead === undefined) return refuse(NO_GROUP_MAIN);
       const verb: FlowVerb = { kind: "release", groupId };
-      return run(verb, groupId, async () => {
+      return run(verb, async () => {
         try {
           const made = await hqApi.release(groupId, {
             tag: offer.suggestion,
@@ -957,7 +902,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     async (groupId: string, earlier: string): Promise<FlowVerbOutcome> => {
       if (hqApi === null) return refused(HQ_NOT_OPEN);
       const verb: FlowVerb = { kind: "roll-back", groupId, tag: earlier };
-      return run(verb, groupId, async () => {
+      return run(verb, async () => {
         const groupHead = appRepos
           .get(groupId)
           ?.find((repo) => repo.name === RECIPE_REPO)?.mainHead;
@@ -986,7 +931,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     ): Promise<FlowVerbOutcome> => {
       if (hqApi === null) return refused(HQ_NOT_OPEN);
       const link = { appId: verb.groupId, repo: verb.repository, number: verb.number };
-      return run(verb, verb.groupId, async () => {
+      return run(verb, async () => {
         try {
           await act(hqApi, link);
         } catch (cause) {
@@ -1039,7 +984,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         ?.environmentInputs.find((entry) => entry.projectId === projectId)?.environment;
       if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
       const verb: FlowVerb = { kind: "redeploy", groupId, projectId, service: deploy.service };
-      return run(verb, groupId, async () => {
+      return run(verb, async () => {
         try {
           await hqApi.redeploy(groupId, environment, deploy);
         } catch (cause) {
@@ -1055,7 +1000,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
-  // A held verb waits for its effect in the group's flow, or for the re-read of its releases to
+  // A held verb waits for its effect in the group's flow, or for its streamed release read to
   // fail: the wait then has nothing left to hold.
   const settled = useMemo(
     () =>

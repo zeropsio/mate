@@ -7,6 +7,9 @@ import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as HttpRouter from "effect/unstable/http/HttpRouter";
+import * as HttpServer from "effect/unstable/http/HttpServer";
+import * as Layer from "effect/Layer";
 
 import { GitError } from "@t3tools/hq-git";
 
@@ -24,11 +27,47 @@ import { mainAt, overviewOf } from "../test/harness/overviews.ts";
 import { tempDir } from "../test/harness/tempDir.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
-import { failure } from "./api.ts";
+import { corsRoutes, failure } from "./api.ts";
 import { NotLeader } from "./leader.ts";
 import { ZeropsUnavailable } from "./zerops/api.ts";
 
 describe("HQ's failures", () => {
+  it.effect("caches an allowed preflight for two hours without changing its CORS door", () =>
+    Effect.gen(function* () {
+      const { handler, dispose } = HttpRouter.toWebHandler(
+        corsRoutes([CLIENT, "http://localhost:4380"]).pipe(Layer.provide(HttpServer.layerServices)),
+      );
+      yield* Effect.addFinalizer(() => Effect.promise(dispose));
+      const preflight = (origin: string) =>
+        Effect.promise(() =>
+          handler(
+            new Request("https://hq.example/api/structure", {
+              method: "OPTIONS",
+              headers: {
+                origin,
+                "access-control-request-method": "GET",
+                "access-control-request-headers": "authorization",
+              },
+            }),
+          ),
+        );
+      const allowed = yield* preflight(CLIENT);
+      assert.strictEqual(allowed.headers.get("access-control-max-age"), "7200");
+      assert.strictEqual(allowed.headers.get("access-control-allow-origin"), CLIENT);
+      assert.strictEqual(
+        allowed.headers.get("access-control-allow-methods"),
+        "GET, POST, PUT, PATCH, DELETE",
+      );
+      assert.strictEqual(
+        allowed.headers.get("access-control-allow-headers"),
+        "authorization,content-type",
+      );
+      assert.isNull(
+        (yield* preflight("https://evil.example")).headers.get("access-control-allow-origin"),
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("answers every 503 with Retry-After: whatever is unavailable now, try again", () =>
     Effect.gen(function* () {
       for (const error of [
@@ -727,7 +766,7 @@ describe("HQ API", () => {
           assert.deepStrictEqual(yield* owner.next("snapshot"), {
             ...((yield* call("GET", "/api/structure", { session })).body as object),
             changes: {},
-            releaseRevisions: {},
+            appReads: {},
             mates: {},
             people: {},
           });
@@ -742,8 +781,11 @@ describe("HQ API", () => {
           });
           // Audit R4: its recipe repository's `main` was made with it, and where its repositories
           // last moved goes out on its own — null first where the view was read before the move.
-          let revised: { readonly appId?: unknown; readonly revision?: unknown } = {};
-          while (typeof revised.revision !== "string") {
+          let revised: {
+            readonly appId?: unknown;
+            readonly read?: { readonly revision?: unknown };
+          } = {};
+          while (typeof revised.read?.revision !== "string") {
             revised = (yield* owner.next("release-revision")) as typeof revised;
             assert.strictEqual(revised.appId, appId);
           }
@@ -961,7 +1003,7 @@ describe("HQ API", () => {
             ungrouped: [],
             apps: [],
             changes: {},
-            releaseRevisions: {},
+            appReads: {},
             mates: {},
             people: {},
           });
@@ -1062,7 +1104,7 @@ describe("HQ API", () => {
           ungrouped: [],
           apps: [],
           changes: {},
-          releaseRevisions: {},
+          appReads: {},
           mates: {},
           people: {},
         });
@@ -1122,15 +1164,41 @@ describe("HQ API", () => {
           `/api/structure/ws?ticket=${yield* ticketFor(call, reader)}`,
         );
         const snapshot = yield* readerSocket.next("snapshot");
-        // The reader reads Shop's changes, so it is told where Shop's repositories last moved.
-        const shopRevision = (snapshot as { readonly releaseRevisions?: Record<string, unknown> })
-          .releaseRevisions?.[appId];
-        assert.isString(shopRevision);
+        // Only readable apps get load data, from the same owners as the four detail reads.
+        const shopRead = (
+          snapshot as {
+            readonly appReads: Record<
+              string,
+              { readonly revision: unknown; readonly value: unknown; readonly failure: unknown }
+            >;
+          }
+        ).appReads[appId]!;
+        assert.isString(shopRead.revision);
+        assert.isNull(shopRead.failure);
+        assert.deepStrictEqual(shopRead.value, {
+          releases: (
+            (yield* call("GET", `/api/apps/${appId}/releases`, { session: reader })).body as {
+              readonly releases: unknown;
+            }
+          ).releases,
+          repos: (
+            (yield* call("GET", `/api/apps/${appId}/repos`, { session: reader })).body as {
+              readonly repos: unknown;
+            }
+          ).repos,
+          recipes: {
+            stage: (yield* call("GET", `/api/apps/${appId}/recipe/stage`, { session: reader }))
+              .body,
+            production: (yield* call("GET", `/api/apps/${appId}/recipe/production`, {
+              session: reader,
+            })).body,
+          },
+        });
         assert.deepStrictEqual(snapshot, {
           ungrouped: [],
           apps: [{ id: appId, name: "Shop", projects: [], environments: [], births: [] }],
           changes: { [appId]: [] },
-          releaseRevisions: { [appId]: shopRevision },
+          appReads: { [appId]: shopRead },
           mates: {},
           people: {},
         });
@@ -1138,6 +1206,7 @@ describe("HQ API", () => {
         // Zerops lowers the reader to no access: the open socket drops the application.
         const member = fake.members.get("ORG")!.find((row) => row.userId === "reader")!;
         Object.assign(member, { roleCode: "NO_ACCESS" });
+        assert.deepStrictEqual(yield* readerSocket.next("release-revision"), { appId, read: null });
         assert.deepStrictEqual(yield* readerSocket.next("change"), { key: appId, value: null });
         yield* readerSocket.close;
       }),
@@ -1185,7 +1254,7 @@ describe("HQ API", () => {
             ungrouped: [],
             apps: [],
             changes: {},
-            releaseRevisions: {},
+            appReads: {},
             mates: {},
             people: {},
           });
@@ -1243,6 +1312,7 @@ describe("HQ API", () => {
         const allowed = yield* preflight(CLIENT);
         assert.isBelow(allowed.status, 300);
         assert.strictEqual(allowed.headers.get("access-control-allow-origin"), CLIENT);
+        assert.strictEqual(allowed.headers.get("access-control-max-age"), "7200");
         assert.strictEqual(
           (yield* preflight("http://localhost:4380")).headers.get("access-control-allow-origin"),
           "http://localhost:4380",

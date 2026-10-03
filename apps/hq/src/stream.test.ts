@@ -26,6 +26,8 @@ const linkedMate = (overviews: MateOverviews["Service"]) =>
     });
     return link;
   });
+import type { AppReadValue } from "@t3tools/shared/hqAppReads";
+
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
@@ -105,6 +107,24 @@ const streamFor = (
     const revisions = yield* Ref.make<ReadonlyMap<string, string>>(new Map());
     /** Ticks after a release is recorded. */
     const released = yield* SubscriptionRef.make(0);
+    const appReads = yield* Ref.make<ReadonlyMap<string, AppReadValue>>(
+      new Map(
+        Object.keys(readable).map((appId) => [
+          appId,
+          {
+            releases: [],
+            repos: [
+              { name: "group", mainHead: "a".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" },
+            ],
+            recipes: {
+              stage: { state: "absent" as const },
+              production: { state: "absent" as const },
+            },
+          },
+        ]),
+      ),
+    );
+    const appReadCalls: string[] = [];
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
     const overviews = yield* makeMateOverviews(memoryStore().store);
     yield* before(overviews);
@@ -125,6 +145,16 @@ const streamFor = (
         Changes.of({
           readable: () => Effect.succeed(readable),
           releaseRevisions: Ref.get(revisions),
+          listRepos: (_userId: string, appId: string) =>
+            Effect.gen(function* () {
+              appReadCalls.push(`${appId}:repos`);
+              return (yield* Ref.get(appReads)).get(appId)!.repos;
+            }),
+          readRecipe: (_userId: string, appId: string, tier: "stage" | "production") =>
+            Effect.gen(function* () {
+              appReadCalls.push(`${appId}:${tier}`);
+              return (yield* Ref.get(appReads)).get(appId)!.recipes[tier];
+            }),
           changes: Stream.never,
         } as unknown as Changes["Service"]),
       ),
@@ -132,6 +162,11 @@ const streamFor = (
         Releases,
         Releases.of({
           changes: SubscriptionRef.changes(released),
+          list: (_userId: string, appId: string) =>
+            Effect.gen(function* () {
+              appReadCalls.push(`${appId}:releases`);
+              return (yield* Ref.get(appReads)).get(appId)!.releases;
+            }),
         } as unknown as Releases["Service"]),
       ),
       Layer.succeed(
@@ -150,37 +185,80 @@ const streamFor = (
     );
     yield* Effect.repeat(Effect.yieldNow, { times: 50 });
     yield* TestClock.adjust("1 millis");
-    return { sent, reads, version, view, overviews, revisions, released };
+    return { sent, reads, version, view, overviews, revisions, released, appReads, appReadCalls };
   });
 
 describe("the structure stream", () => {
-  // Audit R4: every open tab read every application's releases and repositories each minute. The
-  // stream says when an application's moved instead, and only to whoever reads its changes.
-  it.effect(
-    "carries each readable application's release revision, and sends one the moment it moves",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { sent, revisions, released } = yield* streamFor("owner", undefined, {
-            "app-shop": [],
-          });
-          assert.deepStrictEqual(sent[0]?.["releaseRevisions"], { "app-shop": null });
-
-          // Shop's main moves, and Team — which owner does not read the changes of — releases.
-          yield* Ref.set(
-            revisions,
-            new Map([
-              ["app-shop", "3"],
-              ["app-team", "4"],
-            ]),
-          );
-          yield* SubscriptionRef.update(released, (n) => n + 1);
-          yield* Effect.repeat(Effect.yieldNow, { times: 50 });
-          assert.deepStrictEqual(sent.slice(1), [
-            { type: "release-revision", appId: "app-shop", revision: "3" },
-          ]);
-        }),
-      ),
+  it.effect("carries the four load reads for readable apps, and re-reads only the moved app", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner", undefined, { "app-shop": [], "app-team": [] });
+        const shop = (yield* Ref.get(h.appReads)).get("app-shop")!;
+        const team = (yield* Ref.get(h.appReads)).get("app-team")!;
+        assert.deepStrictEqual(h.sent[0]?.["appReads"], {
+          "app-shop": { revision: null, value: shop, failure: null },
+          "app-team": { revision: null, value: team, failure: null },
+        });
+        assert.strictEqual(h.appReadCalls.length, 8);
+        h.appReadCalls.length = 0;
+        const fresh: AppReadValue = {
+          releases: [
+            {
+              tag: "v0.1.0",
+              sha: "b".repeat(40),
+              entries: [{ service: "app", sha: "c".repeat(40) }],
+              by: "owner",
+              at: "2026-10-03T10:00:00.000Z",
+              state: "approved",
+              reason: null,
+              rollbackOf: null,
+            },
+          ],
+          repos: [
+            { name: "group", mainHead: "b".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" },
+          ],
+          recipes: {
+            stage: {
+              state: "present",
+              mainHead: "b".repeat(40),
+              importYaml: "services:\n  - hostname: appstage\n",
+            },
+            production: {
+              state: "present",
+              mainHead: "b".repeat(40),
+              importYaml: "services:\n  - hostname: app\n",
+            },
+          },
+        };
+        yield* Ref.update(h.appReads, (current) => new Map(current).set("app-shop", fresh));
+        yield* Ref.set(
+          h.revisions,
+          new Map([
+            ["app-shop", "3"],
+            ["app-secret", "4"],
+          ]),
+        );
+        yield* SubscriptionRef.update(h.released, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [
+          {
+            type: "release-revision",
+            appId: "app-shop",
+            read: { revision: "3", value: fresh, failure: null },
+          },
+        ]);
+        assert.deepStrictEqual(h.appReadCalls.toSorted(), [
+          "app-shop:production",
+          "app-shop:releases",
+          "app-shop:repos",
+          "app-shop:stage",
+        ]);
+        h.appReadCalls.length = 0;
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.appReadCalls, []);
+      }),
+    ),
   );
 
   it.effect("an overview report runs no structure read for any open stream", () =>

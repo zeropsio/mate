@@ -21,13 +21,11 @@ import {
   CompareResponse,
   HqChange,
   HqChangeComment,
-  RepoListResponse,
   type AttachmentLink,
   type ChangeLink,
   type CompareQuery,
-  type RepoListEntry,
 } from "@t3tools/shared/hqChanges";
-import { RecipeTierResponse, type RecipeTier } from "@t3tools/shared/hqRecipe";
+import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import {
   Release,
   ReleaseListResponse,
@@ -258,21 +256,8 @@ export interface HqApi {
   readonly closeChange: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
-  /**
-   * A tier of an application's recipe as its recipe repository's `main` holds it, read as the
-   * person (`GET /api/apps/:appId/recipe/:tier`): `absent` where it is not there or declares no
-   * service.
-   */
-  readonly recipeTier: (
-    appId: string,
-    tier: RecipeTier,
-    signal?: AbortSignal,
-  ) => Promise<RecipeTierResponse>;
-  /**
-   * An application's repositories, read as the person (`GET /api/apps/:appId/repos`): whoever may
-   * read its changes.
-   */
-  readonly appRepos: (appId: string, signal?: AbortSignal) => Promise<ReadonlyArray<RepoListEntry>>;
+  /** The Mate tier, read only on detail demand; stage/production are in the structure snapshot. */
+  readonly mateRecipe: (appId: string, signal?: AbortSignal) => Promise<RecipeTierResponse>;
   /**
    * What lies between two commits of an application's repository, by its name, read as the person
    * (`GET /api/apps/:appId/repos/:repo/compare`): git's `base..head`, whoever may read its changes.
@@ -283,11 +268,6 @@ export interface HqApi {
     query: CompareQuery,
     signal?: AbortSignal,
   ) => Promise<CompareResponse>;
-  /**
-   * An application's releases, newest first by version, read as the person (`GET
-   * /api/apps/:appId/releases`): whoever may read its changes.
-   */
-  readonly releases: (appId: string, signal?: AbortSignal) => Promise<ReadonlyArray<Release>>;
   /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
   readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Release>;
   /** Production back to `tag` as the person: a new release listing its entries. */
@@ -480,7 +460,6 @@ const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readRecipeTier = decoded(RecipeTierResponse);
 
-const readAppRepos = decoded(RepoListResponse);
 const readCompare = decoded(CompareResponse);
 const readReleases = decoded(ReleaseListResponse);
 const readRelease = decoded(Release);
@@ -691,12 +670,9 @@ export function makeHqApi(input: {
   const structureOf = async (signal?: AbortSignal) =>
     json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal }));
   const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
-  const releasesOf = async (appId: string, signal?: AbortSignal) =>
-    (
-      await readReleases(
-        await authorized(releasesPath(appId), signal === undefined ? {} : { signal }),
-      )
-    ).releases;
+  // Only a lost release/rollback write answer needs this direct confirmation, never a load.
+  const releasesOf = async (appId: string) =>
+    (await readReleases(await authorized(releasesPath(appId)))).releases;
   const changeOf = async (link: ChangeLink, signal?: AbortSignal) =>
     readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal }));
   const commentsOf = async (link: ChangeLink, signal?: AbortSignal) =>
@@ -908,20 +884,10 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
-    appRepos: async (appId, signal) =>
-      (
-        await readAppRepos(
-          await authorized(
-            `/api/apps/${encodeURIComponent(appId)}/repos`,
-            signal === undefined ? {} : { signal },
-          ),
-        )
-      ).repos,
     compare: async (appId, repo, query, signal) =>
       readCompare(
         await authorized(comparePath(appId, repo, query), signal === undefined ? {} : { signal }),
       ),
-    releases: releasesOf,
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.
     release: (appId, request) =>
@@ -962,10 +928,10 @@ export function makeHqApi(input: {
             : undefined;
         },
       ),
-    recipeTier: async (appId, tier, signal) =>
+    mateRecipe: async (appId, signal) =>
       readRecipeTier(
         await authorized(
-          `/api/apps/${encodeURIComponent(appId)}/recipe/${tier}`,
+          `/api/apps/${encodeURIComponent(appId)}/recipe/mate`,
           signal === undefined ? {} : { signal },
         ),
       ),

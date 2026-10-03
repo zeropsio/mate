@@ -4,9 +4,9 @@
  * (`@t3tools/shared/hqChanges`) — then `change` messages, `{ key: appId, value: app | null }`,
  * each the whole application as it now is, or its going; under the key `ungrouped`, the whole list
  * of the Mates in no application; and `changes` messages, an application's changes whole, or
- * `null` once the reader may no longer read them. The snapshot carries, too, where each of those
- * applications last moved its releases or its repositories' `main` (audit R4), and a
- * `release-revision` message moves one: the reader reads them again only then. A reconnect starts
+ * `null` once the reader may no longer read them. The snapshot carries those applications'
+ * releases, repository heads and stage/production recipes, and a
+ * `release-revision` message supplies one moved application's fresh load data. A reconnect starts
  * with a fresh snapshot, so nothing held from before it is needed to read it right.
  *
  * The same socket carries the Mates the reader may observe (`@t3tools/shared/hqMates`): the
@@ -21,13 +21,8 @@
  *
  * @module hq/stream
  */
-import {
-  ChangesMessage,
-  ChangesSnapshot,
-  ReleaseRevisionMessage,
-  ReleaseRevisions,
-  type HqChange,
-} from "@t3tools/shared/hqChanges";
+import { ChangesMessage, ChangesSnapshot, type HqChange } from "@t3tools/shared/hqChanges";
+import { AppReads, ReleaseRevisionMessage, type AppRead } from "@t3tools/shared/hqAppReads";
 import {
   HqMatesMessage,
   HqPeople,
@@ -53,10 +48,9 @@ export type HqChanges = ReadonlyMap<string, ReadonlyArray<HqChange>>;
 export type HqMates = ReadonlyMap<string, MateLiveView>;
 
 /**
- * Where each application whose changes the reader reads last moved its releases or its
- * repositories' `main`, by its id: an opaque revision, `null` before anything moved.
+ * HQ-owned load data for each readable application, by id.
  */
-export type HqReleaseRevisions = ReadonlyMap<string, string | null>;
+export type HqAppReads = ReadonlyMap<string, AppRead>;
 
 export type HqStructureEvent =
   | {
@@ -64,8 +58,8 @@ export type HqStructureEvent =
       readonly structure: HqStructure;
       /** `null` where HQ sent none, or none this build can read. */
       readonly changes: HqChanges | null;
-      /** `null` where HQ sent none — an HQ from before them — or none this build can read. */
-      readonly releaseRevisions: HqReleaseRevisions | null;
+      /** `null` until a snapshot with readable load data arrives. */
+      readonly appReads: HqAppReads | null;
       /** `null` where HQ sent none — an HQ from before the Mates' overviews — or none readable. */
       readonly mates: HqMates | null;
       readonly people: HqPeople | null;
@@ -88,13 +82,13 @@ export type HqStructureEvent =
   | {
       readonly kind: "release-revision";
       readonly appId: string;
-      /** `null` once the reader may no longer read its changes. */
-      readonly revision: string | null;
+      /** `null` once the reader may no longer read this application. */
+      readonly read: AppRead | null;
     };
 
 const readSnapshotChanges = Schema.decodeUnknownOption(ChangesSnapshot);
 const readChangesMessage = Schema.decodeUnknownOption(ChangesMessage);
-const readReleaseRevisions = Schema.decodeUnknownOption(ReleaseRevisions);
+const readAppReads = Schema.decodeUnknownOption(AppReads);
 const readReleaseRevisionMessage = Schema.decodeUnknownOption(ReleaseRevisionMessage);
 const readMateView = Schema.decodeUnknownOption(MateLiveView);
 const readPeople = Schema.decodeUnknownOption(HqPeople);
@@ -165,14 +159,14 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       apps,
       ungrouped = [],
       changes,
-      releaseRevisions,
+      appReads,
       mates,
       people,
     } = message as {
       readonly apps?: unknown;
       readonly ungrouped?: unknown;
       readonly changes?: unknown;
-      readonly releaseRevisions?: unknown;
+      readonly appReads?: unknown;
       readonly mates?: unknown;
       readonly people?: unknown;
     };
@@ -185,7 +179,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
         onNone: () => null,
         onSome: (byApp) => new Map(Object.entries(byApp)),
       }),
-      releaseRevisions: Option.match(readReleaseRevisions(releaseRevisions), {
+      appReads: Option.match(readAppReads(appReads), {
         onNone: () => null,
         onSome: (byApp) => new Map(Object.entries(byApp)),
       }),
@@ -211,7 +205,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
   if (type === "release-revision") {
     return Option.match(readReleaseRevisionMessage(message), {
       onNone: () => undefined,
-      onSome: ({ appId, revision }) => ({ kind: "release-revision", appId, revision }),
+      onSome: ({ appId, read }) => ({ kind: "release-revision", appId, read }),
     });
   }
   if (type === "change") {
@@ -270,14 +264,26 @@ export function applyChangesEvent(
 }
 
 /**
- * The release revisions an event leaves: a snapshot replaces them; an application's message moves
- * its own. An HQ whose snapshot carried none sends none after it: nothing is known then.
+ * The application facts an event leaves: the snapshot establishes coverage, and a message
+ * replaces one app or removes it on access loss. Unrelated apps retain their object identity.
  */
-export function applyReleaseRevisionsEvent(
-  revisions: HqReleaseRevisions | null,
+export function applyAppReadsEvent(
+  reads: HqAppReads | null,
   event: HqStructureEvent,
-): HqReleaseRevisions | null {
-  if (event.kind === "snapshot") return event.releaseRevisions;
-  if (revisions === null || event.kind !== "release-revision") return revisions;
-  return new Map(revisions).set(event.appId, event.revision);
+): HqAppReads | null {
+  // A revalidation failure keeps what this identity already knew, marked with its failure.
+  const retain = (appId: string, read: AppRead): AppRead =>
+    read.value === null && read.failure !== null
+      ? { ...read, value: reads?.get(appId)?.value ?? null }
+      : read;
+  if (event.kind === "snapshot") {
+    return event.appReads === null
+      ? null
+      : new Map([...event.appReads].map(([appId, read]) => [appId, retain(appId, read)]));
+  }
+  if (reads === null || event.kind !== "release-revision") return reads;
+  const next = new Map(reads);
+  if (event.read === null) next.delete(event.appId);
+  else next.set(event.appId, retain(event.appId, event.read));
+  return next;
 }

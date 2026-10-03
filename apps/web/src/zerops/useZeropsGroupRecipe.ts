@@ -1,5 +1,6 @@
 /**
- * The tier a new environment starts from, read out of the application's recipe in HQ **as the
+ * The tier a new environment starts from, from the account's HQ snapshot for stage/production
+ * and a detail read for the Mate tier, **as the
  * person** (guide 4.3, SPEC §3.2c).
  *
  * The recipe is not a Zerops object and never was: it is `import.yaml` in the application's recipe
@@ -19,6 +20,9 @@
  * finds no service in: that is not "no recipe", and a Mate is never made empty for it.
  */
 
+import { useAtomValue } from "@effect/atom-react";
+import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
+import type { AppRead } from "@t3tools/shared/hqAppReads";
 import {
   recipeTierServices,
   type EnvironmentRecipeChoice,
@@ -26,6 +30,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useCallback, useEffect, useState } from "react";
 
+import { hqStructureAtom } from "../state/zerops";
+import { requestHqSnapshot } from "./hqStructure";
 import { useOfficialHq } from "./accountHq";
 
 export type GroupRecipeTier = Extract<EnvironmentRecipeChoice, { kind: "tier" }>;
@@ -51,6 +57,19 @@ type Answer = Pick<GroupRecipe, "state" | "tier" | "services">;
 const LOADING: Answer = { state: "loading", tier: undefined, services: [] };
 const ABSENT: Answer = { state: "absent", tier: undefined, services: [] };
 const UNREADABLE: Answer = { state: "unreadable", tier: undefined, services: [] };
+
+/** A streamed declaration and its services, without keeping a second copy of HQ's fact. */
+const answerOf = (read: RecipeTierResponse, tier: RecipeTier): Answer => {
+  if (read.state === "absent") return ABSENT;
+  const services = recipeTierServices(read.importYaml);
+  return services === undefined
+    ? UNREADABLE
+    : {
+        state: "present",
+        tier: { kind: "tier", tier, yaml: read.importYaml },
+        services: services.map((service) => service.hostname),
+      };
+};
 
 /**
  * The last answer read for each recipe, so a dialog opened again says at once what it said the
@@ -79,6 +98,9 @@ export function useZeropsGroupRecipe(input: {
   readonly revision?: string | undefined;
 }): GroupRecipe {
   const { appId, enabled, revision, tier } = input;
+  const streamed = useAtomValue(hqStructureAtom);
+  const appRead = appId === undefined ? undefined : streamed?.appReads?.get(appId);
+  const [retrying, setRetrying] = useState<AppRead | undefined>(undefined);
   // Keyed on it, so a read that could not go out goes once the organization's HQ is open here.
   const hq = useOfficialHq();
   // A revision first known is where the recipe was read from; only one after it is news.
@@ -99,7 +121,7 @@ export function useZeropsGroupRecipe(input: {
     readonly answer: Answer;
   } | null>(null);
   const recipe = hq === null || appId === undefined ? "" : `${hq.address}|${appId}|${tier}`;
-  const key = enabled && recipe !== "" ? `${recipe}|${landings.count}` : "";
+  const key = tier === "mate" && enabled && recipe !== "" ? `${recipe}|${landings.count}` : "";
 
   useEffect(() => {
     if (key === "" || hq === null || appId === undefined) return;
@@ -108,7 +130,7 @@ export function useZeropsGroupRecipe(input: {
       if (answer.state !== "unreadable") remembered.set(recipe, answer);
       if (!stop.signal.aborted) setHeld({ key, tries, answer });
     };
-    void hq.api.recipeTier(appId, tier, stop.signal).then(
+    void hq.api.mateRecipe(appId, stop.signal).then(
       (read) => {
         if (read.state === "absent") {
           settle(ABSENT);
@@ -135,8 +157,27 @@ export function useZeropsGroupRecipe(input: {
   }, [appId, hq, key, recipe, tier, tries]);
 
   const reread = useCallback(() => {
-    setTries((current) => current + 1);
-  }, []);
+    if (tier === "mate") setTries((current) => current + 1);
+    else if (streamed !== null && streamed !== undefined) {
+      setRetrying(appRead);
+      requestHqSnapshot(streamed.organizationId);
+    }
+  }, [appRead, streamed, tier]);
+
+  if (tier !== "mate") {
+    const answer =
+      !enabled || appRead === undefined
+        ? LOADING
+        : appRead.failure !== null || appRead.value === null
+          ? UNREADABLE
+          : answerOf(appRead.value.recipes[tier], tier);
+    return {
+      ...answer,
+      loading: answer.state === "loading",
+      rereading: retrying !== undefined && retrying === appRead,
+      reread,
+    };
+  }
 
   const current = key !== "" && held !== null && held.key === key ? held : null;
   const recalled = key !== "" && held === null ? remembered.get(recipe) : undefined;

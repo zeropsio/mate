@@ -1100,7 +1100,7 @@
       "tests": [
         "apps/web/src/components/zerops/ZeropsGitPage.test.tsx",
         "apps/web/src/components/zerops/ZeropsGitPage.logic.test.ts",
-        "apps/web/src/zerops/useZeropsAppReleases.test.tsx",
+        "apps/web/src/zerops/hqAppLoad.test.tsx",
         "packages/client-runtime/src/zerops/gitOverview.test.ts"
       ],
       "captures": []

@@ -586,7 +586,7 @@ describe("makeHqApi — the structure socket", () => {
     expect(stream.events).toEqual([
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: { ungrouped: [], apps: [] },
         changes: null,
         mates: null,
@@ -1012,43 +1012,17 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     const { hq, api: hqApi } = api((seen) =>
       seen.path === "/api/apps/app-1/recipe/mate" ? json(200, tier) : undefined,
     );
-    await expect(hqApi.recipeTier("app-1", "mate")).resolves.toEqual(tier);
+    await expect(hqApi.mateRecipe("app-1")).resolves.toEqual(tier);
     expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
   });
 
   it("says a recipe too large to read in words of its own", async () => {
     const { api: hqApi } = api(() => json(413, { code: "too_large", reason: "recipe_too_large" }));
-    await expect(hqApi.recipeTier("app-1", "stage")).rejects.toMatchObject({
+    await expect(hqApi.mateRecipe("app-1")).rejects.toMatchObject({
       kind: "refused",
       code: "too_large",
       message: "This project's recipe is too large to read here.",
     });
-  });
-
-  // The Git page's repositories: an application's, each with its main as HQ holds it.
-  it("lists an application's repositories, as the person", async () => {
-    // `updatedAt` is when its main last moved, or when it was made where nothing has landed yet.
-    const REPOS = [
-      { name: "appdev", mainHead: SHA, updatedAt: "2026-10-02T09:00:00.000Z" },
-      { name: "group", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" },
-    ];
-    const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/repos" ? json(200, { repos: REPOS }) : undefined,
-    );
-    await expect(hqApi.appRepos("app-1")).resolves.toEqual(REPOS);
-    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
-  });
-
-  // The shape is HQ's contract (`RepoListResponse`): a main that is no commit is no answer.
-  it("reads no repository list whose main is no commit", async () => {
-    const { api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/repos"
-        ? json(200, {
-            repos: [{ name: "appdev", mainHead: "main", updatedAt: "2026-10-02T09:00:00.000Z" }],
-          })
-        : undefined,
-    );
-    await expect(hqApi.appRepos("app-1")).rejects.toMatchObject({ code: "unreadable" });
   });
 
   // An application's releases (`@t3tools/shared/hqRelease`): read, made and rolled back as the person.
@@ -1062,16 +1036,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     reason: null,
     rollbackOf: null,
   } as const;
-
-  it("lists an application's releases, as the person", async () => {
-    const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/releases" && seen.method === "GET"
-        ? json(200, { releases: [RELEASE] })
-        : undefined,
-    );
-    await expect(hqApi.releases("app-1")).resolves.toEqual([RELEASE]);
-    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
-  });
 
   it("releases what the offer showed, and rolls back with main's head read with the offer", async () => {
     const { hq, api: hqApi } = api((seen) =>

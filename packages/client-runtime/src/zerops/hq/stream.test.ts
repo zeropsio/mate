@@ -6,7 +6,7 @@ import type { HqStructure } from "./client.ts";
 import type { HqEnvironment } from "./environments.ts";
 import {
   applyChangesEvent,
-  applyReleaseRevisionsEvent,
+  applyAppReadsEvent,
   applyStructureEvent,
   structureEventOf,
 } from "./stream.ts";
@@ -118,7 +118,7 @@ describe("structureEventOf", () => {
       { type: "snapshot", ungrouped: [LONE], apps: [ACME] },
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: { ungrouped: [LONE], apps: [ACME] },
         changes: null,
         mates: null,
@@ -130,7 +130,7 @@ describe("structureEventOf", () => {
       { type: "snapshot", apps: [ACME] },
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: { ungrouped: [], apps: [ACME] },
         changes: null,
         mates: null,
@@ -142,7 +142,7 @@ describe("structureEventOf", () => {
       { type: "snapshot", apps: [ACME], changes: { "app-1": [CHANGE] } },
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: { ungrouped: [], apps: [ACME] },
         changes: new Map([["app-1", [CHANGE]]]),
         mates: null,
@@ -154,7 +154,7 @@ describe("structureEventOf", () => {
       { type: "snapshot", apps: [ACME], changes: { "app-1": [{ ...CHANGE, number: 0 }] } },
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: { ungrouped: [], apps: [ACME] },
         changes: null,
         mates: null,
@@ -168,7 +168,7 @@ describe("structureEventOf", () => {
       { type: "snapshot", apps: [ACME_STAGED] },
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: { ungrouped: [], apps: [ACME_STAGED] },
         changes: null,
         mates: null,
@@ -180,7 +180,7 @@ describe("structureEventOf", () => {
       { type: "snapshot", apps: [{ ...ACME, environments: [{ ...STAGE, tier: "dev" }] }] },
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: { ungrouped: [], apps: [ACME] },
         changes: null,
         mates: null,
@@ -195,7 +195,7 @@ describe("structureEventOf", () => {
       },
       {
         kind: "snapshot",
-        releaseRevisions: null,
+        appReads: null,
         structure: {
           ungrouped: [],
           apps: [{ ...ACME, births: [{ id: "b-1", face: "rose:seal" }] }],
@@ -258,7 +258,7 @@ describe("structureEventOf", () => {
       }),
     ).toEqual({
       kind: "snapshot",
-      releaseRevisions: null,
+      appReads: null,
       structure: { ungrouped: [], apps: [ACME] },
       changes: null,
       mates: new Map([["p1", VERA_VIEW]]),
@@ -295,7 +295,7 @@ describe("applyStructureEvent", () => {
     const renamed = { ...ACME, name: "Acme CRM" };
     let structure = applyStructureEvent(null, {
       kind: "snapshot",
-      releaseRevisions: null,
+      appReads: null,
       structure: { ungrouped: [LONE], apps: [ACME] },
       changes: null,
       mates: null,
@@ -342,7 +342,7 @@ describe("applyChangesEvent", () => {
   it("replaces on a snapshot, and replaces or drops one application's on its message", () => {
     let changes = applyChangesEvent(null, {
       kind: "snapshot",
-      releaseRevisions: null,
+      appReads: null,
       structure: { ungrouped: [], apps: [ACME, BETA] },
       changes: new Map([["app-1", [CHANGE]]]),
       mates: null,
@@ -378,28 +378,37 @@ const snapshot = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-// Audit R4: every open tab read every application's releases and repositories each minute. HQ's
-// stream says where each one last moved instead, and the reader reads them again only then.
-describe("each application's release revision, as HQ's stream says it", () => {
-  it("is read from the snapshot, and moved by its message", () => {
-    const told = structureEventOf(snapshot({ releaseRevisions: { "app-shop": "41" } }));
-    const moved = structureEventOf({ type: "release-revision", appId: "app-shop", revision: "57" });
-    expect(moved).toEqual({ kind: "release-revision", appId: "app-shop", revision: "57" });
+const read = (revision: string) => ({
+  revision,
+  failure: null,
+  value: {
+    releases: [],
+    repos: [],
+    recipes: { stage: { state: "absent" as const }, production: { state: "absent" as const } },
+  },
+});
 
-    const atSnapshot = applyReleaseRevisionsEvent(null, told!);
-    expect(atSnapshot).toEqual(new Map([["app-shop", "41"]]));
-    expect(applyReleaseRevisionsEvent(atSnapshot, moved!)).toEqual(new Map([["app-shop", "57"]]));
+describe("each application's load data, as HQ's stream says it", () => {
+  it("is read from the snapshot, and moved by its message", () => {
+    const first = read("41");
+    const fresh = read("57");
+    const told = structureEventOf(snapshot({ appReads: { "app-shop": first } }));
+    const moved = structureEventOf({ type: "release-revision", appId: "app-shop", read: fresh });
+    expect(moved).toEqual({ kind: "release-revision", appId: "app-shop", read: fresh });
+    const atSnapshot = applyAppReadsEvent(null, told!);
+    expect(atSnapshot).toEqual(new Map([["app-shop", first]]));
+    expect(applyAppReadsEvent(atSnapshot, moved!)).toEqual(new Map([["app-shop", fresh]]));
   });
 
-  it("is unknown from an HQ that sends none, and stays so", () => {
+  it("has no value before a valid snapshot, and never reads a fallback", () => {
     const told = structureEventOf(snapshot());
-    const revisions = applyReleaseRevisionsEvent(new Map([["app-shop", "41"]]), told!);
-    expect(revisions).toBeNull();
+    const unknown = applyAppReadsEvent(new Map([["app-shop", read("41")]]), told!);
+    expect(unknown).toBeNull();
     expect(
-      applyReleaseRevisionsEvent(revisions, {
+      applyAppReadsEvent(unknown, {
         kind: "release-revision",
         appId: "app-shop",
-        revision: "57",
+        read: read("57"),
       }),
     ).toBeNull();
   });
