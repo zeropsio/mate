@@ -838,7 +838,7 @@ describe("every driver's call reaches the client in one form", () => {
         },
       }),
       expected: {
-        toolName: "zerops_deploy",
+        toolName: "mcp__zerops__zerops_deploy",
         input: { targetService: "api", strategy: "push" },
         zerops: { toolName: "zerops_deploy", resultText: '{"status":"FINISHED"}' },
       },
@@ -902,10 +902,61 @@ describe("every driver's call reaches the client in one form", () => {
         },
       }),
       expected: {
-        toolName: "zerops_deploy",
+        toolName: "mcp__zerops__zerops_deploy",
         input: { targetService: "api" },
         zerops: { toolName: "zerops_deploy", resultText: '{"status":"FINISHED"}' },
       },
+    },
+    // An MCP tool keeps its server: it is never taken for a native tool of
+    // its name, and a native tool is never taken for an MCP one.
+    {
+      name: "an OpenCode MCP tool named as a native one",
+      activity: call("db_execute", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        data: {
+          tool: "db_execute",
+          state: { status: "completed", input: { sql: "select 1" }, output: "1" },
+        },
+      }),
+      expected: { toolName: "mcp__db__execute" },
+    },
+    {
+      name: "OpenCode's own underscored tool",
+      activity: call("plan_exit", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        data: { tool: "plan_exit", state: { status: "completed", input: {}, output: "" } },
+      }),
+      expected: { toolName: "plan_exit" },
+    },
+    {
+      name: "an ACP Zerops call its agent tagged as a command",
+      activity: call("Ran command", {
+        itemType: "command_execution",
+        status: "completed",
+        data: {
+          toolCallId: "call-5",
+          kind: "execute",
+          title: "mcp__zerops__zerops_deploy",
+          rawInput: { targetService: "api" },
+          rawOutput: { content: [{ type: "text", text: '{"status":"FINISHED"}' }] },
+        },
+      }),
+      expected: {
+        toolName: "mcp__zerops__zerops_deploy",
+        input: { targetService: "api" },
+        zerops: { toolName: "zerops_deploy", resultText: '{"status":"FINISHED"}' },
+      },
+    },
+    {
+      name: "an ACP search of the web",
+      activity: call("Searched files", {
+        itemType: "web_search",
+        status: "completed",
+        data: { toolCallId: "call-6", kind: "search", rawInput: { query: "zerops yaml" } },
+      }),
+      expected: { toolName: "websearch", input: { query: "zerops yaml" } },
     },
   ])("$name", ({ activity, expected }) => {
     const data = dataOf(activity);

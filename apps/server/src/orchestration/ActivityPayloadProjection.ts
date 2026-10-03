@@ -514,9 +514,16 @@ export function projectActivityPayload(
   const zerops = readStoredZeropsResult(data.zerops) ?? projectZeropsToolCall(zeropsCall);
   // Every driver's call in one form: the tool's name where Claude's is, a
   // driver that names none (OpenCode, the ACP agents) by the name the SPI
-  // read; Codex's own items carry theirs in `item`.
+  // read — an MCP tool in Claude's `mcp__<server>__<tool>`, so it is never
+  // taken for a native tool of its name; Codex's own items carry theirs in
+  // `item`.
   const toolName =
-    asTrimmedString(data.toolName) ?? (asRecord(data.item) || !call ? undefined : call.name);
+    asTrimmedString(data.toolName) ??
+    (asRecord(data.item) || !call
+      ? undefined
+      : call.server === undefined
+        ? call.name
+        : `mcp__${call.server}__${call.name}`);
 
   if (payload.itemType === "mcp_tool_call") {
     return {
