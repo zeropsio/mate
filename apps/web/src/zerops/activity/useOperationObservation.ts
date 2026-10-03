@@ -8,7 +8,9 @@
  * The decision logic (`deriveOperationObservation`) is a pure function of
  * its inputs, exported and tested directly — the hook itself is thin React
  * glue: it reads session/topology/activity through hooks and keeps its
- * cross-render observation memory inside the mounted card.
+ * cross-render observation memory by the operation's key
+ * (`ObservationMemory`), so a card drawn again for the same operation starts
+ * from what was read of it.
  */
 import { useMemo, useRef } from "react";
 
@@ -197,6 +199,35 @@ export function deriveOperationObservation(
   };
 }
 
+/**
+ * What was last read of each operation, by its key, across the cards drawn
+ * for it: a row moves from the live slot into the history, a detail opens
+ * again, and the new card starts from what the last one read — a deploy that
+ * ended keeps its pipeline and its build log. Bounded: the oldest read leaves
+ * first, and one read again is kept as the newest.
+ */
+export class ObservationMemory {
+  readonly #reads = new Map<string, Observation>();
+
+  constructor(readonly bound: number) {}
+
+  recall(key: string): Observation | undefined {
+    return this.#reads.get(key);
+  }
+
+  remember(key: string, observation: Observation): void {
+    this.#reads.delete(key);
+    this.#reads.set(key, observation);
+    for (const oldest of this.#reads.keys()) {
+      if (this.#reads.size <= this.bound) break;
+      this.#reads.delete(oldest);
+    }
+  }
+}
+
+/** The operations a conversation shows at once, with room to spare. */
+const observationMemory = new ObservationMemory(64);
+
 function serviceIdsFor(
   target: ObservationTarget | null,
   services: ReadonlyArray<{ readonly hostname: string; readonly serviceId: string }> | undefined,
@@ -251,7 +282,7 @@ export function useOperationObservation(
   if (target === null || target.key !== keyRef.current) {
     keyRef.current = target?.key ?? null;
     lastReadRef.current = undefined;
-    historyRef.current = undefined;
+    historyRef.current = target === null ? undefined : observationMemory.recall(target.key);
     wantsPollRef.current = target !== null && target.running;
   }
 
@@ -277,6 +308,9 @@ export function useOperationObservation(
 
   lastReadRef.current = result.lastRead;
   wantsPollRef.current = result.wantsPoll;
+  if (target !== null && result.history !== undefined && result.history !== historyRef.current) {
+    observationMemory.remember(target.key, result.history);
+  }
   historyRef.current = result.history;
 
   const observationNow = result.state.kind === "off" ? undefined : result.state.observation;

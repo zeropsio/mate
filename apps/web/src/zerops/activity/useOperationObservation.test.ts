@@ -7,6 +7,7 @@ import type { Observation } from "@t3tools/client-runtime/zerops/activity/observ
 import type { ProjectActivitySnapshot } from "./useProjectActivity.ts";
 import {
   OPERATION_OBSERVATION_CEILING_MS,
+  ObservationMemory,
   deriveOperationObservation,
   type DeriveOperationObservationInput,
   type ObservationTarget,
@@ -392,5 +393,57 @@ describe("deriveOperationObservation — the build log a card keeps showing", ()
 
   it("none before any build was seen", () => {
     expect(deriveOperationObservation(baseInput(), NOW).buildLogQuery).toBeUndefined();
+  });
+});
+
+// A card is drawn again for the same operation — its row moves from the live
+// slot into the history, a detail opens again: it starts from what was read
+// of it, so a deploy that ended keeps its pipeline and its build log (pass 36).
+describe("ObservationMemory — what was read of an operation, across its cards", () => {
+  const read = (appVersionId: string): Observation => ({
+    pipeline: { appVersion: { status: "ACTIVE" } },
+    chips: [],
+    readAtMs: NOW,
+    buildLog: { buildServiceStackId: "svc-build", appVersionId },
+  });
+  it.each([
+    { name: "nothing read of it", remember: [], recall: "op:a", found: undefined },
+    { name: "what was read of it", remember: ["op:a"], recall: "op:a", found: "op:a" },
+    { name: "never another operation's", remember: ["op:a"], recall: "op:b", found: undefined },
+    {
+      name: "the newest read of it",
+      remember: ["op:a", "op:b", "op:a"],
+      recall: "op:a",
+      found: "op:a",
+    },
+    {
+      name: "past its bound, the oldest is forgotten",
+      remember: ["op:a", "op:b", "op:c"],
+      recall: "op:a",
+      found: undefined,
+    },
+    {
+      name: "one read again is kept as the newest",
+      remember: ["op:a", "op:b", "op:a", "op:c"],
+      recall: "op:a",
+      found: "op:a",
+    },
+  ])("$name", ({ remember, recall, found }) => {
+    const memory = new ObservationMemory(2);
+    for (const key of remember) memory.remember(key, read(key));
+    expect(memory.recall(recall)?.buildLog?.appVersionId).toBe(found);
+  });
+
+  it("a settled card drawn anew reads its build's log from what was remembered", () => {
+    const memory = new ObservationMemory(2);
+    memory.remember("deploy:weatherdash:1", read("av-9"));
+    const result = deriveOperationObservation(
+      baseInput({
+        target: target({ running: false }),
+        previousHistory: memory.recall("deploy:weatherdash:1"),
+      }),
+      NOW + 60_000,
+    );
+    expect(result.buildLogQuery?.appVersionId).toBe("av-9");
   });
 });
