@@ -139,9 +139,82 @@ describe("addGroupEnvironment", () => {
       done: ["registry"],
       failed: { step: "deploy-token", reason: "Zerops did not accept this deploy key." },
     });
-    expect(api.deleteIntegrationToken).toHaveBeenCalledWith(
-      { clientId: "org-1", tokenId: "t-deploy" },
-      undefined,
-    );
+    expect(api.deleteIntegrationToken).toHaveBeenCalledWith({
+      clientId: "org-1",
+      tokenId: "t-deploy",
+    });
+  });
+
+  // Audit K4: a handoff whose answer was lost may have been kept by HQ, which finishes a write its
+  // client left (F22). The key is taken back only on HQ's refusal; a lost answer is read back.
+  describe("a handoff whose answer was lost", () => {
+    const lost = () =>
+      vi.fn(async () => {
+        throw new HqError({
+          kind: "uncertain",
+          code: "uncertain",
+          message: "HQ's answer was lost.",
+        });
+      });
+    /** HQ's structure: the stage unkeyed before the handoff, `held` read back after it. */
+    const readBack = (held: boolean) => {
+      const hq = hqFake([RECORDED], { keepDeployToken: lost() });
+      const before = hq.structure;
+      let reads = 0;
+      return {
+        ...hq,
+        structure: vi.fn(async () => {
+          reads += 1;
+          const structure = await before();
+          return reads === 1
+            ? structure
+            : {
+                ...structure,
+                apps: structure.apps.map((app) => ({
+                  ...app,
+                  environments: [{ ...RECORDED, keyHeld: held }],
+                })),
+              };
+        }),
+      };
+    };
+
+    it("keeps the key HQ read back as held, and takes nothing back", async () => {
+      const api = apiFake();
+      expect(await add(api, readBack(true))).toEqual({
+        done: ["registry", "deploy-token"],
+        failed: undefined,
+      });
+      expect(api.deleteIntegrationToken).not.toHaveBeenCalled();
+    });
+
+    it("takes back no key HQ does not hold yet: its write may still land", async () => {
+      const api = apiFake();
+      const outcome = await add(api, readBack(false));
+      expect([outcome.done, outcome.failed?.step]).toEqual([["registry"], "deploy-token"]);
+      expect(api.deleteIntegrationToken).not.toHaveBeenCalled();
+    });
+  });
+
+  it("takes a refused key back even where its caller already left", async () => {
+    const api = apiFake();
+    const left = new AbortController();
+    const hq = hqFake([RECORDED], {
+      keepDeployToken: vi.fn(async () => {
+        left.abort();
+        throw new HqError({ kind: "refused", code: "invalid", message: "Refused." });
+      }),
+    });
+    await addGroupEnvironment({
+      client: api as never,
+      hq,
+      clientId: "org-1",
+      groupId: "g-1",
+      environment: { tier: "stage", project: "p-stage" },
+      signal: left.signal,
+    });
+    expect(api.deleteIntegrationToken).toHaveBeenCalledTimes(1);
+    const [, signal] = api.deleteIntegrationToken.mock.calls[0] as [unknown, AbortSignal?];
+    expect(signal?.aborted ?? false).toBe(false);
   });
 });
