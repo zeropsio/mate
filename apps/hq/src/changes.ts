@@ -55,6 +55,7 @@ import { appendEvent } from "./gitEvents.ts";
 import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
+import { madeRepo } from "./reconcile.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
@@ -259,9 +260,6 @@ export class Changes extends Context.Service<
 
 /** The most of a tier's import file a read takes: the git layer's own ceiling. */
 const RECIPE_READ_MAX = 1024 * 1024;
-
-/** Who writes HQ's own commits. */
-const HQ_AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
 
 const refuse = (code: ChangeRefused["code"], reason: ChangeRefused["reason"]) =>
   Effect.fail(new ChangeRefused({ code, reason }));
@@ -767,8 +765,10 @@ export const changesLayer: Layer.Layer<
 
     /**
      * A repository of the application, made if new: one at a time, so two first deliveries of one
-     * name meet here, not in git. Each step holds when it is done already, so a call cut short is
-     * finished by the next.
+     * name meet here, not in git. Git first, then its record: one cut short leaves git ahead of
+     * the records, which a takeover records (`reconcile.ts`), never a record naming what git lacks,
+     * which would hold all of HQ (H1). Each step holds when it is done already, so a call cut short
+     * is finished by the next.
      */
     const makeRepo = (appId: string, name: string, createdBy: string) =>
       Semaphore.withPermits(
@@ -778,24 +778,13 @@ export const changesLayer: Layer.Layer<
         Effect.gen(function* () {
           const git = yield* gitHost.git;
           const repo = { appId, id: name };
+          yield* madeRepo(git, repo);
+          // Recorded with its main: its first commit's move came before there was a record to move.
+          const main = yield* mainOf(git, repo);
           yield* leader.write(sql`
-            INSERT INTO hq_repo (app_id, name, created_by)
-            VALUES (${appId}::uuid, ${name}, ${createdBy})
+            INSERT INTO hq_repo (app_id, name, created_by, main_head)
+            VALUES (${appId}::uuid, ${name}, ${createdBy}, ${main})
             ON CONFLICT DO NOTHING`);
-          yield* git.create(repo).pipe(
-            Effect.catchIf(
-              (error) => error.reason === "exists",
-              () => Effect.void,
-            ),
-          );
-          // An empty tree's commit gives every change a base, as Gitea's first commit did; a main
-          // that is there already (`head_moved`) stays as it is.
-          yield* git.commitFiles(repo, "refs/heads/main", {
-            files: {},
-            expectedHead: null,
-            message: "Initial commit",
-            author: HQ_AUTHOR,
-          });
           return { appId, name };
         }),
       );
