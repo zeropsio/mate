@@ -88,6 +88,7 @@ const known = (snapshot: ZeropsAgentAuthSnapshot): ZeropsAgentAuthView => ({
 const AUTH_STATES: ReadonlyArray<{
   readonly label: string;
   readonly value: ZeropsAgentAuthView;
+  readonly providers?: ReadonlyArray<{ driver: string; enabled: boolean; status: string }>;
   readonly signInRequired: boolean;
 }> = [
   // Not a Mate without agents: the agents' region says it is checking.
@@ -109,6 +110,13 @@ const AUTH_STATES: ReadonlyArray<{
     signInRequired: false,
   },
   { label: "when no agent is authorized", value: known(ATTENTION), signInRequired: true },
+  // Mate signs people in to Claude Code and Codex only: another agent it can run is enough.
+  {
+    label: "when no agent is authorized and Cursor is ready",
+    value: known(ATTENTION),
+    providers: [{ driver: "cursor", enabled: true, status: "ready" }],
+    signInRequired: false,
+  },
   {
     label: "when the feed itself is unavailable",
     value: known(UNAVAILABLE),
@@ -124,6 +132,7 @@ const CASES = THREADS.flatMap((thread) =>
       input: {
         topology: topologyState.value,
         agentAuth: authState.value,
+        providers: authState.providers,
       },
       expected:
         thread.value === null

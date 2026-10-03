@@ -86,6 +86,8 @@ export class ProviderInstances extends Context.Service<
      * `undefined` for an id no configured instance carries.
      */
     readonly driverKindOf: (instanceId: string) => Effect.Effect<ProviderDriverKind | undefined>;
+    /** The configured instances as the registry holds them now (`ServerProvider` each). */
+    readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
   }
 >()("t3/spi/providerInstances") {}
 
@@ -114,6 +116,7 @@ export const layer = Layer.effect(
             (providers) => providers.find((provider) => provider.instanceId === instanceId)?.driver,
           ),
         ),
+      providers: registry.getProviders,
     } satisfies ProviderInstances["Service"];
   }),
 );

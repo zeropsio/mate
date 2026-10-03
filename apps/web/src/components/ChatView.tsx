@@ -3845,6 +3845,7 @@ export default function ChatView(props: ChatViewProps) {
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
+    providers: providerStatuses,
   });
   // The Mate's crew: the board's tab exists only while its status says a crew
   // is, or could be, set up; its view gives the strip its crew group and a
@@ -3917,12 +3918,14 @@ export default function ChatView(props: ChatViewProps) {
       zeropsSendBlockReason === undefined,
     sendBusy: isSendBusy,
   });
-  // A Mate's empty conversation with no agent signed in is its arrival's sign-in: nothing typed
-  // there could be acted on, so the composer waits with the stand-up's.
+  // A Mate's empty conversation with no agent to run is its arrival's sign-in: nothing typed
+  // there could be acted on, so the composer waits with the stand-up's. An agent outside the
+  // sign-in (Cursor, OpenCode…) that is ready is one to run.
   const zeropsArrivalHoldsComposer = mateArrivalHoldsComposer({
     standUpHolds: mateStandUp.holdsComposer,
     signInRequired:
-      zeropsAgentAuth.snapshot !== null && zeropsAgentSignInRequired(zeropsAgentAuth.snapshot),
+      zeropsAgentAuth.snapshot !== null &&
+      zeropsAgentSignInRequired(zeropsAgentAuth.snapshot, providerStatuses),
     empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
   });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;

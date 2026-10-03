@@ -491,6 +491,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             : newProjectProgress(made, progress.progress, progress.nowMs)),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
+          ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
@@ -668,6 +669,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           signIn={handingArrival ? empty.signIn : null}
           runtimes={empty.runtimes}
           signInRequired={empty.signInRequired}
+          agentReady={empty.agentReady}
           unknown={handingArrival ? empty.unknown : null}
         />
       )}
@@ -918,6 +920,8 @@ export function ComingBelow({
 export type ArrivalProgress = BirthLineProgress & {
   readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
   readonly setup?: MateSetup | undefined;
+  /** It runs on an agent that needs no sign-in, ready (`MateEmptyState.agentReady`). */
+  readonly agentReady?: boolean | undefined;
 };
 
 /** A project's services once the inventory has read them; nothing while it hasn't, or failed. */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type {
+  ServerProvider,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentLoginState,
@@ -16,6 +17,7 @@ import {
   zeropsAgentAuthNeedsAttention,
   zeropsAgentAuthView,
   zeropsAgentSignInRequired,
+  zeropsOtherAgentReady,
 } from "./agentLogin.ts";
 import type { FailureReason, Known } from "./knowledge/index.ts";
 
@@ -445,7 +447,58 @@ describe("zeropsAgentSignInRequired", () => {
       expected: true,
     },
   ])("is $expected when $name", ({ snapshot: input, expected }) => {
-    expect(zeropsAgentSignInRequired(input)).toBe(expected);
+    expect(zeropsAgentSignInRequired(input, [])).toBe(expected);
+  });
+
+  // Mate signs people in to Claude Code and Codex only; another agent the Mate can run is
+  // enough to work, and nothing asks for a sign-in then.
+  const nobodySignedIn = snapshot([
+    agent({ agentId: "claude-code", state: "not-authorized" }),
+    agent({ agentId: "codex", state: "not-authorized" }),
+  ]);
+  const provider = (
+    driver: string,
+    overrides: Partial<Pick<ServerProvider, "enabled" | "status" | "availability">> = {},
+  ) => ({ driver, enabled: true, status: "ready" as const, ...overrides });
+  it.each([
+    { name: "Cursor is ready", providers: [provider("cursor")], expected: false },
+    { name: "OpenCode is ready", providers: [provider("opencode")], expected: false },
+    { name: "Grok is ready", providers: [provider("grok")], expected: false },
+    { name: "Antigravity is ready", providers: [provider("antigravity")], expected: false },
+    {
+      name: "Cursor is ready beside a Claude Code the feed says is signed out",
+      providers: [provider("claudeAgent", { status: "error" }), provider("cursor")],
+      expected: false,
+    },
+    {
+      name: "only Claude Code reads ready — the feed, not its driver, speaks for it",
+      providers: [provider("claudeAgent"), provider("codex")],
+      expected: true,
+    },
+    {
+      name: "Cursor is not signed in",
+      providers: [provider("cursor", { status: "error" })],
+      expected: true,
+    },
+    {
+      name: "Cursor is still being probed",
+      providers: [provider("cursor", { status: "warning" })],
+      expected: true,
+    },
+    {
+      name: "Cursor is turned off",
+      providers: [provider("cursor", { enabled: false })],
+      expected: true,
+    },
+    {
+      name: "Cursor is unavailable on this server",
+      providers: [provider("cursor", { availability: "unavailable" })],
+      expected: true,
+    },
+    { name: "no provider is known yet", providers: undefined, expected: true },
+  ])("is $expected with nobody signed in when $name", ({ providers, expected }) => {
+    expect(zeropsAgentSignInRequired(nobodySignedIn, providers)).toBe(expected);
+    expect(zeropsOtherAgentReady(providers)).toBe(!expected);
   });
 });
 

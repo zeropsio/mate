@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canCreateMates,
+  mateIsViewers,
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
@@ -512,5 +513,72 @@ describe("withMateProjectRole — handing a Mate over", () => {
     expect(
       withMateProjectRole([{ clientUserId: "cu-jan", roleCode: "OWNER" }], "cu-jan", "READ_ONLY"),
     ).toEqual([{ clientUserId: "cu-jan", roleCode: "READ_ONLY" }]);
+  });
+});
+
+// Mate signs people in to Claude Code and Codex only. A Mate that runs on another agent has no
+// signer to name its person, so its maker is (`mate:by:`, else the stand-up's `mate:standup:`) —
+// for what waits on whom always, and for its seat where the caller knows it runs without a
+// sign-in; a Claude Code or Codex Mate before its first sign-in keeps its empty seat.
+describe("a Mate no sign-in names: its maker's", () => {
+  const SERVICE = { clientUserId: "cu-zcp", roleCode: "BASIC_USER" };
+  const ada = { id: "cu-ada", user: { id: "u-ada", fullName: "Ada Lovelace" } };
+  const eva = { id: "cu-eva", user: { id: "u-eva", fullName: "Eva Dvořák" } };
+  const project = (...tagList: ReadonlyArray<string>) => ({
+    id: "p1",
+    tagList,
+    userRoles: [SERVICE],
+  });
+
+  it.each([
+    { name: "made by the viewer", tags: ["mate", "mate:by:u-ada"], viewer: "u-ada", mine: true },
+    {
+      name: "asked of by the viewer (a Mate born before mate:by:)",
+      tags: ["mate", "mate:standup:u-ada"],
+      viewer: "u-ada",
+      mine: true,
+    },
+    { name: "made by a colleague", tags: ["mate", "mate:by:u-eva"], viewer: "u-ada", mine: false },
+    {
+      name: "made by the viewer, its Claude Code signed in by a colleague",
+      tags: ["mate", "mate:by:u-ada", "mate:signer:claude-code:u-eva"],
+      viewer: "u-ada",
+      mine: false,
+    },
+    {
+      name: "made by a colleague, signed in by the viewer",
+      tags: ["mate", "mate:by:u-eva", "mate:signer:codex:u-ada"],
+      viewer: "u-ada",
+      mine: true,
+    },
+    { name: "made by nobody it names", tags: ["mate"], viewer: "u-ada", mine: false },
+    { name: "the viewer not known yet", tags: ["mate", "mate:by:u-ada"], viewer: "", mine: false },
+  ])("waits on its viewer when $name: $mine", ({ tags, viewer, mine }) => {
+    expect(mateIsViewers(project(...tags), viewer)).toBe(mine);
+  });
+
+  it("records who made it beside its signer", () => {
+    expect(mateOwnerRecords(project("mate", "mate:by:u-ada")).maker).toBe("u-ada");
+    expect(mateOwnerRecords(project("mate", "mate:standup:u-eva")).maker).toBe("u-eva");
+    expect(mateOwnerRecords(project("mate")).maker).toBeUndefined();
+  });
+
+  it.each([
+    { name: "running without a sign-in, nobody signed in", runs: true, tags: [], owner: ada },
+    { name: "waiting on a sign-in, nobody signed in", runs: false, tags: [], owner: undefined },
+    {
+      name: "running without a sign-in, its Codex signed in by a colleague",
+      runs: true,
+      tags: ["mate:signer:codex:u-eva"],
+      owner: eva,
+    },
+  ])("is owned by its maker when $name", ({ runs, tags, owner }) => {
+    expect(
+      resolveMateOwner({
+        project: project("mate", "mate:by:u-ada", ...tags),
+        members: [ada, eva],
+        runsWithoutSignIn: runs,
+      }),
+    ).toBe(owner);
   });
 });

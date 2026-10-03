@@ -7,6 +7,7 @@
  */
 import {
   zeropsAgentSignInRequired,
+  type OtherAgentFields,
   type ZeropsAgentAuthView,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
@@ -39,7 +40,8 @@ export interface ZeropsChatChrome {
   /**
    * Whether the lifecycle band asks for a coding-agent sign-in. Narrower than
    * the card: one authorized agent is enough to work, so this is true only
-   * when no agent is authorized (`docs/spec-mate.md` §5.4).
+   * when no agent is authorized and none outside the sign-in is ready
+   * (`docs/spec-mate.md` §5.4).
    */
   readonly agentSignInRequired: boolean;
   /**
@@ -56,6 +58,8 @@ export function resolveZeropsChatChrome(
   input: {
     readonly topology: ZeropsTopologyView | undefined;
     readonly agentAuth: ZeropsAgentAuthView;
+    /** The environment's provider instances: an agent outside the sign-in is enough to work. */
+    readonly providers?: ReadonlyArray<OtherAgentFields> | undefined;
   },
 ): ZeropsChatChrome {
   const topologyProjectName = input.topology?.project.name.trim();
@@ -83,6 +87,7 @@ export function resolveZeropsChatChrome(
     // in-flow entry to that panel, but never render the card over the timeline.
     agentAuthCard: agentAuth !== null && agentAuth.available ? agentAuth : null,
     agentAuthUnknown: input.agentAuth.unknown,
-    agentSignInRequired: agentAuth !== null && zeropsAgentSignInRequired(agentAuth),
+    agentSignInRequired:
+      agentAuth !== null && zeropsAgentSignInRequired(agentAuth, input.providers),
   };
 }

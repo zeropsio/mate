@@ -185,6 +185,23 @@ describe("standUpDecision", () => {
       { recorded: false, requestedBy: "user-a", signers: ["claude-code"], spoken: true },
       "spoken",
     ],
+    // Mate signs people in to Claude Code and Codex only; an agent outside that sign-in which is
+    // ready runs for anybody, the asker included.
+    [
+      "starts on an agent that needs no sign-in once it is ready",
+      { recorded: false, requestedBy: "user-a", signers: [], ready: "cursor", spoken: false },
+      "start",
+    ],
+    [
+      "still waits for somebody to ask, whatever is ready",
+      { recorded: false, requestedBy: undefined, signers: [], ready: "cursor", spoken: false },
+      "wait",
+    ],
+    [
+      "a conversation spoken in on a ready agent had its stand-up",
+      { recorded: false, requestedBy: "user-a", signers: [], ready: "opencode", spoken: true },
+      "spoken",
+    ],
   ];
   for (const [name, input, expected] of cases) {
     it(name, () => assert.strictEqual(standUpDecision(input).kind, expected));
@@ -198,6 +215,28 @@ describe("standUpDecision", () => {
       spoken: false,
     });
     assert.deepStrictEqual(decision, { kind: "start", userId: "user-a", agentId: "claude-code" });
+  });
+
+  it("prefers the asker's own sign-in to an agent that needs none", () => {
+    const decision = standUpDecision({
+      recorded: false,
+      requestedBy: "user-a",
+      signers: ["codex"],
+      ready: "cursor",
+      spoken: false,
+    });
+    assert.deepStrictEqual(decision, { kind: "start", userId: "user-a", agentId: "codex" });
+  });
+
+  it("starts as the asker on the ready instance when they signed nothing in", () => {
+    const decision = standUpDecision({
+      recorded: false,
+      requestedBy: "user-a",
+      signers: [],
+      ready: "cursor",
+      spoken: false,
+    });
+    assert.deepStrictEqual(decision, { kind: "start", userId: "user-a", instanceId: "cursor" });
   });
 });
 
