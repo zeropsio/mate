@@ -230,6 +230,45 @@ describe("resolveMateOwner", () => {
     ).toBe(jan);
   });
 
+  // F23 (e2e, 2026-10-03): a hand over before the transfer left two OWNERs — Fin read Karlos's and
+  // Krls's — and a Mate's menu must name one of them, never fall back on whoever signed it in.
+  describe("two OWNERs, as a hand over before the transfer left them", () => {
+    const karlos = { id: "cu-karlos", user: { id: "u-karlos", fullName: "Karlos" } };
+    const krls = { id: "cu-krls", user: { id: "u-krls", fullName: "Krls" } };
+    const legacy = (first: string, second: string) => ({
+      ...owned([
+        { clientUserId: "cu-key", roleCode: "BASIC_USER" },
+        { clientUserId: first, roleCode: "OWNER" },
+        { clientUserId: second, roleCode: "OWNER" },
+      ]),
+      hq: placedWith({ "claude-code": "u-eva" }),
+    });
+
+    it.each([
+      {
+        name: "the first the project lists",
+        first: "cu-karlos",
+        members: [karlos, krls, eva],
+        want: karlos,
+      },
+      {
+        name: "the other where the member list lacks the first",
+        first: "cu-gone",
+        members: [karlos, krls, eva],
+        want: karlos,
+      },
+      {
+        name: "nobody where the member list has neither, never the signer",
+        first: "cu-gone",
+        members: [eva],
+        want: undefined,
+      },
+    ])("is $name", ({ first, members, want }) => {
+      const second = first === "cu-karlos" ? "cu-krls" : "cu-karlos";
+      expect(resolveMateOwner({ project: legacy(first, second), members })).toBe(want);
+    });
+  });
+
   it("is nobody when the signer is not in the member list", () => {
     expect(
       resolveMateOwner({ project: signedIn({ "claude-code": "u-gone" }), members: [jan, eva] }),
