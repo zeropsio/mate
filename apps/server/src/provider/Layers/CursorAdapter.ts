@@ -1273,12 +1273,10 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
-      capabilities: {
-        sessionModelSwitch: "in-session",
-        supportsConversationRollback: false,
-        // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
-        threadProfile: { tools: true },
-      },
+      // No `threadProfile`: zcp pre-approves the zerops tools in the project's .cursor/cli.json
+      // (`Mcp(zerops:*)`), so a crewmate's Zerops calls would never reach the crew's gate. A crew
+      // is refused on Cursor until that is closed and seen live (spi/acpThreadProfile.ts is ready).
+      capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
       compaction: { type: "slash-command", command: "/compress" },
       startSession,
       sendTurn,
