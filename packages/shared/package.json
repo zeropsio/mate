@@ -71,6 +71,10 @@
       "types": "./src/mateLink.ts",
       "import": "./src/mateLink.ts"
     },
+    "./hqMates": {
+      "types": "./src/hqMates.ts",
+      "import": "./src/hqMates.ts"
+    },
     "./hqChanges": {
       "types": "./src/hqChanges.ts",
       "import": "./src/hqChanges.ts"

@@ -8,6 +8,7 @@ import {
   mateMarkStateForThreadStatus,
   resolveThreadStatus,
   type ThreadStatusKind,
+  viewerThreadKind,
 } from "./threadStatus.ts";
 import { threadStatusVectors } from "./threadStatus.vectors.ts";
 
@@ -19,6 +20,27 @@ describe("resolveThreadStatus", () => {
     expect(kindForAwarenessPhase(vector.expectedAwarenessPhase)).toBe(
       vector.expectedAwarenessPhase === "completed" ? "done" : vector.expected.kind,
     );
+  });
+});
+
+describe("viewerThreadKind", () => {
+  // A digest (`mateLink`) carries no wake: the vectors that woke are the chat's own, never a row's.
+  const unwoken = threadStatusVectors.filter((vector) => !vector.input.wokeAt);
+  const visits = [undefined, null, "2000-01-01T00:00:00.000Z", "2100-01-01T00:00:00.000Z"];
+
+  it.each(unwoken)("finishes a digest's kind to the resolver's own answer for $name", (vector) => {
+    const { lastVisitedAt: _visit, ...unvisited } = vector.input;
+    const digest = {
+      kind: resolveThreadStatus(unvisited).kind,
+      completedAt: vector.input.latestTurn?.completedAt ?? null,
+    };
+    for (const lastVisitedAt of [vector.input.lastVisitedAt, ...visits]) {
+      expect(viewerThreadKind(digest, lastVisitedAt)).toBe(
+        resolveThreadStatus(
+          lastVisitedAt === undefined ? unvisited : { ...unvisited, lastVisitedAt },
+        ).kind,
+      );
+    }
   });
 });
 

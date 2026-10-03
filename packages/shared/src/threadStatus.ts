@@ -43,9 +43,10 @@ export interface ThreadStatus {
   readonly toneId: ThreadStatusToneId;
 }
 
-export function hasUnseenCompletion(
-  thread: Pick<ThreadStatusInput, "latestTurn" | "lastVisitedAt">,
-): boolean {
+export function hasUnseenCompletion(thread: {
+  readonly latestTurn: { readonly completedAt: string | null } | null;
+  readonly lastVisitedAt?: string | null | undefined;
+}): boolean {
   if (!thread.latestTurn?.completedAt) return false;
   const completedAt = Date.parse(thread.latestTurn.completedAt);
   if (Number.isNaN(completedAt) || !thread.lastVisitedAt) return false;
@@ -112,6 +113,22 @@ export function resolveThreadStatus(thread: ThreadStatusInput): ThreadStatus {
   if (hasUnseenWake(thread)) return status("woke");
   if (hasUnseenCompletion(thread)) return status("done");
   return status("idle");
+}
+
+/**
+ * The kind a reader sees for a thread its Mate resolved without a visit (a digest,
+ * `@t3tools/shared/mateLink`): the resolver's own answer for this reader. Only `done` and `woke`
+ * depend on who looks, both come last, and a digest carries no wake — so an `idle` digest is
+ * `done` while its completion is newer than the reader's visit, and every other kind is final.
+ */
+export function viewerThreadKind(
+  digest: { readonly kind: ThreadStatusKind; readonly completedAt: string | null },
+  lastVisitedAt: string | null | undefined,
+): ThreadStatusKind {
+  if (digest.kind !== "idle") return digest.kind;
+  return hasUnseenCompletion({ latestTurn: { completedAt: digest.completedAt }, lastVisitedAt })
+    ? "done"
+    : "idle";
 }
 
 /**
