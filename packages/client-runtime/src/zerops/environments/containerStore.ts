@@ -12,6 +12,9 @@
  *   socket proves it up. Neither is one whose Mate HQ holds online (`setOnline`), unless it is the
  *   route's or holds an intent of ours: those are read whatever HQ says. A Mate first seen while
  *   HQ's word is awaited waits `HQ_WAIT_MS` at most for it before its first read.
+ * - A project an official HQ's current word speaks for (`setHqScope`) that it does not hold
+ *   online — no Mate of HQ's there, or one HQ holds offline — is quiet: not read at load, on a
+ *   status push or a wake, nor polled, until a lease or our verb waits on it or someone asks.
  * - Intents are persisted in this tab's storage as `{target, kind, since, from?}`, so a reload
  *   inside an intent's budget shows `restarting(you)` or `updating` again instead of guesses. An
  *   intent restored for a target not yet listed waits for it.
@@ -122,6 +125,12 @@ export interface ContainerStore {
   readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
   /** The targets whose containers are read ahead of every other: the route's (§4.5). */
   readonly setFirst: (keys: ReadonlySet<TargetKey>) => void;
+  /**
+   * The projects an official HQ's current word speaks for — its organization's, as listed — or
+   * null where no such word is: one it does not hold online is read only once something waits on
+   * it (a lease, our verb, the route) or someone asks.
+   */
+  readonly setHqScope: (projectIds: ReadonlySet<string> | null) => void;
   /**
    * The targets a lease waits on — the screen's, an action's, a Connect's, the Mate left last:
    * each is read as one starts to, and a boot nothing vouches for is polled while one does.
@@ -248,6 +257,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   let wanted: ReadonlySet<TargetKey> = new Set();
   /** Someone waits on the target's container: the route, or a lease. */
   const watched = (key: TargetKey): boolean => first.has(key) || wanted.has(key);
+  let hqScope: ReadonlySet<string> | null = null;
   let online: ReadonlySet<string> = new Set();
   /**
    * HQ's word: `answered`; `awaited` — none yet, or none since its last — for `HQ_WAIT_MS` at
@@ -325,6 +335,21 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     if (!proven) requestFor(entry, { fresh: true });
   };
 
+  /**
+   * HQ's word says nothing waits on the container being read: its project is one HQ speaks for
+   * and does not hold online, and neither the route, a lease nor our verb waits on it.
+   */
+  const quiet = (key: TargetKey, entry: Entry): boolean => {
+    const projectId = targetProject(key);
+    return (
+      hqScope !== null &&
+      hqScope.has(projectId) &&
+      !online.has(projectId) &&
+      !watched(key) &&
+      entry.machine.intent === null
+    );
+  };
+
   /** HQ's word, or its silence: proves what it holds online, and reads what waited for it. */
   const hear = (projectIds: ReadonlySet<string>, word: "answered" | "silent") => {
     cancelHqWait?.();
@@ -334,7 +359,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     proveAll();
     for (const key of held) {
       const entry = entries.get(key);
-      if (entry !== undefined) requestFor(entry, { fresh: false });
+      if (entry !== undefined && !quiet(key, entry)) requestFor(entry, { fresh: false });
     }
     held.clear();
   };
@@ -353,7 +378,9 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     const byOrigin = new Map<string, ProbeCadence>();
     for (const [key, entry] of entries) {
       if (entry.origin === null) continue;
-      const own = probeCadence(entry.machine, watched(key));
+      const own: ProbeCadence = quiet(key, entry)
+        ? { kind: "none" }
+        : probeCadence(entry.machine, watched(key));
       // The route's Mate is never read on the overdue ladder: the person is looking at it, and the
       // read that finds it back is what sends its exchange again (`bindContainerStore`).
       const cadence: ProbeCadence =
@@ -467,7 +494,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
             // A Mate seen for the first time: the read its connect makes will do. While HQ's answer
             // is awaited it waits for it, as that may prove it up — never the route's.
             if (hq === "awaited" && !first.has(target.key)) held.add(target.key);
-            else requestFor(entry, { fresh: false });
+            else if (!quiet(target.key, entry)) requestFor(entry, { fresh: false });
             continue;
           }
           const moved = existing.origin !== target.origin;
@@ -477,7 +504,8 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           step(target.key, existing, { type: "PLATFORM", status: platformOf(existing, target) });
           // A status that moved, or a new address, reads the container again: ready is never
           // terminal. The same status listed again, or one the listing could not say, reads nothing.
-          if (pushed || moved) requestFor(existing, { fresh: true });
+          if ((pushed || moved) && !quiet(target.key, existing))
+            requestFor(existing, { fresh: true });
         }
       }),
     process: (key, running) =>
@@ -547,6 +575,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           requestFor(entry, { fresh: false });
         }
       }),
+    setHqScope: (projectIds) =>
+      batch(() => {
+        hqScope = projectIds;
+      }),
     setWanted: (keys) =>
       batch(() => {
         const before = wanted;
@@ -571,6 +603,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           if (
             visible &&
             !held.has(key) &&
+            !quiet(key, entry) &&
             probeCadence(entry.machine).kind === "on-demand" &&
             unreadSince(entry.machine, now)
           )

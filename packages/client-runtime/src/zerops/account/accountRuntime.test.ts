@@ -2179,6 +2179,39 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  // t10, 2026-10-03: under KRLS's official HQ, every listed zcp project — Mate or not, up or not —
+  // was read at load. A project HQ's current word speaks for and does not hold online waits for a
+  // lease.
+  it.effect(
+    "a project an official HQ's current word does not hold online is read only once a lease holds it",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { clock, rig, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            {
+              online: { read: () => new Set(), subscribe: () => () => undefined },
+              hqOrganization: {
+                read: () => organization.organizationId,
+                subscribe: () => () => undefined,
+              },
+            },
+          );
+          yield* clock.advance(MINUTE);
+          yield* settle;
+          expect([...environments.machines().keys()]).toContain(MATE);
+          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
+        }),
+      ),
+  );
+
   it.effect(
     "a Mate listed before HQ answers waits for its word, and HQ holding it online keeps it unread",
     () =>

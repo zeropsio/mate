@@ -923,6 +923,60 @@ describe("container store: a Mate HQ holds online (krok-a §4)", () => {
   });
 });
 
+// t10, 2026-10-03: the zcp projects of KRLS that serve no Mate (eval, zcp-telemetry…) answered every
+// read with a redirect the browser refused. Under an official HQ whose word is current, a listed
+// project it does not hold online is read only once a lease waits on it.
+describe("container store: a project an official HQ's word speaks for", () => {
+  it("is not read at load, nor on a wake or a status push, while HQ does not hold it online", async () => {
+    const { clock, store, probes } = rig();
+    store.setHqScope(new Set(["project-1"]));
+    store.setOnline(new Set());
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(120_000);
+    store.wake(true);
+    store.setTargets([target("RESTARTING")]);
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toEqual([]);
+    store.dispose();
+  });
+
+  it("is read once a lease waits on it, and when someone asks", async () => {
+    const { clock, store, probes } = rig();
+    store.setHqScope(new Set(["project-1"]));
+    store.setOnline(new Set());
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    store.request(KEY);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.setWanted(new Set([KEY]));
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+    store.dispose();
+  });
+
+  it("is read as before where no official HQ's word is current, or outside what it speaks for", async () => {
+    const { clock, store, probes } = rig();
+    const other = "https://zcp-2.prg1.zerops.app";
+    store.setHqScope(new Set(["project-2"]));
+    store.setOnline(new Set());
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.setHqScope(null);
+    store.setTargets([
+      target("ACTIVE"),
+      { ...target("ACTIVE", other), key: "project-2:service-2" },
+    ]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, other]);
+    store.dispose();
+  });
+});
+
 describe("container store: a reading counts only from when its read was sent", () => {
   it("a platform restart is not ended by a descriptor read before it, which the share still holds", async () => {
     const clock = manualClock();
