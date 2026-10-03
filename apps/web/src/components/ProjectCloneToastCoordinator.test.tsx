@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { ProjectCloneToastCoordinator } from "./ProjectCloneToastCoordinator";
+import { toastManager } from "./ui/toast";
 
 const reads = vi.hoisted(() => ({
   followed: [] as unknown[],
@@ -13,14 +14,16 @@ const reads = vi.hoisted(() => ({
   clones: new Map<unknown, ReadonlyArray<unknown>>(),
   /** What happened, in order: a Mate held and let go. */
   log: [] as Array<string>,
-  /** The link of the Mate this page has open. */
-  openPhase: "connected",
+  /** The link of the Mate this page has open, or null once it is no longer registered. */
+  openPhase: "connected" as string | null,
 }));
 
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({
     environments: [
-      { environmentId: "open-mate", connection: { phase: reads.openPhase } },
+      ...(reads.openPhase === null
+        ? []
+        : [{ environmentId: "open-mate", connection: { phase: reads.openPhase } }]),
       { environmentId: "parked-mate", connection: { phase: "available" } },
     ],
   }),
@@ -31,17 +34,18 @@ vi.mock("../state/projectClones", () => ({
     return reads.clones.get(environmentId) ?? [];
   },
 }));
-vi.mock("@tanstack/react-router", () => ({ useParams: () => ({}) }));
-vi.mock("../hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => async () => {} }));
-vi.mock("../hooks/useRemoveClonedProject", () => ({
-  useRemoveClonedProject: () => async () => {},
+vi.mock("@tanstack/react-router", () => ({
+  useParams: () => ({}),
+  useRouter: () => ({ state: { matches: [] }, navigate: async () => {} }),
 }));
+vi.mock("../hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => async () => {} }));
 vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => async () => ({}) }));
 
 const mounted: ReactTestRenderer[] = [];
 
 afterEach(() => {
   for (const renderer of mounted.splice(0)) act(() => renderer.unmount());
+  vi.restoreAllMocks();
   reads.followed = [];
   reads.clones.clear();
   reads.log = [];
@@ -108,6 +112,100 @@ describe("ProjectCloneToastCoordinator", () => {
     });
 
     expect(reads.log).toEqual(["hold open-mate"]);
+    unbind();
+  });
+
+  it("leaves a settled clone's toast up when its Mate parks", () => {
+    const close = vi.spyOn(toastManager, "close");
+    reads.clones.set("open-mate", [clone("done")]);
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ProjectCloneToastCoordinator />);
+    });
+    mounted.push(renderer);
+    act(() => {
+      reads.openPhase = "available";
+      renderer.update(<ProjectCloneToastCoordinator />);
+    });
+
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("adds no second toast for a settled clone when its Mate connects again", () => {
+    const add = vi.spyOn(toastManager, "add");
+    reads.clones.set("open-mate", [clone("done")]);
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ProjectCloneToastCoordinator />);
+    });
+    mounted.push(renderer);
+    for (const phase of ["available", "connected"]) {
+      act(() => {
+        reads.openPhase = phase;
+        renderer.update(<ProjectCloneToastCoordinator />);
+      });
+    }
+
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the toasts of a Mate no longer registered", () => {
+    const close = vi.spyOn(toastManager, "close");
+    reads.clones.set("open-mate", [clone("failed")]);
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ProjectCloneToastCoordinator />);
+    });
+    mounted.push(renderer);
+    act(() => {
+      reads.openPhase = null;
+      renderer.update(<ProjectCloneToastCoordinator />);
+    });
+
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds a parked Mate for the Retry its settled clone's toast offers", async () => {
+    const unbind = bindHolder();
+    const add = vi.spyOn(toastManager, "add");
+    reads.clones.set("open-mate", [clone("failed")]);
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ProjectCloneToastCoordinator />);
+    });
+    mounted.push(renderer);
+    act(() => {
+      reads.openPhase = "available";
+      renderer.update(<ProjectCloneToastCoordinator />);
+    });
+    const retry = add.mock.calls[0]?.[0].actionProps?.onClick;
+    await act(async () => {
+      retry?.(undefined as never);
+    });
+
+    expect(reads.log).toEqual(["hold open-mate", "release open-mate"]);
+    unbind();
+  });
+
+  it("holds a parked Mate for the removal its failed clone's toast offers", async () => {
+    const unbind = bindHolder();
+    const add = vi.spyOn(toastManager, "add");
+    reads.clones.set("open-mate", [clone("failed")]);
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ProjectCloneToastCoordinator />);
+    });
+    mounted.push(renderer);
+    act(() => {
+      reads.openPhase = "available";
+      renderer.update(<ProjectCloneToastCoordinator />);
+    });
+    const remove = add.mock.calls[0]?.[0].data?.secondaryActionProps?.onClick;
+    await act(async () => {
+      remove?.(undefined as never);
+    });
+
+    expect(reads.log).toEqual(["hold open-mate", "release open-mate"]);
     unbind();
   });
 });
