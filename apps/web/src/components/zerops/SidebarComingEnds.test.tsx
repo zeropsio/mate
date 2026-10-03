@@ -21,7 +21,7 @@ const IDA: NewProjectBirth = {
   face: { tint: "rose", shape: "seal" },
   locationId: null,
   agents: [],
-  adds: { appId: "g-acme", displayName: "Ida", registers: true },
+  adds: { appId: "g-acme", registers: true },
   startedAt: 0,
   step: "create",
   failed: null,

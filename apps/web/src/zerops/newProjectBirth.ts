@@ -75,14 +75,13 @@ export interface NewProjectAsk {
   readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
    * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
-   * hosting or registration of the project's own — its Zerops project called `displayName`, the
-   * Mate's own name (D3), and its own registration written where `registers`.
+   * hosting or registration of the project's own — its Zerops project named as the Mate is (D3),
+   * and its own registration written where `registers`.
    */
   readonly adds?:
     | {
         /** The existing application in HQ. */
         readonly appId: string;
-        readonly displayName: string;
         readonly registers: boolean;
         /** The managed services its recipe names, from the press (`recipeManaged`). */
         readonly managed?: ReadonlyArray<string> | undefined;
@@ -193,8 +192,8 @@ export function newProjectPlacement(
     groupName: ask.name,
     kind: "mate",
     // The group has no project of its own; its first Mate's project is named as the Mate is, the
-    // way every Mate added afterwards is (D3) — an added one as Add named it.
-    displayName: ask.adds?.displayName ?? ask.botName,
+    // way every Mate added afterwards is (D3).
+    displayName: ask.botName,
     face: ask.face,
   };
 }
@@ -361,7 +360,7 @@ export async function runNewProjectBirth(
   // no application and never writes the new-project registration.
   if (birth.adds !== undefined) {
     try {
-      const { project } = await ports.createProject({ name: birth.adds.displayName });
+      const { project } = await ports.createProject({ name: birth.botName });
       ports.accepted(project.id, null, birth.startedAt);
       moved({ step: "created", projectId: project.id });
     } catch (cause) {

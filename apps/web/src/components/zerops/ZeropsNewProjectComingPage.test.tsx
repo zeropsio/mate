@@ -213,7 +213,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     birthId: "add-1",
     botName: "Ida",
     step: "create",
-    adds: { appId: "g-acme", displayName: "Ida", registers: true },
+    adds: { appId: "g-acme", registers: true },
   };
 
   it("draws a New project's under the project's row, and asks for the tab while they run", () => {

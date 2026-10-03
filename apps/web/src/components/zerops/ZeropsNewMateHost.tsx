@@ -214,7 +214,6 @@ function NewMateDialog({
             agents: [],
             adds: {
               appId: group.groupId,
-              displayName: name,
               // As the press decides it: an owner or an admin writes a Mate's registration.
               registers: true,
               // Named from the press, so its copy's and its workspace's lines stand before the

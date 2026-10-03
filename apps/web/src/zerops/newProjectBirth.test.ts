@@ -626,7 +626,7 @@ const added = (over: Partial<NewProjectBirth> = {}) =>
     birthId: "add-1",
     appId: "app-acme",
     botName: "Ida",
-    adds: { appId: "app-acme", displayName: "Ida", registers: true },
+    adds: { appId: "app-acme", registers: true },
     step: "create",
     ...over,
   });
@@ -763,7 +763,7 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
     },
     {
       case: "where its registration is nobody's here to write",
-      made: added({ adds: { appId: "app-acme", displayName: "Ida", registers: false } }),
+      made: added({ adds: { appId: "app-acme", registers: false } }),
       want: ["Created:active", "Container:waiting", "Closed off:waiting"],
     },
     {
@@ -905,7 +905,6 @@ describe("creationManaged — the managed services an added Mate's copy waits on
       made: added({
         adds: {
           appId: "app-acme",
-          displayName: "Ida",
           registers: true,
           managed: ["db"],
         },
@@ -917,7 +916,6 @@ describe("creationManaged — the managed services an added Mate's copy waits on
       made: added({
         adds: {
           appId: "app-acme",
-          displayName: "Ida",
           registers: true,
           managed: ["db"],
         },
@@ -927,7 +925,7 @@ describe("creationManaged — the managed services an added Mate's copy waits on
     },
     {
       case: "a recipe that brings none",
-      made: added({ adds: { appId: "app-acme", displayName: "Ida", registers: true } }),
+      made: added({ adds: { appId: "app-acme", registers: true } }),
       want: undefined,
     },
   ])("$case", ({ made, want }) => {
@@ -952,14 +950,14 @@ describe("creationRuntimes — the runtimes an added Mate's workspace brings, fr
     {
       case: "pressed: as its recipe names them",
       made: added({
-        adds: { appId: "app-acme", displayName: "Ida", registers: true, runtimes: APP },
+        adds: { appId: "app-acme", registers: true, runtimes: APP },
       }),
       want: APP,
     },
     {
       case: "planned: as its plan names them",
       made: added({
-        adds: { appId: "app-acme", displayName: "Ida", registers: true },
+        adds: { appId: "app-acme", registers: true },
         progress: [
           {
             step: {
@@ -991,7 +989,6 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     projectId: "p-ida",
     adds: {
       appId: "app-acme",
-      displayName: "Ida",
       registers: true,
       managed: ["db"],
       runtimes: [{ hostname: "appdev", role: "dev" }],
@@ -1023,7 +1020,6 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     const pressedAdd = added({
       adds: {
         appId: "app-acme",
-        displayName: "Ida",
         registers: true,
         managed: ["db"],
         runtimes: [{ hostname: "appdev", role: "dev" }],
@@ -1177,7 +1173,7 @@ describe("addCreateProject — an Add's press as its creation's port", () => {
         ...ASK,
         birthId: "add-1",
         botName: "Ida",
-        adds: { appId: "app-acme", displayName: "Ida", registers: true },
+        adds: { appId: "app-acme", registers: true },
       },
       hq: HQ,
       now: 0,

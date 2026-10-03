@@ -1054,7 +1054,6 @@ describe("an added Mate's own view, after its hand-over", () => {
     progress: null,
     adds: {
       appId: "beviro",
-      displayName: "Beviro - Quinn",
       registers: true,
       managed: ["db"],
       runtimes: [{ hostname: "appdev", role: "dev" }],
