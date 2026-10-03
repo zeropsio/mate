@@ -351,13 +351,18 @@ function FieldError({ children }: { readonly children: string }) {
 export function ZeropsEnvironmentCreationDialog({
   open,
   onOpenChange,
+  landsElsewhere = false,
   ...form
 }: ZeropsEnvironmentCreationFormProps & {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /**
+   * Add closes it onto another page, which takes the focus (Add a Mate, onto the new Mate's):
+   * never back to what opened it, where a second Enter would open it again over that page. Any
+   * other caller keeps the person where they were, the focus back where it came from.
+   */
+  readonly landsElsewhere?: boolean;
 }) {
-  // Add closes it onto the new Mate's page, which takes the focus: never back to what opened it,
-  // where a second Enter would open it again over that page.
   const added = useRef(false);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -365,7 +370,7 @@ export function ZeropsEnvironmentCreationDialog({
         <ZeropsEnvironmentCreationForm
           {...form}
           onCreate={(choice) => {
-            if (choice.withAgent) added.current = true;
+            if (landsElsewhere) added.current = true;
             form.onCreate(choice);
           }}
         />
