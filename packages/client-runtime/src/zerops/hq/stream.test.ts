@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { HqChange } from "@t3tools/shared/hqChanges";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 
 import type { HqStructure } from "./client.ts";
 import type { HqEnvironment } from "./environments.ts";
@@ -81,17 +82,53 @@ const CHANGE: HqChange = {
   behind: false,
 };
 
+const AT = "2026-10-03T10:00:00.000Z";
+
+/** Vera as a reader observes her: online, a chat of hers waiting on an approval. */
+const VERA_VIEW = {
+  presence: { online: true, since: AT, overview: "live" },
+  identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
+  main: null,
+  threads: {
+    list: [
+      {
+        id: "t1",
+        title: "Add a /status page",
+        kind: "approval",
+        turnId: "turn-1",
+        turnState: "running",
+        completedAt: null,
+      },
+    ],
+    omitted: 0,
+  },
+  logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
+  crew: null,
+} as unknown as MateLiveView;
+
 describe("structureEventOf", () => {
   it.each<[string, unknown, ReturnType<typeof structureEventOf>]>([
     [
       "a snapshot is the whole structure, the Mates in no application with it",
       { type: "snapshot", ungrouped: [LONE], apps: [ACME] },
-      { kind: "snapshot", structure: { ungrouped: [LONE], apps: [ACME] }, changes: null },
+      {
+        kind: "snapshot",
+        structure: { ungrouped: [LONE], apps: [ACME] },
+        changes: null,
+        mates: null,
+        people: null,
+      },
     ],
     [
       "a snapshot that names no Mate in no application holds none",
       { type: "snapshot", apps: [ACME] },
-      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] }, changes: null },
+      {
+        kind: "snapshot",
+        structure: { ungrouped: [], apps: [ACME] },
+        changes: null,
+        mates: null,
+        people: null,
+      },
     ],
     [
       "a snapshot carries each application's changes beside its structure",
@@ -100,24 +137,44 @@ describe("structureEventOf", () => {
         kind: "snapshot",
         structure: { ungrouped: [], apps: [ACME] },
         changes: new Map([["app-1", [CHANGE]]]),
+        mates: null,
+        people: null,
       },
     ],
     [
       "a snapshot whose changes this build cannot read still carries its structure",
       { type: "snapshot", apps: [ACME], changes: { "app-1": [{ ...CHANGE, number: 0 }] } },
-      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] }, changes: null },
+      {
+        kind: "snapshot",
+        structure: { ungrouped: [], apps: [ACME] },
+        changes: null,
+        mates: null,
+        people: null,
+      },
     ],
     // SPEC §3.2b: an application's stage and production with their deploys, to whoever reads its
     // changes; read through the contract's shape, so a set this build cannot read is not known.
     [
       "a snapshot carries each application's environments and their deploys",
       { type: "snapshot", apps: [ACME_STAGED] },
-      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME_STAGED] }, changes: null },
+      {
+        kind: "snapshot",
+        structure: { ungrouped: [], apps: [ACME_STAGED] },
+        changes: null,
+        mates: null,
+        people: null,
+      },
     ],
     [
       "an application whose environments this build cannot read has them unknown, itself read",
       { type: "snapshot", apps: [{ ...ACME, environments: [{ ...STAGE, tier: "dev" }] }] },
-      { kind: "snapshot", structure: { ungrouped: [], apps: [ACME] }, changes: null },
+      {
+        kind: "snapshot",
+        structure: { ungrouped: [], apps: [ACME] },
+        changes: null,
+        mates: null,
+        people: null,
+      },
     ],
     [
       "a change carries its application's environments",
@@ -160,6 +217,47 @@ describe("structureEventOf", () => {
   ])("%s", (_name, message, expected) => {
     expect(structureEventOf(message)).toEqual(expected);
   });
+
+  it("parses a Mate's sections and the people map and passes by what it does not know", () => {
+    const people = { "u-ada": { name: "Ada Lovelace" } };
+    expect(
+      structureEventOf({
+        type: "snapshot",
+        apps: [ACME],
+        mates: { p1: { ...VERA_VIEW, later: { since: AT } } },
+        people,
+      }),
+    ).toEqual({
+      kind: "snapshot",
+      structure: { ungrouped: [], apps: [ACME] },
+      changes: null,
+      mates: new Map([["p1", VERA_VIEW]]),
+      people,
+    });
+    expect(
+      structureEventOf({ type: "mate", projectId: "p1", value: { main: null, later: {} } }),
+    ).toEqual({ kind: "mate", projectId: "p1", value: { main: null } });
+    expect(structureEventOf({ type: "mate", projectId: "p1", value: null })).toEqual({
+      kind: "mate",
+      projectId: "p1",
+      value: null,
+    });
+    expect(structureEventOf({ type: "people", people })).toEqual({ kind: "people", people });
+    // A section this build cannot read is no message it reads.
+    expect(
+      structureEventOf({ type: "mate", projectId: "p1", value: { presence: { online: true } } }),
+    ).toBeUndefined();
+  });
+
+  it("leaves out a snapshot's Mate this build cannot read, and reads the others", () => {
+    const event = structureEventOf({
+      type: "snapshot",
+      apps: [ACME],
+      mates: { p1: VERA_VIEW, p2: { ...VERA_VIEW, threads: { list: "none", omitted: 0 } } },
+      people: {},
+    });
+    expect(event?.kind === "snapshot" ? event.mates : event).toEqual(new Map([["p1", VERA_VIEW]]));
+  });
 });
 
 describe("applyStructureEvent", () => {
@@ -169,6 +267,8 @@ describe("applyStructureEvent", () => {
       kind: "snapshot",
       structure: { ungrouped: [LONE], apps: [ACME] },
       changes: null,
+      mates: null,
+      people: null,
     });
     structure = applyStructureEvent(structure, { kind: "change", appId: "app-2", app: BETA });
     expect(structure).toEqual({ ungrouped: [LONE], apps: [ACME, BETA] });
@@ -184,6 +284,14 @@ describe("applyStructureEvent", () => {
       { kind: "ungrouped", mates: [] },
     );
     expect(structure).toEqual({ ungrouped: [], apps: [ACME] });
+  });
+
+  it("leaves the structure as it is on a Mate's message and on the people's", () => {
+    const structure: HqStructure = { ungrouped: [LONE], apps: [ACME] };
+    expect(applyStructureEvent(structure, { kind: "mate", projectId: "p1", value: null })).toBe(
+      structure,
+    );
+    expect(applyStructureEvent(structure, { kind: "people", people: {} })).toBe(structure);
   });
 
   it("knows nothing from a change before its snapshot", () => {
@@ -205,6 +313,8 @@ describe("applyChangesEvent", () => {
       kind: "snapshot",
       structure: { ungrouped: [], apps: [ACME, BETA] },
       changes: new Map([["app-1", [CHANGE]]]),
+      mates: null,
+      people: null,
     });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-1", changes: [merged] });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-2", changes: [] });
