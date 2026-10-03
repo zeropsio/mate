@@ -61,6 +61,8 @@ const bindHolder = () =>
         reads.log.push(`release ${environmentId}`);
       };
     },
+    machines: () => new Map(),
+    subscribe: () => () => undefined,
   } as unknown as AccountEnvironments);
 
 const clone = (phase: ProjectCloneSnapshot["phase"]): ProjectCloneSnapshot => ({

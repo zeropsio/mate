@@ -5,6 +5,7 @@
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees no environments.
  */
+import { RegistryContext } from "@effect/atom-react";
 import type {
   AtomCommand,
   AtomCommandOptions,
@@ -15,7 +16,10 @@ import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/z
 import type { CapabilityRefusal, OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type { IdentityExchangeReason } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
+  environmentTarget,
+  isTerminalReachability,
   reachabilityPhrase,
+  selectReachability,
   type ConnectOutcome,
   type ContainerMachine,
   type DescriptorIndex,
@@ -24,9 +28,10 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useSyncExternalStore } from "react";
 
 import { useAtomCommand } from "../state/use-atom-command";
+import { hqMatesAtom, hqProjectOf } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates } from "./inventoryContext";
@@ -155,18 +160,71 @@ export function useDescriptorIndex(): DescriptorIndex {
 // ── An action's lease ────────────────────────────────────────────────────────────────────────
 
 /**
+ * How long an action waits for the Mate it holds to connect before it is sent anyway: twice the
+ * p90 of an open as measured (15 s), the bound a command waits for its capability too.
+ */
+export const MATE_HOLD_WAIT_MS = 30_000;
+
+type HeldEnvironments = Pick<AccountEnvironments, "hold" | "machines" | "subscribe">;
+
+/**
+ * Whether a command for `environmentId` can go: its Mate's link is up on that environment's
+ * credential, or nothing would bring it up — no Mate is named for it (`named`: HQ names its
+ * project), or the one named settled on a verdict no wait changes.
+ */
+function readyToSend(
+  environments: HeldEnvironments,
+  environmentId: EnvironmentId,
+  named: boolean,
+): boolean {
+  const target = environmentTarget(environments.machines(), environmentId);
+  if (target === undefined) return !named;
+  const { credential, link } = target.machine;
+  if (credential.kind === "held" && credential.environmentId === environmentId) {
+    if (link.phase === "connected") return true;
+  }
+  return isTerminalReachability(selectReachability(target.machine, environmentId));
+}
+
+/** Resolves once a command for `environmentId` can go, or after `MATE_HOLD_WAIT_MS`. */
+function untilReadyToSend(
+  environments: HeldEnvironments,
+  environmentId: EnvironmentId,
+  named: boolean,
+): Promise<void> {
+  if (readyToSend(environments, environmentId, named)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    };
+    const timer = setTimeout(done, MATE_HOLD_WAIT_MS);
+    const unsubscribe = environments.subscribe(() => {
+      if (readyToSend(environments, environmentId, named)) done();
+    });
+  });
+}
+
+/**
  * Runs `command` with the Mate of `environmentId` held connected — an action's lease (A9): a
- * command sent from outside the Mate's own view (a menu's Stop, the jump box's send, a chat's
- * rename) connects a parked Mate for as long as it takes, and lets it go however it ends. Where no
- * account is bound, the command runs as it is.
+ * command sent from outside the Mate's own view (a menu's Stop, a clone's Retry, a chat's rename)
+ * connects a parked Mate, or one this browser never registered that HQ names (`named`), and is
+ * sent once its link is up — a command on a link that is not fails at once — or once it waited
+ * `MATE_HOLD_WAIT_MS`. It lets the Mate go however the command ends. Where no account is bound,
+ * the command runs as it is.
  */
 export async function whileMateHeld<T>(
-  environments: { readonly hold: (environmentId: EnvironmentId) => () => void } | null,
+  environments: HeldEnvironments | null,
   environmentId: EnvironmentId,
   command: () => Promise<T>,
+  options: { readonly named?: boolean } = {},
 ): Promise<T> {
   const release = environments?.hold(environmentId);
   try {
+    if (environments !== null) {
+      await untilReadyToSend(environments, environmentId, options.named ?? false);
+    }
     return await command();
   } finally {
     release?.();
@@ -185,16 +243,23 @@ export function useMateHeld(environmentId: EnvironmentId | null): void {
   }, [environments, environmentId]);
 }
 
-/** A Mate's command as a surface outside its own view sends it: with its action lease. */
+/**
+ * A Mate's command as a surface outside its own view sends it: with its action lease, once its
+ * Mate is connected. HQ's word is read as it is sent, so no surface re-renders on HQ's every word.
+ */
 export function useMateCommand<A, E, W extends { readonly environmentId: EnvironmentId }>(
   command: AtomCommand<W, A, E>,
   options?: string | AtomCommandOptions,
 ): (value: W) => Promise<AtomCommandResult<A, E | CapabilityRefusal>> {
   const send = useAtomCommand(command, options);
   const environments = useAccountEnvironments();
+  const atoms = useContext(RegistryContext);
   return useCallback(
-    (value: W) => whileMateHeld(environments, value.environmentId, () => send(value)),
-    [environments, send],
+    (value: W) =>
+      whileMateHeld(environments, value.environmentId, () => send(value), {
+        named: hqProjectOf(atoms.get(hqMatesAtom), value.environmentId) !== null,
+      }),
+    [atoms, environments, send],
   );
 }
 
