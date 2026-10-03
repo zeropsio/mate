@@ -382,6 +382,12 @@ describe("liveOperationBar — a running deploy's bar reads its pipeline", () =>
       word: "Deploy",
     },
     {
+      name: "a step that failed says it failed",
+      read: pipeline(["finished", "failed", "waiting", "waiting", "waiting"]),
+      tones: ["done", "failed", "waiting", "waiting", "waiting"],
+      word: "Build failed",
+    },
+    {
       name: "a pipeline working out its steps says so",
       read: pipeline([], true),
       tones: ["waiting", "waiting"],
@@ -413,7 +419,11 @@ describe("showsCardInSlot — the live slot opens an operation onto what it read
       observed: { steps: [], chips: [], pipeline: pipeline([], true) },
       open: false,
     },
-    { name: "one that ended as the slot drew it, read: it lands so", observed: read, open: true },
+    {
+      name: "only the processes beside it: its line says it",
+      observed: { steps: [], chips: [step("Restart", "done")] },
+      open: false,
+    },
   ] as const)("$name", ({ observed, open }) => {
     expect(showsCardInSlot(observedLinesOf(observed))).toBe(open);
   });

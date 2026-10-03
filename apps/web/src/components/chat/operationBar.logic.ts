@@ -210,7 +210,8 @@ function listed(pipeline: PipelineReadout): boolean {
 /**
  * A running operation's bar in the live slot: a segment per step in its
  * state's tone, one running segment while it names none, and the step it is
- * on in words — "Build", as the Zerops GUI names it. A deploy's pipeline, read
+ * on in words — "Build", as the Zerops GUI names it, or the sentence of the
+ * step that failed. A deploy's pipeline, read
  * off the platform (`pipeline`), stands for the steps its call reserved.
  */
 export function liveOperationBar(
@@ -227,7 +228,8 @@ export function liveOperationBar(
       null;
     return {
       segments: pipeline.steps.map((step) => ({ key: step.id, tone: PIPELINE_BAR[step.state] })),
-      word: now === null ? null : now.label,
+      // A step that failed is named with how it ended, never as if it ran on.
+      word: now === null ? null : now.state === "failed" ? now.sentence : now.label,
     };
   }
   const steps =
@@ -292,12 +294,12 @@ export function observedLinesOf(
 
 /**
  * Whether the live slot draws an operation open onto its card: once the card
- * read anything of the platform its line does not say — its pipeline's
- * steps, the processes beside it, its build log — while it runs, and as it
- * ended there, so it lands in the history as it stood.
+ * read its pipeline's steps or its build log — while it runs, and as it ended
+ * there, so it lands in the history as it stood. The processes beside it
+ * alone never open it: they may not be read once its call settled.
  */
 export function showsCardInSlot(observed: ObservedLines | null): boolean {
-  return observed !== null && (observed.steps > 0 || observed.chips > 0 || observed.log);
+  return observed !== null && (observed.steps > 0 || observed.log);
 }
 
 /**
