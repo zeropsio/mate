@@ -198,6 +198,11 @@ export interface AccountEnvironments {
    */
   readonly connect: (key: TargetKey, reason: IdentityExchangeReason) => Promise<ConnectOutcome>;
   /**
+   * An action from outside the Mate's own view — a send, a Stop, a rename — holds the Mate this
+   * environment names connected until the answer is called; calling it again does nothing.
+   */
+  readonly hold: (environmentId: EnvironmentId) => () => void;
+  /**
    * Our verb was accepted for this target: its container shows it until a read fact settles it.
    * False when no container took it — the store holds no such target, or the platform's facts
    * already overrule it — so nothing will say when it is over.
@@ -314,6 +319,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let recent: { readonly key: TargetKey; readonly disarm: () => void } | null = null;
   /** Whether each registered environment was last parked, as the registry was told. */
   const parking = new Map<EnvironmentId, boolean>();
+  /** Each action's lease: the target its environment named when last resolved, and its release. */
+  interface ActionLease {
+    readonly environmentId: EnvironmentId;
+    key: TargetKey | null;
+    letGo: (() => void) | null;
+  }
+  const actions = new Set<ActionLease>();
   /** Installs in flight, by the Mate origin they exchanged at. */
   const installing = new Map<string, number>();
   /** The origin each target's latest exchange ran at. */
@@ -463,9 +475,28 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /** The target an environment names: the one its record remembers, else the one the index finds. */
+  const targetOf = (environmentId: EnvironmentId): TargetKey | null =>
+    stores!.records.list().find((record) => record.environmentId === environmentId)?.targetKey ??
+    resolveEnvironment(stores!.driver.machines(), indexOf(), environmentId)?.key ??
+    null;
+
+  /** Each action holds the target its environment names now; one nothing names yet waits. */
+  const updateActions = () => {
+    if (stores === null || closed) return;
+    for (const action of actions) {
+      const key = targetOf(action.environmentId);
+      if (key === action.key) continue;
+      action.letGo?.();
+      action.key = key;
+      action.letGo = key === null ? null : stores.driver.hold(key, "action");
+    }
+  };
+
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
     updateRoute();
+    updateActions();
     updateTargets();
     release();
     updateParking();
@@ -773,12 +804,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       bindContainerStore(containers, driver),
       containers.subscribe(() => {
         updateRoute();
+        updateActions();
         updateProcesses();
         updateDowns();
         notify();
       }),
       driver.subscribe(() => {
         updateRoute();
+        updateActions();
         updateDowns();
         // A credential its machine let go — an install that failed, a retirement — is released.
         release();
@@ -805,6 +838,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           if (moved) rows = listedRows;
           // The route's target first, so its container is read before any other's.
           updateRoute();
+          updateActions();
           if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
             updateTargets();
         },
@@ -836,6 +870,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           letGo();
           return outcome;
         });
+      },
+      hold: (environmentId) => {
+        if (closed) return () => undefined;
+        const action: ActionLease = { environmentId, key: null, letGo: null };
+        actions.add(action);
+        updateActions();
+        return () => {
+          if (actions.delete(action)) action.letGo?.();
+        };
       },
       intend: (key, intent) => {
         if (closed) return false;
@@ -900,6 +943,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const followed of activity.values()) followed.stop();
         activity.clear();
         recent?.disarm();
+        actions.clear();
         for (const release of checks.values()) release();
         checks.clear();
         driver.dispose();

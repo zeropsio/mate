@@ -126,6 +126,7 @@ function shellStage(): AccountEnvironments {
       };
     },
     connect: () => new Promise(() => undefined),
+    hold: () => () => undefined,
     intend: () => false,
     initAt: async () => null,
     next: () => new Promise(() => undefined),

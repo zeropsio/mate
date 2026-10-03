@@ -1487,6 +1487,29 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  it.effect("an action holds a parked Mate connected until it answers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([REMEMBERED_A]);
+        rig.catalog().environments(registered(ENV_A));
+        yield* settle;
+        expect(rig.parked()).toEqual([ENV_A]);
+
+        const release = environments.hold(ENV_A);
+        yield* settle;
+        expect(rig.exchanges.map(({ input: { key, reason } }) => ({ key, reason }))).toEqual([
+          { key: MATE, reason: "user" },
+        ]);
+        expect(rig.unparked()).toEqual([ENV_A]);
+
+        release();
+        release();
+        yield* settle;
+        expect(rig.parked()).toEqual([ENV_A]);
+      }),
+    ),
+  );
+
   it.effect("no exchange before the first grant (I10, AL-04), with no React", () =>
     Effect.scoped(
       Effect.gen(function* () {
