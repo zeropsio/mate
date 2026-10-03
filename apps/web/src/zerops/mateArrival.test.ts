@@ -84,6 +84,19 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
   ] as const)("draws $case", ({ setup, want }) => {
     expect(ids(setup)).toEqual(["copy:done", "workspace:active", ...want]);
   });
+  // Mate signs people in to Claude Code and Codex only: a Mate on Cursor, OpenCode, Grok or
+  // Antigravity has nothing to sign in, and its step says what is true of it.
+  it.each([
+    { case: "while its setup is not read", setup: undefined },
+    { case: "once its setup says it", setup: { git: "done", signin: "done" } as const },
+  ])("says an agent that needs no sign-in is ready, $case", ({ setup }) => {
+    const you = arrivalSteps(
+      { ...deriveBirthProgress(CREATING, NOW), setup, agentReady: true },
+      WREN,
+      NOW,
+    ).find((step) => step.id === "you");
+    expect(you).toEqual({ id: "you", label: "Wren's agent is ready", state: "done" });
+  });
 });
 
 describe("arrivalSteps", () => {

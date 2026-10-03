@@ -263,6 +263,11 @@ export function arrivalSteps(
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
     readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
+    /**
+     * An agent Mate signs nobody in to (Cursor, OpenCode, Grok, Antigravity) is ready on it, and
+     * no sign-in of the viewer's is (`MateEmptyState.agentReady`): nothing is theirs to sign in.
+     */
+    readonly agentReady?: boolean | undefined;
   },
   mate: Named,
   nowMs: number,
@@ -340,13 +345,17 @@ export function arrivalSteps(
       state: setup.git === "done" ? "done" : "active",
     });
   }
-  const phrase = signInPhrase(mate.name);
-  steps.push({
-    id: "you",
-    label: signInPhraseWords(phrase),
-    phrase,
-    state: setup?.signin === "done" ? "done" : "you",
-  });
+  if (progress.agentReady === true) {
+    steps.push({ id: "you", label: `${mate.name}'s agent is ready`, state: "done" });
+  } else {
+    const phrase = signInPhrase(mate.name);
+    steps.push({
+      id: "you",
+      label: signInPhraseWords(phrase),
+      phrase,
+      state: setup?.signin === "done" ? "done" : "you",
+    });
+  }
   // A Mate with no stand-up to run (a New project's first) has no step for one.
   if (setup?.standup !== undefined && setup.standup !== "none") {
     steps.push({
