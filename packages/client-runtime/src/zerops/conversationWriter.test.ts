@@ -5,6 +5,7 @@ import {
   conversationFooter,
   rememberableWriter,
   resolveConversationWriter,
+  signInReadSettled,
   type ConversationWriter,
   type ConversationWriterInput,
 } from "./conversationWriter.ts";
@@ -263,5 +264,31 @@ describe("rememberableWriter", () => {
     },
   ])("$name", ({ writer, feed, expected }) => {
     expect(rememberableWriter(writer, feed)).toBe(expected);
+  });
+});
+
+describe("signInReadSettled", () => {
+  it.each<{
+    readonly name: string;
+    readonly feed: ConversationWriterInput["feed"];
+    readonly settled: boolean;
+  }>([
+    { name: "no environment", feed: undefined, settled: false },
+    { name: "not read yet", feed: { state: "unread", waitingFor: null }, settled: false },
+    { name: "being read", feed: { state: "reading", sinceMs: 0, attempt: 1 }, settled: false },
+    { name: "read", feed: known(snapshot([claude()])), settled: true },
+    {
+      name: "failed: nothing more comes of this read",
+      feed: {
+        state: "failed",
+        failure: { kind: "unsupported", capability: "agentAuth" },
+        atMs: 0,
+        attempt: 1,
+        retryAtMs: null,
+      },
+      settled: true,
+    },
+  ])("$name → $settled", ({ feed, settled }) => {
+    expect(signInReadSettled(feed)).toBe(settled);
   });
 });

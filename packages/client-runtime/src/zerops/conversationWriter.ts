@@ -83,6 +83,15 @@ export function resolveConversationWriter(input: ConversationWriterInput): Conve
   }
 }
 
+/**
+ * Whether the sign-in read has come to its end: a snapshot, or a failure nothing more comes of in
+ * this read. What waits on the sign-in to paint its first frame waits on this, not on a snapshot
+ * only — a failed read would otherwise hold it to its grace.
+ */
+export function signInReadSettled(feed: ConversationWriterInput["feed"]): boolean {
+  return feed !== undefined && feed.state !== "unread" && feed.state !== "reading";
+}
+
 /** A known answer, as this browser keeps it for the next time it is not known yet. */
 export type RememberedWriter = Exclude<ConversationWriter["kind"], "unknown">;
 
