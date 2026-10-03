@@ -72,7 +72,7 @@ import {
   toOpenCodeQuestionAnswers,
   type OpenCodeServerConnection,
 } from "../opencodeRuntime.ts";
-import { openCodeMcpControl, type OpenCodeMcpClient } from "../../spi/mcpLive.ts";
+import { openCodeMcpControl, type OpenCodeMcpClient } from "../../spi/mcpControl.ts";
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");

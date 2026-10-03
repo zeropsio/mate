@@ -25,7 +25,7 @@ import type {
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
-import type { ProviderAdapterMcp } from "../../spi/mcpLive.ts";
+import type { ProviderAdapterMcp } from "../../spi/mcpControl.ts";
 import type { ThreadProfileSupport } from "../../spi/threadToolPolicy.ts";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";

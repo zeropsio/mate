@@ -94,7 +94,7 @@ import {
   readClaudeThreadRegistries,
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
-import { claudeMcpControl, type ClaudeMcpQuery } from "../../spi/mcpLive.ts";
+import { claudeMcpControl, type ClaudeMcpQuery } from "../../spi/mcpControl.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";

@@ -59,7 +59,7 @@ import {
   codexTurnModelSelection,
   readCodexThreadPolicies,
 } from "../../spi/codexThreadProfile.ts";
-import { codexMcpControl } from "../../spi/mcpLive.ts";
+import { codexMcpControl } from "../../spi/mcpControl.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
