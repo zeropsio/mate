@@ -493,7 +493,27 @@ describe("deriveMessagesTimelineRows", () => {
         }),
         approvalOf("p1", 2, "approval.requested"),
       ],
-      now: { kind: "waiting", on: "approval" },
+      // What it asks to run stands in the slot; the controls are the composer's.
+      now: { kind: "waiting", on: "approval", asked: [{ kind: "step", step: { key: "w1" } }] },
+    },
+    {
+      name: "an approval asked for a command not started yet: the approval says what it asks",
+      entries: [
+        tool("p1", "t1", 2, {
+          tone: "info",
+          label: "Command approval requested",
+          command: "rm -rf dist",
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          requestKind: "command",
+          sourceActivityKind: "approval.requested",
+        }),
+      ],
+      now: {
+        kind: "waiting",
+        on: "approval",
+        asked: [{ kind: "step", step: { key: "p1", code: "rm -rf dist" } }],
+      },
     },
     {
       name: "an approval given: back to the step",

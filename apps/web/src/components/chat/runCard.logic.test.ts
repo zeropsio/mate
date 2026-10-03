@@ -275,6 +275,16 @@ describe("the live slot's model", () => {
       filler: "thinking",
     },
     {
+      name: "an approval: what it asks stands in the slot",
+      now: {
+        kind: "waiting",
+        on: "approval",
+        asked: [{ kind: "step", step: command("w1", "pnpm build") }],
+      },
+      live: ["step:w1"],
+      filler: "thinking",
+    },
+    {
       name: "a question in its own words: the question waits in the slot",
       now: { kind: "waiting", on: "answer", key: "question:q1" },
       items: [question],

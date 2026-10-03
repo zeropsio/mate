@@ -261,6 +261,10 @@ export function slotModelOf(input: {
           }
         : thinking;
     case "waiting": {
+      // An approval: what it asks stands in the slot, the controls in the composer.
+      if (now.asked !== undefined && now.asked.length > 0) {
+        return { live: now.asked.map(liveCallItem), filler: thinking.filler };
+      }
       const question =
         now.key === undefined ? undefined : input.items.find((item) => item.key === now.key);
       return question === undefined

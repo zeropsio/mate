@@ -394,7 +394,13 @@ export type TurnHeaderActivity =
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
    */
-  | { readonly kind: "waiting"; readonly on: "answer" | "approval"; readonly key?: string }
+  | {
+      readonly kind: "waiting";
+      readonly on: "answer" | "approval";
+      readonly key?: string;
+      /** An approval: what it asks to run — the controls are the composer's. */
+      readonly asked?: ReadonlyArray<LiveCall>;
+    }
   /**
    * The calls it is making, the newest as the step or the platform operation
    * it is, and any others of its batch, oldest first.
@@ -991,14 +997,14 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
  * Whether an approval the Mate asked for still waits on the person: one asked
  * for and not given yet, the clock standing still meanwhile (`waitedOnPerson`).
  */
-function approvalPending(stretch: Stretch): boolean {
-  let open = 0;
+function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work" }> | null {
+  const open: Array<Extract<TimelineEntry, { kind: "work" }>> = [];
   for (const entry of stretch.entries) {
     if (entry.kind !== "work") continue;
-    if (entry.entry.sourceActivityKind === "approval.requested") open += 1;
-    else if (entry.entry.sourceActivityKind === "approval.resolved") open = Math.max(0, open - 1);
+    if (entry.entry.sourceActivityKind === "approval.requested") open.push(entry);
+    else if (entry.entry.sourceActivityKind === "approval.resolved") open.shift();
   }
-  return open > 0;
+  return open.at(-1) ?? null;
 }
 
 /**
@@ -1152,8 +1158,6 @@ function liveActivity(
 ): TurnHeaderActivity {
   const asked = pendingQuestion(stretch);
   if (asked !== null) return { kind: "waiting", on: "answer", key: `question:${asked.id}` };
-  if (approvalPending(stretch)) return { kind: "waiting", on: "approval" };
-  if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   // An operation whose line stands — its first call returned, and the Mate
   // waits on a follow-up of its session — is the record's, not the slot's.
   const open = new Set<TimelineEntry>(
@@ -1161,6 +1165,31 @@ function liveActivity(
       (entry) => entry.kind !== "operation" || entry.operation.returnedAt === undefined,
     ),
   );
+  /** The open calls of the batch up to `index`, oldest first, as the slot shows them. */
+  const callsTo = (index: number): LiveCall[] =>
+    stretch.entries.slice(0, index + 1).flatMap((call): LiveCall[] => {
+      if (!open.has(call)) return [];
+      if (call.kind === "operation") return [{ kind: "operation", operation: call.operation }];
+      if (call.kind !== "work" && call.kind !== "generic-call") return [];
+      if (isQuestionToolCall(call.entry)) return [];
+      return [{ kind: "step", step: stepOf(call.entry, tracked, true) }];
+    });
+  const approval = approvalPending(stretch);
+  if (approval !== null) {
+    // What it asks to run: the call it waits on, else what the request names.
+    const calls = callsTo(stretch.entries.length - 1);
+    const named = approval.entry.command ?? approval.entry.detail;
+    const asking: ReadonlyArray<LiveCall> =
+      calls.length > 0
+        ? calls
+        : named === undefined
+          ? []
+          : [{ kind: "step", step: stepOf(approval.entry, tracked, true) }];
+    return asking.length > 0
+      ? { kind: "waiting", on: "approval", asked: asking }
+      : { kind: "waiting", on: "approval" };
+  }
+  if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   let passed = false;
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
     const entry = stretch.entries[index]!;
@@ -1173,13 +1202,7 @@ function liveActivity(
       }
       // Every call of the batch is the slot's, operations too: none of them
       // is in the record until it returns.
-      const calls = stretch.entries.slice(0, index + 1).flatMap((call): LiveCall[] => {
-        if (!open.has(call)) return [];
-        if (call.kind === "operation") return [{ kind: "operation", operation: call.operation }];
-        if (call.kind !== "work" && call.kind !== "generic-call") return [];
-        if (isQuestionToolCall(call.entry)) return [];
-        return [{ kind: "step", step: stepOf(call.entry, tracked, true) }];
-      });
+      const calls = callsTo(index);
       const newest = calls.at(-1);
       const others = calls.slice(0, -1);
       if (newest === undefined) continue;
