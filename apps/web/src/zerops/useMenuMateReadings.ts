@@ -5,7 +5,8 @@
  * the platform's verdict on its creation, this tab's creation). The menu, the folded headings and
  * the waiting faces read the same answers; the projects page reads the same words.
  */
-import type { EnvironmentId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
   applyProjectCreationVerdict,
@@ -65,6 +66,23 @@ export function useMateRowActivity(
         candidate.group === "connected" ? candidate.environmentId : undefined,
       ),
     [byProject],
+  );
+}
+
+/**
+ * The main chat HQ names for each Mate, by its project — its overview's main chat in its
+ * environment: what opening a Mate this page holds no socket to routes to, the route connecting it.
+ */
+export function useHqMainChats(): (projectId: string) => ScopedThreadRef | undefined {
+  const hq = useAtomValue(hqMatesAtom);
+  return useCallback(
+    (projectId: string) => {
+      const told = hq?.mates?.get(projectId);
+      return told?.identity === undefined || !told.main
+        ? undefined
+        : scopeThreadRef(told.identity.environmentId, told.main.id);
+    },
+    [hq],
   );
 }
 
