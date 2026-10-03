@@ -12,26 +12,35 @@ import {
   BAND_ENDING_MS,
   bandKeys,
   bandSeenNext,
+  type BandSeen,
   withEndingsHeld,
   type DockModel,
 } from "./conversationDock.logic";
 
 /** `syncing`: the thread catches up after a reload or a reconnect — what it brings ended unwatched. */
 export function useEndingsHeld(dock: DockModel | null, syncing = false): DockModel | null {
-  const [seen, setSeen] = useState<{
-    readonly dock: DockModel | null;
-    readonly running: ReadonlySet<string>;
-    readonly held: ReadonlySet<string>;
-  }>(() => ({ dock, running: bandKeys(dock), held: new Set() }));
+  const [seen, setSeen] = useState<BandSeen & { readonly dock: DockModel | null }>(() => ({
+    dock,
+    running: bandKeys(dock),
+    held: new Set(),
+    ends: new Map(),
+  }));
   // A new dock: what it no longer runs, and the band drew running, is held.
   if (seen.dock !== dock) setSeen({ dock, ...bandSeenNext(seen, dock, syncing) });
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // Each held ending's timer, by its key and which ending it is: one that
+  // ends again while held starts its time over.
+  const timers = useRef(
+    new Map<string, { readonly ending: number; readonly timer: ReturnType<typeof setTimeout> }>(),
+  );
   useEffect(() => {
     for (const key of seen.held) {
-      if (timers.current.has(key)) continue;
-      timers.current.set(
-        key,
-        setTimeout(() => {
+      const ending = seen.ends.get(key) ?? 0;
+      const running = timers.current.get(key);
+      if (running?.ending === ending) continue;
+      if (running !== undefined) clearTimeout(running.timer);
+      timers.current.set(key, {
+        ending,
+        timer: setTimeout(() => {
           timers.current.delete(key);
           setSeen((current) => {
             const held = new Set(current.held);
@@ -39,13 +48,13 @@ export function useEndingsHeld(dock: DockModel | null, syncing = false): DockMod
             return { ...current, held };
           });
         }, BAND_ENDING_MS),
-      );
+      });
     }
-  }, [seen.held]);
+  }, [seen.held, seen.ends]);
   useEffect(() => {
     const pending = timers.current;
     return () => {
-      for (const timer of pending.values()) clearTimeout(timer);
+      for (const { timer } of pending.values()) clearTimeout(timer);
       pending.clear();
     };
   }, []);

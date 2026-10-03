@@ -538,10 +538,22 @@ describe("bandSeenNext", () => {
     { name: "watched: the ending is held", syncing: false, held: ["task:b1"] },
     { name: "a resync: nothing is held", syncing: true, held: [] },
   ])("$name", ({ syncing, held }) => {
-    const before = { running: bandKeys(runningDock()), held: new Set<string>() };
+    const before = { running: bandKeys(runningDock()), held: new Set<string>(), ends: new Map() };
     const next = bandSeenNext(before, endedDock(), syncing);
     expect([...next.held]).toEqual(held);
     expect([...next.running]).toEqual([]);
+  });
+
+  // A bar that runs again and ends again while its first ending is still
+  // held shows its second ending its whole time (E15): each ending counts.
+  it("counts each ending of a bar, so a second one restarts its hold", () => {
+    let seen = { running: bandKeys(runningDock()), held: new Set<string>(), ends: new Map() };
+    seen = bandSeenNext(seen, endedDock(), false);
+    expect(seen.ends.get("task:b1")).toBe(1);
+    seen = bandSeenNext(seen, runningDock(), false);
+    seen = bandSeenNext(seen, endedDock(), false);
+    expect([...seen.held]).toEqual(["task:b1"]);
+    expect(seen.ends.get("task:b1")).toBe(2);
   });
 });
 

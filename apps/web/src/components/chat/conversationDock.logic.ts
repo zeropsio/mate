@@ -131,6 +131,8 @@ export function endedSince(
 export interface BandSeen {
   readonly running: ReadonlySet<string>;
   readonly held: ReadonlySet<string>;
+  /** How many times each bar has ended: a new ending holds its whole time again. */
+  readonly ends: ReadonlyMap<string, number>;
 }
 
 /**
@@ -139,10 +141,10 @@ export interface BandSeen {
  */
 export function bandSeenNext(seen: BandSeen, dock: DockModel | null, syncing: boolean): BandSeen {
   const ended = syncing ? [] : endedSince(seen.running, dock);
-  return {
-    running: bandKeys(dock),
-    held: ended.length === 0 ? seen.held : new Set([...seen.held, ...ended]),
-  };
+  if (ended.length === 0) return { running: bandKeys(dock), held: seen.held, ends: seen.ends };
+  const ends = new Map(seen.ends);
+  for (const key of ended) ends.set(key, (ends.get(key) ?? 0) + 1);
+  return { running: bandKeys(dock), held: new Set([...seen.held, ...ended]), ends };
 }
 
 /**
