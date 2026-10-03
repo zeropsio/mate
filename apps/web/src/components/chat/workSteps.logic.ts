@@ -301,7 +301,8 @@ const ZEROPS_WORDS: Readonly<Record<string, readonly [running: string, done: str
   zerops_events: ["Reading the project's events", "Read the project's events"],
 };
 
-function webTarget(url: string): string {
+/** A page as a line names it: its host and its path. */
+export function webTarget(url: string): string {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname === "/" ? "" : parsed.pathname;

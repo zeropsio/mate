@@ -8,7 +8,7 @@
  * One function, a case per control, so one table-driven test holds the card.
  */
 import type { WorkLogEntry } from "../../session-logic";
-import type { WorkStep } from "./workSteps.logic";
+import { webTarget, type WorkStep } from "./workSteps.logic";
 
 /** The runtime's `Name: {json}` detail of a call: its arguments, never output to show. */
 const CALL_ARGUMENTS = /^[A-Za-z][\w-]*:\s*[{[]/;
@@ -74,7 +74,14 @@ function editedFiles(entry: WorkLogEntry): string[] {
 function askedPastTheLine(entry: WorkLogEntry, kind: WorkStep["kind"]): string[] {
   if (kind !== "search" && kind !== "web") return [];
   const input = entry.callInput;
+  // The line names a page by its host and path: an address that says more is asked.
+  const url = input?.url;
+  const address =
+    url !== undefined && url.replace(/^https?:\/\//u, "").replace(/\/$/u, "") !== webTarget(url)
+      ? `address  ${url}`
+      : null;
   return [
+    address,
     input?.glob && input.glob !== input.pattern ? `glob     ${input.glob}` : null,
     input?.path ? `in       ${input.path}` : null,
   ].filter((line): line is string => line !== null);
@@ -138,9 +145,7 @@ export type Opener =
   /** "Show work" on a settled run's line: the scroll of what the run shows. */
   | { readonly control: "work"; readonly lines: number }
   /** A picture of the result: the viewer, onto a file still there or the pictures past it. */
-  | { readonly control: "picture"; readonly gone: boolean; readonly more: number }
-  /** The live slot: the thing in full up to its cap — never a chevron. */
-  | { readonly control: "live" };
+  | { readonly control: "picture"; readonly gone: boolean; readonly more: number };
 
 /** Whether a control opens onto something not already on screen: else it is not drawn. */
 export function opensOnto(opener: Opener): boolean {
@@ -168,8 +173,6 @@ export function opensOnto(opener: Opener): boolean {
       return opener.lines > 0;
     case "picture":
       return !opener.gone || opener.more > 0;
-    case "live":
-      return false;
   }
 }
 
