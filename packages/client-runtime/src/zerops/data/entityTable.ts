@@ -412,12 +412,50 @@ export function wantTableRows(
   since: number,
   nowMs: number,
 ): EntityTableState {
-  const missing = ids.filter(
-    (id) => state.rows[entity].get(id) === undefined && !state.wanted.has(wantedKey(entity, id)),
+  return want(
+    state,
+    entity,
+    organization,
+    ids.filter((id) => state.rows[entity].get(id) === undefined),
+    since,
+    nowMs,
   );
-  if (missing.length === 0) return state;
+}
+
+/**
+ * Asks again for rows the table holds that may trail what they describe: a service's variables
+ * heard before it moved to another version. One already asked about waits out its own read.
+ */
+export function rereadTableRows(
+  state: EntityTableState,
+  entity: TableEntity,
+  organization: OrganizationRef,
+  ids: ReadonlyArray<string>,
+  since: number,
+  nowMs: number,
+): EntityTableState {
+  return want(
+    state,
+    entity,
+    organization,
+    ids.filter((id) => state.rows[entity].get(id) !== undefined),
+    since,
+    nowMs,
+  );
+}
+
+function want(
+  state: EntityTableState,
+  entity: TableEntity,
+  organization: OrganizationRef,
+  ids: ReadonlyArray<string>,
+  since: number,
+  nowMs: number,
+): EntityTableState {
+  const asked = ids.filter((id) => !state.wanted.has(wantedKey(entity, id)));
+  if (asked.length === 0) return state;
   const wanted = new Map(state.wanted);
-  for (const id of missing)
+  for (const id of asked)
     wanted.set(wantedKey(entity, id), {
       entity,
       organization,
@@ -562,6 +600,20 @@ export function serviceVariableOf(
       answered(state, serviceVariablesDescriptor(organization)),
     content: variablesByService(state).get(serviceId)?.get(key)?.content ?? null,
   };
+}
+
+/**
+ * One of a service's variables as the table heard it: its row's id and the receipt it is as
+ * current as; `null` for a variable the table holds none of.
+ */
+export function serviceVariableHeard(
+  state: EntityTableState,
+  serviceId: string,
+  key: string,
+): { readonly id: string; readonly asOf: number } | null {
+  const row = variablesByService(state).get(serviceId)?.get(key);
+  const held = row === undefined ? undefined : state.rows["user-data"].get(row.id);
+  return row === undefined || held === undefined ? null : { id: row.id, asOf: held.asOf };
 }
 
 /**

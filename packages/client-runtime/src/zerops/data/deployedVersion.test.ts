@@ -5,6 +5,7 @@ import {
   selectMateFlag,
   selectSetupMarker,
   statedDeployKey,
+  wantStaleVariables,
 } from "./deployedVersion.ts";
 import {
   ABSENT_BACKOFF_MS,
@@ -12,7 +13,13 @@ import {
   SERVICE_VARIABLE_KEYS,
   tableRowsWanted,
 } from "./entityTable.ts";
-import { makeInitialZeropsDataState, wantActiveVersions, type ZeropsDataState } from "./state.ts";
+import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
+import {
+  makeInitialZeropsDataState,
+  reduceZeropsDataState,
+  wantActiveVersions,
+  type ZeropsDataState,
+} from "./state.ts";
 import type {
   DesiredInterestState,
   ServiceDeployInfo,
@@ -21,7 +28,9 @@ import type {
 } from "./types.ts";
 import { ReceiptOrdinal, serviceKeyOf } from "./types.ts";
 import {
+  desiredInterest,
   directTicket,
+  entityRegistration,
   identity,
   organization,
   scope,
@@ -100,6 +109,28 @@ const answered = (
       ticket: {
         ...directTicket({ kind: "query", descriptor }, identity(), 1, 1, 1),
         membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(1),
+      } as never,
+    },
+  }).state,
+});
+
+/** The organization's variables as its stream pushed them, at receipt `ordinal`. */
+const pushed = (
+  state: ZeropsDataState,
+  rows: ReadonlyArray<Record<string, unknown>>,
+  ordinal: number,
+): ZeropsDataState => ({
+  ...state,
+  table: reduceTableObservation(state.table, {
+    stamp: stamp(ordinal),
+    accessEvidence: null,
+    input: {
+      kind: "table-rows-observed",
+      entity: "user-data",
+      rows: rows as never,
+      source: "native-push",
+      registration: {
+        descriptor: { kind: "table-updates", entity: "user-data", organization },
       } as never,
     },
   }).state,
@@ -208,14 +239,23 @@ describe("what a service runs, as the account's store states it (A14)", () => {
     },
     {
       name: "names nothing while the deploy the service last started is not yet active (A11)",
+      state: pushed(
+        withService(answered(empty, variables, []), deploy({ source: "CLI" })),
+        [variable("appVersionId", "v-3"), variable("appVersionName", "def456 v1.2.0")],
+        5,
+      ),
+      expected: { state: "known", value: { activeId: "v-2", source: "CLI", name: null } },
+    },
+    {
+      name: "checks again variables heard before the service moved to the version it runs",
       state: withService(
         answered(empty, variables, [
-          variable("appVersionId", "v-3"),
-          variable("appVersionName", "def456 v1.2.0"),
+          variable("appVersionId", "v-1"),
+          variable("appVersionName", "abc123 v1.0.0"),
         ]),
         deploy({ source: "CLI" }),
       ),
-      expected: { state: "known", value: { activeId: "v-2", source: "CLI", name: null } },
+      expected: { state: "unread" },
     },
     {
       name: "keeps the name the push gave until the variables answer",
@@ -434,6 +474,161 @@ describe("a version a service runs that its organization's list lacks", () => {
     expect(tableRowsWanted(state.table)).toMatchObject([{ ids: ["v-2"] }]);
     state = wantActiveVersions(withService(state, null), 6, 12_000);
     expect(tableRowsWanted(state.table)).toEqual([]);
+  });
+});
+
+// F13, 2026-10-03: HQ deployed `main 6aeae99` to a stage while its page was open. The service's
+// push moved it to the new version; the variables the page loaded with still named the import's,
+// nothing read them again, and the stage read "none" until a reload.
+describe("a service's variables heard before it moved to another version", () => {
+  /** A read by id that began at `startedAtMs` (receipt `receipt - 1`) and answered `rows`. */
+  const readById = (
+    state: ZeropsDataState,
+    rows: ReadonlyArray<Record<string, unknown>>,
+    receipt: number,
+    startedAtMs: number,
+  ): ZeropsDataState => ({
+    ...state,
+    table: reduceTableObservation(state.table, {
+      stamp: { receiptOrdinal: ReceiptOrdinal.make(receipt), observedAtMs: startedAtMs + 500 },
+      accessEvidence: null,
+      input: {
+        kind: "table-rows-observed",
+        entity: "user-data",
+        rows: rows as never,
+        source: "direct-read",
+        coverage: {
+          kind: "exhausted-traversal",
+          traversedPages: 1,
+          observedTotal: rows.length,
+          guarantee: "non-atomic",
+        },
+        ticket: {
+          ...directTicket(
+            {
+              kind: "query",
+              descriptor: { ...variables, ids: rows.map((row) => row.id as string) } as never,
+            },
+            identity(),
+            receipt - 1,
+            receipt - 1,
+            receipt - 1,
+          ),
+          startedAtMs,
+        } as never,
+      },
+    }).state,
+  });
+  /** The variables as the page loaded them: the import's version, named nothing. */
+  const loaded = answered(makeInitialZeropsDataState(scope()), variables, [
+    variable("appVersionId", "v-import"),
+    variable("appVersionName", ""),
+  ]);
+  /** The service's push once HQ's deploy went live: the new version, its source known. */
+  const deployed = withService(loaded, deploy({ id: "v-2", source: "CLI" }));
+
+  it("are read again by id, and then name the version the service runs", () => {
+    // Checked, not nameless, while they are read again: "none" was the stage's word for it.
+    expect(selectDeployedVersion(deployed, ref)).toEqual({ state: "unread", waitingFor: null });
+    let state = wantStaleVariables(deployed, 4, 1_000);
+    expect(tableRowsWanted(state.table)).toMatchObject([
+      { entity: "user-data", ids: ["u-appVersionId", "u-appVersionName"] },
+    ]);
+    state = readById(
+      state,
+      [variable("appVersionId", "v-2"), variable("appVersionName", "main 6aeae99")],
+      6,
+      2_000,
+    );
+    expect(selectDeployedVersion(state, ref)).toMatchObject({
+      state: "known",
+      value: { activeId: "v-2", source: "CLI", name: "main 6aeae99" },
+    });
+    expect(tableRowsWanted(wantStaleVariables(state, 7, 3_000).table)).toEqual([]);
+  });
+
+  it("are asked for by the push that moves the service, without a reload", () => {
+    const id = identity();
+    const watched = reduceZeropsDataState(
+      makeInitialZeropsDataState(scope()),
+      { kind: "interest-upserted", interest: desiredInterest(id) },
+      DEFAULT_ZEROPS_DATA_POLICY,
+    ).state;
+    const before = answered(watched, variables, [
+      variable("appVersionId", "v-import"),
+      variable("appVersionName", ""),
+    ]);
+    const moved = reduceZeropsDataState(
+      before,
+      {
+        kind: "observation",
+        observation: {
+          stamp: stamp(4, 1_000),
+          accessEvidence: null,
+          input: {
+            kind: "service-deployment-observed",
+            ref,
+            observation: {
+              source: "native-push",
+              registration: entityRegistration("service", id),
+              fields: { activeDeploy: deploy({ id: "v-2", source: "CLI" }) },
+              metadata: {},
+            },
+          },
+        },
+      },
+      DEFAULT_ZEROPS_DATA_POLICY,
+    );
+    expect(moved.followUps).toContainEqual({
+      kind: "read-table-rows",
+      entity: "user-data",
+      organization,
+      ids: ["u-appVersionId", "u-appVersionName"],
+      dueAtMs: 1_000,
+    });
+    expect(selectDeployedVersion(moved.state, ref).state).toBe("unread");
+  });
+
+  it("are read again once per move, never in a loop, whatever the read answers", () => {
+    let state = wantStaleVariables(deployed, 4, 1_000);
+    state = readById(
+      state,
+      [variable("appVersionId", "v-import"), variable("appVersionName", "")],
+      6,
+      2_000,
+    );
+    expect(tableRowsWanted(wantStaleVariables(state, 7, 3_000).table)).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "a build started since: the variables name the newer version first (A11)",
+      state: pushed(
+        deployed,
+        [variable("appVersionId", "v-3"), variable("appVersionName", "main 7e2d4c1")],
+        5,
+      ),
+    },
+    {
+      name: "the variables already name the version it runs",
+      state: withService(
+        answered(makeInitialZeropsDataState(scope()), variables, [
+          variable("appVersionId", "v-2"),
+          variable("appVersionName", "main 6aeae99"),
+        ]),
+        deploy({ id: "v-2", source: "CLI" }),
+      ),
+    },
+    {
+      name: "the organization's variables have not answered yet",
+      state: withService(makeInitialZeropsDataState(scope()), deploy({ id: "v-2", source: "CLI" })),
+    },
+    {
+      name: "the service runs nothing",
+      state: withService(loaded, null),
+    },
+  ])("are not read again when $name", ({ state }) => {
+    expect(tableRowsWanted(wantStaleVariables(state, 9, 1_000).table)).toEqual([]);
   });
 });
 

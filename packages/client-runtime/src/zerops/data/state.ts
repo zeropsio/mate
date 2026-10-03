@@ -1,5 +1,6 @@
 import type { ZeropsDataPolicy } from "./policy.ts";
 import { commandTarget } from "./commands.ts";
+import { wantStaleVariables } from "./deployedVersion.ts";
 import {
   denyActivityScope,
   isTerminalProcess,
@@ -1601,8 +1602,10 @@ export function reduceZeropsDataState(
   state = { ...state, lastReceiptOrdinal: stamp.receiptOrdinal };
   state = trimDiagnostics(state, policy);
   state = scheduleRetention(state, policy);
-  if (input.kind === "observation")
+  if (input.kind === "observation") {
     state = wantActiveVersions(state, stamp.receiptOrdinal, stamp.observedAtMs);
+    state = wantStaleVariables(state, stamp.receiptOrdinal, stamp.observedAtMs);
+  }
   const followUps: ZeropsDataFollowUp[] = [];
   for (const query of [...state.inventory.queries.values(), ...state.activity.queries.values()]) {
     if (query.unresolvedMemberKeys.length > 0) {
