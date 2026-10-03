@@ -18,9 +18,11 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { KNOWN_AGENT_IDS } from "./ZeropsAgentAuth.ts";
+import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import { type ProjectSigners, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import { type SignOutTarget, ZeropsSignOut } from "./ZeropsSignOut.ts";
 
@@ -70,7 +72,10 @@ export const make = (options: {
     }),
   );
 
-/** One pass every role recheck, while this is a Zerops project. */
+/**
+ * One pass every role recheck, while this is a Zerops project, and one at once whenever HQ relays
+ * a different answer (`ZeropsProjectAccess`, R6).
+ */
 export const layer = Layer.effect(
   ZeropsOffboarding,
   Effect.gen(function* () {
@@ -84,6 +89,9 @@ export const layer = Layer.effect(
     if (config.zerops !== undefined) {
       yield* Effect.forkScoped(
         service.checkNow.pipe(Effect.repeat(Schedule.spaced(config.zerops.roleRecheckInterval))),
+      );
+      yield* Effect.forkScoped(
+        Stream.runForEach((yield* ZeropsProjectAccess).changes, () => service.checkNow),
       );
     }
     return service;

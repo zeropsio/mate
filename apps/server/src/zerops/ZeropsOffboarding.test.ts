@@ -1,11 +1,29 @@
 import { assert, describe, it } from "@effect/vitest";
 import { type OrchestrationThreadShell, ThreadId } from "@t3tools/contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
+import * as ServerConfig from "../config.ts";
+import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import type { MateLogin } from "./ZeropsLogins.ts";
-import { make as makeOffboarding } from "./ZeropsOffboarding.ts";
-import { make as makeSignOut, stopSessionsVia } from "./ZeropsSignOut.ts";
+import {
+  layer as offboardingLayer,
+  make as makeOffboarding,
+  ZeropsOffboarding,
+} from "./ZeropsOffboarding.ts";
+import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
+import {
+  make as makeSignOut,
+  type SignOutTarget,
+  stopSessionsVia,
+  ZeropsSignOut,
+} from "./ZeropsSignOut.ts";
 
 const EVA = "eva-user-id";
 const JAN = "jan-user-id";
@@ -109,4 +127,61 @@ describe("ZeropsOffboarding", () => {
       }),
     );
   }
+});
+
+// R6: HQ relaying a different answer signs a person who lost access out now, not at the next
+// role recheck.
+describe("ZeropsOffboarding's loop", () => {
+  it.effect("runs a pass at once when HQ relays a different answer", () =>
+    Effect.gen(function* () {
+      const access = yield* Ref.make(true);
+      const signedOut = yield* Ref.make<ReadonlyArray<unknown>>([]);
+      const relays = yield* PubSub.unbounded<void>();
+      const environment = resolveZeropsEnvironment({
+        projectId: "P",
+        apiHost: undefined,
+        allowedOrigins: [],
+        apiToken: "key",
+      })!;
+      yield* Effect.gen(function* () {
+        yield* ZeropsOffboarding;
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(yield* Ref.get(signedOut), []);
+        yield* Ref.set(access, false);
+        yield* PubSub.publish(relays, undefined);
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(yield* Ref.get(signedOut), [{ agentId: "claude-code" }]);
+      }).pipe(
+        Effect.provide(
+          offboardingLayer.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+                Layer.succeed(
+                  ZeropsProjectSigners,
+                  ZeropsProjectSigners.of({
+                    signers: Effect.succeed({ "claude-code": EVA }),
+                    hasProjectAccess: () => Ref.get(access),
+                  } as unknown as ZeropsProjectSigners["Service"]),
+                ),
+                Layer.succeed(
+                  ZeropsSignOut,
+                  ZeropsSignOut.of({
+                    signOut: (target: SignOutTarget) =>
+                      Ref.update(signedOut, (all) => [...all, target]),
+                  } as unknown as ZeropsSignOut["Service"]),
+                ),
+                Layer.succeed(
+                  ZeropsProjectAccess,
+                  ZeropsProjectAccess.of({
+                    changes: Stream.fromPubSub(relays),
+                  } as unknown as ZeropsProjectAccess["Service"]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }).pipe(Effect.scoped),
+  );
 });

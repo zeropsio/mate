@@ -38,7 +38,6 @@ import type {
   ZeropsAgentLoginState,
   ZeropsLoginState,
 } from "@t3tools/contracts";
-import { opensForOf, readProjectRoles } from "@t3tools/shared/mateAccess";
 import {
   classifyZeropsAgentAuth,
   type ZeropsAgentAuthFields,
@@ -52,8 +51,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
 import * as ServerConfig from "../config.ts";
-import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
+import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
 /**
@@ -200,63 +198,25 @@ export class ZeropsProjectSigners extends Context.Service<
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * Whether this project opens for `userId` — the door's own rule, over the project's roles and
-     * the org's member list, the answer that keeps a session open (`ZeropsMembershipWatch`) — from
-     * a read no older than `ORG_READ_MAX_AGE` (`ZeropsOrgRead`). What admits a turn no session
-     * stands behind: the crew's, the stand-up's (X3). While reads fail, the last answer holds
-     * {@link ACCESS_HOLDS} from its read; past that, or with none, `undefined`.
+     * the org's member list, the answer that keeps a session open (`ZeropsMembershipWatch`) — as
+     * `ZeropsProjectAccess` answers it: HQ's relay while it holds, else this Mate's own read. What
+     * admits a turn no session stands behind: the crew's, the stand-up's (X3). While nothing
+     * answers, the last answer holds {@link ACCESS_HOLDS} from when Zerops answered it; past that,
+     * or with none, `undefined`.
      */
     readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
   }
 >()("t3/zerops/ZeropsProjectSigners") {}
 
-/**
- * Whether `body` claims the member list it carried is the whole thing.
- *
- * No paging field on `GET /client/{id}/user/list` has ever been measured
- * (`docs/internals/zerops/verified.md` — 21 members read back in one
- * unpaged `clientUserList`, no `nextCursor`, no `totalCount` seen on this
- * endpoint specifically). So a `totalCount` this build has never observed is
- * read defensively rather than ignored: present and it must match the row
- * count read, or the list is partial; absent, the whole array is the whole
- * list, matching every read measured so far.
- */
-export function isMemberListComplete(body: unknown, entriesLength: number): boolean {
-  if (typeof body !== "object" || body === null) return true;
-  const totalCount = (body as Record<string, unknown>)["totalCount"];
-  if (typeof totalCount !== "number" || !Number.isFinite(totalCount)) return true;
-  return entriesLength >= totalCount;
-}
-
-/**
- * Every Zerops user this project opens for (`opensForOf`), or `undefined` when the project or
- * the member list is no usable answer — unreadable, empty, or a partial page (S6).
- */
-const readProjectAccess = Effect.fn("ZeropsProjectSigners.readAccess")(function* (input: {
-  readonly environment: ZeropsEnvironment;
-}) {
-  const { apiBaseUrl, projectId } = input.environment;
-  const orgRead = yield* ZeropsOrgRead;
-  const own = yield* orgRead.project({ apiBaseUrl, projectId });
-  if (own.kind !== "answered" || own.status !== 200) return undefined;
-  const project = readProjectRoles(own.body);
-  if (project === null) return undefined;
-  const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
-  if (members.kind !== "answered" || members.status !== 200) return undefined;
-  const entries = readMemberEntries(members.body);
-  if (entries === null || entries.length === 0) return undefined;
-  if (!isMemberListComplete(members.body, entries.length)) return undefined;
-  return opensForOf(projectId, project, entries);
-});
-
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const environment = config.zerops;
   const signIns = yield* ZeropsSignIns;
-  // The project and the member list read once for all, shared with the door
-  // and the watch — provided by the layer this service's own layer composes
-  // above (`zeropsFeedsLayer.ts`).
-  const orgRead = yield* ZeropsOrgRead;
-  /** Whom this project opened for at the last read that answered, and when that was. */
+  // Who the project lets in, one answer for the door, the watch and this —
+  // provided by the layer this service's own layer composes above
+  // (`zeropsFeedsLayer.ts`).
+  const projectAccess = yield* ZeropsProjectAccess;
+  /** Whom this project opened for at the last answer, and when Zerops answered it. */
   const lastAccess = yield* Ref.make<
     { readonly opensFor: ReadonlySet<string>; readonly atMs: number } | undefined
   >(undefined);
@@ -265,13 +225,16 @@ export const make = Effect.gen(function* () {
     environment === undefined
       ? Effect.succeed(undefined)
       : Effect.gen(function* () {
-          const read = yield* readProjectAccess({ environment }).pipe(
-            Effect.provideService(ZeropsOrgRead, orgRead),
-          );
+          const read = yield* projectAccess.read;
           const now = yield* Clock.currentTimeMillis;
-          if (read !== undefined) {
-            yield* Ref.set(lastAccess, { opensFor: read, atMs: now });
-            return read.has(userId);
+          if (read.ok) {
+            const opensFor = new Set(
+              read.members
+                .filter((member) => member.visibility === "open")
+                .map((member) => member.userId),
+            );
+            yield* Ref.set(lastAccess, { opensFor, atMs: read.readAtMs });
+            return opensFor.has(userId);
           }
           const last = yield* Ref.get(lastAccess);
           return last !== undefined && now - last.atMs <= Duration.toMillis(ACCESS_HOLDS)
