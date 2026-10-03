@@ -18,6 +18,7 @@ import {
   type LocationsCellRequest,
   type AgentsCellRequest,
   type ZeropsCellAdapter,
+  type ZeropsCellReadContext,
   type ZeropsCellSourceError,
   type ZeropsCellRequest,
   type ZeropsCells,
@@ -256,6 +257,51 @@ describe("makeZeropsCells", () => {
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  // The token and member lists are each one heavy answer the platform may sit on: a read with no
+  // deadline held its cell reading for as long as the platform did, with nothing retried.
+  it.effect.each([["tokens", tokenGrantsRequest] as const, ["members", membersRequest] as const])(
+    "a %s read the platform sits on fails at 30 s, aborted, and climbs the retry ladder",
+    ([kind, request]) =>
+      Effect.gen(function* () {
+        const scope = accountScope();
+        const signals: AbortSignal[] = [];
+        const never = (_input: unknown, context: ZeropsCellReadContext) =>
+          Effect.suspend(() => {
+            signals.push(context.abortSignal);
+            return Effect.never;
+          });
+        const broker = yield* makeZeropsCells({
+          scope,
+          access: () => verifiedAccess(scope),
+          random: () => 0.5,
+          adapter: unusedAdapter(
+            kind === "tokens"
+              ? { readOrganizationIntegrationTokenGrants: never }
+              : { readOrganizationMembers: never },
+          ),
+        });
+        const leaseScope = yield* Scope.make();
+        const lease = yield* broker.acquire(request(scope)).pipe(Scope.provide(leaseScope));
+        yield* Effect.yieldNow;
+        expect(yield* lease.snapshot).toMatchObject({ state: "reading" });
+
+        yield* TestClock.adjust("30 seconds");
+        yield* Effect.yieldNow;
+        expect(yield* lease.snapshot).toMatchObject({
+          state: "failed",
+          failure: { kind: "transport" },
+          attempt: 1,
+          retryAtMs: 32_000,
+        });
+        expect(signals[0]?.aborted).toBe(true);
+        yield* TestClock.adjust("2 seconds");
+        yield* Effect.yieldNow;
+        expect(signals).toHaveLength(2);
+        yield* Scope.close(leaseScope, Exit.void);
+        yield* broker.shutdown;
+      }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("an idle lease retains its value for the retention window", () =>
