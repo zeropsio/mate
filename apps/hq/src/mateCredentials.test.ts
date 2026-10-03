@@ -604,6 +604,30 @@ describe("mate credentials", () => {
       );
     });
 
+    // Deleting a service reads its record DELETING before Zerops answers it not found (400
+    // serviceStackNotFound): either way it is no Mate any more.
+    it.effect.each(["DELETING", "DELETED"])(
+      "the zcp service a Mate's record names, %s, gives its place",
+      (status) =>
+        withMates((fake) =>
+          Effect.gen(function* () {
+            zcpIn(fake, "S1", "P_MATE");
+            zcpIn(fake, "S2", "P_MATE");
+            const mates = yield* MateCredentials;
+            const enroll = (serviceId: string) =>
+              Effect.gen(function* () {
+                const { nonce } = yield* mates.challenge("P_MATE");
+                writeChallenge(fake, "P_MATE", nonce);
+                return (yield* mates.issue("P_MATE", nonce, { serviceId })).credential;
+              });
+            yield* enroll("S1");
+            fake.services.find((service) => service.id === "S1")!.status = status;
+            const next = yield* enroll("S2");
+            assert.deepStrictEqual(yield* mates.whoami(next), Option.some({ projectId: "P_MATE" }));
+          }),
+        ),
+    );
+
     it.effect("of two zcp services enrolling a Mate its record names none of, one is its", () => {
       // Each presents its own nonce, and every key read waits for both: both have found the record
       // naming no service before either issues.

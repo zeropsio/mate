@@ -134,6 +134,9 @@ export function enrollmentVerdict(input: {
 
 const CHALLENGE_TTL = Duration.minutes(2);
 
+/** A service's statuses on its way out: its delete under way, or done. */
+const GONE_SERVICE_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
+
 const hashOf = (secret: string) => NodeCrypto.createHash("sha256").update(secret).digest("hex");
 
 const secret = () => NodeCrypto.randomBytes(32).toString("base64url");
@@ -228,12 +231,13 @@ export const mateCredentialsLayer = (options: {
           }),
         );
       /**
-       * Whether Zerops no longer has the service, read by its id with HQ's own credential: only
-       * its "not found" says so, and Zerops not answering is HQ's to try again.
+       * Whether Zerops no longer has the service, read by its id with HQ's own credential: its
+       * record being deleted, or its "not found" once it is; Zerops not answering is HQ's to try
+       * again.
        */
       const serviceGone = (serviceId: string) =>
         Effect.flatMap(own, (credential) => api.service(serviceId)(credential)).pipe(
-          Effect.as(false),
+          Effect.map((service) => GONE_SERVICE_STATUSES.has(service.status)),
           Effect.catchTag("ZeropsRefused", (error) => Effect.succeed(error.reason === "not_found")),
         );
       const keyOf = (projectId: string) =>
