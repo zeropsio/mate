@@ -32,6 +32,7 @@ import {
 } from "../state/zerops";
 import { bindAccountFlow } from "./accountForge";
 import { HeldInventoryContext } from "./inventoryContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
   HELD_VERB_MS,
@@ -66,8 +67,8 @@ vi.mock("./ZeropsSessionProvider", () => ({
   }),
 }));
 /**
- * The account's projects the inventory holds, by id — none of them need be in a group — the ones
- * whose content it shows, and each one's authority by project key.
+ * The account's projects the inventory holds, by project key as it keys them — none of them need be
+ * in a group — the ones whose content it shows, and each one's authority by project key.
  */
 const inventoryRefs = vi.hoisted(() => ({
   refs: new Map<string, ProjectRef>(),
@@ -151,11 +152,24 @@ const permission = vi.hoisted(() => ({
 vi.mock("./useChangeOffers", () => ({
   useReleasePermission: () => () => permission.gate,
 }));
-/** What the account's store states each service runs, by service id, as the provider selects it. */
-const versions = vi.hoisted(() => ({ stated: new Map<string, unknown>() }));
+/**
+ * What the account's store states each service runs, by service id — answered only for a service the
+ * provider asked the store about — and what it asked, as the read it selected.
+ */
+const versions = vi.hoisted(() => ({
+  stated: new Map<string, unknown>(),
+  asked: [] as ReadonlyArray<readonly [string, unknown]>,
+}));
 vi.mock("./zeropsDataContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./zeropsDataContext")>()),
-  useZeropsAtomSelections: () => versions.stated,
+  useZeropsAtomSelections: (entries: ReadonlyArray<readonly [string, unknown]>) => {
+    versions.asked = entries;
+    return new Map(
+      entries.flatMap(([serviceId]) =>
+        versions.stated.has(serviceId) ? [[serviceId, versions.stated.get(serviceId)]] : [],
+      ),
+    );
+  },
 }));
 
 /** What HQ compares for each read a release asks: the commits listed here, every time. */
@@ -328,6 +342,7 @@ describe("ZeropsProjectFlowProvider", () => {
     compares.commits = [];
     compares.asked.clear();
     versions.stated = new Map();
+    versions.asked = [];
     hq.asked = [];
     hq.answer = () => Promise.resolve({});
     vi.unstubAllGlobals();
@@ -351,7 +366,7 @@ describe("ZeropsProjectFlowProvider", () => {
       },
       projectId: ZeropsProjectId.make("loose-1"),
     };
-    inventoryRefs.refs = new Map([["loose-1", loose]]);
+    inventoryRefs.refs = new Map([[projectKeyOf(loose), loose]]);
     const running: Shown<ReadonlyArray<StopService>> = {
       state: "known",
       value: [
@@ -452,7 +467,10 @@ describe("ZeropsProjectFlowProvider", () => {
       projectId: ZeropsProjectId.make(projectId),
     });
     inventoryRefs.refs = new Map(
-      ["open-1", "denied-1", "stopped-1"].map((projectId) => [projectId, ref(projectId)]),
+      ["open-1", "denied-1", "stopped-1"].map((projectId) => [
+        projectKeyOf(ref(projectId)),
+        ref(projectId),
+      ]),
     );
     inventoryRefs.projects = [
       { id: "open-1", status: "ACTIVE" },
@@ -648,7 +666,8 @@ describe("ZeropsProjectFlowProvider", () => {
   });
 
   describe("release", () => {
-    const MERGED = "2".repeat(40);
+    /** appdev's `main` as HQ listed it for B (t10, 2026-10-03). */
+    const MERGED = "30f75f9839a1cd6bb87722284127d3de6672e441";
     const GROUP_MAIN = "b".repeat(40);
     const RELEASE = flowVerbKey({ kind: "release", groupId: "g1" });
     /** What HQ makes of the offer: the release it was named. */
@@ -669,6 +688,23 @@ describe("ZeropsProjectFlowProvider", () => {
      */
     /** Production's one runtime, `app`, as the platform lists it. */
     const APP = { id: "s-app", name: "app", status: "ACTIVE", isSystem: false };
+    /** The Zerops project production is. */
+    const PRODUCTION: ProjectRef = {
+      kind: "project",
+      organization: {
+        kind: "organization",
+        account: {
+          apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+          accountId: ZeropsAccountId.make("account"),
+        },
+        organizationId: ZeropsOrganizationId.make("org-1"),
+      },
+      projectId: ZeropsProjectId.make("prod-1"),
+    };
+    /** The account's store, whose read of what a service runs is the service it reads. */
+    const STORE = {
+      runtime: { reads: { deployedVersion: (service: unknown) => service } },
+    } as unknown as ZeropsDataContextValue;
     /** What the store states `app` runs: no version at all. */
     const RUNS_NOTHING = {
       state: "known",
@@ -706,7 +742,9 @@ describe("ZeropsProjectFlowProvider", () => {
         seen.push(useZeropsProjectFlow());
         return null;
       }
-      // Its production is the Zerops project prod-1, whose services are listed.
+      // Its production is the Zerops project prod-1, whose services are listed, and whose ref the
+      // inventory holds under its project key, as it holds every ref.
+      inventoryRefs.refs = new Map([[projectKeyOf(PRODUCTION), PRODUCTION]]);
       const held = {
         projects: [
           {
@@ -729,9 +767,13 @@ describe("ZeropsProjectFlowProvider", () => {
               RegistryContext.Provider,
               { value: atoms },
               createElement(
-                HeldInventoryContext,
-                { value: held as never },
-                createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+                ZeropsDataContext,
+                { value: STORE },
+                createElement(
+                  HeldInventoryContext,
+                  { value: held as never },
+                  createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+                ),
               ),
             ),
           );
@@ -742,13 +784,22 @@ describe("ZeropsProjectFlowProvider", () => {
 
     // F10 (e2e, 2026-10-03): Bea's production, made by the import, runs its no-code version and HQ
     // recorded no deploy; main holds two changes. The release door never showed, and the client
-    // never asked HQ to compare.
-    it("offers a first release over the import's no-code version: the whole of main, compared", async () => {
-      const importVersion = {
-        ...RUNS_NOTHING,
-        value: { activeId: "v-import", source: "NONE", name: null },
-      };
-      const { seen, root } = await mountRelease([APP], new Map([["s-app", importVersion]]));
+    // never asked HQ to compare: the provider looked production's ref up by its bare id, where the
+    // inventory keys every ref by its project key, so it asked the store about no service at all.
+    it.each([
+      {
+        name: "the import's no-code version",
+        runs: { activeId: "fJCalELVSOuR53ZwvjA1GA", source: "NONE", name: null },
+      },
+      { name: "nothing deployed at all", runs: { activeId: null, source: null, name: null } },
+    ])("offers a first release over $name: the whole of main, compared", async ({ runs }) => {
+      const { seen, root } = await mountRelease(
+        [APP],
+        new Map([["s-app", { ...RUNS_NOTHING, value: runs }]]),
+      );
+      expect(versions.asked).toEqual([
+        ["s-app", { kind: "service", project: PRODUCTION, serviceId: "s-app" }],
+      ]);
       expect(compares.asked.get("g1")).toEqual([
         { repository: "appdev", query: { head: MERGED }, services: ["app"] },
       ]);
