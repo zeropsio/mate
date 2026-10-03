@@ -626,6 +626,7 @@ describe("structure", () => {
                   environmentRow("P_PROD", "production", "name-of-p-prod", 1),
                   environmentRow("P_STAGE", "stage", "name-of-p-stage", 2),
                 ],
+                births: [],
               },
               {
                 id: team.id,
@@ -640,6 +641,7 @@ describe("structure", () => {
                   },
                 ],
                 environments: [environmentRow("P_TEAM", "stage", "name-of-p-team", 1)],
+                births: [],
               },
             ]);
           }),
@@ -919,6 +921,49 @@ describe("structure", () => {
           assert.strictEqual(yield* madeByOf("P_MATE"), "owner");
         }),
       ),
+    );
+
+    it.effect(
+      "records a Mate's birth intent in its application before its project, and its attach closes it",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const team = yield* structure.createApp("owner", "Team");
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_TEAM",
+              kind: "stage",
+            });
+            const birthsOf = Effect.map(
+              structure.read("owner"),
+              (read) => read.apps.find((app) => app.id === team.id)?.births,
+            );
+            // maker sees Team through its stage, and records their new Mate before its project.
+            const intent = yield* structure.recordBirth("maker", {
+              appId: team.id,
+              name: "Gus",
+              face: "rose:seal",
+            });
+            assert.deepStrictEqual(yield* birthsOf, [
+              { id: intent.id, name: "Gus", face: "rose:seal" },
+            ]);
+            // Nobody who does not see the application records one in it.
+            assert.strictEqual(
+              yield* reasonOf(
+                structure.recordBirth("nobody", { appId: team.id, name: "Ida", face: "" }),
+              ),
+              "app_not_seen",
+            );
+            // Its attach, by whoever finishes it, closes it.
+            yield* structure.attachProject("owner", team.id, {
+              projectId: "P_OWN",
+              kind: "mate",
+              mate: { name: "Gus", face: "rose:seal" },
+              birth: intent.id,
+            });
+            assert.deepStrictEqual(yield* birthsOf, []);
+          }),
+        ),
     );
 
     it.effect("renames a Mate and changes its face: whoever is owner or admin on its project", () =>

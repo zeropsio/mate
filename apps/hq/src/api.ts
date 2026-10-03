@@ -152,7 +152,9 @@ const AttachBody = Schema.Struct({
   kind: Schema.Literals(["mate", "devstage", "stage", "production"]),
   mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
+  birth: Schema.optionalKey(Schema.String),
 });
+const BirthBody = Schema.Struct({ appId: Schema.String, name: Schema.String, face: Schema.String });
 /**
  * A Zerops token as the platform spells one, at most 512 characters: one HQ sends on as a bearer
  * header, so a character no header may carry is refused here, never by the HTTP client later.
@@ -1051,6 +1053,21 @@ const routes = (
               const { userId } = yield* principal;
               const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
               return json(yield* (yield* Structure).moveProject(userId, projectId, target), 200);
+            }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/births",
+      handle(
+        Effect.gen(function* () {
+          const birth = yield* jsonBody(BirthBody, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              return json(yield* (yield* Structure).recordBirth(userId, birth), 201);
             }),
           );
         }),

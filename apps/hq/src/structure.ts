@@ -86,6 +86,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "environment_not_found",
     "deploy_token_refused",
     "deploy_token_scope",
+    "birth_with_kind",
   ]),
 }) {}
 
@@ -95,6 +96,19 @@ export interface AttachInput {
   readonly mate?: { readonly name: string; readonly face: string };
   /** A stage's or a production's environment, named as given; else named from its project. */
   readonly environment?: { readonly name: string };
+  /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
+  readonly birth?: string;
+}
+
+/**
+ * A Mate's birth intent, recorded before its Zerops project exists: where it goes and as whom. Its
+ * project is created tagged with its id, so whoever finishes the Mate attaches it so.
+ */
+export interface BirthIntent {
+  readonly id: string;
+  readonly name: string;
+  /** Its face as its attach records it: empty where it wears its name's tint. */
+  readonly face: string;
 }
 
 /** A deploy of a service of an environment, as its record holds it (`deploys.ts`). */
@@ -186,6 +200,8 @@ export interface StructureRead {
      * whoever read its repositories; none to one who only sees the application.
      */
     readonly environments: ReadonlyArray<EnvironmentView>;
+    /** The Mates on their way into it whose attach has not landed yet, oldest first. */
+    readonly births: ReadonlyArray<BirthIntent>;
   }>;
 }
 
@@ -231,6 +247,14 @@ export class Structure extends Context.Service<
       },
       WriteError
     >;
+    /**
+     * Records a Mate's birth intent, before its project exists: its application, name and face,
+     * by whoever sees the application. Its attach (`birth`) closes it.
+     */
+    readonly recordBirth: (
+      userId: string,
+      birth: { readonly appId: string; readonly name: string; readonly face: string },
+    ) => Effect.Effect<BirthIntent, WriteError>;
     /** Sets a Mate up: its record, in no application until it is moved into one. */
     readonly createMate: (
       userId: string,
@@ -649,6 +673,9 @@ export const structureLayer = (options: {
             if (isMateKind(input.kind) !== (input.mate !== undefined)) {
               return yield* refuse("invalid", "mate_record_with_kind");
             }
+            if (input.birth !== undefined && !isMateKind(input.kind)) {
+              return yield* refuse("invalid", "birth_with_kind");
+            }
             if (input.mate !== undefined && !fitsName(input.mate.name)) {
               return yield* refuse("invalid", "name_length");
             }
@@ -740,6 +767,12 @@ export const structureLayer = (options: {
                       INSERT INTO hq_mate (project_id, name, face, made_by)
                       VALUES (${input.projectId}, ${input.mate.name}, ${input.mate.face}, ${userId})
                       ON CONFLICT (project_id) DO NOTHING`;
+                  }
+                  // The intent it was born under is done with, as its application's.
+                  if (input.birth !== undefined) {
+                    yield* sql`
+                      DELETE FROM hq_birth_intent
+                      WHERE id::text = ${input.birth} AND app_id::text = ${appId}`;
                   }
                 }),
               ),
@@ -851,6 +884,38 @@ export const structureLayer = (options: {
           }),
         ),
 
+        recordBirth: confirmed((userId, birth) =>
+          Effect.gen(function* () {
+            const name = birth.name.trim();
+            if (!fitsName(name) || birth.face.length > 64) {
+              return yield* refuse("invalid", "name_length");
+            }
+            const view = yield* roles.forWrite;
+            const rows = yield* leader.write(
+              Effect.gen(function* () {
+                // Locked as an attach locks it: a delete of the application waits, or went first.
+                const apps = yield* sql`
+                  SELECT 1 FROM hq_app WHERE id::text = ${birth.appId} FOR NO KEY UPDATE`;
+                if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                const appProjects = yield* sql<{ readonly project_id: string }>`
+                  SELECT project_id FROM hq_app_project WHERE app_id::text = ${birth.appId}`;
+                yield* allowed(
+                  userId,
+                  "read_app",
+                  { projectIds: appProjects.map((row) => row.project_id) },
+                  view,
+                );
+                return yield* sql<{ readonly id: string }>`
+                  INSERT INTO hq_birth_intent (app_id, name, face, made_by)
+                  VALUES (${birth.appId}::uuid, ${name}, ${birth.face}, ${userId})
+                  RETURNING id::text AS id`;
+              }),
+            );
+            yield* changed;
+            return { id: rows[0]!.id, name, face: birth.face };
+          }),
+        ),
+
         createMate: confirmed((userId, mate) =>
           Effect.gen(function* () {
             const name = mate.name.trim();
@@ -919,6 +984,9 @@ export const structureLayer = (options: {
             const view = yield* roles.view;
             const apps = yield* sql<{ readonly id: string; readonly name: string }>`
               SELECT id::text AS id, name FROM hq_app ORDER BY seq`;
+            const births = yield* sql<BirthIntent & { readonly app_id: string }>`
+              SELECT id::text AS id, app_id::text AS app_id, name, face
+              FROM hq_birth_intent ORDER BY seq`;
             const rows = yield* sql<{
               readonly project_id: string;
               readonly app_id: string;
@@ -1055,6 +1123,9 @@ export const structureLayer = (options: {
                   ).allow
                     ? environments.filter((row) => row.app_id === app.id).map(environmentView)
                     : [],
+                  births: births
+                    .filter((row) => row.app_id === app.id)
+                    .map(({ id, name, face }) => ({ id, name, face })),
                 }))
                 .filter(
                   (app) =>
