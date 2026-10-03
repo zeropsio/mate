@@ -255,7 +255,9 @@ here (the owner decides only what the orchestrator brief §6 lists).
   `reduceZeropsOperations` (R5-R9, one `phaseFor`), `composeSession` — strip, map and every card
   read its single `ZeropsThreadModel`, never their own derivation. Concept:
   `../../../../zcp/plans/mate-session-model-2026-09-05.md`.
-- **2026-09-05** — In the group model (spec §10) a Zerops project is an **environment** and the tag
+- **2026-09-05** — **Superseded 2026-10-03 in part by "In UI copy an HQ application is a project"
+  below: the layer above is a "project", never a "group".**
+  In the group model (spec §10) a Zerops project is an **environment** and the tag
   layer above it is a **group**; user-facing copy says "environment" for the former (menu rows,
   "Creating the environment", "No environment has Mate yet") and "group" for the latter. The
   glossary's `environment → project` row is about T3's connected-server sense and does not apply to
@@ -3490,3 +3492,11 @@ no-cache`.
   auto-connect ceiling in the 2026-10-01 _A coming-up Mate hands over the moment it answers_ row.
   - _Why:_ a load of the 20-odd-Mate account opened a socket per Mate in every tab, each through a
     door, for surfaces HQ's overview now feeds
+- **2026-10-03** — **In UI copy an HQ application is a project** (F29). The layer above Zerops
+  projects — HQ's application, the code's _group_ or _app_ — is a "project" wherever the person
+  reads it: "Move to project…", "New project", "No project", "Leave the project"; never _group_ or
+  _application_. A Zerops project shown beside one, a Mate's or a stage's, is called by its name, as
+  its row in the left menu draws it, and never "project" in the same dialog (glossary,
+  `design-system.md` §2). **Supersedes:** the word "group" in the 2026-09-05 group-model row.
+  - _Why:_ the menus that open the Move dialog already said "project", and the dialog spoke of
+    groups and explained that a group is what you call the application
