@@ -136,6 +136,9 @@ export const CREW_THREAD_REFUSALS = {
   retired:
     "This crewmate conversation is retired; message the crewmate in its current conversation.",
   notRunning: "Crew mode is not running this crewmate's conversation, so it cannot take a turn.",
+  /** The thread's agent never reads a thread's profile, so the turn would run ungated. */
+  ungated: (agent: string) =>
+    `${agent} can't run a crewmate: it would work without the crew's rules. Give this crewmate another login.`,
 } as const;
 
 const CREW_KEPT_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
@@ -335,6 +338,12 @@ export const make = Effect.gen(function* () {
         instanceId: crewThread.modelSelection.instanceId,
       });
       if (profile === undefined) return yield* refuse(CREW_THREAD_REFUSALS.notRunning);
+      const agent = yield* providerInstances.agentOf(crewThread.modelSelection.instanceId);
+      if (agent?.threadProfile === undefined) {
+        return yield* refuse(
+          CREW_THREAD_REFUSALS.ungated(agent?.displayName ?? crewThread.modelSelection.instanceId),
+        );
+      }
     }
     if (principal.kind === "crew") yield* refuseDepartedStarter(principal.startedBy);
     yield* refuseSomeoneElsesAgent(command, thread, principal);
