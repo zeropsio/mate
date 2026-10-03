@@ -70,7 +70,7 @@ describe("splitCommandLine — a command line, split the way a shell would", () 
 describe("parseEnvLines — a command's environment, one KEY=value a line", () => {
   it.each<{ text: string; value: Record<string, string> }>([
     { text: "", value: {} },
-    { text: "GITHUB_TOKEN=ghp_x", value: { GITHUB_TOKEN: "ghp_x" } },
+    { text: "GITHUB_TOKEN=token-x", value: { GITHUB_TOKEN: "token-x" } },
     { text: "A=1\n\n  B = two words \n", value: { A: "1", B: "two words" } },
     { text: "URL=postgres://u:p@db/x?a=b", value: { URL: "postgres://u:p@db/x?a=b" } },
     { text: "# a note\nA=", value: { A: "" } },
