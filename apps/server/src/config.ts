@@ -41,6 +41,8 @@ export interface ServerDerivedPaths {
   readonly attachmentsDir: string;
   /** Where every file a person sends is kept under its own name, for them and the agent. */
   readonly uploadsDir: string;
+  /** Which stored attachment was kept under which name in the uploads folder. */
+  readonly uploadsIndexDir: string;
   readonly logsDir: string;
   readonly serverLogPath: string;
   readonly serverTracePath: string;
@@ -169,6 +171,7 @@ export const deriveServerPaths = Effect.fn(function* (
     worktreesDir: join(baseDir, "worktrees"),
     attachmentsDir,
     uploadsDir: join(baseDir, "uploads"),
+    uploadsIndexDir: join(baseDir, "uploads-index"),
     logsDir,
     serverLogPath: join(logsDir, "server.log"),
     serverTracePath: join(logsDir, "server.trace.ndjson"),
