@@ -2,7 +2,9 @@
  * The organization's structure, live from its HQ (ADR 0002, SPEC §3.5): one stream per
  * organization (`/api/structure/ws`) — the whole structure, then its changes — published
  * to `hqStructureAtom`, from which every surface places its projects (`hqPlacementsAtom`). The
- * same stream carries each application's Mates' changes (SPEC §3.2a, `hqChangesAtom`).
+ * same stream carries each application's Mates' changes (SPEC §3.2a, `hqChangesAtom`), and the
+ * Mates the reader may observe with the people its view names (`hqMatesAtom`, `hqPeopleAtom`) —
+ * in atoms of their own, since a Mate at work moves them twice a second and the structure never.
  *
  * - **First paint:** the structure this browser last read (`menuMemory`), with when, until HQ
  *   answers.
@@ -14,15 +16,26 @@
 import { RegistryContext } from "@effect/atom-react";
 import {
   applyChangesEvent,
+  applyMatesEvent,
+  applyPeopleEvent,
   applyStructureEvent,
   type HqApi,
   type HqChanges,
+  type HqMates,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
+import type { HqPeople } from "@t3tools/shared/hqMates";
 import { useContext, useEffect } from "react";
 
-import { hqStructureAtom, type HqStructureView } from "../state/zerops";
+import {
+  hqMatesViewAtom,
+  hqPeopleViewAtom,
+  hqStructureAtom,
+  type HqMatesView,
+  type HqPeopleView,
+  type HqStructureView,
+} from "../state/zerops";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import { accountHqApi, useAccountHq } from "./accountHq";
 import { menuMemory, rememberMenu, withStructure } from "./menuMemory";
@@ -42,6 +55,9 @@ export async function driveHqStructure(input: {
   readonly organizationId: string;
   readonly remembered: { readonly structure: HqStructure; readonly readAt: number } | undefined;
   readonly publish: (view: HqStructureView) => void;
+  /** Told of the Mates and of the people apart from the structure: theirs change far more often. */
+  readonly publishMates: (view: HqMatesView) => void;
+  readonly publishPeople: (view: HqPeopleView) => void;
   readonly remember: (structure: HqStructure, readAt: number) => void;
   readonly now: () => number;
   readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -62,6 +78,15 @@ export async function driveHqStructure(input: {
     input.publish(view);
   };
   publish(view);
+  let matesView: HqMatesView = {
+    organizationId: input.organizationId,
+    mates: null,
+    current: false,
+  };
+  const publishMates = (next: HqMatesView) => {
+    matesView = next;
+    input.publishMates(matesView);
+  };
 
   let failures = 0;
   while (!input.signal.aborted) {
@@ -69,9 +94,11 @@ export async function driveHqStructure(input: {
     const abort = () => attempt.abort();
     input.signal.addEventListener("abort", abort);
     let silence = setTimeout(abort, silenceMs);
-    /** This stream's own structure and changes: a reconnect starts from its snapshot. */
+    /** This stream's own structure, changes, Mates and people: a reconnect starts from its snapshot. */
     let streamed: HqStructure | null = null;
     let changes: HqChanges | null = null;
+    let mates: HqMates | null = null;
+    let people: HqPeople | null = null;
     let broke = false;
     try {
       await input.api.streamStructure(
@@ -86,6 +113,18 @@ export async function driveHqStructure(input: {
             input.remember(streamed, readAt);
           },
           onEvent: (event) => {
+            const matesBefore = mates;
+            const peopleBefore = people;
+            mates = applyMatesEvent(mates, event);
+            people = applyPeopleEvent(people, event);
+            if (event.kind === "snapshot" || mates !== matesBefore) {
+              publishMates({ organizationId: input.organizationId, mates, current: true });
+            }
+            if (event.kind === "snapshot" || people !== peopleBefore) {
+              input.publishPeople({ organizationId: input.organizationId, people });
+            }
+            // A Mate's or the people's message moves nothing of the structure.
+            if (event.kind === "mate" || event.kind === "people") return;
             streamed = applyStructureEvent(streamed, event);
             changes = applyChangesEvent(changes, event);
             if (streamed === null) return;
@@ -120,6 +159,7 @@ export async function driveHqStructure(input: {
       current: false,
       unavailableSince: failed ? (view.unavailableSince ?? input.now()) : view.unavailableSince,
     });
+    if (matesView.current) publishMates({ ...matesView, current: false });
     if (failed) {
       const wait = HQ_STREAM_RETRY_MS[Math.min(failures, HQ_STREAM_RETRY_MS.length) - 1]!;
       await input.sleep(wait, input.signal);
@@ -166,6 +206,8 @@ export function ZeropsHqStructure(): null {
   useEffect(() => {
     if (organizationId === undefined) {
       registry.set(hqStructureAtom, null);
+      registry.set(hqMatesViewAtom, null);
+      registry.set(hqPeopleViewAtom, null);
       return;
     }
     const remembered = menuMemory().structures[organizationId];
@@ -195,6 +237,12 @@ export function ZeropsHqStructure(): null {
       remembered: kept,
       publish: (view) => {
         if (!stop.signal.aborted) registry.set(hqStructureAtom, view);
+      },
+      publishMates: (view) => {
+        if (!stop.signal.aborted) registry.set(hqMatesViewAtom, view);
+      },
+      publishPeople: (view) => {
+        if (!stop.signal.aborted) registry.set(hqPeopleViewAtom, view);
       },
       remember: (structure, readAt) =>
         rememberMenu((memory) => withStructure(memory, organizationId, structure, readAt)),
