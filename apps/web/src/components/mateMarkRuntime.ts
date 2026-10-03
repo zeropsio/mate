@@ -138,15 +138,25 @@ export interface MarkLoop {
     options?: { readonly awake?: boolean },
   ) => () => void;
   readonly pointerMove: (x: number, y: number) => void;
+  /** A press: a pointer move that may also shift the layout (a panel toggling) a frame later. */
+  readonly pointerDown: (x: number, y: number) => void;
+  /** A key, which may shift the layout too. */
+  readonly keyDown: () => void;
   /** The pointer left the window. */
   readonly pointerOut: () => void;
-  /** Something the person did that is not a pointer move: a key, a scroll. */
-  readonly wake: () => void;
   /** The marks moved on the page (a scroll, a resize): measure them again. */
   readonly invalidateRects: () => void;
   readonly setVisible: (root: Element, visible: boolean) => void;
+  /** Reduced motion was turned on or off: every mark takes its new pose at once. */
+  readonly motionChanged: () => void;
   readonly size: () => number;
 }
+
+/**
+ * How long after a press or a key the loop keeps measuring the marks: what the input does to the
+ * layout (a panel opening, the menu folding) lands a frame or more after the input itself.
+ */
+const SETTLE_AFTER_INPUT_MS = 300;
 
 export function createMarkLoop(host: MarkLoopHost): MarkLoop {
   const marks = new Set<MarkRuntime>();
@@ -155,6 +165,8 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
   let timer: unknown;
   /** When the last frame ran; `undefined` when the loop starts again after resting. */
   let lastFrameAt: number | undefined;
+  /** Until when every frame measures the marks again, after an input that may move them. */
+  let measureUntil = Number.NEGATIVE_INFINITY;
 
   const clearTimer = () => {
     if (timer === undefined) return;
@@ -175,6 +187,17 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     arm();
   };
 
+  const settleAfterInput = () => {
+    measureUntil = host.now() + SETTLE_AFTER_INPUT_MS;
+  };
+
+  const pointerMove = (x: number, y: number) => {
+    pointer.x = x;
+    pointer.y = y;
+    pointer.on = true;
+    wake();
+  };
+
   const runFrame = (now: number) => {
     frame = undefined;
     const dt =
@@ -182,22 +205,25 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     lastFrameAt = now;
     const reduced = host.reducedMotion();
     pointer.asleep = !reduced && now - pointer.activeAt > SLEEP_AFTER_MS;
-    let moving = false;
+    // Just after an input that may have moved the marks, measure them every frame.
+    let moving = now < measureUntil;
     let due = Number.POSITIVE_INFINITY;
-    let sleeps = false;
+    let shown = false;
     for (const mark of marks) {
       if (!mark.visible) continue;
+      if (moving) mark.rectAt = -1;
       const step = tick(mark, pointer, host, now, dt, reduced);
       moving ||= step.moving;
       due = Math.min(due, step.due);
-      sleeps ||= mark.forced === undefined;
+      shown = true;
     }
     if (moving) {
       frame = host.requestFrame(runFrame);
       return;
     }
-    // At rest: wait for the pointer, or for the next thing scheduled — falling asleep included.
-    if (sleeps && !reduced && !pointer.asleep) {
+    // At rest: wait for the pointer, or for the next thing scheduled — falling asleep included,
+    // which stops even a held mark's eyes following the pointer.
+    if (shown && !reduced && !pointer.asleep) {
       due = Math.min(due, pointer.activeAt + SLEEP_AFTER_MS + 1);
     }
     if (due === Number.POSITIVE_INFINITY) return;
@@ -266,6 +292,11 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
       return () => {
         root.removeEventListener("pointerenter", enter);
         root.removeEventListener("pointerleave", leave);
+        // What the loop wrote on the root, which outlives it: a mark turned still keeps no bob and
+        // no turn, and one registered again starts from a clean root.
+        root.removeAttribute("data-mate-mark-bob");
+        root.style.removeProperty("--mate-mark-bob-delay");
+        root.style.transform = "";
         marks.delete(mark);
         if (marks.size > 0) return;
         if (frame !== undefined) host.cancelFrame(frame);
@@ -273,17 +304,19 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
         clearTimer();
       };
     },
-    pointerMove(x, y) {
-      pointer.x = x;
-      pointer.y = y;
-      pointer.on = true;
+    pointerMove,
+    pointerDown(x, y) {
+      settleAfterInput();
+      pointerMove(x, y);
+    },
+    keyDown() {
+      settleAfterInput();
       wake();
     },
     pointerOut() {
       pointer.on = false;
       arm();
     },
-    wake,
     invalidateRects() {
       for (const mark of marks) mark.rectAt = -1;
       wake();
@@ -293,8 +326,17 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
         if (mark.root !== root || mark.visible === visible) continue;
         mark.visible = visible;
         mark.returning = visible;
+        // Out of view, it stops bobbing: the stylesheet would keep repainting it unseen. Back in
+        // view, its next frame starts the bob again if it still rests.
+        if (!visible && mark.written.get(root)?.get("data-mate-mark-bob") === "on") {
+          put(mark, root, "data-mate-mark-bob", "off");
+        }
       }
       if (visible) arm();
+    },
+    motionChanged() {
+      for (const mark of marks) mark.returning = mark.visible;
+      wake();
     },
     size: () => marks.size,
   };
@@ -597,9 +639,19 @@ function onBlur() {
   pageLoop?.pointerOut();
 }
 
-function onWake() {
-  pageLoop?.wake();
+function onPointerDown(event: PointerEvent) {
+  pageLoop?.pointerDown(event.clientX, event.clientY);
 }
+
+function onKeyDown() {
+  pageLoop?.keyDown();
+}
+
+function onMotionChanged() {
+  pageLoop?.motionChanged();
+}
+
+let reducedMotionQuery: MediaQueryList | undefined;
 
 function onMoved() {
   pageLoop?.invalidateRects();
@@ -607,22 +659,27 @@ function onMoved() {
 
 function startListening() {
   window.addEventListener("pointermove", onPointerMove, { passive: true });
-  window.addEventListener("pointerdown", onPointerMove, { passive: true });
+  window.addEventListener("pointerdown", onPointerDown, { passive: true });
   window.addEventListener("pointerout", onPointerOut);
   window.addEventListener("blur", onBlur);
-  window.addEventListener("keydown", onWake);
-  window.addEventListener("scroll", onMoved, { passive: true });
+  window.addEventListener("keydown", onKeyDown);
+  // Captured, so a scroll inside any panel moves the marks' boxes too, not only the window's.
+  window.addEventListener("scroll", onMoved, { passive: true, capture: true });
   window.addEventListener("resize", onMoved);
+  reducedMotionQuery = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
+  reducedMotionQuery?.addEventListener("change", onMotionChanged);
 }
 
 function stopListening() {
   window.removeEventListener("pointermove", onPointerMove);
-  window.removeEventListener("pointerdown", onPointerMove);
+  window.removeEventListener("pointerdown", onPointerDown);
   window.removeEventListener("pointerout", onPointerOut);
   window.removeEventListener("blur", onBlur);
-  window.removeEventListener("keydown", onWake);
-  window.removeEventListener("scroll", onMoved);
+  window.removeEventListener("keydown", onKeyDown);
+  window.removeEventListener("scroll", onMoved, { capture: true });
   window.removeEventListener("resize", onMoved);
+  reducedMotionQuery?.removeEventListener("change", onMotionChanged);
+  reducedMotionQuery = undefined;
 }
 
 /**

@@ -24,10 +24,13 @@ describe("markBandTarget", () => {
 
 /** A page at 60 Hz whose clock the test steps: frames, timers, and every write to a mark's nodes. */
 function fakePage({
-  reduced = false,
+  reduced: reducedAtFirst = false,
   height = 33,
 }: { readonly reduced?: boolean; readonly height?: number } = {}) {
   let clock = 0;
+  let reduced = reducedAtFirst;
+  /** Where the mark's box stands; a test moves it to stand for a layout change. */
+  const box = { left: 100, top: 100 };
   let nextHandle = 1;
   const frames = new Map<number, (now: number) => void>();
   const timers = new Map<number, { readonly at: number; readonly run: () => void }>();
@@ -60,7 +63,9 @@ function fakePage({
       log.writesTo.set(name, (log.writesTo.get(name) ?? 0) + 1);
     };
     let transform = "";
+    const properties = new Map<string, string>();
     return {
+      properties,
       attributes,
       listeners,
       children: [] as unknown[],
@@ -81,11 +86,18 @@ function fakePage({
           count();
           transform = value;
         },
-        setProperty: (_key: string, _value: string) => count(),
+        setProperty: (key: string, value: string) => {
+          count();
+          properties.set(key, value);
+        },
+        removeProperty: (key: string) => {
+          count();
+          properties.delete(key);
+        },
       },
       addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
       removeEventListener: (type: string) => listeners.delete(type),
-      getBoundingClientRect: () => ({ left: 100, top: 100, width: height * 0.85, height }),
+      getBoundingClientRect: () => ({ left: box.left, top: box.top, width: height * 0.85, height }),
     };
   };
 
@@ -145,6 +157,10 @@ function fakePage({
     mount,
     advance,
     log,
+    box,
+    setReduced: (value: boolean) => {
+      reduced = value;
+    },
     pending: () => ({ frames: frames.size, timers: timers.size }),
   };
 }
@@ -252,6 +268,81 @@ describe("the live mark's loop", () => {
     expect(svg.attributes.get("data-mate-mark-bob")).toBe(row.bob);
     expect(svg.attributes.has("data-mate-mark-bob")).toBe(row.bob !== undefined);
   });
+
+  it("turns the bob off when a mark leaves view, and on again when it comes back", () => {
+    const page = fakePage({ height: 80 });
+    const { svg } = page.mount(undefined, { awake: true });
+    page.advance(200);
+    expect(svg.attributes.get("data-mate-mark-bob")).toBe("on");
+    page.loop.setVisible(svg as unknown as Element, false);
+    expect(svg.attributes.get("data-mate-mark-bob")).toBe("off");
+    page.loop.setVisible(svg as unknown as Element, true);
+    page.advance(100);
+    expect(svg.attributes.get("data-mate-mark-bob")).toBe("on");
+  });
+
+  it("keeps measuring for a moment after a press, so a layout it shifts is caught", () => {
+    const page = fakePage();
+    const { parts } = page.mount(undefined, { awake: true });
+    page.loop.pointerMove(900, 140);
+    page.advance(2_000);
+    const aimed = parts.eyeLeft.attributes.get("x");
+    // The press toggles a panel: the mark's box moves a frame or two later, the pointer stays.
+    page.loop.pointerDown(900, 140);
+    page.advance(32);
+    page.box.left = 700;
+    page.advance(2_000);
+    expect(parts.eyeLeft.attributes.get("x")).not.toBe(aimed);
+    expect(page.pending().frames).toBe(0);
+  });
+
+  it.each([
+    { name: "turned on while asleep: it opens, still", from: false, to: true, timers: 0 },
+    { name: "turned off: it blinks and glances again", from: true, to: false, timers: 1 },
+  ])("notices reduced motion changing: $name", ({ from, to, timers }) => {
+    const page = fakePage({ reduced: from });
+    const { parts } = page.mount(undefined, { awake: true });
+    page.advance(47_000);
+    page.setReduced(to);
+    page.loop.motionChanged();
+    page.advance(1_000);
+    expect(parts.band.attributes.get("visibility")).toBe("hidden");
+    expect(page.pending()).toEqual({ frames: 0, timers });
+  });
+
+  it("clears what it wrote on the mark's root when the mark leaves the loop", () => {
+    const page = fakePage({ height: 80 });
+    const { svg, unregister } = page.mount(undefined, { awake: true });
+    page.loop.pointerMove(900, 500);
+    page.advance(2_000);
+    expect(svg.attributes.get("data-mate-mark-bob")).toBe("on");
+    expect(svg.properties.has("--mate-mark-bob-delay")).toBe(true);
+    expect(svg.style.transform).not.toBe("");
+    unregister();
+    expect(svg.attributes.has("data-mate-mark-bob")).toBe(false);
+    expect(svg.properties.has("--mate-mark-bob-delay")).toBe(false);
+    expect(svg.style.transform).toBe("");
+  });
+
+  it.each([{ forced: "needs" }, { forced: "done" }, { forced: "working" }] as const)(
+    "a page of marks held $forced still falls asleep: its eyes stop following",
+    ({ forced }) => {
+      const page = fakePage();
+      const { parts } = page.mount(forced);
+      // Where its eyes stand: the happy arcs when done, the open eyes otherwise.
+      const look = () =>
+        forced === "done"
+          ? parts.happyLeft.attributes.get("transform")
+          : parts.eyeLeft.attributes.get("x");
+      page.advance(1_000);
+      const ahead = look();
+      page.loop.pointerMove(1_500, 900);
+      page.advance(2_000);
+      expect(look()).not.toBe(ahead);
+      page.advance(46_000);
+      expect(look()).toBe(ahead);
+    },
+  );
 
   it("stops everything when the last mark goes", () => {
     const page = fakePage();
