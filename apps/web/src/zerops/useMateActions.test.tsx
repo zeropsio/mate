@@ -398,7 +398,7 @@ describe("useMateActions — Hand this Mate over", () => {
     await act(async () => {
       mock.assignDialog.current!.onSubmit("cu-eva");
     });
-    expect(mock.invalidated).toEqual([{ topic: "access", change: "renew-now" }]);
+    expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
   it("closes once the platform takes it", async () => {

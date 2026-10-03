@@ -86,7 +86,8 @@ export interface ZeropsAccessGrant {
   readonly signal: (event: GrantSignal) => Effect.Effect<void>;
   /**
    * Hears the account's bus for the caller's scope: each `access: renew-now` is a person's retry,
-   * which a round in flight joins (G7).
+   * which a round in flight joins (G7); each `access: grants-written`, a project's grants this
+   * account wrote, which the grant reads again at once (`GRANTS_WRITTEN`).
    */
   readonly listen: (bus: InvalidationBus) => Effect.Effect<void, never, Scope.Scope>;
   readonly view: Atom.Atom<AccessGrantView>;
@@ -522,9 +523,13 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
       Effect.flatMap(bus.subscribe, (subscription) =>
         Stream.fromSubscription(subscription).pipe(
           Stream.runForEach((invalidation) =>
-            invalidation.topic === "access" && invalidation.change === "renew-now"
-              ? send({ type: "USER_RETRY" })
-              : Effect.void,
+            invalidation.topic !== "access"
+              ? Effect.void
+              : invalidation.change === "renew-now"
+                ? send({ type: "USER_RETRY" })
+                : invalidation.change === "grants-written"
+                  ? send({ type: "GRANTS_WRITTEN" })
+                  : Effect.void,
           ),
           Effect.forkScoped,
         ),

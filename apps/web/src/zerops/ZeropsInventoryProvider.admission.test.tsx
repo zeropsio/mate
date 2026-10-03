@@ -209,4 +209,58 @@ describe("ZeropsInventoryProvider grants", () => {
 
     expect(tab.text()).toContain(`rows ${JSON.stringify([["p1", grants]])}`);
   });
+
+  // F11: Hand over writes the project's OWNER grant, which only the access grant's round reads.
+  // The renewal the hand over asks for shows the new owner at once; no round's tick comes first.
+  it("shows a hand over's new OWNER on the menu's row once the grant is asked for a round", async () => {
+    const before = [{ clientUserId: "cu-1", roleCode: "OWNER" }];
+    const after = [{ clientUserId: "cu-dev", roleCode: "OWNER" }];
+    const harness = makeAccountHarness({
+      people: [{ user: person, password: "secret" }],
+      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: before }],
+      signedIn: "user-1",
+    });
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      page: async () => {
+        const { AccountProduct } = await import("./__fixtures__/accountProduct");
+        const { useAtomValue } = await import("@effect/atom-react");
+        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
+        const { candidateRowsAtom } = await import("../state/zerops");
+        function Owner() {
+          const rows = heldCandidates(useAtomValue(candidateRowsAtom)).rows;
+          const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
+          return `owner ${owner?.clientUserId ?? "none"}`;
+        }
+        return (
+          <AccountProduct datastream={harness.datastream}>
+            <Owner />
+          </AccountProduct>
+        );
+      },
+    });
+    await settle();
+    expect(tab.text()).toContain("owner cu-1");
+
+    // The platform takes the hand over: the project's grants name the Developer its OWNER.
+    harness.rest.addProject({
+      id: "p1",
+      clientId: "org-1",
+      name: "Cyd",
+      status: "ACTIVE",
+      userRoles: after,
+    });
+    await settle();
+    expect(tab.text()).toContain("owner cu-1");
+
+    // What the hand over asks, heard when the bus's window closes (DESIGN §6.2).
+    const { invalidateZerops } = await import("./accountInvalidations");
+    await tab.run(async () => {
+      invalidateZerops({ topic: "access", change: "grants-written" });
+    });
+    await tab.run(
+      () => new Promise<void>((resolve) => setTimeout(resolve, INVALIDATION_COALESCE_MS)),
+    );
+    await settle();
+    expect(tab.text()).toContain("owner cu-dev");
+  });
 });
