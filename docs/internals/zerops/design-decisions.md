@@ -3441,13 +3441,16 @@ no-cache`.
   thing is done, it would animatedly 'plop' to the history"; "question what we show in the 'live'
   field: sometimes it shows something that failed 4 iterations ago"). The one-line now line becomes
   the live slot: what the Mate is doing, drawn as the row it becomes, with the face, a sweep and the
-  run's one clock. It holds the newest batch's open calls (a call that started after another
-  returned is a newer batch's; an older one still open is stale and closes as "No result"); else its
-  words; else what it waits on; else "Thinking", 300 ms late. An item plops once it has ended and
-  stood 800 ms, and a burst rides along with the item that stands; history and slot share
+  run's one clock. It holds the open calls of the newest batch, one model response (each of the
+  Mate's own calls names the response it was written in; a call still open once a call of a newer
+  response has started is stale and closes as "No result"; a provider that names none keeps the
+  order of starts and returns); else its words; else what it waits on; else "Thinking", 300 ms late.
+  An item plops once it has ended and stood 800 ms, landing exactly as it stood (the same toggles,
+  cap and open state), and a burst rides along with the item that stands; history and slot share
   `min(560px, 60svh)` once full. The band holds only what runs without the Mate waiting on it, shows
   an ending for 800 ms, then leaves; a failure is told once, in the record. A control that opens is
-  drawn only when it opens onto something not on screen.
+  drawn only when it opens onto something not on screen. An approval puts what it asks to run in the
+  slot; the controls stay in the composer.
   - _Why:_ the slot promises that this is happening now, and one stale line breaks the promise; the
     band kept a failed deploy until the turn ended, the line walked back to any call still marked
     open, and a stand-up whose call had returned took the line back between steps. The batch rule
