@@ -27,7 +27,7 @@ import {
   type HqStanding,
 } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { keepHqVerdict } from "./hqVerdict";
+import { keepHqVerdict, keepNoHqVerdict, NO_HQ_RECHECK_MS } from "./hqVerdict";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 describe("nextHqStanding", () => {
@@ -117,6 +117,15 @@ describe("readBundledCore — Core as this build carries it", () => {
 // Step A, open question 1: the member list names the official HQ, and KRLS's took tens of seconds
 // to read. A browser keeps the verdict per account and organization, and reads the list again only
 // on first use, after HQ refuses as not official, or after an outage of more than ten minutes.
+/** The anchor an org admin minted for the HQ at `address`: what the member list names it by. */
+const anchor = (projectId: string, address: string) =>
+  ({
+    id: `cu-${projectId}`,
+    roleCode: "ADMIN",
+    status: "ACTIVE",
+    user: { fullName: hqAnchorName(projectId, address), email: `token-${projectId}@zerops.io` },
+  }) as ZeropsOrganizationMember;
+
 describe("useAccountHq — the official HQ this browser keeps", () => {
   const scope: AccountScope = {
     account: {
@@ -130,14 +139,6 @@ describe("useAccountHq — the official HQ this browser keeps", () => {
     account: scope.account,
     organizationId: ZeropsOrganizationId.make(organizationId),
   });
-  /** The anchor an org admin minted for the HQ at `address`: what the member list names it by. */
-  const anchor = (projectId: string, address: string) =>
-    ({
-      id: `cu-${projectId}`,
-      roleCode: "ADMIN",
-      status: "ACTIVE",
-      user: { fullName: hqAnchorName(projectId, address), email: `token-${projectId}@zerops.io` },
-    }) as ZeropsOrganizationMember;
 
   // This browser's storage, for the verdict kept between loads.
   beforeEach(() => {
@@ -398,5 +399,114 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     const next = load();
     await accountHqApi(next.client, "org-1", HQ).structure();
     expect(next.doors()).toBe(1);
+  });
+});
+
+describe("useAccountHq — no official HQ, kept too", () => {
+  const scope: AccountScope = {
+    account: {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account-n"),
+    },
+    epoch: AccountEpoch.make(1),
+  };
+  const organizationRef = (organizationId: string): OrganizationRef => ({
+    kind: "organization",
+    account: scope.account,
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+
+  // This browser's storage, for the verdict kept between loads.
+  beforeEach(() => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** One load of `useAccountHq` for `clientId`, its member list `members()` as each read answers. */
+  async function loaded(clientId: string, members: () => ReadonlyArray<ZeropsOrganizationMember>) {
+    let reads = 0;
+    const cells = await makeMemberCells({
+      scope,
+      organization: organizationRef(clientId),
+      members: async () => {
+        reads += 1;
+        return members();
+      },
+    });
+    const data = {
+      runtime: { scope, cells },
+      organizationRef,
+    } as unknown as ZeropsDataContextValue;
+    const seen: Array<AccountHq> = [];
+    function Probe() {
+      seen.push(useAccountHq(clientId));
+      return null;
+    }
+    await act(async () => {
+      create(
+        createElement(
+          RegistryContext.Provider,
+          { value: AtomRegistry.make() },
+          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+        ),
+      );
+    });
+    return { reads: () => reads, last: () => seen.at(-1)! };
+  }
+
+  it("a load of an organization its member list said has no HQ reads no member list", async () => {
+    const first = await loaded("org-none", () => []);
+    expect([first.reads(), first.last().status, first.last().hq.kind]).toEqual([
+      1,
+      "ready",
+      "none",
+    ]);
+
+    const next = await loaded("org-none", () => []);
+    expect([next.reads(), next.last().status, next.last().hq.kind]).toEqual([0, "ready", "none"]);
+  });
+
+  it("reads the member list again once a day, on a load or in an open tab", async () => {
+    keepNoHqVerdict({ account: scope.account, clientId: "org-day" }, Date.now() - NO_HQ_RECHECK_MS);
+    expect((await loaded("org-day", () => [])).reads()).toBe(1);
+    // Read again, and kept for another day from then.
+    expect((await loaded("org-day", () => [])).reads()).toBe(0);
+
+    keepNoHqVerdict(
+      { account: scope.account, clientId: "org-open" },
+      Date.now() - NO_HQ_RECHECK_MS + 30,
+    );
+    const open = await loaded("org-open", () => []);
+    expect(open.reads()).toBe(0);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    expect([open.reads(), open.last().hq.kind]).toEqual([1, "none"]);
+  });
+
+  it("reads it again at once for this browser's own birth or a press, and keeps what it names", async () => {
+    let members: ReadonlyArray<ZeropsOrganizationMember> = [];
+    const hq = await loaded("org-born", () => members);
+    expect([hq.reads(), hq.last().hq.kind]).toEqual([1, "none"]);
+
+    // The birth minted the anchor: the member list names HQ now.
+    members = [anchor("P_HQ", "https://hq.example.test")];
+    await act(async () => {
+      hq.last().reread();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const official = { kind: "official", projectId: "P_HQ", address: "https://hq.example.test" };
+    expect([hq.reads(), hq.last().hq]).toEqual([2, official]);
+    const next = await loaded("org-born", () => members);
+    expect([next.reads(), next.last().hq]).toEqual([0, official]);
   });
 });

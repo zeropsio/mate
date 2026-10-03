@@ -26,7 +26,11 @@ import {
   type MateOwnerCandidate,
   type MateOwnerPerson,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import { selectMembers, type MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
+import {
+  selectMembers,
+  settledValue,
+  type MembersCellRequest,
+} from "@t3tools/client-runtime/zerops/data";
 import { useCallback, useContext, useEffect, useMemo } from "react";
 
 import { zeropsInitials } from "~/components/zerops/landing/ZeropsAccountControl.logic";
@@ -67,6 +71,8 @@ export function useZeropsOrganizationMembersRead(input: {
 }): {
   readonly members: ReadonlyArray<ZeropsOrganizationMember>;
   readonly status: ZeropsOrganizationMembersStatus;
+  /** The members are what a read settled, not ones being read again. */
+  readonly settled: boolean;
 } {
   // A surface outside the account's data (a render test in isolation) reads nobody, and its rows
   // say the same thing without names.
@@ -85,9 +91,10 @@ export function useZeropsOrganizationMembersRead(input: {
         : null,
     [clientId, data, enabled],
   );
-  const read = selectMembers(
-    useKnown(request === null || data === null ? null : data.runtime.cells.known(request)),
+  const shown = useKnown(
+    request === null || data === null ? null : data.runtime.cells.known(request),
   );
+  const read = selectMembers(shown);
   const answered = read.status === "ready" ? read.members : undefined;
   // The members this browser read last, until they are read again: whose each Mate is — its
   // face's badge, *Mine* — from the first paint (`menuMemory.ts`). What waits for the read
@@ -102,7 +109,7 @@ export function useZeropsOrganizationMembersRead(input: {
   );
   const status: ZeropsOrganizationMembersStatus =
     !enabled || clientId === undefined ? "idle" : request === null ? "loading" : read.status;
-  return { members, status };
+  return { members, status, settled: settledValue(shown) !== null };
 }
 
 export function useZeropsOrganizationMembers(input: {

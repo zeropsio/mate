@@ -3,8 +3,8 @@
  *
  * - **Which HQ:** the one its anchor names in the org's member list (`findOfficialHq`), read with
  *   the person's own token — never a project's name or tag, which anybody who can create a
- *   project could copy. The verdict is kept in this browser (`hqVerdict.ts`), and a load that
- *   keeps one reads no member list.
+ *   project could copy. The verdict — that HQ, or that there is none — is kept in this browser
+ *   (`hqVerdict.ts`), and a load that keeps one reads no member list.
  * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named for its
  *   project (`mate-door:<hqProjectId>:<nonce>`, deleted at once). One API per account, org and
  *   HQ for the account's lifetime; its session is kept across loads as the Mates' are
@@ -45,7 +45,16 @@ import { randomUUID } from "~/lib/utils";
 import { hqStructureAtom } from "~/state/zerops";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { forgetHqVerdict, keepHqVerdict, useKeptHqVerdict, type HqVerdictOwner } from "./hqVerdict";
+import {
+  forgetHqVerdict,
+  forgetNoHqVerdict,
+  keepHqVerdict,
+  keepNoHqVerdict,
+  keptNoHq,
+  NO_HQ_RECHECK_MS,
+  useKeptHqVerdict,
+  type HqVerdictOwner,
+} from "./hqVerdict";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { ZeropsDataContext } from "./zeropsDataContext";
@@ -63,7 +72,10 @@ export interface AccountHq {
   readonly hq: OfficialHq;
   /** The org's owners and admins: who sets an HQ up, and whom everybody else asks. */
   readonly admins: ReadonlyArray<ZeropsOrganizationMember>;
-  /** Reads the member list again — after a birth minted the anchor. */
+  /**
+   * Reads the member list again, a kept verdict of no official HQ forgotten — after a birth minted
+   * the anchor.
+   */
   readonly reread: () => void;
 }
 
@@ -87,50 +99,62 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     [clientId, data],
   );
   const kept = useKeptHqVerdict(owner);
-  const { members, status } = useZeropsOrganizationMembersRead({
+  const { members, status, settled } = useZeropsOrganizationMembersRead({
     clientId,
     enabled: clientId !== undefined && kept === undefined,
   });
   const named = useMemo(() => findOfficialHq(members), [members]);
-  // The HQ the member list names, once it has said, is this browser's verdict from then on.
+  // What a read of the member list settles is this browser's verdict from then on: the official
+  // HQ it names, or that it names none — never a list being read again.
   useEffect(() => {
-    if (owner !== undefined && status === "ready" && named.kind === "official") {
-      keepHqVerdict(owner, named);
-    }
-  }, [named, owner, status]);
+    if (owner === undefined || !settled) return;
+    if (named.kind === "official") keepHqVerdict(owner, named);
+    if (named.kind === "none") keepNoHqVerdict(owner, Date.now());
+  }, [named, owner, settled]);
   const structure = useAtomValue(hqStructureAtom);
   const outageSince =
     structure !== null && structure.organizationId === clientId ? structure.unavailableSince : null;
+  const keptHq = kept === undefined || keptNoHq(kept) ? undefined : kept;
   useEffect(() => {
-    if (clientId === undefined || kept === undefined || outageSince === null) return;
+    if (clientId === undefined || keptHq === undefined || outageSince === null) return;
     const outage = `${clientId}@${String(outageSince)}`;
     if (rechecked.has(outage)) return;
     const timer = setTimeout(
       () => {
         rechecked.add(outage);
-        forgetHqVerdict(clientId, kept);
+        forgetHqVerdict(clientId, keptHq);
       },
       Math.max(0, outageSince + HQ_OUTAGE_RECHECK_MS - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [clientId, kept, outageSince]);
+  }, [clientId, keptHq, outageSince]);
   const hq = useMemo<OfficialHq>(
     () =>
       kept === undefined
         ? named
-        : { kind: "official", projectId: kept.projectId, address: kept.address },
+        : keptNoHq(kept)
+          ? { kind: "none" }
+          : { kind: "official", projectId: kept.projectId, address: kept.address },
     [kept, named],
   );
   const admins = useMemo(() => ownersAndAdmins(members), [members]);
   const reread = useCallback(() => {
-    if (data === null || clientId === undefined) return;
+    if (data === null || owner === undefined) return;
     const request: MembersCellRequest = {
       kind: "members",
       account: data.runtime.scope,
-      organization: data.organizationRef(clientId),
+      organization: data.organizationRef(owner.clientId),
     };
     Effect.runFork(data.runtime.cells.invalidate(request));
-  }, [clientId, data]);
+    forgetNoHqVerdict(owner);
+  }, [data, owner]);
+  // A verdict of no official HQ stands a day, then the member list is read again.
+  const keptNone = kept !== undefined && keptNoHq(kept) ? kept : undefined;
+  useEffect(() => {
+    if (keptNone === undefined) return;
+    const timer = setTimeout(reread, Math.max(0, keptNone.noneAt + NO_HQ_RECHECK_MS - Date.now()));
+    return () => clearTimeout(timer);
+  }, [keptNone, reread]);
   return { status: kept === undefined ? status : "ready", hq, admins, reread };
 }
 
