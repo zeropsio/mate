@@ -6504,6 +6504,16 @@ export default function ChatView(props: ChatViewProps) {
       composerTerminalContextsRef.current = [];
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
+      // The person's own send pins the end at once, though the message waits
+      // in the queue; its leaving later moves no one.
+      if (
+        nextTimelineFollow(
+          liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+          { type: "sent", byPerson: true },
+        )
+      ) {
+        scrollToEnd();
+      }
       return;
     }
     const threadIdForSend = activeThread.id;
