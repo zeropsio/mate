@@ -9,8 +9,12 @@ import {
   statedVersionNames,
 } from "./groupDeploys.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
+import { environmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import type { HqDeploy, HqEnvironment } from "./hq/environments.ts";
+import { releaseCandidate } from "./release.ts";
+import { productionRuns, releaseReads } from "./releaseCompare.ts";
+import { sameCommit } from "./versionName.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
@@ -259,6 +263,114 @@ describe("what the recipe on main offers", () => {
       ]),
       productionRepositories: new Map([["web", "appprod"]]),
     });
+  });
+});
+
+// F13, 2026-10-03: a stage HQ deployed 6aeae99 to read "No repository is declared" while its tier
+// named HQ's `https://<hq>/git/<appId>/appdev` — the tie waited on a version the store had not named.
+describe("a stop whose tier builds from HQ's git", () => {
+  const MAIN = "6aeae99c1d2e3f405162738495a6b7c8d9e0f1a2";
+  const tier = (setup: string) =>
+    [
+      "services:",
+      "  - hostname: app",
+      "    type: nodejs@22",
+      "    buildFromGit: https://hq.example/git/app-1/appdev",
+      `    zeropsSetup: ${setup}`,
+      "  - hostname: db",
+      "    type: postgresql@16",
+      "",
+    ].join("\n");
+  const recipe = appRecipeOf({ stage: tier("stage"), production: tier("prod") });
+  const repos = [
+    { name: "appdev", mainHead: MAIN, updatedAt: "2026-10-03T08:00:00.000Z" },
+    { name: "group", mainHead: OLD, updatedAt: "2026-10-03T08:00:00.000Z" },
+  ];
+  const projects = [
+    {
+      projectId: "p-stage",
+      name: "Acme - stage",
+      services: [
+        { serviceId: "stage-app", hostname: "app" },
+        { serviceId: "stage-db", hostname: "db" },
+      ],
+    },
+    {
+      projectId: "p-prod",
+      name: "Acme - production",
+      services: [
+        { serviceId: "prod-app", hostname: "app" },
+        { serviceId: "prod-db", hostname: "db" },
+      ],
+    },
+  ];
+  const environments = [
+    environment({ projectId: "p-stage", tier: "stage", name: "stage", order: 1 }),
+    environment({ projectId: "p-prod", tier: "production", name: "production", order: 2 }),
+  ];
+  const rowOf = (projectId: string, versions: ReadonlyMap<string, string>) => {
+    const stops = groupStopsOf({ environments, projects, versions, recipe });
+    const input = stops.environments.find((entry) => entry.projectId === projectId);
+    if (input === undefined) throw new Error(`no stop ${projectId}`);
+    return environmentRow(input);
+  };
+
+  it.each([
+    {
+      name: "a stage running main's head",
+      projectId: "p-stage",
+      versions: new Map([["stage-app", `main ${MAIN.slice(0, 7)}`]]),
+      atMainHead: true,
+    },
+    {
+      name: "a stage whose version the store has not named yet",
+      projectId: "p-stage",
+      versions: new Map<string, string>(),
+      atMainHead: false,
+    },
+    {
+      name: "a production on the import's no-code version",
+      projectId: "p-prod",
+      versions: new Map<string, string>(),
+      atMainHead: false,
+    },
+  ])("$name is tied to appdev", ({ projectId, versions, atMainHead }) => {
+    const row = rowOf(projectId, versions);
+    expect(row.versionRepository).toBe("appdev");
+    // What the stop's page compares with what runs: `main`'s head of the tied repository.
+    const mainHead = repos.find(({ name }) => name === row.versionRepository)?.mainHead;
+    expect(sameCommit(row.version.sha, mainHead)).toBe(atMainHead);
+  });
+
+  it("asks HQ to compare appdev up to main for a production that runs nothing", () => {
+    const known = (
+      activeId: string | null,
+      source: string | null,
+    ): Shown<ZeropsServiceDeployedVersion> => ({
+      state: "known",
+      value: { activeId, source, name: null },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    });
+    const { productionRepositories } = recipe;
+    const running = productionRuns({
+      services: projects[1]?.services,
+      stated: new Map([
+        ["prod-app", known("v-import", "NONE")],
+        ["prod-db", known(null, null)],
+      ]),
+      named: [...productionRepositories.keys()],
+      deploys: new Map(),
+      releases: [],
+    });
+    if (running === undefined) throw new Error("production's runs not known");
+    const { reads } = releaseReads({
+      productionRepositories,
+      candidate: releaseCandidate({ productionRepositories, repos }).candidate,
+      running,
+    });
+    expect(reads).toEqual([{ repository: "appdev", query: { head: MAIN }, services: ["app"] }]);
   });
 });
 
