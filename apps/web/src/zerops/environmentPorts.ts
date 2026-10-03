@@ -55,7 +55,7 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
-import { hqMatesAtom, hqProjectOf } from "~/state/zerops";
+import { hqMatesAtom, hqMatesViewAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
@@ -262,6 +262,28 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
         ? { phase: "blocked", reason: state.lastFailure.reason }
         : null;
   }
+}
+
+const NO_PROJECTS: ReadonlySet<string> = new Set();
+
+/**
+ * The projects whose Mate HQ holds online, as HQ tells this tab now — in whatever organization
+ * it streams, as a Mate it holds online is up wherever the person looks. None while what this tab
+ * holds is only what was last known of them.
+ */
+export function onlinePort(
+  registry: AtomRegistry.AtomRegistry,
+): NonNullable<AccountEnvironmentPorts["online"]> {
+  return {
+    read: () => {
+      const view = registry.get(hqMatesViewAtom);
+      if (view === null || !view.current || view.mates === null) return NO_PROJECTS;
+      return new Set(
+        [...view.mates].flatMap(([projectId, mate]) => (mate.presence.online ? [projectId] : [])),
+      );
+    },
+    subscribe: (listener) => registry.subscribe(hqMatesViewAtom, listener),
+  };
 }
 
 /**
@@ -483,5 +505,7 @@ export function webEnvironmentPorts(input: {
     // Any press in flight: the background mints no throwaway meanwhile.
     pressInFlight: pressesInFlight,
     hqIndex: hqIndexPort(registry),
+    // A Mate HQ holds online is up: its container is never probed.
+    online: onlinePort(registry),
   };
 }

@@ -25,12 +25,13 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
+import { hqMatesViewAtom, zeropsSessionAtom, type HqMatesView } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   hqIndexPort,
   keptSessionUnanswered,
   linkPhaseOf,
+  onlinePort,
   recordsStorage,
 } from "./environmentPorts";
 
@@ -237,6 +238,34 @@ describe("the records port: the account's own storage", () => {
 
     openAccountLifetime("user-a");
     expect(records.list().map((entry) => entry.targetKey)).toEqual(["project-a:service-a"]);
+  });
+});
+
+describe("onlinePort: the projects whose Mate HQ holds online", () => {
+  const presence = (online: boolean) => ({
+    presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
+  });
+  const mates = new Map([
+    ["p-up", presence(true)],
+    ["p-down", presence(false)],
+  ]) as never;
+  const registryWith = (view: HqMatesView | null) => {
+    const registry = AtomRegistry.make();
+    registry.set(hqMatesViewAtom, view);
+    return registry;
+  };
+
+  it.each([
+    ["HQ's answer now, whatever organization is in view", { mates, current: true }, ["p-up"]],
+    ["what was last known of them", { mates, current: false }, []],
+    ["HQ naming no Mates", { mates: null, current: true }, []],
+  ] as const)("reads %s", (_name, view, expected) => {
+    const read = onlinePort(registryWith({ organizationId: "org-2", ...view })).read();
+    expect([...read]).toEqual(expected);
+  });
+
+  it("reads none while nothing is known", () => {
+    expect([...onlinePort(registryWith(null)).read()]).toEqual([]);
   });
 });
 

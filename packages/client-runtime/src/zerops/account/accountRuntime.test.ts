@@ -2140,6 +2140,41 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  it.effect(
+    "a Mate HQ holds online is not probed as the stage starts, and is once HQ lets it go",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          let online: ReadonlySet<string> = new Set([A_MATE.projectId]);
+          const heard = { listener: (): void => undefined };
+          const { clock, rig, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            {
+              online: {
+                read: () => online,
+                subscribe: (listener) => {
+                  heard.listener = listener;
+                  return () => undefined;
+                },
+              },
+            },
+          );
+          yield* clock.advance(MINUTE);
+          yield* settle;
+          expect([...environments.machines().keys()]).toContain(MATE);
+          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+
+          online = new Set();
+          heard.listener();
+          yield* settle;
+          expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
+        }),
+      ),
+  );
+
   it.effect("a deleted service loses its Mate only after a confirming read (§9 C19, MC-14)", () =>
     Effect.scoped(
       Effect.gen(function* () {
