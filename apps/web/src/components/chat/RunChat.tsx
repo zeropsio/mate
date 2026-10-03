@@ -112,6 +112,7 @@ import {
   SLOT_MAX_ROWS,
   slotHolds,
   slotHoldsIn,
+  slotRunningPast,
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
@@ -2814,7 +2815,7 @@ function LiveSlot({
     return [{ entry, item }, ...answer];
   });
   const drawn = shown.slice(0, SLOT_MAX_ROWS);
-  const more = slot.entries.slice(SLOT_MAX_ROWS).filter((entry) => entry.endedAt === null).length;
+  const more = slotRunningPast(shown);
   const lines = drawn
     .flatMap(({ item }) => {
       const line = itemLine(item, undone);

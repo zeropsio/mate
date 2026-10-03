@@ -177,6 +177,19 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
   );
 }
 
+/**
+ * How many entries run past the rows the slot draws (`SLOT_MAX_ROWS`), as
+ * "+N more running": `rows` are the rows it would draw, in order, each with
+ * its entry — a question and the answer under it are two rows of one.
+ */
+export function slotRunningPast(rows: ReadonlyArray<{ readonly entry: SlotEntry }>): number {
+  const drawn = new Set(rows.slice(0, SLOT_MAX_ROWS).map((row) => row.entry));
+  const past = new Set(
+    rows.map((row) => row.entry).filter((entry) => !drawn.has(entry) && entry.endedAt === null),
+  );
+  return past.size;
+}
+
 /** When the slot next changes on its own — an ended item's plop — or null. */
 export function slotDue(slot: LiveSlot): number | null {
   let due: number | null = null;
