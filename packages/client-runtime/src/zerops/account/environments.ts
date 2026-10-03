@@ -143,6 +143,11 @@ export interface AccountEnvironmentPorts {
      * (`keptSessions.ts`): it starts past the mint pace and spends none of it. Absent: none is.
      */
     readonly kept?: (key: TargetKey) => boolean;
+    /**
+     * Each Mate's backoff cap as loads keep it (`doorCaps.ts`). Absent: every load starts each
+     * ladder over.
+     */
+    readonly capped?: ExchangeDriverPorts<DoorCredential>["capped"];
     /** The supervisor's `retryNow` for a link in backoff. */
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
@@ -497,6 +502,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     install,
     readDescriptor: ports.door.readDescriptor,
     ...(ports.door.kept === undefined ? {} : { kept: ports.door.kept }),
+    ...(ports.door.capped === undefined ? {} : { capped: ports.door.capped }),
     retryLink: ports.door.retryLink,
     // The inventory of the organization that lists the target's project, or of the active one
     // when nothing names it (§6.2).
