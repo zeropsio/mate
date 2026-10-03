@@ -4345,11 +4345,12 @@ code {
 }
 /* A thought keeps the clock's room on its right, live and in the history
    alike, so its plop never rewraps it — and "Show full thought" stands there.
-   Words to the person keep it on their first line only, while live. */
+   Words to the person keep it on their first line only, while live — inside
+   what holds the words, so a fold that clips them never narrows them all. */
 [data-run-chat] [data-chat-bubble="thought"] {
   padding-right: 52px;
 }
-.run-slot [data-chat-bubble="speech"]::before {
+.run-slot [data-chat-bubble="speech"] > :first-child::before {
   content: "";
   float: right;
   width: 40px;
