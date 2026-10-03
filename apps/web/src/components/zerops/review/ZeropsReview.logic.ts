@@ -8,6 +8,7 @@
  *
  * Pure: no DOM, no clock.
  */
+import { giteaReachWords, type GiteaReach } from "~/zerops/giteaReach.logic";
 import { sha1 } from "@noble/hashes/legacy";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import type { ReviewPrimary, ReviewVerdict } from "@t3tools/client-runtime/zerops";
@@ -546,6 +547,8 @@ export function changeReadVerdict(input: {
   readonly signInTrouble: string | null;
   /** Why the project's changes were never read, where they failed. */
   readonly changesFailure: string | undefined;
+  /** Whether the app can fetch its own Gitea session, and why not (`giteaReach`). */
+  readonly gitea: GiteaReach;
 }): ReviewVerdict {
   const which = `${input.repository} #${String(input.number)}`;
   const verdict = (
@@ -564,9 +567,14 @@ export function changeReadVerdict(input: {
   if (input.signInTrouble !== null) {
     return verdict("attention", "Gitea isn't signed in", input.signInTrouble);
   }
-  // The app is fetching its own Gitea session (signed in from the app's own): nothing waits on
-  // the person, so the words say what is happening, never a sign-in to act on.
-  if (!input.readable) return verdict("quiet", "Reading this change");
+  if (!input.readable) {
+    // A Gitea the app cannot reach is named; else the app is fetching its own Gitea session
+    // (signed in from the app's own): nothing waits on the person, so never sign-in words.
+    const blocked = giteaReachWords(input.gitea);
+    return blocked === null
+      ? verdict("quiet", "Reading this change")
+      : verdict("attention", blocked.title, blocked.why);
+  }
   if (input.changesFailure !== undefined) {
     return verdict("attention", "This project's changes couldn't be read", input.changesFailure);
   }

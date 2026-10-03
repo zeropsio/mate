@@ -147,6 +147,7 @@ import { findInventoryProjectRef, withheldProjectNotice } from "~/zerops/invento
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
+import { unreadFlowWords } from "~/zerops/giteaReach.logic";
 import { PageWaitLine } from "./WaitLine";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
@@ -684,9 +685,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   if (flow === undefined) {
     return (
       <DetailShell crumbs={crumbs} title={groupName}>
-        <UnreadDetail trouble={flowValue?.signInTrouble ?? null}>
-          This project has not been read yet.
-        </UnreadDetail>
+        <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
   }
@@ -1030,9 +1029,7 @@ export function ZeropsStopDetailPage({
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
       <DetailShell crumbs={crumbs} title={undefined}>
-        <UnreadDetail trouble={flowValue?.signInTrouble ?? null}>
-          This environment has not been read yet.
-        </UnreadDetail>
+        <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
   }
@@ -2153,16 +2150,22 @@ export interface Crumb {
 
 /**
  * A detail page whose flow is not read yet: the boot's wait line past its beat while the app reads
- * it, and the sentence only where nothing reads it — Gitea refused the app's own sign-in.
+ * it, and its own words where nothing will (`unreadFlowWords`) — Gitea refused the app's sign-in,
+ * a Gitea it cannot reach, a project not here any more, or reads that failed.
  */
-function UnreadDetail({
-  trouble,
-  children,
-}: {
-  readonly trouble: string | null;
-  readonly children: React.ReactNode;
-}) {
-  if (trouble !== null) return <Note>{children}</Note>;
+function UnreadDetail({ groupId }: { readonly groupId: string }) {
+  const flowValue = useZeropsProjectFlowOptional();
+  const words =
+    flowValue === null
+      ? null
+      : unreadFlowWords({
+          signInTrouble: flowValue.signInTrouble,
+          gitea: flowValue.giteaReach,
+          groupsRead: flowValue.groupsRead,
+          groupKnown: flowValue.slugs.has(groupId),
+          failure: flowValue.groupFailures.get(groupId),
+        });
+  if (words !== null) return <Note>{words}</Note>;
   return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
 }
 
