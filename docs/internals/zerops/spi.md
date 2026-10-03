@@ -36,7 +36,9 @@ and OpenCode seams_ below): `apps/server/src/spi/threadToolPolicy.ts` (provider-
 `apps/server/src/spi/claudeThreadProfile.ts` (Claude's extension — `ClaudeThreadExtension`,
 `ClaudeThreadExtensionRegistry`, and `claudeQueryOptionsPatch`, the translation of a profile into SDK
 options) and `apps/server/src/spi/codexThreadProfile.ts` (Codex's — `codexThreadSetup`, the
-translation of a profile into thread and turn params and an approval gate). They are the only `spi/`
+translation of a profile into thread and turn params and an approval gate), and `apps/server/src/spi/mcpControl.ts`
+(the MCP tab's one driver hook, `ProviderAdapterShape.mcp`, built from Claude's, Codex's and OpenCode's
+native MCP calls; `mcpLive.ts` routes it across the instances from outside). They are the only `spi/`
 files `provider/**` may import, and they import only each other and packages (effect, contracts, the
 Claude Agent SDK, the Codex app-server schema) — any other spi file reaches `provider/**`, so one hop
 through it would make the two directories import each other.
