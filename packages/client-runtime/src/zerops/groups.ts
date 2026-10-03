@@ -683,6 +683,23 @@ function consensusLabel(labels: ReadonlyArray<string>): string | undefined {
 }
 
 /**
+ * A project's name as the account's own projects carry it — the label its members agree on — for
+ * a surface that must name it while the listing cannot: failed, lapsed, or every member withheld.
+ * Undefined while none of the projects held is its member with a label.
+ */
+export function heldGroupLabel(
+  projects: ReadonlyArray<{ readonly tagList?: ReadonlyArray<string> | undefined }>,
+  groupId: string,
+): string | undefined {
+  return consensusLabel(
+    projects.flatMap((project) => {
+      const tags = readZeropsGroupTags(project.tagList);
+      return tags.groupId === groupId && tags.label !== undefined ? [tags.label] : [];
+    }),
+  );
+}
+
+/**
  * The left menu's whole data model: projects in, a group tree out. Pure, and
  * total — a project with no `tagList` at all is ungrouped rather than an error.
  */
