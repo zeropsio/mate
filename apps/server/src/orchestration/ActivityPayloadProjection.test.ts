@@ -771,3 +771,158 @@ describe("a reopened thread keeps where each call started", () => {
     expect(keptIds(activities)).toEqual(kept);
   });
 });
+
+/**
+ * Every driver's call reaches the client in one form: the tool's name at
+ * `data.toolName`, what it names at `data.input` in Claude's keys, the files
+ * it touched at `data.files`, a picture it looked at at `data.imagePath`, and
+ * a Zerops call's result at `data.zerops` — OpenCode's `{tool, state}` and an
+ * ACP agent's `{toolCallId, kind, rawInput, ...}` as much as Claude's own.
+ */
+describe("every driver's call reaches the client in one form", () => {
+  const call = (
+    summary: string,
+    payload: Record<string, unknown>,
+    kind = "tool.completed",
+  ): OrchestrationThreadActivity =>
+    ({
+      id: "activity-1",
+      tone: "tool",
+      kind,
+      summary,
+      payload,
+      turnId: null,
+      createdAt: "2026-10-03T10:00:00.000Z",
+    }) as unknown as OrchestrationThreadActivity;
+
+  const dataOf = (activity: OrchestrationThreadActivity) =>
+    (projectActivityPayload(activity).payload as { data: Record<string, unknown> }).data;
+
+  it.each([
+    {
+      name: "an OpenCode read",
+      activity: call("src/app.ts", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        data: {
+          tool: "read",
+          state: { status: "completed", input: { filePath: "/app/src/app.ts" }, output: "x" },
+        },
+      }),
+      expected: { toolName: "read", input: { file_path: "/app/src/app.ts" } },
+    },
+    {
+      name: "an OpenCode grep",
+      activity: call("TODO", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        data: {
+          tool: "grep",
+          state: { status: "completed", input: { pattern: "TODO", path: "src" }, output: "" },
+        },
+      }),
+      expected: { toolName: "grep", input: { pattern: "TODO", path: "src" } },
+    },
+    {
+      name: "an OpenCode Zerops call",
+      activity: call("zerops_zerops_deploy", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        data: {
+          tool: "zerops_zerops_deploy",
+          state: {
+            status: "completed",
+            input: { targetService: "api", strategy: "push" },
+            output: '{"status":"FINISHED"}',
+          },
+        },
+      }),
+      expected: {
+        toolName: "zerops_deploy",
+        input: { targetService: "api", strategy: "push" },
+        zerops: { toolName: "zerops_deploy", resultText: '{"status":"FINISHED"}' },
+      },
+    },
+    {
+      name: "an ACP read, named by its kind and its file by its location",
+      activity: call("Read file", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        detail: "/app/src/app.ts",
+        data: {
+          toolCallId: "call-1",
+          kind: "read",
+          rawInput: { path: "/app/src/app.ts" },
+          locations: [{ path: "/app/src/app.ts" }],
+        },
+      }),
+      expected: {
+        toolName: "read",
+        input: { path: "/app/src/app.ts", file_path: "/app/src/app.ts" },
+        files: [{ path: "/app/src/app.ts" }],
+      },
+    },
+    {
+      name: "an ACP edit, its file by its location",
+      activity: call("Changed files", {
+        itemType: "file_change",
+        status: "completed",
+        data: { toolCallId: "call-2", kind: "edit", locations: [{ path: "/app/src/app.ts" }] },
+      }),
+      expected: {
+        toolName: "edit",
+        input: { file_path: "/app/src/app.ts" },
+        files: [{ path: "/app/src/app.ts" }],
+      },
+    },
+    {
+      name: "an ACP look at a picture",
+      activity: call("Read file", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        data: { toolCallId: "call-3", kind: "read", locations: [{ path: "/app/shot.png" }] },
+      }),
+      expected: {
+        toolName: "read",
+        input: { file_path: "/app/shot.png" },
+        imagePath: "/app/shot.png",
+        files: [{ path: "/app/shot.png" }],
+      },
+    },
+    {
+      name: "an ACP Zerops call, named by its title",
+      activity: call("Running zerops_deploy", {
+        itemType: "dynamic_tool_call",
+        status: "completed",
+        data: {
+          toolCallId: "call-4",
+          kind: "other",
+          rawInput: { targetService: "api" },
+          rawOutput: { content: [{ type: "text", text: '{"status":"FINISHED"}' }] },
+        },
+      }),
+      expected: {
+        toolName: "zerops_deploy",
+        input: { targetService: "api" },
+        zerops: { toolName: "zerops_deploy", resultText: '{"status":"FINISHED"}' },
+      },
+    },
+  ])("$name", ({ activity, expected }) => {
+    const data = dataOf(activity);
+    expect(data).toMatchObject(expected);
+    // A reread of history projects the projected row again: it reads the same.
+    expect(dataOf({ ...activity, payload: projectActivityPayload(activity).payload })).toEqual(
+      data,
+    );
+  });
+
+  it("names nothing a Codex command never named", () => {
+    const data = dataOf(
+      call("Ran command", {
+        itemType: "command_execution",
+        data: { item: { type: "commandExecution", command: "ls" } },
+      }),
+    );
+    expect(data.toolName).toBeUndefined();
+  });
+});
