@@ -70,26 +70,57 @@ export function timelineScrollKeyDirection(input: {
   return null;
 }
 
+/**
+ * Which way a key scrolls the list, or null when it scrolls something else or
+ * nothing. A key scrolls the nearest scroller around where it starts — the
+ * focused element, or with the focus on the page, what was last clicked — so
+ * a key that starts in a nested scroller (the live card, a tool's output)
+ * moves the list only past that scroller's edge.
+ */
+export function timelineScrollKeyInput(input: {
+  readonly key: string;
+  readonly shiftKey: boolean;
+  readonly target: EventTarget | null;
+  readonly timeline: HTMLElement;
+  /** What the person last pressed a pointer on inside the list, or null. */
+  readonly lastPointerTarget: Element | null;
+}): "up" | "down" | null {
+  const target = resolveTimelineKeyTarget(input.target, input.timeline);
+  const startsAt = target === "page" ? input.lastPointerTarget : input.target;
+  if (startsAt === null) return null;
+  const direction = timelineScrollKeyDirection({
+    key: input.key,
+    shiftKey: input.shiftKey,
+    target,
+  });
+  if (direction === null) return null;
+  return isTimelineScrollTarget(startsAt, input.timeline, direction === "up" ? -1 : 1)
+    ? direction
+    : null;
+}
+
 /** How long the wheel rests before its next event starts a new gesture. */
 export const WHEEL_GESTURE_IDLE_MS = 100;
 
 export interface WheelGestureLatch {
   readonly at: number;
+  readonly direction: "up" | "down";
   readonly targetsList: boolean;
 }
 
 /**
  * The browser latches a wheel gesture to the scroller it started in: a card
  * that reaches its edge mid-gesture does not hand the rest to the list. So
- * the target is decided once, on a gesture's first event.
+ * the target is decided once, on a gesture's first event — and again when the
+ * wheel turns the other way, which starts a new gesture.
  */
 export function latchWheelGesture(
   latch: WheelGestureLatch | null,
-  at: number,
+  { at, direction }: { readonly at: number; readonly direction: "up" | "down" },
   targetsList: () => boolean,
 ): WheelGestureLatch {
-  if (latch !== null && at - latch.at <= WHEEL_GESTURE_IDLE_MS) {
-    return { at, targetsList: latch.targetsList };
+  if (latch !== null && latch.direction === direction && at - latch.at <= WHEEL_GESTURE_IDLE_MS) {
+    return { at, direction, targetsList: latch.targetsList };
   }
-  return { at, targetsList: targetsList() };
+  return { at, direction, targetsList: targetsList() };
 }

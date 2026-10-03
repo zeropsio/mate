@@ -110,8 +110,7 @@ import {
 import {
   isTimelineScrollTarget,
   latchWheelGesture,
-  resolveTimelineKeyTarget,
-  timelineScrollKeyDirection,
+  timelineScrollKeyInput,
   type WheelGestureLatch,
 } from "./timelineScrollTarget";
 import { MessageCopyButton } from "./MessageCopyButton";
@@ -762,11 +761,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       notePersonSession({ type: "input", at: performance.now() });
       // A wheel that started in a nested scroller (a run's own scroll, a code
       // block) does not leave the end, for the whole gesture it started.
-      wheelLatch = latchWheelGesture(wheelLatch, performance.now(), () =>
+      const direction = event.deltaY < 0 ? "up" : "down";
+      wheelLatch = latchWheelGesture(wheelLatch, { at: performance.now(), direction }, () =>
         isTimelineScrollTarget(event.target, node, event.deltaY),
       );
-      if (wheelLatch.targetsList)
-        onPersonInputRef.current({ kind: "wheel", direction: event.deltaY < 0 ? "up" : "down" });
+      if (wheelLatch.targetsList) onPersonInputRef.current({ kind: "wheel", direction });
     };
     const onTouchStart = () =>
       notePersonSession({ type: "hold", by: "touch", at: performance.now() });
@@ -787,30 +786,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const onPointerUp = () =>
       notePersonSession({ type: "release", by: "pointer", at: performance.now() });
     // With the focus on the page (a click on message text leaves it there),
-    // scroll keys move what was last clicked: the list only if it was the list.
-    let lastPointerInList = false;
+    // scroll keys move the scroller around what was last clicked.
+    let lastPointerTarget: Element | null = null;
     const onDocumentPointerDown = (event: PointerEvent) => {
       const node = scrollNode();
-      lastPointerInList =
-        node !== null && event.target instanceof Node && node.contains(event.target);
+      lastPointerTarget =
+        node !== null && event.target instanceof Element && node.contains(event.target)
+          ? event.target
+          : null;
     };
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       const node = scrollNode();
       if (!node || event.defaultPrevented) return;
-      const target = resolveTimelineKeyTarget(event.target, node);
-      if (target === "page" && !lastPointerInList) return;
-      const direction = timelineScrollKeyDirection({
+      const direction = timelineScrollKeyInput({
         key: event.key,
         shiftKey: event.shiftKey,
-        target,
+        target: event.target,
+        timeline: node,
+        lastPointerTarget,
       });
-      if (direction === null) return;
-      if (
-        target === "content" &&
-        !isTimelineScrollTarget(event.target, node, direction === "up" ? -1 : 1)
-      )
-        return;
-      input({ kind: "key", direction });
+      if (direction !== null) input({ kind: "key", direction });
     };
     // The end of a scroll ends the person's session with it.
     const onScrollEnd = (event: Event) => {
