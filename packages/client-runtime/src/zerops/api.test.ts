@@ -1043,20 +1043,21 @@ describe("ZeropsApiClient project reads", () => {
 
   it.each([
     {
-      case: "a key the platform minted: ADMIN lowered, the group's reach kept",
-      grants: [
-        { projectId: "project-1", roleCode: "ADMIN" },
-        { projectId: "project-stage", roleCode: "READ_ONLY" },
-      ],
-      written: [
-        { projectId: "project-1", roleCode: "BASIC_USER" },
-        { projectId: "project-stage", roleCode: "READ_ONLY" },
-      ],
+      case: "a key the platform minted: ADMIN lowered",
+      grants: [{ projectId: "project-1", roleCode: "ADMIN" }],
+      written: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
     },
     {
       case: "a key the press minted, already the Mate's reach",
+      grants: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+      written: null,
+    },
+    // Until the harden finds the key by the id its Mate enrolled with HQ, a key that reaches
+    // another project too is not taken for the Mate's (step A, A11).
+    {
+      case: "a key widened to the group, left as it is",
       grants: [
-        { projectId: "project-1", roleCode: "BASIC_USER" },
+        { projectId: "project-1", roleCode: "ADMIN" },
         { projectId: "project-stage", roleCode: "READ_ONLY" },
       ],
       written: null,
