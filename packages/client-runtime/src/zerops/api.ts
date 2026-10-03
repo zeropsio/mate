@@ -780,7 +780,7 @@ async function readProjectPages<T extends { readonly id: string }>(
 
 /**
  * A Mate's key is named as the platform named the one it used to mint with the container,
- * `zcp-<project>`: `findMateIntegrationToken` finds either by that and its grant.
+ * `zcp-<project>`: `findHeldMateKey` finds either by that and its grant.
  */
 function mateKeyName(projectName: string): string {
   return `zcp-${projectName}`;
@@ -2218,8 +2218,7 @@ export class ZeropsApiClient {
    * and the isolation half, together, for one Mate's own project.
    *
    * The token half lowers the Mate's own grant to `BASIC_USER` and leaves
-   * every other grant as it is, as the projects screen's reconcile does
-   * (`planAccountMateKeys`); a key the press minted holds nothing else. Every delegation the token carries is then dropped: the one-time mint the platform grants at
+   * every other grant as it is (`planMateKey`); a key the press minted holds nothing else. Every delegation the token carries is then dropped: the one-time mint the platform grants at
    * creation, which nothing here needs (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with

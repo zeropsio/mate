@@ -48,6 +48,7 @@ import {
   mateHardenableBy,
   mateNeedsHarden,
   resolveMateRegistration,
+  type ZeropsIntegrationToken,
   type ZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
@@ -55,6 +56,7 @@ import {
   selectTokenGrants,
   ZeropsServiceId,
   type TokensCellRequest,
+  type ZeropsIntegrationTokenGrantMetadata,
 } from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -139,7 +141,6 @@ import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { sessionOfferViewer } from "./offerViewer";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
-import { integrationTokensFromGrantMetadata } from "./useZeropsMateKeys";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
@@ -165,6 +166,20 @@ interface DialogPress {
 }
 
 const UNPRESSED: DialogPress = { pending: false, error: null };
+
+/** The token list's credential-free grants, in the shape the harden predicates read. */
+function integrationTokensFromGrantMetadata(
+  metadata: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>,
+): ReadonlyArray<ZeropsIntegrationToken> {
+  return metadata.map((token) => ({
+    id: token.tokenId,
+    name: token.name,
+    projects: token.grants,
+    ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
+    ...(token.created === undefined ? {} : { created: token.created }),
+    ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
+  }));
+}
 
 /** The Mate's name, as its row says it. */
 function mateName(candidate: ZeropsCandidatePresentation): string {

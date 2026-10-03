@@ -91,7 +91,6 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import { useZeropsMateKeys } from "~/zerops/useZeropsMateKeys";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
@@ -1914,21 +1913,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     },
     [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );
-
-  // Every Mate's key lowered to its own project, and nothing added beside it (ADR 0003).
-  // Reconciled off the list this screen already has, on every read — a grant write restarts
-  // nothing, and a key already lowered is not written (`groupReach.ts`).
-  useZeropsMateKeys({
-    clientId: activeOrganization?.id,
-    enabled: status === "signed-in" && !isLoading,
-    mateProjectIds: useMemo(
-      () =>
-        groupTree.groups.flatMap((entry) =>
-          entry.environments.filter(({ item }) => hasMate(item)).map(({ item }) => item.project.id),
-        ),
-      [groupTree.groups],
-    ),
-  });
 
   // A stage or a production whose creation lost its last writes — its attach to its application,
   // its deploy key — or whose key HQ does not hold, or holds broken (main E07), is finished here,

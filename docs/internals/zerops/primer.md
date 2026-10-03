@@ -146,8 +146,9 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
     it writes nothing on the platform
 - **a Mate's Zerops key `ZCP_API_KEY`** — `NO_ACCESS` at the org and `BASIC_USER` on its own
   project, nothing more (`api.ts:1791`, ADR 0003); a sensitive variable of its `zcp` service. A key
-  the platform minted `ADMIN` is lowered by the projects page (`useZeropsMateKeys`); a `READ_ONLY`
-  grant on a sibling that an earlier client gave a key stays until it is taken off by hand
+  the platform minted `ADMIN` is lowered by its harden (`hardenMate`), when a person finishes setting
+  the Mate up — never on a page's read (step A, A11); a `READ_ONLY` grant on a sibling that an
+  earlier client gave a key stays until it is taken off by hand
   - _Reaches:_ its own project — the door's role reads, zcp's every platform call, the challenge it
     writes for HQ
 - **a Mate credential** — issued by HQ for a challenge whose nonce it finds in the Mate's own
@@ -443,12 +444,12 @@ still to come says so.
   - _Proven by:_ ledger 2026-09-16 _A `BASIC_USER` project token does everything zcp does_
 - **0.2** — Each Mate's key lowered to `NO_ACCESS` + `BASIC_USER` on its own project, and nothing
   more (0.3's read-only reach of its application's other projects is gone, ADR 0003)
-  - _State:_ built — a new Mate's key is minted with its own project alone (`api.ts:1791`); the
-    projects page lowers a key minted `ADMIN` on every read, for Mates HQ places in an application
-    (`useZeropsMateKeys`, `ZeropsProjectsPage.tsx:1906`), adds no grant and keeps any other grant a
-    key already holds (`planMateKey`, `groupReach.ts:233`)
+  - _State:_ built — a new Mate's key is minted with its own project alone (`api.ts:1791`); a key
+    minted `ADMIN` is lowered by its harden when a person finishes setting the Mate up, never on a
+    page's read (step A, A11; `hardenMate`), adds no grant and keeps any other grant a key already
+    holds (`planMateKey`)
   - _Built in:_ mate 0.11.0 `04a8468d5`; without the reach `04d73b1557`
-  - _Proven by:_ `groupReach.test.ts`, `useZeropsMateKeys.test.tsx`, `newProject.test.ts`,
+  - _Proven by:_ `groupReach.test.ts`, `newProject.test.ts`,
     `matePress.test.ts` ("writes no other Mate's key")
 - **0.4, 0.10** — A new Mate's key on `zcp` and its project closed off before anyone is admitted
   - _State:_ live — the press does it in the foreground before _Add_ returns, and records the
