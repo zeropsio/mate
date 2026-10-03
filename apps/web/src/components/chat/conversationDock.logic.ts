@@ -84,17 +84,27 @@ export interface DockModel {
    * its room eases shut (`withEndingsHeld`).
    */
   readonly endings?: {
+    /** A batch deploy's, a row per service. */
     readonly operations: ReadonlyArray<ZeropsOperation>;
     readonly tasks: ReadonlyArray<DockBackgroundTask>;
+    /** The helpers, once none works. */
+    readonly helpers?: DockModel["helpers"];
+    /** The to-do list, once its every step is done. */
+    readonly todo?: DockModel["tasks"];
   };
 }
 
 /** How long a bar that ended shows how it ended before its room eases shut (pass 35). */
 export const BAND_ENDING_MS = 800;
 
-/** What the band draws running, by key: each pipeline's, each background task's. */
+/**
+ * What the band draws running, by key: each pipeline's, each background
+ * task's, the helpers' and the to-do list's.
+ */
 export function bandKeys(dock: DockModel | null): ReadonlySet<string> {
   return new Set([
+    ...(dock?.helpers === null || dock?.helpers === undefined ? [] : ["helpers"]),
+    ...(dock?.tasks === null || dock?.tasks === undefined ? [] : ["tasks"]),
     ...(dock?.operations ?? []).map((operation) => operation.key),
     ...(dock?.background?.tasks ?? [])
       .filter((task) => task.state === "running")
@@ -109,6 +119,8 @@ export function endedSince(
 ): ReadonlyArray<string> {
   const running = bandKeys(dock);
   const ended = new Set([
+    ...(dock?.endings?.helpers == null ? [] : ["helpers"]),
+    ...(dock?.endings?.todo == null ? [] : ["tasks"]),
     ...(dock?.endings?.operations ?? []).map((operation) => operation.key),
     ...(dock?.endings?.tasks ?? []).map((task) => `task:${task.id}`),
   ]);
@@ -148,13 +160,24 @@ export function withEndingsHeld(
     held.has(operation.key),
   );
   const tasks = (dock.endings?.tasks ?? []).filter((task) => held.has(`task:${task.id}`));
-  if (operations.length === 0 && tasks.length === 0) return dock;
+  const helpers = dock.helpers ?? (held.has("helpers") ? (dock.endings?.helpers ?? null) : null);
+  const todo = dock.tasks ?? (held.has("tasks") ? (dock.endings?.todo ?? null) : null);
+  if (
+    operations.length === 0 &&
+    tasks.length === 0 &&
+    helpers === dock.helpers &&
+    todo === dock.tasks
+  ) {
+    return dock;
+  }
   const shownTasks = [...(dock.background?.tasks ?? []), ...tasks];
   return {
     ...dock,
-    operations: [...dock.operations, ...operations.flatMap(splitBatchDeploy)].toSorted((a, b) =>
+    operations: [...dock.operations, ...operations].toSorted((a, b) =>
       a.anchorAt.localeCompare(b.anchorAt),
     ),
+    helpers,
+    tasks: todo,
     background: backgroundGroup(shownTasks),
   };
 }
@@ -429,23 +452,52 @@ export function deriveDock(input: {
 
   const pause = input.isWorking ? null : input.pause;
   // What ended this turn: a bar the person watched shows its ending a moment.
+  // A batch deploy ends a row per service, as the band drew it.
+  const turnStart = input.turnStartedAt == null ? Number.NaN : Date.parse(input.turnStartedAt);
   const endings =
     input.isWorking && input.runningTurnId !== null
       ? {
           operations: input.timelineEntries.flatMap((entry) =>
             entry.kind === "operation" &&
             DOCKED_KINDS.has(entry.operation.kind) &&
-            entry.operation.turnId === input.runningTurnId &&
-            entry.operation.phase !== "running"
-              ? [entry.operation]
+            entry.operation.turnId === input.runningTurnId
+              ? splitBatchDeploy(entry.operation).filter(
+                  (operation) => operation.phase !== "running" && !runsOn(operation),
+                )
               : [],
           ),
+          // One started before this turn ends in it too.
           tasks: backgroundTasks.filter(
-            (task) => task.state !== "running" && task.turnId === input.runningTurnId,
+            (task) =>
+              task.state !== "running" &&
+              (task.turnId === input.runningTurnId ||
+                (task.endedAt !== null && Date.parse(task.endedAt) >= turnStart)),
           ),
+          helpers:
+            helpers === null && rows.length > 0
+              ? {
+                  rows,
+                  working: 0,
+                  done: rows.filter((row) => row.tone === "ok").length,
+                  failed: rows.filter((row) => row.tone === "failed").length,
+                }
+              : null,
+          todo:
+            tasks === null &&
+            plan !== null &&
+            plan.steps.length > 1 &&
+            plan.steps.every((step) => step.status === "completed") &&
+            (input.runningTurnId === null || plan.turnId === input.runningTurnId)
+              ? { steps: plan.steps, done: plan.steps.length, current: null }
+              : null,
         }
       : null;
-  const ends = endings !== null && (endings.operations.length > 0 || endings.tasks.length > 0);
+  const ends =
+    endings !== null &&
+    (endings.operations.length > 0 ||
+      endings.tasks.length > 0 ||
+      endings.helpers !== null ||
+      endings.todo !== null);
   return operations.length === 0 &&
     helpers === null &&
     tasks === null &&
