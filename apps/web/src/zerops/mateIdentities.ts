@@ -19,6 +19,7 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   hasMate,
+  isZeropsMateRunsWithoutSignIn,
   mateShapeOf,
   readZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
@@ -56,6 +57,8 @@ export interface ZeropsMateIdentity {
   readonly standUp?: { readonly by: string } | undefined;
   /** Who made it (`mate:by:`): whose sign-in it waits for while nobody has signed it in. */
   readonly madeBy?: string | undefined;
+  /** Its project says it runs on an agent Mate signs nobody in to (`mate:runs:`). */
+  readonly runsWithoutSignIn?: boolean | undefined;
 }
 
 const NO_ORIGINS: ReadonlyMap<string, EnvironmentId> = new Map();
@@ -95,6 +98,9 @@ export function zeropsMateIdentityOf(
     connected: candidate.group === "connected",
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
+    ...(isZeropsMateRunsWithoutSignIn(candidate.project.tagList)
+      ? { runsWithoutSignIn: true }
+      : {}),
   };
 }
 

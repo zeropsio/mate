@@ -52,6 +52,21 @@ describe("applyProjectTagPatch", () => {
       adds: ["mate:g:g1", "mate", "mate:closed-off"],
       removes: [],
     },
+    // A Mate that runs on an agent Mate signs nobody in to says which (`mate:runs:`).
+    {
+      name: "a Mate found running on Cursor says so, keeping every other tag",
+      tags: ["mate", "mate:by:u1", "person:own"],
+      patch: { kind: "agent-runs", driver: "cursor" },
+      adds: ["mate", "mate:by:u1", "mate:runs:cursor"],
+      removes: [],
+    },
+    {
+      name: "a Mate already said to run on Cursor is left as it is",
+      tags: ["mate", "mate:runs:cursor", "person:own"],
+      patch: { kind: "agent-runs", driver: "cursor" },
+      adds: ["mate", "mate:runs:cursor"],
+      removes: [],
+    },
     {
       name: "a project already marked closed off is left as it is",
       tags: ["mate", "mate:closed-off", "person:own"],

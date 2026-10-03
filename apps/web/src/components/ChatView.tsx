@@ -353,6 +353,7 @@ import {
   useZeropsEnvironmentProject,
 } from "~/zerops/useZeropsAgentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
+import { useMateRunsRecord, zeropsRunsRecorded } from "~/zerops/useMateRunsRecord";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSentAsks } from "~/zerops/sentAsk";
 import { takeHandedOverCaret } from "~/zerops/mateHandOver";
@@ -3837,10 +3838,18 @@ export default function ChatView(props: ChatViewProps) {
   // D6: the one place a successful sign-in's signer is recorded, whichever
   // door it went through (the panel's card, the band's dialog, the empty
   // conversation); every row reads how it went by environment.
+  const zeropsRecordProject = useZeropsEnvironmentProject(activeThreadEnvironmentId);
   useZeropsAgentSignerRecord({
     environmentId: activeThreadEnvironmentId,
     snapshot: zeropsAgentAuth.snapshot,
-    project: useZeropsEnvironmentProject(activeThreadEnvironmentId),
+    project: zeropsRecordProject,
+  });
+  // A Mate found ready on an agent Mate signs nobody in to says so on its project, once: whose
+  // Mate it is reads from that tag everywhere (`useMateRunsRecord`).
+  useMateRunsRecord({
+    project: zeropsRecordProject,
+    recorded: zeropsRunsRecorded(zeropsMates, activeThreadEnvironmentId),
+    providers: providerStatuses,
   });
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,

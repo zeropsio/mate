@@ -16,7 +16,6 @@
  */
 
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import { zeropsOtherAgentReady } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   MATE_SIGNER_TAG_PREFIX,
@@ -25,13 +24,11 @@ import {
   resolveMateOwner,
   type MateOwnerCandidate,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import type { EnvironmentId } from "@t3tools/contracts";
 import { selectMembers, type MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { useCallback, useContext, useEffect, useMemo } from "react";
 
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
-import { useServerConfigs } from "../state/entities";
 import { menuMemory, rememberMenu, withMembers } from "./menuMemory";
 import { useKnown, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -147,24 +144,10 @@ export function useZeropsMemberNames(input: {
 }
 
 /**
- * Whether a connected Mate has an agent to run that Mate signs nobody in to — Cursor, OpenCode,
- * Grok, Antigravity, ready (`zeropsOtherAgentReady`) — by its environment's provider instances;
- * false for one not connected, whose instances are not read.
- */
-export function useMateRunsWithoutSignIn(): (environmentId: EnvironmentId | undefined) => boolean {
-  const configs = useServerConfigs();
-  return useCallback(
-    (environmentId: EnvironmentId | undefined) =>
-      environmentId !== undefined && zeropsOtherAgentReady(configs.get(environmentId)?.providers),
-    [configs],
-  );
-}
-
-/**
  * Each Mate's owner, for the account's active organization. Nothing is read
  * until at least one project names a person — an `OWNER` of its own, the
  * signer of its agent, or the maker of one that runs without a sign-in
- * (`resolveMateOwner`).
+ * (`mate:runs:`, `resolveMateOwner`).
  */
 export function useZeropsMateOwners(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
@@ -172,7 +155,6 @@ export function useZeropsMateOwners(input: {
 }): (candidate: ZeropsCandidate) => ZeropsMateOwner | undefined {
   const { activeOrganization, user } = useZeropsSession();
   const viewerUserId = user?.id;
-  const runsWithoutSignIn = useMateRunsWithoutSignIn();
   const members = useZeropsOrganizationMembers({
     clientId: activeOrganization?.id,
     enabled:
@@ -182,20 +164,12 @@ export function useZeropsMateOwners(input: {
           candidate.project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true ||
           candidate.project.tagList?.some((tag) => tag.startsWith(MATE_SIGNER_TAG_PREFIX)) ===
             true ||
-          (runsWithoutSignIn(candidate.environmentId) &&
-            mateOwnerRecords(candidate.project).maker !== undefined),
+          mateOwnerRecords(candidate.project).person !== undefined,
       ),
   });
   return useCallback(
     (candidate: ZeropsCandidate) =>
-      zeropsMateOwner(
-        resolveMateOwner({
-          project: candidate.project,
-          members,
-          runsWithoutSignIn: runsWithoutSignIn(candidate.environmentId),
-        }),
-        viewerUserId,
-      ),
-    [members, runsWithoutSignIn, viewerUserId],
+      zeropsMateOwner(resolveMateOwner({ project: candidate.project, members }), viewerUserId),
+    [members, viewerUserId],
   );
 }

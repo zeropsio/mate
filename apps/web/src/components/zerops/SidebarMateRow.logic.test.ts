@@ -272,35 +272,29 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
   });
 
   // Mate signs people in to Claude Code and Codex only: a Mate on Cursor, OpenCode, Grok or
-  // Antigravity waits on no sign-in, and is its maker's (`resolveMateOwner`'s runsWithoutSignIn).
+  // Antigravity (`mate:runs:`) waits on no sign-in, and is its maker's, as its records say.
   it.each([
+    { case: "its maker named: their picture", owner: PETRA, named: true, seat: "person" },
     {
-      case: "its maker named: their picture, no line, no dot",
-      owner: PETRA,
-      madeBy: "user-petra",
-      seat: "person",
-    },
-    {
-      case: "its maker not named yet: a neutral seat, no line",
+      case: "its maker not named yet: a neutral seat",
       owner: undefined,
-      madeBy: "user-petra",
+      named: true,
       seat: "unnamed",
     },
     {
-      case: "nobody named at all: the empty seat, no line",
+      case: "nobody named as making it: the empty seat",
       owner: undefined,
-      madeBy: undefined,
+      named: false,
       seat: "nobody",
     },
-  ])("runs without a sign-in, $case", ({ owner, madeBy, seat }) => {
+  ])("runs without a sign-in, $case, and no line", ({ owner, named, seat }) => {
     const view = mateOwnerView({
       owner,
-      records: NOBODY,
+      records: { named, signedIn: false, runsWithoutSignIn: true },
       asked: false,
-      madeBy,
+      madeBy: "user-petra",
       viewer: "user-petra",
       linked: true,
-      runsWithoutSignIn: true,
     });
     expect([view.seat.kind, view.signInLine, view.waitsOnViewer]).toEqual([seat, undefined, false]);
   });

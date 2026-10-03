@@ -136,7 +136,7 @@ import {
   rememberProjectsOnScreen,
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
-import { useMateRunsWithoutSignIn, type ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
@@ -2459,8 +2459,6 @@ function MateRow<T extends RosterCandidate>({
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
-  // An agent Mate signs nobody in to is ready on it: it waits on no sign-in, and is its maker's.
-  const runsWithoutSignIn = useMateRunsWithoutSignIn()(candidate.environmentId);
   const seated = mateOwnerView({
     owner,
     records,
@@ -2470,7 +2468,6 @@ function MateRow<T extends RosterCandidate>({
     viewer,
     // It waits on the viewer once its page can show the sign-in: its link made.
     linked: candidate.group === "connected",
-    runsWithoutSignIn,
   });
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.
@@ -2484,7 +2481,7 @@ function MateRow<T extends RosterCandidate>({
   const notYours = mateNotYours({
     seat: seated.seat,
     isViewer: owner?.isViewer === true,
-    signer: records.signer ?? (runsWithoutSignIn && !records.signedIn ? records.maker : undefined),
+    signer: records.person,
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;

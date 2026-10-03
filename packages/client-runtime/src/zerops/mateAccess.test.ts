@@ -308,7 +308,12 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       records: { named: true, signedIn: true },
     },
   ])("$name", ({ userRoles, tagList, records }) => {
-    expect(mateOwnerRecords({ userRoles, tagList })).toEqual(records);
+    // None of them runs without a sign-in: its person is its signer, where it has one.
+    expect(mateOwnerRecords({ userRoles, tagList })).toEqual({
+      ...records,
+      person: "signer" in records ? records.signer : undefined,
+      runsWithoutSignIn: false,
+    });
   });
 
   it("names no owner from records that name two people on one login", () => {
@@ -516,11 +521,12 @@ describe("withMateProjectRole — handing a Mate over", () => {
   });
 });
 
-// Mate signs people in to Claude Code and Codex only. A Mate that runs on another agent has no
-// signer to name its person, so its maker is (`mate:by:`, else the stand-up's `mate:standup:`) —
-// for what waits on whom always, and for its seat where the caller knows it runs without a
-// sign-in; a Claude Code or Codex Mate before its first sign-in keeps its empty seat.
-describe("a Mate no sign-in names: its maker's", () => {
+// Mate signs people in to Claude Code and Codex only. A Mate that runs on an agent it signs nobody
+// in to carries `mate:runs:<driver>`, written the first time it is found ready; with that tag and
+// no Claude Code or Codex signer it is its maker's (`mate:by:`, else `mate:standup:`) — read from
+// its tags alone, the same for every caller. A Mate without it is nobody's until signed in, a
+// project token or a login added beside the agents included.
+describe("a Mate that runs without a sign-in: its maker's", () => {
   const SERVICE = { clientUserId: "cu-zcp", roleCode: "BASIC_USER" };
   const ada = { id: "cu-ada", user: { id: "u-ada", fullName: "Ada Lovelace" } };
   const eva = { id: "cu-eva", user: { id: "u-eva", fullName: "Eva Dvořák" } };
@@ -529,56 +535,58 @@ describe("a Mate no sign-in names: its maker's", () => {
     tagList,
     userRoles: [SERVICE],
   });
+  const RUNS = "mate:runs:cursor";
 
   it.each([
-    { name: "made by the viewer", tags: ["mate", "mate:by:u-ada"], viewer: "u-ada", mine: true },
+    { name: "made by the viewer, on Cursor", tags: ["mate:by:u-ada", RUNS], person: "u-ada" },
     {
-      name: "asked of by the viewer (a Mate born before mate:by:)",
-      tags: ["mate", "mate:standup:u-ada"],
-      viewer: "u-ada",
-      mine: true,
-    },
-    { name: "made by a colleague", tags: ["mate", "mate:by:u-eva"], viewer: "u-ada", mine: false },
-    {
-      name: "made by the viewer, its Claude Code signed in by a colleague",
-      tags: ["mate", "mate:by:u-ada", "mate:signer:claude-code:u-eva"],
-      viewer: "u-ada",
-      mine: false,
+      name: "asked of by the viewer, on Cursor (born before mate:by:)",
+      tags: ["mate:standup:u-ada", RUNS],
+      person: "u-ada",
     },
     {
-      name: "made by a colleague, signed in by the viewer",
-      tags: ["mate", "mate:by:u-eva", "mate:signer:codex:u-ada"],
-      viewer: "u-ada",
-      mine: true,
+      name: "made by the viewer, waiting on a sign-in",
+      tags: ["mate:by:u-ada"],
+      person: undefined,
     },
-    { name: "made by nobody it names", tags: ["mate"], viewer: "u-ada", mine: false },
-    { name: "the viewer not known yet", tags: ["mate", "mate:by:u-ada"], viewer: "", mine: false },
-  ])("waits on its viewer when $name: $mine", ({ tags, viewer, mine }) => {
-    expect(mateIsViewers(project(...tags), viewer)).toBe(mine);
-  });
-
-  it("records who made it beside its signer", () => {
-    expect(mateOwnerRecords(project("mate", "mate:by:u-ada")).maker).toBe("u-ada");
-    expect(mateOwnerRecords(project("mate", "mate:standup:u-eva")).maker).toBe("u-eva");
-    expect(mateOwnerRecords(project("mate")).maker).toBeUndefined();
-  });
-
-  it.each([
-    { name: "running without a sign-in, nobody signed in", runs: true, tags: [], owner: ada },
-    { name: "waiting on a sign-in, nobody signed in", runs: false, tags: [], owner: undefined },
     {
-      name: "running without a sign-in, its Codex signed in by a colleague",
-      runs: true,
-      tags: ["mate:signer:codex:u-eva"],
-      owner: eva,
+      name: "made by the viewer, on a project token (no signer tag)",
+      tags: ["mate:by:u-ada"],
+      person: undefined,
     },
-  ])("is owned by its maker when $name", ({ runs, tags, owner }) => {
+    {
+      name: "made by the viewer, only a login added beside the agents signed in",
+      tags: ["mate:by:u-ada", "mate:signer:claudeAgent-work:u-ada"],
+      person: undefined,
+    },
+    {
+      name: "made by the viewer on Cursor, its Claude Code signed in by a colleague",
+      tags: ["mate:by:u-ada", RUNS, "mate:signer:claude-code:u-eva"],
+      person: "u-eva",
+    },
+    { name: "on Cursor, nobody named as making it", tags: [RUNS], person: undefined },
+  ])("$name: $person", ({ tags, person }) => {
+    const records = mateOwnerRecords(project("mate", ...tags));
+    expect(records.person).toBe(person);
+    expect(mateIsViewers(project("mate", ...tags), "u-ada")).toBe(person === "u-ada");
     expect(
-      resolveMateOwner({
-        project: project("mate", "mate:by:u-ada", ...tags),
-        members: [ada, eva],
-        runsWithoutSignIn: runs,
-      }),
-    ).toBe(owner);
+      resolveMateOwner({ project: project("mate", ...tags), members: [ada, eva] })?.user?.id,
+    ).toBe(person);
+  });
+
+  it("names the Mate's person in its records once it runs without a sign-in", () => {
+    expect(mateOwnerRecords(project("mate", "mate:by:u-ada", RUNS))).toEqual({
+      named: true,
+      signedIn: false,
+      signer: undefined,
+      person: "u-ada",
+      runsWithoutSignIn: true,
+    });
+    expect(mateOwnerRecords(project("mate", "mate:by:u-ada")).named).toBe(false);
+  });
+
+  it("is nobody's while the viewer is not known", () => {
+    expect(mateIsViewers(project("mate", "mate:by:u-ada", RUNS), "")).toBe(false);
+    expect(mateIsViewers(project("mate", "mate:by:u-ada", RUNS), undefined)).toBe(false);
   });
 });

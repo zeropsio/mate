@@ -33,7 +33,7 @@ import {
 } from "@t3tools/shared/zeropsRoles";
 import { knownSigner, readSignerTags } from "@t3tools/shared/zeropsAgentAuth";
 
-import { readZeropsGroupTags } from "./groups.ts";
+import { isZeropsMateRunsWithoutSignIn, readZeropsGroupTags } from "./groups.ts";
 
 export type { RoleMateVisibility };
 
@@ -284,10 +284,10 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
  * as that person. With two agents signed in, the first tag names the owner.
  *
  * A Mate that runs on an agent Mate signs nobody in to (Cursor, OpenCode, Grok,
- * Antigravity) and has no Claude Code or Codex signer is its maker's — the
- * person its birth names (`mate:by:`, else `mate:standup:`), the one record of
- * a person it carries — where the caller knows it runs so
- * (`runsWithoutSignIn`). A Mate that waits on a sign-in stays nobody's until
+ * Antigravity: its project says `mate:runs:`) and has no Claude Code or Codex
+ * signer is its maker's — the person its birth names (`mate:by:`, else
+ * `mate:standup:`), the one record of a person it carries
+ * (`mateOwnerRecords`). A Mate that waits on a sign-in stays nobody's until
  * somebody signs it in.
  *
  * `undefined` when nothing names anybody the member list has. A row then says
@@ -296,19 +296,32 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
 export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   readonly project: MateAccessProject;
   readonly members: ReadonlyArray<M>;
-  /** It has an agent to run that needs no sign-in (`zeropsOtherAgentReady`). */
-  readonly runsWithoutSignIn?: boolean | undefined;
 }): M | undefined {
   const ownerEntry = input.project.userRoles?.find((entry) => entry.roleCode === "OWNER");
   if (ownerEntry !== undefined) {
     return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
   }
-  const { signedIn, signer } = mateOwnerSigner(input.project.tagList);
-  const person =
-    signer ??
-    (input.runsWithoutSignIn === true && !signedIn ? mateMaker(input.project.tagList) : undefined);
+  const person = mateTagPerson(input.project.tagList).person;
   if (person === undefined) return undefined;
   return input.members.find((entry) => entry.user?.id === person);
+}
+
+/**
+ * The person a Mate's tags name, the one reading every caller shares: the signer of its Claude
+ * Code or Codex (D6), else — where it runs on an agent Mate signs nobody in to (`mate:runs:`) and
+ * nobody signed those in — its maker. A project token or a login added beside the agents names
+ * nobody.
+ */
+function mateTagPerson(tagList: ReadonlyArray<string> | undefined): {
+  readonly signedIn: boolean;
+  readonly signer: string | undefined;
+  readonly runsWithoutSignIn: boolean;
+  readonly person: string | undefined;
+} {
+  const { signedIn, signer } = mateOwnerSigner(tagList);
+  const runsWithoutSignIn = isZeropsMateRunsWithoutSignIn(tagList);
+  const person = signedIn ? signer : runsWithoutSignIn ? mateMaker(tagList) : undefined;
+  return { signedIn, signer, runsWithoutSignIn, person };
 }
 
 /** Who made the Mate, as its birth names them: `mate:by:`, else its stand-up's `mate:standup:`. */
@@ -336,19 +349,27 @@ export function mateOwnerRecords(project: Pick<MateAccessProject, "tagList" | "u
   readonly signedIn: boolean;
   /** The Zerops user id its signer tag names, where somebody signed its agent in. */
   readonly signer: string | undefined;
-  /** The Zerops user id its birth names (`mate:by:`, else `mate:standup:`). */
-  readonly maker: string | undefined;
+  /** The Zerops user id its tags make it the Mate of (`mateTagPerson`): its signer, or its maker. */
+  readonly person: string | undefined;
+  /** It runs on an agent Mate signs nobody in to (`mate:runs:`): it waits on no sign-in. */
+  readonly runsWithoutSignIn: boolean;
 } {
-  const { signedIn, signer } = mateOwnerSigner(project.tagList);
+  const { signedIn, signer, person, runsWithoutSignIn } = mateTagPerson(project.tagList);
   const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
-  return { named: owned || signedIn, signedIn, signer, maker: mateMaker(project.tagList) };
+  return {
+    named: owned || signedIn || person !== undefined,
+    signedIn,
+    signer,
+    person,
+    runsWithoutSignIn,
+  };
 }
 
 /**
  * Whether a Mate is the viewer's own: they signed its agent in (D6's signer tag, read as
- * `mateOwnerRecords` reads it), or — where no Claude Code or Codex sign-in names anybody — they
- * made it (`mate:by:`, else `mate:standup:`): a Mate on an agent Mate signs nobody in to waits on
- * its maker, and one still waiting on its sign-in runs nothing that could wait on anybody. Only
+ * `mateOwnerRecords` reads it), or — where it runs on an agent Mate signs nobody in to
+ * (`mate:runs:`) and no Claude Code or Codex sign-in names anybody — they made it (`mate:by:`,
+ * else `mate:standup:`). Only
  * what one's own Mate waits on waits on them — its question, its change's review; a colleague's
  * waits on its owner (the owner, 2026-09-30: "sana doesn't wait for me, it waits for karlos").
  * Nobody's Mate, one whose signers disagree, and any Mate while the viewer is not known yet, are
@@ -359,8 +380,7 @@ export function mateIsViewers(
   viewer: string | undefined,
 ): boolean {
   if (viewer === undefined || viewer.length === 0) return false;
-  const { signedIn, signer } = mateOwnerSigner(project.tagList);
-  return (signedIn ? signer : mateMaker(project.tagList)) === viewer;
+  return mateTagPerson(project.tagList).person === viewer;
 }
 
 /** The agents whose own signer speaks for the Mate; a login added beside them names only who uses it. */
