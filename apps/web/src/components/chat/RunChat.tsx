@@ -326,24 +326,47 @@ const ChatLineContext = createContext<string | null>(null);
  * showed lands in the history as it stood — opened, or at its cap — so its
  * plop moves it and never resizes it (pass 35).
  */
-const CarriedOpenContext = createContext<Map<string, boolean> | null>(null);
+const CarriedOpenContext = createContext<Map<string, Carried> | null>(null);
 
-/** A state of a line's, kept across its slot row and its history row. */
-function useCarried(part: string, initial: () => boolean): [boolean, (next: boolean) => void] {
+/** A line's state as carried: the person's own choice, or how the slot last drew it. */
+interface Carried {
+  readonly value: boolean;
+  /** The person set it: it holds wherever the line is drawn. */
+  readonly own: boolean;
+}
+
+/**
+ * A state of a line's, kept across its slot row and its history row. With
+ * `follows`, the slot row draws it from what it shows now — a call's input
+ * streams in after its start — until the person sets it, and the history row
+ * takes it as the slot last drew it.
+ */
+function useCarried(
+  part: string,
+  initial: () => boolean,
+  follows = false,
+): [boolean, (next: boolean) => void] {
   const carried = use(CarriedOpenContext);
   const line = use(ChatLineContext);
+  const inSlot = use(InSlotContext);
   const key = line === null ? null : `${line}#${part}`;
-  const [value, setValue] = useState(() => {
+  const following = follows && inSlot;
+  const [value, setValue] = useState<boolean | undefined>(() => {
     const kept = key === null ? undefined : carried?.get(key);
-    if (kept !== undefined) return kept;
+    if (kept !== undefined && (kept.own || !following)) return kept.value;
+    if (following) return undefined;
     const first = initial();
-    if (key !== null) carried?.set(key, first);
+    if (key !== null) carried?.set(key, { value: first, own: false });
     return first;
   });
+  const shown = value ?? initial();
+  if (value === undefined && key !== null && carried?.get(key)?.value !== shown) {
+    carried?.set(key, { value: shown, own: false });
+  }
   return [
-    value,
+    shown,
     (next) => {
-      if (key !== null) carried?.set(key, next);
+      if (key !== null) carried?.set(key, { value: next, own: true });
       setValue(next);
     },
   ];
@@ -602,9 +625,9 @@ function FoldToggle({
 // ---------------------------------------------------------------------------
 
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
-function useDisclosure(initial = false, part = "open") {
+function useDisclosure(initial = false, part = "open", follows = false) {
   const hold = useHoldReading();
-  const [open, setOpen] = useCarried(part, () => initial);
+  const [open, setOpen] = useCarried(part, () => initial, follows);
   return {
     open,
     set: (next: boolean) => {
@@ -1372,7 +1395,8 @@ function StepBubble({
   // line, in mono, and the rest of it opens under it. In the live slot it
   // stands open to its cap, and lands so.
   const bare = script !== null && step.words === null;
-  const disclosure = useDisclosure(bare && inSlot && step.codeLines > 1);
+  // In the slot it follows the code as it streams in, until the person sets it.
+  const disclosure = useDisclosure(bare && inSlot && step.codeLines > 1, "open", true);
   // A bare command opened to its cap, then whole.
   const whole = useDisclosure(false, "whole");
   const outputs = stepOutput(step);
@@ -3062,7 +3086,7 @@ function LiveSlot({
  */
 export function RunChat({ row }: { readonly row: RecordRow }) {
   // What the person opened, kept as a row lands from the slot in the history.
-  const [carriedOpen] = useState(() => new Map<string, boolean>());
+  const [carriedOpen] = useState(() => new Map<string, Carried>());
   const ctx = use(TimelineRowCtx);
   const hold = useHoldReading();
   const rootRef = useRef<HTMLDivElement>(null);

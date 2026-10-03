@@ -975,6 +975,55 @@ describe("RunChat, as the person uses it", () => {
           ).length > 0),
     );
 
+  // The Claude adapter starts a call before its input streams in: a bare
+  // command stands open to its cap once its code arrives, and lands so (E3).
+  it("opens a bare command in the slot once its code streams in, and lands it so", () => {
+    vi.useFakeTimers();
+    try {
+      const running = (text: string | undefined) =>
+        record([], {
+          live: true,
+          status: status(),
+          now: {
+            kind: "step",
+            step: stepOf(
+              command("w8", text ?? "", {
+                ...(text === undefined ? { command: undefined } : {}),
+                toolLifecycleStatus: "inProgress",
+                sourceActivityKind: "tool.started",
+              }),
+            ),
+          },
+        });
+      const renderer = mount(running(undefined));
+      const shown = () => JSON.stringify(renderer.toJSON());
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={running(SCRIPT)} />
+          </Rows>,
+        ),
+      );
+      expect(shown()).toContain('"data-chat-folded":"true"');
+      expect(shown()).toContain("Show all 16 lines");
+      // It returned: it lands in the history as it stood, open to its cap.
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat
+              row={record([step(command("w8", SCRIPT))], { live: true, status: status() })}
+            />
+          </Rows>,
+        ),
+      );
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      expect(shown()).toContain('"data-chat-folded":"true"');
+      expect(shown()).toContain("Show all 16 lines");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // A resync brings what nobody watched happen: it is simply there, never a
   // rise-in, in the history or in the slot (E2).
   it("lets nothing a resync brings rise in", () => {
