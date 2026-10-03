@@ -1180,6 +1180,90 @@ describe("RunChat, as the person uses it", () => {
     expect(rising(renderer)).toBe(0);
   });
 
+  // A helper's one-line report opens only when the card's width cuts it, as
+  // measured on the page (A7, E17).
+  it.each([
+    { name: "cut at the card's width", scrollWidth: 480, opens: true },
+    { name: "whole on its line", scrollWidth: 120, opens: false },
+  ])("opens a helper's one-line report only when it is $name", ({ scrollWidth, opens }) => {
+    const agent = {
+      ...emptyAgentPanelModel(),
+      directAgents: [
+        {
+          id: "a1",
+          kind: "subagent" as const,
+          title: "Check the schema",
+          role: null,
+          model: null,
+          effort: null,
+          status: "completed" as const,
+          activationCount: 1,
+          usage: null,
+          progress: null,
+          lastToolName: null,
+          result: "Wrote three tests for the schema and its migrations",
+          error: null,
+          outputFile: null,
+          parentAgentId: null,
+          agentIndex: null,
+          phaseIndex: null,
+          phaseTitle: null,
+          attempt: null,
+          workflowName: null,
+          phases: [],
+          runHandles: null,
+          recentActivity: [],
+          firstSeenAt: at(1),
+          startedAt: at(1),
+          completedAt: at(2),
+          updatedAt: at(2),
+        },
+      ],
+      hasAgents: true,
+    };
+    const helpers: RecordItem = {
+      kind: "helpers",
+      key: "helpers:h1",
+      at: at(1),
+      entry: {
+        ...command("h1", ""),
+        itemType: "collab_agent_tool_call",
+        agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
+      },
+    };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: agent }}>
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={record([helpers])} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+        {
+          // The preview's line, as the page lays it out.
+          createNodeMock: (element) =>
+            element.type === "span"
+              ? { scrollWidth, clientWidth: 200, scrollHeight: 20, clientHeight: 20 }
+              : null,
+        },
+      );
+    });
+    act(() =>
+      button(renderer, "Started a helper").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
+    );
+    // The helper's own line: a button where it opens onto its report.
+    const title = renderer.root.find(
+      (node) => node.type === "span" && node.children.includes("Check the schema"),
+    );
+    let holder = title.parent;
+    while (holder !== null && holder.type !== "button" && holder.type !== "li") {
+      holder = holder.parent;
+    }
+    expect(holder?.type === "button").toBe(opens);
+  });
+
   it("opens what a step printed under its words, in place, and closes it again", () => {
     const renderer = mount(
       record([
