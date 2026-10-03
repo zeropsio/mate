@@ -10,9 +10,10 @@
  *   half a second, then the tests; `stale` a call whose completion never
  *   comes; `band` a stand-up whose builds run on after its call returned;
  *   `long` thirty steps, so the card fills its height; `edits` two edits in
- *   a row, the second folding into the first as it lands;
+ *   a row, the second folding into the first as it lands; `cards` three calls
+ *   at once, the first returning first, then a new batch;
  * - `?speed=<x>` plays faster or slower, `?at=<s>` starts that far in;
- * - `?theme=dark`.
+ * - `?theme=dark`; `?provider=claudeAgent` reads no call stale by timing.
  *
  * `window.__liveHarness.restart()` plays it again from the start,
  * `.seconds()` says where it is, for a per-frame sampler, and `.resync(s)`
@@ -51,6 +52,7 @@ const params = new URLSearchParams(location.search);
 const SPEED = Number(params.get("speed") ?? 1);
 const START_AT = Number(params.get("at") ?? 0);
 const SCRIPT = params.get("script") ?? "main";
+const PROVIDER = params.get("provider") ?? "codex";
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const TURN = TurnId.make("live-turn");
 const COMPOSER_HEIGHT = 132;
@@ -300,8 +302,28 @@ const EDITS: Run = {
   answer: "Fixed both routes; the tests pass.",
 };
 
+/**
+ * Three commands at once, the first returning first while the others run on,
+ * a read 0.1 s after it lands, then a new batch: the card keeps its rows.
+ */
+const CARDS: Run = {
+  ask: "Run the checks.",
+  items: [
+    { id: "c1", kind: "command", start: 0.5, end: 1.5, words: "Lint the app", code: "pnpm lint" },
+    { id: "c2", kind: "command", start: 0.55, end: 4, words: "Run the tests", code: "pnpm test" },
+    { id: "c3", kind: "command", start: 0.6, end: 4.2, words: "Build the app", code: "pnpm build" },
+    { id: "r1", kind: "read", start: 1.6, end: 1.7, name: "package.json" },
+    { id: "c4", kind: "command", start: 5.2, end: 6.5, words: "Check sizes", code: "du -sh dist" },
+  ],
+  write: 7,
+  end: 8.5,
+  answer: "Lint, tests and build pass.",
+};
+
 const RUN: Run =
-  { main: MAIN, burst: BURST, stale: STALE, band: BAND, long: LONG, edits: EDITS }[SCRIPT] ?? MAIN;
+  { main: MAIN, burst: BURST, stale: STALE, band: BAND, long: LONG, edits: EDITS, cards: CARDS }[
+    SCRIPT
+  ] ?? MAIN;
 
 /** The run started this long before the page loaded, so its clock reads as it would live. */
 const STARTED = Date.now() - START_AT * 1000;
@@ -634,8 +656,9 @@ function Pane() {
             routeThreadKey,
             onOpenTurnDiff: () => undefined,
             supportsConversationRollback: false,
-            // Its calls name no response: the timing rule reads its batches.
-            provider: "codex",
+            // Its calls name no response: Codex's timing rule reads its
+            // batches, unless `?provider=claudeAgent` (nothing goes stale).
+            provider: PROVIDER,
             onRevertToTurnCount: () => undefined,
             isRevertingCheckpoint: false,
             onImageExpand: () => undefined,
