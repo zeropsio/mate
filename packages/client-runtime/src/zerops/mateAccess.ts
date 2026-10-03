@@ -34,6 +34,8 @@ import {
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
 
+import type { HqPeople } from "@t3tools/shared/hqMates";
+
 import type { HqPlacement } from "./hq/placement.ts";
 
 export type { RoleMateVisibility };
@@ -46,8 +48,8 @@ export interface MateAccessProject {
     | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
     | undefined;
   /**
-   * Where HQ places it: its Mate's live summary names who signed each of its agents in (D6),
-   * relayed to whoever may operate it (`observe_mate`).
+   * Where HQ places it: its Mate's logins name who signed each of its agents in (D6), joined from
+   * HQ's overview for whoever may operate it (`observe_mate`).
    */
   readonly hq?: HqPlacement | undefined;
 }
@@ -237,51 +239,55 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
   return email && email.length > 0 ? email : undefined;
 }
 
+/** A Mate's owner as HQ's people name them: their Zerops user id, and their name. */
+export interface MateOwnerPerson {
+  readonly userId: string;
+  readonly name: string;
+}
+
 /**
- * Who owns this Mate: the member its project raised to `OWNER`, else the
- * person who signed its agent in.
+ * Who owns this Mate, named from HQ's people (`hqMates.ts`) — no member list read: the person
+ * its project raised to `OWNER`, found by the member id the entry names — of two a hand-over
+ * before the transfer left, the first HQ names — else whoever signed its agent in (D6), Claude
+ * Code's first. HQ names exactly the people the reader's view names, never a token.
  *
- * The `OWNER` entry is there only where somebody put it — a creator below
- * `ADMIN` (verified.md, 2026-09-15) or a hand-over, which moves it (F23) — and
- * so wins; of the two a hand-over before the transfer left, the first the
- * member list has. An org owner or admin who creates a Mate gets no entry at
- * all: the project's roles are then only token users' — the container's key
- * (measured 2026-09-24, main's broker's beside it) — and the one record naming
- * a person is D6's signer, as the Mate's server saw them sign in and HQ relays
- * it. With two agents signed in, Claude Code's signer names the owner.
- *
- * `undefined` when neither names anybody the member list has. A row then says
- * the same thing without a name, and a face goes without the owner's beside it.
+ * The `OWNER` entry is there only where somebody put it — a creator below `ADMIN` (verified.md,
+ * 2026-09-15) or a hand-over, which moves it (F23) — and so wins: a Mate whose `OWNER` HQ does
+ * not name is nobody's here, never its signer's. An org owner or admin who creates a Mate gets no
+ * entry at all — the project's roles are then only token users' (measured 2026-09-24) — and the
+ * one record naming a person is D6's signer, as the Mate's server saw them sign in.
  */
-export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
+export function resolveMateOwnerPerson(input: {
   readonly project: MateAccessProject;
-  readonly members: ReadonlyArray<M>;
-}): M | undefined {
-  // A hand over is a transfer, one OWNER (F23); one made before it left two, and the first the
-  // member list has is named — never the signer, whom an OWNER outranks.
+  readonly people: HqPeople | null;
+}): MateOwnerPerson | undefined {
+  const people = Object.entries(input.people ?? {});
   const owners = (input.project.userRoles ?? []).filter((entry) => entry.roleCode === "OWNER");
   if (owners.length > 0) {
-    return owners
-      .map((owner) => input.members.find((entry) => entry.id === owner.clientUserId))
-      .find((member) => member !== undefined);
+    for (const owner of owners) {
+      const named = people.find(([, person]) => person.clientUserId === owner.clientUserId);
+      if (named !== undefined) return { userId: named[0], name: named[1].name };
+    }
+    return undefined;
   }
-  const signer = mateOwnerSigner(input.project).signer;
-  if (signer === undefined) return undefined;
-  return input.members.find((entry) => entry.user?.id === signer);
+  const { signer } = mateOwnerSigner(input.project);
+  const named = signer === undefined ? undefined : input.people?.[signer];
+  return signer === undefined || named === undefined
+    ? undefined
+    : { userId: signer, name: named.name };
 }
 
 /**
  * What a Mate's own records say of its person before anybody is looked up —
- * the records `resolveMateOwner` reads, as facts: whether they name anybody at
+ * the records `resolveMateOwnerPerson` reads, as facts: whether they name anybody at
  * all (an `OWNER` entry, or the signer of its agent), and whether anybody has
  * signed its agent in (D6's signer of the agent's own login; a login added
  * beside it names only who uses that one).
  *
  * Read off the project and where HQ places it, so a list knows them as soon as
- * HQ relays the Mate's summary: a Mate whose records name nobody is nobody's
- * whether or not the member list has been read, and the first person to sign
- * its agent in makes it theirs. A viewer HQ relays no summary to sees no
- * signer.
+ * HQ's overview of the Mate names its logins: a Mate whose records name nobody
+ * is nobody's whether or not anybody is named yet, and the first person to sign
+ * its agent in makes it theirs. A viewer HQ sends no overview to sees no signer.
  */
 export function mateOwnerRecords(project: Pick<MateAccessProject, "hq" | "userRoles">): {
   readonly named: boolean;
@@ -316,27 +322,18 @@ export function mateIsViewers(
 const MATE_OWNER_SIGNER_KEYS: ReadonlyArray<string> = ["claude-code", "codex"];
 
 /**
- * What the Mate's summary at HQ says of its agents' own logins: whether anybody signed one in,
+ * What HQ's overview of the Mate says of its agents' own logins: whether anybody signed one in,
  * and who — Claude Code's person first.
  */
 function mateOwnerSigner(project: Pick<MateAccessProject, "hq">): {
   readonly signedIn: boolean;
   readonly signer: string | undefined;
 } {
-  const signers = project.hq?.mate?.live?.summary?.signers ?? {};
-  const signer = MATE_OWNER_SIGNER_KEYS.map((key) => signers[key]).find(
-    (userId): userId is string => userId !== undefined && userId.length > 0,
+  const logins = project.hq?.mate?.logins ?? {};
+  const signer = MATE_OWNER_SIGNER_KEYS.map((key) => logins[key]?.signedInBy).find(
+    (userId): userId is string => typeof userId === "string" && userId.length > 0,
   );
   return { signedIn: signer !== undefined, signer };
-}
-
-/** The owner's name, for "Jan's Mate — only Jan opens it" (D5). */
-export function resolveMateOwnerName(input: {
-  readonly project: MateAccessProject;
-  readonly members: ReadonlyArray<MateOwnerCandidate>;
-}): string | undefined {
-  const member = resolveMateOwner(input);
-  return member === undefined ? undefined : mateMemberName(member);
 }
 
 /** A member row is an integration token when its address is the token's own (`token-<id>@zerops.io`). */

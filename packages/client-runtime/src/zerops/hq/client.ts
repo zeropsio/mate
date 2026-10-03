@@ -34,7 +34,7 @@ import {
   type CreateReleaseRequest,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
-import type { MateSummary } from "@t3tools/shared/mateLink";
+import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -56,15 +56,10 @@ export interface HqMateRecord {
   readonly face: string;
 }
 
-/** A Mate's live summary, as HQ relays it to whoever may operate it (`observe_mate`). */
-export interface HqMateLive {
-  readonly online: boolean;
-  /** When the summary was sent, or the Mate last went online or offline: ISO. */
-  readonly at: string;
-  readonly summary: MateSummary | null;
-}
-
-/** A Mate as HQ reads it: its record, its birth, and its live summary where HQ relays one. */
+/**
+ * A Mate as HQ reads it: its record, its birth, and — joined from HQ's overview of it, where the
+ * reader may observe it (`hqMates.ts`) — its agents' logins.
+ */
 export interface HqMate extends HqMateRecord {
   /**
    * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
@@ -75,7 +70,8 @@ export interface HqMate extends HqMateRecord {
   readonly standupRequestedBy?: string | null;
   /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
   readonly closedOff?: boolean;
-  readonly live?: HqMateLive;
+  /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
+  readonly logins?: OverviewLogins;
 }
 
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */

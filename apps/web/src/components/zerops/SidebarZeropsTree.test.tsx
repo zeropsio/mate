@@ -179,7 +179,7 @@ function candidate(
       };
 }
 
-/** D6's record of who signed a Mate's agent in, as its summary at HQ names them. */
+/** D6's record of who signed a Mate's agent in, as HQ's overview of its logins names them. */
 const SIGNER = "u-ada";
 
 /** `placed`, its Mate's record at HQ saying `over` too. */
@@ -187,13 +187,9 @@ function recorded(placed: HqPlacement, over: Partial<HqMate>): HqPlacement {
   return { ...placed, mate: { name: "", face: "", ...placed.mate, ...over } };
 }
 
-/** A Mate's summary at HQ, naming `signer` as who signed Claude in. */
+/** A Mate's logins as HQ's overview says them, naming `signer` as who signed Claude in. */
 const signedBy = (signer: string): Partial<HqMate> => ({
-  live: {
-    online: true,
-    at: "2026-10-02T10:00:00.000Z",
-    summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": signer } },
-  },
+  logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
 });
 
 /** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */

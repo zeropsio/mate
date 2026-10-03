@@ -930,22 +930,16 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     { case: "nobody's Mate asking", signer: undefined, waiting: false },
   ])("$case waits on the viewer: $waiting", ({ signer, waiting }) => {
     const asking = mate("connected");
-    // Who signed it in, as its summary at HQ names them.
-    const live = {
-      online: true,
-      at: "2026-09-24T10:00:00.000Z",
-      summary: {
-        main: null,
-        running: 0,
-        waiting: 1,
-        signers: signer === undefined ? {} : { "claude-code": signer },
-      },
-    };
+    // Who signed it in, as HQ's overview of its logins names them.
+    const logins =
+      signer === undefined
+        ? {}
+        : { "claude-code": { signedInBy: signer, present: true, token: false } };
     const item = {
       ...asking,
       project: {
         ...asking.project,
-        hq: { appId: "g", appName: "G", kind: "mate", mate: { name: "Wren", face: "", live } },
+        hq: { appId: "g", appName: "G", kind: "mate", mate: { name: "Wren", face: "", logins } },
       },
     } as ZeropsCandidate;
     const [facts] = groupMemberFactsOf(

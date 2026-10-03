@@ -28,20 +28,11 @@ const mate = (
         mate: {
           name: bot,
           face,
-          // Who signed it in, as its summary at HQ names them.
+          // Who signed it in, as HQ's overview of its logins names them.
           ...(signer === null
             ? {}
             : {
-                live: {
-                  online: true,
-                  at: "2026-10-02T10:00:00.000Z",
-                  summary: {
-                    main: null,
-                    running: 0,
-                    waiting: 0,
-                    signers: { "claude-code": signer },
-                  },
-                },
+                logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
               }),
         },
       },

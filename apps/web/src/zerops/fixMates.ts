@@ -84,7 +84,7 @@ export function useFixMates(
 ): ReadonlyArray<FixMateOption> {
   const { listing } = useZeropsCandidates();
   const candidates = heldCandidates(listing).rows;
-  const ownerOf = useZeropsMateOwners({ candidates, enabled: mate !== undefined });
+  const ownerOf = useZeropsMateOwners();
   const shells = useThreadShells();
   const visits = useUiStateStore((state) => state.threadLastVisitedAtById);
   const projectId = mate?.projectId;

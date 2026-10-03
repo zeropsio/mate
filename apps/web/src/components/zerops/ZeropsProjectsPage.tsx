@@ -28,7 +28,12 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { hqEnvironmentsAtom, hqPlacementsAtom, hqStructureAtom } from "~/state/zerops";
+import {
+  hqEnvironmentsAtom,
+  hqPeopleAtom,
+  hqPlacementsAtom,
+  hqStructureAtom,
+} from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -44,10 +49,8 @@ import {
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
   mateIsViewers,
-  resolveMateOwnerName,
-  resolveMateVerbs,
+  resolveMateOwnerPerson,
   resolveMateVisibility,
-  type MateVerbs,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -92,7 +95,6 @@ import {
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
-import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -982,23 +984,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ),
     [activeOrganization, candidates, user],
   );
-  // Guide 0.8: a verb this person cannot finish is not offered. Every one of
-  // them is a platform write the platform would refuse from the wrong role;
-  // a person the session does not name is offered none.
-  const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
-    viewer === null || user === null
-      ? { delete: false, assign: false }
-      : resolveMateVerbs({ project: candidate.project, viewer });
-  // The member list is read when a row would use a name — a Mate this person
-  // may see and not open — and when they may hand a Mate over and so need
-  // somebody to hand it to. Never otherwise.
-  const anyListed = candidates.some((candidate) => visibilityOf(candidate) === "listed");
-  const anyAssignable = candidates.some((candidate) => verbsOf(candidate).assign);
-  const assignableMembers = useZeropsOrganizationMembers({
-    clientId: activeOrganization?.id,
-    enabled: anyListed || anyAssignable,
-  });
-  const members = assignableMembers;
+  // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
+  const people = useAtomValue(hqPeopleAtom);
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
@@ -1034,7 +1021,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const visibility = visibilityOf(candidate);
     const ownerName =
       visibility === "listed"
-        ? resolveMateOwnerName({ project: candidate.project, members })
+        ? resolveMateOwnerPerson({ project: candidate.project, people })?.name
         : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
