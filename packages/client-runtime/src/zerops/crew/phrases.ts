@@ -25,6 +25,7 @@ import type {
   CrewTask,
   Crewmate,
 } from "@t3tools/contracts";
+import { GITHUB_ALERT_WORDS, quoteWords } from "@t3tools/shared/messagePreview";
 
 /* ------------------------------------------------------------ helpers */
 
@@ -259,24 +260,34 @@ export function crewKeepGoingLine(
 /** The goal's title while the crew has none of its own yet. */
 export const CREW_BRIEF_EMPTY_WORD = "What's the crew for?";
 
+/** A callout's word as `quoteWords` leaves it, alone on the line its marker stood on. */
+const CALLOUT_WORD_LINES = new Set(Array.from(GITHUB_ALERT_WORDS.values(), (word) => `${word}:`));
+
 /**
  * The goal's text as its title's tooltip reads it: markdown read as plain
- * text — heading lines dropped, list, quote and emphasis markers stripped —
- * at most two lines.
+ * text — heading lines dropped, list, quote and emphasis markers stripped, a
+ * callout's word run into its first line as a Mate's message reads it
+ * (`quoteWords`) — at most two lines.
  */
 export function crewBriefPlainText(excerpt: string): string {
-  return excerpt
+  const lines = quoteWords(excerpt)
     .split(/\r?\n/u)
     .filter((line) => !/^\s*#/u.test(line))
     .map((line) =>
       line
-        .replace(/^\s*(?:[-*+]|\d+[.)]|>)\s+/u, "")
+        .replace(/^\s*(?:[-*+]|\d+[.)])\s+/u, "")
         .replace(/\*\*|__|`/gu, "")
         .trim(),
     )
-    .filter((line) => line !== "")
-    .slice(0, 2)
-    .join("\n");
+    .filter((line) => line !== "");
+  const read: Array<string> = [];
+  for (const line of lines) {
+    const word = read.at(-1);
+    if (word !== undefined && CALLOUT_WORD_LINES.has(word))
+      read[read.length - 1] = `${word} ${line}`;
+    else read.push(line);
+  }
+  return read.slice(0, 2).join("\n");
 }
 
 /** The tab's ···, a crewmate's ··· and its ⌄ on the conversation's line: each press. */
@@ -1054,8 +1065,8 @@ export function crewmateWhoseLine(kind: Crewmate["kind"], mateName: string): str
 /** The Mate's own chat, as its face on the line says it while another chat is open. */
 export const mateOwnChatWord = (mateName: string): string => `${mateName}'s own chat`;
 
-/** A line's markdown lead-in: a heading's hashes, a list's bullet or number, a quote. */
-const MARKDOWN_LEAD = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)/u;
+/** A line's markdown lead-in: a heading's hashes, a list's bullet or number. */
+const MARKDOWN_LEAD = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/u;
 
 /** How a job is written to its crewmate: "You own Game Rules: …". */
 const YOU_OWN = "You own ";
@@ -1097,10 +1108,10 @@ function personsLine(plain: string, name: string): string {
 /**
  * A job's first line in plain words and the person's: what its crewmate's
  * empty conversation says under _Its job_. Markdown's marks go — a heading's
- * hashes, a list's bullet, emphasis, code ticks, a link's address — and the
- * words the job says to its crewmate become the person's line
- * (`personsLine`). Its first sentence always stays; a later one stays only
- * while it speaks about the crewmate, never to it: "You read, plan and
+ * hashes, a list's bullet, a quote's marker, emphasis, code ticks, a link's
+ * address — and the words the job says to its crewmate become the person's
+ * line (`personsLine`). Its first sentence always stays; a later one stays
+ * only while it speaks about the crewmate, never to it: "You read, plan and
  * review; you never change files." is the crewmate's instruction, not the
  * person's line.
  */
@@ -1117,9 +1128,9 @@ function jobSentences(line: string): ReadonlyArray<string> {
   return line.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence.length > 0);
 }
 
-/** A job line without markdown's marks. */
+/** A job line without markdown's marks, its quote read as a Mate's message reads one (`quoteWords`). */
 function plainJobLine(jobFirstLine: string): string {
-  return jobFirstLine
+  return quoteWords(jobFirstLine)
     .replace(MARKDOWN_LEAD, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
     .replace(/`([^`]*)`/gu, "$1")

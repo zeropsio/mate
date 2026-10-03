@@ -511,6 +511,7 @@ const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
 const PURE_SHARED_MODULES: ReadonlySet<string> = new Set([
   "@t3tools/shared/basePath",
   "@t3tools/shared/brand",
+  "@t3tools/shared/messagePreview",
   "@t3tools/shared/semver",
 ]);
 
