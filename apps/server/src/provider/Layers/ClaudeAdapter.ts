@@ -4032,6 +4032,21 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // in-flight control request. `worker_shutting_down` is a Remote
       // Control worker notice; the session close path reports the outcome.
       case "local_command_output":
+        // A local slash command's output, which the SDK asks to be shown as
+        // assistant text: the CLI's own `<synthetic>` reply, so it travels
+        // the same way.
+        yield* handleAssistantMessage(context, {
+          type: "assistant",
+          session_id: message.session_id,
+          uuid: message.uuid,
+          parent_tool_use_id: null,
+          message: {
+            id: message.uuid,
+            model: "<synthetic>",
+            content: [{ type: "text", text: message.content }],
+          },
+        } as unknown as SDKMessage);
+        return;
       case "plugin_install":
       case "commands_changed":
       case "memory_recall":
