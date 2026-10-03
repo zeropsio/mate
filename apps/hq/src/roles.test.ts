@@ -72,9 +72,10 @@ describe("rolesLayer", () => {
 
         world.down = true;
         yield* TestClock.adjust("30 seconds");
-        assert.strictEqual((yield* Effect.flip(roles.view))._tag, "ZeropsUnavailable");
+        assert.strictEqual((yield* Effect.flip(roles.fresh))._tag, "ZeropsUnavailable");
         world.down = false;
-        assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
+        yield* TestClock.adjust("1 millis");
+        assert.deepStrictEqual(userIds(yield* roles.fresh), ["owner"]);
 
         // Concurrent readers share one read: of the view past its age, and of a fresh one.
         yield* TestClock.adjust("30 seconds");
@@ -97,9 +98,94 @@ describe("rolesLayer", () => {
         world.members.set("ORG", []);
         yield* TestClock.adjust("1 millis");
         assert.strictEqual((yield* Effect.flip(roles.fresh))._tag, "ZeropsUnavailable");
-        yield* TestClock.adjust("30 seconds");
+        // Past the five minutes the last good view is served while Zerops does not answer.
+        yield* TestClock.adjust("5 minutes");
         assert.strictEqual((yield* Effect.flip(roles.view))._tag, "ZeropsUnavailable");
       }),
+  );
+});
+
+// E2E 2026-10-03: a4's recipe answered 503 `zerops_unavailable` right after its birth, and B's
+// read late for a minute — KRLS's member list not answering inside HQ's 10 s. A read verb decides
+// over the last good view for five minutes while Zerops does not answer; a write never does.
+describe("the last good view, while Zerops does not answer", () => {
+  const layer = (world: ReturnType<typeof emptyWorld>) =>
+    Layer.build(
+      rolesLayer({ hqProjectId: "HQ", credential: Option.some(Redacted.make("t")) }).pipe(
+        Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
+      ),
+    );
+  const world = () => {
+    const made = emptyWorld();
+    made.tokens.set("t", {
+      id: "T",
+      name: "mate-hq-org:HQ",
+      orgId: "ORG",
+      roleCode: "READ_ONLY",
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+      projects: [],
+      createdMs: 0,
+      createdByUser: "owner",
+    });
+    made.members.set("ORG", [member("owner", "OWNER")]);
+    made.projects.push(project("HQ"));
+    return made;
+  };
+  const userIds = (view: OrgView) => view.members.map((row) => row.userId);
+  /** The member list failing as KRLS's did: an outage dressed as an empty answer. */
+  const membersFail = (made: ReturnType<typeof emptyWorld>) => made.members.set("ORG", []);
+
+  it.effect("answers a read verb with it inside the window, a write never, past it neither", () =>
+    Effect.gen(function* () {
+      const made = world();
+      const roles = Context.get(yield* layer(made), Roles);
+      assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
+
+      membersFail(made);
+      yield* TestClock.adjust("31 seconds");
+      const served = yield* roles.view;
+      assert.deepStrictEqual(userIds(served), ["owner"]);
+      assert.strictEqual(served.freshness, "cached");
+      assert.strictEqual((yield* Effect.flip(roles.fresh))._tag, "ZeropsUnavailable");
+
+      // Five minutes after the last good read, nothing is decided over it.
+      yield* TestClock.adjust("269 seconds");
+      assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
+      yield* TestClock.adjust("1 millis");
+      assert.strictEqual((yield* Effect.flip(roles.view))._tag, "ZeropsUnavailable");
+    }),
+  );
+
+  it.effect("answers at once in an outage, and asks Zerops again at most every 30 s", () =>
+    Effect.gen(function* () {
+      const made = world();
+      const roles = Context.get(yield* layer(made), Roles);
+      yield* roles.view;
+      membersFail(made);
+      yield* TestClock.adjust("31 seconds");
+      yield* roles.view;
+      const asked = () => made.calls.filter((call) => call.startsWith("members:")).length;
+      const before = asked();
+
+      // Nobody waits on a Zerops that just failed: each read is the last good view, at once.
+      yield* Effect.all(
+        Array.from({ length: 5 }, () => roles.view),
+        { concurrency: "unbounded" },
+      );
+      yield* TestClock.adjust("29 seconds");
+      yield* roles.view;
+      assert.strictEqual(asked() - before, 0);
+
+      // Thirty seconds on, the view is still served at once, and Zerops is asked behind it.
+      made.members.set("ORG", [member("owner", "OWNER"), member("admin", "ADMIN")]);
+      yield* TestClock.adjust("1 seconds");
+      assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
+      yield* TestClock.adjust("1 millis");
+      assert.strictEqual(asked() - before, 1);
+      assert.deepStrictEqual(userIds(yield* roles.view), ["owner", "admin"]);
+    }),
   );
 });
 
