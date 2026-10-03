@@ -22,6 +22,7 @@ import {
   historyAge,
   recipeReach,
   releaseContentsCommits,
+  waitingForProduction,
   REVIEW_RELEASE_LABEL,
   type ChangeReadout,
   type ReviewClose,
@@ -347,7 +348,15 @@ function ChangeReviewData({
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
       waitingForProduction={
-        flow === undefined ? 0 : releaseContentsCommits(flow.release.contents).length
+        flow === undefined
+          ? 0
+          : flow.releasesKnown
+            ? waitingForProduction({
+                listed: releaseContentsCommits(flow.release.contents),
+                change: pull,
+                liveSince: flow.releases.find((entry) => entry.standing === "live")?.taggedAt,
+              })
+            : releaseContentsCommits(flow.release.contents).length
       }
     />
   );

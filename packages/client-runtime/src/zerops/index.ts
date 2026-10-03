@@ -491,6 +491,7 @@ export {
   releaseWaitingLabel,
   type ReleaseContentsSummary,
   releaseContentsCommits,
+  waitingForProduction,
   releaseContentsSummary,
   sidebarChangeLabel,
   changeNamesRepository,
