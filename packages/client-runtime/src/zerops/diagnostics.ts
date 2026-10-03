@@ -40,12 +40,12 @@ export interface DiagnosticFailure {
 }
 
 /**
- * Why an exchange at a Mate's door was attempted: the reload's restore, the
- * auto-connect of ready Mates, the repair of a session the door stopped
+ * Why an exchange at a Mate's door was attempted: a lease's restore (the
+ * route's, the Mate left last), the repair of a session the door stopped
  * accepting, or the projects page's connect (a person's click or retry, a
  * creation's birth, the served environment's one automatic connect).
  */
-export type IdentityExchangeReason = "restore" | "auto-connect" | "repair" | "user";
+export type IdentityExchangeReason = "restore" | "repair" | "user";
 
 /**
  * Why a round of the access grant started: the epoch's first, the grant's own

@@ -1,6 +1,6 @@
 /**
- * The container machines (DESIGN §4.5) in the rows' words: the health vocabulary the sidebar, the
- * projects page and auto-connect read. Pure.
+ * The container machines (DESIGN §4.5) in the rows' words: the health vocabulary the sidebar and
+ * the projects page read. Pure.
  */
 import type { ZeropsContainerHealth } from "../containerHealth.ts";
 import { unansweredSinceUp, type ContainerMachine, type MateFlag } from "./containerMachine.ts";

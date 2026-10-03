@@ -856,6 +856,8 @@ describe("EnvironmentRegistry", () => {
       yield* Effect.gen(function* () {
         const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
         yield* registry.start;
+        // A Mate's registration starts parked: this one is connected.
+        yield* registry.unpark(BEARER_TARGET.environmentId);
 
         // 20% of the window is held back as slack, so nothing happens yet.
         yield* TestClock.adjust("11 minutes");
@@ -869,6 +871,120 @@ describe("EnvironmentRegistry", () => {
         );
         expect(stored.expiresAtEpochMs).toBe(1_620_000);
         expect(yield* Ref.get(renewals)).toBe(1);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  // A9 (krok-a-hub §3): a Mate is connected while something holds a lease on it. Every Mate this
+  // browser ever opened is a registration; on a load each opened its socket, the 20+-Mate account
+  // twenty-odd at once. A Mate's registration starts parked — its session and data kept, no
+  // socket — and connects when it is unparked.
+  const ZEROPS_CREDENTIAL = new BearerConnectionCredential({
+    token: "kept-token",
+    origin: "zerops-identity",
+  });
+
+  it.effect("a Zerops Mate's registration starts parked, and any other connects", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness(
+        [BEARER_TARGET, RELAY_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+      );
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* awaitConnectionState(
+          registry,
+          RELAY_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        for (let turn = 0; turn < 20; turn += 1) yield* Effect.yieldNow;
+
+        expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
+        expect((yield* registry.state(BEARER_TARGET.environmentId)).desired).toBe(false);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("parks a registration with no lease and keeps its data", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+      );
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* registry.unpark(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        yield* registry.park(BEARER_TARGET.environmentId);
+        const parked = yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => !state.desired && state.phase !== "connected",
+        );
+        expect(parked.desired).toBe(false);
+        expect(yield* Ref.get(harness.releasedSessions)).toBe(1);
+        expect(
+          (yield* SubscriptionRef.get(registry.entries)).has(BEARER_TARGET.environmentId),
+        ).toBe(true);
+        expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toEqual(
+          ZEROPS_CREDENTIAL,
+        );
+        expect(yield* Ref.get(harness.cacheClears)).toEqual([]);
+        expect(yield* Ref.get(harness.ownedDataClears)).toEqual([]);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("unparks on its kept session with no door", () =>
+    Effect.gen(function* () {
+      const renewals = yield* Ref.make(0);
+      const presented = yield* Ref.make<ReadonlyArray<string | undefined>>([]);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+        {
+          credentialRenewer: {
+            renew: () => Ref.update(renewals, (count) => count + 1).pipe(Effect.as(Option.none())),
+          },
+          authenticate: (_environmentId, credential) =>
+            Ref.update(presented, (tokens) => [...tokens, credential?.token]),
+        },
+      );
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* registry.unpark(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        yield* registry.park(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => !state.desired,
+        );
+
+        yield* registry.unpark(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        expect(yield* Ref.get(harness.sessions)).toHaveLength(2);
+        expect(yield* Ref.get(presented)).toEqual(["kept-token", "kept-token"]);
+        expect(yield* Ref.get(renewals)).toBe(0);
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
@@ -1619,6 +1735,8 @@ describe("EnvironmentRegistry", () => {
       yield* Effect.gen(function* () {
         const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
         yield* registry.start;
+        // A Mate's registration starts parked: this one is connected.
+        yield* registry.unpark(BEARER_TARGET.environmentId);
         yield* TestClock.adjust("1 minute");
         yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
 
@@ -1687,6 +1805,8 @@ describe("EnvironmentRegistry", () => {
       yield* Effect.gen(function* () {
         const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
         yield* registry.start;
+        // A Mate's registration starts parked: this one is connected.
+        yield* registry.unpark(BEARER_TARGET.environmentId);
         yield* TestClock.adjust("12 minutes");
         yield* Deferred.await(renewalStarted);
 

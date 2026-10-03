@@ -34,7 +34,6 @@ import {
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
-import { EXCHANGE_CONCURRENCY } from "../environments/exchangeDriver.ts";
 import { candidateListingsAtom } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
@@ -238,17 +237,27 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   const preferred: Array<EnvironmentId | null> = [];
   /** The environments the socket admission holds as down now. */
   const down: Array<EnvironmentId> = [];
+  /** Whether each environment is parked, as the stage last told the registry (A9). */
+  const parked = new Map<EnvironmentId, boolean>();
+  /** Every timer armed and not disarmed: none fires unless the test fires it. */
+  const timers = new Set<{ readonly delayMs: number; readonly fire: () => void }>();
   const ports: AccountEnvironmentPorts = {
     clock: {
       now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
       random: () => 0.5,
-      setTimer: () => () => undefined,
+      setTimer: (delayMs, fire) => {
+        const timer = { delayMs, fire };
+        timers.add(timer);
+        return () => void timers.delete(timer);
+      },
     },
     door: {
       exchange: (request) => pending(exchanges, request, request.signal),
       readDescriptor: (origin, signal) => pending(descriptors, origin, signal),
       retryLink: () => undefined,
       remove: (environmentId) => void removed.push(environmentId),
+      park: (environmentId) => void parked.set(environmentId, true),
+      unpark: (environmentId) => void parked.set(environmentId, false),
     },
     probe: (origin, signal) => {
       const sentAt = { wall: clock.wallMs(), mono: clock.monoMs() };
@@ -290,6 +299,19 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     ports,
     preferred,
     down,
+    /** The environments parked now, as the stage last told the registry. */
+    parked: () => [...parked].flatMap(([environmentId, held]) => (held ? [environmentId] : [])),
+    /** The environments unparked now, as the stage last told the registry. */
+    unparked: () => [...parked].flatMap(([environmentId, held]) => (held ? [] : [environmentId])),
+    /** Fires every timer armed for this delay. */
+    fire: (delayMs: number) => {
+      // Only the timers armed before this fire: one a fire arms waits for the next.
+      for (const timer of Array.from(timers)) {
+        if (timer.delayMs !== delayMs) continue;
+        timers.delete(timer);
+        timer.fire();
+      }
+    },
     /** The tab opens on this environment's route: the stage reads it when it starts. */
     openOn: (environmentId: EnvironmentId | null) => {
       route = environmentId;
@@ -1385,15 +1407,177 @@ describe("the post-grant stage's Mate environments", () => {
       yield* settle;
     });
 
+  // A9 (krok-a-hub §3): a Mate is connected while it holds a lease — the route's, the one left last,
+  // an action's, a Connect's. A load connected every Mate this browser remembered and every ready
+  // Mate of the open organization: the 20+-Mate account opened twenty-odd sockets per tab.
+  const B_MATE = mate("b");
+  const ENV_B = EnvironmentId.make("env-b");
+  const REMEMBERED_B: RegistrationRecord = {
+    targetKey: B_MATE.key,
+    environmentId: ENV_B,
+    origin: B_MATE.origin,
+    projectRef: { projectId: B_MATE.projectId, orgId: "org-1" },
+    name: "shop b",
+  };
+  const registered = (...environmentIds: ReadonlyArray<EnvironmentId>) =>
+    environmentIds.map((environmentId) => ({ environmentId, origin: null }));
+
+  it.effect("a load connects only the route's Mate", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, grant, rig, built } = yield* openAccount(
+          [REMEMBERED_A, REMEMBERED_B],
+          [A_MATE, B_MATE],
+        );
+        // A reload on B's conversation: the route is the address, before a React effect names it.
+        rig.openOn(ENV_B);
+        yield* grant.answer();
+        yield* clock.advance(SECOND);
+        yield* settle;
+        yield* built.postGrant;
+        rig.catalog().environments(registered(ENV_A, ENV_B));
+        yield* settle;
+
+        expect(rig.descriptors.map(({ input }) => input)).toEqual([B_MATE.origin]);
+        yield* answerDescriptor(rig, ENV_B);
+        expect(rig.exchanges.map(({ input }) => input.key)).toEqual([B_MATE.key]);
+        expect(rig.parked()).toEqual([ENV_A]);
+        expect(rig.unparked()).toEqual([ENV_B]);
+        expect(rig.preferred).toEqual([ENV_B]);
+      }),
+    ),
+  );
+
+  it.effect("a remembered Mate stays parked until it is opened", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([REMEMBERED_A]);
+        rig.catalog().environments(registered(ENV_A));
+        yield* settle;
+        expect(rig.descriptors).toEqual([]);
+        expect(rig.exchanges).toEqual([]);
+        expect(rig.parked()).toEqual([ENV_A]);
+
+        environments.setRoute(ENV_A);
+        yield* settle;
+        expect(rig.exchanges.map(({ input }) => input.key)).toEqual([MATE]);
+        expect(rig.unparked()).toEqual([ENV_A]);
+      }),
+    ),
+  );
+
+  it.effect("the Mate left last stays connected for five minutes, then is parked", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted(
+          [REMEMBERED_A, REMEMBERED_B],
+          [A_MATE, B_MATE],
+        );
+        rig.catalog().environments(registered(ENV_A, ENV_B));
+        environments.setRoute(ENV_A);
+        yield* settle;
+        environments.setRoute(ENV_B);
+        yield* settle;
+        expect(rig.unparked()).toEqual([ENV_A, ENV_B]);
+
+        rig.fire(5 * MINUTE);
+        yield* settle;
+        expect(rig.parked()).toEqual([ENV_A]);
+        expect(rig.unparked()).toEqual([ENV_B]);
+      }),
+    ),
+  );
+
+  // A park closes a link nothing holds: it is no drop, so the platform is asked nothing.
+  it.effect("a park of a connected Mate reads no inventory", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, rig, built, environments } = yield* granted([REMEMBERED_A]);
+        rig.catalog().environments(registered(ENV_A));
+        environments.setRoute(ENV_A);
+        yield* settle;
+        rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: true })));
+        yield* settle;
+        rig.catalog().link(ENV_A, { phase: "connected" });
+        yield* settle;
+        const heard: Array<Invalidation> = [];
+        const subscription = yield* built.invalidations.subscribe;
+        yield* Stream.fromSubscription(subscription).pipe(
+          Stream.runForEach((invalidation) => Effect.sync(() => heard.push(invalidation))),
+          Effect.forkScoped,
+        );
+
+        environments.setRoute(null);
+        yield* settle;
+        rig.fire(5 * MINUTE);
+        yield* settle;
+        expect(rig.parked()).toEqual([ENV_A]);
+        // The registry closes the parked link: its supervisor publishes it as idle.
+        rig.catalog().link(ENV_A, { phase: "idle" });
+        yield* settle;
+        yield* clock.advance(250);
+        yield* settle;
+
+        expect(heard).toEqual([]);
+        expect(environments.machines().get(MATE)?.linkLostAt).toBeNull();
+      }),
+    ),
+  );
+
+  // A coming page left open on a Mate whose door fails minted a throwaway a minute as the route
+  // (review, 2026-10-03): the Mate on screen is one the person asked for, capped as no route is.
+  it.effect("the Mate on screen is asked for, and capped as no route is", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([]);
+        environments.setOnScreen(A_MATE.projectId);
+        yield* settle;
+
+        expect(rig.exchanges.map(({ input: { key, asked } }) => ({ key, asked }))).toEqual([
+          { key: MATE, asked: true },
+        ]);
+        expect(environments.machines().get(MATE)?.guards).toMatchObject({
+          want: true,
+          routeTarget: false,
+        });
+      }),
+    ),
+  );
+
+  it.effect("an action holds a parked Mate connected until it answers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([REMEMBERED_A]);
+        rig.catalog().environments(registered(ENV_A));
+        yield* settle;
+        expect(rig.parked()).toEqual([ENV_A]);
+
+        const release = environments.hold(ENV_A);
+        yield* settle;
+        expect(rig.exchanges.map(({ input: { key, reason } }) => ({ key, reason }))).toEqual([
+          { key: MATE, reason: "user" },
+        ]);
+        expect(rig.unparked()).toEqual([ENV_A]);
+
+        release();
+        release();
+        yield* settle;
+        expect(rig.parked()).toEqual([ENV_A]);
+      }),
+    ),
+  );
+
   it.effect("no exchange before the first grant (I10, AL-04), with no React", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { clock, grant, rig, built } = yield* openAccount([REMEMBERED_A]);
+        rig.openOn(ENV_A);
         const postGrant = yield* Effect.forkChild(built.postGrant);
         yield* clock.advance(SECOND);
         yield* settle;
 
-        // The remembered Mate is present on the platform, and the first round is still out.
+        // The remembered Mate on the route is present on the platform, and the first round is
+        // still out.
         expect(grant.rounds()).toBe(1);
         expect(postGrant.pollUnsafe()).toBeUndefined();
         expect(rig.exchanges).toEqual([]);
@@ -1476,7 +1660,6 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { clock, page, rig, built, environments } = yield* granted([REMEMBERED_A]);
-        yield* answerDescriptor(rig, ENV_A);
         const connect = environments.connect(MATE, "user");
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
@@ -1537,7 +1720,6 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  const ENV_B = EnvironmentId.make("env-b");
   const ELSEWHERE = EnvironmentId.make("env-elsewhere");
   it.effect.each([
     {
@@ -1581,8 +1763,7 @@ describe("the post-grant stage's Mate environments", () => {
         const { rig, environments } = yield* granted(row.remembered);
         let finish: (ok: boolean) => void = () => undefined;
         if (row.install !== null) {
-          if (row.remembered.length === 0) void environments.connect(MATE, "user");
-          else yield* answerDescriptor(rig, ENV_A);
+          void environments.connect(MATE, "user");
           yield* settle;
           rig.exchanges[0]!.answer(
             admitted(
@@ -1659,7 +1840,9 @@ describe("the post-grant stage's Mate environments", () => {
             [A_MATE],
             platform.adapter,
           );
-          // Remembered, it is exchanged where its record kept it (A16).
+          // Opened, a remembered Mate is exchanged where its record kept it (A16).
+          environments.setRoute(ENV_A);
+          yield* settle;
           yield* answerDescriptor(rig, ENV_A);
           rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: true })));
           yield* settle;
@@ -1728,6 +1911,76 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  // A9 (krok-a-hub §3): HQ's index names the project of every Mate the reader observes, so a
+  // notification's click never reads every candidate's descriptor first.
+  it.effect("a route HQ's index names is exchanged with no descriptor sweep", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const [named, down, coming] = [mate("1"), mate("2"), mate("3")];
+        const { clock, rig, environments } = yield* granted(
+          [],
+          [named, down, coming],
+          undefined,
+          undefined,
+          {
+            hqIndex: {
+              projectOf: (environmentId) => (environmentId === ENV_A ? named.projectId : null),
+              subscribe: () => () => undefined,
+            },
+          },
+        );
+        // No descriptor names the route's environment: the named Mate's read is still out.
+        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
+
+        environments.setRoute(ENV_A);
+        yield* settle;
+        expect(rig.exchanges.map(({ input: { key, expected } }) => ({ key, expected }))).toEqual([
+          { key: named.key, expected: null },
+        ]);
+
+        // Read on their polls as ever, neither is read again for the route: a failed read leaves
+        // each unanswered.
+        yield* clock.advance(10 * SECOND);
+        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
+        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        expect(environments.index().unanswered).toEqual(
+          expect.arrayContaining([down.key, coming.key]),
+        );
+      }),
+    ),
+  );
+
+  it.effect("an action on a Mate only HQ's index names holds it once HQ names it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let known = false;
+        const heard = { listener: (): void => undefined };
+        const { rig, environments } = yield* granted([], [A_MATE], undefined, undefined, {
+          hqIndex: {
+            projectOf: (environmentId) =>
+              known && environmentId === ENV_A ? A_MATE.projectId : null,
+            subscribe: (listener) => {
+              heard.listener = listener;
+              return () => undefined;
+            },
+          },
+        });
+
+        const release = environments.hold(ENV_A);
+        yield* settle;
+        expect(rig.exchanges).toEqual([]);
+
+        // HQ's structure lands after the stage stood.
+        known = true;
+        heard.listener();
+        yield* settle;
+        expect(rig.exchanges.map(({ input: { key } }) => key)).toEqual([MATE]);
+        release();
+      }),
+    ),
+  );
+
   it.effect(
     "a route nothing names waits for each unreachable Mate's next poll, and is answered once that read fails too",
     () =>
@@ -1764,339 +2017,45 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  /** A Mate HQ knows closed off: auto-connect may want it. */
-  const CLOSED_OFF_MATE = A_MATE;
-  /** HQ's record of A_MATE says its project is closed off. */
-  const HQ_CLOSED_OFF: Partial<AccountEnvironmentPorts> = {
-    closedOff: {
-      read: (projectId) => (projectId === A_MATE.projectId ? true : "unknown"),
-      subscribe: () => () => undefined,
-    },
-  };
-
-  it.effect.each([
-    {
-      name: "a ready Mate of the organization the tab has open",
-      open: "org-1",
-      mate: CLOSED_OFF_MATE,
-      wanted: 1,
-    },
-    {
-      name: "none while another organization is open",
-      open: "org-2",
-      mate: CLOSED_OFF_MATE,
-      wanted: 0,
-    },
-  ])("auto-connect wants $name (D13)", (row) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted(
-          [],
-          [row.mate],
-          platformAdapter([row.mate]),
-          [row.mate],
-          HQ_CLOSED_OFF,
-        );
-        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-
-        environments.setActiveOrganization(row.open);
-        yield* settle;
-
-        expect(rig.exchanges.map(({ input: { key, reason } }) => ({ key, reason }))).toEqual(
-          Array.from({ length: row.wanted }, () => ({ key: MATE, reason: "auto-connect" })),
-        );
-      }),
-    ),
-  );
-
-  /**
-   * A platform that states its Mates' variables, token list and services' variable names as the
-   * case says: the organization's variables stream answers, or fails; the token list and each
-   * service's own variable names are its cells.
-   */
-  const statedPlatform = (
-    mates: ReadonlyArray<Mate>,
-    stated: {
-      /** The organization's variables, or a stream that fails. */
-      readonly variables?: ReadonlyArray<Record<string, unknown>> | "fails";
-      readonly tokens?: ReadonlyArray<Record<string, unknown>>;
-      /** A service's own variable names, or a read the platform refuses (403). */
-      readonly env?: ReadonlyArray<string> | "forbidden";
-    },
-  ): ZeropsDataAdapter => {
-    const base = platformAdapter(mates);
-    const refused = {
-      _tag: "ZeropsCellSourceError",
-      kind: "permission",
-      retryable: false,
-    } as const;
-    const unstated = {
-      _tag: "ZeropsCellSourceError",
-      kind: "unavailable",
-      retryable: false,
-    } as const;
-    return {
-      ...base,
-      register: (receiver, request, context) => {
-        const descriptor = request.descriptor;
-        if (
-          descriptor.kind === "table-list" &&
-          descriptor.query.kind === "service-variables-of-organization" &&
-          stated.variables !== undefined
-        ) {
-          if (stated.variables === "fails") {
-            return Effect.fail({
-              _tag: "ZeropsDataAdapterError",
-              kind: "registration",
-              message: "The variables could not be listed.",
-              retryable: true,
-              accountRevocationEvidence: false,
-            } as const);
-          }
-          const items = stated.variables;
-          return Effect.succeed({
-            responseObservations: decodeRegistrationResponse(request, {
-              items,
-              totalHits: items.length,
-            }).observations,
-          });
-        }
-        return base.register(receiver, request, context);
-      },
-      cells: {
-        readOrganizationLocations: () => Effect.fail(unstated),
-        readServiceAuthorizedAgents: () => Effect.fail(unstated),
-        readServiceMateFlag: () => Effect.fail(unstated),
-        readOrganizationMembers: () => Effect.fail(unstated),
-        readOrganizationIntegrationTokenGrants: () =>
-          stated.tokens === undefined
-            ? Effect.fail(unstated)
-            : Effect.succeed(stated.tokens as never),
-        readServiceVariableNames: () =>
-          stated.env === "forbidden"
-            ? Effect.fail(refused)
-            : stated.env === undefined
-              ? Effect.fail(unstated)
-              : Effect.succeed(stated.env),
-      },
-    };
-  };
-  /** A Mate HQ does not know closed off: its organization's streams state its marker. */
-  const OPEN_MATE = { ...A_MATE, project: { ...A_MATE.project, tagList: ["mate"] } };
-  /** A variable the app reads, on A_MATE's container. */
-  const onMate = (key: string) => ({
-    id: `var-${key}`,
-    serviceStackId: A_MATE.service.id,
-    projectId: A_MATE.projectId,
-    key,
-    content: "1",
-  });
-  const autoConnected = (rig: ReturnType<typeof environmentRig>) =>
-    rig.exchanges.filter(({ input: { reason } }) => reason === "auto-connect").length;
-
-  /** A Mate HQ does not know closed off, whose container was made at `created`. */
-  const openMate = (created: string) => ({
-    ...OPEN_MATE,
-    service: { ...OPEN_MATE.service, created },
-  });
-  /** Made a minute before the clock starts: a press may still be setting it up. */
-  const YOUNG = openMate("2026-09-23T09:59:00Z");
-  /** Made three hours before: an older Mate, never held for its marker. */
-  const OLDER = openMate("2026-09-23T07:00:00Z");
-
-  // The gate on a Mate HQ does not know closed off, at the wiring: an older Mate connects on a fresh
-  // load whatever its organization's variables stream says; a young one is held until its marker
-  // is known absent (pass 28 review: the owner's whole complaint was stalls).
-  it.effect.each([
-    {
-      name: "an older Mate whose marker reads absent",
-      mate: OLDER,
-      stated: { variables: [onMate("ZCP_MATE_ENABLED")] },
-      wanted: 1,
-    },
-    { name: "an older Mate whose stream is unread", mate: OLDER, stated: {}, wanted: 1 },
-    {
-      name: "an older Mate whose stream fails on every try",
-      mate: OLDER,
-      stated: { variables: "fails" },
-      wanted: 1,
-    },
-    {
-      name: "an older Mate its press left open, marker present",
-      mate: OLDER,
-      stated: { variables: [onMate("MATE_SETUP_RUNTIMES")] },
-      wanted: 0,
-    },
-    { name: "a young Mate whose stream is unread", mate: YOUNG, stated: {}, wanted: 0 },
-    {
-      name: "a young Mate whose stream failed, its own variables without the marker",
-      mate: YOUNG,
-      stated: { variables: "fails", env: ["ZCP_MATE_ENABLED"] },
-      wanted: 1,
-    },
-    {
-      name: "a young Mate whose stream failed, its own variables with the marker",
-      mate: YOUNG,
-      stated: { variables: "fails", env: ["MATE_SETUP_RUNTIMES"] },
-      wanted: 0,
-    },
-    {
-      name: "a young Mate whose stream failed, and a 403 on its own variables",
-      mate: YOUNG,
-      stated: { variables: "fails", env: "forbidden" },
-      wanted: 1,
-    },
-  ] as const)("the close-off gate: $name", (row) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { clock, rig, environments } = yield* granted(
-          [],
-          [row.mate],
-          statedPlatform([row.mate], row.stated),
-        );
-        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-        environments.setActiveOrganization("org-1");
-        // A stream that fails is asked again before it is said to have failed.
-        for (let tick = 0; tick < 6; tick += 1) {
-          yield* clock.advance(30 * SECOND);
-          yield* settle;
-        }
-        expect(autoConnected(rig)).toBe(row.wanted);
-      }),
-    ),
-  );
-
-  // HQ's word decides where it has one: closed off connects and not closed off holds, marker or
-  // not — another browser or person never connects to a half-made Mate. Where HQ holds no word (no
-  // record: a legacy Mate, or HQ not loaded), the press's marker decides.
-  it.effect.each([
-    { hq: true, marker: true, wanted: 1 },
-    { hq: true, marker: false, wanted: 1 },
-    { hq: false, marker: true, wanted: 0 },
-    { hq: false, marker: false, wanted: 0 },
-    { hq: "unknown", marker: true, wanted: 0 },
-    { hq: "unknown", marker: false, wanted: 1 },
-  ] as const)("the close-off gate where HQ says $hq and the marker is $marker", (row) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { clock, rig, environments } = yield* granted(
-          [],
-          [OLDER],
-          statedPlatform([OLDER], {
-            variables: [onMate(row.marker ? "MATE_SETUP_RUNTIMES" : "ZCP_MATE_ENABLED")],
-          }),
-          [OLDER],
-          { closedOff: { read: () => row.hq, subscribe: () => () => undefined } },
-        );
-        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-        environments.setActiveOrganization("org-1");
-        yield* clock.advance(30 * SECOND);
-        yield* settle;
-        expect(autoConnected(rig)).toBe(row.wanted);
-      }),
-    ),
-  );
-
-  // HQ's word that the project is closed off lets a Mate its press marked in, as it comes: before
-  // it the marker holds the Mate, whatever else is known.
-  it.effect("a Mate its press marked connects once HQ says its project is closed off", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        let closed: boolean | "unknown" = "unknown";
-        const heard = { listener: (): void => undefined };
-        const { clock, rig, environments } = yield* granted(
-          [],
-          [YOUNG],
-          statedPlatform([YOUNG], { variables: [onMate("MATE_SETUP_RUNTIMES")] }),
-          [YOUNG],
-          {
-            closedOff: {
-              read: () => closed,
-              subscribe: (listener) => {
-                heard.listener = listener;
-                return () => undefined;
-              },
-            },
-          },
-        );
-        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-        environments.setActiveOrganization("org-1");
-        yield* clock.advance(30 * SECOND);
-        yield* settle;
-        expect(autoConnected(rig)).toBe(0);
-
-        closed = true;
-        heard.listener();
-        yield* settle;
-        expect(autoConnected(rig)).toBe(1);
-      }),
-    ),
-  );
-
-  // E2E 2026-10-03: the first write after a fresh load failed while auto-connect minted and
+  // E2E 2026-10-03: the first write after a fresh load failed while the background minted and
   // deleted throwaways on the token list the press reads. A press in flight holds the background.
-  it.effect("auto-connect mints nothing while a press is in flight, and goes on once it ends", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        let pressing = true;
-        const heard = { listener: (): void => undefined };
-        const { clock, rig, environments } = yield* granted(
-          [],
-          [CLOSED_OFF_MATE],
-          platformAdapter([CLOSED_OFF_MATE]),
-          [CLOSED_OFF_MATE],
-          {
-            ...HQ_CLOSED_OFF,
-            pressInFlight: {
-              read: () => pressing,
-              subscribe: (listener) => {
-                heard.listener = listener;
-                return () => undefined;
+  it.effect(
+    "the Mate left last mints nothing while a press is in flight, and goes on once it ends",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          let pressing = true;
+          const heard = { listener: (): void => undefined };
+          const { rig, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            {
+              pressInFlight: {
+                read: () => pressing,
+                subscribe: (listener) => {
+                  heard.listener = listener;
+                  return () => undefined;
+                },
               },
             },
-          },
-        );
-        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-        environments.setActiveOrganization("org-1");
-        yield* clock.advance(30 * SECOND);
-        yield* settle;
-        expect(autoConnected(rig)).toBe(0);
+          );
+          yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
+          // Left in the same turn it was opened: only the Mate left last wants it.
+          environments.setRoute(ENV_A);
+          environments.setRoute(null);
+          yield* settle;
+          expect(rig.exchanges).toEqual([]);
 
-        pressing = false;
-        heard.listener();
-        yield* settle;
-        expect(autoConnected(rig)).toBe(1);
-      }),
-    ),
-  );
-
-  // Its ⋯ menu offers its harden; auto-connect does not wait for it (pass 28 review).
-  it.effect("an older Mate whose keys are all still ADMIN connects", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted(
-          [],
-          [CLOSED_OFF_MATE],
-          statedPlatform([CLOSED_OFF_MATE], {
-            tokens: [
-              {
-                tokenId: "k-1",
-                name: "zcp-shop a",
-                createdByUser: "u-ada",
-                grants: [{ projectId: A_MATE.projectId, roleCode: "ADMIN" }],
-              },
-            ],
-          }),
-          [CLOSED_OFF_MATE],
-          HQ_CLOSED_OFF,
-        );
-        yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-        environments.setActiveOrganization("org-1");
-        yield* settle;
-        yield* settle;
-        expect(autoConnected(rig)).toBe(1);
-      }),
-    ),
+          pressing = false;
+          heard.listener();
+          yield* settle;
+          expect(rig.exchanges.map(({ input: { key, reason } }) => ({ key, reason }))).toEqual([
+            { key: MATE, reason: "restore" },
+          ]);
+        }),
+      ),
   );
 
   it.effect(
@@ -2104,8 +2063,9 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { clock, rig, built } = yield* granted([REMEMBERED_A]);
-          yield* answerDescriptor(rig, ENV_A);
+          const { clock, rig, built, environments } = yield* granted([REMEMBERED_A]);
+          environments.setRoute(ENV_A);
+          yield* settle;
           const heard: Array<Invalidation> = [];
           const subscription = yield* built.invalidations.subscribe;
           yield* Stream.fromSubscription(subscription).pipe(
@@ -2360,38 +2320,6 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  it.effect(
-    "a reload on a Mate's conversation starts that Mate's exchange first, before a React effect names the route",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const mates = [mate("1"), mate("2"), mate("3"), mate("4")];
-          const route = mates[3]!;
-          const environment = EnvironmentId.make("env-4");
-          const records = mates.map((listed, index): RegistrationRecord => ({
-            targetKey: listed.key,
-            environmentId: EnvironmentId.make(`env-${index + 1}`),
-            origin: listed.origin,
-            projectRef: { projectId: listed.projectId, orgId: "org-1" },
-            name: listed.project.name,
-          }));
-          const { clock, grant, rig, built } = yield* openAccount(records, mates);
-          rig.openOn(environment);
-          yield* grant.answer();
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* built.postGrant;
-
-          // Every remembered Mate could start; the route's takes a slot before the others fill them.
-          const started = rig.descriptors.map(({ input }) => input);
-          expect(started).toContain(route.origin);
-          expect(started).toHaveLength(EXCHANGE_CONCURRENCY);
-          // Its socket opens before theirs.
-          expect(rig.preferred).toEqual([environment]);
-        }),
-      ),
-  );
-
   it.effect("the socket admission follows the route, and lets go when the account closes", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -2425,7 +2353,6 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { clock, grant, rig, environments } = yield* granted([REMEMBERED_A]);
-        yield* answerDescriptor(rig, ENV_A);
         yield* clock.advance(SECOND);
         yield* settle;
         const machines = environments.machines();

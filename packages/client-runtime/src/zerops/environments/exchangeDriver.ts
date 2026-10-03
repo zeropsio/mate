@@ -2,17 +2,18 @@
  * The exchange driver (DESIGN §4.4): one per account epoch, one environment machine per Mate
  * target, and the only place a door exchange starts.
  *
- * Restore, auto-connect, repair and the user's Connect are demand on it, never connectors of
- * their own: each publishes which targets it wants, and the machine for a target decides when
- * an exchange runs, reads its answer, backs off and waits for a named input.
+ * Repair and the leases — the route's, the Mate left last, an action, the user's Connect — are
+ * demand on it, never connectors of their own (krok-a-hub §3): each publishes which targets it
+ * wants, or holds one until it lets it go, and the machine for a target decides when an exchange
+ * runs, reads its answer, backs off and waits for a named input.
  *
  * - One serialized queue feeds `transitionEnvironment`; the ops it asks for run through the
  *   ports, and their answers come back as events carrying the op's attempt (§6.5).
  * - A credential is installed only when its answer left the machine `held` for that
  *   environment; a late or superseded answer is logged by the machine and dropped.
- * - A target the person asked for — the route's, or one whose Connect they pressed — starts the
- *   moment it can, past every budget. The rest, the background, start in priority order —
- *   remembered targets, then auto-connect — at most `EXCHANGE_CONCURRENCY` at once and at the
+ * - A target the person asked for — the route's, the one on screen, one an action of theirs
+ *   holds, or one whose Connect they pressed — starts the moment it can, past every budget. The
+ *   background — the Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the
  *   door's mint pace (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every
  *   other wanted target waits `on: budget`. A target with a session kept from an earlier load
  *   mints nothing while its Mate still holds it, so it neither waits on the pace nor spends it.
@@ -50,8 +51,19 @@ import { selectReachability, type Reachability } from "./reachability.ts";
 /** `projectId:serviceId` (AL-05). */
 export type TargetKey = string;
 
-/** What an emitter publishes the whole of: the route's target, remembered targets, auto-connect. */
-export type DemandReason = "route" | "record" | "auto-connect";
+/**
+ * What an emitter publishes the whole of: the route's target, the Mate on screen — its own view,
+ * its birth, asked for but capped as no route is — and the Mate left last (krok-a-hub §3, kept
+ * warm a while).
+ */
+export type DemandReason = "route" | "screen" | "recent";
+
+/**
+ * A lease one caller holds on one target until it lets it go: an action from outside the Mate's
+ * own view (a send, a Stop, a rename), or the user's Connect. Each counts: the target is wanted
+ * while any holds.
+ */
+export type LeaseKind = "action" | "user";
 
 /** Background exchanges in flight at once, counting asked-for ones (§4.4). */
 export const EXCHANGE_CONCURRENCY = 3;
@@ -168,9 +180,11 @@ export interface ExchangeDriver {
   readonly setTargets: (targets: ReadonlyArray<ExchangeTarget>) => void;
   /** Replaces the whole set of targets one emitter wants. */
   readonly setDemand: (reason: DemandReason, keys: Iterable<TargetKey>) => void;
+  /** The target is wanted until the answer is called; calling it again does nothing. */
+  readonly hold: (key: TargetKey, kind: LeaseKind) => () => void;
   /**
-   * The user's Connect: the target is wanted from now on, and this is a user retry. Answers
-   * with the installed environment, or with the verdict the machine settled on instead.
+   * The user's Connect: a user retry of a target its caller holds (`hold`). Answers with the
+   * installed environment, or with the verdict the machine settled on instead.
    */
   readonly connect: (key: TargetKey, reason: IdentityExchangeReason) => Promise<ConnectOutcome>;
   readonly setAccount: (guards: AccountGuards) => void;
@@ -214,17 +228,26 @@ interface Entry {
   capped: boolean;
 }
 
-/** The demands in priority order (§4.4): the user's Connect ranks after the route's target. */
-const PRIORITY: ReadonlyArray<DemandReason | "user"> = ["route", "user", "record", "auto-connect"];
+/** The demands in priority order (§4.4): the user's Connect ranks after the route's and the screen's. */
+const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = [
+  "route",
+  "screen",
+  "user",
+  "action",
+  "recent",
+];
 
 /** The demands of the person's own asking: past every budget. */
-const ASKED_RANK = PRIORITY.indexOf("user");
+const ASKED_RANK = PRIORITY.indexOf("action");
 
 const EXCHANGE_REASON: Record<DemandReason, IdentityExchangeReason> = {
   route: "restore",
-  record: "restore",
-  "auto-connect": "auto-connect",
+  screen: "restore",
+  recent: "restore",
 };
+
+const isLease = (reason: DemandReason | LeaseKind): reason is LeaseKind =>
+  reason === "action" || reason === "user";
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -239,9 +262,12 @@ const inFlightAttempt = (machine: EnvironmentMachine): number | null => {
 export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDriver {
   const { clock } = ports;
   const entries = new Map<TargetKey, Entry>();
-  const demands = new Map<DemandReason | "user", ReadonlySet<TargetKey>>(
-    PRIORITY.map((reason) => [reason, new Set<TargetKey>()]),
-  );
+  const demands = new Map<DemandReason, ReadonlySet<TargetKey>>();
+  /** How many holders each lease kind has on each target (`hold`). */
+  const holds = new Map<LeaseKind, Map<TargetKey, number>>([
+    ["action", new Map()],
+    ["user", new Map()],
+  ]);
   const listeners = new Set<() => void>();
   let published: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
   const connects = new Map<TargetKey, Array<(outcome: ConnectOutcome) => void>>();
@@ -288,8 +314,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     entry.inFlight.clear();
   };
 
-  const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | "user"> =>
-    PRIORITY.filter((reason) => demands.get(reason)?.has(key) === true);
+  const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | LeaseKind> =>
+    PRIORITY.filter((reason) =>
+      isLease(reason)
+        ? (holds.get(reason)?.get(key) ?? 0) > 0
+        : demands.get(reason)?.has(key) === true,
+    );
 
   const reasonFor = (key: TargetKey, entry: Entry): IdentityExchangeReason => {
     const credential = entry.machine.credential;
@@ -303,7 +333,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     }
     const top = wantedBy(key)[0];
     if (top === undefined) return "restore";
-    return top === "user" ? (entry.userReason ?? "user") : EXCHANGE_REASON[top];
+    return isLease(top) ? (entry.userReason ?? "user") : EXCHANGE_REASON[top];
   };
 
   // ── Effects ────────────────────────────────────────────────────────────────────────────────
@@ -689,6 +719,22 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
         // A key no target names yet is wanted once the inventory or a record names it.
         demands.set(reason, new Set(keys));
       }),
+    hold: (key, kind) => {
+      const held = holds.get(kind)!;
+      enqueue(() => {
+        held.set(key, (held.get(key) ?? 0) + 1);
+      });
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        enqueue(() => {
+          const count = (held.get(key) ?? 1) - 1;
+          if (count > 0) held.set(key, count);
+          else held.delete(key);
+        });
+      };
+    },
     connect: (key, reason) =>
       new Promise<ConnectOutcome>((resolve) => {
         if (disposed) {
@@ -698,7 +744,6 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
         enqueue(() => {
           const entry = entryFor(key, null);
           entry.userReason = reason;
-          demands.set("user", new Set([...demands.get("user")!, key]));
           connects.set(key, [...(connects.get(key) ?? []), resolve]);
           step(key, { type: "USER_RETRY" });
         });

@@ -54,6 +54,7 @@ import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { loadAccountRecords, memoryIntents } from "./account-ports";
 import { mateDescriptors } from "./mate-descriptors";
+import { openMateRoute } from "./open-mate";
 import { mobilePlatformSignals } from "./platform-signals";
 import { mobileZeropsStorage } from "./storage";
 
@@ -84,6 +85,18 @@ const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "mobile:zerops:retry-link",
   execute: (environmentId: EnvironmentId) =>
     EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.retryNow(environmentId))),
+});
+
+const parkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "mobile:zerops:park",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.park(environmentId))),
+});
+
+const unparkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "mobile:zerops:unpark",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.unpark(environmentId))),
 });
 
 /** Which door minted a connection's credential; null when none is stored or it names none. */
@@ -261,6 +274,12 @@ export async function mobileAccountPorts(input: {
         remove: (environmentId) => {
           void runAtomCommand(appAtomRegistry, environmentCatalog.remove, environmentId, quiet);
         },
+        park: (environmentId) => {
+          void runAtomCommand(appAtomRegistry, parkCommand, environmentId, quiet);
+        },
+        unpark: (environmentId) => {
+          void runAtomCommand(appAtomRegistry, unparkCommand, environmentId, quiet);
+        },
       },
       probe: (origin, signal, ask) =>
         readZeropsContainer(
@@ -274,6 +293,8 @@ export async function mobileAccountPorts(input: {
       intents: memoryIntents(),
       records,
       catalog: catalogPort,
+      // The Mate whose screen is open as the stage starts: its target is wanted first.
+      route: openMateRoute,
     },
   };
 }

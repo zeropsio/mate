@@ -648,7 +648,7 @@ interface OpeningTarget {
 /**
  * The connect machinery of this page: the Mate a person asked to open, connected once its
  * container answers ready, landing the person in the conversation. A Mate this tab pressed is
- * connected by auto-connect once it answers, and that success lands them there all the same.
+ * connected by its coming view once it answers, and that success lands them there all the same.
  */
 export function useZeropsProjectConnection(): {
   readonly presses: ReadonlyArray<MatePress>;
@@ -666,8 +666,8 @@ export function useZeropsProjectConnection(): {
   readonly connectContainer: (containerOrigin: string) => Promise<void>;
   /**
    * Ends a birth or an opening on an admitted environment, from wherever it was admitted: this
-   * hook's own `connectContainer`, or a late success this page only observed (auto-connect
-   * reached the door first). The organization it was made in is read again, and the person lands
+   * hook's own `connectContainer`, or a late success this page only observed (another view's
+   * Connect reached the door first). The organization it was made in is read again, and the person lands
    * in the conversation — exactly what a successful `connectContainer` always does.
    */
   readonly finishBirth: (
@@ -882,10 +882,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [creationVerdicts, nowMs, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
-  // connected. Auto-connect (the account runtime's) reaches the door — it never
+  // connected. A lease (the account runtime's) reaches the door — it never
   // navigates by design — so this watches for a project this page saw being
   // pressed, or one it is opening, turning up connected, and finishes from
-  // here. Gated strictly on those: an ordinary auto-connected environment must
+  // here. Gated strictly on those: an ordinary connected environment must
   // never pull anyone into a thread. A press is remembered for as long as the
   // page is mounted.
   const seenBirthsRef = useRef(new Set<string>());

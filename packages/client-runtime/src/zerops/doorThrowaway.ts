@@ -112,7 +112,7 @@ export interface MintPaceConfig {
   readonly perMinute: number;
 }
 
-/** Door exchanges the background — restores, auto-connect, repair — may start at once. */
+/** Door exchanges the background — the Mate left last, repair — may start at once. */
 export const DOOR_MINT_BURST = 10;
 /**
  * The background's door mints refill at one every two seconds. The platform drew no 429 at 80
