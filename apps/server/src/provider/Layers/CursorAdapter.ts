@@ -1273,7 +1273,12 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        supportsConversationRollback: false,
+        // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
+        threadProfile: { tools: true },
+      },
       compaction: { type: "slash-command", command: "/compress" },
       startSession,
       sendTurn,

@@ -1288,7 +1288,12 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
 
   return {
     provider: PROVIDER,
-    capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
+    capabilities: {
+      sessionModelSwitch: "in-session",
+      supportsConversationRollback: false,
+      // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
+      threadProfile: { tools: true },
+    },
     compaction: { type: "slash-command", command: "/compact" },
     startSession,
     sendTurn,
