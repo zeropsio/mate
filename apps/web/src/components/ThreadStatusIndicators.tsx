@@ -485,8 +485,11 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   const gitCwd = thread.worktreePath ?? threadProjectCwd;
   const linkedPullRequest =
     thread.linkedPullRequest == null ? null : linkedPullRequestIndicator(thread.linkedPullRequest);
+  // A Mate this browser holds no socket to is not woken for a badge.
+  const connected = useEnvironment(thread.environmentId)?.connection.phase === "connected";
   const gitStatus = useEnvironmentQuery(
-    thread.linkedPullRequest == null &&
+    connected &&
+      thread.linkedPullRequest == null &&
       (thread.branch != null || thread.worktreePath !== null) &&
       gitCwd !== null
       ? vcsEnvironment.status({
@@ -552,11 +555,12 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
  * environment indicator, matching the sidebar's trailing indicators.
  */
 export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSummary }) {
+  const environment = useEnvironment(thread.environmentId);
+  // A Mate this browser holds no socket to is not woken for a badge.
   const runningTerminalIds = useThreadRunningTerminalIds({
-    environmentId: thread.environmentId,
+    environmentId: environment?.connection.phase === "connected" ? thread.environmentId : null,
     threadId: thread.id,
   });
-  const environment = useEnvironment(thread.environmentId);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const isRemoteThread =
     primaryEnvironmentId !== null && thread.environmentId !== primaryEnvironmentId;
