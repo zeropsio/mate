@@ -514,7 +514,7 @@ on the next visible wake.
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`)                      | Still wanted                        |
 | Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                                         | Demanded                            |
 | Container probe                                   | The container machine's cadence                                                                                     | Its state requires it               |
-| Throwaway sweep                                   | Once a day per account on a browser (`throwawaySweepDue`)                                                           | The projects screen is open         |
+| Throwaway sweep                                   | Once, after this tab failed a delete, past the door's window (`throwawayDebt`)                                      | The projects screen is open         |
 
 **Wake.** A visible wake is one coalesced event, at most one per 10 s, on: visible again after at
 least 30 s hidden, `pageshow` with `persisted`, `resume`, `online`, sleep detected while visible,

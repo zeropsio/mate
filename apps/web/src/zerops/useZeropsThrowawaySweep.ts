@@ -1,56 +1,35 @@
 /**
- * Takes back the throwaways a crash left behind.
+ * Takes back the throwaways this tab failed to delete.
  *
- * Every throwaway is deleted in a `finally` (`doorThrowaway.ts`), but a tab
- * closed mid-connect, a killed renderer or a lost network leaves the row on
- * the account — and Zerops refuses to remove a member who still holds tokens
- * (measured 2026-09-15), so the rows are not harmless: enough of them and a
- * leaver cannot be taken off the org.
+ * Every throwaway is deleted in a `finally` (`doorThrowaway.ts`), and one whose delete failed is
+ * owed (`throwawayDebt`): Zerops refuses to remove a member who still holds tokens (measured
+ * 2026-09-15), so the rows are not harmless — enough of them and a leaver cannot be taken off the
+ * org. What a closed tab or a killed renderer leaves stays: it carries no rights, and listing the
+ * organization's tokens to find it cost every load a read KRLS took 17 s to answer (step A, open
+ * question 10).
  *
- * So the app sweeps at start-up, once a day per account on a browser
- * (`throwawaySweepDue`), over the person's own `mate-door:*` tokens, and the
- * `gitea-signin:*` ones main's client leaves, older than five minutes. Anything
- * younger is left alone: five minutes is the window the door itself allows, so
- * another tab's live connect is never swept out from under it, and nothing
- * else on the token list is ours to touch.
- *
- * It runs beside `useZeropsMateKeys` for the same reason that one does: the
- * projects screen is where an account is read, and a repair nobody asked for
- * belongs where it costs nothing. Failures are swallowed — a token the account
- * may not delete, or a network that dropped, must not put an error on a screen
- * that is otherwise fine.
+ * So the organization's tokens are listed only where this tab owes it a sweep, once the newest
+ * failed throwaway is past the door's own window (`THROWAWAY_SWEEP_AGE_MS`): younger, it is any
+ * tab's live throwaway, and `planThrowawaySweep` would leave it. Its own `mate-door:*` tokens and
+ * the `gitea-signin:*` ones main's client leaves are deleted; nothing else on the list is ours to
+ * touch. Failures are swallowed — a token the account may not delete, or a network that dropped,
+ * must not put an error on a screen that is otherwise fine; the debt stays for the next mount.
  */
 
 import {
   planThrowawaySweep,
-  throwawaySweepDue,
+  throwawayDebt,
+  THROWAWAY_SWEEP_AGE_MS,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
-import { useEffect, useRef } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { readZeropsCell } from "./readZeropsCell";
 import { useZeropsData } from "./zeropsDataContext";
 
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-/** When this browser last swept each account, by organization id. */
-const SWEPT_STORAGE_KEY = "zerops-mate.throwaway-swept.v1";
-
-const readSwept = (): Record<string, number> => {
-  try {
-    const held: unknown = JSON.parse(localStorage.getItem(SWEPT_STORAGE_KEY) ?? "{}");
-    return typeof held === "object" && held !== null ? (held as Record<string, number>) : {};
-  } catch {
-    return {};
-  }
-};
-
-const rememberSwept = (clientId: string, atMs: number): void => {
-  try {
-    localStorage.setItem(SWEPT_STORAGE_KEY, JSON.stringify({ ...readSwept(), [clientId]: atMs }));
-  } catch {
-    // Storage blocked: the next open sweeps again, as before.
-  }
-};
+/** How far past the door's window a sweep waits, so the newest failed throwaway is stale to it. */
+const PAST_THE_WINDOW_MS = 1_000;
 
 export function useZeropsThrowawaySweep(input: {
   readonly clientId: string | undefined;
@@ -58,18 +37,14 @@ export function useZeropsThrowawaySweep(input: {
 }): void {
   const { client } = useZeropsSession();
   const { organizationRef, runtime } = useZeropsData();
-  const swept = useRef<string | null>(null);
   const { clientId, enabled } = input;
+  const owed = () => (clientId === undefined ? null : throwawayDebt.failedAt(clientId));
+  const failedAt = useSyncExternalStore(throwawayDebt.subscribe, owed, owed);
 
   useEffect(() => {
-    if (!enabled || clientId === undefined) return;
-    if (swept.current === clientId) return;
-    swept.current = clientId;
-    const lastSwept = readSwept()[clientId];
-    if (!throwawaySweepDue(typeof lastSwept === "number" ? lastSwept : null, Date.now())) return;
-
+    if (!enabled || clientId === undefined || failedAt === null) return;
     const controller = new AbortController();
-    void (async () => {
+    const sweep = async () => {
       try {
         // The account's one token list, shared with every reader of it (the account's cells).
         const request = {
@@ -91,15 +66,18 @@ export function useZeropsThrowawaySweep(input: {
           if (controller.signal.aborted) return;
           await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
         }
-        rememberSwept(clientId, Date.now());
+        throwawayDebt.settle(clientId, failedAt);
       } catch {
-        // Housekeeping: the next sign-in tries again.
-        swept.current = null;
+        // Housekeeping: still owed, for the next mount.
       }
-    })();
-
+    };
+    const timer = setTimeout(
+      () => void sweep(),
+      Math.max(0, failedAt + THROWAWAY_SWEEP_AGE_MS + PAST_THE_WINDOW_MS - Date.now()),
+    );
     return () => {
+      clearTimeout(timer);
       controller.abort();
     };
-  }, [client, clientId, enabled, organizationRef, runtime]);
+  }, [client, clientId, enabled, failedAt, organizationRef, runtime]);
 }

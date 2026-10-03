@@ -17,9 +17,9 @@ import {
   DOOR_MINT_PACE,
   DOOR_MINT_THROTTLE_MS,
   makeMintPace,
+  makeThrowawayDebt,
   makeThrowawayMintBudgets,
   planThrowawaySweep,
-  throwawaySweepDue,
   THROWAWAY_DELETE_RETRY_MS,
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
@@ -29,19 +29,6 @@ import { makeFakeZeropsRest } from "./testing/fakeZeropsRest.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
 const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
-
-describe("throwawaySweepDue", () => {
-  const DAY = 24 * 60 * 60 * 1000;
-  it.each([
-    ["never swept on this browser", null, true],
-    ["swept a minute ago", NOW - 60_000, false],
-    ["swept just under a day ago", NOW - DAY + 1, false],
-    ["swept a day ago", NOW - DAY, true],
-    ["swept by a clock that has since gone back", NOW + 60_000, true],
-  ] as const)("an account %s: %s", (_, lastSweptAtMs, due) => {
-    expect(throwawaySweepDue(lastSweptAtMs, NOW)).toBe(due);
-  });
-});
 
 describe("planThrowawaySweep", () => {
   // Only ours, only stale. Everything else on the account's token list is
@@ -276,6 +263,44 @@ describe("zeropsThrowawayPlatform's diagnostics", () => {
       },
     ]);
     expect(JSON.stringify(mateDiagnostics.snapshot())).not.toContain("a-value");
+  });
+});
+
+// Step A, open question 10: an organization's tokens are listed only to take back what this
+// browser failed to delete — so a failed delete is owed, and one that went through is not.
+describe("zeropsThrowawayPlatform's debt", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("owes the organization a sweep where a delete failed, and nothing where it went through", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const client = {
+      mintThrowaway: async (input: { readonly name: string }) => ({
+        id: `token-${input.name.slice(-1)}`,
+        token: "a-value",
+        mintingToken: "access-1",
+      }),
+      deleteThrowaway: async (input: { readonly tokenId: string }) => {
+        if (input.tokenId === "token-2") throw new ZeropsApiError("refused", "forbidden", 403);
+      },
+    } as unknown as ZeropsApiClient;
+    const debt = makeThrowawayDebt();
+    const throwaways = zeropsThrowawayPlatform(client, { debt });
+
+    const kept = await throwaways.mint({ clientId: "org-a", name: "mate-door:p1:n1" });
+    await throwaways.remove({ clientId: "org-a", tokenId: kept.id });
+    const left = await throwaways.mint({ clientId: "org-b", name: "mate-door:p2:n2" });
+    await expect(throwaways.remove({ clientId: "org-b", tokenId: left.id })).rejects.toThrow(
+      "refused",
+    );
+
+    expect([debt.failedAt("org-a"), debt.failedAt("org-b")]).toEqual([null, NOW]);
+    // A sweep over what failed before it settles it; one that failed since stays owed.
+    debt.settle("org-b", NOW - 1);
+    expect(debt.failedAt("org-b")).toBe(NOW);
+    debt.settle("org-b", NOW);
+    expect(debt.failedAt("org-b")).toBeNull();
   });
 });
 

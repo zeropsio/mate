@@ -1968,8 +1968,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     },
   });
 
-  // The throwaways a crashed tab left on the account. Nothing a person did
-  // asks for this; it is here because this is where an account is read.
+  // The throwaways this tab failed to delete, once they are past the door's
+  // window; it lists the organization's tokens for nothing else.
   useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
     // Not on sign-in alone: deleting a token is a `project-write`, and the api
