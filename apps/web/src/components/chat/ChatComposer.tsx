@@ -91,7 +91,7 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
-import { FULL_COMPOSER_MS, fullComposerGrowth } from "./fullComposer.logic";
+import { FULL_COMPOSER_MS, fullComposerHeight } from "./fullComposer.logic";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerTriggerState } from "./useComposerTriggerState";
 import {
@@ -1174,7 +1174,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return () => window.clearTimeout(timer);
   }, [fullComposer]);
   // Its height is measured, not guessed: the chat column, and what stands with
-  // the composer in it, decide how far it grows.
+  // the composer in it, decide how tall it is. Both are watched, so a smaller
+  // window, or a banner or strip arriving or leaving in the stack, refits it.
   useLayoutEffect(() => {
     if (fullComposer !== "on") return;
     const form = composerFormRef.current;
@@ -1182,17 +1183,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const overlay = form?.closest<HTMLElement>('[data-chat-composer-overlay="true"]');
     const column = overlay?.parentElement;
     const stack = overlay?.firstElementChild;
-    if (!form || !editor || !column || !(stack instanceof HTMLElement)) return;
+    if (!form || !editor || !overlay || !column || !(stack instanceof HTMLElement)) return;
     const fit = () => {
-      const growth = fullComposerGrowth(
-        column.getBoundingClientRect(),
-        stack.getBoundingClientRect(),
-      );
-      form.style.setProperty("--composer-full-height", `${editor.offsetHeight + growth}px`);
+      const height = fullComposerHeight({
+        column: column.getBoundingClientRect(),
+        stack: stack.getBoundingClientRect(),
+        editorHeight: editor.getBoundingClientRect().height,
+        centred: overlay.dataset.chatComposerHero === "true",
+      });
+      form.style.setProperty("--composer-full-height", `${height}px`);
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(column);
+    observer.observe(stack);
     return () => observer.disconnect();
   }, [fullComposer]);
   const composerSelectLockRef = useRef(false);
