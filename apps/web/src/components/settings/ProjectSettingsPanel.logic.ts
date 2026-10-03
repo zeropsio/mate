@@ -12,7 +12,10 @@ export function projectGroupTitleNeedsUpdate(
  */
 export function projectSettingsState(input: {
   readonly found: boolean;
-  /** Every environment's projects are read. */
+  /**
+   * Every environment's projects are read or will not be: live, failed or stopped, an empty catalog
+   * included (`useAllEnvironmentShellsBootstrapped`) — a stopped Mate never holds this page waiting.
+   */
   readonly read: boolean;
   readonly count: number;
 }): "detail" | "reading" | "no-projects" | "gone" {

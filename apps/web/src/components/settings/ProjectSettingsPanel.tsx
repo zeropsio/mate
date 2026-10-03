@@ -70,7 +70,7 @@ import {
 } from "../../sidebarProjectGrouping";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
 import {
-  useAllEnvironmentProjectSnapshotsReady,
+  useAllEnvironmentShellsBootstrapped,
   useProjects,
   useServerConfigs,
   useThreadShells,
@@ -190,7 +190,7 @@ export function ProjectSettingsPage({ projectKey }: { projectKey: string }) {
 
 function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
   const groups = useSettingsProjectGroups();
-  const projectsRead = useAllEnvironmentProjectSnapshotsReady();
+  const projectsRead = useAllEnvironmentShellsBootstrapped();
   const navigate = useNavigate();
   const selected = groups.find((group) => group.projectKey === projectKey) ?? null;
   const openProjectMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -244,7 +244,7 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
 
 export function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
   const groups = useSettingsProjectGroups();
-  const projectsRead = useAllEnvironmentProjectSnapshotsReady();
+  const projectsRead = useAllEnvironmentShellsBootstrapped();
   const navigate = useNavigate();
 
   const selected = groups.find((group) => group.projectKey === projectKey) ?? null;
