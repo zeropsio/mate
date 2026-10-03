@@ -14,6 +14,10 @@
  * HQ's door admits by, so a reload's door after another waits on Zerops only once (t11,
  * 2026-10-03: doors re-entered behind a fresh read of KRLS's slow member list hung 55 s and 77 s).
  *
+ * A view's age counts from when Zerops answered it: a read slower than 30 s — one a door gave up
+ * on at its budget — lands fresh enough for the door asked again. A `fresh` read is only one begun
+ * after it was asked.
+ *
  * @module roles
  */
 import type { Facts, Freshness } from "@t3tools/shared/zeropsPermissions";
@@ -78,9 +82,10 @@ export const rolesLayer = (options: {
     Roles,
     Effect.gen(function* () {
       const api = yield* ZeropsApi;
-      const cached = yield* Ref.make<{ readonly view: OrgRead; readonly at: number } | undefined>(
-        undefined,
-      );
+      /** The last good view: when its read began (`at`), and when Zerops answered it. */
+      const cached = yield* Ref.make<
+        { readonly view: OrgRead; readonly at: number; readonly answered: number } | undefined
+      >(undefined);
       /** The last read Zerops did not answer: when it ended, and why. */
       const failed = yield* Ref.make<
         { readonly at: number; readonly error: ZeropsUnavailable } | undefined
@@ -124,14 +129,17 @@ export const rolesLayer = (options: {
         return { orgId, members, projects };
       });
       /**
-       * A view read no earlier than `since`, for a caller that asked at `asked`. Run one at a time:
-       * whoever waited for a read takes the one that just finished — a view if it started late
-       * enough, a failure if it ended after they asked. A failure is never kept for a later ask.
+       * A view the caller that asked at `asked` takes (`fits`), read if the last one does not fit.
+       * Run one at a time: whoever waited for a read takes the one that just finished — its view if
+       * it fits, its failure if it ended after they asked. A failure is never kept for a later ask.
        */
-      const readUnderPermit = (since: number, asked: number) =>
+      const readUnderPermit = (
+        fits: (hit: { readonly at: number; readonly answered: number }) => boolean,
+        asked: number,
+      ) =>
         Effect.gen(function* () {
           const hit = yield* Ref.get(cached);
-          if (hit !== undefined && hit.at >= since) return hit.view;
+          if (hit !== undefined && fits(hit)) return hit.view;
           const failure = yield* Ref.get(failed);
           if (failure !== undefined && failure.at >= asked) return yield* failure.error;
           const at = yield* Clock.currentTimeMillis;
@@ -144,35 +152,42 @@ export const rolesLayer = (options: {
                 : Effect.void,
             ),
           );
-          yield* Ref.set(cached, { view, at });
+          yield* Ref.set(cached, { view, at, answered: yield* Clock.currentTimeMillis });
           return view;
         });
-      const readSince = (since: number, asked: number) =>
-        Semaphore.withPermits(permit, 1)(readUnderPermit(since, asked));
-      const fresh = Effect.flatMap(Clock.currentTimeMillis, (now) => readSince(now, now)).pipe(
-        Effect.map((read): OrgView<"fresh"> => ({ ...read, freshness: "fresh" })),
+      /** A read begun no earlier than `asked`: what a write is decided over. */
+      const begunAfter = (asked: number) => (hit: { readonly at: number }) => hit.at >= asked;
+      /** A view Zerops answered within the last 30 s. */
+      const answeredWithin = (now: number) => (hit: { readonly answered: number }) =>
+        hit.answered > now - ttl;
+      const fresh = Effect.flatMap(Clock.currentTimeMillis, (now) =>
+        Semaphore.withPermits(permit, 1)(readUnderPermit(begunAfter(now), now)),
+      ).pipe(Effect.map((read): OrgView<"fresh"> => ({ ...read, freshness: "fresh" })));
+      const recentAt = (now: number) =>
+        Semaphore.withPermits(permit, 1)(readUnderPermit(answeredWithin(now), now));
+      const recent = Effect.flatMap(Clock.currentTimeMillis, recentAt).pipe(
+        Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })),
       );
-      const recent = Effect.flatMap(Clock.currentTimeMillis, (now) =>
-        readSince(now - ttl + 1, now),
-      ).pipe(Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })));
       const view = Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
-        const since = now - ttl + 1;
         const good = yield* Ref.get(cached);
-        if (good !== undefined && good.at >= since) return good.view;
+        if (good !== undefined && answeredWithin(now)(good)) return good.view;
         const kept =
-          good !== undefined && now - good.at <= Duration.toMillis(VIEW_GRACE)
+          good !== undefined && now - good.answered <= Duration.toMillis(VIEW_GRACE)
             ? good.view
             : undefined;
         const failure = yield* Ref.get(failed);
         if (kept !== undefined && good !== undefined && failure !== undefined) {
-          if (failure.at > good.at) {
+          if (failure.at > good.answered) {
             // Zerops failed since that view: it is served at once, and Zerops asked again behind
             // it — unless a read is under way, or the last failed under 30 s ago.
             if (now - failure.at >= ttl) {
               yield* Effect.forkIn(
                 Effect.ignore(
-                  Semaphore.withPermitsIfAvailable(permit, 1)(readUnderPermit(now, now)),
+                  Semaphore.withPermitsIfAvailable(
+                    permit,
+                    1,
+                  )(readUnderPermit(begunAfter(now), now)),
                 ),
                 scope,
               );
@@ -180,7 +195,7 @@ export const rolesLayer = (options: {
             return kept;
           }
         }
-        return yield* readSince(since, now).pipe(
+        return yield* recentAt(now).pipe(
           Effect.catchIf(
             (error) => error._tag === "ZeropsUnavailable" && kept !== undefined,
             () => Effect.succeed(kept!),

@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
@@ -185,6 +186,72 @@ describe("the last good view, while Zerops does not answer", () => {
       yield* TestClock.adjust("1 millis");
       assert.strictEqual(asked() - before, 1);
       assert.deepStrictEqual(userIds(yield* roles.view), ["owner", "admin"]);
+    }),
+  );
+});
+
+// A door that gave up on a slow read at its budget (`door.ts`) is asked again after its
+// Retry-After: the read it left lands for it, aged from when Zerops answered — never from when it
+// was asked, which would make a read slower than 30 s stale the moment it lands, and every door
+// asked again read once more. A write still takes only a read begun after it asked.
+describe("a slow read, aged from its answer", () => {
+  const made = () => {
+    const world = emptyWorld();
+    world.tokens.set("t", {
+      id: "T",
+      name: "mate-hq-org:HQ",
+      orgId: "ORG",
+      roleCode: "READ_ONLY",
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+      projects: [],
+      createdMs: 0,
+      createdByUser: "owner",
+    });
+    world.members.set("ORG", [member("owner", "OWNER")]);
+    world.projects.push(project("HQ"));
+    return world;
+  };
+  /** Roles over `world`, its member list answering after 40 s. */
+  const slowRoles = (world: ReturnType<typeof emptyWorld>) =>
+    Effect.map(
+      Layer.build(
+        rolesLayer({ hqProjectId: "HQ", credential: Option.some(Redacted.make("t")) }).pipe(
+          Layer.provide(
+            Layer.succeed(ZeropsApi, {
+              ...fakeZeropsApi(world),
+              members: (orgId) => (credential) =>
+                Effect.delay(fakeZeropsApi(world).members(orgId)(credential), "40 seconds"),
+            }),
+          ),
+        ),
+      ),
+      (context) => Context.get(context, Roles),
+    );
+  const membersRead = (world: ReturnType<typeof emptyWorld>) =>
+    world.calls.filter((call) => call.startsWith("members:")).length;
+
+  it.effect("serves a read that took 40 s as recent once it answered, a write never", () =>
+    Effect.gen(function* () {
+      const world = made();
+      const roles = yield* slowRoles(world);
+      const reading = yield* Effect.forkChild(roles.recent);
+      yield* TestClock.adjust("40 seconds");
+      yield* Fiber.join(reading);
+      const before = membersRead(world);
+
+      yield* TestClock.adjust("1 seconds");
+      assert.deepStrictEqual(
+        (yield* roles.recent).members.map((row) => row.userId),
+        ["owner"],
+      );
+      assert.strictEqual(membersRead(world) - before, 0);
+
+      const writing = yield* Effect.forkChild(roles.fresh);
+      yield* TestClock.adjust("40 seconds");
+      yield* Fiber.join(writing);
+      assert.strictEqual(membersRead(world) - before, 1);
     }),
   );
 });
