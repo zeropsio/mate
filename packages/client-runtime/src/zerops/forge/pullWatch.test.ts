@@ -61,8 +61,6 @@ function rig(orgs: Record<string, Array<GiteaRepository>>) {
     listings,
     moved,
     watch,
-    /** The forge pass's read of one org: the shared listing at its usual freshness. */
-    pass: (owner: string) => reads.repositories(owner, lists),
     /** The readers' minute tick: every org read again. */
     refresh: (owners: ReadonlyArray<string>) => {
       reads.tick();
@@ -207,15 +205,17 @@ describe("createPullWatch", () => {
     },
   );
 
-  it("shares the minute's listing: the pass asks nothing the watch just listed", async () => {
+  it("lists the account once a minute and the watched org on the watch's other ticks", async () => {
     const org = rig({ quill: [repo("appdev", 1)] });
     for (let elapsed = 0; elapsed < 10 * 60_000; elapsed += PULL_WATCH_MS) {
-      if (elapsed % FORGE_REFRESH_MS === 0) await org.pass("quill");
+      if (elapsed % FORGE_REFRESH_MS === 0) await org.refresh(["quill"]);
       await org.watch.tick([group("quill", 1)]);
       org.advance(PULL_WATCH_MS);
     }
-    // One at the start by the pass, then the watch's: 4 a minute, against 1 without it.
-    expect(org.listings.length).toBe(40);
+    // The minute's tick lists the account, and the watch's look that moment shares it: 4 a minute,
+    // against 1 without the watch.
+    const minute = ["account", "quill", "quill", "quill"];
+    expect(org.listings).toEqual(Array.from({ length: 10 }, () => minute).flat());
   });
 
   it("looks at the most recently updated group first, then rounds the rest", async () => {
@@ -286,7 +286,7 @@ describe("createPullWatch", () => {
     org.state.orgs.quill = [repo("appdev", 2)];
     // The minute's pass lists first and reads what moved itself.
     org.advance(GATE_FRESH_MS);
-    await org.pass("quill");
+    await org.refresh(["quill"]);
     await org.watch.tick([group("quill", 1)]);
     expect(org.moved).toEqual([]);
   });
