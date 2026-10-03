@@ -9,6 +9,7 @@ const feedState = vi.hoisted(() => ({
   attempt: "none" as "none" | "sending" | "failed",
   threads: [] as ReadonlyArray<Record<string, unknown>>,
   names: new Map<string, string>(),
+  providers: [] as ReadonlyArray<{ driver: string; enabled: boolean; status: string }>,
 }));
 
 vi.mock("../../zerops/useZeropsFeeds", () => ({
@@ -26,6 +27,7 @@ vi.mock("../../zerops/useMateStandUp", () => ({
 }));
 
 vi.mock("../../state/entities", () => ({
+  useServerConfigs: () => new Map([["environment-1", { providers: feedState.providers }]]),
   useThreadShells: () => feedState.threads,
 }));
 
@@ -135,12 +137,15 @@ const stage = (html: string) => ({
   tryAgain: html.includes("data-mate-standup-retry"),
 });
 
+const CURSOR_READY = [{ driver: "cursor", enabled: true, status: "ready" }];
+
 describe("ZeropsMateEmptyState", () => {
   beforeEach(() => {
     feedState.agentAuth = undefined;
     feedState.viewer = ADA;
     feedState.attempt = "none";
     feedState.names = new Map();
+    feedState.providers = [];
     feedState.threads = [
       shell("thread-main", "2026-09-29T10:00:00.000Z"),
       shell("thread-second", "2026-09-29T09:00:00.000Z"),
@@ -276,8 +281,53 @@ describe("ZeropsMateEmptyState", () => {
       face: "idle",
       signIn: false,
     },
+    // Mate signs people in to Claude Code and Codex only; an agent outside the sign-in that is
+    // ready is one to run, for anybody.
+    {
+      name: "a Mate just added, nobody signed in, Cursor ready",
+      mate: ASKED,
+      auth: known(NOT_SIGNED_IN),
+      providers: CURSOR_READY,
+      headline: "Fen is standing up development on Acme Docs.",
+      sentence: "Its agent is ready. It starts in a moment.",
+      face: "working",
+      signIn: false,
+    },
+    {
+      name: "the stand-up on Cursor did not go through",
+      mate: ASKED,
+      auth: known(NOT_SIGNED_IN),
+      providers: CURSOR_READY,
+      attempt: "failed" as const,
+      headline: "The message to Fen didn't go through.",
+      sentence: "Fen's agent is ready, but your ask to stand up development didn't reach it.",
+      face: "needs",
+      signIn: false,
+    },
+    {
+      name: "a colleague opening a Mate on Cursor its person has not signed in",
+      mate: ASKED,
+      viewer: "u-mira",
+      auth: known(NOT_SIGNED_IN),
+      providers: CURSOR_READY,
+      headline: "What should Fen do on Acme Docs?",
+      sentence: "",
+      face: "idle",
+      signIn: false,
+    },
+    {
+      name: "a Mate nobody asked it of, nobody signed in, OpenCode ready",
+      mate: MATE,
+      auth: known(NOT_SIGNED_IN),
+      providers: [{ driver: "opencode", enabled: true, status: "ready" }],
+      headline: "What should Fen do on Acme Docs?",
+      sentence: "",
+      face: "idle",
+      signIn: false,
+    },
   ])("says, for $name: $headline", (row) => {
     feedState.agentAuth = row.auth;
+    if (row.providers !== undefined) feedState.providers = row.providers;
     if (row.attempt !== undefined) feedState.attempt = row.attempt;
     if (row.viewer !== undefined) feedState.viewer = row.viewer;
     if (row.names !== undefined) feedState.names = new Map(row.names);

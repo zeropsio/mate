@@ -668,6 +668,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           signIn={handingArrival ? empty.signIn : null}
           runtimes={empty.runtimes}
           signInRequired={empty.signInRequired}
+          agentReady={empty.agentReady}
           unknown={handingArrival ? empty.unknown : null}
         />
       )}
