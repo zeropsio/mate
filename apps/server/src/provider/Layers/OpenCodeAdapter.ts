@@ -43,6 +43,13 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import {
+  type OpenCodeThreadSetup,
+  type OpenCodeToolInput,
+  openCodeThreadSetup,
+  openCodeTurnProfile,
+  readOpenCodeThreadPolicies,
+} from "../../spi/openCodeThreadProfile.ts";
 import { type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
   buildOpenCodePermissionRules,
@@ -335,6 +342,10 @@ type OpenCodeTextPartState = Pick<OpenCodeTextPart, "id" | "messageID" | "type" 
 
 interface OpenCodeSessionContext {
   session: ProviderSession;
+  /** A crewmate's thread: its gate answers every ask in the person's place. */
+  readonly threadSetup: OpenCodeThreadSetup | undefined;
+  /** Each tool call's input as its part streamed it, for the gate to judge its ask by. */
+  readonly toolInputByCallId: Map<string, OpenCodeToolInput>;
   /** Each assistant message's cost as last reported: the session's total is their sum. */
   readonly costByMessageId: Map<string, number>;
   readonly client: OpencodeClient;
@@ -872,6 +883,7 @@ export function makeOpenCodeAdapter(
     const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("opencode");
     const serverConfig = yield* ServerConfig;
     const openCodeRuntime = yield* OpenCodeRuntime;
+    const threadPolicies = yield* readOpenCodeThreadPolicies;
     const crypto = yield* Crypto.Crypto;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -1717,6 +1729,19 @@ export function makeOpenCodeAdapter(
       }
     });
 
+    // A crewmate's ask, answered by its gate and never parked for a person.
+    const replyFromThreadGate = Effect.fn("replyFromThreadGate")(function* (
+      context: OpenCodeSessionContext,
+      threadSetup: OpenCodeThreadSetup,
+      request: PermissionRequest,
+    ) {
+      const call = request.tool ? context.toolInputByCallId.get(request.tool.callID) : undefined;
+      const reply = yield* threadSetup.decidePermission(request, call);
+      yield* runOpenCodeSdk("permission.reply", (signal) =>
+        context.client.permission.reply({ requestID: request.id, reply }, { signal }),
+      ).pipe(Effect.timeout("10 seconds"), Effect.ignore);
+    });
+
     const emitPendingOpenCodeRequest = Effect.fn("emitPendingOpenCodeRequest")(function* (
       context: OpenCodeSessionContext,
       event: OpenCodeAskedRequestEvent,
@@ -1732,6 +1757,15 @@ export function makeOpenCodeAdapter(
       if (event.type === "permission.asked") {
         const request = event.properties;
         if (context.pendingPermissions.has(request.id)) {
+          return;
+        }
+        const threadSetup = context.threadSetup;
+        if (threadSetup) {
+          context.resolvedRequestIds.add(request.id);
+          context.autoRepliedRequestIds.add(request.id);
+          yield* replyFromThreadGate(context, threadSetup, request).pipe(
+            Effect.forkIn(context.sessionScope),
+          );
           return;
         }
         if (context.session.runtimeMode === "full-access") {
@@ -2351,6 +2385,12 @@ export function makeOpenCodeAdapter(
           }
 
           if (part.type === "tool") {
+            if (context.threadSetup) {
+              context.toolInputByCallId.set(part.callID, {
+                tool: part.tool,
+                input: part.state.input,
+              });
+            }
             const itemType = toToolLifecycleItemType(part.tool);
             const title =
               part.state.status === "running" || part.state.status === "completed"
@@ -2719,6 +2759,15 @@ export function makeOpenCodeAdapter(
               // The runtime binds the server's lifetime to the Scope.Scope
               // we provide below — closing `sessionScope` kills the child
               // process automatically. No manual `server.close()` needed.
+              // A crewmate's thread: its tools served for this session, its gate in the person's place.
+              const threadSetup = yield* openCodeThreadSetup(threadPolicies, {
+                threadId: input.threadId,
+                instanceId: boundInstanceId,
+                cwd: directory,
+              });
+              const permissionRules = threadSetup
+                ? [...threadSetup.permission]
+                : buildOpenCodePermissionRules(input.runtimeMode);
               const server = yield* openCodeRuntime.connectToOpenCodeServer({
                 binaryPath,
                 directory,
@@ -2731,6 +2780,12 @@ export function makeOpenCodeAdapter(
                 directory,
                 ...(server.serverPassword ? { serverPassword: server.serverPassword } : {}),
               });
+              const crewMcp = threadSetup?.mcp;
+              if (crewMcp) {
+                yield* runOpenCodeSdk("mcp.add", () =>
+                  client.mcp.add({ name: crewMcp.name, config: crewMcp.config }),
+                );
+              }
               // Resume: re-adopt the session named by the durable cursor —
               // OpenCode scopes history by session id. The probe recovers only
               // a confirmed not-found (start fresh); transport/auth/server
@@ -2763,7 +2818,7 @@ export function makeOpenCodeAdapter(
                   yield* runOpenCodeSdk("session.update", () =>
                     client.session.update({
                       sessionID: reusable.id,
-                      permission: buildOpenCodePermissionRules(input.runtimeMode),
+                      permission: permissionRules,
                     }),
                   );
                   return { openCodeSession: reusable, created: false };
@@ -2790,7 +2845,7 @@ export function makeOpenCodeAdapter(
                   yield* runOpenCodeSdk("session.update", () =>
                     client.session.update({
                       sessionID: forked.id,
-                      permission: buildOpenCodePermissionRules(input.runtimeMode),
+                      permission: permissionRules,
                     }),
                   );
                   return { openCodeSession: forked, created: true };
@@ -2804,7 +2859,7 @@ export function makeOpenCodeAdapter(
                 const createdSession = yield* runOpenCodeSdk("session.create", () =>
                   client.session.create({
                     ...(input.title ? { title: input.title } : {}),
-                    permission: buildOpenCodePermissionRules(input.runtimeMode),
+                    permission: permissionRules,
                   }),
                 );
                 if (!createdSession.data) {
@@ -2817,6 +2872,7 @@ export function makeOpenCodeAdapter(
               });
 
               return {
+                threadSetup,
                 sessionScope,
                 server,
                 client,
@@ -2854,6 +2910,8 @@ export function makeOpenCodeAdapter(
 
         const context: OpenCodeSessionContext = {
           session,
+          threadSetup: started.threadSetup,
+          toolInputByCallId: new Map(),
           client: started.client,
           server: started.server,
           directory,
@@ -2945,11 +3003,15 @@ export function makeOpenCodeAdapter(
     const sendTurn: OpenCodeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
       const context = yield* ensureSessionContext(sessions, input.threadId);
       yield* awaitOpenCodeContextReady(context);
-      const modelSelection =
+      const turnProfile = yield* openCodeTurnProfile(
+        threadPolicies,
+        { threadId: input.threadId, instanceId: boundInstanceId },
         input.modelSelection ??
-        (context.session.model
-          ? { instanceId: boundInstanceId, model: context.session.model }
-          : undefined);
+          (context.session.model
+            ? { instanceId: boundInstanceId, model: context.session.model }
+            : undefined),
+      );
+      const modelSelection = turnProfile.modelSelection;
       if (modelSelection !== undefined && modelSelection.instanceId !== boundInstanceId) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
@@ -3127,10 +3189,15 @@ export function makeOpenCodeAdapter(
                     ...(context.activeAgent ? { agent: context.activeAgent } : {}),
                     ...(context.activeVariant ? { variant: context.activeVariant } : {}),
                     // OpenCode appends this after its own agent/provider prompts.
-                    system: buildRuntimeInstructions({
-                      harness: "OpenCode",
-                      model: `${parsedModel.providerID}/${parsedModel.modelID}`,
-                    }),
+                    system: [
+                      buildRuntimeInstructions({
+                        harness: "OpenCode",
+                        model: `${parsedModel.providerID}/${parsedModel.modelID}`,
+                      }),
+                      turnProfile.instructions,
+                    ]
+                      .filter(Boolean)
+                      .join("\n\n"),
                     parts: [...(text ? [{ type: "text" as const, text }] : []), ...fileParts],
                   },
                   { signal },

@@ -85,10 +85,21 @@ const commandOf = (rawInput: unknown): string | undefined => {
 
 const PATH_KEYS = ["file_path", "filePath", "path", "target_file", "notebook_path"] as const;
 
-/** A path as the gate reads it: a `file://` URI's path, a relative one against the session. */
+/** `path` against `cwd`, `.` and `..` resolved, as POSIX resolves it. */
+export const resolvePosixPath = (cwd: string, path: string): string => {
+  const segments: Array<string> = [];
+  for (const segment of (path.startsWith("/") ? path : `${cwd}/${path}`).split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return `/${segments.join("/")}`;
+};
+
+/** A path as the gate reads it: a `file://` URI's path, a relative one against the session, `..` resolved. */
 const absoluteIn = (cwd: string, path: string): string => {
   const plain = path.startsWith("file://") ? decodeURIComponent(new URL(path).pathname) : path;
-  return plain.startsWith("/") ? plain : `${cwd.replace(/\/+$/u, "")}/${plain}`;
+  return resolvePosixPath(cwd, plain);
 };
 
 /** Where a command says it runs, when it says so. */

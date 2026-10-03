@@ -102,6 +102,11 @@ describe("decideAcpPermission", () => {
       call: { kind: "edit", locations: [{ path: "src/a.ts" }], rawInput: { path: "/etc/passwd" } },
       expected: "no",
     },
+    {
+      name: "an edit that climbs out of the session with ..",
+      call: { kind: "edit", locations: [{ path: "../../../etc/passwd" }] },
+      expected: "no",
+    },
     { name: "an edit naming no file", call: { kind: "edit" }, expected: "no" },
     {
       name: "a crew tool",
