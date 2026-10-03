@@ -127,6 +127,10 @@ describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () =>
     ["env_mismatch", "HQ could not check its Zerops project yet. It tries again on its own."],
     ["expired", "HQ could not check its Zerops project yet. It tries again on its own."],
     ["unknown_nonce", "HQ could not check its Zerops project yet. It tries again on its own."],
+    [
+      "not_this_projects_mate",
+      "Another Zerops Control Plane in its project is the project's Mate, and a project holds one. Delete this one in Zerops, or delete the other and restart this one.",
+    ],
     ["later_code", "HQ refused it (later_code). It tries again on its own."],
     [undefined, "HQ refused it. It tries again on its own."],
   ] as const)("%s", (code, words) => {
