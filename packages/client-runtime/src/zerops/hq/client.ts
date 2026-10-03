@@ -263,6 +263,12 @@ const SOCKET_CLOSE = {
 const PONG = JSON.stringify({ type: "pong" });
 
 const CALL_TIMEOUT_MS = 20_000;
+/**
+ * The door reads the org fresh from Zerops (`apps/hq/src/door.ts`), which took tens of seconds on
+ * a slow Zerops (measured 2026-10-03): a door given up at the calls' 20 s threw HQ's answer away,
+ * and the next caller minted another throwaway for a door queued behind the first.
+ */
+const DOOR_TIMEOUT_MS = 45_000;
 
 /** HQ's code and reason in an answer's body; a body that is not HQ's JSON names neither. */
 function said(text: string): { readonly code?: unknown; readonly reason?: unknown } {
@@ -441,6 +447,7 @@ export function makeHqApi(input: {
           await send(input.fetch, `${origin}/api/door`, {
             method: "POST",
             body: JSON.stringify({ token }),
+            signal: AbortSignal.timeout(DOOR_TIMEOUT_MS),
           }),
         ),
       )

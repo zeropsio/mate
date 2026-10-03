@@ -1,4 +1,9 @@
-import type { HqApi, HqStructure, HqStructureEvent } from "@t3tools/client-runtime/zerops/hq";
+import {
+  makeHqApi,
+  type HqApi,
+  type HqStructure,
+  type HqStructureEvent,
+} from "@t3tools/client-runtime/zerops/hq";
 import type { HqChange } from "@t3tools/shared/hqChanges";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -211,6 +216,88 @@ describe("driveHqStructure", () => {
       stop.abort();
       await driving;
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for a door HQ answers in 30 s, it and every other reader on its one throwaway", async () => {
+    // HQ's door reads the org fresh from Zerops, which took tens of seconds on KRLS (2026-10-03):
+    // a door given up early threw HQ's answer away and minted another throwaway for the next.
+    vi.useFakeTimers();
+    // The platform's call deadlines run on the test's clock.
+    const deadlines = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const deadline = new AbortController();
+      setTimeout(() => deadline.abort(new DOMException("timed out", "TimeoutError")), ms);
+      return deadline.signal;
+    });
+    try {
+      const minted: Array<string> = [];
+      const calls: Array<string> = [];
+      const fetch = (url: string, init?: RequestInit) => {
+        const { pathname } = new URL(url);
+        const authorization = new Headers(init?.headers).get("authorization");
+        calls.push(`${init?.method ?? "GET"} ${pathname} ${String(authorization)}`);
+        if (pathname === "/api/door") {
+          return new Promise<Response>((resolve, reject) => {
+            const answer = setTimeout(
+              () => resolve(Response.json({ session: "session-1", expiresAt: "", userId: "u1" })),
+              30_000,
+            );
+            init?.signal?.addEventListener("abort", () => {
+              clearTimeout(answer);
+              reject(init.signal?.reason);
+            });
+          });
+        }
+        if (pathname === "/api/stream-ticket") {
+          return Promise.resolve(Response.json({ ticket: "t-1", expiresIn: 60 }));
+        }
+        return Promise.resolve(Response.json(ACME));
+      };
+      const api = makeHqApi({
+        address: "https://hq.example",
+        fetch,
+        throughDoor: async (use) => {
+          const token = `door-${String(minted.length + 1)}`;
+          minted.push(token);
+          return use(token);
+        },
+        // HQ's socket sends its snapshot, then stays open until it is closed.
+        openSocket: (_url, on) => {
+          queueMicrotask(() =>
+            on.message(JSON.stringify({ type: "snapshot", ungrouped: [], apps: ACME.apps })),
+          );
+          return { send: () => undefined, close: () => queueMicrotask(() => on.close(1005)) };
+        },
+      });
+      const h = harness();
+      const stop = new AbortController();
+      const driving = driveHqStructure({
+        ...h.deps,
+        api,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        signal: stop.signal,
+      });
+      // The review's own read of what it shows, asked while the stream's door is under way.
+      const read = api.structure();
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(minted).toEqual(["door-1"]);
+      expect(h.views.at(-1)?.current).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(read).resolves.toEqual(ACME);
+      expect(h.views.at(-1)).toMatchObject({ structure: ACME, current: true });
+      expect(minted).toEqual(["door-1"]);
+      expect(calls.filter((call) => call.startsWith("POST /api/door"))).toHaveLength(1);
+      expect(calls.filter((call) => !call.startsWith("POST /api/door"))).toEqual([
+        "POST /api/stream-ticket Bearer session-1",
+        "GET /api/structure Bearer session-1",
+      ]);
+      stop.abort();
+      await driving;
+    } finally {
+      deadlines.mockRestore();
       vi.useRealTimers();
     }
   });
