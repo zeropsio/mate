@@ -1891,6 +1891,76 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  // A9 (krok-a-hub §3): HQ's index names the project of every Mate the reader observes, so a
+  // notification's click never reads every candidate's descriptor first.
+  it.effect("a route HQ's index names is exchanged with no descriptor sweep", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const [named, down, coming] = [mate("1"), mate("2"), mate("3")];
+        const { clock, rig, environments } = yield* granted(
+          [],
+          [named, down, coming],
+          undefined,
+          undefined,
+          {
+            hqIndex: {
+              projectOf: (environmentId) => (environmentId === ENV_A ? named.projectId : null),
+              subscribe: () => () => undefined,
+            },
+          },
+        );
+        // No descriptor names the route's environment: the named Mate's read is still out.
+        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
+
+        environments.setRoute(ENV_A);
+        yield* settle;
+        expect(rig.exchanges.map(({ input: { key, expected } }) => ({ key, expected }))).toEqual([
+          { key: named.key, expected: null },
+        ]);
+
+        // Read on their polls as ever, neither is read again for the route: a failed read leaves
+        // each unanswered.
+        yield* clock.advance(10 * SECOND);
+        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
+        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        expect(environments.index().unanswered).toEqual(
+          expect.arrayContaining([down.key, coming.key]),
+        );
+      }),
+    ),
+  );
+
+  it.effect("an action on a Mate only HQ's index names holds it once HQ names it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let known = false;
+        const heard = { listener: (): void => undefined };
+        const { rig, environments } = yield* granted([], [A_MATE], undefined, undefined, {
+          hqIndex: {
+            projectOf: (environmentId) =>
+              known && environmentId === ENV_A ? A_MATE.projectId : null,
+            subscribe: (listener) => {
+              heard.listener = listener;
+              return () => undefined;
+            },
+          },
+        });
+
+        const release = environments.hold(ENV_A);
+        yield* settle;
+        expect(rig.exchanges).toEqual([]);
+
+        // HQ's structure lands after the stage stood.
+        known = true;
+        heard.listener();
+        yield* settle;
+        expect(rig.exchanges.map(({ input: { key } }) => key)).toEqual([MATE]);
+        release();
+      }),
+    ),
+  );
+
   it.effect(
     "a route nothing names waits for each unreachable Mate's next poll, and is answered once that read fails too",
     () =>

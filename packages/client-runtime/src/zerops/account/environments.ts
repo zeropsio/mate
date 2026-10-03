@@ -168,6 +168,15 @@ export interface AccountEnvironmentPorts {
   /** The tab's socket admission (`connection/admission.ts`): the route's socket opens first. */
   readonly admission?: Pick<ConnectionAdmission, "prefer" | "down">;
   /**
+   * HQ's index of the Mates the reader observes: the project whose Mate serves an environment
+   * (krok-a-hub §3). A route or an action no record or descriptor names finds its target through
+   * it, with no descriptor sweep. Absent: it names none.
+   */
+  readonly hqIndex?: {
+    readonly projectOf: (environmentId: EnvironmentId) => string | null;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
+  /**
    * Whether a press is in flight in this browser, its project made or not: the background mints
    * no throwaway meanwhile (`holdBackground`), as the press reads the token list they are written
    * to. A surface with no press of its own leaves it out.
@@ -475,11 +484,23 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
-  /** The target an environment names: the one its record remembers, else the one the index finds. */
+  /** The listed Mate of the project HQ's index names for an environment, once its services are read. */
+  const hintedTarget = (environmentId: EnvironmentId): TargetKey | null => {
+    const projectId = ports.hqIndex?.projectOf(environmentId) ?? null;
+    if (projectId === null) return null;
+    return (
+      rows.find((row) => row.project.id === projectId && row.service !== undefined)?.key ?? null
+    );
+  };
+
+  /**
+   * The target an environment names: the one its record remembers, else the one the descriptor
+   * index finds, else the one HQ's index names.
+   */
   const targetOf = (environmentId: EnvironmentId): TargetKey | null =>
     stores!.records.list().find((record) => record.environmentId === environmentId)?.targetKey ??
     resolveEnvironment(stores!.driver.machines(), indexOf(), environmentId)?.key ??
-    null;
+    hintedTarget(environmentId);
 
   /** Each action holds the target its environment names now; one nothing names yet waits. */
   const updateActions = () => {
@@ -640,10 +661,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /**
    * The route's target, wanted first: the one its record remembers, else the one the descriptor
-   * index finds; and the on-screen project's. While nothing names the route's environment, each
-   * present target read without an answer is read once more, once per route (§4.8's sweep,
-   * `sweepRead`): on its poll when one reads it, a poll interval after the failure the sweep saw,
-   * else at once. An unreachable one that fails that read too has answered for the index.
+   * index finds, else the one HQ's index names; and the on-screen project's. While neither index
+   * names the route's environment, each present target read without an answer is read once more,
+   * once per route (§4.8's sweep, `sweepRead`): on its poll when one reads it, a poll interval
+   * after the failure the sweep saw, else at once. An unreachable one that fails that read too has
+   * answered for the index.
    */
   const updateRoute = () => {
     if (stores === null || closed) return;
@@ -657,12 +679,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const machines = stores.driver.machines();
     const index = indexOf();
     const resolved = resolveEnvironment(machines, index, route);
+    const hinted = hintedTarget(route);
     const key =
       stores.records.list().find((record) => record.environmentId === route)?.targetKey ??
-      resolved?.key;
+      resolved?.key ??
+      hinted ??
+      undefined;
     routeKey = key ?? null;
     holdOnRoute(key === undefined ? shown : [key, ...shown.filter((other) => other !== key)]);
-    if (resolved !== undefined) return;
+    if (resolved !== undefined || hinted !== null) return;
     const unswept = index.failed.filter((failed) => !swept.keys.has(failed));
     if (unswept.length === 0) return;
     const { containers } = stores;
@@ -820,6 +845,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       ports.records.listen(registrationsChanged),
       ports.pressInFlight?.subscribe(holdBackground) ?? (() => undefined),
+      ports.hqIndex?.subscribe(() => {
+        updateRoute();
+        updateActions();
+      }) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
