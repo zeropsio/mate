@@ -4,7 +4,11 @@ import {
   BearerConnectionRegistration,
   BearerConnectionTarget,
 } from "@t3tools/client-runtime/connection";
-import { KEPT_SESSIONS_KEY, makeKeptSessions } from "@t3tools/client-runtime/zerops/keptSessions";
+import {
+  KEPT_SESSIONS_KEY,
+  makeKeptSessions,
+  MATE_SESSIONS,
+} from "@t3tools/client-runtime/zerops/keptSessions";
 import { AuthZeropsClientScopes, EnvironmentId, type AuthSessionState } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -135,6 +139,7 @@ describe("no kept session outlives the login it was opened under", () => {
         },
       },
       Date.now,
+      MATE_SESSIONS,
     ).keep("p9:zcp", session("docs"));
 
     kept.endEveryKeptSession();

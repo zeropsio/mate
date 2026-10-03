@@ -6,14 +6,18 @@
  * this origin holds (`ZeropsSessionProvider.tsx`).
  */
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
-import { KEPT_SESSIONS_KEY, makeKeptSessions } from "@t3tools/client-runtime/zerops/keptSessions";
+import {
+  KEPT_SESSIONS_KEY,
+  makeKeptSessions,
+  MATE_SESSIONS,
+} from "@t3tools/client-runtime/zerops/keptSessions";
 import { AuthZeropsClientScopes, type AuthSessionState } from "@t3tools/contracts";
 
 import { accountLocalStorage, onAccountLifetimeClose } from "./accountLifetime";
 
 const nowEpochMs = () => Date.now();
 
-export const keptSessions = makeKeptSessions(accountLocalStorage, nowEpochMs);
+export const keptSessions = makeKeptSessions(accountLocalStorage, nowEpochMs, MATE_SESSIONS);
 
 /** The tokens this page has ended: two closers never end one session twice. */
 const ended = new Set<string>();
@@ -73,6 +77,7 @@ export function endEveryKeptSession(): void {
         removeItem: () => window.localStorage.removeItem(key),
       },
       nowEpochMs,
+      MATE_SESSIONS,
     );
     for (const registration of sessions.drain()) endKeptSession(registration);
   }
