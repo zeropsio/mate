@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect, it, vi } from "@effect/vitest";
 
 import {
   attachToApp,
@@ -193,6 +193,49 @@ describe("makeHqApi", () => {
       openSocket: NO_SOCKET,
     });
     await expect(stuck.structure()).rejects.toMatchObject({ code: "session_required" });
+  });
+
+  it("waits 45 s for a door that does not answer, then gives it up, and the next call enters again", async () => {
+    vi.useFakeTimers();
+    // The call deadlines run on the test's clock.
+    const deadlines = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const deadline = new AbortController();
+      // @effect-diagnostics-next-line globalTimers:off -- the deadline the client asks for, on fake timers.
+      setTimeout(() => deadline.abort(new DOMException("timed out", "TimeoutError")), ms);
+      return deadline.signal;
+    });
+    try {
+      let silent = true;
+      const hq = fakeHq();
+      const door = doors();
+      const api = makeHqApi({
+        address: ADDRESS,
+        // The first door hangs until its caller gives it up; HQ answers the next one.
+        fetch: async (input, init) => {
+          if (!silent || new URL(input).pathname !== "/api/door") return hq.fetch(input, init);
+          silent = false;
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+          });
+        },
+        throughDoor: door.throughDoor,
+        openSocket: NO_SOCKET,
+      });
+      const first = api.structure();
+      const settled = vi.fn();
+      first.then(settled, settled);
+
+      await vi.advanceTimersByTimeAsync(44_999);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(first).rejects.toMatchObject({ kind: "unavailable", code: "network" });
+
+      await expect(api.structure()).resolves.toEqual({ apps: [] });
+      expect(door.minted).toEqual(["door-1", "door-2"]);
+    } finally {
+      deadlines.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it.each<[string, Response | "throw", Partial<HqError>]>([
