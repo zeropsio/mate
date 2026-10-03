@@ -202,8 +202,11 @@ function NewMateDialog({
       defaultTintFor={(name) =>
         name === again?.botName ? again.tint : newMateTint(candidates, name)
       }
+      defaultShapeFor={(name) => (name === again?.botName ? again.shape : undefined)}
       defaultWithAgent
       groupName={group.name}
+      // Add lands on the new Mate's page, which takes the focus.
+      landsElsewhere
       onCancel={dismiss}
       onCreate={(choice) => {
         if (activeOrganization === null) return;

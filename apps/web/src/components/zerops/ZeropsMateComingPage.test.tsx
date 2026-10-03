@@ -800,10 +800,151 @@ describe("ComingBelow — a Mate half made", () => {
   });
 });
 
+// Run 6's second review: a registration refused read as an owner's, with no reason and nothing to
+// finish it. It says what is not done and why, with this person's Finish setup, while it comes up.
+describe("ComingBelow — a registration not finished while it comes up", () => {
+  const COMING = { kind: "coming", line: "Coming up." } as const;
+  const progress = {
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press: [
+      { id: "closed-off", label: "Closed off", state: "done" },
+      {
+        id: "registered",
+        label: "Not registered",
+        state: "unfinished",
+        why: "Its grant timed out.",
+      },
+    ],
+  } as const;
+  const render = (onFinishSetup: (() => void) | undefined) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: COMING,
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
+        }),
+      );
+    });
+    return rendered!;
+  };
+  const text = (rendered: ReactTestRenderer) =>
+    rendered.root
+      .findAll((node) => node.props["data-press-note"] !== undefined)
+      .map((node) => node.children.join(""));
+
+  it("says what is not done and why, under the steps, with Finish setup at once", () => {
+    let finished = 0;
+    const rendered = render(() => {
+      finished += 1;
+    });
+    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
+    const button = rendered.root.findByType("button");
+    expect(button.children).toEqual(["Finish setup"]);
+    act(() => button.props.onClick());
+    expect(finished).toBe(1);
+  });
+
+  it("still says why to someone who cannot finish it", () => {
+    const rendered = render(undefined);
+    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
+    expect(rendered.root.findAllByType("button")).toHaveLength(0);
+  });
+});
+
+// Run 6's second review: a stop's whole reason lived in a hover tooltip on a span that took no
+// focus — on a phone, or by keyboard, it could not be read. Its step keeps one line; the reason is
+// read whole under the steps, over Try again.
+describe("ComingBelow — a stop's reason, whole, under the steps", () => {
+  const REASON =
+    "The organization has reached its limit of projects; remove one or ask an owner for room.";
+  const progress = {
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press: [
+      { id: "created", label: "Created", state: "failed", why: REASON },
+      { id: "container", label: "Container", state: "waiting" },
+    ],
+  } as const;
+  const render = (coming: Parameters<typeof ComingBelow>[0]["coming"]) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming,
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          onTryAgain: () => undefined,
+        }),
+      );
+    });
+    return rendered!;
+  };
+  const notes = (rendered: ReactTestRenderer) =>
+    rendered.root
+      .findAll((node) => node.props["data-press-note"] !== undefined)
+      .map((node) => node.children.join(""));
+
+  it("reads it whole over Try again, with no hover", () => {
+    const rendered = render({ kind: "failed", line: REASON, verb: "try-again" });
+    expect(notes(rendered)).toEqual([REASON]);
+    expect(rendered.root.findAllByType("button").map((button) => button.children)).toEqual([
+      ["Try again"],
+    ]);
+  });
+
+  it("leaves it to the sentence where Zerops may have made it", () => {
+    const rendered = render({ kind: "failed", line: REASON, verb: "go-to-projects" });
+    expect(notes(rendered)).toEqual([]);
+  });
+
+  // Run 6's second review: a create Zerops may have made had no way to end but the projects.
+  it("lets one Zerops may have made be dismissed beside the way to the projects, never started over", () => {
+    let dismissed = 0;
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: { kind: "failed", line: REASON, verb: "go-to-projects" },
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          ends: {
+            onDismiss: () => {
+              dismissed += 1;
+            },
+          },
+          projects: h("a", { href: "/zerops" }),
+        }),
+      );
+    });
+    const buttons = rendered!.root.findAllByType("button");
+    expect(buttons.map((button) => button.children)).toEqual([["Go to projects"], ["Dismiss"]]);
+    act(() => buttons[1]!.props.onClick());
+    expect(dismissed).toBe(1);
+  });
+});
+
 // The stop's words come from what made the stop: a step this tab ran says why in its place, and
 // the sentence only that it did; anything else, the sentence says why.
 describe("comingSentenceOf — the sentence over a stop", () => {
-  const sub = (id: string, state: "done" | "failed" | "owner", why?: string) => ({
+  const sub = (id: string, state: "done" | "failed" | "unfinished", why?: string) => ({
     id,
     label: id,
     state,
@@ -837,9 +978,9 @@ describe("comingSentenceOf — the sentence over a stop", () => {
       want: "Zerops may have created it. Check your projects before trying again.",
     },
     {
-      case: "a registration left to an owner, then the container stopped: the container's reason",
+      case: "a registration not finished, then the container stopped: the container's reason",
       coming: { kind: "failed", line: "Its container stopped.", verb: "remove" },
-      press: [sub("closed-off", "done"), sub("registered", "owner", "An owner registers Ida.")],
+      press: [sub("closed-off", "done"), sub("registered", "unfinished", "Refused.")],
       want: "Its container stopped.",
     },
   ] as const)("$case", ({ coming, press, want }) => {

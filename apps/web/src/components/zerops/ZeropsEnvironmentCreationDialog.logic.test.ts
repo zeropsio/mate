@@ -357,6 +357,36 @@ describe("newMateFace — the face follows the name until its person picks", () 
     expect(newMateFace({ name, picked, defaultTint })).toEqual(face);
   });
 
+  // Run 6's second review: Start over brought the colour back, never the shape.
+  it.each<{
+    readonly case: string;
+    readonly name: string;
+    readonly picked: { readonly tint?: MateTintId; readonly shape?: MateShapeId };
+    readonly face: { readonly tint: MateTintId; readonly shape: MateShapeId };
+  }>([
+    {
+      case: "started over, the name as asked: the face as asked",
+      name: "Quinn",
+      picked: {},
+      face: { tint: "olive", shape: "gem" },
+    },
+    {
+      case: "started over, another name: that name's own face",
+      name: "Ada",
+      picked: {},
+      face: { tint: "sky", shape: "pick" },
+    },
+    {
+      case: "started over, a colour picked: that colour's shape",
+      name: "Quinn",
+      picked: { tint: "rose" },
+      face: { tint: "rose", shape: "flower" },
+    },
+  ])("$case", ({ name, picked, face }) => {
+    const defaultShape = (asked: string) => (asked === "Quinn" ? ("gem" as const) : undefined);
+    expect(newMateFace({ name, picked, defaultTint, defaultShape })).toEqual(face);
+  });
+
   it.each([
     { case: "the name as typed", typed: "  Ada  ", held: "Quinn", name: "Ada" },
     { case: "the last name while the field is blank", typed: "   ", held: "Quinn", name: "Quinn" },

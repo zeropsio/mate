@@ -257,7 +257,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
       then: {
         asked: expect.objectContaining({
           groupId: "g-acme",
-          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
         }),
       },
     },
@@ -275,12 +275,17 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     useNewMate.setState({ asked: null });
   });
 
-  it("never offers to end an Add Zerops may have made", () => {
+  // Run 6's second review: one Zerops may have made had no way to end but the projects.
+  it("lets an Add Zerops may have made be dismissed, never started over", () => {
     hold({ ...IDA, failed: { reason: "Zerops may have created it.", uncertain: true } });
     openView("add-1");
     expect(button("Go to projects")).toBeDefined();
-    expect(button("Dismiss")).toBeUndefined();
     expect(button("Start over")).toBeUndefined();
+    act(() => {
+      button("Dismiss")?.props.onClick();
+    });
+    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+    expect(app.navigate).toHaveBeenCalledWith({ to: "/zerops", replace: true });
   });
 
   it("says where one stopped, in its place, with Try again, and no longer asks for the tab", () => {

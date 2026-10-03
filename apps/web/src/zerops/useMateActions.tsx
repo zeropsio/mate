@@ -111,6 +111,11 @@ import {
 import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
 import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import {
+  refinishNewProjectBirth,
+  registrationUnfinished,
+  useNewProjectBirths,
+} from "./newProjectBirth";
+import {
   beginPress,
   finishSetupRunning,
   finishMateSetup,
@@ -258,6 +263,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
   const presses = useMatePresses();
+  // What this tab made: a registration it saw refused is finished at once (`registrationUnfinished`).
+  const births = useNewProjectBirths((state) => state.births);
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
   const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
@@ -491,7 +498,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         containerMissing:
           grouped && mateContainerMissing(candidate, press !== undefined, Date.now()),
         closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
-        pressStopped: press?.state.kind === "failed",
+        // A press this tab saw stop, or saw end with its registration refused: no press
+        // elsewhere is still at it, so no grace.
+        pressStopped:
+          press?.state.kind === "failed" || registrationUnfinished(births, candidate.project.id),
         needsHarden: mateHardenableBy(listedTokens, candidate.project.id, {
           userId: user?.id,
           roleCode: activeOrganization?.roleCode,
@@ -504,6 +514,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [
       activeOrganization?.roleCode,
+      births,
       groupTree.groups,
       interrupted,
       listedTokens,
@@ -579,6 +590,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                     displayName: candidate.project.name,
                   },
             isCurrent: captureAccountLifetime(),
+            // A Mate this tab made: its registration's own step follows this one.
+            onProgress: (progress) => refinishNewProjectBirth(projectId, progress),
           });
           if (!finished.ok) throw new Error(finished.error);
         },

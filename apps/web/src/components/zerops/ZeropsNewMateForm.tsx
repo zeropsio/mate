@@ -74,6 +74,8 @@ export interface ZeropsNewMateFormProps {
   readonly tierLoading: boolean;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
+  /** The shape a name was asked with before (an Add started over); its tint's where none. */
+  readonly defaultShapeFor?: ((name: string) => MateShapeId | undefined) | undefined;
   /** Why the project takes no Mate now, and what to do about it (`newMateDoor`): no form. */
   readonly closed?: NewMateDoorClosed | undefined;
   /** The one thing to do while the project takes no Mate, pressed. */
@@ -95,6 +97,7 @@ export function ZeropsNewMateForm({
   tier,
   tierLoading,
   defaultTintFor,
+  defaultShapeFor,
   closed,
   onDoorAction,
   onCancel,
@@ -124,6 +127,7 @@ export function ZeropsNewMateForm({
     name: faceName(botName, heldName),
     picked,
     defaultTint: defaultTintFor,
+    defaultShape: defaultShapeFor,
   });
   const recipe = newMateRecipe({ tier, tierLoading });
   const submit = newMateSubmit({ botName, takenBotNames, tier, tierLoading });

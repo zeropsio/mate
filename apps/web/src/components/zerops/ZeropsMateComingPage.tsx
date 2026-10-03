@@ -89,6 +89,7 @@ import {
   comingSentence,
   inFirstSeenOrder,
   KEEP_TAB_OPEN_LINE,
+  pressNote,
   pressRuns,
   type ArrivalSubstep,
 } from "~/zerops/mateArrival";
@@ -517,8 +518,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         };
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
-  // offered to an owner or an admin in any browser.
-  const halfMade = coming?.kind === "failed" && coming.verb === "finish-setup";
+  // offered to an owner or an admin in any browser — and at once, where this tab saw its
+  // registration refused (`registrationUnfinished`).
+  const unregistered = pressNote(lineProgress?.press)?.kind === "unfinished";
+  const halfMade = (coming?.kind === "failed" && coming.verb === "finish-setup") || unregistered;
   const registryState = useZeropsRegistry(activeOrganization?.id);
   const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
   const finishEntry =
@@ -530,8 +533,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const finishSetup =
     finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;
 
-  // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end.
-  const finish = finishSetupView(press);
+  // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end — on
+  // a Mate this tab made, its own step under the project's row follows it instead
+  // (`refinishNewProjectBirth`), and nothing above it moves.
+  const finish = made === undefined ? finishSetupView(press) : undefined;
 
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -611,6 +616,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           : {
               kind: shown.kind,
               over: handing,
+              pressed: made !== undefined,
               sentence:
                 finish !== undefined && shown.kind === "coming"
                   ? finish.line
@@ -915,10 +921,13 @@ export function ComingBelow({
   readonly onFinishSetup?: () => void;
   readonly onTryAgain?: () => void;
   /**
-   * An Add refused before Zerops took anything (`addEnds`): beside *Try again*, *Start over* with
-   * its name to change, and *Dismiss*, which takes it out of the menu.
+   * A creation that stopped before Zerops took it as far as this tab knows (`creationEnds`):
+   * *Dismiss*, which takes it out of the menu — and, for an Add refused for certain, *Start over*
+   * with its name to change.
    */
-  readonly ends?: { readonly onStartOver: () => void; readonly onDismiss: () => void } | undefined;
+  readonly ends?:
+    | { readonly onStartOver?: (() => void) | undefined; readonly onDismiss: () => void }
+    | undefined;
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
@@ -957,30 +966,66 @@ export function ComingBelow({
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <>
           <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+          {ends?.onStartOver === undefined ? null : (
+            <Button onClick={ends.onStartOver} variant="outline">
+              Start over
+            </Button>
+          )}
           {ends === undefined ? null : (
-            <>
-              <Button onClick={ends.onStartOver} variant="outline">
-                Start over
-              </Button>
-              <Button onClick={ends.onDismiss} variant="ghost">
-                Dismiss
-              </Button>
-            </>
+            <Button onClick={ends.onDismiss} variant="ghost">
+              Dismiss
+            </Button>
           )}
         </>
       ) : coming.verb === "go-to-projects" && projects !== undefined ? (
-        <Button render={projects}>Go to projects</Button>
+        <>
+          <Button render={projects}>Go to projects</Button>
+          {ends === undefined ? null : (
+            <Button onClick={ends.onDismiss} variant="ghost">
+              Dismiss
+            </Button>
+          )}
+        </>
       ) : null
     ) : null;
-  if (verb === null) {
+  // What the steps leave to read whole, under them and over the way on — each step keeps one line:
+  // a stop's reason (one Zerops may have made says it in the sentence), or a registration not
+  // finished, with this person's own *Finish setup*, at once.
+  const note = pressNote(progress?.press);
+  const read =
+    note === null ||
+    (note.kind === "stopped" && coming?.kind === "failed" && coming.verb === "go-to-projects")
+      ? null
+      : note;
+  const left = read?.kind === "unfinished" ? read : null;
+  const finishVerb =
+    left !== null && coming?.kind === "coming" && onFinishSetup !== undefined ? (
+      <Button disabled={finishing} onClick={onFinishSetup}>
+        {FINISH_MATE_SETUP_VERB}
+      </Button>
+    ) : null;
+  const acts = verb ?? finishVerb;
+  if (acts === null && read === null) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
   // Under the steps, where nothing is read yet: a stop, and *Try again* taking it back, never move
   // the rows they stand under.
   return (
-    <div className="flex flex-col gap-5.5" data-zerops-surface="mate-coming-failed">
+    <div
+      className="flex flex-col gap-5.5"
+      data-zerops-surface={
+        coming?.kind === "failed" ? "mate-coming-failed" : "mate-coming-progress"
+      }
+    >
       {steps}
-      <div className="arrival-acts">{verb}</div>
+      <div className="arrival-acts-block">
+        {read === null ? null : (
+          <p className="arrival-acts-note" data-press-note="">
+            {read.text}
+          </p>
+        )}
+        {acts === null ? null : <div className="arrival-acts">{acts}</div>}
+      </div>
     </div>
   );
 }

@@ -219,6 +219,12 @@ export interface MateEmptyComing {
   readonly sentence?: string | undefined;
   /** It is up: the state it moves into is read, and its words hand over to it. */
   readonly over?: boolean;
+  /**
+   * Made by a press this tab ran: its sentence turns from keeping the tab open to a stop, and back
+   * on *Try again*. On a narrow screen one wraps and the other does not, so the sentence holds two
+   * lines' room from the press, and none of it moves the rows under it.
+   */
+  readonly pressed?: boolean;
 }
 
 /**
@@ -311,6 +317,9 @@ export function MateEmptyStateView({
       ? coming.sentence
       : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined });
   const slot = arrivalSlot({ kind, coming, signIn, unknown, onRetry, runtimes });
+  // A press's words change while its steps run, stop and go again: on a narrow screen each holds
+  // two lines' room, so none of it moves the rows under them.
+  const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
   return (
     <div
       className="flex h-full flex-col items-center px-5 sm:px-6"
@@ -337,16 +346,20 @@ export function MateEmptyStateView({
           <h1
             aria-describedby={sentence.length === 0 ? undefined : sentenceId}
             aria-live="polite"
-            className={cn(MATE_EMPTY_HEADLINE_CLASS, "text-balance outline-none")}
+            className={cn(MATE_EMPTY_HEADLINE_CLASS, "arrival-headline text-balance outline-none")}
+            data-pressed={pressed}
             ref={headline}
             tabIndex={-1}
           >
-            {clauses.map((clause, at) => (
-              <Fragment key={clause}>
-                {at === 0 ? null : " "}
-                <span className="inline-block">{clause}</span>
-              </Fragment>
-            ))}
+            {/* One run of words, set on the room's last lines where it holds more than it says. */}
+            <span>
+              {clauses.map((clause, at) => (
+                <Fragment key={clause}>
+                  {at === 0 ? null : " "}
+                  <span className="inline-block">{clause}</span>
+                </Fragment>
+              ))}
+            </span>
           </h1>
         </ArrivalSwap>
         {sentence.length === 0 ? null : (
@@ -358,7 +371,9 @@ export function MateEmptyStateView({
             kind="words"
             live="polite"
           >
-            <p className="arrival-sentence">{sentence}</p>
+            <p className="arrival-sentence" data-pressed={pressed}>
+              {sentence}
+            </p>
           </ArrivalSwap>
         )}
         <ArrivalSwap

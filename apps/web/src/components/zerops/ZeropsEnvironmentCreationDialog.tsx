@@ -14,7 +14,7 @@ import type {
   ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useId, useMemo, useRef, useState } from "react";
 
 import { Button } from "../ui/button";
@@ -80,6 +80,8 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly tierLoading: boolean;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
+  /** The shape a name was asked with before (an Add started over); its tint's where none. */
+  readonly defaultShapeFor?: ((name: string) => MateShapeId | undefined) | undefined;
   /** Why the project takes no Mate now, in the Mate's form's place (`newMateDoor`). */
   readonly closed?: NewMateDoorClosed | undefined;
   /** The one thing to do while the project takes no Mate, pressed. */
@@ -126,11 +128,12 @@ export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFo
 function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
   const { groupName, defaultBotName, proposeName, takenBotNames, tier, tierLoading } = props;
-  const { defaultTintFor, closed, onDoorAction, onCancel, onCreate } = props;
+  const { defaultTintFor, defaultShapeFor, closed, onDoorAction, onCancel, onCreate } = props;
   return (
     <ZeropsNewMateForm
       closed={closed}
       defaultBotName={defaultBotName}
+      defaultShapeFor={defaultShapeFor}
       defaultTintFor={defaultTintFor}
       groupName={groupName}
       onCancel={onCancel}
@@ -348,13 +351,18 @@ function FieldError({ children }: { readonly children: string }) {
 export function ZeropsEnvironmentCreationDialog({
   open,
   onOpenChange,
+  landsElsewhere = false,
   ...form
 }: ZeropsEnvironmentCreationFormProps & {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /**
+   * Add closes it onto another page, which takes the focus (Add a Mate, onto the new Mate's):
+   * never back to what opened it, where a second Enter would open it again over that page. Any
+   * other caller keeps the person where they were, the focus back where it came from.
+   */
+  readonly landsElsewhere?: boolean;
 }) {
-  // Add closes it onto the new Mate's page, which takes the focus: never back to what opened it,
-  // where a second Enter would open it again over that page.
   const added = useRef(false);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -362,7 +370,7 @@ export function ZeropsEnvironmentCreationDialog({
         <ZeropsEnvironmentCreationForm
           {...form}
           onCreate={(choice) => {
-            if (choice.withAgent) added.current = true;
+            if (landsElsewhere) added.current = true;
             form.onCreate(choice);
           }}
         />

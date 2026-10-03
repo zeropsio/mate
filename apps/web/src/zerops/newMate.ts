@@ -12,7 +12,7 @@
  * which the account keeps (`zeropsBirths.ts`), carries a creation on.
  */
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 
@@ -31,11 +31,12 @@ export interface NewMateCreation {
   readonly at?: number | undefined;
 }
 
-/** An Add started over: the name, the environment's name and the tint it was asked with. */
+/** An Add started over: the name, the environment's name and the face it was asked with. */
 export interface NewMateAgain {
   readonly botName: string;
   readonly name: string;
   readonly tint: MateTintId;
+  readonly shape: MateShapeId;
 }
 
 interface NewMateState {

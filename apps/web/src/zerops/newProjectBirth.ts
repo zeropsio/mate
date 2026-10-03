@@ -543,22 +543,28 @@ export function progressNewProjectBirth(
 }
 
 /**
- * What ends an Add refused before Zerops took anything — a quota, a right: *Dismiss* takes it
- * out of the menu, and *Start over* asks for it again over its project, its name there to change.
- * Null for any other creation: one running, one Zerops may have made (its way is the projects),
- * one Zerops took (its press finishes it), a New project's (its own *Try again*).
+ * What ends a creation that stopped before Zerops took its project as far as this tab knows:
+ * *Dismiss* takes it out of the menu — and, for an Add refused for certain (a quota, a right),
+ * *Start over* asks for it again over its project, its name there to change. One Zerops may have
+ * made is dismissed, never started over: a second could make it twice. Null for any other: one
+ * running, one Zerops took (its press finishes it), a New project refused for certain (its own
+ * *Try again*).
  */
-export function addEnds(
-  birth: NewProjectBirth,
-): { readonly groupId: string; readonly again: NewMateAgain } | null {
-  if (birth.adds === undefined || birth.projectId !== null) return null;
-  if (birth.failed === null || birth.failed.uncertain) return null;
+export function creationEnds(birth: NewProjectBirth): {
+  readonly startOver: { readonly groupId: string; readonly again: NewMateAgain } | null;
+} | null {
+  if (birth.projectId !== null || birth.failed === null) return null;
+  if (birth.failed.uncertain) return { startOver: null };
+  if (birth.adds === undefined) return null;
   return {
-    groupId: birth.groupId,
-    again: {
-      botName: birth.botName,
-      name: birth.adds.displayName,
-      tint: birth.face.tint,
+    startOver: {
+      groupId: birth.groupId,
+      again: {
+        botName: birth.botName,
+        name: birth.adds.displayName,
+        tint: birth.face.tint,
+        shape: birth.face.shape,
+      },
     },
   };
 }
@@ -573,13 +579,13 @@ export function dismissNewProjectBirth(birthId: string): void {
   });
 }
 
-/** *Start over*: an Add that can end (`addEnds`) is let go of, and asked for again, prefilled. */
+/** *Start over*: an Add refused for certain (`creationEnds`) is let go of, and asked for again, prefilled. */
 export function startAddOver(birthId: string): void {
   const birth = useNewProjectBirths.getState().births[birthId];
-  const ends = birth === undefined ? null : addEnds(birth);
-  if (ends === null) return;
+  const startOver = birth === undefined ? null : creationEnds(birth)?.startOver;
+  if (startOver == null) return;
   dismissNewProjectBirth(birthId);
-  useNewMate.getState().ask(ends.groupId, ends.again);
+  useNewMate.getState().ask(startOver.groupId, startOver.again);
 }
 
 /** *Try again* on a creation a step stopped: it resumes from that step, with the same project. */
@@ -588,6 +594,42 @@ export function retryNewProjectBirth(birthId: string): void {
   if (birth === undefined || birth.failed === null || birth.failed.uncertain) return;
   patchBirth(birthId, { failed: null });
   void drive(birthId);
+}
+
+const REGISTRATION_REFUSED = "It was refused.";
+
+/**
+ * Whether the creation this tab made of this Mate saw its registration refused, and nothing has
+ * finished it since: its *Finish setup* is offered at once — this tab saw the press end, so no
+ * press elsewhere is still at it.
+ */
+export function registrationUnfinished(
+  births: Readonly<Record<string, NewProjectBirth>>,
+  projectId: string,
+): boolean {
+  const made = newProjectBirthOf(births, projectId);
+  return (
+    made?.progress?.some((entry) => entry.step.kind === "register" && entry.state === "failed") ===
+    true
+  );
+}
+
+/**
+ * *Finish setup* ran its steps on a Mate this tab made: its registration, as that press moves,
+ * becomes the creation's own — its step under the project's row follows it, and once through the
+ * verb is offered no more.
+ */
+export function refinishNewProjectBirth(
+  projectId: string,
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+): void {
+  const registration = progress.find((entry) => entry.step.kind === "register");
+  if (registration === undefined || registration.state === "queued") return;
+  const made = newProjectBirthOf(useNewProjectBirths.getState().births, projectId);
+  if (made?.progress == null) return;
+  patchBirth(made.id, {
+    progress: made.progress.map((entry) => (entry.step.kind === "register" ? registration : entry)),
+  });
 }
 
 /** The creation this tab made whose first Mate's project this is, while the tab holds it. */
@@ -714,13 +756,17 @@ export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalS
     return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
   };
   // A Mate's registration comes after its close-off, and the press goes on past a refusal: the
-  // Mate runs, and an owner registers it (*Finish setup*). Nothing stopped.
-  const leftToOwner = (step: ArrivalSubstep, who: string): ArrivalSubstep =>
-    step.state === "failed" ? said(step.id, step.label, "owner", who) : step;
-  const registered = leftToOwner(
-    fromPress("registered", `${birth.botName} registered`),
-    `An owner registers ${birth.botName} for Git.`,
-  );
+  // Mate runs, its registration not finished, and why — *Finish setup* finishes it. Nothing stopped.
+  const pressedRegistration = fromPress("registered", `${birth.botName} registered`);
+  const registered =
+    pressedRegistration.state === "failed"
+      ? said(
+          "registered",
+          "Not registered",
+          "unfinished",
+          asSentence(pressedRegistration.why ?? "") || REGISTRATION_REFUSED,
+        )
+      : pressedRegistration;
   if (birth.adds === undefined) {
     const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {
       const state = birth.step === "gitea" ? "waiting" : stateOf(birth, step);
