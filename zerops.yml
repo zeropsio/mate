@@ -68,9 +68,17 @@ zerops:
         # The page is asked again on every load. Served without a
         # Cache-Control header, a browser may reuse a page it fetched before
         # a release — and with it the old release's bundle — for a tenth of
-        # the page's age (heuristic freshness). The bundle's own files are
-        # named by their content and keep the base's caching.
+        # the page's age (heuristic freshness). The bundle's files under
+        # /assets are named by their content, so they never change: the
+        # longer location keeps them out of `no-cache` (left without a header
+        # they took Cloudflare's 4-hour default). nosniff is stated in both,
+        # since a location's own add_header drops any inherited from above.
         headers:
           - for: "/*"
             values:
               Cache-Control: "'no-cache' always"
+              X-Content-Type-Options: "'nosniff' always"
+          - for: "/assets/*"
+            values:
+              Cache-Control: "'public, max-age=31536000, immutable' always"
+              X-Content-Type-Options: "'nosniff' always"
