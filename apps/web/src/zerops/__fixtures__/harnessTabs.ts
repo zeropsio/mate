@@ -43,6 +43,12 @@ const mounted = new Set<MountedTab>();
 const reloading = new Set<Promise<void>>();
 /** Points the globals at the tab that holds them now; `null` before any tab opens. */
 let active: (() => void) | null = null;
+/**
+ * The test the tabs opened now belong to: `unmountTabs` ends it. A tab its test left opening — a
+ * test past its time, its page's modules still loading — never opens after that, nor takes the
+ * globals from the next test's tabs.
+ */
+let generation = 0;
 
 interface TabGraph {
   readonly ZeropsSessionProvider: typeof import("../ZeropsSessionProvider").ZeropsSessionProvider;
@@ -208,6 +214,11 @@ export async function mountTab(
   tab: HarnessTab,
   options: MountTabOptions = {},
 ): Promise<MountedTab> {
+  const opened = generation;
+  /** Throws once the test that opened this tab has ended. */
+  const ownTest = () => {
+    if (generation !== opened) throw new Error(`${tab.id} was opened by a test that has ended.`);
+  };
   let root: Root | null = null;
   let graph: TabGraph | null = null;
   let session: ZeropsSessionValue | null = null;
@@ -265,6 +276,7 @@ export async function mountTab(
   async function openPage() {
     activate();
     graph = await loadTabGraph();
+    ownTest();
     const { ZeropsSessionProvider, useZeropsSession } = graph;
     function Probe() {
       const value = useZeropsSession();
@@ -285,6 +297,7 @@ export async function mountTab(
             ),
           })
         : await options.app(Probe);
+    ownTest();
     tab.signals.subscribe(deliver);
     activate();
     container = window.document.body.appendChild(new TestNode("div", window.document));
@@ -331,6 +344,7 @@ export async function mountTab(
     location: () => window.location,
     navigations: () => [...navigations],
     run: async (work) => {
+      ownTest();
       activate();
       let result!: Awaited<ReturnType<typeof work>>;
       await act(async () => {
@@ -348,8 +362,9 @@ export async function mountTab(
   return page;
 }
 
-/** Closes every mounted tab's page; for `afterEach`. */
+/** Closes every mounted tab's page and ends their test; for `afterEach`. */
 export async function unmountTabs(): Promise<void> {
+  generation += 1;
   await Promise.all(reloading);
   for (const page of mounted) await page.unmount();
   active = null;

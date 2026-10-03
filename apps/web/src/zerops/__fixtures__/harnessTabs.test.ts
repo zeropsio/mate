@@ -55,3 +55,37 @@ describe("harness tabs", () => {
     expect(globalThis.window.location).toBe(a.location());
   });
 });
+
+// Under load a test timed out while its tab still opened — the page's module graph took longer
+// than the test's 15 s — and its tab went on opening into the tests after it: the globals moved to
+// its window, and every test after it in the file read an empty page.
+describe("a tab whose test ended while it opened", () => {
+  let release = () => {};
+  let late: Promise<unknown> = Promise.resolve();
+
+  it("ends with its tab still opening", async () => {
+    const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    late = mountTab(harness, harness.browser.openTab(), {
+      path: "/zerops/late",
+      page: async () => {
+        await gate;
+        return null;
+      },
+    }).catch((cause: unknown) => cause);
+    await settle(1);
+  });
+
+  it("never opens into the next test", async () => {
+    const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
+    const next = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/next" });
+
+    release();
+    await settle();
+
+    expect(globalThis.window.location).toBe(next.location());
+    expect(await late).toBeInstanceOf(Error);
+  });
+});
