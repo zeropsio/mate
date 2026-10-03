@@ -571,6 +571,8 @@ export {
   pullRequestLineWith,
   pullRequestsByMate,
   changeAuthorName,
+  agentLastSpokeAt,
+  agentNotesFor,
   agentTurnNotes,
   changeLandedEvents,
   type ChangeLandedEvent,

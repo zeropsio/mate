@@ -4906,7 +4906,6 @@ describe("ClaudeAdapterLive", () => {
           uuid: "tu",
         },
         { type: "system", subtype: "commands_changed", session_id: "session", uuid: "cc" },
-        { type: "system", subtype: "local_command_output", session_id: "session", uuid: "lco" },
         { type: "system", subtype: "plugin_install", session_id: "session", uuid: "pi" },
         { type: "system", subtype: "memory_recall", session_id: "session", uuid: "mr" },
         { type: "system", subtype: "elicitation_complete", session_id: "session", uuid: "ec" },
@@ -5589,6 +5588,54 @@ describe("ClaudeAdapterLive", () => {
           "assistant-limit-wake",
         );
       }
+
+      runtimeEventsFiber.interruptUnsafe();
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // The SDK hands some local slash commands' output over as its own message
+  // and asks for it to be shown as assistant text; dropped, the command
+  // answered with nothing. It belongs to the command's turn: arriving after the
+  // turn's result, it must not open one that nothing closes.
+  it.effect.each([
+    { name: "shows as the agent's reply inside the command's turn", turnOpen: true },
+    { name: "opens no turn when none is open", turnOpen: false },
+  ])("a local slash command's output $name", ({ turnOpen }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const { runtimeEvents, runtimeEventsFiber, drainSdkMessages } =
+        yield* observeUsageLimitEvents(adapter, harness.query);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      if (turnOpen) {
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "/mcp", attachments: [] });
+      }
+      const turnsBefore = runtimeEvents.filter((event) => event.type === "turn.started").length;
+
+      harness.query.emit({
+        type: "system",
+        subtype: "local_command_output",
+        content: "2 MCP server(s): 2 connected",
+        session_id: "sdk-session-local",
+        uuid: "local-command-output",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      const text = runtimeEvents
+        .flatMap((event) => (event.type === "content.delta" ? [event.payload.delta] : []))
+        .join("");
+      assert.equal(text, turnOpen ? "2 MCP server(s): 2 connected" : "");
+      assert.equal(
+        runtimeEvents.filter((event) => event.type === "turn.started").length,
+        turnsBefore,
+      );
 
       runtimeEventsFiber.interruptUnsafe();
     }).pipe(

@@ -21,6 +21,8 @@
  * @module agentNotes
  */
 
+import { isSlashCommand } from "@t3tools/shared/userAsk";
+
 /** The tag around the block, so the agent can tell it from the person. */
 const OPEN = "<zerops-update>";
 const CLOSE = "</zerops-update>";
@@ -34,7 +36,11 @@ export function withAgentNotes(
   notes: ReadonlyArray<string> | undefined | null,
 ): string {
   const lines = (notes ?? []).map((note) => note.trim()).filter((note) => note.length > 0);
-  if (lines.length === 0) return text;
+  // An agent runs a slash command only when it opens the message; a block in
+  // front turns it into prose the model answers. The notes wait for the next
+  // message, since a command's reply is not the agent hearing them
+  // (`agentLastSpokeAt`).
+  if (lines.length === 0 || isSlashCommand(text)) return text;
   const block = [OPEN, ...lines, CLOSE].join("\n");
   const typed = text.trim();
   // A turn can carry no text at all — a queued send, a hand-over — and the

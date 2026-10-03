@@ -206,7 +206,7 @@ import {
   useZeropsChangeLandedEvents,
   useZeropsConversationLandings,
 } from "../zerops/useZeropsChangeLandedEvents";
-import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
+import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
@@ -2953,16 +2953,10 @@ export default function ChatView(props: ChatViewProps) {
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
-  const agentLastSpokeAt = useMemo(() => {
-    for (let index = timelineMessages.length - 1; index >= 0; index -= 1) {
-      const candidate = timelineMessages[index];
-      if (candidate?.role === "assistant") return candidate.createdAt;
-    }
-    return undefined;
-  }, [timelineMessages]);
+  const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
   const agentNotes = useMemo(
-    () => agentTurnNotes(changeLandedEvents, agentLastSpokeAt),
-    [agentLastSpokeAt, changeLandedEvents],
+    () => agentTurnNotes(changeLandedEvents, agentSpokeAt),
+    [agentSpokeAt, changeLandedEvents],
   );
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
@@ -6931,6 +6925,7 @@ export default function ChatView(props: ChatViewProps) {
       if (backgroundThreadRef) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
+      const turnAgentNotes = agentNotesFor(outgoingMessageText, agentNotes);
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -6945,8 +6940,9 @@ export default function ChatView(props: ChatViewProps) {
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
           // What the Mate has not been told, placed in front of the text for
-          // the provider only: the stored message stays what was typed.
-          ...(agentNotes.length > 0 ? { agentNotes } : {}),
+          // the provider only: the stored message stays what was typed. A
+          // slash command carries none.
+          ...(turnAgentNotes.length > 0 ? { agentNotes: turnAgentNotes } : {}),
           runtimeMode,
           interactionMode: sendInteractionMode,
           ...(bootstrap ? { bootstrap } : {}),
