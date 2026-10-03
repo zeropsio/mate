@@ -13,7 +13,8 @@ import {
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useZeropsEnvironmentNames } from "~/zerops/useZeropsEnvironmentNames";
-import { zeropsMateAt } from "~/zerops/mateIdentities";
+import { mateIdentityPose, zeropsMateAt } from "~/zerops/mateIdentities";
+import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
@@ -56,6 +57,7 @@ export function DraftHeroHeadline({
   const whoLivesHere =
     activeProjectRef === null ? null : zeropsMateAt(mates, activeProjectRef.environmentId);
   const mate = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
+  const nowMs = useNowMs();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
 
   const environmentLabelById = useMemo(
@@ -214,7 +216,7 @@ export function DraftHeroHeadline({
           className="size-16 sm:size-18"
           shape={mate.shape}
           size="lg"
-          state={mateFaceFor(mate.connected, undefined)}
+          state={mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs))}
           tint={mate.tint}
         />
       )}

@@ -37,6 +37,8 @@ export function ArrivalSwap({
   kind = "slot",
   className,
   style,
+  domId,
+  live,
   ...data
 }: {
   /** The state in view: a change of it hands over. */
@@ -46,6 +48,10 @@ export function ArrivalSwap({
   readonly kind?: "words" | "slot";
   readonly className?: string;
   readonly style?: CSSProperties;
+  /** Its element's own id, for what it describes: it stands through every hand-over. */
+  readonly domId?: string | undefined;
+  /** Said to a reader as it changes; what leaves is hidden from it. */
+  readonly live?: "polite" | undefined;
 } & { readonly [dataAttribute: `data-${string}`]: string | undefined }) {
   const box = useRef<HTMLDivElement>(null);
   // What it drew last, so a state leaving leaves as it was.
@@ -107,8 +113,10 @@ export function ArrivalSwap({
 
   return (
     <div
+      aria-live={live}
       className={cn("arrival-swap", className)}
       data-arrival-swap={kind}
+      id={domId}
       ref={box}
       style={style}
       {...data}

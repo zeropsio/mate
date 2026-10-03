@@ -980,18 +980,20 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
   const view = mateRowView(undefined, "sleep");
   it.each([
     {
-      case: "coming up: asleep, no time, no dot",
+      case: "coming up: waking, no time, no dot",
       coming: { kind: "coming", line: "Coming up. A few minutes." },
+      face: "waking",
       dot: undefined,
     },
     {
       case: "not created: asleep, the red dot of something broken",
       coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
+      face: "sleep",
       dot: "failed",
     },
-  ] as const)("$case", ({ coming, dot }) => {
+  ] as const)("$case", ({ coming, face, dot }) => {
     expect(mateComingRowView(view, coming)).toMatchObject({
-      face: "sleep",
+      face,
       slot: { kind: "none" },
       dot,
       strongName: false,
@@ -999,6 +1001,70 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
       reply: undefined,
       coming,
     });
+  });
+});
+
+// The pose its face wears in the row (`mateFaceFor`): waking while it arrives — from its press
+// until its first sign-in, inside its window — its conversation's own after (run 6).
+describe("mateRowReading — the pose a Mate's row wears", () => {
+  const activity = (overrides: Partial<ZeropsAgentActivity>): ZeropsAgentActivity => ({
+    threadId: ThreadId.make("thread-1"),
+    kind: "working",
+    status: null,
+    face: "working",
+    subject: "Speed up the photo gallery",
+    at: "2026-10-03T10:00:00.000Z",
+    snippet: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+    ...overrides,
+  });
+  it.each([
+    {
+      case: "arriving, up, its sign-in to come",
+      connected: true,
+      read: undefined,
+      arriving: true,
+      face: "waking",
+    },
+    {
+      case: "arriving, its socket not up yet",
+      connected: false,
+      read: undefined,
+      arriving: true,
+      face: "waking",
+    },
+    {
+      case: "arriving, at work",
+      connected: true,
+      read: activity({ face: "working" }),
+      arriving: true,
+      face: "working",
+    },
+    { case: "arrived, at rest", connected: true, read: undefined, arriving: false, face: "idle" },
+    {
+      case: "arrived, not running",
+      connected: false,
+      read: undefined,
+      arriving: false,
+      face: "sleep",
+    },
+  ] as const)("$case: $face", ({ connected, read, arriving, face }) => {
+    expect(
+      mateRowReading({ connected, activity: read, mine: false, pose: { arriving } }).face,
+    ).toBe(face);
+  });
+
+  it("goes to sleep while it is deleted, whatever it was", () => {
+    const view = mateRowReading({
+      connected: true,
+      activity: activity({ face: "working" }),
+      mine: true,
+      pose: { arriving: true },
+    });
+    expect(mateDeletingView(view).face).toBe("sleep");
   });
 });
 

@@ -1305,17 +1305,25 @@ In the order the owner ranked them, then the rest:
     database once per taint, or the broker registering runners itself).
 45. **Idle cost grows with the account's orgs** (run 6, 2026-10-03): 22.2 and 20.3 requests a minute
     per window against run 5's 16–18, 13.4 of them each Gitea org's repository list once a minute.
-    Open: one listing per tick, or only the orgs with something pending.
+    Closed in pass 37 (one id-ordered listing of the person's repositories a tick feeds every
+    group; 14 groups idle: 14 requests a minute → 1), unmeasured live until run 7.
 46. **A coming-up Mate wears the asleep face** (run 6): `mateComingRowView` makes it the coming pose
     in every window, and the coming-up page shows the same closed eyes; runs 5 and 6 expected none.
-    Open, the owner's call: keep it, or give coming up its own pose.
+    Closed in pass 37 (the owner left it to the lead): a Mate arriving wears `waking`, closed eyes
+    that breathe, for at most 30 minutes from its creation; unmeasured live until run 7.
 47. **Two screens for one coming-up** (the owner, run 6): the "Setting up …" dialog (the steps the
     browser runs with the person's session, "keep this open") and the coming-up page behind it.
-    Open: one screen, the browser's steps as the first row's sub-steps.
+    Closed in pass 37: the press lands on the coming-up page, the browser's steps as the first
+    row's sub-steps; unmeasured live until run 7.
 48. **Pass 36's open ends** (mate 0.11.89). Mobile's feed reads the conversation's follow rule
     (`thread-feed-live-follow.ts`), unmeasured on a device: a simulator look before the next mobile
     build. A settled deploy older than the project's last 100 processes shows only what its call
     returned. A running build's reserved log room stands empty (about 60 px) until its first line.
+49. **Pass 36's live look** (mate 0.11.89, 2026-10-03). A running build's log streamed nothing: its
+    stream was asked with a time as `from` (closed in pass 37, asked as the GUI asks; unmeasured live
+    until run 7). Open: at a turn's end the line a person reads above moved up 53 px once while the
+    list's scroll held (something above it shrank; the "New since" divider is the guess); the menu
+    harness repaints about 190 times a second with every face still.
 
 ## 8. Working on it
 

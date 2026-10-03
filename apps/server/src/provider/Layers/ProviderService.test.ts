@@ -24,8 +24,8 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
-import { it, assert, vi } from "@effect/vitest";
-import { afterAll } from "vite-plus/test";
+import { it, assert } from "@effect/vitest";
+import { afterAll, vi } from "vite-plus/test";
 
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
@@ -77,6 +77,24 @@ const serverConfigTestLayer = ServerConfig.layerTest(process.cwd(), process.cwd(
 // adapter, so session cwd fixtures must be real directories.
 const fixtureCwdRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "provider-service-test-"));
 afterAll(() => NodeFS.rmSync(fixtureCwdRoot, { recursive: true, force: true }));
+// A send's uploads copies held until the test lets them go.
+const keepGate = vi.hoisted(() => ({ held: null as Promise<void> | null }));
+
+vi.mock("../../uploadsFolder.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../uploadsFolder.ts")>();
+  const { andThen, promise } = await import("effect/Effect");
+  const keepSentFiles: typeof actual.keepSentFiles = (input) => {
+    const held = keepGate.held;
+    return input.items.length > 0 && held !== null
+      ? andThen(
+          promise(() => held),
+          () => actual.keepSentFiles(input),
+        )
+      : actual.keepSentFiles(input);
+  };
+  return { ...actual, keepSentFiles };
+});
+
 function fixtureCwd(name: string): string {
   const dir = NodePath.join(fixtureCwdRoot, name);
   NodeFS.mkdirSync(dir, { recursive: true });
@@ -1900,7 +1918,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       const turnText = turnInput.input ?? "";
       assert.equal(turnText.startsWith("use this screenshot"), true);
       assert.include(turnText, '[Attached image "screenshot.png" is saved at: ');
-      assert.equal(turnText.endsWith(`${attachment.id}.png]`), true);
+      assert.equal(turnText.endsWith(`${attachment.id}.png"]`), true);
 
       // An attachment-only turn stays valid and the injected line becomes the
       // whole input text, so the agent still learns the path.
@@ -1928,7 +1946,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       });
       const mixedInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
       assert.include(mixedInput.input ?? "", '[Attached file "report.pdf" is saved at: ');
-      assert.include(mixedInput.input ?? "", `${fileAttachment.id}.pdf]`);
+      assert.include(mixedInput.input ?? "", `${fileAttachment.id}.pdf"]`);
       // Every attachment reaches the adapter; each adapter decides what its
       // provider ingests natively.
       assert.deepEqual(mixedInput.attachments, [attachment, fileAttachment]);
@@ -1959,6 +1977,50 @@ routing.layer("ProviderServiceLive routing", (it) => {
       assert.deepEqual(pastedInput.attachments, [pastedTextAttachment]);
 
       yield* provider.stopSession({ threadId: session.threadId });
+    }),
+  );
+
+  it.effect("hands a thread's messages to the agent in the order sent, a slow file copy too", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-order"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-order"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+      const file = {
+        type: "file" as const,
+        id: "thread-order-12345678-1234-1234-1234-123456789abc-pdf",
+        name: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 4,
+      };
+      let release!: () => void;
+      keepGate.held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      routing.codex.sendTurn.mockClear();
+      const first = yield* Effect.forkChild(
+        provider.sendTurn({ threadId: session.threadId, input: "first", attachments: [file] }),
+      );
+      const second = yield* Effect.forkChild(
+        provider.sendTurn({ threadId: session.threadId, input: "second" }),
+      );
+      // Real time for the later send to overtake, the test clock standing still.
+      // @effect-diagnostics-next-line globalTimers:off
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 30)));
+      release();
+      keepGate.held = null;
+      yield* Fiber.join(first);
+      yield* Fiber.join(second);
+      assert.deepEqual(
+        routing.codex.sendTurn.mock.calls.map(
+          (call) => ((call[0] as ProviderSendTurnInput).input ?? "").split("\n")[0],
+        ),
+        ["first", "second"],
+      );
     }),
   );
 

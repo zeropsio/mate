@@ -53,7 +53,11 @@ import {
 import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import type { ArrivalService, ArrivalStepInput } from "~/zerops/mateArrival";
+import {
+  arrivalHeaderFace,
+  type ArrivalService,
+  type ArrivalStepInput,
+} from "~/zerops/mateArrival";
 import type { MateVoice } from "@t3tools/client-runtime/zerops/environments";
 import type { MateComing } from "~/zerops/mateComing";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
@@ -613,7 +617,12 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     <MateEmptyStateView
       addedBy={state.addedBy}
       coming={comingOf(state, nowMs)}
-      mate={state.mate}
+      // Waiting for its first sign-in, it is still arriving (`mateArrivingUntil`).
+      mate={
+        state.logins === undefined
+          ? state.mate
+          : { ...state.mate, arrivingUntil: nowMs + 30 * 60_000 }
+      }
       onRetry={() => go("standing-up")}
       phase={state.phase}
       runtimes={signInRuntimes(nowMs - openedAt)}
@@ -653,7 +662,23 @@ function Header({ state }: { readonly state: HarnessState }) {
           className="size-6"
           shape={state.mate.shape}
           size="sm"
-          state={state.mate.connected ? "idle" : "sleep"}
+          state={
+            state.conversation === true
+              ? state.mate.connected
+                ? "idle"
+                : "sleep"
+              : arrivalHeaderFace({
+                  kind:
+                    state.coming === "not-created"
+                      ? "failed"
+                      : state.coming === "reaching"
+                        ? "reaching"
+                        : "coming",
+                  over: state.coming === undefined,
+                  arriving: state.logins !== undefined,
+                  connected: state.mate.connected,
+                })
+          }
           tint={state.mate.tint}
         />
         <span className="font-semibold text-base">{state.mate.name}</span>

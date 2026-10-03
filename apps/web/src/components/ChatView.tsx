@@ -1,5 +1,9 @@
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
-import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
+import type {
+  ChatAttachment as ContractChatAttachment,
+  UploadChatAttachment,
+  UsageLimitSourceSnapshots,
+} from "@t3tools/contracts";
 import {
   collectProviderUsageLimits,
   hasProviderUsageLimits,
@@ -290,6 +294,7 @@ import {
   type DraftId,
 } from "../composerDraftStore";
 import { materializePicturePrompt, optimisticPictureAttachments } from "../lib/composerPictures";
+import { composerAttachmentCount, optimisticFileAttachments } from "../lib/composerFiles";
 import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
@@ -457,6 +462,7 @@ import {
   conversationContentPending,
   localThreadErrorStanding,
   queuedSendOutcome,
+  sendStepAfterUploads,
   type QueuedSendFailure,
   newestPersonTurn,
   threadErrorEntryUnchanged,
@@ -485,6 +491,7 @@ import {
   getUploadedAttachments,
   releaseAttachmentUploads,
   startAttachmentUpload,
+  startFileUpload,
 } from "../lib/attachmentUploadQueue";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
@@ -6199,20 +6206,35 @@ export default function ChatView(props: ChatViewProps) {
   restoreQueuedMessagesRef.current = (messages) => restoreQueuedMessagesToComposer(messages);
   const restoreQueuedMessagesToComposer = (messages: ReadonlyArray<QueuedComposerMessage>) => {
     if (messages.length === 0) return;
-    // The draft holds at most the per-turn cap of pictures. The overflow goes
-    // back into the queue so nothing is lost, its places out of the text; the
-    // user can send the first batch and the rest follows as a queued message.
+    // The draft holds at most the per-turn cap of attachments. The pictures'
+    // overflow goes back into the queue so nothing is lost, its places out of
+    // the text; the user can send the first batch and the rest follows as a
+    // queued message.
+    const heldFiles =
+      useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.files ?? [];
     const {
       prompt: nextPrompt,
       images: restoredImages,
       overflow,
+      files: restoredFiles,
     } = restoreQueuedToComposer({
       prompt: promptRef.current,
       imageCount: composerImagesRef.current.length,
+      fileCount: heldFiles.length,
+      heldAttachments: composerAttachmentCount(composerImagesRef.current, heldFiles),
+      weigh: (image) => composerAttachmentCount([image], []),
       messages,
     });
     promptRef.current = nextPrompt;
     setComposerDraftPrompt(composerDraftTarget, nextPrompt);
+    if (restoredFiles.length > 0) {
+      const files = [...heldFiles, ...restoredFiles];
+      useComposerDraftStore.getState().syncFiles(
+        composerDraftTarget,
+        files.map((file) => file.id),
+        files,
+      );
+    }
     // The composer syncs this ref from the draft in an effect; a send before
     // that effect runs must already see the restored content.
     composerImagesRef.current = [...composerImagesRef.current, ...restoredImages];
@@ -6323,6 +6345,7 @@ export default function ChatView(props: ChatViewProps) {
     }
     const {
       images: composerImages,
+      files: composerFiles = [],
       terminalContexts: composerTerminalContexts,
       reviewComments: composerReviewComments,
     } = queuedMessage ?? sendCtx;
@@ -6343,13 +6366,14 @@ export default function ChatView(props: ChatViewProps) {
       hasSendableContent,
     } = deriveComposerSendState({
       prompt: promptForSend,
-      imageCount: composerImages.length,
+      imageCount: composerImages.length + composerFiles.length,
       terminalContexts: composerTerminalContexts,
       elementContextCount: composerReviewComments.length,
     });
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&
+      composerFiles.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerReviewComments.length === 0
         ? parseCodexFeedbackCommand(trimmed)
@@ -6431,6 +6455,7 @@ export default function ChatView(props: ChatViewProps) {
     const standaloneSlashCommand =
       sendInteractionModeEnabled &&
       composerImages.length === 0 &&
+      composerFiles.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerReviewComments.length === 0
         ? parseStandaloneComposerSlashCommand(trimmed)
@@ -6490,6 +6515,7 @@ export default function ChatView(props: ChatViewProps) {
       useQueuedMessageStore.getState().enqueue(activeThreadKey, {
         prompt: promptForSend,
         images: [...composerImages],
+        files: [...composerFiles],
         terminalContexts: [...composerTerminalContexts],
         reviewComments: [...composerReviewComments],
         submissionIntent,
@@ -6533,12 +6559,13 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     const composerImagesSnapshot = [...composerImages];
+    const composerFilesSnapshot = [...composerFiles];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
     // Each picture's place becomes its label and notes, so the Mate reads words
     // and pictures in the order they were written.
     const messageTextWithContexts = appendTerminalContextsToPrompt(
-      materializePicturePrompt(promptForSend, composerImagesSnapshot),
+      materializePicturePrompt(promptForSend, composerImagesSnapshot, composerFilesSnapshot),
       composerTerminalContextsSnapshot,
     );
     const messageTextForSend = appendReviewCommentsToPrompt(
@@ -6623,6 +6650,8 @@ export default function ChatView(props: ChatViewProps) {
     const composerLeftEmpty = () =>
       promptRef.current.length === 0 &&
       composerImagesRef.current.length === 0 &&
+      (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.files.length ??
+        0) === 0 &&
       composerTerminalContextsRef.current.length === 0 &&
       (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
         .length ?? 0) === 0;
@@ -6633,6 +6662,11 @@ export default function ChatView(props: ChatViewProps) {
       composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
       setComposerDraftPrompt(composerDraftTarget, promptForSend);
       addComposerDraftImages(composerDraftTarget, retryComposerImages);
+      useComposerDraftStore.getState().syncFiles(
+        composerDraftTarget,
+        composerFilesSnapshot.map((file) => file.id),
+        composerFilesSnapshot,
+      );
       setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
       setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
       composerRef.current?.resetCursorState({
@@ -6641,16 +6675,32 @@ export default function ChatView(props: ChatViewProps) {
         detectTrigger: true,
       });
     };
-    if (supportsAttachmentUploads && composerImagesSnapshot.length > 0) {
+    if (
+      supportsAttachmentUploads &&
+      (composerImagesSnapshot.length > 0 || composerFilesSnapshot.length > 0)
+    ) {
       for (const image of composerImagesSnapshot) {
         startAttachmentUpload({ environmentId, image });
       }
-      await awaitAttachmentUploads(composerImagesSnapshot.map((image) => image.id));
-      if (getUploadedAttachments({ environmentId, images: composerImagesSnapshot }) === null) {
+      for (const file of composerFilesSnapshot) {
+        startFileUpload({ environmentId, file });
+      }
+      await awaitAttachmentUploads([
+        ...composerImagesSnapshot.map((image) => image.id),
+        ...composerFilesSnapshot.map((file) => file.id),
+      ]);
+      const step = sendStepAfterUploads({
+        uploaded: getUploadedAttachments({
+          environmentId,
+          images: composerImagesSnapshot,
+          files: composerFilesSnapshot,
+        }),
+        queued: queuedMessage !== undefined,
+      });
+      if (step.action !== "send") {
         sendInFlightRef.current = false;
-        if (queuedMessage) abortQueuedReplay({ kind: "upload-failed" });
-        else
-          setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
+        if (step.action === "abort-queued") abortQueuedReplay(step.failure);
+        else setThreadError(threadIdForSend, step.message);
         return;
       }
     }
@@ -6671,17 +6721,21 @@ export default function ChatView(props: ChatViewProps) {
     const crewAttachments = getUploadedAttachments({
       environmentId,
       images: composerImagesSnapshot,
+      files: composerFilesSnapshot,
     });
     const crewMessage = crewMessageCommand(activeThreadShell, {
       text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
       attachments: crewAttachments ?? [],
     });
     if (crewMessage !== null) {
-      if (crewAttachments === null) {
+      const step = sendStepAfterUploads({
+        uploaded: crewAttachments,
+        queued: queuedMessage !== undefined,
+      });
+      if (step.action !== "send") {
         sendInFlightRef.current = false;
-        if (queuedMessage) abortQueuedReplay({ kind: "upload-failed" });
-        else
-          setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
+        if (step.action === "abort-queued") abortQueuedReplay(step.failure);
+        else setThreadError(threadIdForSend, step.message);
         return;
       }
       setThreadError(threadIdForSend, null);
@@ -6692,7 +6746,10 @@ export default function ChatView(props: ChatViewProps) {
       }
       const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
       if (crewResult._tag === "Success") {
-        if (supportsAttachmentUploads) releaseAttachmentUploads(composerImagesSnapshot);
+        if (supportsAttachmentUploads) {
+          releaseAttachmentUploads(composerImagesSnapshot);
+          releaseAttachmentUploads(composerFilesSnapshot);
+        }
         acknowledgeActiveThreadWoke();
       } else {
         if (queuedMessage) {
@@ -6744,25 +6801,35 @@ export default function ChatView(props: ChatViewProps) {
 
     const messageIdForSend = attemptIds?.messageId ?? newMessageId();
     const messageCreatedAt = new Date().toISOString();
-    const turnAttachmentsPromise = Promise.all(
-      composerImagesSnapshot.map(async (image) => {
-        if (supportsAttachmentUploads) {
-          const uploaded = getUploadedAttachments({ environmentId, images: [image] })?.[0];
-          if (!uploaded) {
-            throw new Error(`Image '${image.name}' did not finish uploading.`);
+    // Uploaded, the message carries its files first, then each image with its
+    // kept original right after it; without uploads, its images as data.
+    const turnAttachmentsPromise: Promise<
+      ReadonlyArray<UploadChatAttachment | ContractChatAttachment>
+    > = supportsAttachmentUploads
+      ? Promise.resolve().then(() => {
+          const uploaded = getUploadedAttachments({
+            environmentId,
+            images: composerImagesSnapshot,
+            files: composerFilesSnapshot,
+          });
+          if (uploaded === null) {
+            throw new Error("An attachment did not finish uploading.");
           }
           return uploaded;
-        }
-        return {
-          type: "image" as const,
-          name: image.name,
-          mimeType: image.mimeType,
-          sizeBytes: image.sizeBytes,
-          dataUrl: await readFileAsDataUrl(image.file),
-        };
-      }),
-    );
-    const optimisticAttachments = optimisticPictureAttachments(composerImagesSnapshot);
+        })
+      : Promise.all(
+          composerImagesSnapshot.map(async (image) => ({
+            type: "image" as const,
+            name: image.name,
+            mimeType: image.mimeType,
+            sizeBytes: image.sizeBytes,
+            dataUrl: await readFileAsDataUrl(image.file),
+          })),
+        );
+    const optimisticAttachments = [
+      ...optimisticFileAttachments(composerFilesSnapshot),
+      ...optimisticPictureAttachments(composerImagesSnapshot),
+    ];
     const shouldAnchorFirstMessage =
       activeThread.latestTurn === null &&
       !timelineMessages.some((message) => message.role === "user");
@@ -6844,6 +6911,8 @@ export default function ChatView(props: ChatViewProps) {
     if (!titleSeed) {
       if (firstComposerImageName) {
         titleSeed = `Image: ${firstComposerImageName}`;
+      } else if (composerFilesSnapshot[0]) {
+        titleSeed = `File: ${composerFilesSnapshot[0].name}`;
       } else if (composerTerminalContextsSnapshot.length > 0) {
         titleSeed = formatTerminalContextLabel(composerTerminalContextsSnapshot[0]!);
       } else {
@@ -6970,6 +7039,7 @@ export default function ChatView(props: ChatViewProps) {
         clearUsageLimitsFor(routeThreadKey);
         if (supportsAttachmentUploads) {
           releaseAttachmentUploads(composerImagesSnapshot);
+          releaseAttachmentUploads(composerFilesSnapshot);
         }
         acknowledgeActiveThreadWoke();
         // Archive and start fresh in the main chat archived it with its pin: the chat
@@ -8336,6 +8406,7 @@ export default function ChatView(props: ChatViewProps) {
               ref={setComposerOverlayElement}
               inert={isRevertingCheckpoint}
               data-chat-composer-overlay="true"
+              data-chat-composer-hero={isDraftHeroState ? "true" : undefined}
               className={
                 isDraftHeroState
                   ? "pointer-events-none absolute inset-0 z-20 flex items-center"

@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type { ComposerSubmissionIntent } from "./composer-logic";
 import type { ComposerImageAttachment, ComposerSendIds } from "./composerDraftStore";
+import type { ComposerFileAttachment } from "./lib/composerFiles";
 import type { TerminalContextDraft } from "./lib/terminalContext";
 import { randomUUID } from "./lib/utils";
 import type { ReviewCommentContext } from "./reviewCommentContext";
@@ -17,6 +18,8 @@ export interface QueuedComposerMessage {
   id: string;
   prompt: string;
   images: ComposerImageAttachment[];
+  /** Files that are not pictures; absent on a message queued before files could go. */
+  files?: ComposerFileAttachment[];
   terminalContexts: TerminalContextDraft[];
   reviewComments: ReviewCommentContext[];
   submissionIntent: ComposerSubmissionIntent;

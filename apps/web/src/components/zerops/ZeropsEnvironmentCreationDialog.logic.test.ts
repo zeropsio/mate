@@ -26,7 +26,6 @@ import {
   validateCreationForm,
   type NewMateDoor,
   type RecipeOption,
-  pressRegistrationRefused,
   pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
@@ -356,6 +355,36 @@ describe("newMateFace — the face follows the name until its person picks", () 
     },
   ])("$case", ({ name, picked, face }) => {
     expect(newMateFace({ name, picked, defaultTint })).toEqual(face);
+  });
+
+  // Run 6's second review: Start over brought the colour back, never the shape.
+  it.each<{
+    readonly case: string;
+    readonly name: string;
+    readonly picked: { readonly tint?: MateTintId; readonly shape?: MateShapeId };
+    readonly face: { readonly tint: MateTintId; readonly shape: MateShapeId };
+  }>([
+    {
+      case: "started over, the name as asked: the face as asked",
+      name: "Quinn",
+      picked: {},
+      face: { tint: "olive", shape: "gem" },
+    },
+    {
+      case: "started over, another name: that name's own face",
+      name: "Ada",
+      picked: {},
+      face: { tint: "sky", shape: "pick" },
+    },
+    {
+      case: "started over, a colour picked: that colour's shape",
+      name: "Quinn",
+      picked: { tint: "rose" },
+      face: { tint: "rose", shape: "flower" },
+    },
+  ])("$case", ({ name, picked, face }) => {
+    const defaultShape = (asked: string) => (asked === "Quinn" ? ("gem" as const) : undefined);
+    expect(newMateFace({ name, picked, defaultTint, defaultShape })).toEqual(face);
   });
 
   it.each([
@@ -759,7 +788,7 @@ describe("recipeChangeView — where Review the change goes", () => {
 
 // The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
 // closed 2 s after the dialog left a Mate with no container).
-describe("pressSteps — the press as the Add dialog draws it", () => {
+describe("pressSteps — the press as Finish setup draws it", () => {
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
     { kind: "import-container", agents: [] },
@@ -837,16 +866,4 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
       expect(pressThrough(at(states))).toBe(want);
     },
   );
-
-  it("says a refused registration in the dialog: the Mate runs, an owner registers it", () => {
-    expect(
-      pressRegistrationRefused(
-        "Ada",
-        at(["done", "done", "done", "failed", "running", "queued"], "No."),
-      ),
-    ).toBe("Ada is running. An owner needs to register it before it can use Git.");
-    expect(
-      pressRegistrationRefused("Ada", at(["done", "done", "done", "done", "running", "queued"])),
-    ).toBeUndefined();
-  });
 });

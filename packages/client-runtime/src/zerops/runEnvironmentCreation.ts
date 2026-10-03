@@ -33,6 +33,7 @@ import type { EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
 import type { Known } from "./knowledge/known.ts";
+import { isUncertainZeropsFailure } from "./errors.ts";
 import { readsClosed } from "./projectIsolation.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 import {
@@ -154,6 +155,8 @@ export type EnvironmentCreationOutcome =
       readonly projectId: string | undefined;
       readonly failedStep: EnvironmentCreationStep;
       readonly error: string;
+      /** The platform may have done the step anyway (`isUncertainZeropsFailure`): never ask it again. */
+      readonly uncertain?: true;
     };
 
 export interface RunEnvironmentCreationInput {
@@ -465,7 +468,13 @@ export async function runEnvironmentCreation(
     } catch (cause) {
       const error = describeError(cause);
       mark(index, { state: "failed", error, finishedAtMs: now() });
-      return { ok: false, projectId, failedStep: step, error };
+      return {
+        ok: false,
+        projectId,
+        failedStep: step,
+        error,
+        ...(isUncertainZeropsFailure(cause) ? { uncertain: true as const } : {}),
+      };
     }
 
     mark(index, { state: "done", finishedAtMs: now() });

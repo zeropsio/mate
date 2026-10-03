@@ -49,6 +49,7 @@ import {
   reconcileInlinePicturePlaceholders,
   stripInlinePicturePlaceholders,
 } from "../lib/composerPictures";
+import { reconcileInlineFilePlaceholders, stripInlineFilePlaceholders } from "../lib/composerFiles";
 import {
   filterTerminalContextsWithText,
   stripInlineTerminalContextPlaceholders,
@@ -732,26 +733,51 @@ export function readOncePerFile(
 
 /**
  * Queued messages put back into the composer (after Stop or a Cancel): their
- * prompts after its own, blank lines between, and their pictures after its
- * own while there is room. The pictures past the room go back to the queue,
+ * prompts after its own, blank lines between, their files after its own, and
+ * their pictures after its own while there is room. The room is the message's
+ * attachment limit less what the composer holds — pictures, their kept
+ * originals and files — and the queued files; a queued picture takes one, two
+ * with its kept original. The pictures past the room go back to the queue,
  * and their places, which sit last, leave the text with them.
  */
-export function restoreQueuedToComposer<I>(input: {
+export function restoreQueuedToComposer<I, F = never>(input: {
   readonly prompt: string;
   readonly imageCount: number;
-  readonly messages: ReadonlyArray<{ readonly prompt: string; readonly images: ReadonlyArray<I> }>;
-}): { prompt: string; images: I[]; overflow: I[] } {
-  const room = Math.max(0, PROVIDER_SEND_TURN_MAX_ATTACHMENTS - input.imageCount);
+  /** The files the composer already holds. */
+  readonly fileCount?: number;
+  /** All the composer holds as a message sends it: pictures, kept originals, files. */
+  readonly heldAttachments?: number;
+  /** What a queued picture takes of the room: one, two with its kept original. */
+  readonly weigh?: (image: I) => number;
+  readonly messages: ReadonlyArray<{
+    readonly prompt: string;
+    readonly images: ReadonlyArray<I>;
+    readonly files?: ReadonlyArray<F> | undefined;
+  }>;
+}): { prompt: string; images: I[]; overflow: I[]; files: F[] } {
+  const files = input.messages.flatMap((message) => message.files ?? []);
+  const held = input.heldAttachments ?? input.imageCount + (input.fileCount ?? 0);
+  let room = Math.max(0, PROVIDER_SEND_TURN_MAX_ATTACHMENTS - held - files.length);
   const queued = input.messages.flatMap((message) => message.images);
-  const images = queued.slice(0, room);
+  const weigh = input.weigh ?? (() => 1);
+  let fitting = 0;
+  while (fitting < queued.length && weigh(queued[fitting]!) <= room) {
+    room -= weigh(queued[fitting]!);
+    fitting += 1;
+  }
+  const images = queued.slice(0, fitting);
   const prompt = [input.prompt, ...input.messages.map((message) => message.prompt)]
     .map((text) => text.trim())
     .filter((text) => text.length > 0)
     .join("\n\n");
   return {
-    prompt: reconcileInlinePicturePlaceholders(prompt, input.imageCount + images.length),
+    prompt: reconcileInlineFilePlaceholders(
+      reconcileInlinePicturePlaceholders(prompt, input.imageCount + images.length),
+      (input.fileCount ?? 0) + files.length,
+    ),
     images,
-    overflow: queued.slice(room),
+    overflow: queued.slice(fitting),
+    files,
   };
 }
 
@@ -812,8 +838,8 @@ export function deriveComposerSendState(options: {
   expiredTerminalContextCount: number;
   hasSendableContent: boolean;
 } {
-  const trimmedPrompt = stripInlinePicturePlaceholders(
-    stripInlineTerminalContextPlaceholders(options.prompt),
+  const trimmedPrompt = stripInlineFilePlaceholders(
+    stripInlinePicturePlaceholders(stripInlineTerminalContextPlaceholders(options.prompt)),
   ).trim();
   const sendableTerminalContexts = filterTerminalContextsWithText(options.terminalContexts);
   const expiredTerminalContextCount =
@@ -1390,6 +1416,27 @@ export type QueuedSendFailure =
   | { readonly kind: "error"; readonly error: unknown }
   | { readonly kind: "upload-failed" }
   | { readonly kind: "too-long" };
+
+/** What a send does once its uploads (files, pictures, kept originals) have settled. */
+export type SendStepAfterUploads =
+  | { readonly action: "send" }
+  | { readonly action: "abort-queued"; readonly failure: QueuedSendFailure }
+  | { readonly action: "thread-error"; readonly message: string };
+
+/**
+ * After the uploads: everything up, the message goes. Something not up, a
+ * queued message goes back to the queue's head held with its reason (its
+ * bubble says it); a live one stays in the composer and the thread says why.
+ */
+export function sendStepAfterUploads(input: {
+  readonly uploaded: ReadonlyArray<unknown> | null;
+  readonly queued: boolean;
+}): SendStepAfterUploads {
+  if (input.uploaded !== null) return { action: "send" };
+  return input.queued
+    ? { action: "abort-queued", failure: { kind: "upload-failed" } }
+    : { action: "thread-error", message: "Retry or remove failed uploads before sending." };
+}
 
 /** What becomes of it: back for the drain to send again, or held with its reason. */
 export type QueuedSendOutcome =

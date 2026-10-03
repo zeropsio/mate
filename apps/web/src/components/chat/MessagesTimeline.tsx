@@ -94,7 +94,12 @@ import {
 import { Button } from "../ui/button";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { MessagePictureBody, useMessagePictureDimensions } from "./MessagePictures";
-import { placeMessagePictures, terminalContextsBySegment } from "./messagePictures.logic";
+import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
+import {
+  placeMessagePictures,
+  terminalContextsBySegment,
+  unplacedMessageFiles,
+} from "./messagePictures.logic";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
@@ -2464,6 +2469,27 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
   const pictureDimensions = useMessagePictureDimensions(ctx.activeThreadEnvironmentId, resources);
   const imagesAbove = placedPictures?.unplaced ?? userImages;
+  // Files sit where their labels stand; a phone's, with none, above the words.
+  const messageAttachments = messageWithPreviews.attachments;
+  const filesAbove = useMemo(
+    () =>
+      placedPictures?.unplacedFiles ??
+      unplacedMessageFiles(displayedUserMessage.visibleText, messageAttachments ?? []),
+    [displayedUserMessage.visibleText, messageAttachments, placedPictures],
+  );
+  const shownFiles = useMemo(
+    () =>
+      (messageAttachments ?? []).filter(
+        (attachment) =>
+          filesAbove.includes(attachment) ||
+          (placedPictures?.segments.some(
+            (segment) => segment.kind === "file" && segment.file === attachment,
+          ) ??
+            false),
+      ),
+    [filesAbove, messageAttachments, placedPictures],
+  );
+  const fileUrls = useMessageFileUrls(ctx.activeThreadEnvironmentId, shownFiles);
   const expandImage = (image: ChatImageAttachment) => {
     const preview = buildExpandedImagePreview(userImages, image.id);
     if (preview) ctx.onImageExpand(preview);
@@ -2511,11 +2537,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ))}
           </div>
         )}
+        <MessageFilesAbove files={filesAbove} urls={fileUrls} />
         {placedPictures ? (
           <MessagePictureBody
             segments={placedPictures.segments}
             dimensions={pictureDimensions}
             onOpen={expandImage}
+            fileUrls={fileUrls}
             renderText={(segment) => (
               <CollapsibleUserMessageBody
                 text={segment.text}

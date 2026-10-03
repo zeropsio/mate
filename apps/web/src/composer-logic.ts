@@ -1,6 +1,7 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
+import { INLINE_FILE_PLACEHOLDER } from "./lib/composerFiles";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill" | "crewmate";
@@ -37,7 +38,8 @@ const isInlineTokenSegment = (
     | { type: "mention" }
     | { type: "skill" }
     | { type: "terminal-context" }
-    | { type: "picture" },
+    | { type: "picture" }
+    | { type: "file" },
 ): boolean => segment.type !== "text";
 
 function clampCursor(text: string, cursor: number): number {
@@ -52,7 +54,8 @@ function isWhitespace(char: string): boolean {
     char === "\t" ||
     char === "\r" ||
     char === INLINE_TERMINAL_CONTEXT_PLACEHOLDER ||
-    char === INLINE_PICTURE_PLACEHOLDER
+    char === INLINE_PICTURE_PLACEHOLDER ||
+    char === INLINE_FILE_PLACEHOLDER
   );
 }
 
@@ -93,7 +96,11 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
       expandedCursor += expandedLength;
       continue;
     }
-    if (segment.type === "terminal-context" || segment.type === "picture") {
+    if (
+      segment.type === "terminal-context" ||
+      segment.type === "picture" ||
+      segment.type === "file"
+    ) {
       if (remaining <= 1) {
         return expandedCursor + remaining;
       }
@@ -119,7 +126,8 @@ function collapsedSegmentLength(
     | { type: "mention" }
     | { type: "skill" }
     | { type: "terminal-context" }
-    | { type: "picture" },
+    | { type: "picture" }
+    | { type: "file" },
 ): number {
   if (segment.type === "text") {
     return segment.text.length;
@@ -134,6 +142,7 @@ function clampCollapsedComposerCursorForSegments(
     | { type: "skill" }
     | { type: "terminal-context" }
     | { type: "picture" }
+    | { type: "file" }
   >,
   cursorInput: number,
 ): number {
@@ -189,7 +198,11 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
       collapsedCursor += 1;
       continue;
     }
-    if (segment.type === "terminal-context" || segment.type === "picture") {
+    if (
+      segment.type === "terminal-context" ||
+      segment.type === "picture" ||
+      segment.type === "file"
+    ) {
       if (remaining <= 1) {
         return collapsedCursor + remaining;
       }

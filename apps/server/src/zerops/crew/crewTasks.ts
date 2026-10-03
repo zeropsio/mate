@@ -673,6 +673,7 @@ export const message = (
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
     const member = yield* requireMember(applied, input.handle);
+    yield* core.attachments.check(input.attachments);
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     const open = openTaskOf(tasks, input.handle);
     const current = currentStint(applied, input.handle);

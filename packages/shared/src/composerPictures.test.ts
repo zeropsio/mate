@@ -4,7 +4,9 @@ import {
   PICTURE_MAX_BYTES,
   PICTURE_MAX_EDGE,
   escapePictureWords,
+  fileLabel,
   interleavePictures,
+  messageFiles,
   messagePictures,
   pictureBlockText,
   pictureLabel,
@@ -63,6 +65,7 @@ describe("the person's own words", () => {
       "as in [Picture 1] above",
     ],
     ["plain words stay as written", "Fix it\n2. then this", "Fix it\n2. then this"],
+    ["a file-label-like line ends in a space", "Read\n[File 1]", "Read\n[File 1] "],
   ])("%s", (_label, words, expected) => {
     expect(escapePictureWords(words)).toBe(expected);
     expect(
@@ -238,6 +241,72 @@ describe("messagePictures", () => {
         n: picture.n,
         image: picture.image.id,
         original: picture.original?.id ?? null,
+      })),
+    ).toEqual(expected);
+  });
+});
+
+describe("messageFiles", () => {
+  const image = (id: string) => ({ id, type: "image", mimeType: "image/png" });
+  const file = (id: string, mimeType = "application/pdf") => ({ id, type: "file", mimeType });
+  const pasted = (id: string) => ({
+    id,
+    type: "file",
+    mimeType: "text/plain",
+    source: { _tag: "pasted-text" },
+  });
+
+  it("labels file n as [File n]", () => {
+    expect(fileLabel(2)).toBe("[File 2]");
+  });
+
+  it.each([
+    ["no files", "Hi", [image("a")], []],
+    [
+      "each file is numbered in order and placed where its label stands",
+      "Read\n[File 1]\nand\n[File 2]",
+      [file("spec"), file("data", "text/csv")],
+      [
+        { n: 1, file: "spec", placed: true },
+        { n: 2, file: "data", placed: true },
+      ],
+    ],
+    [
+      "a file whose label the text lacks is unplaced",
+      "Read these",
+      [file("spec")],
+      [{ n: 1, file: "spec", placed: false }],
+    ],
+    [
+      "a picture's kept original is not a file of the message",
+      "[Picture 1]\n[File 1]",
+      [image("a"), file("a-original", "image/png"), file("spec")],
+      [{ n: 1, file: "spec", placed: true }],
+    ],
+    [
+      "an image file with no picture before it is a file",
+      "[File 1]",
+      [file("logo", "image/svg+xml")],
+      [{ n: 1, file: "logo", placed: true }],
+    ],
+    [
+      "folded clipboard text is not a file",
+      "Hi",
+      [pasted("paste"), file("spec")],
+      [{ n: 1, file: "spec", placed: false }],
+    ],
+    [
+      "a label inside a line places nothing",
+      "see [File 1] here",
+      [file("spec")],
+      [{ n: 1, file: "spec", placed: false }],
+    ],
+  ])("%s", (_label, message, attachments, expected) => {
+    expect(
+      messageFiles(message, attachments).map((entry) => ({
+        n: entry.n,
+        file: entry.file.id,
+        placed: entry.placed,
       })),
     ).toEqual(expected);
   });

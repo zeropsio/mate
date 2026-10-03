@@ -18,7 +18,14 @@ interface Call {
   readonly body: unknown;
 }
 
-function fake(answers: ReadonlyArray<{ status?: number; body?: unknown; text?: string }>): {
+function fake(
+  answers: ReadonlyArray<{
+    status?: number;
+    body?: unknown;
+    text?: string;
+    headers?: Record<string, string>;
+  }>,
+): {
   readonly client: GiteaClient;
   readonly calls: ReadonlyArray<Call>;
 } {
@@ -50,7 +57,7 @@ function fake(answers: ReadonlyArray<{ status?: number; body?: unknown; text?: s
       return Promise.resolve(
         new Response(JSON.stringify(answer.body ?? {}), {
           status: answer.status ?? 200,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...answer.headers },
         }),
       );
     },
@@ -334,6 +341,32 @@ describe("GiteaClient request shapes", () => {
     const { client, calls } = fake([{ body: [] }]);
     expect(await client.listUserRepositories()).toEqual([]);
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/user/repos?limit=50&page=1`);
+  });
+
+  it("lists everything a person can see by id, page by page, with the count each page gave", async () => {
+    const full = Array.from({ length: 50 }, (_, index) => ({ id: index + 1, name: "group" }));
+    const { client, calls } = fake([
+      { body: { ok: true, data: full }, headers: { "x-total-count": "51" } },
+      { body: { ok: true, data: [{ id: 51, name: "group" }] }, headers: { "x-total-count": "51" } },
+    ]);
+    const listing = await client.listAccountRepositories(7);
+    expect(listing.repositories.map((repository) => repository.id)).toEqual(
+      Array.from({ length: 51 }, (_, index) => index + 1),
+    );
+    expect(listing.counts).toEqual([51, 51]);
+    expect(calls.map((call) => call.url)).toEqual([
+      `${ORIGIN}/api/v1/repos/search?uid=7&sort=id&order=asc&limit=50&page=1`,
+      `${ORIGIN}/api/v1/repos/search?uid=7&sort=id&order=asc&limit=50&page=2`,
+    ]);
+  });
+
+  it("stops listing a person's repositories once the count is reached", async () => {
+    const full = Array.from({ length: 50 }, (_, index) => ({ id: index + 1, name: `r${index}` }));
+    const { client, calls } = fake([
+      { body: { ok: true, data: full }, headers: { "x-total-count": "50" } },
+    ]);
+    expect((await client.listAccountRepositories(7)).repositories).toHaveLength(50);
+    expect(calls).toHaveLength(1);
   });
 
   it("searches the open pull requests across everything the person can see", async () => {

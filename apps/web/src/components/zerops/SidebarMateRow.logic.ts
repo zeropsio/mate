@@ -5,7 +5,10 @@
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
+  matePose,
   pullRequestBlocked,
+  type MateLife,
+  type MatePoseFacts,
   type FlowPullRequest,
   type ZeropsGroupPendingMember,
 } from "@t3tools/client-runtime/zerops";
@@ -415,7 +418,7 @@ export function mateRowView(
 export function mateDeletingView(view: MateRowView): MateRowView {
   return {
     ...view,
-    face: "sleep",
+    face: matePose(view.face, { life: "deleting" }),
     slot: { kind: "none" },
     dot: undefined,
     strongName: false,
@@ -484,13 +487,15 @@ export function mateRowReading(input: {
   readonly reviewWaits?: boolean;
   /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
   readonly mine: boolean;
+  /** Where it is in its life (`mateFaceFor`): waking while it comes up and arrives. */
+  readonly pose?: MatePoseFacts | undefined;
 }): MateRowView {
   const { activity } = input;
   const live = activity !== undefined && activity.remembered !== true ? activity : undefined;
   return mateRowView(
     activity,
     mateFaceAwaitingReview(
-      mateFaceFor(input.connected || live !== undefined, live),
+      mateFaceFor(input.connected || live !== undefined, live, input.pose),
       input.reviewWaits === true,
       activity?.pausedUntil !== undefined,
       input.mine,
@@ -725,16 +730,16 @@ export function mateRowOffersMenu(input: {
 }
 
 /**
- * A Mate still coming up, or one that never came (`mateComing`), in its row: its face in the
- * coming pose — asleep, in the colours its person picked — its one line where it has got
+ * A Mate still coming up, or one that never came (`mateComing`), in its row: its face waking
+ * (`matePose`), in the colours its person picked, its one line where it has got
  * (`mateBornLine`), and none of what only a Mate that is up has: no time, no ask, no words.
- * One that did not come wears the red dot of something broken (S3).
+ * One that did not come sleeps, with the red dot of something broken (S3).
  */
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
   return {
     ...view,
     state: coming.kind === "failed" ? "failed" : "idle",
-    face: "sleep",
+    face: matePose(view.face, { life: mateLifeOf(coming) }),
     slot: { kind: "none" },
     dot: coming.kind === "failed" ? "failed" : undefined,
     strongName: false,
@@ -742,6 +747,12 @@ export function mateComingRowView(view: MateRowView, coming: MateComing): MateRo
     reply: undefined,
     coming,
   };
+}
+
+/** Where a listed Mate is in its life, from its coming up (`mateComing`). */
+export function mateLifeOf(coming: MateComing | undefined): MateLife {
+  if (coming === undefined) return "up";
+  return coming.kind === "failed" ? "failed" : "coming";
 }
 
 /** Which of the table's states a row is in: what waits on the person first. */

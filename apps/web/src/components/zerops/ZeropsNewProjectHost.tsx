@@ -31,16 +31,16 @@
  *
  * ## One step
  *
- * Create turns the dialog into the press, and it stays on it until the first Mate needs no
- * browser (`newProjectBirth.ts`, the owner, 2026-10-01): Git hosting where the account has none,
- * the project's registry entry, the Mate's project — its creation's wait part of the press — then
- * its close-off (`matePress.ts`); its registration follows, the dialog gone. A step that stops
- * says why there, with *Try again*. Once its project is marked closed off the dialog gives way to
- * the first Mate's own view and the container needs no browser at all; a tab closed before that
- * is the person's choice, and the Mate's ⋯ menu finishes it (*Finish setup*).
+ * Create closes the dialog and lands on the first Mate's own view at once (`/mate/new/$birthId`,
+ * the owner, 2026-10-03: "why are these two screens separate?"). The steps this tab runs with the
+ * person's session — Git hosting where the account has none, the project's registry entry, the
+ * Mate's project, its close-off and its registration (`newProjectBirth.ts`, `matePress.ts`) — run
+ * on in the account's creations, whatever the person opens next, and the view draws them under
+ * the project's row, saying to keep the tab open only while they run. A step that stops says why
+ * there, with *Try again*; a tab closed before the close-off is the person's choice, and the Mate's
+ * ⋯ menu finishes it (*Finish setup*).
  */
 import { useNavigate } from "@tanstack/react-router";
-import type { EnvironmentCreationStepProgress } from "@t3tools/client-runtime/zerops";
 import {
   selectLocationChoice,
   type LocationsCellRequest,
@@ -62,25 +62,15 @@ import { useNewMate } from "~/zerops/newMate";
 import {
   beginNewProjectBirth,
   newProjectPlacement,
-  newProjectPressFailure,
-  newProjectPressSteps,
-  newProjectPressThrough,
   newProjectView,
-  retryNewProjectBirth,
-  useNewProjectBirths,
+  progressNewProjectBirth,
   type NewProjectAsk,
 } from "~/zerops/newProjectBirth";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import {
-  beginPress,
-  finishMateSetup,
-  pressViewer,
-  useMatePress,
-  type MatePress,
-} from "~/zerops/matePress";
+import { beginPress, finishMateSetup, pressViewer } from "~/zerops/matePress";
 import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -137,15 +127,6 @@ function NewProjectDialog() {
   // Create was pressed: its first Mate's view is on its way, and a second press makes nothing.
   const [creating, setCreating] = useState(false);
   const created = useNewMate((state) => state.created);
-  // The press under way: the dialog stays on it until the first Mate needs no browser.
-  const [pressed, setPressed] = useState<{
-    readonly birthId: string;
-    readonly progress: ReadonlyArray<EnvironmentCreationStepProgress> | null;
-  } | null>(null);
-  const birth = useNewProjectBirths((state) =>
-    pressed === null ? undefined : state.births[pressed.birthId],
-  );
-  const press = useMatePress(birth?.projectId ?? undefined);
 
   // The registry lives on the account's Gitea project, and only its owners and
   // admins may write it (D3) — a stricter gate than *can create projects*, and
@@ -263,17 +244,9 @@ function NewProjectDialog() {
       ...(user?.id ? { madeBy: user.id } : {}),
     };
     const isCurrent = captureAccountLifetime();
-    let landed = false;
-    // The first Mate needs no browser once its project is marked closed off: only then does the
-    // dialog give way to its view. A tab closed before is the person's choice; *Finish setup*
-    // completes it, in any browser.
-    const land = () => {
-      if (landed || !isCurrent()) return;
-      landed = true;
-      dismiss();
-      void navigate(newProjectView(birthId));
-    };
-    const birthId = beginNewProjectBirth({
+    // The creation's id is its group's: its view is there from the press.
+    const birthId = ask.groupId;
+    beginNewProjectBirth({
       ask,
       gitea: gitea === undefined ? undefined : { projectId: gitea.projectId },
       now: Date.now(),
@@ -302,6 +275,8 @@ function NewProjectDialog() {
         createProject: (creation) =>
           runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
         accepted: (projectId, giteaProjectId, startedAt) => {
+          // A New project's creation stands its Git hosting up before it is accepted.
+          if (giteaProjectId === null) return;
           // The press goes on: the project closed off, the Mate's registry entry and the
           // broker's grant. The listing is read again so the project's group catches up with
           // it. Its row stands where the creation's stood, with the same face and name.
@@ -330,12 +305,10 @@ function NewProjectDialog() {
               displayName: placement.displayName,
             },
             isCurrent,
+            // Kept on the creation, whose view draws each step under the project's row.
             onProgress: (progress) => {
-              setPressed((current) => (current === null ? current : { ...current, progress }));
-              if (newProjectPressThrough(progress)) land();
+              if (isCurrent()) progressNewProjectBirth(birthId, progress);
             },
-          }).then((outcome) => {
-            if (outcome.ok) land();
           });
           // Who it is until the listing names it, as Add a Mate's are: its
           // view's face, name and stand-up.
@@ -343,10 +316,10 @@ function NewProjectDialog() {
         },
       },
     });
-    setPressed({ birthId, progress: null });
+    // The dialog gives way to the first Mate's view at once: the steps run on without it.
+    dismiss();
+    void navigate(newProjectView(birthId));
   };
-
-  const failure = birth === undefined ? null : newProjectPressFailure(birth, pressStop(press));
 
   return (
     <ZeropsNewProjectDialog
@@ -367,26 +340,7 @@ function NewProjectDialog() {
       onLocation={(id) => {
         setLocationChoice({ key: locationKey, id });
       }}
-      onOpenChange={(open) => {
-        // Half way through a press there is nothing to close: the first Mate needs this tab a few
-        // seconds more. A press that stopped may be left, for *Finish setup* to complete.
-        if (!open && birth !== undefined && failure === null) return;
-        onOpenChange(open);
-      }}
-      {...(birth === undefined || pressed === null
-        ? {}
-        : {
-            pressing: {
-              name: birth.botName,
-              steps: newProjectPressSteps(birth, pressed.progress),
-              ...(failure === null ? {} : { failed: failure.reason }),
-              ...(failure?.tryAgain === "creation"
-                ? { onTryAgain: () => retryNewProjectBirth(pressed.birthId) }
-                : failure?.tryAgain === "press" && press?.state.kind === "failed"
-                  ? { onTryAgain: tryAgain(press.state.retry) }
-                  : {}),
-            },
-          })}
+      onOpenChange={onOpenChange}
       organizationName={activeOrganization.name}
       proposeAnotherName={(current) =>
         generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes))
@@ -395,20 +349,4 @@ function NewProjectDialog() {
       withGitHosting={!holdsGitea}
     />
   );
-}
-
-/** A press's stop, as the dialog reads it. */
-function pressStop(press: MatePress | undefined) {
-  if (press?.state.kind !== "failed") return null;
-  return {
-    kind: "failed" as const,
-    reason: press.state.reason,
-    retryable: press.state.retry !== null,
-  };
-}
-
-function tryAgain(retry: (() => Promise<void>) | null): () => void {
-  return () => {
-    if (retry !== null) void retry();
-  };
 }

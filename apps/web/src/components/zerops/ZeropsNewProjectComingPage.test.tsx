@@ -1,7 +1,10 @@
+// @vitest-environment happy-dom
 import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer, type ReactTestRendererJSON } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
+import { useNewMate } from "~/zerops/newMate";
 import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ZeropsNewProjectComingPage } from "./ZeropsNewProjectComingPage";
@@ -58,6 +61,7 @@ vi.mock("../ui/button", () => ({
 
 /** Acme CRM, pressed a moment ago on an account with no Git hosting: standing it up. */
 const ACME: NewProjectBirth = {
+  id: "g-acme",
   organizationId: "org-acme",
   groupId: "g-acme",
   name: "Acme CRM",
@@ -71,19 +75,20 @@ const ACME: NewProjectBirth = {
   step: "gitea",
   failed: null,
   projectId: null,
+  progress: null,
 };
 
 let tree: ReactTestRenderer | undefined;
 
 function hold(birth: NewProjectBirth | undefined) {
   act(() => {
-    useNewProjectBirths.setState({ births: birth === undefined ? {} : { [birth.groupId]: birth } });
+    useNewProjectBirths.setState({ births: birth === undefined ? {} : { [birth.id]: birth } });
   });
 }
 
-function openView() {
+function openView(birthId = "g-acme") {
   act(() => {
-    tree = create(h(ZeropsNewProjectComingPage, { birthId: "g-acme" }));
+    tree = create(h(ZeropsNewProjectComingPage, { birthId }));
   });
 }
 
@@ -107,6 +112,18 @@ const steps = () =>
     ) ?? [];
 
 const kind = () => tree?.root.findByType("section").props["data-kind"];
+
+/** The steps this tab runs, under the row that holds them: `row › label:state`. */
+const substeps = () =>
+  tree?.root
+    .findAll((node) => node.props["data-arrival-substep"] !== undefined)
+    .map((node) => {
+      let row = node.parent;
+      while (row !== null && row.props["data-arrival-step"] === undefined) row = row.parent;
+      return `${String(row?.props["data-arrival-step"])} › ${textOf(node.children as never)
+        .replace(/\s+/g, " ")
+        .trim()}:${String(node.props["data-state"])}`;
+    }) ?? [];
 
 const button = (label: string) =>
   tree?.root.findAllByType("button").find((node) => node.children.join("") === label);
@@ -186,5 +203,97 @@ describe("a New project's first Mate, before its project exists", () => {
     expect(said()).toContain("This conversation isn't in your Zerops projects.");
     expect(button("Go to projects")).toBeDefined();
     expect(app.navigate).not.toHaveBeenCalled();
+  });
+});
+
+// Run 6 (the owner, 2026-10-03: "why are these two screens separate?"): the steps this tab runs
+// are the project's row's own, and the page asks for the tab only while they run.
+describe("the steps this tab runs, on the Mate's own view", () => {
+  const IDA: NewProjectBirth = {
+    ...ACME,
+    id: "add-1",
+    botName: "Ida",
+    withGitea: false,
+    giteaProjectId: "gitea-1",
+    step: "create",
+    adds: { displayName: "Acme CRM - Ida", registers: true },
+  };
+
+  it("draws a New project's under the project's row, and asks for the tab while they run", () => {
+    hold({ ...ACME, withGitea: false, giteaProjectId: "gitea-1", step: "registry" });
+    openView();
+    expect(substeps()).toEqual([
+      "registry › Registered:active",
+      "registry › Created:waiting",
+      "registry › Closed off:waiting",
+      "registry › Vera registered:waiting",
+    ]);
+    expect(steps()[0]).toBe("registry:active");
+    expect(said()).toContain(KEEP_TAB_OPEN_LINE);
+  });
+
+  it("draws an added Mate's under its copy, from the press", () => {
+    hold(IDA);
+    openView("add-1");
+    expect(kind()).toBe("coming");
+    expect(said()).toContain("Ida on Acme CRM");
+    expect(steps()).toEqual(["copy:active", "workspace:waiting", "you:you"]);
+    expect(substeps()).toEqual([
+      "copy › Created:active",
+      "copy › Container:waiting",
+      "copy › Closed off:waiting",
+      "copy › Ida registered:waiting",
+    ]);
+    expect(said()).toContain(KEEP_TAB_OPEN_LINE);
+  });
+
+  it.each([
+    {
+      verb: "Dismiss",
+      then: { asked: null },
+    },
+    {
+      verb: "Start over",
+      then: {
+        asked: expect.objectContaining({
+          groupId: "g-acme",
+          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
+        }),
+      },
+    },
+  ])("ends an Add refused before Zerops took anything: $verb", ({ verb, then }) => {
+    useNewMate.setState({ asked: null });
+    hold({ ...IDA, failed: { reason: "No room in this account.", uncertain: false } });
+    openView("add-1");
+    expect(button("Try again")).toBeDefined();
+    act(() => {
+      button(verb)?.props.onClick();
+    });
+    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+    expect(app.navigate).toHaveBeenCalledWith({ to: "/zerops", replace: true });
+    expect(useNewMate.getState()).toMatchObject(then);
+    useNewMate.setState({ asked: null });
+  });
+
+  // Run 6's second review: one Zerops may have made had no way to end but the projects.
+  it("lets an Add Zerops may have made be dismissed, never started over", () => {
+    hold({ ...IDA, failed: { reason: "Zerops may have created it.", uncertain: true } });
+    openView("add-1");
+    expect(button("Go to projects")).toBeDefined();
+    expect(button("Start over")).toBeUndefined();
+    act(() => {
+      button("Dismiss")?.props.onClick();
+    });
+    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+    expect(app.navigate).toHaveBeenCalledWith({ to: "/zerops", replace: true });
+  });
+
+  it("says where one stopped, in its place, with Try again, and no longer asks for the tab", () => {
+    hold({ ...IDA, failed: { reason: "No room in this account.", uncertain: false } });
+    openView("add-1");
+    expect(kind()).toBe("failed");
+    expect(substeps()[0]).toBe("copy › Created · No room in this account.:failed");
+    expect(said()).not.toContain(KEEP_TAB_OPEN_LINE);
+    expect(button("Try again")).toBeDefined();
   });
 });

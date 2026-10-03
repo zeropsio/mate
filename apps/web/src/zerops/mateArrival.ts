@@ -30,7 +30,8 @@ import {
   type SignInPhrasePart,
 } from "~/components/zerops/ZeropsAgentSignIn.logic";
 
-import { mateComingHeadlineClauses } from "./mateComing";
+import { mateFaceFor } from "./agentActivity";
+import { mateComingHeadlineClauses, type MateViewKind } from "./mateComing";
 import { mateQuestion, type ZeropsMateIdentity } from "./mateIdentities";
 
 type Named = Pick<ZeropsMateIdentity, "name" | "project">;
@@ -151,10 +152,20 @@ export function arrivalSentence(
   }
 }
 
-/** The face the stage wears: asleep until it answers, at work on the stand-up, asking on a stop. */
-export function arrivalFace(kind: ArrivalKind, connected: boolean): MateMarkState {
+/**
+ * The face the stage wears: waking while it comes up and arrives — from the press to its first
+ * sign-in (`mateFaceFor`, `arriving` from `mateArriving`) — at work on the stand-up, asking on a
+ * stop; any other Mate on its way to its conversation asleep.
+ */
+export function arrivalFace(
+  kind: ArrivalKind,
+  connected: boolean,
+  /** It is still arriving (`mateArriving`): nobody has signed it in, inside its window. */
+  arriving: boolean,
+): MateMarkState {
   switch (kind) {
     case "coming":
+      return mateFaceFor(connected, undefined, { life: "coming" });
     case "reaching":
     case "unreachable":
       return "sleep";
@@ -167,8 +178,34 @@ export function arrivalFace(kind: ArrivalKind, connected: boolean): MateMarkStat
     case "sign-in-plain":
     case "sign-in-colleague":
     case "question":
-      return connected ? "idle" : "sleep";
+      return mateFaceFor(connected, undefined, { arriving });
   }
+}
+
+/**
+ * The face the header wears over a Mate's arrival, through the same rule (`mateFaceFor`): waking
+ * while it comes up and arrives, asleep where it did not come or its link is not made, at rest
+ * once it has arrived.
+ */
+export function arrivalHeaderFace(input: {
+  /** What the stage says of it (`MateEmptyComing.kind`). */
+  readonly kind: MateViewKind;
+  /** It is up: the stage hands over. */
+  readonly over: boolean;
+  readonly connected: boolean;
+  /** It is still arriving (`mateArriving`). */
+  readonly arriving: boolean;
+}): MateMarkState {
+  const still = !input.over;
+  return mateFaceFor(input.connected, undefined, {
+    life:
+      still && input.kind === "coming"
+        ? "coming"
+        : still && input.kind === "failed"
+          ? "failed"
+          : "up",
+    arriving: input.arriving,
+  });
 }
 
 // ── The steps while it comes up ──────────────────────────────────────────────────────────────
@@ -203,6 +240,74 @@ export interface ArrivalStep {
   /** Why it stopped, in its own words. */
   readonly why?: string;
   readonly services?: ReadonlyArray<ArrivalService>;
+  /** The steps this tab runs for it, under its project's row (`ArrivalSubstep`). */
+  readonly substeps?: ReadonlyArray<ArrivalSubstep>;
+}
+
+/**
+ * A step this tab runs with the person's own session — the project registered and created, closed
+ * off, the Mate registered — drawn under its project's row, from the press until the hand-over.
+ */
+export interface ArrivalSubstep {
+  readonly id: string;
+  readonly label: string;
+  /**
+   * `unfinished`: refused here, and left to *Finish setup* — the Mate runs on without it (its
+   * registration), so nothing waits on it and nothing stopped.
+   */
+  readonly state: "done" | "active" | "waiting" | "failed" | "unfinished";
+  /** Why it stopped, or why it is not finished, in its own words. */
+  readonly why?: string;
+}
+
+/** A step through as far as this tab goes: done, or left unfinished. */
+const through = (step: ArrivalSubstep): boolean =>
+  step.state === "done" || step.state === "unfinished";
+
+/**
+ * What the steps this tab runs leave to read whole under them, where the actions are — each step
+ * keeps one line, so a long reason is cut there and read here, by anyone, without a hover: why
+ * one stopped, else what is not finished and why. Nothing while they run or once through.
+ */
+export function pressNote(press: ReadonlyArray<ArrivalSubstep> | undefined): {
+  readonly kind: "stopped" | "unfinished";
+  readonly text: string;
+} | null {
+  const stopped = press?.find((step) => step.state === "failed" && step.why !== undefined);
+  if (stopped?.why !== undefined) return { kind: "stopped", text: stopped.why };
+  const left = press?.find((step) => step.state === "unfinished");
+  if (left === undefined) return null;
+  return {
+    kind: "unfinished",
+    text: left.why === undefined ? `${left.label}.` : `${left.label}: ${left.why}`,
+  };
+}
+
+/** What the page says while the steps this tab runs are under way: the one thing that stops them. */
+export const KEEP_TAB_OPEN_LINE =
+  "Keep this tab open for about half a minute: after that it needs nobody.";
+
+/**
+ * Whether the steps this tab runs are still under way: none stopped, one not through. Only then
+ * does a tab closed interrupt them, and only then does the page say so (`KEEP_TAB_OPEN_LINE`).
+ */
+export function pressRuns(press: ReadonlyArray<ArrivalSubstep> | undefined): boolean {
+  if (press === undefined || press.length === 0) return false;
+  if (press.some((step) => step.state === "failed")) return false;
+  return press.some((step) => !through(step));
+}
+
+/**
+ * A project's row with the steps this tab runs under it: stopped where one stopped, under way
+ * while one is not through though the row's own facts are, and as its own facts say once they are.
+ */
+function withSubsteps(
+  state: ArrivalStep["state"],
+  press: ReadonlyArray<ArrivalSubstep>,
+): ArrivalStep["state"] {
+  if (state === "failed" || press.some((step) => step.state === "failed")) return "failed";
+  if (state === "done" && press.some((step) => !through(step))) return "active";
+  return state;
 }
 
 /** The Mate's six birth steps; anything else before them is its project's own (a New project's). */
@@ -254,6 +359,8 @@ export function arrivalSteps(
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
     readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
+    /** The steps this tab runs for it, while it holds them: under its project's row. */
+    readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
   },
   mate: Named,
   nowMs: number,
@@ -322,6 +429,15 @@ export function arrivalSteps(
         ]),
       ),
     });
+  }
+  // The steps this tab runs go under the project's row: a New project's own, else the Mate's copy.
+  const press = progress.press;
+  if (press !== undefined && press.length > 0) {
+    const at = steps.findIndex((step) => step.id === "registry" || step.id === "copy");
+    const row = steps[at];
+    if (row !== undefined) {
+      steps[at] = { ...row, state: withSubsteps(row.state, press), substeps: press };
+    }
   }
   const setup = progress.setup;
   if (setup?.git !== undefined) {

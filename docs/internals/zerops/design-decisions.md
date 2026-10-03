@@ -3490,3 +3490,35 @@ no-cache`.
   open through the plop.
   - _Why:_ 0.11.88 moved a running deploy from the band into the slot, whose row read only the
     call's placeholder steps; a page-held memory of the read would tie the details to one tab.
+- **2026-10-03** — **A Mate on its way up wears its waking face; asleep is for a Mate at rest**
+  (run 6: each coming-up Mate wore the asleep face in the other window until its sign-in; the owner
+  left the call to the lead: "for my calls do whats best"). While a Mate arrives — from the press
+  until it is signed in, at most 30 minutes from its creation (the existing bound past which a first
+  build is not coming up) — it wears `waking`: closed eyes that breathe, a slow swell of the whole
+  face as one composited box, still under reduced motion. Failed, deleting, or a container that is
+  down: asleep, as before; past the window an unsigned Mate rests with its sign-in line and dot. One
+  face function applies the rule for every surface (rows, ⌘K, the projects page and overview, the
+  conversation header, the panel, the arrival page), reading one fact from the Mate's own records.
+  - _Why:_ asleep also means a Mate at rest or going away, so a Mate on its way up read like one that
+    stopped; a breath that never ended would make a menu of faces fidget.
+- **2026-10-03** — **One screen for a Mate coming up** (the owner, run 6: "why are these two screens
+  separate?"). Create and Add close their dialog at once and the person is on the Mate's coming-up
+  page. The steps the browser runs with the person's session (registered, created, closed off, the
+  Mate registered) are the first row's sub-steps there; "Keep this tab open for about half a minute"
+  shows only while they run. They live in the account's creations store, so moving to another page
+  stops nothing; a stop says its reason in its step's place without moving the rows above.
+  - _Why:_ the dialog and the page showed one coming-up twice, and the dialog's own steps held the
+    person on a modal for the half minute that needed them.
+- **2026-10-03** — **One Gitea listing a minute for the whole account** (run 6: idle windows made 22
+  and 20 requests a minute, 13.4 of them one repository list per group org). The forge reads tick
+  together; at each tick one id-ordered listing of the person's repositories (`/repos/search` as the
+  person, with Gitea's count) feeds every group's slice. A group the listing does not name yet, a
+  listing Gitea's count does not confirm, or any failure but a 401 falls back to that group's own
+  listing; the pull watch lists only its own group. 14 groups idle: 14 requests a minute → 1.
+  - _Why:_ idle cost had grown with the account's groups; one listing carries the same repository
+    objects in one response.
+- **2026-10-03** — **A running build's log streams as the Zerops GUI asks for it** (the live look on
+  0.11.89: a stream opened with a time as `from` stood through a 94-line build and delivered none).
+  The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
+  the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
+  runs and the stream's handshake has stood.

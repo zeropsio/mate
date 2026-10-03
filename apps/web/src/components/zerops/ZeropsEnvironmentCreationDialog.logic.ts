@@ -220,9 +220,12 @@ export function newMateFace(input: {
     readonly shape?: MateShapeId | undefined;
   };
   readonly defaultTint: (name: string) => MateTintId;
+  /** The shape a name was asked with before — an Add started over — while no colour is picked. */
+  readonly defaultShape?: ((name: string) => MateShapeId | undefined) | undefined;
 }): ZeropsMateFace {
   const tint = input.picked.tint ?? input.defaultTint(input.name);
-  return { tint, shape: input.picked.shape ?? MATE_SHAPE_OF_TINT[tint] };
+  const asked = input.picked.tint === undefined ? input.defaultShape?.(input.name) : undefined;
+  return { tint, shape: input.picked.shape ?? asked ?? MATE_SHAPE_OF_TINT[tint] };
 }
 
 /** Where the project's recipe stands, as the Mate's dialog tells it. */
@@ -497,10 +500,9 @@ const PRESS_STEPS: ReadonlyArray<{
 ];
 
 /**
- * The press as the Add dialog draws it: Project, Container, Closed off, Registered — what the
- * Mate needs before it needs no browser, and the registration a call or two after. The group's
- * sight of it and the wait for it come after, the dialog gone. A step a press does not make is
- * left out.
+ * The press as *Finish setup* on a Mate's view draws it: Project, Container, Closed off,
+ * Registered — what the Mate needs before it needs no browser, and the registration a call or two
+ * after. A step a press does not make is left out.
  */
 export function pressSteps(
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,
@@ -521,7 +523,7 @@ export function pressSteps(
 
 /**
  * The press has marked the project closed off — the Mate needs no browser — and its registration,
- * where it writes one, went through or was refused: the dialog may go.
+ * where it writes one, went through or was refused: its record may go.
  */
 export function pressThrough(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
   const closedOff = progress.some(
@@ -532,18 +534,4 @@ export function pressThrough(progress: ReadonlyArray<EnvironmentCreationStepProg
     closedOff &&
     (registration === undefined || registration.state === "done" || registration.state === "failed")
   );
-}
-
-/**
- * What the dialog says where the registration was refused: the Mate is closed off and running,
- * and an owner registers it (*Finish setup*). Undefined otherwise.
- */
-export function pressRegistrationRefused(
-  name: string,
-  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
-): string | undefined {
-  const registration = progress.find((entry) => entry.step.kind === "register");
-  return registration?.state === "failed"
-    ? `${name} is running. An owner needs to register it before it can use Git.`
-    : undefined;
 }

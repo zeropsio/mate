@@ -7365,3 +7365,26 @@ command not found`).
 - **The live card's bottom fade** — a row landing from the slot moves by a `translate`, which the
   browser counts as scroll height; its own scroll adjustment read as the person scrolling up, and the
   bottom fade stayed after the motion (408 of 1505 sampled frames in the harness).
+
+## Pass 36 looked at live — 2026-10-03
+
+- **mate 0.11.89 on a Mate that deployed** — one recorded window, the test account, the Mate's dev
+  service deployed by zcp's `zerops_deploy` (a build of about a minute).
+  - The live card's scroll stood at its foot on every 300 ms sample through the run, following, with
+    only its top fade on.
+  - The live slot drew the deploy's steps from the account store as they ran ("Initialized build
+    container 13s", "Build commands from zerops.yml ran successfully", "Creating app version …
+    12s").
+  - Once settled, the deploy's row opened onto its steps, "Build log 94 lines", its version and
+    address, and again after a reload.
+  - Scrolled 1,830 px above the conversation's end, the list's `scrollTop` held on all 274 samples
+    through 55 s and 336 px of content landing below; at the turn's end the read line moved up 53 px
+    once while `scrollTop` held (something above it shrank).
+  - A message sent while the Mate worked, from 1,830 px up, put the list at its end within 2 s.
+- **A build log stream asked with a time as `from` delivers no line** — opened 2 s into the deploy, it
+  stood 128 s through a 70 s build that wrote 94 lines and received two 30-byte frames 30 s apart and
+  no line. The log's first read 2 s into a deploy is empty. The Zerops GUI asks its stream with
+  `desc=0`, `limit=100`, `projectId`, and a `from` only as the newest line's id.
+- **Gitea answers a browser origin's listings with the count readable** — `/api/v1/repos/search` and
+  `/api/v1/user/repos` on the account's Gitea (1.27.2) answer `Access-Control-Allow-Origin: *` and
+  `Access-Control-Expose-Headers: Link, X-Total-Count`.

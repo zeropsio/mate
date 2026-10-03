@@ -23,6 +23,7 @@ import type {
   MateTintId,
   ServiceStatusToneId,
 } from "@t3tools/shared/brand";
+import type { MatePoseFacts } from "@t3tools/client-runtime/zerops";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -65,6 +66,8 @@ export interface JumpMate {
   readonly reviewWaits?: boolean;
   /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
   readonly mine: boolean;
+  /** Where it is in its life, as its row reads it (`mateFaceFor`): settled where absent. */
+  readonly pose?: MatePoseFacts | undefined;
 }
 
 export interface JumpProject {
@@ -128,7 +131,7 @@ export type JumpActivity = Pick<
 
 /**
  * A Mate as the box lists it, from what its row knows: the face its row
- * wears (`mateFaceOf`, its review waiting included), and what it is on only while its container is
+ * wears (`mateFaceOf`, its review waiting and its pose included), and what it is on only while its container is
  * connected — the row's own rule, so the two never say two things.
  */
 export function jumpMateOf(input: {
@@ -143,6 +146,7 @@ export function jumpMateOf(input: {
   readonly activity: JumpActivity | undefined;
   readonly reviewWaits?: boolean | undefined;
   readonly mine: boolean;
+  readonly pose?: MatePoseFacts | undefined;
 }): JumpMate {
   const live = input.connected ? input.activity : undefined;
   return {
@@ -155,6 +159,7 @@ export function jumpMateOf(input: {
       activity: input.activity,
       reviewWaits: input.reviewWaits === true,
       mine: input.mine,
+      pose: input.pose,
     }),
     projectName: input.projectName,
     subject: live?.subject,
@@ -166,6 +171,7 @@ export function jumpMateOf(input: {
     pausedUntil: live?.pausedUntil,
     mine: input.mine,
     ...(input.reviewWaits === true ? { reviewWaits: true } : {}),
+    ...(input.pose === undefined ? {} : { pose: input.pose }),
   };
 }
 

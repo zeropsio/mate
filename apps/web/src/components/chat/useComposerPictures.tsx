@@ -38,6 +38,7 @@ import {
   retryAttachmentUpload,
 } from "~/lib/attachmentUploadQueue";
 import type { AttachmentUploadState } from "~/lib/attachmentUploadState";
+import { composerAttachmentCount } from "~/lib/composerFiles";
 import {
   INLINE_PICTURE_PLACEHOLDER,
   fullPictureCrop,
@@ -422,9 +423,13 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
       const target = latest.current.draftTarget;
       for (const file of files) {
         const { onError } = latest.current;
-        if (imagesOf(target).length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+        const draft = draftOf(target);
+        if (
+          composerAttachmentCount(draft?.images ?? [], draft?.files ?? []) >=
+          PROVIDER_SEND_TURN_MAX_ATTACHMENTS
+        ) {
           onError(
-            `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} pictures per message.`,
+            `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} pictures and files per message.`,
           );
           return;
         }

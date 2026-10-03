@@ -228,6 +228,17 @@ describe("crewRowModel: where its task stands while it is not at it", () => {
       tone: "muted",
     });
   });
+
+  // A crewmate on its way up wears the pose of every Mate coming up (`matePose`).
+  it.each(["creating", "setting-up"] as const)("wakes while its copy is %s", (state) => {
+    const readying = quiet({
+      crewmates: base.crewmates.map((mate) =>
+        mate.handle === "backend" ? { ...mate, lane: { ...mate.lane!, state } } : mate,
+      ),
+    });
+    expect(rowOf(readying, "backend").pose).toBe("waking");
+    expect(rowOf(quiet(), "backend").pose).toBe("idle");
+  });
 });
 
 describe("crewRowModel: what it needs from you", () => {

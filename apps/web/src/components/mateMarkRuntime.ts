@@ -153,6 +153,21 @@ function runFrame(now: number) {
   frame = marks.size > 0 ? requestAnimationFrame(runFrame) : undefined;
 }
 
+/** A waking Mate's breath: one swell and settle every three seconds, a fifth of the band out. */
+const BREATH_SECONDS = 3;
+const BREATH_DEPTH = 0.2;
+
+/**
+ * Where the band sits for a pose, at a moment in seconds: in when asleep, out when awake — and
+ * waking (`matePose`), in with a slow low swell, still under reduced motion.
+ */
+export function markBandTarget(state: MateMarkState, seconds: number, reduced: boolean): number {
+  if (state === "sleep") return 0;
+  if (state !== "waking") return 1;
+  if (reduced) return 0;
+  return (BREATH_DEPTH * (1 - Math.cos((2 * Math.PI * seconds) / BREATH_SECONDS))) / 2;
+}
+
 function effectiveState(mark: MarkRuntime, now: number): MateMarkState {
   if (mark.forced !== undefined) return mark.forced;
   if (mark.hovered) return "surprise";
@@ -182,8 +197,9 @@ function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
   }
   const since = (now - mark.effectiveAt) / 1000;
 
-  // The band: in when asleep, out otherwise. The eyes reveal as it clears.
-  mark.band = lerpTo(mark.band, state === "sleep" ? 0 : 1, state === "sleep" ? 7 : 9, dt);
+  // The band: in when asleep or waking, out otherwise. The eyes reveal as it clears.
+  const target = markBandTarget(state, now / 1000, reduced);
+  mark.band = lerpTo(mark.band, target, target < 0.5 ? 7 : 9, dt);
   const open = mark.band;
   const reveal = smoothstep((open - 0.3) / 0.6);
   const awake = open > 0.6;

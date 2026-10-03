@@ -4,10 +4,13 @@
  * navigates to answer it (the owner, 2026-09-29, of a + that "leaves the conversation").
  *
  * Mounted once, above every view, so a creation outlives the dialog and whatever the person opens
- * next. Add stays in the dialog, busy, until the platform has taken the Mate's project — about a
- * second — so a refusal before that is said beside the button and a second Add tries again; once
- * it is taken, the dialog closes and the person lands on the new Mate, where it comes up
- * (`/mate/$projectId`). A step that fails after that is its row's and its view's to say.
+ * next. Add closes the dialog and lands on the new Mate's own view at once (`/mate/new/$birthId`,
+ * the owner, 2026-10-03: "why are these two screens separate?"): the steps this tab runs with the
+ * person's session — its project, its container, closed off, registered — run on in the account's
+ * creations (`newProjectBirth.ts`), and the view draws them under its copy's row, saying to keep
+ * the tab open only while they run. Once the platform takes its project the view hands the route
+ * to the Mate's own (`/mate/$projectId`), in place. A step that stops says why there, with *Try
+ * again*.
  *
  * A project that takes no Mate now — its Mates have not written its recipe yet, or it cannot be
  * read — says why in the dialog instead (`newMateDoor`), and its one action leaves the dialog for
@@ -19,9 +22,10 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   buildZeropsGroupTree,
+  canWriteRegistry,
   generateBotName,
+  generateZeropsGroupId,
   newMateTint,
-  type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -30,18 +34,23 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
-import { newMateView, useNewMate } from "~/zerops/newMate";
+import { useNewMate, type NewMateAgain } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import {
-  useEnvironmentCreation,
-  type EnvironmentCreationRun,
-} from "~/zerops/useEnvironmentCreation";
+  addCreateProject,
+  beginNewProjectBirth,
+  newProjectView,
+  progressNewProjectBirth,
+  recipeManaged,
+  recipeRuntimes,
+} from "~/zerops/newProjectBirth";
+import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import { placedPressesIn, useMatePress, useMatePresses, type MatePress } from "~/zerops/matePress";
+import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
@@ -50,9 +59,6 @@ import {
   newMateDoor,
   newMateDoorMates,
   newMateRecipeChange,
-  pressRegistrationRefused,
-  pressSteps,
-  pressThrough,
   proposedEnvironmentName,
   recipeChangeView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
@@ -68,7 +74,7 @@ export function ZeropsNewMateHost() {
   return (
     <>
       {asked === null ? null : (
-        <NewMateDialog create={create} groupId={asked.groupId} key={asked.at} />
+        <NewMateDialog again={asked.again} create={create} groupId={asked.groupId} key={asked.at} />
       )}
       {handOver === null ? null : (
         <KeepHandOverRead conversation={handOver} key={scopedThreadKey(handOver)} />
@@ -102,9 +108,12 @@ function KeepHandOverRead({ conversation }: { readonly conversation: ScopedThrea
 function NewMateDialog({
   groupId,
   create,
+  again,
 }: {
   readonly groupId: string;
   readonly create: ReturnType<typeof useEnvironmentCreation>;
+  /** An Add started over: its name, its environment's and its tint, there to change. */
+  readonly again?: NewMateAgain | undefined;
 }) {
   const { activeOrganization } = useZeropsSession();
   const { listing } = useZeropsCandidates();
@@ -155,18 +164,9 @@ function NewMateDialog({
   const openMate = useOpenMate();
   // A proposal only: the dialog refuses it until every Mate's name is read, and names the clash
   // if one turns up.
-  const [defaultBotName] = useState(() =>
-    generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
+  const [defaultBotName] = useState(
+    () => again?.botName ?? generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
-  const [adding, setAdding] = useState(false);
-  const [addError, setAddError] = useState<string | undefined>(undefined);
-  // The press under way: the dialog stays on it until the Mate needs no browser.
-  const [pressed, setPressed] = useState<{
-    readonly name: string;
-    readonly projectId: string | null;
-    readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
-  } | null>(null);
-  const press = useMatePress(pressed?.projectId ?? undefined);
   const dismiss = useNewMate((state) => state.dismiss);
   const created = useNewMate((state) => state.created);
   const settled = useNewMate((state) => state.settled);
@@ -196,88 +196,80 @@ function NewMateDialog({
 
   return (
     <ZeropsEnvironmentCreationDialog
-      addError={addError}
-      adding={adding}
       closed={door.kind === "closed" ? door : undefined}
       defaultBotName={defaultBotName}
-      defaultName={proposeName(defaultBotName)}
-      defaultTintFor={(name) => newMateTint(candidates, name)}
+      defaultName={again?.name ?? proposeName(defaultBotName)}
+      defaultTintFor={(name) =>
+        name === again?.botName ? again.tint : newMateTint(candidates, name)
+      }
+      defaultShapeFor={(name) => (name === again?.botName ? again.shape : undefined)}
       defaultWithAgent
       groupName={group.name}
+      // Add lands on the new Mate's page, which takes the focus.
+      landsElsewhere
       onCancel={dismiss}
       onCreate={(choice) => {
-        setAdding(true);
-        setAddError(undefined);
-        let accepted: string | undefined;
-        let landed = false;
+        if (activeOrganization === null) return;
         const name = choice.botName ?? choice.name;
-        setPressed({ name, projectId: null, progress: [] });
-        // The Mate needs no browser once its project is marked closed off: only then does the
-        // dialog give way to it. A tab closed before is the person's choice; *Finish setup*
-        // completes it, in any browser.
-        let refusedNow: string | undefined;
-        const land = (projectId: string) => {
-          if (landed) return;
-          landed = true;
-          setPressed(null);
-          setAdding(false);
-          dismiss();
-          void navigate(newMateView(projectId));
-        };
-        void create({
-          group,
-          environments,
-          role: "dev",
-          choice,
-          onAccepted: (projectId) => {
-            accepted = projectId;
-            created({
-              projectId,
-              groupId: group.groupId,
-              groupName: group.name,
-              botName: name,
-              face: choice.face ?? { tint: "slate", shape: "squircle" },
-            });
-            setPressed((current) => (current === null ? current : { ...current, projectId }));
+        const face = choice.face ?? { tint: "slate", shape: "squircle" };
+        const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
+        // Its own id, its view's: a random one, as a New project's group's.
+        const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
+        // Held from the press, its steps run on in the account's creations: the dialog gives way
+        // to the Mate's view at once.
+        beginNewProjectBirth({
+          id,
+          ask: {
+            organizationId: activeOrganization.id,
+            groupId: group.groupId,
+            name: group.name,
+            botName: name,
+            face,
+            locationId: null,
+            agents: [],
+            adds: {
+              displayName: choice.name,
+              // As the press decides it: an owner or an admin writes a Mate's registration.
+              registers: accountGitea !== undefined && canWriteRegistry(activeOrganization),
+              // Named from the press, so its copy's and its workspace's lines stand before the
+              // plan is heard.
+              managed: tier === undefined ? undefined : recipeManaged(tier),
+              runtimes: tier === undefined ? undefined : recipeRuntimes(tier),
+            },
           },
-          onProgress: (progress) => {
-            refusedNow = pressRegistrationRefused(name, progress);
-            setPressed((current) => (current === null ? current : { ...current, progress }));
-            // Closed off and registered: it needs nobody. A refused registration stays said in
-            // the dialog, with the Mate to open.
-            if (
-              accepted !== undefined &&
-              pressThrough(progress) &&
-              pressRegistrationRefused(name, progress) === undefined
-            ) {
-              land(accepted);
-            }
+          gitea: accountGitea === undefined ? undefined : { projectId: accountGitea.projectId },
+          now: Date.now(),
+          ports: {
+            ensureGitea: () => Promise.reject(new Error("An added Mate brings no Git hosting.")),
+            registerGroup: () => Promise.reject(new Error("An added Mate's project stands.")),
+            // Taken once the platform takes its project; the press runs on after it, and a stop
+            // after that is its press's to say (`matePress.ts`).
+            createProject: () =>
+              addCreateProject({
+                run: (onAccepted) =>
+                  create({
+                    group,
+                    environments,
+                    role: "dev",
+                    choice,
+                    onAccepted,
+                    onProgress: (progress) => progressNewProjectBirth(id, progress),
+                  }),
+                settled,
+              }),
+            accepted: (projectId) => {
+              created({
+                projectId,
+                groupId: group.groupId,
+                groupName: group.name,
+                botName: name,
+                face,
+              });
+            },
           },
-        }).then((run: EnvironmentCreationRun) => {
-          if (accepted !== undefined) {
-            if (run.kind === "ran" && run.outcome.ok) {
-              if (refusedNow === undefined) land(accepted);
-              return;
-            }
-            // Stopped after the platform took the project: the dialog stays on the step that
-            // stopped, with Try again, which resumes it on the same project.
-            settled(
-              accepted,
-              run.kind === "ran" && !run.outcome.ok ? run.outcome.error : undefined,
-            );
-            return;
-          }
-          setPressed(null);
-          // Refused before the platform took any project: said beside Add, which tries again.
-          setAdding(false);
-          setAddError(
-            run.kind === "refused"
-              ? (run.reason ?? undefined)
-              : run.outcome.ok
-                ? undefined
-                : run.outcome.error,
-          );
         });
+        dismiss();
+        void navigate(newProjectView(id));
       }}
       onDoorAction={(action) => {
         if (action.kind === "retry") {
@@ -289,34 +281,8 @@ function NewMateDialog({
         if (action.kind === "change") void navigate(recipeChangeView(group.groupId, action.number));
         else openMate({ projectId: action.projectId });
       }}
-      {...(pressed === null
-        ? {}
-        : {
-            pressing: {
-              name: pressed.name,
-              steps: pressSteps(pressed.progress),
-              ...pressFailedView(press),
-              ...refusedView(pressed, () => {
-                if (pressed.projectId === null) return;
-                const projectId = pressed.projectId;
-                setPressed(null);
-                setAdding(false);
-                dismiss();
-                void navigate(newMateView(projectId));
-              }),
-            },
-          })}
       onOpenChange={(open) => {
-        // Half way through an Add there is nothing to close: the Mate needs this tab a few
-        // seconds more. A press that stopped may be left, for Finish setup to complete.
-        if (open) return;
-        const refused =
-          pressed !== null &&
-          pressRegistrationRefused(pressed.name, pressed.progress) !== undefined;
-        if (adding && press?.state.kind !== "failed" && !refused) return;
-        setPressed(null);
-        setAdding(false);
-        dismiss();
+        if (!open) dismiss();
       }}
       open
       proposeAnotherName={(current) =>
@@ -330,29 +296,4 @@ function NewMateDialog({
       tierServices={recipe.services}
     />
   );
-}
-
-/** Where a press stopped, as the Add dialog says it: why, and Try again where it may resume. */
-/** A registration the platform refused: said in the dialog, with the Mate to open. */
-function refusedView(
-  pressed: {
-    readonly name: string;
-    readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
-  },
-  open: () => void,
-): { readonly notice?: string; readonly onOpen?: () => void } {
-  const notice = pressRegistrationRefused(pressed.name, pressed.progress);
-  return notice === undefined ? {} : { notice, onOpen: open };
-}
-
-function pressFailedView(press: MatePress | undefined): {
-  readonly failed?: string;
-  readonly onTryAgain?: () => void;
-} {
-  if (press?.state.kind !== "failed") return {};
-  const retry = press.state.retry;
-  return {
-    failed: press.state.reason,
-    ...(retry === null ? {} : { onTryAgain: () => void retry() }),
-  };
 }

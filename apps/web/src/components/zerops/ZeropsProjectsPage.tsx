@@ -149,6 +149,7 @@ import {
   type ZeropsToolKind,
   firstDeployLine,
   type FirstDeploy,
+  matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
@@ -1639,7 +1640,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * The face a Mate wears (`mateFaceOf`): the state of its conversation when its socket is up,
-   * else asleep — and needing you while its own change waits for your review, as its row in the
+   * else asleep, waking while it arrives — and needing you while its own change waits for your review, as its row in the
    * menu and its conversation's composer say.
    */
   const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
@@ -1653,6 +1654,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         candidate.project.id,
       ),
       mine: mateIsViewers(candidate.project, user?.id),
+      // Waking while it comes up and arrives, as its row in the menu.
+      pose: matePoseOf(candidate, nowMs),
     });
   };
   const openReview = useOpenReview();

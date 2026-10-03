@@ -340,6 +340,15 @@ export {
 } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
+  MATE_ARRIVAL_WINDOW_MS,
+  mateArriving,
+  mateArrivingUntil,
+  matePose,
+  matePoseOf,
+  type MateLife,
+  type MatePoseFacts,
+} from "./matePose.ts";
+export {
   compareForRelease,
   isReleaseTag,
   releaseRunBy,

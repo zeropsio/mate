@@ -8,7 +8,8 @@
  * Seal picked; `refused` — the Mate named as another already is, Create pressed; `checking` — the
  * account's Mates' names still being read; `creating` — Create pressed, the first Mate's view on
  * its way; `closed` — the person may not add projects here, the reason in the form's place;
- * `pressing` — Create pressed, the press's steps in the form's place at the form's height;
+ * `pressing` — Create pressed: the dialog gives way to the first Mate's page at once, the steps
+ * this tab runs advancing under the project's row (`pressPage.tsx`, `&fail=` stops one);
  * `&locations=2` offers two locations, at the footer's start; `&git=none` is the account's first
  * project, Git hosting coming along, its step first in what happens next). The die at the name's
  * end rolls another name. The dialog stands over the page beside the left menu at the owner's
@@ -29,12 +30,12 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import type { PressingView } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import {
   ZeropsNewProjectDialog,
   type NewProjectChoice,
 } from "~/components/zerops/ZeropsNewProjectForm";
 import { SidebarProvider } from "~/components/ui/sidebar";
+import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { AppRouter } from "~/router";
 import "../index.css";
@@ -91,18 +92,9 @@ function click(selector: string): void {
   document.querySelector<HTMLElement>(selector)?.click();
 }
 
-const PRESSING: PressingView = {
-  name: "Quinn",
-  steps: [
-    { label: "Project", state: "done" },
-    { label: "Container", state: "active" },
-    { label: "Closed off", state: "waiting" },
-    { label: "Registered", state: "waiting" },
-  ],
-};
-
 function Harness() {
-  const [pressing, setPressing] = useState<PressingView | undefined>(undefined);
+  // Create pressed: the dialog gives way to the first Mate's page, at once.
+  const [landed, setLanded] = useState<string | null>(null);
   useEffect(() => {
     window.__newProjectHarness = { created };
     if (STATE === "idle" || STATE === "checking" || STATE === "closed") return;
@@ -136,37 +128,46 @@ function Harness() {
           data-sidebar="sidebar"
           style={{ width: MENU_WIDTH }}
         />
-        <main className="min-w-0 flex-1" />
+        <main className="min-w-0 flex-1">
+          {landed === null ? null : <HarnessPressPage birthId={landed} />}
+        </main>
       </SidebarProvider>
-      <ZeropsNewProjectDialog
-        closed={
-          STATE === "closed"
-            ? "Only the organization's owners and admins add projects. You can open every project of Mate s.r.o. you have been given."
-            : undefined
-        }
-        creating={STATE === "creating"}
-        defaultBotName="Quinn"
-        defaultTintFor={(name) => newMateTint(MATES, name)}
-        locationError={null}
-        locationId="prg1"
-        locationLoading={false}
-        locations={LOCATIONS}
-        onCancel={() => {}}
-        onCreate={(choice) => {
-          created.push(choice);
-          if (STATE === "pressing") setPressing(PRESSING);
-        }}
-        onLocation={() => {}}
-        onOpenChange={() => {}}
-        organizationName="Mate s.r.o."
-        pressing={pressing}
-        proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
-        takenBotNames={{
-          names: ["Fen", "Ada", "Nova"],
-          complete: STATE !== "checking",
-        }}
-        withGitHosting={params.get("git") === "none"}
-      />
+      {landed !== null ? null : (
+        <ZeropsNewProjectDialog
+          closed={
+            STATE === "closed"
+              ? "Only the organization's owners and admins add projects. You can open every project of Mate s.r.o. you have been given."
+              : undefined
+          }
+          creating={STATE === "creating"}
+          defaultBotName="Quinn"
+          defaultTintFor={(name) => newMateTint(MATES, name)}
+          locationError={null}
+          locationId="prg1"
+          locationLoading={false}
+          locations={LOCATIONS}
+          onCancel={() => {}}
+          onCreate={(choice) => {
+            created.push(choice);
+            setLanded(
+              beginHarnessPress({
+                flow: "new-project",
+                project: choice.name,
+                botName: choice.botName,
+              }),
+            );
+          }}
+          onLocation={() => {}}
+          onOpenChange={() => {}}
+          organizationName="Mate s.r.o."
+          proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
+          takenBotNames={{
+            names: ["Fen", "Ada", "Nova"],
+            complete: STATE !== "checking",
+          }}
+          withGitHosting={params.get("git") === "none"}
+        />
+      )}
     </div>
   );
 }

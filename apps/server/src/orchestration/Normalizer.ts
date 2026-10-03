@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import {
+  type ChatAttachment,
   type ClientOrchestrationCommand,
   type UserInputAttachments,
   getProviderAttachmentLimitError,
@@ -102,13 +103,209 @@ const fitPicture = Effect.fn("Normalizer.fitPicture")(function* (
   return fit._tag === "fitted" ? fit : null;
 });
 
+type ClientMessageAttachment =
+  | Extract<
+      ClientOrchestrationCommand,
+      { readonly type: "thread.turn.start" }
+    >["message"]["attachments"][number]
+  | UserInputAttachments[string][number];
+
+/**
+ * A message's attachments claimed for `threadId`, a thread message's and a
+ * crew message's alike: an uploaded one only while it is a pending upload
+ * (never another message's stored attachment), copied under the thread's own
+ * id; a picture sent inline stored. Nothing claimed stays when one fails.
+ */
+export const claimMessageAttachments = Effect.fn("Normalizer.claimMessageAttachments")(function* (
+  threadId: string,
+  attachments: ReadonlyArray<ClientMessageAttachment>,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const serverConfig = yield* ServerConfig;
+  const attachmentLimitError = getProviderAttachmentLimitError(attachments);
+  if (attachmentLimitError) {
+    return yield* new OrchestrationDispatchCommandError({ message: attachmentLimitError });
+  }
+  const claimedAttachmentPaths: string[] = [];
+  const attachmentsWithDecodedSizes = [...attachments];
+  return yield* Effect.forEach(
+    attachments,
+    (attachment, index) =>
+      Effect.gen(function* () {
+        if (!("dataUrl" in attachment)) {
+          const claim = planAttachmentClaim({
+            attachmentsDir: serverConfig.attachmentsDir,
+            threadId,
+            attachmentId: attachment.id,
+          });
+          if (!claim.ok) {
+            return yield* new OrchestrationDispatchCommandError({
+              message: `Attachment '${attachment.name}' cannot be sent: ${claim.reason}.`,
+            });
+          }
+
+          const info = yield* fileSystem.stat(claim.currentPath).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message: `Attachment '${attachment.name}' cannot be sent: attachment not found.`,
+                  cause,
+                }),
+            ),
+          );
+          if (Number(info.size) !== attachment.sizeBytes) {
+            return yield* new OrchestrationDispatchCommandError({
+              message: `Attachment '${attachment.name}' cannot be sent: stored size does not match.`,
+            });
+          }
+
+          const normalizedAttachment = {
+            ...attachment,
+            id: claim.finalId,
+            mimeType: attachment.mimeType.toLowerCase(),
+          };
+          const expectedPath = resolveAttachmentPath({
+            attachmentsDir: serverConfig.attachmentsDir,
+            attachment: normalizedAttachment,
+          });
+          if (expectedPath !== claim.finalPath) {
+            return yield* new OrchestrationDispatchCommandError({
+              message: `Attachment '${attachment.name}' cannot be sent: attachment type does not match the upload.`,
+            });
+          }
+
+          const claimFailed = (cause: unknown) =>
+            new OrchestrationDispatchCommandError({
+              message: `Failed to claim attachment '${attachment.name}' for this thread.`,
+              cause,
+            });
+          const pictureBytes =
+            normalizedAttachment.type === "image"
+              ? yield* fileSystem.readFile(claim.currentPath).pipe(Effect.mapError(claimFailed))
+              : null;
+          const picture =
+            pictureBytes === null
+              ? null
+              : yield* fitPicture(attachment.name, {
+                  bytes: pictureBytes,
+                  mimeType: normalizedAttachment.mimeType,
+                });
+          // A fitted picture is the claimed copy, under the path its own type
+          // gives it (`.png` may become `.jpg`).
+          if (picture !== null) {
+            const fittedAttachment = withFittedPicture(normalizedAttachment, picture);
+            const fittedPath = resolveAttachmentPath({
+              attachmentsDir: serverConfig.attachmentsDir,
+              attachment: fittedAttachment,
+            });
+            if (!fittedPath) {
+              return yield* new OrchestrationDispatchCommandError({
+                message: `Failed to resolve persisted path for '${attachment.name}'.`,
+              });
+            }
+            yield* fileSystem
+              .writeFile(fittedPath, picture.bytes)
+              .pipe(Effect.mapError(claimFailed));
+            claimedAttachmentPaths.push(fittedPath);
+            return fittedAttachment;
+          }
+
+          // Keep the pending copy until the turn succeeds. A failed thread
+          // bootstrap can then retry with a fresh thread id. A copy, not a
+          // hard link: an agent editing the delivered file in place must not
+          // mutate the retry source.
+          yield* fileSystem
+            .copyFile(claim.currentPath, claim.finalPath)
+            .pipe(Effect.mapError(claimFailed));
+          claimedAttachmentPaths.push(claim.finalPath);
+
+          return pictureBytes === null
+            ? normalizedAttachment
+            : withPictureSize(normalizedAttachment, pictureBytes);
+        }
+
+        const parsed = parseBase64DataUrl(attachment.dataUrl);
+        if (!parsed || !parsed.mimeType.startsWith("image/")) {
+          return yield* new OrchestrationDispatchCommandError({
+            message: `Invalid image attachment payload for '${attachment.name}'.`,
+          });
+        }
+
+        const decoded = Buffer.from(parsed.base64, "base64");
+        if (decoded.byteLength === 0 || decoded.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+          return yield* new OrchestrationDispatchCommandError({
+            message: `Image attachment '${attachment.name}' is empty or too large.`,
+          });
+        }
+        const picture = yield* fitPicture(attachment.name, {
+          bytes: decoded,
+          mimeType: parsed.mimeType,
+        });
+
+        const attachmentId = createAttachmentId(threadId);
+        if (!attachmentId) {
+          return yield* new OrchestrationDispatchCommandError({
+            message: "Failed to create a safe attachment id.",
+          });
+        }
+
+        const decodedAttachment = {
+          type: "image" as const,
+          id: attachmentId,
+          name: attachment.name,
+          mimeType: parsed.mimeType.toLowerCase(),
+          sizeBytes: decoded.byteLength,
+        };
+        const persistedAttachment =
+          picture === null
+            ? withPictureSize(decodedAttachment, decoded)
+            : withFittedPicture(decodedAttachment, picture);
+        const bytes = picture === null ? decoded : picture.bytes;
+        attachmentsWithDecodedSizes[index] = persistedAttachment;
+        const decodedLimitError = getProviderAttachmentLimitError(attachmentsWithDecodedSizes);
+        if (decodedLimitError) {
+          return yield* new OrchestrationDispatchCommandError({ message: decodedLimitError });
+        }
+
+        const attachmentPath = resolveAttachmentPath({
+          attachmentsDir: serverConfig.attachmentsDir,
+          attachment: persistedAttachment,
+        });
+        if (!attachmentPath) {
+          return yield* new OrchestrationDispatchCommandError({
+            message: `Failed to resolve persisted path for '${attachment.name}'.`,
+          });
+        }
+
+        yield* fileSystem.makeDirectory(path.dirname(attachmentPath), { recursive: true }).pipe(
+          Effect.mapError(
+            () =>
+              new OrchestrationDispatchCommandError({
+                message: `Failed to create attachment directory for '${attachment.name}'.`,
+              }),
+          ),
+        );
+        yield* fileSystem.writeFile(attachmentPath, bytes).pipe(
+          Effect.mapError(
+            () =>
+              new OrchestrationDispatchCommandError({
+                message: `Failed to persist attachment '${attachment.name}'.`,
+              }),
+          ),
+        );
+        claimedAttachmentPaths.push(attachmentPath);
+
+        return persistedAttachment;
+      }),
+    { concurrency: 1 },
+  ).pipe(Effect.tapError(() => removeClaimedAttachmentPaths(claimedAttachmentPaths)));
+});
+
 export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
   Effect.gen(function* () {
     const receivedAt = DateTime.formatIso(yield* DateTime.now);
     const canonicalCommand = canonicalizeClientCommandTimestamps(command, receivedAt);
-    const fileSystem = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const serverConfig = yield* ServerConfig;
     const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
 
     const normalizeProjectWorkspaceRoot = (workspaceRoot: string) =>
@@ -170,183 +367,10 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
       canonicalCommand.type === "thread.turn.start"
         ? canonicalCommand.message.attachments
         : Object.values(canonicalCommand.attachmentsByQuestionId ?? {}).flat();
-    const attachmentLimitError = getProviderAttachmentLimitError(attachments);
-    if (attachmentLimitError) {
-      return yield* new OrchestrationDispatchCommandError({ message: attachmentLimitError });
-    }
-    const claimedAttachmentPaths: string[] = [];
-    const attachmentsWithDecodedSizes = [...attachments];
-    const normalizedAttachments = yield* Effect.forEach(
+    const normalizedAttachments = yield* claimMessageAttachments(
+      canonicalCommand.threadId,
       attachments,
-      (attachment, index) =>
-        Effect.gen(function* () {
-          if (!("dataUrl" in attachment)) {
-            const claim = planAttachmentClaim({
-              attachmentsDir: serverConfig.attachmentsDir,
-              threadId: canonicalCommand.threadId,
-              attachmentId: attachment.id,
-            });
-            if (!claim.ok) {
-              return yield* new OrchestrationDispatchCommandError({
-                message: `Attachment '${attachment.name}' cannot be sent: ${claim.reason}.`,
-              });
-            }
-
-            const info = yield* fileSystem.stat(claim.currentPath).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationDispatchCommandError({
-                    message: `Attachment '${attachment.name}' cannot be sent: attachment not found.`,
-                    cause,
-                  }),
-              ),
-            );
-            if (Number(info.size) !== attachment.sizeBytes) {
-              return yield* new OrchestrationDispatchCommandError({
-                message: `Attachment '${attachment.name}' cannot be sent: stored size does not match.`,
-              });
-            }
-
-            const normalizedAttachment = {
-              ...attachment,
-              id: claim.finalId,
-              mimeType: attachment.mimeType.toLowerCase(),
-            };
-            const expectedPath = resolveAttachmentPath({
-              attachmentsDir: serverConfig.attachmentsDir,
-              attachment: normalizedAttachment,
-            });
-            if (expectedPath !== claim.finalPath) {
-              return yield* new OrchestrationDispatchCommandError({
-                message: `Attachment '${attachment.name}' cannot be sent: attachment type does not match the upload.`,
-              });
-            }
-
-            const claimFailed = (cause: unknown) =>
-              new OrchestrationDispatchCommandError({
-                message: `Failed to claim attachment '${attachment.name}' for this thread.`,
-                cause,
-              });
-            const pictureBytes =
-              normalizedAttachment.type === "image"
-                ? yield* fileSystem.readFile(claim.currentPath).pipe(Effect.mapError(claimFailed))
-                : null;
-            const picture =
-              pictureBytes === null
-                ? null
-                : yield* fitPicture(attachment.name, {
-                    bytes: pictureBytes,
-                    mimeType: normalizedAttachment.mimeType,
-                  });
-            // A fitted picture is the claimed copy, under the path its own type
-            // gives it (`.png` may become `.jpg`).
-            if (picture !== null) {
-              const fittedAttachment = withFittedPicture(normalizedAttachment, picture);
-              const fittedPath = resolveAttachmentPath({
-                attachmentsDir: serverConfig.attachmentsDir,
-                attachment: fittedAttachment,
-              });
-              if (!fittedPath) {
-                return yield* new OrchestrationDispatchCommandError({
-                  message: `Failed to resolve persisted path for '${attachment.name}'.`,
-                });
-              }
-              yield* fileSystem
-                .writeFile(fittedPath, picture.bytes)
-                .pipe(Effect.mapError(claimFailed));
-              claimedAttachmentPaths.push(fittedPath);
-              return fittedAttachment;
-            }
-
-            // Keep the pending copy until the turn succeeds. A failed thread
-            // bootstrap can then retry with a fresh thread id. A copy, not a
-            // hard link: an agent editing the delivered file in place must not
-            // mutate the retry source.
-            yield* fileSystem
-              .copyFile(claim.currentPath, claim.finalPath)
-              .pipe(Effect.mapError(claimFailed));
-            claimedAttachmentPaths.push(claim.finalPath);
-
-            return pictureBytes === null
-              ? normalizedAttachment
-              : withPictureSize(normalizedAttachment, pictureBytes);
-          }
-
-          const parsed = parseBase64DataUrl(attachment.dataUrl);
-          if (!parsed || !parsed.mimeType.startsWith("image/")) {
-            return yield* new OrchestrationDispatchCommandError({
-              message: `Invalid image attachment payload for '${attachment.name}'.`,
-            });
-          }
-
-          const decoded = Buffer.from(parsed.base64, "base64");
-          if (decoded.byteLength === 0 || decoded.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-            return yield* new OrchestrationDispatchCommandError({
-              message: `Image attachment '${attachment.name}' is empty or too large.`,
-            });
-          }
-          const picture = yield* fitPicture(attachment.name, {
-            bytes: decoded,
-            mimeType: parsed.mimeType,
-          });
-
-          const attachmentId = createAttachmentId(canonicalCommand.threadId);
-          if (!attachmentId) {
-            return yield* new OrchestrationDispatchCommandError({
-              message: "Failed to create a safe attachment id.",
-            });
-          }
-
-          const decodedAttachment = {
-            type: "image" as const,
-            id: attachmentId,
-            name: attachment.name,
-            mimeType: parsed.mimeType.toLowerCase(),
-            sizeBytes: decoded.byteLength,
-          };
-          const persistedAttachment =
-            picture === null
-              ? withPictureSize(decodedAttachment, decoded)
-              : withFittedPicture(decodedAttachment, picture);
-          const bytes = picture === null ? decoded : picture.bytes;
-          attachmentsWithDecodedSizes[index] = persistedAttachment;
-          const decodedLimitError = getProviderAttachmentLimitError(attachmentsWithDecodedSizes);
-          if (decodedLimitError) {
-            return yield* new OrchestrationDispatchCommandError({ message: decodedLimitError });
-          }
-
-          const attachmentPath = resolveAttachmentPath({
-            attachmentsDir: serverConfig.attachmentsDir,
-            attachment: persistedAttachment,
-          });
-          if (!attachmentPath) {
-            return yield* new OrchestrationDispatchCommandError({
-              message: `Failed to resolve persisted path for '${attachment.name}'.`,
-            });
-          }
-
-          yield* fileSystem.makeDirectory(path.dirname(attachmentPath), { recursive: true }).pipe(
-            Effect.mapError(
-              () =>
-                new OrchestrationDispatchCommandError({
-                  message: `Failed to create attachment directory for '${attachment.name}'.`,
-                }),
-            ),
-          );
-          yield* fileSystem.writeFile(attachmentPath, bytes).pipe(
-            Effect.mapError(
-              () =>
-                new OrchestrationDispatchCommandError({
-                  message: `Failed to persist attachment '${attachment.name}'.`,
-                }),
-            ),
-          );
-          claimedAttachmentPaths.push(attachmentPath);
-
-          return persistedAttachment;
-        }),
-      { concurrency: 1 },
-    ).pipe(Effect.tapError(() => removeClaimedAttachmentPaths(claimedAttachmentPaths)));
+    );
 
     if (canonicalCommand.type === "thread.user-input.respond") {
       let index = 0;
@@ -375,6 +399,22 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
       },
     } satisfies OrchestrationCommand;
   });
+
+/** Removes the copies a claim made, when the message they were claimed for was not sent. */
+export const releaseClaimedAttachments = Effect.fn("Normalizer.releaseClaimedAttachments")(
+  function* (attachments: ReadonlyArray<ChatAttachment>) {
+    const serverConfig = yield* ServerConfig;
+    yield* removeClaimedAttachmentPaths(
+      attachments.flatMap((attachment) => {
+        const claimedPath = resolveAttachmentPath({
+          attachmentsDir: serverConfig.attachmentsDir,
+          attachment,
+        });
+        return claimedPath === null ? [] : [claimedPath];
+      }),
+    );
+  },
+);
 
 export const cleanupFailedUploadedAttachments = Effect.fn(
   "Normalizer.cleanupFailedUploadedAttachments",

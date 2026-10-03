@@ -2719,10 +2719,10 @@ code {
    belongs to the state: at work the shape turns a notch at a time (its own
    symmetry, so it never looks like somebody else) and the eyes glance about;
    as it starts to need you, it hops; done after work while you watch, it pops
-   once. Idle and asleep it is still: a menu of faces must not fidget. Its own
-   motion is transform and opacity (the morph eases the eyes' and the mouth's
-   geometry), each Mate on its own beat (`--mate-face-phase`) so a menu of them
-   never ticks in unison. */
+   once. Idle and asleep it is still: a menu of faces must not fidget; waking,
+   on its way up, it breathes, slow and low. Its own motion is transform and
+   opacity (the morph eases the eyes' and the mouth's geometry), each Mate on
+   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison. */
 :root {
   /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
   --ease-spring: linear(
@@ -2835,6 +2835,16 @@ code {
     translate: 0 -5px;
   }
 
+  /* Waking — on its way up, until its first sign-in — it breathes: asleep's closed eyes, the whole
+     face swelling from its feet once every three seconds. The face itself moves, one box the
+     compositor carries, so a menu of waking rows repaints nothing as they breathe. With reduced
+     motion it stands still, and its words say it is coming up. */
+  [data-zerops-primitive="mate-face"][data-mate-face-state="waking"] {
+    transform-origin: 50% 96%;
+    animation: mate-face-breathe 3s ease-in-out infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
+  }
+
   [data-zerops-surface="sidebar-mate"] [data-mate-face-hop] {
     transition: scale 220ms var(--ease-spring);
   }
@@ -2875,6 +2885,16 @@ code {
   86%,
   100% {
     translate: 0 0;
+  }
+}
+
+@keyframes mate-face-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.05;
   }
 }
 
@@ -5040,6 +5060,146 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   transform: scale(0.97);
 }
 
+/* The strip's ×: quiet beside Review, the one button that asks for anything. */
+.composer-top-dismiss {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.composer-top-dismiss svg {
+  width: 14px;
+  height: 14px;
+}
+
+.composer-top-dismiss:hover {
+  color: var(--color-foreground);
+  background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+}
+
+.composer-top-dismiss:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/*
+ * Full screen (`fullComposer.logic.ts`): the composer's text grows over the
+ * conversation to a measured height, the conversation behind a backdrop, and
+ * goes back the same way. Its toggle sits in the text's top corner, shown
+ * with the composer's hover or focus.
+ */
+.composer-full-toggle {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--color-muted-foreground);
+  opacity: 0;
+  cursor: pointer;
+  outline: none;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.composer-full-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+[data-chat-composer-surface]:hover .composer-full-toggle,
+[data-chat-composer-surface]:focus-within .composer-full-toggle,
+[data-composer-full="on"] .composer-full-toggle,
+.composer-full-toggle:focus-visible {
+  opacity: 1;
+}
+
+.composer-full-toggle:hover {
+  color: var(--color-foreground);
+  background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+}
+
+.composer-full-toggle:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+@media (hover: none) {
+  .composer-full-toggle {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 40rem) {
+  [data-chat-composer-form] [data-testid="composer-editor"] {
+    padding-inline-end: 28px;
+  }
+}
+
+[data-chat-composer-form] [data-testid="composer-editor"] {
+  transition:
+    min-height 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    max-height 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+[data-chat-composer-form][data-composer-full="on"] [data-testid="composer-editor"] {
+  min-height: var(--composer-full-height, 4.375rem);
+  max-height: var(--composer-full-height, 12.5rem);
+}
+
+/* Docked at the column's foot, the overlay takes the whole column and keeps the composer at its foot. */
+[data-chat-composer-overlay]:not([data-chat-composer-hero]):has([data-composer-full]) {
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+[data-chat-composer-overlay]:has([data-composer-full])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--background);
+  pointer-events: auto;
+  animation: composer-full-backdrop 200ms ease-out;
+  transition: opacity 200ms ease-out;
+}
+
+[data-chat-composer-overlay]:has([data-composer-full="leaving"])::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes composer-full-backdrop {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-composer-form] [data-testid="composer-editor"] {
+    transition: none;
+  }
+
+  [data-chat-composer-overlay]:has([data-composer-full])::before {
+    animation: none;
+    transition: none;
+  }
+}
+
 .composer-review-button:focus-visible {
   box-shadow:
     0 0 0 2px var(--card),
@@ -5108,13 +5268,24 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   --picture-remove-shadow: 0 2px 6px -2px rgb(0 0 0 / 25%);
 }
 
-/* A picture in the composer's text: a block of its own line, 80 px tall. */
-.composer-picture-slot {
-  display: block;
-  width: fit-content;
+/*
+ * A picture or a file in the composer's text: on a row of its own, 80 px tall,
+ * and the ones written one after another side by side on it, wrapping like a
+ * gallery. Words never share their row: a break before a run and after it.
+ */
+.composer-attachment-slot {
+  display: inline-block;
   max-width: 100%;
   margin-block: 8px;
+  margin-inline-end: 8px;
+  vertical-align: bottom;
   line-height: 0;
+}
+
+.composer-attachment-slot + :not(.composer-attachment-slot, br)::before,
+:not(.composer-attachment-slot, br):has(+ .composer-attachment-slot)::after {
+  content: "\A";
+  white-space: pre;
 }
 
 .composer-picture {
@@ -5812,6 +5983,171 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Pictures written one after another: side by side, wrapping, each at most 160 px tall. */
+.message-picture-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.message-picture-row[data-gallery] .message-picture-img {
+  max-height: 160px;
+}
+
+/* A file in the composer's text: a quiet card as tall as a picture, so a row
+   of pictures and files reads as one gallery. Its icon, its name cut in the
+   middle, and its size (or how far its upload is). */
+.composer-file {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 168px;
+  max-width: 100%;
+  height: 80px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 14%, transparent);
+  color: var(--color-foreground);
+  line-height: normal;
+  outline: none;
+  cursor: default;
+  transition: box-shadow 120ms ease;
+}
+
+.composer-file:focus-visible,
+.composer-file-slot[data-composer-chip-selected] .composer-file {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+/* An upload that did not go through: amber, with its way to try again. */
+.composer-file[data-status="failed"] {
+  box-shadow: 0 0 0 2px var(--color-warning);
+}
+
+.composer-file .attached-file-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.composer-file .attached-file-name {
+  overflow: hidden;
+  font: 500 13px/18px var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-file .attached-file-detail {
+  margin-top: -6px;
+  color: var(--color-muted-foreground);
+  font: 400 12px/16px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-file[data-status="failed"] .attached-file-detail {
+  color: var(--color-warning-foreground);
+}
+
+.composer-file-action {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-popover);
+  color: var(--color-muted-foreground);
+  box-shadow: var(--picture-remove-shadow);
+  cursor: pointer;
+}
+
+.composer-file-action svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+}
+
+.composer-file-remove {
+  top: -8px;
+  right: -8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.composer-file:hover .composer-file-remove,
+.composer-file:focus-within .composer-file-remove,
+.composer-file-remove:focus-visible {
+  opacity: 1;
+}
+
+.composer-file-remove:hover {
+  color: var(--color-foreground);
+}
+
+.composer-file-retry {
+  right: 8px;
+  bottom: 8px;
+  color: var(--color-warning-foreground);
+}
+
+@media (pointer: coarse) {
+  .composer-file-remove {
+    opacity: 1;
+  }
+}
+
+/* A file in a sent message: its icon, name and size on one quiet line, a link
+   that downloads it once its address is known. */
+.message-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 12%, transparent);
+  color: inherit;
+  text-decoration: none;
+}
+
+a.message-file:hover {
+  background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+}
+
+a.message-file:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.message-file .attached-file-name {
+  overflow: hidden;
+  font: 500 13px/18px var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-file .attached-file-detail {
+  flex-shrink: 0;
+  color: var(--color-muted-foreground);
+  font: 400 12px/16px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.message-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 /* ==== end of composer pictures ==== */
@@ -7225,12 +7561,46 @@ button.rv-relrow:hover .rv-relrow-go {
   text-wrap: balance;
 }
 
+/* A press's words on a narrow screen: keeping the tab open wraps to two lines where a stop's
+   takes one, and "could not be added to …" wraps where "is coming up on …" does not — so the
+   headline and the sentence each hold two lines' room from the press, the headline set on its
+   last lines, next to its sentence: a stop, and Try again, move nothing. */
+@media (max-width: 639px) {
+  .arrival-headline[data-pressed] {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 64px;
+  }
+
+  .arrival-sentence[data-pressed] {
+    min-height: 44px;
+  }
+}
+
 /* A stop's one way on, and a stage's press: centred under the sentence. */
 .arrival-acts {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+/* Under the steps: what they leave to read whole — a stop's reason, a registration not finished —
+   over the one way on. Each step keeps its one line; this is where its words are read whole. */
+.arrival-acts-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.arrival-acts-note {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 19px;
+  text-align: center;
+  text-wrap: pretty;
 }
 
 /* ---- the Mate's steps while it comes up (`ZeropsArrivalSteps`) ---- */
@@ -7320,6 +7690,50 @@ button.rv-relrow:hover .rv-relrow-go {
   /* Wraps within the words' width, never widening the steps. */
   contain: inline-size;
   padding: 2px 0 8px;
+}
+
+/* p37/one-screen: the steps this tab runs, under the project's row — a small mark and the words
+   each, quieter than the steps, one under another. Drawn from the press to the hand-over, so they
+   never come or go under what is read. */
+.arrival-substeps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-inline-start: 0;
+  list-style: none;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.arrival-substep {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.arrival-substep-mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+}
+
+.arrival-substep-mark .arrival-glyph {
+  width: 12px;
+  height: 12px;
+}
+
+.arrival-substep[data-state="active"] .arrival-substep-label {
+  color: var(--foreground);
+}
+
+.arrival-substep-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The copy's services, one name and one dot each, quieter than the steps. */

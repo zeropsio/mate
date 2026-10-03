@@ -30,9 +30,19 @@ const LINES: ReadonlyArray<ZeropsBuildLogLine> = [
   lineOf(2, "npm ERR! build failed", 3),
 ];
 
-const render = (lines: ReadonlyArray<ZeropsBuildLogLine>, status: "live" | "ended" = "live") =>
+const render = (
+  lines: ReadonlyArray<ZeropsBuildLogLine>,
+  status: "loading" | "live" | "ended" = "live",
+  waiting = false,
+) =>
   renderToStaticMarkup(
-    <ZeropsBuildLog lines={lines} onToggle={vi.fn()} open={false} status={status} />,
+    <ZeropsBuildLog
+      lines={lines}
+      onToggle={vi.fn()}
+      open={false}
+      status={status}
+      waiting={waiting}
+    />,
   );
 
 const rowsOf = (html: string) =>
@@ -94,14 +104,20 @@ describe("ZeropsBuildLog", () => {
 
   // Its room stands from the first draw while the build runs, so the card's
   // height is final when it opens; the way to the log is there but not open
-  // to anyone until the first line (pass 36).
+  // to anyone until the first line (pass 36). The room says it waits for the
+  // first line when its caller reads so (`buildLogWaitsForFirstLine`, pass 37),
+  // and a line, once there, is what it shows.
   it.each([
-    { name: "no line yet", lines: [], rows: 0, openable: false },
-    { name: "its first lines", lines: LINES, rows: 2, openable: true },
-  ])("while it runs, its newest lines' room stands: $name", ({ lines, rows, openable }) => {
-    const html = render(lines, "live");
-    expect(html).toContain("data-zerops-build-log-glance");
+    { name: "no line, waiting", lines: [], waiting: true, rows: 0, openable: false, waits: true },
+    { name: "no line, silent", lines: [], waiting: false, rows: 0, openable: false, waits: false },
+    { name: "its first lines", lines: LINES, waiting: true, rows: 2, openable: true, waits: false },
+  ] as const)("while it runs, its newest lines' room stands: $name", (row) => {
+    const { lines, waiting, rows, openable, waits } = row;
+    const html = render(lines, "live", waiting);
+    const glance = html.match(/<ol[^>]*data-zerops-build-log-glance[\s\S]*?<\/ol>/)?.[0] ?? "";
+    expect(glance).not.toBe("");
     expect(rowsOf(html)).toHaveLength(rows);
+    expect(glance.includes("Waiting for the build&#x27;s first line…")).toBe(waits);
     const toggle = html.match(/<button[^>]*data-zerops-build-log-toggle[^>]*>/)?.[0] ?? "";
     expect(toggle.includes("disabled")).toBe(!openable);
   });

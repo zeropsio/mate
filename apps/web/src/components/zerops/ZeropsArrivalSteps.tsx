@@ -14,6 +14,7 @@ import {
   runtimesComing,
   type ArrivalService,
   type ArrivalStep,
+  type ArrivalSubstep,
   type RuntimesLine,
 } from "~/zerops/mateArrival";
 
@@ -68,11 +69,59 @@ export function ZeropsArrivalSteps({
               )}
             </span>
           )}
+          {step.substeps === undefined ? null : <ArrivalSubsteps steps={step.substeps} />}
           {step.services === undefined ? null : (
             <div className="arrival-step-sub">
               <ArrivalServices services={step.services} />
             </div>
           )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+const SUBSTEP_STATE_WORDS: Readonly<Record<ArrivalSubstep["state"], string>> = {
+  done: "done",
+  active: "in progress",
+  waiting: "waiting",
+  failed: "stopped",
+  unfinished: "not finished",
+};
+
+/**
+ * The steps this tab runs, under the row they make: one small mark and the words each, quieter
+ * than the steps — where one stopped, why, in its place, on its one line.
+ */
+function ArrivalSubsteps({ steps }: { readonly steps: ReadonlyArray<ArrivalSubstep> }) {
+  return (
+    <ol aria-label="In this tab" className="arrival-step-sub arrival-substeps">
+      {steps.map((step) => (
+        <li
+          aria-label={
+            step.state === "unfinished"
+              ? `${step.label}${step.why === undefined ? "." : `: ${step.why}`}`
+              : `${step.label}: ${SUBSTEP_STATE_WORDS[step.state]}${step.why === undefined ? "" : `. ${step.why}`}`
+          }
+          className="arrival-substep"
+          data-arrival-substep={step.id}
+          data-state={step.state}
+          key={step.id}
+        >
+          <span className="arrival-substep-mark">
+            {/* Not finished, it waits on nobody here: the waiting mark, never a stop's. */}
+            <ArrivalStepGlyph state={step.state === "unfinished" ? "waiting" : step.state} />
+          </span>
+          {/* One line, whatever it says: a long reason is cut here, and read whole under the
+              steps (`pressNote`) — and whole to a reader, from its label. */}
+          <span className="arrival-substep-label">
+            {step.label}
+            {step.why === undefined ? null : step.state === "unfinished" ? (
+              `: ${step.why}`
+            ) : (
+              <span className="arrival-step-why"> · {step.why}</span>
+            )}
+          </span>
         </li>
       ))}
     </ol>
