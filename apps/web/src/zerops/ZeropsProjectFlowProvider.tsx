@@ -90,6 +90,7 @@ import { useZeropsCompares } from "./useZeropsCompares";
 import { useReleasePermission } from "./useChangeOffers";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import {
+  findInventoryProjectRef,
   HeldInventoryContext,
   inventoryProjectRefKey,
   projectAuthority,
@@ -531,8 +532,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const statedServices = useMemo(() => {
     if (data === null) return [];
     return [...groupProjects.values()].flat().flatMap((project) => {
-      const ref = inventory.projectRefs.get(project.projectId);
-      if (ref === undefined) return [];
+      // The inventory keys each ref by its project key, never by the bare id (F10).
+      const ref = findInventoryProjectRef(
+        { projectRefs: inventory.projectRefs },
+        project.projectId,
+      );
+      if (ref === null) return [];
       return project.services.map(
         (service) =>
           [
