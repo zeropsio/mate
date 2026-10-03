@@ -10,6 +10,7 @@ import { assistant, at, operation, tool, user } from "./conversationFixtures";
 import {
   bandKeys,
   bandSeenNext,
+  type BandSeen,
   deriveDock,
   endedSince,
   withEndingsHeld,
@@ -538,7 +539,11 @@ describe("bandSeenNext", () => {
     { name: "watched: the ending is held", syncing: false, held: ["task:b1"] },
     { name: "a resync: nothing is held", syncing: true, held: [] },
   ])("$name", ({ syncing, held }) => {
-    const before = { running: bandKeys(runningDock()), held: new Set<string>(), ends: new Map() };
+    const before: BandSeen = {
+      running: bandKeys(runningDock()),
+      held: new Set<string>(),
+      ends: new Map<string, number>(),
+    };
     const next = bandSeenNext(before, endedDock(), syncing);
     expect([...next.held]).toEqual(held);
     expect([...next.running]).toEqual([]);
@@ -547,7 +552,11 @@ describe("bandSeenNext", () => {
   // A bar that runs again and ends again while its first ending is still
   // held shows its second ending its whole time (E15): each ending counts.
   it("counts each ending of a bar, so a second one restarts its hold", () => {
-    let seen = { running: bandKeys(runningDock()), held: new Set<string>(), ends: new Map() };
+    let seen: BandSeen = {
+      running: bandKeys(runningDock()),
+      held: new Set<string>(),
+      ends: new Map<string, number>(),
+    };
     seen = bandSeenNext(seen, endedDock(), false);
     expect(seen.ends.get("task:b1")).toBe(1);
     seen = bandSeenNext(seen, runningDock(), false);
