@@ -221,18 +221,24 @@ describe("standupReadingFor — a running call its Mate relays", () => {
 // they are done, so the band lets it go.
 describe("standupBuildsDone — a stand-up that ran on after its call returned", () => {
   const services = [
-    { hostname: "db", serviceId: "s-db", group: "data", runsCode: false, status: "ACTIVE" },
+    {
+      hostname: "db",
+      serviceId: "s-db",
+      group: "data" as const,
+      runsCode: false,
+      status: "ACTIVE",
+    },
     {
       hostname: "appdev",
       serviceId: "s-appdev",
-      group: "runtimes",
+      group: "runtimes" as const,
       runsCode: true,
       status: "ACTIVE",
     },
     {
       hostname: "apidev",
       serviceId: "s-apidev",
-      group: "runtimes",
+      group: "runtimes" as const,
       runsCode: false,
       status: "READY_TO_DEPLOY",
     },

@@ -800,7 +800,7 @@ describe("deriveMessagesTimelineRows", () => {
       tool(id, "t1", minute, {
         label: "Read file",
         itemType: "file_read" as never,
-        command: undefined,
+        command: undefined as never,
         detail: `Read: {"file_path":"/srv/app/${id}.ts"}`,
         createdAt: at(minute),
         startedAt: at(minute),
