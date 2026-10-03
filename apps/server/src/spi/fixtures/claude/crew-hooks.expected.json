@@ -127,6 +127,7 @@
       "status": "inProgress",
       "title": "Command run",
       "detail": "Bash: {}",
+      "responseId": "msg_crew_1",
       "data": {
         "toolName": "Bash",
         "input": {}
@@ -431,6 +432,7 @@
       "status": "inProgress",
       "title": "Command run",
       "detail": "Bash: {}",
+      "responseId": "msg_crew_2",
       "data": {
         "toolName": "Bash",
         "input": {}

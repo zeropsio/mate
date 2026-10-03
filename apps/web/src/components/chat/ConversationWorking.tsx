@@ -16,7 +16,6 @@
  * until the work ends.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { PipelineSpokenState } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
@@ -47,10 +46,12 @@ import {
   detailLines,
   importLines,
   lineSegments,
-  opensTo,
+  observedLinesOf,
   operationSubject,
+  PIPELINE_BAR,
   settledOperationWords,
 } from "./operationBar.logic";
+import { opensOnto, standsOpen } from "./opens.logic";
 import { StatusBar, type BarTone } from "./StatusBar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
@@ -82,15 +83,6 @@ function useArrivedLive(): boolean {
 // ---------------------------------------------------------------------------
 // The status bars
 // ---------------------------------------------------------------------------
-
-const PIPELINE_BAR: Record<PipelineSpokenState, BarTone> = {
-  finished: "done",
-  running: "running",
-  activating: "running",
-  failed: "failed",
-  waiting: "waiting",
-  cancelled: "waiting",
-};
 
 const STEP_BAR: Record<string, BarTone> = {
   done: "done",
@@ -262,17 +254,34 @@ function useDeployReading(operation: ZeropsOperation, environmentId: Environment
   return { regions, words, bar, running, failed };
 }
 
+/**
+ * A bar whose control stopped opening — its rows dropped to none — is shut,
+ * not left open behind it: when it opens again it starts closed, never
+ * springing open by itself.
+ */
+function useShutWhenItStopsOpening(open: boolean, opens: boolean, onShut: () => void) {
+  useLayoutEffect(() => {
+    if (open && !opens) onShut();
+  });
+}
+
 /** A deploy's status bar: its service, its pipeline, the step running now, how long. */
 function DeployInstrument({
   operation,
   environmentId,
   open,
   onToggle,
+  onShut,
+  detail,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly open: boolean;
   readonly onToggle: () => void;
+  /** Its control stopped opening: it is shut. */
+  readonly onShut: () => void;
+  /** What it opens to, under it. */
+  readonly detail: ReactNode;
 }) {
   const reading = useDeployReading(operation, environmentId);
   const { running } = reading;
@@ -282,28 +291,38 @@ function DeployInstrument({
   const words = (lines === null ? null : settledOperationWords(operation, lines)) ?? reading.words;
   const failed = lines === null ? reading.failed : lines.some((line) => line.state === "failed");
   const subject = operationSubject(operation);
-  const opens = opensTo({ lines: detailLines(operation, null), reasonCut: false });
+  const opens = opensOnto({
+    control: "operation",
+    lines: detailLines(operation, null, observedLinesOf(reading.regions.observed)),
+    reasonCut: false,
+  });
   const settledMs =
     operation.settledAt === undefined
       ? null
       : Date.parse(operation.settledAt) - Date.parse(operation.anchorAt);
+  // Open only while it opens onto something: rows that dropped to none close it.
+  const shown = standsOpen(open, opens);
+  useShutWhenItStopsOpening(open, opens, onShut);
   return (
-    <Instrument
-      bar={bar}
-      failed={failed}
-      figure={
-        running ? (
-          <ElapsedSince since={operation.anchorAt} />
-        ) : settledMs !== null && Number.isFinite(settledMs) ? (
-          formatWorkDuration(settledMs)
-        ) : null
-      }
-      label={`${subject}: ${words}.${opens ? ` ${open ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}` : ""}`}
-      onToggle={opens ? onToggle : null}
-      open={open}
-      subject={subject}
-      words={words}
-    />
+    <>
+      <Instrument
+        bar={bar}
+        failed={failed}
+        figure={
+          running ? (
+            <ElapsedSince since={operation.anchorAt} />
+          ) : settledMs !== null && Number.isFinite(settledMs) ? (
+            formatWorkDuration(settledMs)
+          ) : null
+        }
+        label={`${subject}: ${words}.${opens ? ` ${shown ? "Hide" : "Show"} ${lines === null ? "the pipeline" : "each service"}` : ""}`}
+        onToggle={opens ? onToggle : null}
+        open={shown}
+        subject={subject}
+        words={words}
+      />
+      {shown ? <InstrumentDetail>{detail}</InstrumentDetail> : null}
+    </>
   );
 }
 
@@ -318,31 +337,44 @@ function StandupInstrument({
   environmentId,
   open,
   onToggle,
+  onShut,
+  detail,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly open: boolean;
   readonly onToggle: () => void;
+  /** Its control stopped opening: it is shut. */
+  readonly onShut: () => void;
+  /** What it opens to, under it. */
+  readonly detail: ReactNode;
 }) {
-  const reading = useStandupReading(operation, environmentId);
+  // The band draws it only while its turn runs.
+  const reading = useStandupReading(operation, environmentId, true);
   const { words, figure, segments, failed } = standupBar(reading);
   const subject = operationSubject(operation);
   // No service read yet: nothing to open to.
-  const opens = opensTo({
+  const opens = opensOnto({
+    control: "operation",
     lines: detailLines(operation, reading?.rows.length ?? null),
     reasonCut: false,
   });
+  const shown = standsOpen(open, opens);
+  useShutWhenItStopsOpening(open, opens, onShut);
   return (
-    <Instrument
-      bar={segments}
-      failed={failed && reading !== null && reading.building === 0}
-      figure={figure}
-      label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}.${opens ? ` ${open ? "Hide" : "Show"} each service` : ""}`}
-      onToggle={opens ? onToggle : null}
-      open={open}
-      subject={subject}
-      words={words}
-    />
+    <>
+      <Instrument
+        bar={segments}
+        failed={failed && reading !== null && reading.building === 0}
+        figure={figure}
+        label={`${subject}: ${words}${figure === null ? "" : `, ${figure}`}.${opens ? ` ${shown ? "Hide" : "Show"} each service` : ""}`}
+        onToggle={opens ? onToggle : null}
+        open={shown}
+        subject={subject}
+        words={words}
+      />
+      {shown ? <InstrumentDetail>{detail}</InstrumentDetail> : null}
+    </>
   );
 }
 
@@ -359,7 +391,8 @@ function keyedSteps<T extends { readonly step: string }>(steps: ReadonlyArray<T>
 function Arriving({ children }: { readonly children: ReactNode }) {
   const arrived = useArrivedLive();
   return (
-    <li className={cn("grid", arrived && "animate-room-in motion-reduce:animate-none")}>
+    // Under reduced motion it fades in: every arrival does.
+    <li className={cn("grid", arrived && "animate-room-in motion-reduce:animate-run-fade")}>
       <div className="min-h-0 overflow-hidden">{children}</div>
     </li>
   );
@@ -375,6 +408,15 @@ const ROOM_CLOSE_MS = 360;
 /** The panel's room: in a card, its slice of the card; alone, its own. */
 function roomOf(panel: HTMLElement): HTMLElement {
   return panel.closest<HTMLElement>(".run-tray-middle") ?? panel;
+}
+
+/** The person asked for reduced motion; a page with no media queries asked for nothing. */
+function asksForNoMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 /**
@@ -414,8 +456,9 @@ function usePanelRoom({
     }
     closing?.stop();
     closingRef.current = null;
-    if (holds >= stood - 0.5) {
-      // It grew, or holds the same: the room follows at once.
+    // It grew, or holds the same — or the person asked for no motion — the
+    // room follows at once.
+    if (holds >= stood - 0.5 || asksForNoMotion()) {
       stoodRef.current = holds;
       if (closing !== null) onRoom?.(null);
       return;
@@ -511,6 +554,14 @@ function Instruments({
 }) {
   const hold = useHoldReading();
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  // A bar whose control stopped opening is shut (`useShutWhenItStopsOpening`).
+  const shut = (key: string) =>
+    setOpen((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
   useLayoutEffect(() => onDrawn?.());
   // A service the platform works on this moment says nothing stale of itself.
   const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
@@ -528,10 +579,15 @@ function Instruments({
   const background = dock?.background ?? null;
   if (!dockDraws(dock) && standing.length === 0) return null;
   const runningTask = background?.tasks.findLast((task) => task.state === "running");
+  // One task's row would say the bar's own title and time again.
+  const backgroundOpens =
+    background !== null && opensOnto({ control: "background-bar", tasks: background.tasks.length });
+  const backgroundShown = standsOpen(open.has("background"), backgroundOpens);
+  if (open.has("background") && !backgroundOpens) shut("background");
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
     // following its end, so the bar they pressed stays where it is (K12).
-    hold();
+    hold(!open.has(key), key);
     setOpen((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
@@ -551,34 +607,39 @@ function Instruments({
           .join(" · ");
   return (
     <ul className="run-band grid" data-working-instruments>
-      {operations.map((operation) => (
-        <Arriving key={operation.key}>
-          {operation.kind === "standup" ? (
-            <StandupInstrument
-              environmentId={environmentId}
-              onToggle={() => toggle(operation.key)}
-              open={open.has(operation.key)}
-              operation={operation}
-            />
-          ) : (
-            <DeployInstrument
-              environmentId={environmentId}
-              onToggle={() => toggle(operation.key)}
-              open={open.has(operation.key)}
-              operation={operation}
-            />
-          )}
-          {open.has(operation.key) ? (
-            <InstrumentDetail>
-              <OperationDetail
+      {operations.map((operation) => {
+        const detail = (
+          <OperationDetail
+            environmentId={environmentId}
+            operation={operation}
+            threadRef={threadRef}
+            turnRuns
+          />
+        );
+        return (
+          <Arriving key={operation.key}>
+            {operation.kind === "standup" ? (
+              <StandupInstrument
+                detail={detail}
                 environmentId={environmentId}
+                onShut={() => shut(operation.key)}
+                onToggle={() => toggle(operation.key)}
+                open={open.has(operation.key)}
                 operation={operation}
-                threadRef={threadRef}
               />
-            </InstrumentDetail>
-          ) : null}
-        </Arriving>
-      ))}
+            ) : (
+              <DeployInstrument
+                detail={detail}
+                environmentId={environmentId}
+                onShut={() => shut(operation.key)}
+                onToggle={() => toggle(operation.key)}
+                open={open.has(operation.key)}
+                operation={operation}
+              />
+            )}
+          </Arriving>
+        );
+      })}
       {standing.map((incident) => (
         <Arriving key={incident.key}>
           <Instrument
@@ -665,9 +726,9 @@ function Instruments({
                   ? spanOf(runningTask.startedAt, null)
                   : null
             }
-            label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed. ${open.has("background") ? "Hide" : "Show"} each one`}
-            onToggle={() => toggle("background")}
-            open={open.has("background")}
+            label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed.${backgroundOpens ? ` ${backgroundShown ? "Hide" : "Show"} each one` : ""}`}
+            onToggle={backgroundOpens ? () => toggle("background") : null}
+            open={backgroundShown}
             subject="Background"
             words={
               runningTask?.title ??
@@ -678,7 +739,7 @@ function Instruments({
                 : "All done")
             }
           />
-          {open.has("background") ? (
+          {backgroundShown ? (
             <InstrumentDetail>
               <ul className="grid gap-px">
                 {background.tasks.map((task) => (

@@ -1,4 +1,10 @@
 import * as Equal from "effect/Equal";
+import {
+  batchesByTiming,
+  liveBatch,
+  type BatchRule,
+  type LiveBatch,
+} from "@t3tools/shared/liveBatch";
 import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -389,18 +395,46 @@ export type TurnHeaderActivity =
     }
   /** It writes words that cannot be placed yet: a note or its answer. */
   | { readonly kind: "writing" }
-  /** It asked the person something — a question, an approval — and waits. */
-  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   /**
-   * A call it is making, as the step it is — the newest, and any others it
-   * runs at the same time, oldest first.
+   * It asked the person something — a question, an approval — and waits; a
+   * question it asked in its own words is the record's item `key` too.
+   */
+  | {
+      readonly kind: "waiting";
+      readonly on: "answer" | "approval";
+      readonly key?: string;
+      /** An approval: what it asks to run — the controls are the composer's. */
+      readonly asked?: ReadonlyArray<LiveCall>;
+    }
+  /**
+   * The calls it is making, the newest as the step or the platform operation
+   * it is, and any others of its batch, oldest first.
    */
   | {
       readonly kind: "step";
       readonly step: WorkStep;
-      readonly others?: ReadonlyArray<WorkStep>;
+      readonly others?: ReadonlyArray<LiveCall>;
     }
+  | {
+      readonly kind: "operation";
+      readonly operation: ZeropsOperation;
+      readonly others?: ReadonlyArray<LiveCall>;
+    };
+
+/** One call the Mate waits on: a step of its own, or a platform operation. */
+export type LiveCall =
+  | { readonly kind: "step"; readonly step: WorkStep }
   | { readonly kind: "operation"; readonly operation: ZeropsOperation };
+
+/** The calls a running activity carries, oldest first; none for one that is no call. */
+export function liveCallsOf(now: TurnHeaderActivity | null): ReadonlyArray<LiveCall> {
+  if (now === null) return [];
+  if (now.kind === "step") return [...(now.others ?? []), { kind: "step", step: now.step }];
+  if (now.kind === "operation") {
+    return [...(now.others ?? []), { kind: "operation", operation: now.operation }];
+  }
+  return [];
+}
 
 export type ConversationEvent =
   | { readonly type: "landed"; readonly event: ChangeLandedEvent }
@@ -657,6 +691,17 @@ export type RecordItem =
       readonly key: string;
       readonly at: string;
       readonly step: WorkStep;
+      /**
+       * While the run goes on, a line that folds calls in a row (`foldSteps`)
+       * carries each as a line of its own: the live slot draws one it still
+       * holds as it ended, and the history folds it in once it lands.
+       */
+      readonly parts?: ReadonlyArray<{
+        readonly kind: "step";
+        readonly key: string;
+        readonly at: string;
+        readonly step: WorkStep;
+      }>;
     }
   /** A stretch of thinking, however short: a bubble of its own, and how long it took. */
   | {
@@ -706,6 +751,11 @@ export type RecordItem =
       readonly key: string;
       readonly at: string;
       readonly operation: ZeropsOperation;
+      /**
+       * Its call never returned: "stale" while the run goes on (a newer batch
+       * started), "closed" once it settled without it — "No result".
+       */
+      readonly noResult?: "stale" | "closed";
     }
   /** Helpers it started, a batch or a workflow at once. */
   | {
@@ -968,14 +1018,14 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
  * Whether an approval the Mate asked for still waits on the person: one asked
  * for and not given yet, the clock standing still meanwhile (`waitedOnPerson`).
  */
-function approvalPending(stretch: Stretch): boolean {
-  let open = 0;
+function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work" }> | null {
+  const open: Array<Extract<TimelineEntry, { kind: "work" }>> = [];
   for (const entry of stretch.entries) {
     if (entry.kind !== "work") continue;
-    if (entry.entry.sourceActivityKind === "approval.requested") open += 1;
-    else if (entry.entry.sourceActivityKind === "approval.resolved") open = Math.max(0, open - 1);
+    if (entry.entry.sourceActivityKind === "approval.requested") open.push(entry);
+    else if (entry.entry.sourceActivityKind === "approval.resolved") open.shift();
   }
-  return open > 0;
+  return open.at(-1) ?? null;
 }
 
 /**
@@ -1002,46 +1052,186 @@ function waitedOnPerson(turn: ConversationTurn): { waitedMs: number; waitingSinc
   return { waitedMs: waitedMs + (Math.max(0, left) || 0), waitingSince: null };
 }
 
+/** A call of the stretch, as the batch rule reads it: a call of the Mate's own, or an operation's. */
+type BatchEntry = Extract<TimelineEntry, { kind: "work" | "generic-call" | "operation" }>;
+
+function epoch(iso: string | undefined): number | null {
+  if (iso === undefined) return null;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 /**
- * What the Mate's hands are on: waiting for an answer, the running operation
- * or call, the thought it is thinking, or its words on their way. A thought
- * with a returned call after it is over: the Mate is between steps, and the
- * thought is the record's.
+ * What the batch rule reads off the whole thread: the calls that returned, by
+ * their call id — a start whose completion was filed under another turn, or
+ * none, never merged with it (`session-logic` collapses by turn and call id),
+ * yet its call returned — and, by the thread's provider, whether a call that
+ * names no response goes stale by timing (`batchesByTiming`).
+ */
+export interface BatchReading extends BatchRule {
+  readonly returned: ReadonlySet<string>;
+}
+
+export function batchReadingOf(
+  entries: ReadonlyArray<TimelineEntry>,
+  rule: BatchRule,
+): BatchReading {
+  const returned = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
+    const { toolCallId, toolLifecycleStatus } = entry.entry;
+    if (toolCallId !== undefined && toolLifecycleStatus !== undefined) {
+      if (toolLifecycleStatus !== "inProgress") returned.add(toolCallId);
+    }
+  }
+  return { returned, byTiming: rule.byTiming };
+}
+
+/** A start whose call's completion stands apart from it in the thread: the completion tells it. */
+function startOfAReturnedCall(work: WorkLogEntry, returned: ReadonlySet<string>): boolean {
+  return (
+    work.toolLifecycleStatus === "inProgress" &&
+    work.toolCallId !== undefined &&
+    returned.has(work.toolCallId)
+  );
+}
+
+/** A call's start, return and response, for the batch rule; null for an entry that is no call. */
+function batchCallOf(
+  entry: TimelineEntry,
+  reading: BatchReading,
+): {
+  readonly startedAt: number | null;
+  readonly returnedAt: number | null;
+  readonly response?: string | undefined;
+} | null {
+  if (entry.kind === "operation") {
+    const op = entry.operation;
+    const response = op.responseId;
+    // The call it waits on now: a session's open follow-up, else its founder.
+    if (op.openedAt !== undefined && op.phase === "running") {
+      return { startedAt: epoch(op.openedAt), returnedAt: null, response };
+    }
+    const startedAt = epoch(op.anchorAt);
+    // Its call returned: a stand-up's builds run on, the Mate waits no more.
+    if (op.returnedAt !== undefined) {
+      return { startedAt, returnedAt: epoch(op.returnedAt), response };
+    }
+    // Its call never returned — still running, or cut off as its run ended.
+    if (op.phase !== "running" && op.phase !== "interrupted") {
+      return { startedAt, returnedAt: epoch(op.settledAt) ?? startedAt, response };
+    }
+    return { startedAt, returnedAt: null, response };
+  }
+  if (entry.kind !== "work" && entry.kind !== "generic-call") return null;
+  const work = entry.entry;
+  if (!isActivityWork(work) || work.toolLifecycleStatus === undefined) return null;
+  if (startOfAReturnedCall(work, reading.returned)) return null;
+  const response = work.responseId;
+  if (work.toolLifecycleStatus === "inProgress") {
+    return { startedAt: epoch(work.startedAt ?? work.createdAt), returnedAt: null, response };
+  }
+  // A completion seen on its own tells that a call returned, never when one
+  // started: one no later activity stamped (`updatedAt`). Only the timing
+  // rule reads it; a call that names its response goes by the response.
+  const alone = work.updatedAt === undefined;
+  return {
+    startedAt: alone ? null : epoch(work.startedAt ?? work.createdAt),
+    returnedAt: epoch(work.updatedAt ?? work.createdAt),
+    response,
+  };
+}
+
+/**
+ * The calls by the batch rule (`liveBatch`): the newest batch's still open —
+ * what the Mate waits on now — and those an older batch left marked open,
+ * stale, each with when it went stale. Read over a whole run, so a call left
+ * open before the person wrote into it goes stale too.
+ */
+export function stretchBatch(
+  stretch: Pick<Stretch, "entries">,
+  reading: BatchReading,
+): LiveBatch<BatchEntry> {
+  return liveBatch(
+    stretch.entries.flatMap((entry) => {
+      const call = batchCallOf(entry, reading);
+      return call === null ? [] : [{ item: entry as BatchEntry, ...call }];
+    }),
+    reading,
+  );
+}
+
+/**
+ * What the Mate's hands are on: waiting for an answer, the calls it waits on
+ * — the newest batch's still open, never one an older batch left marked open
+ * (`stretchBatch`) — the thought it is thinking, or its words on their way. A
+ * thought with a returned call after it is over: the Mate is between steps,
+ * and the thought is the record's.
  */
 function liveActivity(
   stretch: Stretch,
   writing: MessageEntry | null,
   tracked: TrackedCommands,
+  batch: LiveBatch<BatchEntry>,
 ): TurnHeaderActivity {
-  if (pendingQuestion(stretch) !== null) return { kind: "waiting", on: "answer" };
-  if (approvalPending(stretch)) return { kind: "waiting", on: "approval" };
+  const asked = pendingQuestion(stretch);
+  if (asked !== null) return { kind: "waiting", on: "answer", key: `question:${asked.id}` };
+  // An operation whose call returned runs on in the band; one whose session's
+  // follow-up the Mate waits on (`openedAt`) stands in the slot, a line of
+  // its own apart from the session's in the record (`liveCallItem`).
+  const open = new Set<TimelineEntry>(
+    batch.open.filter(
+      (entry) =>
+        entry.kind !== "operation" ||
+        entry.operation.returnedAt === undefined ||
+        entry.operation.openedAt !== undefined,
+    ),
+  );
+  /** The open calls of the batch up to `index`, oldest first, as the slot shows them. */
+  const callsTo = (index: number): LiveCall[] =>
+    stretch.entries.slice(0, index + 1).flatMap((call): LiveCall[] => {
+      if (!open.has(call)) return [];
+      if (call.kind === "operation") return [{ kind: "operation", operation: call.operation }];
+      if (call.kind !== "work" && call.kind !== "generic-call") return [];
+      if (isQuestionToolCall(call.entry)) return [];
+      return [{ kind: "step", step: stepOf(call.entry, tracked, true) }];
+    });
+  const approval = approvalPending(stretch);
+  if (approval !== null) {
+    // What it asks to run: the call it waits on, else what the request names.
+    const calls = callsTo(stretch.entries.length - 1);
+    const named = approval.entry.command ?? approval.entry.detail;
+    const asking: ReadonlyArray<LiveCall> =
+      calls.length > 0
+        ? calls
+        : named === undefined
+          ? []
+          : [{ kind: "step", step: stepOf(approval.entry, tracked, true) }];
+    return asking.length > 0
+      ? { kind: "waiting", on: "approval", asked: asking }
+      : { kind: "waiting", on: "approval" };
+  }
   if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
   let passed = false;
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
     const entry = stretch.entries[index]!;
-    if (entry.kind === "operation" && entry.operation.phase === "running") {
-      return { kind: "operation", operation: entry.operation };
-    }
-    if (
-      (entry.kind === "work" || entry.kind === "generic-call") &&
-      entry.entry.toolLifecycleStatus === "inProgress" &&
-      isActivityWork(entry.entry)
-    ) {
-      if (isQuestionToolCall(entry.entry)) return { kind: "waiting", on: "answer" };
-      const step = stepOf(entry.entry, tracked, true);
-      // What it runs at the same time is the now line's too: none of it is
-      // in the record until it returns.
-      const others = stretch.entries
-        .slice(0, index)
-        .flatMap((earlier) =>
-          (earlier.kind === "work" || earlier.kind === "generic-call") &&
-          earlier.entry.toolLifecycleStatus === "inProgress" &&
-          isActivityWork(earlier.entry) &&
-          !isQuestionToolCall(earlier.entry)
-            ? [stepOf(earlier.entry, tracked, true)]
-            : [],
-        );
-      return others.length > 0 ? { kind: "step", step, others } : { kind: "step", step };
+    if (open.has(entry)) {
+      if (
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        isQuestionToolCall(entry.entry)
+      ) {
+        return { kind: "waiting", on: "answer" };
+      }
+      // Every call of the batch is the slot's, operations too: none of them
+      // is in the record until it returns.
+      const calls = callsTo(index);
+      const newest = calls.at(-1);
+      const others = calls.slice(0, -1);
+      if (newest === undefined) continue;
+      const rest = others.length > 0 ? { others } : {};
+      return newest.kind === "step"
+        ? { kind: "step", step: newest.step, ...rest }
+        : { kind: "operation", operation: newest.operation, ...rest };
     }
     if (entry.kind === "message") {
       if (entry.message.role !== "reasoning" || passed) {
@@ -1143,6 +1333,10 @@ function stretchRecord(input: {
   tracked: TrackedCommands;
   /** When the run ended; null while it runs. What reported after it is the next run's to tell. */
   until: string | null;
+  /** The thread's calls as the batch rule reads them (`batchReadingOf`). */
+  reading: BatchReading;
+  /** The whole run's calls by the batch rule. */
+  batch: LiveBatch<BatchEntry>;
 }): { items: RecordItem[]; rows: MessagesTimelineRow[] } {
   const { stretch } = input;
   const placed: Array<{ readonly order: number; readonly item: RecordItem }> = [];
@@ -1199,6 +1393,21 @@ function stretchRecord(input: {
     return partEnded !== null && Date.parse(partEnded) < Date.parse(ended) ? partEnded : ended;
   };
 
+  // A start its completion never merged with is that completion's line.
+  const returnedIds = input.reading.returned;
+  // Calls an older batch left marked open, and when each went stale.
+  const staleSince = new Map<WorkLogEntry, string>(
+    input.batch.stale.flatMap(({ item, since }) =>
+      item.kind === "operation" ? [] : [[item.entry, new Date(since).toISOString()] as const],
+    ),
+  );
+  const staleOperationSince = new Map<string, string>(
+    input.batch.stale.flatMap(({ item, since }) =>
+      item.kind === "operation"
+        ? [[item.operation.key, new Date(since).toISOString()] as const]
+        : [],
+    ),
+  );
   let activity: WorkLogEntry[] = [];
   let reasoning: ChatMessage[] = [];
   let reasoningStart: TimelineEntry | null = null;
@@ -1212,7 +1421,11 @@ function stretchRecord(input: {
     // message closed is a running line at that part's end; only the one the
     // Mate is making now stands beside its face.
     const entries = omitSupersededLifecycleMarkers(
-      activity.filter((entry) => workEntryIsVisibleInGroup(entry, runLive)),
+      // A call that never returned stays: live, the now line's or stale; settled, "No result".
+      activity.filter(
+        (entry) =>
+          workEntryIsVisibleInGroup(entry, true) && !startOfAReturnedCall(entry, returnedIds),
+      ),
       (entry) => entry,
     );
     activity = [];
@@ -1220,16 +1433,45 @@ function stretchRecord(input: {
       // The call it is making stands beside its face until it returns. A
       // command it left running in the background returned: its line is
       // here, running, from the moment it started.
-      if (stretch.live && step.entries.at(-1)?.toolLifecycleStatus === "inProgress") continue;
+      // One an older batch left marked open never returns (`stretchBatch`):
+      // it joins where it went stale, with no time, and settles as "No result".
+      const last = step.entries.at(-1)!;
+      const staleAt = staleSince.get(last);
+      if (runLive && last.toolLifecycleStatus === "inProgress") {
+        if (staleAt !== undefined) {
+          // Over, in the past tense: an in-progress call never folds into a
+          // step (`foldSteps`), so the step is this call alone.
+          const over = stepOf(last, input.tracked, false);
+          push({
+            kind: "step",
+            key: `step:${step.key}`,
+            at: staleAt,
+            step: { ...over, key: step.key, state: "done", endedAt: null, noResult: "stale" },
+          });
+          continue;
+        }
+        if (stretch.live) continue;
+      }
       const call = step.entries[0]!;
+      const at =
+        staleAt ??
+        joinedAt(
+          call.toolLifecycleStatus === "inProgress" ? null : (call.updatedAt ?? call.createdAt),
+          call.createdAt,
+        );
+      const parts =
+        runLive && step.entries.length > 1
+          ? step.entries.map((entry) => {
+              const part = stepOf(entry, input.tracked, false);
+              return { kind: "step" as const, key: `step:${part.key}`, at, step: part };
+            })
+          : undefined;
       push({
         kind: "step",
         key: `step:${step.key}`,
-        at: joinedAt(
-          call.toolLifecycleStatus === "inProgress" ? null : (call.updatedAt ?? call.createdAt),
-          call.createdAt,
-        ),
+        at,
         step,
+        ...(parts === undefined ? {} : { parts }),
       });
     }
   };
@@ -1316,7 +1558,14 @@ function stretchRecord(input: {
     switch (entry.kind) {
       case "operation": {
         const op = entry.operation;
+        const staleAt = staleOperationSince.get(op.key);
         if (op.kind === "browser") {
+          // One an older batch left marked open joins where it went stale,
+          // and stays there once the run is over.
+          if (staleAt !== undefined) {
+            joinCheck(op, staleAt);
+            break;
+          }
           // Taken now, it is the now line's; it joins where it ended.
           if (stretch.live && op.phase === "running") break;
           joinCheck(
@@ -1332,16 +1581,37 @@ function stretchRecord(input: {
         if (incident !== undefined) {
           push({ kind: "incident", key: incident.key, at: incident.appearedAt, incident });
         }
-        // What it runs stands beside its face and in its bar until it settles.
-        if (stretch.live && op.phase === "running") break;
+        // What the Mate waits on stands in the live slot until its call
+        // returns; one that runs on after (a stand-up's builds) is the band's,
+        // and its line joins the record where its call returned.
+        // Its call never returned: one an older batch left marked open joins
+        // where it went stale, and stays there once the run is over.
+        const unreturned =
+          op.returnedAt === undefined && (op.phase === "running" || op.phase === "interrupted");
+        if (unreturned && staleAt !== undefined) {
+          push({
+            kind: "operation",
+            key: `operation:${op.key}`,
+            at: staleAt,
+            operation: op,
+            noResult: runLive ? "stale" : "closed",
+          });
+          break;
+        }
+        if (runLive && op.phase === "running" && op.returnedAt === undefined && stretch.live) {
+          break;
+        }
+        // The run is over without it: no result.
+        const closed = !runLive && unreturned;
         push({
           kind: "operation",
           key: `operation:${op.key}`,
           at: joinedAt(
-            op.phase === "running" ? null : (op.settledAt ?? entry.createdAt),
+            op.returnedAt ?? (op.phase === "running" ? null : (op.settledAt ?? entry.createdAt)),
             entry.createdAt,
           ),
           operation: op,
+          ...(closed ? { noResult: "closed" as const } : {}),
         });
         break;
       }
@@ -1543,8 +1813,14 @@ export function deriveMessagesTimelineRows(input: {
   helperFinishes?: ReadonlyArray<HelperFinish>;
   /** Something runs alongside the live run: its panel draws a bar (`dockDraws`). */
   alongside?: boolean;
+  /**
+   * The thread's provider driver: whether its calls go stale by timing
+   * (`batchesByTiming`); not known, nothing does.
+   */
+  provider?: string | null;
 }): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
+  const reading = batchReadingOf(entries, { byTiming: batchesByTiming(input.provider) });
   const structure = deriveConversationStructure({
     timelineEntries: entries,
     latestTurn: input.latestTurn ?? null,
@@ -1853,6 +2129,12 @@ export function deriveMessagesTimelineRows(input: {
     // What the card holds besides its record: a plan to approve, a pause.
     const extras: MessagesTimelineRow[] = [];
     const items: RecordItem[] = [];
+    // The batch rule reads the whole run: a call left open before the person
+    // wrote into it goes stale too.
+    const batch = stretchBatch(
+      { entries: turn.stretches.flatMap((part) => part.entries) },
+      reading,
+    );
     turn.stretches.forEach((stretch, index) => {
       if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null) {
         const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
@@ -1872,6 +2154,8 @@ export function deriveMessagesTimelineRows(input: {
         pauseRow: stretch === last ? pause : null,
         tracked,
         until: turn.live ? null : last.endedAt,
+        reading,
+        batch,
       });
       items.push(...built.items);
       extras.push(...built.rows);
@@ -1981,7 +2265,7 @@ export function deriveMessagesTimelineRows(input: {
           turnKey: turn.key,
           live: turn.live,
           items,
-          now: working && answer === null ? liveActivity(last, turn.writing, tracked) : null,
+          now: working && answer === null ? liveActivity(last, turn.writing, tracked, batch) : null,
           answering: answer !== null,
           status,
           outcome,

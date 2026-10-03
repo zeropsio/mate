@@ -14,6 +14,7 @@ import type {
   OperationProgressView,
   OrganizationRef,
   ProcessRecord,
+  ProcessHistoryRead,
   ProjectActivityRead,
   ProjectKey,
   ProjectRecord,
@@ -456,7 +457,36 @@ export function selectActivity(state: ZeropsDataState, project: ProjectRef): Pro
         projectKeyOf(record.ref.project) === projectKeyOf(project) && isTerminalProcess(record),
     )
     .map((record) => processKnowledge(record, record.ref));
-  return { running, retainedHistory, observation: observationOf(state, project) };
+  return {
+    running,
+    retainedHistory,
+    processHistory: processHistoryReadOf(state, project),
+    observation: observationOf(state, project),
+  };
+}
+
+function processHistoryReadOf(state: ZeropsDataState, project: ProjectRef): ProcessHistoryRead {
+  const key = projectKeyOf(project);
+  for (const desired of state.interests.values()) {
+    const descriptor = desired.descriptor;
+    if (
+      descriptor.kind !== "project-process-history" ||
+      descriptor.before !== null ||
+      projectKeyOf(descriptor.project) !== key
+    )
+      continue;
+    switch (desired.interest.status) {
+      case "observing":
+        return "read";
+      case "failed":
+        return "failed";
+      case "paused":
+        return "unread";
+      default:
+        return "reading";
+    }
+  }
+  return "unread";
 }
 
 export const selectCommandAttempt = (

@@ -162,6 +162,12 @@ export interface WorkLogEntry {
    * pinned to the anchor. Absent on an entry that is its own only activity.
    */
   updatedAt?: string;
+  /**
+   * The model response its call was written in, as its start named it: the
+   * calls of one response are one batch (`@t3tools/shared/liveBatch`).
+   * Absent where the provider names none.
+   */
+  responseId?: string;
   turnId?: TurnId | null;
   /** Stable provider identity across in-progress and completed lifecycle updates. */
   toolCallId?: string;
@@ -788,7 +794,10 @@ export function deriveWorkLogEntries(
   // itself: a reload's snapshot keeps the start but drops every update a
   // completion supersedes, so an anchor at the first update would key and
   // place the row differently live and after a reload.
-  const startedAnchorByKey = new Map<string, { id: string; createdAt: string }>();
+  const startedAnchorByKey = new Map<
+    string,
+    { id: string; createdAt: string; responseId?: string | undefined }
+  >();
   for (const activity of ordered) {
     if (exclude?.has(activity.id)) continue;
     if (activity.kind === "tool.started") {
@@ -802,7 +811,11 @@ export function deriveWorkLogEntries(
       }
       const startedKey = toolLifecycleCollapseMapKey(started);
       if (startedKey !== undefined) {
-        startedAnchorByKey.set(startedKey, { id: activity.id, createdAt: activity.createdAt });
+        startedAnchorByKey.set(startedKey, {
+          id: activity.id,
+          createdAt: activity.createdAt,
+          responseId: started.responseId,
+        });
       }
       continue;
     }
@@ -854,6 +867,7 @@ export function deriveWorkLogEntries(
             createdAt: anchor.createdAt,
             startedAt: anchor.createdAt,
             updatedAt: entry.createdAt,
+            ...(anchor.responseId !== undefined ? { responseId: anchor.responseId } : {}),
           },
     );
   }
@@ -1005,10 +1019,15 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       : null
     : extractToolDetail(payload, title ?? activity.summary);
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
+  const responseId =
+    typeof payload?.responseId === "string" && payload.responseId.trim().length > 0
+      ? payload.responseId
+      : undefined;
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
     startedAt: activity.createdAt,
+    ...(responseId !== undefined ? { responseId } : {}),
     turnId: activity.turnId,
     label: taskLabel || activity.summary,
     tone:
@@ -1092,6 +1111,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   let toolLifecycleStatus = extractWorkLogToolLifecycleStatus(payload);
   if (!toolLifecycleStatus && activity.kind === "tool.completed") {
     toolLifecycleStatus = "completed";
+  }
+  // Its turn's end closed it: the call never returned, so no result.
+  if (activity.kind === "tool.completed" && payload?.unreturned === true) {
+    toolLifecycleStatus = "inProgress";
   }
   if (toolLifecycleStatus) {
     entry.toolLifecycleStatus = toolLifecycleStatus;
@@ -1306,6 +1329,7 @@ function mergeDerivedWorkLogEntries(
   const toolInput = next.toolInput ?? previous.toolInput;
   const callInput = next.callInput ?? previous.callInput;
   const startedAt = previous.startedAt ?? previous.createdAt;
+  const responseId = previous.responseId ?? next.responseId;
   return {
     ...previous,
     ...next,
@@ -1330,6 +1354,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolData !== undefined ? { toolData } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
     ...(callInput !== undefined ? { callInput } : {}),
+    ...(responseId !== undefined ? { responseId } : {}),
   };
 }
 
@@ -1919,6 +1944,7 @@ export function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
     createdAt: call.startedAt,
     startedAt: call.startedAt,
     ...(call.settledAt !== undefined ? { updatedAt: call.settledAt } : {}),
+    ...(call.responseId !== undefined ? { responseId: call.responseId } : {}),
     turnId: (call.turnId as TurnId | null) ?? null,
     toolCallId: call.id,
     label: call.toolName,

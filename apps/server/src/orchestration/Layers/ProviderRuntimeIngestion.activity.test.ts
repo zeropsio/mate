@@ -179,3 +179,49 @@ describe("runtimeEventToActivities tool streaming persistence", () => {
     expect(payload.data).toEqual(streamingData);
   });
 });
+
+describe("runtimeEventToActivities a call's response", () => {
+  // The live slot tells a newer batch by the response a call was written in.
+  it("keeps the response a call was written in on its start, through the projection", () => {
+    const event = {
+      ...base,
+      provider: ProviderDriverKind.make("claudeAgent"),
+      type: "item.started",
+      eventId: EventId.make("evt-tool-started-response"),
+      payload: {
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "Command run",
+        responseId: "msg-response-1",
+        data: { toolName: "Bash", input: { command: "pnpm test" } },
+      },
+    } satisfies ProviderRuntimeEvent;
+
+    const [activity] = runtimeEventToActivities(event);
+    expect(activity?.kind).toBe("tool.started");
+    const payload = projectActivityPayload(activity!).payload as Record<string, unknown>;
+    expect(payload.responseId).toBe("msg-response-1");
+  });
+
+  // A call its turn's end closed never returned: the client reads no result.
+  it("keeps a completion's word that its call never returned, through the projection", () => {
+    const event = {
+      ...base,
+      provider: ProviderDriverKind.make("claudeAgent"),
+      type: "item.completed",
+      eventId: EventId.make("evt-tool-completed-unreturned"),
+      payload: {
+        itemType: "command_execution",
+        status: "completed",
+        title: "Command run",
+        unreturned: true,
+        data: { toolName: "Bash", input: { command: "pnpm test" } },
+      },
+    } satisfies ProviderRuntimeEvent;
+
+    const [activity] = runtimeEventToActivities(event);
+    expect(activity?.kind).toBe("tool.completed");
+    const payload = projectActivityPayload(activity!).payload as Record<string, unknown>;
+    expect(payload.unreturned).toBe(true);
+  });
+});

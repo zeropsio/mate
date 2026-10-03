@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   resolveThreadFeedLiveFollow,
   resolveThreadFeedSubmissionAnchor,
+  type ThreadFeedLiveFollowEvent,
   resolveThreadWorkGroupInitialScroll,
   shouldFollowThreadWorkGroupAppend,
 } from "./thread-feed-live-follow";
@@ -145,79 +146,148 @@ describe("resolveThreadFeedSubmissionAnchor", () => {
 });
 
 describe("resolveThreadFeedLiveFollow", () => {
-  it("pauses immediately when the user starts scrolling", () => {
-    expect(resolveThreadFeedLiveFollow(true, { type: "user-scroll-begin" })).toBe(false);
-  });
-
-  it("stays paused away from the actual end", () => {
-    expect(
-      resolveThreadFeedLiveFollow(false, {
-        type: "scroll",
-        isAtEnd: false,
-        userScrollSessionActive: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("does not mistake programmatic layout compensation for a user scroll", () => {
-    expect(
-      resolveThreadFeedLiveFollow(true, {
-        type: "scroll",
-        isAtEnd: false,
-        userScrollSessionActive: false,
-      }),
-    ).toBe(true);
-  });
-
-  it("does not re-arm at the end while a user scroll session is active", () => {
-    expect(
-      resolveThreadFeedLiveFollow(false, {
-        type: "scroll",
-        isAtEnd: true,
-        userScrollSessionActive: true,
-      }),
-    ).toBe(false);
-  });
-
-  it.each([
-    { isAtEnd: false, userScrollSessionActive: false, expected: false },
-    { isAtEnd: true, userScrollSessionActive: false, expected: true },
-    { isAtEnd: false, userScrollSessionActive: true, expected: false },
-    { isAtEnd: true, userScrollSessionActive: true, expected: false },
-  ])("reconciles follow after a disclosure settles: %j", ({ expected, ...state }) => {
-    expect(resolveThreadFeedLiveFollow(!expected, { type: "disclosure-settled", ...state })).toBe(
-      expected,
-    );
-  });
-
-  it("re-arms at the actual end only after the user scroll session ends", () => {
-    expect(
-      resolveThreadFeedLiveFollow(false, {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly following: boolean;
+    readonly event: ThreadFeedLiveFollowEvent;
+    readonly expected: boolean;
+  }> = [
+    {
+      name: "a drag starts",
+      following: true,
+      event: { type: "user-scroll-begin" },
+      expected: false,
+    },
+    {
+      name: "the person's drag moves the list, even at the end",
+      following: false,
+      event: { type: "scroll", isAtEnd: true, userScrollSessionActive: true },
+      expected: false,
+    },
+    {
+      name: "layout compensation moves a follower off the end for a frame",
+      following: true,
+      event: { type: "scroll", isAtEnd: false, userScrollSessionActive: false },
+      expected: true,
+    },
+    {
+      name: "a card below settles shorter and the list lands at its end under a reader",
+      following: false,
+      event: { type: "scroll", isAtEnd: true, userScrollSessionActive: false },
+      expected: false,
+    },
+    {
+      name: "the person's drag and glide came back down to the end",
+      following: false,
+      event: {
         type: "user-scroll-end",
         isAtEnd: true,
+        startOffset: 1_200,
+        endOffset: 1_800,
         userScrollSessionActive: true,
-      }),
-    ).toBe(true);
-    expect(
-      resolveThreadFeedLiveFollow(false, {
+      },
+      expected: true,
+    },
+    {
+      name: "the person's drag bounced at the end and came back where it began",
+      following: false,
+      event: {
+        type: "user-scroll-end",
+        isAtEnd: true,
+        startOffset: 1_800,
+        endOffset: 1_800,
+        userScrollSessionActive: true,
+      },
+      expected: true,
+    },
+    {
+      name: "a drag whose start was not read counts as coming back",
+      following: false,
+      event: {
+        type: "user-scroll-end",
+        isAtEnd: true,
+        startOffset: null,
+        endOffset: 1_800,
+        userScrollSessionActive: true,
+      },
+      expected: true,
+    },
+    {
+      name: "the person nudged up and let go still within the end's tolerance",
+      following: false,
+      event: {
+        type: "user-scroll-end",
+        isAtEnd: true,
+        startOffset: 1_800,
+        endOffset: 1_770,
+        userScrollSessionActive: true,
+      },
+      expected: false,
+    },
+    {
+      name: "the person's drag ended above the end",
+      following: false,
+      event: {
         type: "user-scroll-end",
         isAtEnd: false,
+        startOffset: 600,
+        endOffset: 900,
         userScrollSessionActive: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("ignores momentum-end events from programmatic scrolling", () => {
-    expect(
-      resolveThreadFeedLiveFollow(true, {
+      },
+      expected: false,
+    },
+    {
+      name: "a momentum end from a programmatic scroll",
+      following: true,
+      event: {
         type: "user-scroll-end",
         isAtEnd: false,
+        startOffset: null,
+        endOffset: 900,
         userScrollSessionActive: false,
-      }),
-    ).toBe(true);
-  });
+      },
+      expected: true,
+    },
+    {
+      name: "a disclosure the person opened leaves them above the end",
+      following: true,
+      event: { type: "disclosure-settled", isAtEnd: false, userScrollSessionActive: false },
+      expected: false,
+    },
+    {
+      name: "a disclosure closing lands the list at its end under a reader",
+      following: false,
+      event: { type: "disclosure-settled", isAtEnd: true, userScrollSessionActive: false },
+      expected: false,
+    },
+    {
+      name: "a disclosure settles at the end under a follower",
+      following: true,
+      event: { type: "disclosure-settled", isAtEnd: true, userScrollSessionActive: false },
+      expected: true,
+    },
+    {
+      name: "a disclosure settles mid-drag",
+      following: false,
+      event: { type: "disclosure-settled", isAtEnd: true, userScrollSessionActive: true },
+      expected: false,
+    },
+    // The jump-to-latest button is the person coming back, wherever they stand.
+    {
+      name: "the person presses jump-to-latest after a drag up",
+      following: false,
+      event: { type: "jump-to-latest" },
+      expected: true,
+    },
+    {
+      name: "a thread switch or the person's send",
+      following: false,
+      event: { type: "reset" },
+      expected: true,
+    },
+  ];
 
-  it("re-arms after an explicit reset", () => {
-    expect(resolveThreadFeedLiveFollow(false, { type: "reset" })).toBe(true);
+  it.each(cases)("$name", ({ following, event, expected }) => {
+    expect(resolveThreadFeedLiveFollow(following, event)).toBe(expected);
   });
 });

@@ -13,6 +13,7 @@ import {
 } from "./composer-logic";
 import { carryDisplacedCustomAnswerIntoPrompt } from "./pendingUserInput";
 import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
+import { INLINE_FILE_PLACEHOLDER } from "./lib/composerFiles";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 describe("composerSubmissionIntentForEnter", () => {
@@ -517,5 +518,30 @@ describe("the caret around a picture", () => {
 
   it("a trigger does not reach back across a picture", () => {
     expect(detectComposerTrigger(`@src${P}x`, 6)).toBeNull();
+  });
+});
+
+describe("the caret around a file", () => {
+  const F = INLINE_FILE_PLACEHOLDER;
+  const text = `ab${F}@AGENTS.md x`;
+
+  it.each([
+    ["before the file", 2, 2],
+    ["after the file", 3, 3],
+    ["after the mention that follows", 4, 13],
+  ])("expands a caret %s", (_label, collapsed, expanded) => {
+    expect(expandCollapsedComposerCursor(text, collapsed)).toBe(expanded);
+    expect(collapseExpandedComposerCursor(text, expanded)).toBe(collapsed);
+  });
+
+  it.each([
+    ["right after a file", `ab${F}`, 3, "left", true],
+    ["right before a file", `${F}ab`, 0, "right", true],
+  ] as const)("is next to it %s", (_label, prompt, cursor, direction, expected) => {
+    expect(isCollapsedCursorAdjacentToInlineToken(prompt, cursor, direction)).toBe(expected);
+  });
+
+  it("a trigger does not reach back across a file", () => {
+    expect(detectComposerTrigger(`@src${F}x`, 6)).toBeNull();
   });
 });

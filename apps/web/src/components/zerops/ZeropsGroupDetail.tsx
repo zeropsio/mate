@@ -58,6 +58,7 @@ import {
   firstDeployTone,
   stageFirstDeploy,
   type FirstDeploy,
+  matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import {
   DEPLOYS_ASIDE,
@@ -229,7 +230,6 @@ function useMateMenus(): {
   readonly trouble: string | null;
 } {
   const { listing } = useZeropsCandidates();
-  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const { serverVersions } = useZeropsContainers();
   const registry = useZeropsRegistry();
   const actions = useMateActions({ registry, serverVersions });
@@ -393,6 +393,7 @@ function useGroupMates(groupId: string): {
       .filter(({ item }) => hasMate(item))
       .map(({ item }) =>
         groupMateOf({
+          nowMs,
           item,
           read: activityOf(item),
           tint: tints.get(item.project.id) ?? "slate",
@@ -401,7 +402,7 @@ function useGroupMates(groupId: string): {
           update: mateUpdateStatus(updates.of(item)),
         }),
       );
-  }, [activityOf, flow, groupId, listing, updates, viewer]);
+  }, [activityOf, flow, groupId, listing, updates, viewer, nowMs]);
   const patient = useListingPatience(listing);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),
@@ -580,6 +581,7 @@ export function ZeropsReleaseVerb({
  * from what the platform runs and HQ's records of its deploys.
  */
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
+  const { listing } = useZeropsCandidates();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const nowMs = useNowMs();
@@ -587,7 +589,11 @@ function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDepl
     const row = flow?.environments.find(
       (entry) => entry.projectId === projectId && entry.tier === "stage",
     );
+    const candidate = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
     return stageFirstDeploy({
+      createdAt: candidate?.project.created,
+      projectStatus: candidate?.project.status,
+      services: candidate?.services === undefined ? undefined : candidate.services.statuses,
       deployment: flowValue?.deployments.get(projectId),
       deploys: row?.deploys,
       keyGap: row?.keyGap ?? false,
@@ -1860,6 +1866,7 @@ const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
  * own Mate only; another's waits on its owner.
  */
 export function groupMateOf(input: {
+  readonly nowMs?: number;
   readonly item: ZeropsCandidate;
   /** What its menu row reads (`useMateRowActivity`). */
   readonly read: ZeropsAgentActivity | undefined;
@@ -1879,7 +1886,13 @@ export function groupMateOf(input: {
     name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
     tint,
     shape: mateShapeOf(item.project, tint),
-    face: mateFaceOf({ connected, activity: live, reviewWaits: input.reviewWaits, mine }),
+    face: mateFaceOf({
+      connected,
+      activity: live,
+      reviewWaits: input.reviewWaits,
+      mine,
+      pose: input.nowMs === undefined ? undefined : matePoseOf(item, input.nowMs),
+    }),
     asks: mine && mateFaceFor(connected, live) === "needs",
     ...(live?.kind === "failed" ? { failed: true } : {}),
     subject,

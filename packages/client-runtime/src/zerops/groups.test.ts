@@ -626,6 +626,39 @@ describe("deriveZeropsGroups — a creation awaiting its project", () => {
 });
 
 describe("deriveZeropsGroups — creations under way", () => {
+  it("replaces an uncertain creation with the project bearing its HQ intent, even after a rename", () => {
+    const pending = {
+      ...birth("local", "aaa", 1),
+      intent: "intent-1",
+      awaitingProject: true,
+      failed: true,
+    };
+    const listed = project("Renamed", {
+      id: "real",
+      tagList: ["mate", "mate:birth:intent-1"],
+      hq: placed("aaa"),
+    });
+    const tree = deriveZeropsGroups([listed], { order: "name", births: [pending] });
+    expect(tree.groups[0]?.pending).toEqual([]);
+    expect(tree.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["real"]);
+  });
+
+  it("keeps a different intent's creation when two Mates have the same name", () => {
+    const pending = {
+      ...birth("local", "aaa", 1),
+      intent: "intent-1",
+      awaitingProject: true,
+      failed: true,
+    };
+    const listed = project(pending.placement.displayName, {
+      id: "real",
+      tagList: ["mate:birth:intent-2"],
+      hq: placed("aaa"),
+    });
+    expect(
+      deriveZeropsGroups([listed], { order: "name", births: [pending] }).groups[0]?.pending,
+    ).toHaveLength(1);
+  });
   it.each([
     {
       case: "a birth the listing does not hold yet is a pending member of its group",

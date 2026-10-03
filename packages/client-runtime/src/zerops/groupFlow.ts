@@ -71,7 +71,7 @@ import { changeState, type ChangeState, type FlowPullRequest } from "./projectFl
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
-import { firstDeploy, type FirstDeploy } from "./stopComing.ts";
+import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 
 /** One Mate of the project, as the flow's first column shows it. */
 export interface GroupFlowMate {
@@ -107,6 +107,9 @@ export interface GroupFlowPending extends GroupFlowComing {
 
 /** One group stage or the production, as the surfaces hold it. */
 export interface GroupFlowStopInput {
+  readonly createdAt?: string | undefined;
+  readonly projectStatus?: string | undefined;
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
@@ -286,8 +289,8 @@ export const PRODUCTION_NOT_SET_UP = "Not set up";
 export const PRODUCTION_SETTING_UP = "Setting up production…";
 /** Production's line while a deploy runs on it. */
 export const PRODUCTION_DEPLOYING = "Deploying…";
-/** A stage's line while its creation is under way. */
-export const STAGE_SETTING_UP = "Setting up a stage…";
+/** A stage's line while its creation is under way (`stopComing.ts`). */
+export { STAGE_SETTING_UP } from "./stopComing.ts";
 /** Beside *Add production*, where the verb is: the Mate's part ends at the pull request. */
 export const PRODUCTION_ADDED_HERE = "Production is added here, not by the Mate.";
 /** The verb that adds it. */
@@ -342,8 +345,12 @@ function withFirstDeploy(
   input: GroupFlowStopInput,
   flow: GroupFlowInput,
 ): GroupFlowStop {
-  if (input.tier !== "stage") return stop;
+  // Only a stage that runs nothing, or nothing known yet, waits for a first deploy.
+  if (input.tier !== "stage" || (stop.state !== "empty" && stop.state !== "checking")) return stop;
   const first = stageFirstDeploy({
+    createdAt: input.createdAt,
+    projectStatus: input.projectStatus,
+    services: input.services,
     deployment: input.deployment,
     deploys: input.row?.deploys,
     keyGap: input.row?.keyGap ?? false,
@@ -358,7 +365,26 @@ function withFirstDeploy(
  * HQ's records of it say (`firstDeploy`). `undefined` while HQ has none under way, or nothing can
  * be promised.
  */
+export function stageSettingUp(
+  input: Pick<GroupFlowStopInput, "createdAt" | "projectStatus" | "services">,
+  nowMs: number | undefined,
+): ReturnType<typeof stopImport> {
+  return nowMs === undefined
+    ? undefined
+    : stopImport({
+        createdAt: input.createdAt,
+        projectStatus: input.projectStatus,
+        services: input.services,
+        nowMs,
+      });
+}
+
 export function stageFirstDeploy(input: {
+  readonly createdAt?: string | undefined;
+  /** Its project's status, as the platform lists it. */
+  readonly projectStatus?: string | undefined;
+  /** Its services as the platform lists them; with them, nothing is said while it is being made. */
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
   /** What it runs, as the platform pushed it (`ZeropsProjectFlowValue.deployments`). */
   readonly deployment: Shown<Deployment> | undefined;
   /** HQ's newest deploy of each of its services (`EnvironmentRow.deploys`); `undefined` undeclared. */
@@ -369,9 +395,18 @@ export function stageFirstDeploy(input: {
   readonly nowMs: number | undefined;
 }): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
   const { deployment } = input;
-  if (deployment?.state !== "known" || deployment.value.kind !== "none") return undefined;
+  // Something runs or builds there: no first deploy to wait for.
+  if (deployment?.state === "known" && deployment.value.kind !== "none") return undefined;
   // A build of it was seen to end with nothing running: a fact, however long ago it was asked.
-  if (deployment.value.afterBuild === true) return { kind: "failed" };
+  if (
+    deployment?.state === "known" &&
+    deployment.value.kind === "none" &&
+    deployment.value.afterBuild === true
+  )
+    return { kind: "failed" };
+  const step = stageSettingUp(input, input.nowMs);
+  if (step !== undefined) return { kind: "setting-up", step };
+  if (deployment?.state !== "known") return undefined;
   if (input.nowMs === undefined || input.deploys === undefined) return undefined;
   const first = firstDeploy({ deploys: input.deploys, keyGap: input.keyGap, nowMs: input.nowMs });
   return first.kind === "awaited" ? undefined : first;

@@ -9,7 +9,12 @@
  *
  * @module flow/stopDetail
  */
-import { firstDeployLine, firstDeployTone, type FirstDeploy } from "../stopComing.ts";
+import {
+  firstDeployLine,
+  firstDeployTone,
+  STAGE_SETTING_UP,
+  type FirstDeploy,
+} from "../stopComing.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import {
   deployedVersion,
@@ -173,11 +178,22 @@ export function stopVerdict(input: {
       ? ({ kind: "release", tag: input.release.tag } as const)
       : null;
   if (view.version === undefined) {
+    // Its own import still runs: set up first, as the menu and its cell say — never Checking, nor
+    // that a merge deploys it (the broker deploys main there as its import ends).
+    if (tier === "stage" && input.firstDeploy?.kind === "setting-up")
+      return { tone: "busy", text: STAGE_SETTING_UP, ...quiet };
     if (view.line !== NOTHING_DEPLOYED) return { tone: "off", text: view.line, ...quiet };
     // A stage's first deploy asked for says where it stands, as its cell and the menu do.
     const first = tier === "stage" ? firstDeployLine(input.firstDeploy) : undefined;
     if (first !== undefined) {
-      return { tone: firstDeployTone(input.firstDeploy), text: `${first}.`, ...quiet };
+      // Why it failed, only where the job's own words say it (`firstDeployFailure`).
+      const why = input.firstDeploy?.kind === "failed" ? input.firstDeploy.reason : undefined;
+      return {
+        tone: firstDeployTone(input.firstDeploy),
+        text: `${first}.`,
+        ...quiet,
+        ...(why === undefined ? {} : { detail: why }),
+      };
     }
     // An empty production moves by its first release, offered as soon as main has something.
     return {
@@ -443,7 +459,11 @@ export function serviceRows(input: {
       commit: version.commit,
       line: commitLine(version, input.mainHead),
       tone,
-      word: word === NOTHING_DEPLOYED ? (firstDeployLine(input.firstDeploy) ?? word) : word,
+      word:
+        word === NOTHING_DEPLOYED ||
+        (input.firstDeploy?.kind === "setting-up" && version.label === undefined)
+          ? (firstDeployLine(input.firstDeploy) ?? word)
+          : word,
       status:
         word === NOTHING_DEPLOYED
           ? undefined

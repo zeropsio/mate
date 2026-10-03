@@ -13,12 +13,19 @@ import { quoteWords } from "@t3tools/shared/messagePreview";
 
 import {
   browserCheckCaption,
+  checksStrip,
   devServerRunning,
   formatWorkDuration,
   operationLineWords,
   unrecoveredFailures,
 } from "./conversation.logic";
-import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
+import {
+  liveCallsOf,
+  type LiveCall,
+  type RecordItem,
+  type RunStatus,
+  type TurnHeaderActivity,
+} from "./MessagesTimeline.logic";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
 // ---------------------------------------------------------------------------
@@ -59,13 +66,171 @@ export interface RunScrollPosition {
   readonly clientHeight: number;
 }
 
+/** How near its foot the scroll may stand and still count as at it: it follows from there. */
+export const FOLLOW_SLACK_PX = 4;
+
 /**
- * Whether the scroll stands at its foot, a pixel's slack for a fractional
- * zoom: there, it follows what arrives; scrolled up, it stays where the
- * person put it.
+ * How far a move must go to be one: a re-read of where it stood can settle a
+ * fraction, and the browser snaps to sub-pixels.
+ */
+const MOVED_PX = 1.5;
+
+/**
+ * Whether the scroll stands at its foot, a few pixels' slack: there, it
+ * follows what arrives; scrolled up, it stays where the person put it.
  */
 export function standsAtFoot(scroll: RunScrollPosition): boolean {
-  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1;
+  return fromFoot(scroll) <= FOLLOW_SLACK_PX;
+}
+
+function fromFoot(scroll: RunScrollPosition): number {
+  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+}
+
+/** Nothing the person opened in a run's scroll. */
+export const NOTHING_OPENED: ReadonlySet<string> = new Set();
+
+/** Whether the run's scroll follows its foot, where its top last stood, and what the person opened in it. */
+export interface RunScrollFollow {
+  readonly follows: boolean;
+  /** Where its top last stood: where a move left it, or where the page last put it. */
+  readonly stood: number;
+  /**
+   * What the person opened in it since it last followed, still open: each by
+   * its own switch's key, so a close of something they never opened (a
+   * command that opened itself in the slot) is not theirs.
+   */
+  readonly opened: ReadonlySet<string>;
+  /** Whether closing the last of them follows again: it followed as they opened the first, and they have not moved it up since. */
+  readonly resumes: boolean;
+  /**
+   * The foot as the person's move down set out for it — End, a wheel run to
+   * the bottom glides there — while that move lasts: lines arriving meanwhile
+   * move the foot on under it, and reaching where it stood reaches it.
+   */
+  readonly reach: number | null;
+  /** Its foot as it was last read: where a move down that starts now sets out for. */
+  readonly foot: number | null;
+}
+
+/** What happened to the run's scroll, for whether it follows its foot. */
+export type RunScrollEvent =
+  /** It was read where it stands now: after a scroll, or as what it holds grew. */
+  | { readonly kind: "scrolled"; readonly position: RunScrollPosition }
+  /** The page put its top at `top` (read back as the browser took it). */
+  | { readonly kind: "set"; readonly top: number }
+  /** The person opened something in it, by its switch `key`: theirs to read. */
+  | { readonly kind: "opened"; readonly key: string }
+  /** The person closed something in it, by its switch `key`. */
+  | { readonly kind: "closed"; readonly key: string }
+  /** A move of the person's ended (the browser's `scrollend`). */
+  | { readonly kind: "ended" };
+
+/**
+ * Whether the run's scroll follows its foot after `event`: every arrival
+ * keeps its newest line in view while it does. A top that moved up from
+ * where it last stood is the person's — a wheel, keys, a find, a
+ * drag-select, focus moving into it, whatever made it, inside the foot's
+ * slack too — and stops it, unless it landed on the foot exactly: that is
+ * the browser clamping it (a row's travel ending, the card growing taller).
+ * A top that moved down onto the foot is the person's too, and follows
+ * again — onto the foot as it stood when that move began, too, so End
+ * reaches it though a line arrived as it glided. Opening something in it stops it; closing the last thing they
+ * opened follows again, if it followed as they opened it and they have not
+ * moved it up since. Nothing else changes it: an arrival grows it under its
+ * top, a card below its cap stands at its foot whatever happens, and the
+ * page's own move is the page's.
+ */
+export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunScrollFollow {
+  switch (event.kind) {
+    case "opened": {
+      if (state.opened.has(event.key)) return state;
+      return {
+        ...state,
+        follows: false,
+        opened: new Set(state.opened).add(event.key),
+        resumes: state.opened.size === 0 ? state.follows : state.resumes,
+        reach: null,
+      };
+    }
+    case "closed": {
+      // Closing what they never opened here counts for nothing.
+      if (!state.opened.has(event.key)) return state;
+      const opened = new Set(state.opened);
+      opened.delete(event.key);
+      const back = opened.size === 0 && state.resumes;
+      return {
+        ...state,
+        follows: state.follows || back,
+        opened,
+        resumes: opened.size > 0 && state.resumes,
+      };
+    }
+    case "set":
+      return { ...state, stood: event.top, reach: null };
+    case "ended":
+      return state.reach === null ? state : { ...state, reach: null };
+    case "scrolled": {
+      const { position } = event;
+      const top = position.scrollTop;
+      const foot = footTop(position);
+      if (top < state.stood - MOVED_PX) {
+        // Onto its foot exactly: the browser clamped it there.
+        if (fromFoot(position) <= MOVED_PX) return { ...state, stood: top, reach: null, foot };
+        return { ...state, follows: false, stood: top, resumes: false, reach: null, foot };
+      }
+      if (top > state.stood + MOVED_PX) {
+        // A line that landed since the move began is read with its first step.
+        const reach = state.reach ?? state.foot ?? foot;
+        if (standsAtFoot(position) || top >= reach - FOLLOW_SLACK_PX) {
+          return {
+            follows: true,
+            stood: top,
+            opened: NOTHING_OPENED,
+            resumes: false,
+            reach: null,
+            foot,
+          };
+        }
+        return { ...state, stood: top, reach, foot };
+      }
+      // Less than a move: kept from where it stood, so a slow drag adds up.
+      return state.foot === foot ? state : { ...state, foot };
+    }
+  }
+}
+
+/**
+ * The scroll as its lines are laid out: a row travelling into its place (a
+ * plop from the live slot, a rise) paints past their foot for a moment, and
+ * the browser counts that as more to scroll to. It is not: the foot is where
+ * the lines end.
+ */
+export function laidOutPosition(
+  scroll: RunScrollPosition & { readonly laidHeight: number },
+): RunScrollPosition {
+  return {
+    scrollTop: scroll.scrollTop,
+    scrollHeight: Math.min(scroll.scrollHeight, scroll.laidHeight),
+    clientHeight: scroll.clientHeight,
+  };
+}
+
+/** Where a scroll at its foot stands: its last line's end at its bottom edge. */
+export function footTop(scroll: RunScrollPosition): number {
+  return Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+}
+
+/** The edges lines are cut past: a fade says so there, and only there. */
+export function cutEdges(scroll: RunScrollPosition): {
+  readonly above: boolean;
+  readonly below: boolean;
+} {
+  const overflows = scroll.scrollHeight > scroll.clientHeight + 1;
+  return {
+    above: overflows && scroll.scrollTop > 1,
+    below: overflows && !standsAtFoot(scroll),
+  };
 }
 
 /** Whether the scroll nears its top with earlier lines still undrawn: then it draws them. */
@@ -135,8 +300,8 @@ export type NowLine =
   | { readonly kind: "step"; readonly step: WorkStep }
   /** A platform operation it waits on: a deploy, a check in the browser. */
   | { readonly kind: "operation"; readonly operation: ZeropsOperation }
-  /** Several steps at once, oldest first: how many, and a line each under it. */
-  | { readonly kind: "several"; readonly steps: ReadonlyArray<WorkStep> }
+  /** Several calls at once, oldest first: how many, and a line each under it. */
+  | { readonly kind: "several"; readonly calls: ReadonlyArray<LiveCall> }
   /** It waits on the person: their answer to its question, or their approval. */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   | { readonly kind: "writing" }
@@ -195,12 +360,98 @@ export function nowLineOf(input: {
         thought: thoughtTicker(now.messages.map((message) => message.text).join("\n\n")),
       };
     case "step":
-      return now.others !== undefined && now.others.length > 0
-        ? { kind: "several", steps: [...now.others, now.step] }
-        : { kind: "step", step: now.step };
-    case "operation":
-      return { kind: "operation", operation: now.operation };
+    case "operation": {
+      const calls = liveCallsOf(now);
+      if (calls.length > 1) return { kind: "several", calls };
+      return now.kind === "step"
+        ? { kind: "step", step: now.step }
+        : { kind: "operation", operation: now.operation };
+    }
   }
+}
+
+// ---------------------------------------------------------------------------
+// The live slot
+// ---------------------------------------------------------------------------
+
+/** What the live slot says when no item stands in it. */
+export type SlotFiller =
+  | { readonly kind: "thinking" }
+  | { readonly kind: "writing" }
+  | { readonly kind: "condensing" }
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" };
+
+/**
+ * What the live slot holds (pass 35): what the Mate is doing this moment,
+ * each thing as the record item it becomes — the same key, so it plops into
+ * the history as itself — and what the slot says when nothing stands in it.
+ * A thought with no words yet is "Thinking", never an empty bubble.
+ */
+export interface SlotModel {
+  readonly live: ReadonlyArray<RecordItem>;
+  readonly filler: SlotFiller;
+}
+
+export function slotModelOf(input: {
+  readonly now: TurnHeaderActivity | null;
+  readonly answering: boolean;
+  readonly compacting: boolean;
+  readonly items: ReadonlyArray<RecordItem>;
+}): SlotModel {
+  const { now } = input;
+  if (input.compacting) return { live: [], filler: { kind: "condensing" } };
+  if (input.answering || now?.kind === "writing") return { live: [], filler: { kind: "writing" } };
+  const thinking: SlotModel = { live: [], filler: { kind: "thinking" } };
+  if (now === null) return thinking;
+  switch (now.kind) {
+    case "thinking":
+      return now.key !== null && now.messages.some((message) => message.text.trim().length > 0)
+        ? {
+            live: [
+              {
+                kind: "thought",
+                key: now.key,
+                at: now.messages[0]?.createdAt ?? "",
+                messages: now.messages,
+                durationMs: null,
+              },
+            ],
+            filler: thinking.filler,
+          }
+        : thinking;
+    case "waiting": {
+      // An approval: what it asks stands in the slot, the controls in the composer.
+      if (now.asked !== undefined && now.asked.length > 0) {
+        return { live: now.asked.map(liveCallItem), filler: thinking.filler };
+      }
+      const question =
+        now.key === undefined ? undefined : input.items.find((item) => item.key === now.key);
+      return question === undefined
+        ? { live: [], filler: { kind: "waiting", on: now.on } }
+        : { live: [question], filler: thinking.filler };
+    }
+    case "step":
+    case "operation":
+      return { live: liveCallsOf(now).map(liveCallItem), filler: thinking.filler };
+  }
+}
+
+/**
+ * A call the Mate waits on, as the record item it becomes. A session's
+ * follow-up call is a line of its own: the session's line stands in the
+ * record where its first call returned, and stays there.
+ */
+function liveCallItem(call: LiveCall): RecordItem {
+  if (call.kind === "step") {
+    return { kind: "step", key: `step:${call.step.key}`, at: call.step.startedAt, step: call.step };
+  }
+  const op = call.operation;
+  const followUp = op.returnedAt === undefined ? undefined : op.openedAt;
+  const key = followUp === undefined ? `operation:${op.key}` : `operation:${op.key}#${followUp}`;
+  const at = followUp ?? op.anchorAt;
+  return op.kind === "browser"
+    ? { kind: "strip", key, at, strip: checksStrip([op], true) }
+    : { kind: "operation", key, at, operation: op };
 }
 
 /** Several steps of one kind at once, said by their kind: "Running 3 commands", "Reading 2 files". */
@@ -212,6 +463,12 @@ const SEVERAL: Partial<Record<StepKind, (count: number) => string>> = {
   web: (count) => `Reading ${count} pages`,
   look: (count) => `Looking at ${count} pictures`,
 };
+
+/** Several calls at once, in words: by their kind when they are steps of one kind. */
+export function severalCallsWords(calls: ReadonlyArray<LiveCall>): string {
+  const steps = calls.flatMap((call) => (call.kind === "step" ? [call.step] : []));
+  return steps.length === calls.length ? severalWords(steps) : `Running ${calls.length} steps`;
+}
 
 /** Several steps at once, in words: by their kind when they share one. */
 export function severalWords(steps: ReadonlyArray<WorkStep>): string {
@@ -243,7 +500,7 @@ export function nowLineWords(line: NowLine): string {
     case "operation":
       return operationNowWords(line.operation);
     case "several":
-      return severalWords(line.steps);
+      return severalCallsWords(line.calls);
     case "waiting":
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
     case "writing":

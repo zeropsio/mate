@@ -7465,3 +7465,99 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   `activeAppVersion` embedded in `POST /service-stack/search` carries `base, created, id,
 lastUpdate, os, status` only; `/app-version/search` gives the same version `source: NONE`,
   `name: null`.
+
+## Run 5 as measured — 2026-10-03
+
+- **Pass 34's fixes, re-checked live** — mate 0.11.87 and gitea-mate #7, two windows on
+  mate.zerops.io as the test account, 24 minutes.
+  - A New project "Tally" went through its first stage.
+  - Larder took a merge and a release.
+  - Each Mate read the same "Waiting for your sign-in" whichever flow made it.
+  - A merge cleared the Mate's "needs you" face in the other window 10.0 s after the press (run 4:
+    48 s).
+  - v0.1.1's dialog kept "replaces v0.1.0 · 1 change" and its roll back to v0.1.0 through Released.
+  - A stage's "Deployed 61907df" held through the 6.5 s before the broker's status turned success.
+  - The 42 platform processes in our projects all finished.
+  - The other group's existing Mate, watched read-only, ran nothing.
+- **A group's first runner, timed** — imported 9.2 s after the merge that queued its first job, built
+  at the first try in 103 s.
+- **A stage's first deploy, timed** — Add stage at +664.9 s.
+  - project.create ran +670.4 → +700.0 s.
+  - The import's no-code `stack.deploy app` ran +699.5 → +710.5 s.
+  - With the workflow fixed, the first build ran +1033.8 → +1097.3 s, and the address was on at
+    +1097.3 s.
+  - "Stage is up" showed at +1100.7 s, and the stage answered 200 by +1111.8 s (6 s poll).
+- **A deploy job can fail before the broker sees it** — the group workflow's own Test step ran `npm
+test` on the runner, a bare Ubuntu 26.04 with git and no language runtime, and exited 127 (`npm:
+command not found`).
+  - Both runs failed 23 s after the runner came up: the push run, and the broker's dispatch of the
+    same commit.
+  - The commit on `main` carried the workflow's own status, `Zerops deploy / deploy (push)`:
+    `failure`. The broker's `mate/deploy/<stage>/app` stayed `pending`, because the job never asked
+    for its grant.
+  - The app read neither status and said "first deploy on its way" for 4.3 min.
+  - zcp's template defaults that step to `echo "no test command configured"`. The Mate replaced it.
+- **The platform's process list** — `GET /project/{id}/process` answers newest first, with or
+  without `offset`, and carries no `totalCount`.
+  - `actionNameContains=stack.build` filters before paging.
+  - The Gitea project held 22 processes in all: `limit=1000` returned them in 78 KB, in 0.75 s.
+- **Idle cost** — 16 and 18 requests a minute per window over 280 s with no fresh open pull request
+  (run 4: 16). Gitea's org listings ran once a minute per group, and the pull watch added none.
+- **Production blinked twice** — Larder's production answered `unreachable: timeout` for about 20 s
+  at +872 s and again at +1318 s, then 200. Nothing deployed there at either moment.
+
+## Run 6 as measured — 2026-10-03
+
+- **Pass 35's fixes, re-checked live** — mate 0.11.88, zcp v9.189.1 and gitea-mate #8, two windows
+  on mate.zerops.io as the test account, 33 minutes.
+  - A New project "Quill" with its Mate went through a stage whose first deploy failed, then its fix.
+  - Larder took a new Mate that stood up development from the group repo on its own.
+  - The pull request's workflow set up Node (`actions/setup-node@v4`, node 24) before its Test step.
+  - The stage line read "making the project" (+846 s), "adding the app" (+876 s), then "awaits the
+    runner" (+888 s): the import before the runner, on the menu and the card alike.
+  - The push job failed at Test at +952 s. The first status read that carried it (+972.7 s) turned
+    the projects page cell to "First deploy failed" (+972.9 s) and the menu to "Stage didn't come up ·
+    its first deploy failed" (+972.8 s; +976.7 s in the other window).
+  - After the fix's merge (+1663 s): "first deploy on its way" (+1665 s), "building the app"
+    (+1684 s), "Stage is up" (+1745 s), with no step back at the build's end.
+  - Each coming-up Mate read the same words in the other window: "Coming up", "Waiting for your
+    sign-in", "Nothing asked yet". Its row wore the asleep face until the sign-in.
+  - The other group's projects, watched read-only, ran nothing; one stage build failed on a
+    `deployFiles` path its Mate then fixed.
+- **A group's runner, timed** — imported one second after the merge that queued its first job,
+  built in 118.5 s.
+- **Idle cost** — 22.2 and 20.3 HTTP requests a minute in the two windows (run 5: 16–18). 13.4 a
+  minute are each Gitea org's repository list once a minute, so the idle cost grows with the
+  account's orgs.
+- **An empty project's Mate asked the person for GitHub** — asked to make "the deploy workflow's
+  Test step" run the tests and open a pull request, the Mate (Opus 5.5, medium) looked for GitHub
+  credentials for two minutes and asked for a GitHub repository and a token; zcp told an agent on an
+  empty project nothing about where the code lives (zcp MB-38 since).
+- **A running deploy in 0.11.88's live slot** — one line, five grey dots and a clock: the slot's row
+  read only the call's placeholder steps, with nothing to open.
+- **The live card's bottom fade** — a row landing from the slot moves by a `translate`, which the
+  browser counts as scroll height; its own scroll adjustment read as the person scrolling up, and the
+  bottom fade stayed after the motion (408 of 1505 sampled frames in the harness).
+
+## Pass 36 looked at live — 2026-10-03
+
+- **mate 0.11.89 on a Mate that deployed** — one recorded window, the test account, the Mate's dev
+  service deployed by zcp's `zerops_deploy` (a build of about a minute).
+  - The live card's scroll stood at its foot on every 300 ms sample through the run, following, with
+    only its top fade on.
+  - The live slot drew the deploy's steps from the account store as they ran ("Initialized build
+    container 13s", "Build commands from zerops.yml ran successfully", "Creating app version …
+    12s").
+  - Once settled, the deploy's row opened onto its steps, "Build log 94 lines", its version and
+    address, and again after a reload.
+  - Scrolled 1,830 px above the conversation's end, the list's `scrollTop` held on all 274 samples
+    through 55 s and 336 px of content landing below; at the turn's end the read line moved up 53 px
+    once while `scrollTop` held (something above it shrank).
+  - A message sent while the Mate worked, from 1,830 px up, put the list at its end within 2 s.
+- **A build log stream asked with a time as `from` delivers no line** — opened 2 s into the deploy, it
+  stood 128 s through a 70 s build that wrote 94 lines and received two 30-byte frames 30 s apart and
+  no line. The log's first read 2 s into a deploy is empty. The Zerops GUI asks its stream with
+  `desc=0`, `limit=100`, `projectId`, and a `from` only as the newest line's id.
+- **Gitea answers a browser origin's listings with the count readable** — `/api/v1/repos/search` and
+  `/api/v1/user/repos` on the account's Gitea (1.27.2) answer `Access-Control-Allow-Origin: *` and
+  `Access-Control-Expose-Headers: Link, X-Total-Count`.

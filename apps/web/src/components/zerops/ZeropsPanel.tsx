@@ -43,7 +43,8 @@ import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
-import { zeropsMateAt } from "../../zerops/mateIdentities";
+import { mateIdentityPose, zeropsMateAt } from "../../zerops/mateIdentities";
+import { useNowMs } from "../../zerops/useNowMs";
 import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
@@ -116,6 +117,7 @@ export function ZeropsPanel({
   );
   const mates = useZeropsMateDirectory();
   const activity = useZeropsAgentActivity();
+  const nowMs = useNowMs();
   const environmentId = threadRef?.environmentId;
   // An environment the Mate list has not reached shows the panel without a
   // Mate, and no service is marked as its container until one is known.
@@ -133,7 +135,11 @@ export function ZeropsPanel({
           // Asleep until its socket is up or HQ's live word says what it does, as the
           // lists draw it: a Mate is known from its project's tags and its container's
           // origin before there is anything to resolve — see `ChatHeader`.
-          face: mateFaceFor(mateIdentity.connected || live !== undefined, live),
+          face: mateFaceFor(
+            mateIdentity.connected || live !== undefined,
+            live,
+            mateIdentityPose(mateIdentity, nowMs),
+          ),
         };
   const signOutPending = new Set<ZeropsAgentId>(
     (agentAuthCard?.agents ?? [])

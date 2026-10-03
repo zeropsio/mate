@@ -46,9 +46,12 @@ import {
   releaseAttachmentUpload,
   releaseAttachmentUploads,
   retryAttachmentUpload,
+  retryFileUpload,
   startAttachmentUpload,
+  startFileUpload,
   useAttachmentUploadStore,
 } from "./attachmentUploadQueue";
+import type { ComposerFileAttachment } from "./composerFiles";
 
 type ProgressListener = (event: {
   readonly lengthComputable: boolean;
@@ -119,6 +122,20 @@ function makeImage(id: string): ComposerImageAttachment {
     sizeBytes: file.size,
     previewUrl: `blob:${id}`,
     file,
+  };
+}
+
+function makeFile(id: string, extra: Partial<ComposerFileAttachment> = {}): ComposerFileAttachment {
+  const file = new File([new Uint8Array(5)], `${id}.pdf`, { type: "application/pdf" });
+  return {
+    type: "file",
+    id,
+    name: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    file,
+    uploaded: null,
+    ...extra,
   };
 }
 
@@ -465,6 +482,94 @@ describe("attachmentUploadQueue", () => {
       startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", false) });
       expect(readAttachmentUpload(pictureOriginalUploadKey("pic"))).toBeUndefined();
       expect(readAttachmentUpload("pic")).toMatchObject({ status: "uploading" });
+    });
+  });
+
+  describe("a file", () => {
+    it("uploads as a file under its own id and goes ahead of the images", async () => {
+      const image = makeImage("image-1");
+      const file = makeFile("spec");
+      startAttachmentUpload({ environmentId: firstEnvironment, image });
+      startFileUpload({ environmentId: firstEnvironment, file });
+      await Promise.resolve();
+      expect(mocks.runAtomCommand).toHaveBeenCalledWith(
+        expect.anything(),
+        mocks.createUploadUrl,
+        {
+          environmentId: firstEnvironment,
+          input: { type: "file", name: "spec.pdf", mimeType: "application/pdf", sizeBytes: 5 },
+        },
+        expect.anything(),
+      );
+      const settled = awaitAttachmentUploads([image.id, file.id]);
+      TestXmlHttpRequest.requests[0]!.complete();
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [image], files: [file] }),
+      ).toBeNull();
+      TestXmlHttpRequest.requests[1]!.complete();
+      await settled;
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [image], files: [file] }),
+      ).toEqual([
+        {
+          type: "file",
+          id: "pending-environment-1-spec.pdf",
+          name: "spec.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 5,
+        },
+        {
+          type: "image",
+          id: "pending-environment-1-image-1.png",
+          name: "image-1.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+        },
+      ]);
+    });
+
+    it("tries a failed upload again", async () => {
+      const file = makeFile("retry");
+      startFileUpload({ environmentId: firstEnvironment, file });
+      await Promise.resolve();
+      const failed = awaitAttachmentUploads([file.id]);
+      TestXmlHttpRequest.requests[0]!.complete(500);
+      await failed;
+      expect(readAttachmentUpload(file.id)?.status).toBe("failed");
+      // A message holding the failed file has nothing to send until it is up.
+      expect(
+        getUploadedAttachments({ environmentId: firstEnvironment, images: [], files: [file] }),
+      ).toBeNull();
+      retryFileUpload({ environmentId: firstEnvironment, file });
+      await Promise.resolve();
+      const settled = awaitAttachmentUploads([file.id]);
+      TestXmlHttpRequest.requests[1]!.complete();
+      await settled;
+      expect(readAttachmentUpload(file.id)?.status).toBe("ready");
+    });
+
+    const HOUR_MS = 60 * 60 * 1000;
+    it.each([
+      ["in its own environment it stands uploaded", firstEnvironment, HOUR_MS, "ready"],
+      ["in another it cannot go", secondEnvironment, HOUR_MS, "failed"],
+      ["a day after its upload it expired", firstEnvironment, 24 * HOUR_MS, "failed"],
+    ])("restored after a reload: %s", (_label, environmentId, ageMs, status) => {
+      const file = makeFile("kept", {
+        file: null,
+        uploaded: {
+          environmentId: firstEnvironment,
+          attachmentId: "att-kept",
+          uploadedAt: Date.now() - ageMs,
+        },
+      });
+      startFileUpload({ environmentId, file });
+      expect(TestXmlHttpRequest.requests).toHaveLength(0);
+      expect(readAttachmentUpload(file.id)?.status).toBe(status);
+      const upload = readAttachmentUpload(file.id);
+      if (upload?.status === "failed") expect(upload.reason).toMatch(/attach the file again/iu);
+      expect(
+        getUploadedAttachments({ environmentId, images: [], files: [file] })?.[0]?.id ?? null,
+      ).toBe(status === "ready" ? "att-kept" : null);
     });
   });
 });

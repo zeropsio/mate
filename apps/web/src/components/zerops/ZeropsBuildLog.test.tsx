@@ -1,7 +1,22 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { BuildLogLines, ZeropsBuildLog, type ZeropsBuildLogLine } from "./ZeropsBuildLog";
+
+// The whole log's dialog, drawn in place when open: what it says is there to read.
+vi.mock("~/components/ui/dialog", () => {
+  const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
+  return {
+    Dialog: ({ open, children }: { open: boolean; children?: ReactNode }) =>
+      open ? <div data-dialog-open="">{children}</div> : null,
+    DialogDescription: Pass,
+    DialogHeader: Pass,
+    DialogPanel: Pass,
+    DialogPopup: Pass,
+    DialogTitle: Pass,
+  };
+});
 
 const lineOf = (index: number, text: string, severity = 6): ZeropsBuildLogLine => ({
   id: `l${index}`,
@@ -15,9 +30,19 @@ const LINES: ReadonlyArray<ZeropsBuildLogLine> = [
   lineOf(2, "npm ERR! build failed", 3),
 ];
 
-const render = (lines: ReadonlyArray<ZeropsBuildLogLine>, status: "live" | "ended" = "live") =>
+const render = (
+  lines: ReadonlyArray<ZeropsBuildLogLine>,
+  status: "loading" | "live" | "ended" = "live",
+  waiting = false,
+) =>
   renderToStaticMarkup(
-    <ZeropsBuildLog lines={lines} onToggle={vi.fn()} open={false} status={status} />,
+    <ZeropsBuildLog
+      lines={lines}
+      onToggle={vi.fn()}
+      open={false}
+      status={status}
+      waiting={waiting}
+    />,
   );
 
 const rowsOf = (html: string) =>
@@ -73,8 +98,28 @@ describe("ZeropsBuildLog", () => {
   // A log the build has not written a line of is nothing to open: the
   // container may not even run yet (the owner, 2026-09-27: "you shouldn't be
   // able to open build log when the container is not even running").
-  it.each(["live", "ended"] as const)("offers nothing while the log is empty (%s)", (status) => {
-    expect(render([], status)).toBe("");
+  it("offers nothing to open once the build ended without a line", () => {
+    expect(render([], "ended")).toBe("");
+  });
+
+  // Its room stands from the first draw while the build runs, so the card's
+  // height is final when it opens; the way to the log is there but not open
+  // to anyone until the first line (pass 36). The room says it waits for the
+  // first line when its caller reads so (`buildLogWaitsForFirstLine`, pass 37),
+  // and a line, once there, is what it shows.
+  it.each([
+    { name: "no line, waiting", lines: [], waiting: true, rows: 0, openable: false, waits: true },
+    { name: "no line, silent", lines: [], waiting: false, rows: 0, openable: false, waits: false },
+    { name: "its first lines", lines: LINES, waiting: true, rows: 2, openable: true, waits: false },
+  ] as const)("while it runs, its newest lines' room stands: $name", (row) => {
+    const { lines, waiting, rows, openable, waits } = row;
+    const html = render(lines, "live", waiting);
+    const glance = html.match(/<ol[^>]*data-zerops-build-log-glance[\s\S]*?<\/ol>/)?.[0] ?? "";
+    expect(glance).not.toBe("");
+    expect(rowsOf(html)).toHaveLength(rows);
+    expect(glance.includes("Waiting for the build&#x27;s first line…")).toBe(waits);
+    const toggle = html.match(/<button[^>]*data-zerops-build-log-toggle[^>]*>/)?.[0] ?? "";
+    expect(toggle.includes("disabled")).toBe(!openable);
   });
 
   it.each([
@@ -109,5 +154,22 @@ describe("BuildLogLines", () => {
     expect(rows[2]).toContain("whitespace-pre-wrap");
     expect(rows[1]).toContain("text-destructive-foreground");
     expect(html).toContain('aria-live="polite"');
+  });
+});
+
+// A settled build's way to its log stands before its lines are read: opened
+// with none to draw, its dialog says why, in words (pass 36).
+describe("ZeropsBuildLog — the dialog of a log with no line", () => {
+  it.each([
+    { status: "error" as const, words: "Couldn't read this build's log from Zerops." },
+    { status: "loading" as const, words: "Reading this build's log…" },
+    { status: "ended" as const, words: "Zerops keeps no lines of this build's log." },
+  ])("$status: $words", ({ status, words }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsBuildLog lines={[]} onToggle={vi.fn()} open stands status={status} />,
+    );
+    expect(html.match(/data-zerops-build-log-empty[^>]*>([^<]*)</)?.[1]).toBe(
+      words.replaceAll("'", "&#x27;"),
+    );
   });
 });

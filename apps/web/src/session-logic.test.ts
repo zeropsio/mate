@@ -2775,6 +2775,40 @@ describe("deriveWorkLogEntries — a tool row is anchored at first sight", () =>
     expect(deriveWorkLogEntries(activities)).toMatchObject(expected);
   });
 
+  // The batch rule reads a call's model response off its start (pass 35).
+  it("keeps the response its start named through every later merge", () => {
+    const start = toolActivity("a-started", "tool.started", 1, "call-a");
+    const named = {
+      ...start,
+      payload: { ...(start.payload as Record<string, unknown>), responseId: "msg-a" },
+    };
+    const [entry] = deriveWorkLogEntries([
+      named,
+      toolActivity("a-updated", "tool.updated", 2, "call-a"),
+      toolActivity("a-completed", "tool.completed", 5, "call-a"),
+    ]);
+    expect(entry).toMatchObject({ id: "a-started", responseId: "msg-a" });
+  });
+
+  // The turn's end closes a call still open as unreturned (D4): it never came
+  // back, so it stays a call with no result, never one that returned.
+  it("reads a completion its turn's end made for a call that never returned as no return", () => {
+    const completion = toolActivity("a-completed", "tool.completed", 9, "call-a");
+    const [entry] = deriveWorkLogEntries([
+      toolActivity("a-started", "tool.started", 1, "call-a"),
+      toolActivity("a-updated", "tool.updated", 2, "call-a"),
+      {
+        ...completion,
+        payload: {
+          ...(completion.payload as Record<string, unknown>),
+          status: "completed",
+          unreturned: true,
+        },
+      },
+    ]);
+    expect(entry).toMatchObject({ id: "a-started", toolLifecycleStatus: "inProgress" });
+  });
+
   /**
    * What a reload receives: the server's snapshot drops every `tool.updated`
    * a later `tool.completed` of the same turn and call supersedes

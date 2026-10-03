@@ -247,7 +247,7 @@ describe("whichever Mate is on screen", () => {
     await act(() => adding);
     await settle();
 
-    expect(draftOf(A)).toMatchObject({ prompt: `Mate A's words${P}` });
+    expect(draftOf(A)).toMatchObject({ prompt: `Mate A's words${P}\n` });
     expect(draftOf(A)!.images.map((image) => image.name)).toEqual(["shot-1200x800.png"]);
     expect(draftOf(B)).toMatchObject({ prompt: "Mate B's words", images: [] });
   });

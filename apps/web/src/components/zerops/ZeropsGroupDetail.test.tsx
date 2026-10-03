@@ -1028,4 +1028,21 @@ describe("groupMateOf — a Mate on the project, as its page draws it", () => {
       subject: undefined,
     });
   });
+
+  it("wakes a newly arriving Mate, then returns to its HQ resting face at the bound", () => {
+    const born = Date.parse("2026-10-03T10:00:00Z");
+    const item = { ...IRIS, project: { ...IRIS.project, created: new Date(born).toISOString() } };
+    const at = (nowMs: number) =>
+      groupMateOf({
+        item,
+        nowMs,
+        read: undefined,
+        tint: "amber",
+        reviewWaits: false,
+        mine: true,
+        update: undefined,
+      });
+    expect(at(born + 60_000).face).toBe("waking");
+    expect(at(born + 31 * 60_000).face).toBe("sleep");
+  });
 });

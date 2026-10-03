@@ -17,6 +17,11 @@
  * where its label stands with its notes under it. A reader that knows none of
  * this sees the labels in the text and the images first, and the labels still
  * tie them together.
+ *
+ * A file that is not a picture sits in the text the same way, as `[File 1]` on
+ * a line of its own: the message's n-th such file is file n. The server keeps
+ * each in the Mate's uploads folder under its own name and tells the agent
+ * where.
  */
 
 /** Claude reads at most 2000 px a side once a request holds more than 20 images. */
@@ -32,11 +37,16 @@ export const PICTURE_MAX_BYTES = Math.floor((5 * 1024 * 1024) / 4) * 3;
 export const PICTURE_EMPTY_NOTE = "Marked, no note.";
 
 const LABEL_PATTERN = /^\[Picture (\d+)\]$/u;
+const FILE_LABEL_PATTERN = /^\[File (\d+)\]$/u;
 const HEADING_PATTERN = /^Notes on picture \d+:$/u;
 const NOTE_PATTERN = /^(\d+)\. (.*)$/u;
 
 export function pictureLabel(n: number): string {
   return `[Picture ${n}]`;
+}
+
+export function fileLabel(n: number): string {
+  return `[File ${n}]`;
 }
 
 function notesHeading(n: number): string {
@@ -60,14 +70,18 @@ export function pictureBlockText(n: number, notes: ReadonlyArray<string>): strin
 }
 
 /**
- * The person's own words as they go around pictures: a line of theirs that
- * would read as a picture's label or its notes heading ends in a space, so
- * only the composer's own lines are ever read as pictures.
+ * The person's own words as they go around pictures and files: a line of
+ * theirs that would read as a label or a notes heading ends in a space, so
+ * only the composer's own lines are ever read as pictures or files.
  */
 export function escapePictureWords(words: string): string {
   return words
     .split("\n")
-    .map((line) => (LABEL_PATTERN.test(line) || HEADING_PATTERN.test(line) ? `${line} ` : line))
+    .map((line) =>
+      LABEL_PATTERN.test(line) || HEADING_PATTERN.test(line) || FILE_LABEL_PATTERN.test(line)
+        ? `${line} `
+        : line,
+    )
     .join("\n");
 }
 
@@ -171,6 +185,46 @@ export function messagePictures<A extends { readonly type: string; readonly mime
     pictures.push({ n: pictures.length + 1, image: attachment, original });
   });
   return pictures;
+}
+
+export interface MessageFile<A> {
+  readonly n: number;
+  readonly file: A;
+  /** Whether the text holds its label on a line of its own, for a reader to draw it there. */
+  readonly placed: boolean;
+}
+
+/**
+ * A message's files: every file attachment but a picture's kept original and
+ * folded clipboard text, numbered in order. A client that writes no labels
+ * (the phone) leaves its files unplaced, and a reader shows them by the words.
+ */
+export function messageFiles<
+  A extends {
+    readonly type: string;
+    readonly mimeType: string;
+    readonly source?: { readonly _tag: string } | undefined;
+  },
+>(text: string, attachments: ReadonlyArray<A>): MessageFile<A>[] {
+  const originals = new Set<A>(
+    messagePictures(text, attachments).flatMap((picture) =>
+      picture.original === null ? [] : [picture.original],
+    ),
+  );
+  const labels = new Set(
+    text.split("\n").flatMap((line) => {
+      const label = FILE_LABEL_PATTERN.exec(line);
+      return label === null ? [] : [Number(label[1])];
+    }),
+  );
+  return attachments
+    .filter(
+      (attachment) =>
+        attachment.type === "file" &&
+        !originals.has(attachment) &&
+        attachment.source?._tag !== "pasted-text",
+    )
+    .map((file, index) => ({ n: index + 1, file, placed: labels.has(index + 1) }));
 }
 
 export type PictureContentPart =

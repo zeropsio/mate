@@ -32,8 +32,10 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   mateNextStep,
+  matePose,
   resolvePrimaryConversation,
   type FlowPullRequest,
+  type MatePoseFacts,
 } from "@t3tools/client-runtime/zerops";
 import type {
   EnvironmentId,
@@ -176,13 +178,25 @@ export interface ZeropsAgentActivity {
  * is known from its project's tags and its container's origin, seconds before
  * there is any conversation to resolve.
  * Connected with nothing resolved yet is idle, the floor of the same rule.
+ *
+ * Its pose for where it is in its life (`matePose`) is read here and nowhere else: waking while
+ * it comes up and arrives (`mateArriving`), asleep where it did not come or while it goes. A
+ * surface that draws a Mate passes what it knows of that (`pose`); without it, it is settled.
  */
 export function mateFaceFor(
   connected: boolean,
   activity: Pick<ZeropsAgentActivity, "face"> | undefined,
+  pose?: MatePoseFacts,
 ): MateMarkState {
-  if (!connected) return "sleep";
-  return activity?.face ?? "idle";
+  return matePose(connected ? (activity?.face ?? "idle") : "sleep", pose);
+}
+
+/**
+ * The face of a Mate being created that the listing does not hold yet (`GroupFlowComing`), on
+ * every surface that draws one: waking while it comes up, asleep once its birth stopped.
+ */
+export function mateBirthFace(failed: boolean): MateMarkState {
+  return mateFaceFor(false, undefined, { life: failed ? "failed" : "coming" });
 }
 
 /**
@@ -253,10 +267,12 @@ export function mateFaceOf(input: {
   readonly reviewWaits: boolean;
   /** The viewer's own Mate (`mateIsViewers`). */
   readonly mine: boolean;
+  /** Where it is in its life (`mateFaceFor`). */
+  readonly pose?: MatePoseFacts | undefined;
 }): MateMarkState {
   const live = input.activity?.remembered === true ? undefined : input.activity;
   return mateFaceAwaitingReview(
-    mateFaceFor(input.connected || live !== undefined, live),
+    mateFaceFor(input.connected || live !== undefined, live, input.pose),
     input.reviewWaits,
     live?.pausedUntil !== undefined,
     input.mine,

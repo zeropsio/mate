@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import {
   processRecordToActivityProcess,
+  type ProcessHistoryRead,
   type ProjectActivityRead,
   type RuntimeInterestDescriptor,
 } from "@t3tools/client-runtime/zerops/data";
@@ -22,6 +23,8 @@ export interface ProjectActivitySnapshot {
    */
   readonly live: boolean;
   readonly unavailableReason?: string | undefined;
+  /** Where the project's newest process history read stands; `unread` when not said. */
+  readonly processHistory?: ProcessHistoryRead;
 }
 
 export const EMPTY_PROJECT_ACTIVITY_SNAPSHOT: ProjectActivitySnapshot = {
@@ -71,6 +74,7 @@ export function projectActivitySnapshotFromRead(
   if (read.running.query.status !== "observed" && deduped.length === 0) {
     return {
       ...EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
+      processHistory: read.processHistory,
       ...(unavailableReason ? { unavailableReason } : {}),
     };
   }
@@ -79,15 +83,32 @@ export function projectActivitySnapshotFromRead(
     processes: deduped,
     atMs,
     live: required.length > 0 && required.every((interest) => interest.status === "observing"),
+    processHistory: read.processHistory,
     ...(unavailableReason ? { unavailableReason } : {}),
   };
 }
 
-/** Demand-scoped activity/history projection. */
+/** Demand-scoped activity/history projection: the store reads it while this is drawn. */
 export function useProjectActivity(projectId: string | null): ProjectActivitySnapshot {
-  const { runtime } = useZeropsData();
+  useProjectActivityDemand(projectId);
+  return useProjectActivityRead(projectId);
+}
+
+function useProjectRef(projectId: string | null) {
   const inventory = useZeropsInventory();
-  const project = projectId === null ? null : findInventoryProjectRef(inventory, projectId);
+  return {
+    inventory,
+    project: projectId === null ? null : findInventoryProjectRef(inventory, projectId),
+  };
+}
+
+/**
+ * Asks the account store to read a project's activity and its process history
+ * (the newest 100) while it is drawn: what is running, streamed, and what ran,
+ * held by id.
+ */
+export function useProjectActivityDemand(projectId: string | null): void {
+  const { project } = useProjectRef(projectId);
   const activityDescriptor = useMemo<RuntimeInterestDescriptor | null>(
     () => (project === null ? null : { kind: "project-activity", project }),
     [project],
@@ -101,6 +122,15 @@ export function useProjectActivity(projectId: string | null): ProjectActivitySna
   );
   useZeropsDataInterest(activityDescriptor);
   useZeropsDataInterest(historyDescriptor);
+}
+
+/**
+ * What the account store holds of a project's activity, whoever asked it to
+ * read: it reads nothing of its own.
+ */
+export function useProjectActivityRead(projectId: string | null): ProjectActivitySnapshot {
+  const { runtime } = useZeropsData();
+  const { inventory, project } = useProjectRef(projectId);
   const activityAtom = useMemo(
     () => (project === null ? EMPTY_PROJECT_ACTIVITY_READ_ATOM : runtime.reads.activity(project)),
     [project, runtime],

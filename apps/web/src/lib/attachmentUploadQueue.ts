@@ -10,6 +10,7 @@ import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
 
 import type { ComposerImageAttachment } from "../composerDraftStore";
+import { composerUploadExpired, type ComposerFileAttachment } from "./composerFiles";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentCatalog } from "../connection/catalog";
 import { attachmentEnvironment } from "../state/attachments";
@@ -485,6 +486,53 @@ function retryUpload(environmentId: EnvironmentId, item: UploadItem): void {
   startUpload(environmentId, item);
 }
 
+function fileUploadItem(file: ComposerFileAttachment, bytes: File): UploadItem {
+  return {
+    key: file.id,
+    kind: "file",
+    name: file.name,
+    mimeType: file.mimeType || "application/octet-stream",
+    file: bytes,
+  };
+}
+
+/**
+ * Starts a file's upload. A file a reload brought back has no bytes, only
+ * the upload it finished: it stands uploaded where it went for a day (the
+ * server lets an unsent upload go then), and elsewhere or later it cannot go
+ * (the person attaches it again).
+ */
+export function startFileUpload(input: {
+  readonly environmentId: EnvironmentId;
+  readonly file: ComposerFileAttachment;
+}): void {
+  const { environmentId, file } = input;
+  if (file.file !== null) {
+    startUpload(environmentId, fileUploadItem(file, file.file));
+    return;
+  }
+  const existing = readAttachmentUpload(file.id);
+  if (existing?.environmentId === environmentId) return;
+  const uploaded = file.uploaded;
+  setUploadState(
+    file.id,
+    uploaded?.environmentId !== environmentId
+      ? { status: "failed", environmentId, reason: "Attach the file again to send it here" }
+      : composerUploadExpired(uploaded, Date.now())
+        ? { status: "failed", environmentId, reason: "Its upload expired. Attach the file again" }
+        : { status: "ready", environmentId, attachmentId: uploaded.attachmentId },
+  );
+}
+
+/** Tries a file's upload again, when its bytes are still here. */
+export function retryFileUpload(input: {
+  readonly environmentId: EnvironmentId;
+  readonly file: ComposerFileAttachment;
+}): void {
+  if (input.file.file === null) return;
+  retryUpload(input.environmentId, fileUploadItem(input.file, input.file.file));
+}
+
 export async function awaitAttachmentUploads(imageIds: ReadonlyArray<string>): Promise<void> {
   await Promise.all(
     imageIds.flatMap((imageId) => [
@@ -494,9 +542,15 @@ export async function awaitAttachmentUploads(imageIds: ReadonlyArray<string>): P
   );
 }
 
+/**
+ * What the message carries, once every upload is up: its files first, in the
+ * order they sit, then its images, each with its kept original right after it
+ * (that is how an original is known, so no file may follow an image).
+ */
 export function getUploadedAttachments(input: {
   readonly environmentId: EnvironmentId;
   readonly images: ReadonlyArray<ComposerImageAttachment>;
+  readonly files?: ReadonlyArray<ComposerFileAttachment>;
 }): ChatAttachment[] | null {
   const attachments: ChatAttachment[] = [];
   const readyId = (key: string): string | null => {
@@ -505,6 +559,17 @@ export function getUploadedAttachments(input: {
       ? upload.attachmentId
       : null;
   };
+  for (const file of input.files ?? []) {
+    const id = readyId(file.id);
+    if (id === null) return null;
+    attachments.push({
+      type: "file",
+      id,
+      name: file.name,
+      mimeType: file.mimeType || "application/octet-stream",
+      sizeBytes: file.sizeBytes,
+    });
+  }
   for (const image of input.images) {
     const id = readyId(image.id);
     if (id === null) return null;
@@ -516,7 +581,6 @@ export function getUploadedAttachments(input: {
       sizeBytes: image.sizeBytes,
       ...(image.picture ? { width: image.picture.width, height: image.picture.height } : {}),
     });
-    // A picture's original goes right after it: that is how it is known.
     const original = keptOriginal(image);
     if (original) {
       const item = originalUploadItem(image, original);
@@ -534,8 +598,11 @@ export function getUploadedAttachments(input: {
   return attachments;
 }
 
-export function releaseAttachmentUploads(images: ReadonlyArray<ComposerImageAttachment>): void {
-  for (const image of images) {
-    releaseAttachmentUpload(image.id);
+/** Lets the uploads of images or files go. */
+export function releaseAttachmentUploads(
+  attachments: ReadonlyArray<{ readonly id: string }>,
+): void {
+  for (const attachment of attachments) {
+    releaseAttachmentUpload(attachment.id);
   }
 }

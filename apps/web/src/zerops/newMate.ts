@@ -12,6 +12,7 @@
  * which the account keeps (`zeropsBirths.ts`), carries a creation on.
  */
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 
@@ -30,9 +31,24 @@ export interface NewMateCreation {
   readonly at?: number | undefined;
 }
 
+/** An Add started over: the name, the environment's name and the face it was asked with. */
+export interface NewMateAgain {
+  readonly botName: string;
+  readonly name: string;
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId;
+}
+
 interface NewMateState {
-  /** The project a Mate was asked for, and when: one ask at a time. */
-  readonly asked: { readonly groupId: string; readonly at: number } | null;
+  /**
+   * The project a Mate was asked for, and when — and, started over, what it was asked with: one
+   * ask at a time.
+   */
+  readonly asked: {
+    readonly groupId: string;
+    readonly at: number;
+    readonly again?: NewMateAgain | undefined;
+  } | null;
   readonly creations: Readonly<Record<string, NewMateCreation>>;
   /**
    * The conversation a new Mate's view is handing over to: kept read from above every view while
@@ -41,7 +57,7 @@ interface NewMateState {
    */
   readonly handOver: ScopedThreadRef | null;
   readonly handingOver: (conversation: ScopedThreadRef | null) => void;
-  readonly ask: (groupId: string) => void;
+  readonly ask: (groupId: string, again?: NewMateAgain) => void;
   readonly dismiss: () => void;
   /** The platform took the project of a creation this tab made. */
   readonly created: (creation: NewMateCreation) => void;
@@ -58,8 +74,8 @@ export const useNewMate = create<NewMateState>((set) => ({
   handingOver: (conversation) => {
     set({ handOver: conversation });
   },
-  ask: (groupId) => {
-    set({ asked: { groupId, at: Date.now() } });
+  ask: (groupId, again) => {
+    set({ asked: { groupId, at: Date.now(), ...(again === undefined ? {} : { again }) } });
   },
   dismiss: () => {
     set({ asked: null });

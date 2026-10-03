@@ -134,6 +134,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
+import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.ts";
 import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
@@ -1291,10 +1292,13 @@ const makeWsRpcLayer = (
 
       // On Zerops, whether Claude Code and Codex can be picked is the
       // project's answer (its sign-in flag), not their drivers' — every
-      // provider list a client receives goes through this.
+      // provider list a client receives goes through this, and leaves it
+      // without the slash commands a Mate cannot use.
       const withZeropsAgentAuth = (providers: ReadonlyArray<ServerProvider>) =>
         zeropsAgentAuth.latest.pipe(
-          Effect.map((snapshot) => overlayZeropsAgentAuth(providers, snapshot)),
+          Effect.map((snapshot) =>
+            withoutUnworkableSlashCommands(overlayZeropsAgentAuth(providers, snapshot)),
+          ),
         );
 
       // Only clients that answer /usage-limits themselves see it in the catalogs;
@@ -2727,7 +2731,8 @@ const makeWsRpcLayer = (
                     providerRegistry.streamChanges,
                   ),
                   Stream.concat(Stream.fromEffect(zeropsAgentAuth.latest), zeropsAgentAuth.changes),
-                  overlayZeropsAgentAuth,
+                  (providers, snapshot) =>
+                    withoutUnworkableSlashCommands(overlayZeropsAgentAuth(providers, snapshot)),
                 ),
                 usageLimitSources.streamChanges.pipe(
                   // Quota updates already have their own stream. Republish the model

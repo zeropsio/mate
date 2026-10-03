@@ -263,6 +263,10 @@
       "types": "./src/zerops/browserStream.ts",
       "default": "./src/zerops/browserStream.ts"
     },
+    "./zerops/timelineFollow": {
+      "types": "./src/zerops/timelineFollow.ts",
+      "default": "./src/zerops/timelineFollow.ts"
+    },
     "./zerops/agentOwnership": {
       "types": "./src/zerops/agentOwnership.ts",
       "default": "./src/zerops/agentOwnership.ts"
@@ -354,6 +358,10 @@
     "./zerops/model": {
       "types": "./src/zerops/model/index.ts",
       "default": "./src/zerops/model/index.ts"
+    },
+    "./zerops/flow/fixtures": {
+      "types": "./src/zerops/flow/__fixtures__/index.ts",
+      "default": "./src/zerops/flow/__fixtures__/index.ts"
     },
     "./zerops/operations/fixtures": {
       "types": "./src/zerops/operations/__fixtures__/index.ts",

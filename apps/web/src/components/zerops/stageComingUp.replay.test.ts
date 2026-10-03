@@ -133,6 +133,9 @@ function said(moment: Moment) {
       {
         projectId: STAGE_ID,
         name: "Brine - stage",
+        createdAt: iso(1061),
+        projectStatus: moment.projectStatus ?? "ACTIVE",
+        services: moment.services ?? [app("ACTIVE")],
         tier: "stage",
         row: moment.declared
           ? environmentRow({
@@ -210,7 +213,7 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
       hq: undefined,
       declared: false,
       line: "Stage coming up · making the project",
-      cell: "Checking what runs here…",
+      cell: "Setting up a stage…",
     },
     {
       t: 1090,
@@ -219,7 +222,7 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
       hq: undefined,
       declared: false,
       line: "Stage coming up · adding the database",
-      cell: "Nothing deployed yet",
+      cell: "Setting up a stage…",
     },
     {
       t: 1103,
@@ -228,7 +231,7 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
       hq: QUEUED,
       declared: true,
       line: "Stage coming up · adding the app",
-      cell: "First deploy on its way",
+      cell: "Setting up a stage…",
     },
     {
       t: 1121,

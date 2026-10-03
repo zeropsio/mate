@@ -4,6 +4,7 @@ import {
   buildLogLineBytes,
   buildOlderLogUrl,
   buildLogUrls,
+  buildLogWaitsForFirstLine,
   decodeBuildLogItems,
   foldBuildLogLines,
   mergeBoundedBuildLogLines,
@@ -75,13 +76,14 @@ describe("buildLogUrls", () => {
    * OLDEST `limit` lines instead of the newest. `mergeBuildLogLines`
    * re-sorts ascending regardless of what order the backend answers in.
    *
-   * The live stream never carries `desc` in the GUI's own request either,
-   * so it stays off the ws url.
+   * The live stream sends `desc=0`, as the GUI's own stream request does
+   * (`addTrlogParamsToUrl` defaults it), and never the backfill's time `from`.
    */
-  it("sends desc=1 on the HTTP backfill only, never on the ws stream", () => {
-    const { http, ws } = buildLogUrls(access, query);
+  it("sends desc=1 and the time from on the HTTP backfill only", () => {
+    const { http, ws } = buildLogUrls(access, { ...query, fromIso: "2026-09-02T09:59:50.000Z" });
     expect(new URL(http).searchParams.get("desc")).toBe("1");
-    expect(new URL(ws).searchParams.has("desc")).toBe(false);
+    expect(new URL(ws).searchParams.get("desc")).toBe("0");
+    expect(new URL(ws).searchParams.has("from")).toBe(false);
   });
 });
 
@@ -426,5 +428,56 @@ describe("foldBuildLogLines — consecutive lines that differ only in a package 
       lines(["get a@1.0.0 now", "get b@1.0.0 now", "get c@1.0.0 now"]),
     );
     expect(folded).toEqual([{ id: "l1", text: "get c@1.0.0 now", severity: 6, count: 3 }]);
+  });
+});
+
+/**
+ * A running build's room says it waits for the first line only for as long as
+ * that is what the client knows: the pipeline's build step itself runs, the
+ * stream is open and has stood a moment (`live`), and no line has come.
+ */
+describe("buildLogWaitsForFirstLine", () => {
+  it.each([
+    {
+      name: "the build step runs, the stream stood open, no line",
+      step: "running",
+      status: "live",
+      lines: 0,
+      waits: true,
+    },
+    {
+      name: "the build step finished with no line",
+      step: "finished",
+      status: "live",
+      lines: 0,
+      waits: false,
+    },
+    {
+      name: "the build step failed with no line",
+      step: "failed",
+      status: "live",
+      lines: 0,
+      waits: false,
+    },
+    {
+      name: "the build container is still made",
+      step: "waiting",
+      status: "live",
+      lines: 0,
+      waits: false,
+    },
+    { name: "no build step known", step: undefined, status: "live", lines: 0, waits: false },
+    { name: "the stream not yet open", step: "running", status: "loading", lines: 0, waits: false },
+    { name: "the log's read failed", step: "running", status: "error", lines: 0, waits: false },
+    {
+      name: "the log no longer followed",
+      step: "running",
+      status: "ended",
+      lines: 0,
+      waits: false,
+    },
+    { name: "a line came", step: "running", status: "live", lines: 1, waits: false },
+  ] as const)("$name", ({ step, status, lines, waits }) => {
+    expect(buildLogWaitsForFirstLine({ buildStep: step, status, lineCount: lines })).toBe(waits);
   });
 });

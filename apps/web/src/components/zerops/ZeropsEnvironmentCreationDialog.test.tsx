@@ -108,33 +108,3 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(render({ defaultName: "" })).not.toContain("Give the environment a name.");
   });
 });
-
-// A registration the platform refused is said in the dialog, which offers the Mate to open: it
-// runs, and an owner registers it (pass 28 review).
-describe("ZeropsEnvironmentCreationForm while it presses", () => {
-  const steps = [
-    { label: "Container", state: "done" as const },
-    { label: "Closed off", state: "done" as const },
-    { label: "Registered", state: "failed" as const },
-  ];
-
-  it("says a refused registration and offers the Mate to open", () => {
-    const html = render({
-      pressing: {
-        name: "Ada",
-        steps,
-        notice: "Ada is running. An owner needs to register it before it can use Git.",
-        onOpen: () => {},
-      },
-    });
-    expect(html).toContain("Ada is running. An owner needs to register it before it can use Git.");
-    expect(html).toContain("Open Ada");
-    expect(html).not.toContain("Try again");
-  });
-
-  it("asks to be kept open while it runs, with nothing to press", () => {
-    const html = render({ pressing: { name: "Ada", steps: steps.slice(0, 2) } });
-    expect(html).toContain("Keep this open for about half a minute");
-    expect(html).not.toContain("Open Ada");
-  });
-});

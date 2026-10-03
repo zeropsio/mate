@@ -415,6 +415,7 @@ export const withCrewEngines = <E>(
             Layer.succeed(DevServerPidFile, world.devServerPidFile),
             ServerConfig.layer({
               cwd: workspace,
+              attachmentsDir: NodePath.join(workspace, "attachments"),
               zerops: ZEROPS,
               zeropsCrew: true,
             } as ServerConfig.ServerConfig["Service"]),

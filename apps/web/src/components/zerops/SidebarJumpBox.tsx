@@ -28,7 +28,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
+import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { ApprovalRequestId, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Option from "effect/Option";
@@ -79,17 +79,6 @@ const ENTER_WORD: Record<JumpWriteAction, string | undefined> = {
   wait: "Send without opening",
   none: undefined,
 };
-
-/** When the agent last spoke in the conversation, if it has. */
-function lastSpokeAt(
-  messages: ReadonlyArray<{ readonly role: string; readonly createdAt: string }>,
-): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role === "assistant") return message.createdAt;
-  }
-  return undefined;
-}
 
 export function SidebarJumpBox({
   index: drawn,
@@ -347,8 +336,9 @@ function useJumpWrite(
       return;
     }
     // When the agent last spoke: the line between what it knows and what
-    // landed since — the conversation's own reading of it.
-    const notes = agentTurnNotes(landed, lastSpokeAt(detail.messages));
+    // landed since — the conversation's own reading of it. A slash command
+    // carries none.
+    const notes = agentNotesFor(text, agentTurnNotes(landed, agentLastSpokeAt(detail.messages)));
     void startTurn({
       environmentId,
       input: {

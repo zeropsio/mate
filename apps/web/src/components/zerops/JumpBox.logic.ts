@@ -18,6 +18,7 @@
  * Pure: no React, no clock, no store.
  */
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { MatePoseFacts } from "@t3tools/client-runtime/zerops";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -60,6 +61,8 @@ export interface JumpMate {
   readonly reviewWaits?: boolean;
   /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
   readonly mine: boolean;
+  /** Where it is in its life, as its row reads it (`mateFaceFor`): settled where absent. */
+  readonly pose?: MatePoseFacts | undefined;
 }
 
 export interface JumpProject {
@@ -137,6 +140,7 @@ export function jumpMateOf(input: {
   readonly activity: JumpActivity | undefined;
   readonly reviewWaits?: boolean | undefined;
   readonly mine: boolean;
+  readonly pose?: MatePoseFacts | undefined;
 }): JumpMate {
   const live = input.activity?.remembered === true ? undefined : input.activity;
   return {
@@ -149,6 +153,7 @@ export function jumpMateOf(input: {
       activity: input.activity,
       reviewWaits: input.reviewWaits === true,
       mine: input.mine,
+      pose: input.pose,
     }),
     projectName: input.projectName,
     subject: live?.subject,
@@ -163,6 +168,7 @@ export function jumpMateOf(input: {
     pausedUntil: live?.pausedUntil,
     mine: input.mine,
     ...(input.reviewWaits === true ? { reviewWaits: true } : {}),
+    ...(input.pose === undefined ? {} : { pose: input.pose }),
   };
 }
 

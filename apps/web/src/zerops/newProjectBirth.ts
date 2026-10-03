@@ -22,17 +22,28 @@
  */
 import {
   formatMateFace,
+  readZeropsMembership,
+  recipeTierServices,
+  splitRecipeTier,
   ZeropsApiError,
   type BirthPlacement,
+  type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
+  type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
-import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import {
+  birthRuntimesFacts,
+  deriveBirthProgress,
+} from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  isUncertainZeropsFailure,
+  zeropsErrorMessage,
+} from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { create } from "zustand";
 
@@ -40,14 +51,11 @@ import type {
   BirthLineProgress,
   BirthLineStep,
 } from "../components/zerops/ZeropsBirthProgress.logic";
-import {
-  pressThrough,
-  type PressStepView,
-} from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
+import type { ArrivalSubstep } from "./mateArrival";
 import { asSentence, type MateComing } from "./mateComing";
-import { newMateView } from "./newMate";
+import { newMateView, useNewMate, type NewMateAgain } from "./newMate";
 
 /** A step of a New project's creation, before the platform has taken its first Mate's project. */
 export type NewProjectStep = "registry" | "create";
@@ -65,6 +73,23 @@ export interface NewProjectAsk {
   readonly locationId: string | null;
   /** Empty for every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`). */
   readonly agents: ReadonlyArray<ZeropsAgentType>;
+  /**
+   * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
+   * hosting or registration of the project's own — its environment called `displayName`, and
+   * its own registration written where `registers`.
+   */
+  readonly adds?:
+    | {
+        /** The existing application in HQ. */
+        readonly appId: string;
+        readonly displayName: string;
+        readonly registers: boolean;
+        /** The managed services its recipe names, from the press (`recipeManaged`). */
+        readonly managed?: ReadonlyArray<string> | undefined;
+        /** The runtimes its workspace brings, from the press (`recipeRuntimes`). */
+        readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined;
+      }
+    | undefined;
 }
 
 export interface NewProjectFailure {
@@ -88,10 +113,12 @@ export interface NewProjectBirth extends NewProjectAsk {
   readonly failed: NewProjectFailure | null;
   /** The first Mate's Zerops project, once the platform took it. */
   readonly projectId: string | null;
+  /** Its Mate's press, each step's state as it moves; null before it is heard. */
+  readonly progress: ReadonlyArray<EnvironmentCreationStepProgress> | null;
 }
 
 export type NewProjectPatch = Partial<
-  Pick<NewProjectBirth, "step" | "appId" | "intent" | "failed" | "projectId">
+  Pick<NewProjectBirth, "step" | "appId" | "intent" | "failed" | "projectId" | "progress">
 >;
 
 /**
@@ -103,7 +130,7 @@ export interface NewProjectCreation {
   readonly name: string;
   readonly location?: string;
   /** The birth intent HQ holds of its Mate: the project is tagged with it (`mateBirthTag`). */
-  readonly birth: string;
+  readonly birth?: string;
 }
 
 /**
@@ -147,7 +174,7 @@ export interface NewProjectPorts {
    */
   readonly accepted: (
     projectId: string,
-    registration: NewProjectRegistration,
+    registration: NewProjectRegistration | null,
     startedAt: number,
   ) => void;
 }
@@ -167,8 +194,8 @@ export function newProjectPlacement(
     groupName: ask.name,
     kind: "mate",
     // The group has no project of its own; its first Mate is named after its bot, the way every
-    // Mate added afterwards is — "Acme CRM - Vera".
-    displayName: `${ask.name} - ${ask.botName}`,
+    // Mate added afterwards is — "Acme CRM - Vera"; an added one as Add named it.
+    displayName: ask.adds?.displayName ?? `${ask.name} - ${ask.botName}`,
     botName: ask.botName,
     face: ask.face,
   };
@@ -189,6 +216,7 @@ export function placedNewProjects(
       : [
           {
             projectId: birth.birthId,
+            ...(birth.intent === null ? {} : { intent: birth.intent }),
             startedAt: birth.startedAt,
             placement: newProjectPlacement(birth),
             // The first thing its Mate's birth will owe.
@@ -214,6 +242,8 @@ function stateOf(birth: NewProjectBirth, own: NewProjectStep): BirthLineStep["st
 
 /** The project's own step, before its first Mate's: its registration, under the project's name. */
 export function newProjectSteps(birth: NewProjectBirth): ReadonlyArray<BirthLineStep> {
+  // An added Mate's project stands: its copy is its first row.
+  if (birth.adds !== undefined) return [];
   const step = (id: string, label: string, own: NewProjectStep, doing: string): BirthLineStep => {
     const state = stateOf(birth, own);
     const detail =
@@ -236,6 +266,8 @@ export function newProjectProgress(
   nowMs: number,
 ): BirthLineProgress {
   const own = newProjectSteps(birth);
+  // An added Mate's runtimes are named from the press, as its own view names them after.
+  const runtimes = birthRuntimesFacts({ planned: creationRuntimes(birth), services: undefined });
   const theirs =
     mate ??
     deriveBirthProgress(
@@ -248,6 +280,7 @@ export function newProjectProgress(
         processes: [],
         health: undefined,
         connection: "none",
+        ...(runtimes === undefined ? {} : { runtimes }),
       },
       nowMs,
     );
@@ -266,6 +299,7 @@ export function newProjectProgress(
     total: steps.length,
     complete: steps.at(-1)?.state === "done",
     startedAt: new Date(birth.startedAt).toISOString(),
+    ...(theirs.runtimes === undefined ? {} : { runtimes: theirs.runtimes }),
   };
 }
 
@@ -305,18 +339,6 @@ export function newProjectHandOver(
 
 // ── Running it ───────────────────────────────────────────────────────────────────────────────
 
-function isUncertain(cause: unknown): boolean {
-  if (cause instanceof ZeropsApiError) return cause.kind === "uncertain";
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "_tag" in cause &&
-    cause._tag === "ZeropsDataAdapterError" &&
-    "kind" in cause &&
-    cause.kind === "uncertain"
-  );
-}
-
 /**
  * Runs a New project's creation from the step it stands on until the platform takes its first
  * Mate's project, or until a step stops it — telling `moved` of each step it reaches.
@@ -337,6 +359,18 @@ export async function runNewProjectBirth(
   };
 
   const { hq } = birth;
+  // Add's press owns its HQ intent and attach, through useEnvironmentCreation. It creates
+  // no application and never writes the new-project registration.
+  if (birth.adds !== undefined) {
+    try {
+      const { project } = await ports.createProject({ name: birth.adds.displayName });
+      ports.accepted(project.id, null, birth.startedAt);
+      moved({ step: "created", projectId: project.id });
+    } catch (cause) {
+      stop(zeropsErrorMessage(cause), isUncertainZeropsFailure(cause));
+    }
+    return;
+  }
   let appId = birth.appId;
   if (appId === null) {
     try {
@@ -374,7 +408,7 @@ export async function runNewProjectBirth(
       birth: intent,
     });
   } catch (cause) {
-    stop(zeropsErrorMessage(cause), isUncertain(cause));
+    stop(zeropsErrorMessage(cause), isUncertainZeropsFailure(cause));
     return;
   }
   const projectId = created.project.id;
@@ -383,6 +417,56 @@ export async function runNewProjectBirth(
   ports.accepted(projectId, { hq, appId, intent }, birth.startedAt);
   moved({ step: "created", projectId });
 }
+
+/** What an Add's press answers once it is over (`useEnvironmentCreation`). */
+export type AddRun =
+  | { readonly kind: "refused"; readonly reason: string | null }
+  | { readonly kind: "ran"; readonly outcome: EnvironmentCreationOutcome };
+
+/**
+ * An Add's press as its creation's `createProject`: taken the moment the platform takes its
+ * project, the press running on after it. A stop before that rejects with why — uncertain where
+ * Zerops may have made it anyway, so no *Try again* makes a second — and one after it, a throw
+ * included, is its press's to say on the Mate's own view (`settled`).
+ */
+export function addCreateProject(input: {
+  readonly run: (onAccepted: (projectId: string) => void) => Promise<AddRun>;
+  readonly settled: (projectId: string, error: string) => void;
+}): Promise<{ readonly project: { readonly id: string } }> {
+  return new Promise((resolve, reject) => {
+    let accepted: string | undefined;
+    const stopped = (error: string, uncertain: boolean) => {
+      if (accepted !== undefined) {
+        input.settled(accepted, error);
+        return;
+      }
+      reject(uncertain ? new ZeropsApiError(error, "uncertain") : new Error(error));
+    };
+    input
+      .run((projectId) => {
+        accepted = projectId;
+        resolve({ project: { id: projectId } });
+      })
+      .then(
+        (run) => {
+          if (run.kind === "refused") {
+            stopped(run.reason ?? ADD_REFUSED, false);
+            return;
+          }
+          if (run.outcome.ok) {
+            if (accepted === undefined) stopped(ADD_REFUSED, false);
+            return;
+          }
+          stopped(run.outcome.error, run.outcome.uncertain === true);
+        },
+        (cause: unknown) => {
+          stopped(zeropsErrorMessage(cause), isUncertainZeropsFailure(cause));
+        },
+      );
+  });
+}
+
+const ADD_REFUSED = "It could not be added.";
 
 // ── The creations this tab holds ─────────────────────────────────────────────────────────────
 
@@ -438,7 +522,7 @@ async function drive(birthId: string): Promise<void> {
  */
 export function beginNewProjectBirth(input: {
   readonly ask: NewProjectAsk;
-  /** The organization's HQ, as its member list names it. */
+  /** The official HQ held by the account. */
   readonly hq: HqEndpoint;
   readonly ports: NewProjectPorts;
   /** Wall ms. */
@@ -449,11 +533,12 @@ export function beginNewProjectBirth(input: {
     ...input.ask,
     startedAt: input.now,
     hq: input.hq,
-    appId: null,
+    appId: input.ask.adds?.appId ?? null,
     intent: null,
-    step: "registry",
+    step: input.ask.adds === undefined ? "registry" : "create",
     failed: null,
     projectId: null,
+    progress: null,
   };
   useNewProjectBirths.setState((state) => ({ births: { ...state.births, [birthId]: birth } }));
   driving.set(birthId, {
@@ -465,12 +550,110 @@ export function beginNewProjectBirth(input: {
   return birthId;
 }
 
-/** *Try again* on a creation a step stopped: it resumes from that step. */
+/**
+ * Its Mate's press moved: each step's state, kept on the creation for its view, which draws them
+ * under its project's row until it hands over (`creationSubsteps`).
+ */
+export function progressNewProjectBirth(
+  birthId: string,
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+): void {
+  const creation = progress.find((entry) => entry.step.kind === "create-project");
+  const intent =
+    creation?.step.kind === "create-project"
+      ? readZeropsMembership({ tagList: creation.step.tagList }).birth
+      : undefined;
+  patchBirth(birthId, { progress, ...(intent === undefined ? {} : { intent }) });
+}
+
+/**
+ * What ends a creation that stopped before Zerops took its project as far as this tab knows:
+ * *Dismiss* takes it out of the menu — and, for an Add refused for certain (a quota, a right),
+ * *Start over* asks for it again over its project, its name there to change. One Zerops may have
+ * made is dismissed, never started over: a second could make it twice. Null for any other: one
+ * running, one Zerops took (its press finishes it), a New project refused for certain (its own
+ * *Try again*).
+ */
+export function creationEnds(birth: NewProjectBirth): {
+  readonly startOver: { readonly groupId: string; readonly again: NewMateAgain } | null;
+} | null {
+  if (birth.projectId !== null || birth.failed === null) return null;
+  if (birth.failed.uncertain) return { startOver: null };
+  if (birth.adds === undefined) return null;
+  return {
+    startOver: {
+      groupId: birth.adds.appId,
+      again: {
+        botName: birth.botName,
+        name: birth.adds.displayName,
+        tint: birth.face.tint,
+        shape: birth.face.shape,
+      },
+    },
+  };
+}
+
+/** *Dismiss*: the creation is let go of, and its row leaves the menu. */
+export function dismissNewProjectBirth(birthId: string): void {
+  driving.delete(birthId);
+  useNewProjectBirths.setState((state) => {
+    if (state.births[birthId] === undefined) return state;
+    const { [birthId]: _gone, ...rest } = state.births;
+    return { births: rest };
+  });
+}
+
+/** *Start over*: an Add refused for certain (`creationEnds`) is let go of, and asked for again, prefilled. */
+export function startAddOver(birthId: string): void {
+  const birth = useNewProjectBirths.getState().births[birthId];
+  const startOver = birth === undefined ? null : creationEnds(birth)?.startOver;
+  if (startOver == null) return;
+  dismissNewProjectBirth(birthId);
+  useNewMate.getState().ask(startOver.groupId, startOver.again);
+}
+
+/** *Try again* on a creation a step stopped: it resumes from that step, with the same project. */
 export function retryNewProjectBirth(birthId: string): void {
   const birth = useNewProjectBirths.getState().births[birthId];
   if (birth === undefined || birth.failed === null || birth.failed.uncertain) return;
   patchBirth(birthId, { failed: null });
   void drive(birthId);
+}
+
+const REGISTRATION_REFUSED = "It was refused.";
+
+/**
+ * Whether the creation this tab made of this Mate saw its registration refused, and nothing has
+ * finished it since: its *Finish setup* is offered at once — this tab saw the press end, so no
+ * press elsewhere is still at it.
+ */
+export function registrationUnfinished(
+  births: Readonly<Record<string, NewProjectBirth>>,
+  projectId: string,
+): boolean {
+  const made = newProjectBirthOf(births, projectId);
+  return (
+    made?.progress?.some((entry) => entry.step.kind === "register" && entry.state === "failed") ===
+    true
+  );
+}
+
+/**
+ * *Finish setup* ran its steps on a Mate this tab made: its registration, as that press moves,
+ * becomes the creation's own — its step under the project's row follows it, and once through the
+ * verb is offered no more.
+ */
+export function refinishNewProjectBirth(
+  projectId: string,
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+): void {
+  const registration = progress.find((entry) => entry.step.kind === "register");
+  if (registration === undefined || registration.state === "queued") return;
+  const made = newProjectBirthOf(useNewProjectBirths.getState().births, projectId);
+  if (made?.progress == null) return;
+  patchBirth(made.birthId, {
+    progress: made.progress.map((entry) => (entry.step.kind === "register" ? registration : entry)),
+  });
 }
 
 /** The creation this tab made whose first Mate's project this is, while the tab holds it. */
@@ -486,67 +669,160 @@ onAccountLifetimeClose(() => {
   useNewProjectBirths.setState({ births: {} });
 });
 
+/** The managed services a recipe's yaml names, in its order: none where it names none. */
+export function recipeManaged(yaml: string): ReadonlyArray<string> | undefined {
+  const managed = (recipeTierServices(yaml) ?? []).flatMap((service) =>
+    service.role === "managed" ? [service.hostname] : [],
+  );
+  return managed.length === 0 ? undefined : managed;
+}
+
 /**
  * A New project's press as its dialog draws it, until the first Mate needs no browser: the
  * project's registration, the project itself — its creation's wait
  * part of the press — then its Mate's close-off and registration, from the Mate's own press
  * (`progress`, null before it begins).
  */
-export function newProjectPressSteps(
-  birth: NewProjectBirth,
-  progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
-): ReadonlyArray<PressStepView> {
-  const own = (label: string, step: NewProjectStep): PressStepView => ({
-    label,
-    state: stateOf(birth, step),
-  });
-  const mate = (label: string, kind: EnvironmentCreationStep["kind"]): PressStepView => {
-    const entry = progress?.find((candidate) => candidate.step.kind === kind);
-    const state: PressStepView["state"] =
-      entry === undefined
-        ? "waiting"
-        : entry.state === "queued"
-          ? "waiting"
-          : entry.state === "running"
-            ? "active"
-            : entry.state;
-    return { label, state };
-  };
-  return [
-    own("Project registered", "registry"),
-    own("Creating the project", "create"),
-    // In the order its press runs: its record in its application before its close-off (F6b).
-    mate("Mate registered", "register"),
-    mate("Closed off", "close-off"),
-  ];
+export function creationManaged(birth: NewProjectBirth): ReadonlyArray<string> | undefined {
+  if (birth.adds === undefined) return undefined;
+  const planned = birth.progress?.find(
+    (entry) => entry.step.kind === "import-managed" || entry.step.kind === "import-project",
+  )?.step;
+  if (planned !== undefined && "yaml" in planned) return recipeManaged(planned.yaml);
+  return birth.adds.managed;
 }
 
-/** The first Mate is marked closed off: it needs no browser, and the dialog may go. */
-export function newProjectPressThrough(
-  progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
-): boolean {
-  return progress !== null && pressThrough(progress);
-}
-
-/** A press's stop as its dialog reads it: why, and whether Try again may run it again. */
-export interface NewProjectPressStop {
-  readonly kind: "failed";
-  readonly reason: string;
-  readonly retryable: boolean;
+/** The runtimes a recipe's tier brings up once its Mate is closed off: none where it names none. */
+export function recipeRuntimes(yaml: string): ReadonlyArray<RecipeRuntime> | undefined {
+  return splitRecipeTier(yaml)?.runtimes?.services;
 }
 
 /**
- * Why a New project's press stopped, and what *Try again* resumes: its own step (`creation`),
- * its Mate's press (`press`), or nothing where the platform may have taken the creation anyway.
- * Null while it runs.
+ * The runtimes an added Mate's workspace brings, named from the press so its line under the
+ * workspace stands from the first frame: as its plan names them once its press is heard, as its
+ * recipe did before. A New project's first Mate has none.
  */
-export function newProjectPressFailure(
-  birth: NewProjectBirth,
-  press: NewProjectPressStop | null,
-): { readonly reason: string; readonly tryAgain: "creation" | "press" | null } | null {
-  if (birth.failed !== null) {
-    return { reason: birth.failed.reason, tryAgain: birth.failed.uncertain ? null : "creation" };
+export function creationRuntimes(birth: NewProjectBirth): ReadonlyArray<RecipeRuntime> | undefined {
+  if (birth.adds === undefined) return undefined;
+  for (const entry of birth.progress ?? []) {
+    if (entry.step.kind === "import-container") return entry.step.runtimes?.services;
   }
-  if (press === null) return null;
-  return { reason: press.reason, tryAgain: press.retryable ? "press" : null };
+  return birth.adds.runtimes;
+}
+
+/**
+ * What a Mate's view names before its project lists them — its copy's managed services, its
+ * workspace's runtimes: its press's while this tab holds it, then the creation's, which this tab
+ * holds all session; so a press over never takes back a line its view drew (run 6's review).
+ */
+export function comingPlanned(
+  press:
+    | {
+        readonly managed?: ReadonlyArray<string> | undefined;
+        readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined;
+      }
+    | undefined,
+  made: NewProjectBirth | undefined,
+): {
+  readonly managed?: ReadonlyArray<string>;
+  readonly runtimes?: ReadonlyArray<RecipeRuntime>;
+} {
+  const managed = press?.managed ?? (made === undefined ? undefined : creationManaged(made));
+  const runtimes = press?.runtimes ?? (made === undefined ? undefined : creationRuntimes(made));
+  return {
+    ...(managed === undefined ? {} : { managed }),
+    ...(runtimes === undefined ? {} : { runtimes }),
+  };
+}
+
+/** Each step of a press, by the runner's steps that make it. */
+const PRESS_KINDS = {
+  created: ["create-project", "import-project", "import-managed"],
+  container: ["import-container"],
+  "closed-off": ["close-off"],
+  registered: ["register"],
+} as const satisfies Record<string, ReadonlyArray<EnvironmentCreationStep["kind"]>>;
+
+/** A step of the press as its entries say it: stopped, through, under way, or not begun. */
+function pressedStep(
+  progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
+  kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>,
+): { readonly state: ArrivalSubstep["state"]; readonly error?: string } | null {
+  const own = (progress ?? []).filter((entry) => kinds.includes(entry.step.kind));
+  if (own.length === 0) return null;
+  const failed = own.find((entry) => entry.state === "failed");
+  if (failed !== undefined) {
+    return { state: "failed", ...(failed.error === undefined ? {} : { error: failed.error }) };
+  }
+  if (own.every((entry) => entry.state === "done")) return { state: "done" };
+  return {
+    state: own.some((entry) => entry.state === "running" || entry.state === "done")
+      ? "active"
+      : "waiting",
+  };
+}
+
+/**
+ * The steps this tab runs for a creation, as its view draws them under its project's row: a New
+ * project registered and created, then its Mate registered, its container imported and closed
+ * off; an added Mate follows the same HQ order after its copy is created. Each step carries its
+ * state and the full reason when it stops. A refused registration offers Finish setup.
+ */
+export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalSubstep> {
+  const said = (
+    id: string,
+    label: string,
+    state: ArrivalSubstep["state"],
+    why?: string,
+  ): ArrivalSubstep => ({ id, label, state, ...(why === undefined ? {} : { why }) });
+  const fromPress = (id: keyof typeof PRESS_KINDS, label: string): ArrivalSubstep => {
+    const step = pressedStep(birth.progress, PRESS_KINDS[id]);
+    if (step === null) return said(id, label, "waiting");
+    return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
+  };
+  // A refused registration keeps its reason until Finish setup replaces that step.
+  const pressedRegistration = fromPress("registered", `${birth.botName} registered`);
+  const registered =
+    pressedRegistration.state === "failed"
+      ? said(
+          "registered",
+          "Not registered",
+          "unfinished",
+          asSentence(pressedRegistration.why ?? "") || REGISTRATION_REFUSED,
+        )
+      : pressedRegistration;
+  if (birth.adds === undefined) {
+    const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {
+      const state = stateOf(birth, step);
+      return said(id, label, state, state === "failed" ? birth.failed?.reason : undefined);
+    };
+    return [
+      own("registered-project", "Registered", "registry"),
+      own("created", "Created", "create"),
+      registered,
+      fromPress("container", "Container"),
+      fromPress("closed-off", "Closed off"),
+    ];
+  }
+  // Before the platform took its project the creation says where it stands; after, its press.
+  const pressedCreated = pressedStep(birth.progress, PRESS_KINDS.created);
+  const created: ArrivalSubstep =
+    birth.failed !== null
+      ? said("created", "Created", "failed", birth.failed.reason)
+      : birth.projectId === null
+        ? said("created", "Created", "active")
+        : pressedCreated === null
+          ? said("created", "Created", "done")
+          : said(
+              "created",
+              "Created",
+              pressedCreated.state,
+              pressedCreated.state === "failed" ? pressedCreated.error : undefined,
+            );
+  return [
+    created,
+    ...(birth.adds.registers ? [registered] : []),
+    fromPress("container", "Container"),
+    fromPress("closed-off", "Closed off"),
+  ];
 }

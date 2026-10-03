@@ -173,6 +173,7 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
         activity: face === undefined ? undefined : { face, ...atRest },
         reviewWaits: review,
         mine: true,
+        pose: undefined,
       }),
     ).toBe(shown);
   });
@@ -272,6 +273,7 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
           activity: { face },
           reviewWaits: review,
           mine: mateIsViewers({ hq: tags }, viewer),
+          pose: undefined,
         }),
       ).toBe(shown);
     });
@@ -284,6 +286,7 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
         activity: { face: "sleep", pausedUntil: "2026-09-29T23:00:00.000Z" },
         reviewWaits: true,
         mine: true,
+        pose: undefined,
       }),
     ).toBe("sleep");
   });
@@ -659,6 +662,63 @@ describe("mateFaceFor", () => {
 
   it.each(cases)("wears $face when connected=$connected", ({ activity, connected, face }) => {
     expect(mateFaceFor(connected, activity)).toBe(face);
+  });
+
+  // Its pose (`matePose`) is read here, once, for every surface that draws the Mate: a row, the
+  // ⌘K list, the projects pages, a conversation's header, the panel.
+  it.each([
+    {
+      case: "coming up",
+      connected: false,
+      activity: undefined,
+      pose: { life: "coming" },
+      face: "waking",
+    },
+    {
+      case: "arriving, its socket not up",
+      connected: false,
+      activity: undefined,
+      pose: { arriving: true },
+      face: "waking",
+    },
+    {
+      case: "arriving, waiting for its sign-in",
+      connected: true,
+      activity: undefined,
+      pose: { arriving: true },
+      face: "waking",
+    },
+    {
+      case: "arriving, at work",
+      connected: true,
+      activity: { face: "working" },
+      pose: { arriving: true },
+      face: "working",
+    },
+    {
+      case: "past its window, never signed in",
+      connected: true,
+      activity: undefined,
+      pose: { arriving: false },
+      face: "idle",
+    },
+    {
+      case: "did not come up",
+      connected: false,
+      activity: undefined,
+      pose: { life: "failed" },
+      face: "sleep",
+    },
+    {
+      case: "deleting, at work",
+      connected: true,
+      activity: { face: "working" },
+      pose: { life: "deleting" },
+      face: "sleep",
+    },
+  ] as const)("wears $face: $case", ({ activity, connected, pose, face }) => {
+    expect(mateFaceFor(connected, activity, pose)).toBe(face);
+    expect(mateFaceOf({ connected, activity, reviewWaits: false, mine: false, pose })).toBe(face);
   });
 });
 

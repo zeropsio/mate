@@ -16,7 +16,7 @@
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -35,7 +35,6 @@ import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker } from "./MateFacePicker";
-import { FormOrPress, type PressingView } from "./ZeropsEnvironmentCreationDialog";
 import { MateNameInput } from "./MateNameInput";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newProjectNext } from "./whatHappensNext.logic";
@@ -290,22 +289,23 @@ export function ZeropsNewProjectForm({
 /** The form in its dialog, New Mate's size: what the host opens, and what the harness draws. */
 export function ZeropsNewProjectDialog({
   onOpenChange,
-  pressing,
   ...form
 }: ZeropsNewProjectFormProps & {
   readonly onOpenChange: (open: boolean) => void;
-  /**
-   * The press under way, in the form's place: the dialog stays on it until the first Mate needs
-   * no browser (its project marked closed off), so a tab closed meanwhile is a person's choice.
-   */
-  readonly pressing?: PressingView | undefined;
 }) {
+  // Create closes it onto the first Mate's page, which takes the focus: never back to what opened
+  // it, where a second Enter would open it again over that page.
+  const created = useRef(false);
   return (
     <Dialog onOpenChange={onOpenChange} open>
-      <DialogPopup className="max-w-lg">
-        <FormOrPress pressing={pressing}>
-          <ZeropsNewProjectForm {...form} />
-        </FormOrPress>
+      <DialogPopup className="max-w-lg" finalFocus={() => !created.current}>
+        <ZeropsNewProjectForm
+          {...form}
+          onCreate={(choice) => {
+            created.current = true;
+            form.onCreate(choice);
+          }}
+        />
       </DialogPopup>
     </Dialog>
   );

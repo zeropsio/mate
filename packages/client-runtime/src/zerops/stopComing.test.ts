@@ -14,6 +14,7 @@ import {
   listedStopComing,
   stopComing,
   stopDeployed,
+  stopImport,
   stopServes,
   type FirstDeploy,
   type StopComing,
@@ -51,9 +52,19 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: { kind: "coming", step: "project" },
     },
     {
-      case: "its services unread",
-      over: { services: undefined },
-      coming: { kind: "coming", step: "project" },
+      case: "a reload: its services unread under an active project, never making the project",
+      over: { services: undefined, deployed: undefined, routes: 0 },
+      coming: undefined,
+    },
+    {
+      case: "its project being deleted: never making the project",
+      over: { projectStatus: "DELETING", routes: 0 },
+      coming: undefined,
+    },
+    {
+      case: "its project being made a window ago: the pill's, not coming up",
+      over: { projectStatus: "CREATING", createdAt: ago(COMING_UP_WINDOW_MS) },
+      coming: undefined,
     },
     {
       case: "the database not running yet",
@@ -140,6 +151,26 @@ describe("stopComing — where a stage or a production coming up has got", () =>
         firstDeploy: { kind: "held", why: "zerops" } as FirstDeploy,
       },
       coming: { kind: "coming", step: "zerops-retrying" },
+    },
+    {
+      case: "listed with no runtime yet (run 5, +696 s): adding the app, never the runner",
+      over: {
+        services: [],
+        deployed: false,
+        routes: 0,
+        firstDeploy: { kind: "on-its-way" } as FirstDeploy,
+      },
+      coming: { kind: "coming", step: "app" },
+    },
+    {
+      case: "its runtime being made, a first deploy failed on main: the import first",
+      over: {
+        services: [app("CREATING")],
+        deployed: false,
+        routes: 0,
+        firstDeploy: { kind: "failed" } as FirstDeploy,
+      },
+      coming: { kind: "coming", step: "app" },
     },
     {
       case: "its first build failed",
@@ -445,5 +476,71 @@ describe("comingLine — the line an environment coming up says", () => {
     ],
   ])("%s %j", (subject, coming, line) => {
     expect(comingLine(subject, coming)).toEqual(line);
+  });
+});
+
+describe("stopImport — where an environment's own import has got, the one order both surfaces keep", () => {
+  const made = { projectStatus: "ACTIVE", createdAt: ago(60_000), nowMs: NOW };
+  const cases = [
+    { case: "its project being made", over: { projectStatus: "CREATING" }, step: "project" },
+    { case: "a reload: its services unread", over: { services: undefined }, step: undefined },
+    {
+      case: "its project being made, its services not listed",
+      over: { projectStatus: "CREATING", services: undefined },
+      step: "project",
+    },
+    { case: "its project being deleted", over: { projectStatus: "DELETING" }, step: undefined },
+    {
+      case: "its project being made a window ago",
+      over: { projectStatus: "CREATING", createdAt: ago(COMING_UP_WINDOW_MS) },
+      step: undefined,
+    },
+    { case: "no runtime listed yet", over: { services: [] }, step: "app" },
+    { case: "its runtime new", over: { services: [app("NEW")] }, step: "app" },
+    { case: "its runtime being made", over: { services: [app("CREATING")] }, step: "app" },
+    {
+      case: "its database not running yet",
+      over: { services: [db("CREATING"), app("NEW")] },
+      step: "database",
+    },
+    {
+      case: "made, nothing deployed",
+      over: { services: [app("READY_TO_DEPLOY")] },
+      step: undefined,
+    },
+    { case: "made, running", over: { services: [db("ACTIVE"), app("ACTIVE")] }, step: undefined },
+    {
+      case: "its database failed: not coming up any more",
+      over: { services: [db("ACTION_FAILED"), app("NEW")] },
+      step: undefined,
+    },
+    { case: "stopped", over: { projectStatus: "STOPPED", services: [] }, step: undefined },
+    {
+      case: "made a window ago",
+      over: { createdAt: ago(COMING_UP_WINDOW_MS), services: [app("NEW")] },
+      step: undefined,
+    },
+  ] as const;
+
+  it.each(cases)("$case", ({ over, step }) => {
+    expect(stopImport({ ...made, services: [app("ACTIVE")], ...over })).toBe(step);
+  });
+
+  it.each(cases)("says what stopComing says of the import: $case", ({ over, step }) => {
+    const coming = stopComing({
+      ...base,
+      deployed: false,
+      routes: 0,
+      firstDeploy: { kind: "on-its-way" },
+      ...made,
+      services: [app("ACTIVE")],
+      ...over,
+    });
+    const said =
+      coming?.kind === "coming" &&
+      (coming.step === "project" || coming.step === "database" || coming.step === "app")
+        ? coming.step
+        : undefined;
+    expect(said).toBe(step);
   });
 });

@@ -5,14 +5,18 @@ import { signInPhrase } from "~/components/zerops/ZeropsAgentSignIn.logic";
 
 import {
   arrivalFace,
+  arrivalHeaderFace,
   arrivalHeadline,
   arrivalSentence,
   arrivalSteps,
   comingSentence,
   inFirstSeenOrder,
   nextRuntimesLine,
+  pressNote,
+  pressRuns,
   runtimesComing,
   type ArrivalKind,
+  type ArrivalSubstep,
 } from "./mateArrival";
 
 const WREN = { name: "Wren", project: "Beviro" };
@@ -414,7 +418,7 @@ describe("the stage's words", () => {
       kind: "coming",
       headline: "Wren is coming up on Beviro.",
       sentence: "About two minutes.",
-      face: "sleep",
+      face: "waking",
     },
     {
       kind: "sign-in",
@@ -449,7 +453,8 @@ describe("the stage's words", () => {
   ])("$kind: $headline", ({ kind, headline, sentence, face }) => {
     expect(arrivalHeadline(WREN, kind)).toBe(headline);
     expect(arrivalSentence(WREN, kind)).toBe(sentence);
-    expect(arrivalFace(kind, true)).toBe(face);
+    // Arrived (its window past, or signed in once): at rest where it waits.
+    expect(arrivalFace(kind, true, false)).toBe(face);
   });
 
   it("names who added it to a colleague, where that is known", () => {
@@ -482,7 +487,203 @@ describe("the stage's words", () => {
   });
 
   it("sleeps until it answers", () => {
-    expect(arrivalFace("sign-in", false)).toBe("sleep");
-    expect(arrivalFace("coming-failed", false)).toBe("needs");
+    expect(arrivalFace("sign-in", false, false)).toBe("sleep");
+    expect(arrivalFace("coming-failed", false, true)).toBe("needs");
+  });
+
+  // Its pose (`mateFaceFor`): waking while it arrives — from the press to its first sign-in,
+  // inside its window — never for a Mate signed in once and signed out since (its signer tag
+  // stays), nor for one nobody signed in past its window.
+  it.each([
+    { case: "coming up", kind: "coming", arriving: true, face: "waking" },
+    { case: "coming up, its window read as past", kind: "coming", arriving: false, face: "waking" },
+    { case: "arriving, its sign-in to come", kind: "sign-in", arriving: true, face: "waking" },
+    { case: "arriving, a colleague's", kind: "sign-in-colleague", arriving: true, face: "waking" },
+    { case: "signed in once, signed out since", kind: "sign-in", arriving: false, face: "idle" },
+    {
+      case: "nobody signed it in, past its window",
+      kind: "sign-in-plain",
+      arriving: false,
+      face: "idle",
+    },
+    { case: "signed in, asked nothing yet", kind: "question", arriving: false, face: "idle" },
+  ] as const)("$case: $face", ({ kind, arriving, face }) => {
+    expect(arrivalFace(kind, true, arriving)).toBe(face);
+  });
+});
+
+// The header over a Mate's arrival wears the stage's pose (`mateFaceFor`): waking while it comes up
+// and arrives, asleep where it did not come, at rest once it has arrived.
+describe("arrivalHeaderFace", () => {
+  it.each([
+    {
+      case: "coming up",
+      kind: "coming",
+      over: false,
+      arriving: true,
+      connected: false,
+      face: "waking",
+    },
+    {
+      case: "up, waiting for its sign-in",
+      kind: "coming",
+      over: true,
+      arriving: true,
+      connected: true,
+      face: "waking",
+    },
+    {
+      case: "up, signed in once (signed out since or not)",
+      kind: "coming",
+      over: true,
+      arriving: false,
+      connected: true,
+      face: "idle",
+    },
+    {
+      case: "did not come",
+      kind: "failed",
+      over: false,
+      arriving: true,
+      connected: false,
+      face: "sleep",
+    },
+    {
+      case: "its link not made",
+      kind: "reaching",
+      over: false,
+      arriving: false,
+      connected: false,
+      face: "sleep",
+    },
+  ] as const)("$case: $face", ({ case: _case, face, ...input }) => {
+    expect(arrivalHeaderFace(input)).toBe(face);
+  });
+});
+
+/** The browser-run steps in a row: each id's state, in order. */
+const subs = (...states: ReadonlyArray<ArrivalSubstep["state"]>): ReadonlyArray<ArrivalSubstep> =>
+  states.map((state, index) => ({
+    id: `s${String(index)}`,
+    label: `Step ${String(index)}`,
+    state,
+  }));
+
+describe("arrivalSteps — the steps this tab runs, under the project's row", () => {
+  const mate = deriveBirthProgress(CREATING, NOW);
+  const newProject = {
+    steps: [{ id: "registry", label: "Acme Shop", state: "done" as const }, ...mate.steps],
+  };
+
+  it.each([
+    { case: "running", press: subs("done", "active", "waiting", "waiting"), row: "active" },
+    { case: "stopped", press: subs("done", "failed", "waiting", "waiting"), row: "failed" },
+    { case: "through", press: subs("done", "done", "done", "done"), row: "done" },
+    // Refused, the Mate runs on: its registration waits on Finish setup, and the rest goes on.
+    {
+      case: "through but its registration, not finished here",
+      press: subs("done", "done", "done", "unfinished"),
+      row: "done",
+    },
+  ])("a New project's row reads $row while its steps are $case", ({ press, row }) => {
+    const steps = arrivalSteps(
+      { ...newProject, press },
+      { name: "Vera", project: "Acme Shop" },
+      NOW,
+    );
+    expect(steps[0]).toMatchObject({ id: "registry", state: row, substeps: press });
+    expect(steps.slice(1).some((step) => step.substeps !== undefined)).toBe(false);
+  });
+
+  it.each([
+    { case: "running", press: subs("active", "waiting", "waiting", "waiting"), row: "active" },
+    { case: "stopped", press: subs("done", "done", "failed", "waiting"), row: "failed" },
+    { case: "through", press: subs("done", "done", "done", "done"), row: "done" },
+    {
+      case: "its registration not finished",
+      press: subs("done", "done", "done", "unfinished"),
+      row: "done",
+    },
+  ])("an added Mate's copy reads $row while its steps are $case", ({ press, row }) => {
+    const steps = arrivalSteps({ ...mate, press }, WREN, NOW);
+    expect(steps[0]).toMatchObject({ id: "copy", state: row, substeps: press });
+  });
+
+  it("keeps a row's own stop over its steps running", () => {
+    const failedCopy = {
+      steps: mate.steps.map((step) =>
+        step.id === "project" ? { ...step, state: "failed" as const, detail: "No room." } : step,
+      ),
+    };
+    const steps = arrivalSteps({ ...failedCopy, press: subs("active", "waiting") }, WREN, NOW);
+    expect(steps[0]).toMatchObject({ id: "copy", state: "failed" });
+  });
+
+  it("draws no steps under any row where this tab ran none", () => {
+    const steps = arrivalSteps(mate, WREN, NOW);
+    expect(steps.some((step) => step.substeps !== undefined)).toBe(false);
+  });
+});
+
+describe("pressRuns — while the tab must stay open", () => {
+  it.each([
+    { case: "nothing run here", press: undefined, runs: false },
+    { case: "no steps", press: subs(), runs: false },
+    { case: "not begun", press: subs("waiting", "waiting"), runs: true },
+    { case: "one running", press: subs("done", "active", "waiting"), runs: true },
+    { case: "one stopped", press: subs("done", "failed", "waiting"), runs: false },
+    {
+      case: "its registration not finished",
+      press: subs("done", "done", "unfinished"),
+      runs: false,
+    },
+    { case: "all through", press: subs("done", "done", "done"), runs: false },
+  ])("$case: $runs", ({ press, runs }) => {
+    expect(pressRuns(press)).toBe(runs);
+  });
+});
+
+// Run 6's second review: a stop's whole reason lived in a hover tooltip, and a registration not
+// finished read as an owner's with no reason. Both are read whole under the steps, where the
+// actions are, by anyone, on any screen.
+describe("pressNote — what the steps this tab runs leave to read whole under them", () => {
+  const step = (state: ArrivalSubstep["state"], label: string, why?: string): ArrivalSubstep => ({
+    id: label,
+    label,
+    state,
+    ...(why === undefined ? {} : { why }),
+  });
+  it.each([
+    { case: "nothing run here", press: undefined, want: null },
+    { case: "running", press: [step("done", "Created"), step("active", "Container")], want: null },
+    {
+      case: "a stop: its whole reason",
+      press: [
+        step("failed", "Created", "The organization has no room for another project right now."),
+        step("waiting", "Container"),
+      ],
+      want: {
+        kind: "stopped",
+        text: "The organization has no room for another project right now.",
+      },
+    },
+    {
+      case: "a registration not finished: what is not, and why",
+      press: [
+        step("done", "Closed off"),
+        step("unfinished", "Not registered", "Its grant timed out."),
+      ],
+      want: { kind: "unfinished", text: "Not registered: Its grant timed out." },
+    },
+    {
+      case: "a stop over a registration not finished: the stop",
+      press: [
+        step("unfinished", "Not registered", "Refused."),
+        step("failed", "Container", "Gone."),
+      ],
+      want: { kind: "stopped", text: "Gone." },
+    },
+  ] as const)("$case", ({ press, want }) => {
+    expect(pressNote(press)).toEqual(want);
   });
 });

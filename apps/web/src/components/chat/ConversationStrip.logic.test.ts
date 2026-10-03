@@ -130,6 +130,13 @@ describe("lineMate", () => {
       tooltip: "Build the game server from the spec, tests first.",
     },
     {
+      name: "arriving, on its own chat nobody has spoken into: waking, as its row",
+      input: { chats: [shell("main")], pose: { arriving: true } },
+      open: true,
+      face: "waking",
+      tooltip: "Build the game server from the spec, tests first.",
+    },
+    {
       name: "on another chat of its own: on the band, in that chat's face",
       input: { currentThreadId: logs.id, subject: "Logs" },
       open: true,

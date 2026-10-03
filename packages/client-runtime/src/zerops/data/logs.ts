@@ -58,7 +58,11 @@ export interface BuildLogLease {
   setFollow(follow: boolean): void;
   loadOlder(): Promise<void>;
   retry(): Promise<void>;
-  /** Idempotent. The final release closes the shared session immediately. */
+  /**
+   * Idempotent. The final release stops following at once and keeps what was read for
+   * {@link LOG_RELEASE_GRACE_MS}: a card drawn again for the same build in it (a row that
+   * plops from the live slot into the history) reads nothing again.
+   */
   release(): void;
 }
 
@@ -107,6 +111,7 @@ export interface BuildLogRegistryOptions {
     | "retainedLogBytesPerSession"
     | "activeLogSessionsPerAccount"
     | "logPublicationCoalescingMs"
+    | "logStreamSettleMs"
   >;
   readonly setTimer: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer: (handle: unknown) => void;
@@ -182,6 +187,10 @@ class BuildLogSession implements SharedBuildLogSession {
   #pendingOlderGap = false;
   #pendingNewerGap = false;
   #flushHandle: unknown;
+  /** The open stream's settle, pending from its handshake until it stood a moment or answered. */
+  #settleHandle: unknown;
+  /** The stream answered before it settled: the flush carrying its lines makes it live. */
+  #liveWithFlush = false;
 
   constructor(
     project: ProjectRef,
@@ -218,7 +227,8 @@ class BuildLogSession implements SharedBuildLogSession {
     this.#followDesired = follow;
     if (!follow) {
       this.#stopFollow();
-      if (this.#snapshot.status === "live") {
+      const opening = this.#snapshot.status === "loading" && !this.#initialLoading;
+      if (this.#snapshot.status === "live" || opening) {
         this.#publish({ ...this.#snapshot, status: "ended", error: null });
       }
       return;
@@ -372,9 +382,25 @@ class BuildLogSession implements SharedBuildLogSession {
           ? {}
           : { fromLineId: this.#snapshot.cursor.newestLineId }),
         callbacks: {
+          // Live once the stream stood a moment after its handshake, or with
+          // the lines of its first frame — never in between, when a frame may
+          // be on its way with the lines written since the backfill.
+          onOpen: () => {
+            if (!this.#isFollowCurrent(lifecycle, follow)) return;
+            this.#clearSettle();
+            this.#settleHandle = this.#setTimer(() => {
+              this.#settleHandle = undefined;
+              if (!this.#isFollowCurrent(lifecycle, follow)) return;
+              this.#goLive();
+            }, this.#policy.logStreamSettleMs);
+          },
           onLines: (lines, rejectedItems) => {
             if (!this.#isFollowCurrent(lifecycle, follow)) return;
             this.#reopening = false;
+            if (this.#snapshot.status !== "live" && lines.length > 0) {
+              this.#clearSettle();
+              this.#liveWithFlush = true;
+            }
             this.#acceptFollowLines(lines, rejectedItems);
           },
           onMalformedFrame: () => {
@@ -388,6 +414,8 @@ class BuildLogSession implements SharedBuildLogSession {
             const handle = this.#followHandle;
             this.#followHandle = undefined;
             this.#followGeneration += 1;
+            this.#clearSettle();
+            this.#liveWithFlush = false;
             handle?.close();
             this.#publish({
               ...this.#snapshot,
@@ -399,6 +427,8 @@ class BuildLogSession implements SharedBuildLogSession {
           onClose: () => {
             if (!this.#isFollowCurrent(lifecycle, follow)) return;
             this.#followHandle = undefined;
+            this.#clearSettle();
+            this.#liveWithFlush = false;
             if (this.#reopening) {
               this.#reopening = false;
               this.#publish({
@@ -409,10 +439,13 @@ class BuildLogSession implements SharedBuildLogSession {
               });
               return;
             }
+            // The stream it reopens is not live until its own handshake.
             const hasCursor = this.#snapshot.cursor.newestLineId !== null;
-            if (!hasCursor) {
-              this.#publish({ ...this.#snapshot, gaps: { ...this.#snapshot.gaps, newer: true } });
-            }
+            this.#publish({
+              ...this.#snapshot,
+              status: "loading",
+              gaps: { ...this.#snapshot.gaps, newer: this.#snapshot.gaps.newer || !hasCursor },
+            });
             this.#reopening = true;
             this.#openFollow();
           },
@@ -424,12 +457,6 @@ class BuildLogSession implements SharedBuildLogSession {
           return;
         }
         this.#followHandle = handle;
-        this.#publish({
-          ...this.#snapshot,
-          status: "live",
-          error: null,
-          gaps: { ...this.#snapshot.gaps, newer: false },
-        });
       })
       .catch((error: unknown) => {
         if (!this.#isFollowCurrent(lifecycle, follow)) return;
@@ -443,9 +470,26 @@ class BuildLogSession implements SharedBuildLogSession {
     this.#track(operation);
   }
 
+  #goLive(): void {
+    this.#publish({
+      ...this.#snapshot,
+      status: "live",
+      error: null,
+      gaps: { ...this.#snapshot.gaps, newer: false },
+    });
+  }
+
+  #clearSettle(): void {
+    if (this.#settleHandle === undefined) return;
+    this.#clearTimer(this.#settleHandle);
+    this.#settleHandle = undefined;
+  }
+
   #stopFollow(): void {
     this.#followGeneration += 1;
     this.#reopening = false;
+    this.#clearSettle();
+    this.#liveWithFlush = false;
     this.#followHandle?.close();
     this.#followHandle = undefined;
   }
@@ -481,6 +525,16 @@ class BuildLogSession implements SharedBuildLogSession {
     const batch = this.#pending.slice(0, this.#policy.logPublishBatchLines);
     this.#pending = this.#pending.slice(batch.length);
     if (batch.length > 0 || this.#pendingOlderGap || this.#pendingNewerGap) {
+      if (this.#liveWithFlush && batch.length > 0) {
+        // Its first frame's lines and its being live reach readers together.
+        this.#liveWithFlush = false;
+        this.#snapshot = {
+          ...this.#snapshot,
+          status: "live",
+          error: null,
+          gaps: { ...this.#snapshot.gaps, newer: false },
+        };
+      }
       const merged = mergeBoundedBuildLogLines(
         this.#snapshot.lines,
         batch,
@@ -566,10 +620,15 @@ class BuildLogSession implements SharedBuildLogSession {
   }
 }
 
+/** How long a build's log nobody holds is kept before it is closed. */
+export const LOG_RELEASE_GRACE_MS = 5_000;
+
 interface RegistryEntry {
   readonly project: ProjectRef;
   readonly session: BuildLogSession;
   readonly follows: Map<number, boolean>;
+  /** Its close, pending since its final release. */
+  closing?: unknown;
 }
 
 export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLogRegistry {
@@ -609,6 +668,7 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       const allowedUntil = accessDeadline(entry.project);
       if (allowedUntil === null) {
         sessions.delete(key);
+        if (entry.closing !== undefined) options.clearTimer(entry.closing);
         entry.session.dispose("access");
       } else deadline = allowedUntil;
     }
@@ -628,6 +688,14 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
     }
   };
 
+  const close = (key: BuildLogSessionKey, entry: RegistryEntry): void => {
+    if (entry.closing !== undefined) options.clearTimer(entry.closing);
+    entry.closing = undefined;
+    if (sessions.get(key) === entry) sessions.delete(key);
+    entry.session.dispose();
+    reconcileAccess();
+  };
+
   const acquire: BuildLogRegistry["acquire"] = (project, query, leaseOptions = {}) => {
     if (closed) throw new BuildLogRegistryError("closed");
     if (!sameAccount(options.scope, project)) throw new BuildLogRegistryError("account");
@@ -635,7 +703,16 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
     if (accessDeadline(project) === null) throw new BuildLogRegistryError("access");
     const key = buildLogSessionKeyOf(project, query);
     let entry = sessions.get(key);
+    if (entry?.closing !== undefined) {
+      options.clearTimer(entry.closing);
+      entry.closing = undefined;
+    }
     if (entry === undefined) {
+      // A log nobody holds gives way to one asked for.
+      for (const [heldKey, held] of sessions) {
+        if (sessions.size < options.policy.activeLogSessionsPerAccount) break;
+        if (held.follows.size === 0) close(heldKey, held);
+      }
       if (sessions.size >= options.policy.activeLogSessionsPerAccount) {
         throw new BuildLogRegistryError("capacity");
       }
@@ -659,9 +736,15 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       released = true;
       ownedEntry.follows.delete(leaseId);
       if (ownedEntry.follows.size === 0) {
-        if (sessions.get(key) === ownedEntry) sessions.delete(key);
-        ownedEntry.session.dispose();
-        reconcileAccess();
+        ownedEntry.session.setFollow(false);
+        if (closed || sessions.get(key) !== ownedEntry) {
+          close(key, ownedEntry);
+          return;
+        }
+        ownedEntry.closing = options.setTimer(() => {
+          ownedEntry.closing = undefined;
+          close(key, ownedEntry);
+        }, LOG_RELEASE_GRACE_MS);
         return;
       }
       ownedEntry.session.setFollow([...ownedEntry.follows.values()].some(Boolean));
@@ -685,7 +768,10 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
   const shutdown = (): void => {
     if (closed) return;
     closed = true;
-    for (const entry of sessions.values()) entry.session.dispose();
+    for (const entry of sessions.values()) {
+      if (entry.closing !== undefined) options.clearTimer(entry.closing);
+      entry.session.dispose();
+    }
     sessions.clear();
     reconcileAccess();
     options.transport.shutdown();

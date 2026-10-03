@@ -18,6 +18,7 @@ import {
   namedToolCall,
   incidentsStanding,
   operationLineWords,
+  operationUnreturnedWords,
   standingIncidents,
   splitStandup,
   readCrewCard,
@@ -2437,6 +2438,28 @@ describe("deriveOutcome", () => {
   });
 });
 
+// A call that never returned says what was asked, never that it runs or how
+// it came out (D3): "Deploy app", then "No result" once the run is over.
+describe("operationUnreturnedWords", () => {
+  it.each([
+    { kind: "deploy", words: "Deploy app" },
+    { kind: "verify", words: "Check app" },
+    { kind: "browser", words: "Check app" },
+    { kind: "import", words: "Create app" },
+    { kind: "logs", words: "Read the app log" },
+    { kind: "events", words: "Read the events of app" },
+    { kind: "discover", words: "Look at app" },
+    { kind: "process", words: "Follow app" },
+    { kind: "bootstrap", words: "Set up app" },
+    { kind: "standup", words: "Stand app up" },
+    { kind: "subdomain", words: "Update the subdomain of app" },
+  ] as const)("$kind: $words", ({ kind, words }) => {
+    const entry = operation("x", "t1", 1, { kind, subject: "app", phase: "running" });
+    if (entry.kind !== "operation") throw new Error("an operation");
+    expect(operationUnreturnedWords(entry.operation)).toBe(words);
+  });
+});
+
 describe("operationLineWords", () => {
   const op = (overrides: Partial<ZeropsOperation> & Pick<ZeropsOperation, "kind">) =>
     (operation("x", "t1", 1, overrides) as Extract<TimelineEntry, { kind: "operation" }>).operation;
@@ -2520,6 +2543,38 @@ describe("operationLineWords", () => {
       voice: "Reading the app log.",
       statusWord: "Read",
       words: "Read the app log",
+    },
+    // "Done app" and "Complete app" read oddly (pass 35): a followed process
+    // says it followed, a set-up session that it stood its services up.
+    {
+      kind: "process",
+      phase: "done",
+      voice: "Following app.",
+      statusWord: "Done",
+      words: "Followed app",
+    },
+    {
+      kind: "process",
+      phase: "done",
+      voice: "Following app.",
+      statusWord: "Cancelled",
+      words: "Cancelled app",
+    },
+    {
+      kind: "bootstrap",
+      phase: "done",
+      voice: "Setting up app.",
+      statusWord: "Complete",
+      words: "Stood app up",
+    },
+    // An adopt-route session took over what stood already.
+    {
+      kind: "bootstrap",
+      phase: "done",
+      voice: "Adopting app.",
+      kicker: "Adopt · app",
+      statusWord: "Complete",
+      words: "Adopted app",
     },
   ] as const)("$kind $phase: $words", ({ words, ...fields }) => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
@@ -2610,6 +2665,19 @@ describe("operationLineWords — a stand-up call, by what its report said", () =
       name: "the development call running",
       fields: { subject: "development", phase: "running", voice: "Standing development up." },
       words: "Standing development up",
+    },
+    // Its call returned while its builds run on (pass 35): the record's line
+    // says what it stood up, the band runs the builds.
+    {
+      name: "the development call returned, its builds running on",
+      fields: {
+        subject: "development",
+        phase: "done",
+        voice: "Standing development up.",
+        returnedAt: "2026-09-24T20:01:05.000Z",
+        steps: [building("apidev"), building("db")],
+      },
+      words: "Stood development up · apidev and db still building",
     },
     {
       name: "the development call stood, its stages next",
