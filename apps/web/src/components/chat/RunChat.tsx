@@ -2290,15 +2290,36 @@ function gatherCalls(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
 }
 
 /**
- * The slot's rows: a card of calls keyed by which card of calls it is, not by
- * its first call, so one whose first call leaves stays the same card.
+ * The slot's rows, a card of calls keyed by the first call it ever held: one
+ * whose first call leaves first stays the same card, its rows never mounted
+ * again (B4), and a new batch's card is a new card, and rises in (E5).
+ * `cards` says which card each call last stood in; the next one comes back.
  */
-function slotEntries(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
-  // A card is its first call's: a new card is a new row, and rises in.
-  return gatherCalls(lines).map((entry) =>
-    "calls" in entry ? { ...entry, key: `calls#${entry.calls[0]?.key ?? entry.key}` } : entry,
-  );
+function slotEntries(
+  lines: ReadonlyArray<ChatLine>,
+  cards: ReadonlyMap<string, string>,
+): { readonly entries: ReadonlyArray<ChatEntry>; readonly cards: ReadonlyMap<string, string> } {
+  const next = new Map<string, string>();
+  const taken = new Set<string>();
+  const entries = gatherCalls(lines).map((entry) => {
+    if (!("calls" in entry)) return entry;
+    const kept = entry.calls
+      .map((line) => cards.get(line.key))
+      .find((key) => key !== undefined && !taken.has(key));
+    const key = kept ?? `calls#${entry.calls[0]?.key ?? entry.key}`;
+    taken.add(key);
+    for (const line of entry.calls) next.set(line.key, key);
+    return { ...entry, key };
+  });
+  return { entries, cards: next };
 }
+
+/** Whether two cards-by-call maps say the same. */
+function sameCards(left: ReadonlyMap<string, string>, right: ReadonlyMap<string, string>) {
+  return left.size === right.size && [...left].every(([call, card]) => right.get(call) === card);
+}
+
+const NO_CARDS: ReadonlyMap<string, string> = new Map();
 
 /**
  * Where the person's words reached the Mate, on their side, in their bubble:
@@ -3040,6 +3061,10 @@ function LiveSlot({
     .map((line, index, all) =>
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
     );
+  // Which card each call stands in, kept from draw to draw (`slotEntries`).
+  const [cards, setCards] = useState<ReadonlyMap<string, string>>(NO_CARDS);
+  const slotted = slotEntries(lines, cards);
+  if (!sameCards(cards, slotted.cards)) setCards(slotted.cards);
   const listRef = useRef<HTMLOListElement>(null);
   // What enters after the slot's first draw arrived while the person watched.
   const shownRef = useRef(false);
@@ -3092,7 +3117,7 @@ function LiveSlot({
                 </span>
               </li>
             ) : (
-              slotEntries(lines).map((entry) =>
+              slotted.entries.map((entry) =>
                 "calls" in entry ? (
                   <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
                     <CallGroup>
