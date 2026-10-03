@@ -961,8 +961,11 @@ const NAMED_CALL_ACTION: Readonly<Record<string, ActivityAction>> = {
 };
 
 function activityAction(entry: WorkLogEntry): ActivityAction {
+  // A name the effort has a word for says what the call did; any other
+  // falls to what the call is, as its step reads it (`stepKind`).
   const named = namedToolCall(entry);
-  if (named !== null) return NAMED_CALL_ACTION[named] ?? "other";
+  const action = named === null ? undefined : NAMED_CALL_ACTION[named];
+  if (action !== undefined) return action;
   if (
     entry.requestKind === "file-read" ||
     entry.itemType === "image_view" ||

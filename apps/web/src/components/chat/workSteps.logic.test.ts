@@ -563,6 +563,39 @@ describe("stepOf — every driver", () => {
       words: "Used create issue",
     },
     {
+      name: "an MCP tool named as a native one",
+      partial: { label: "db_execute", itemType: "dynamic_tool_call", toolName: "mcp__db__execute" },
+      kind: "tool",
+      words: "Used execute",
+    },
+    {
+      name: "OpenCode's own underscored tool",
+      partial: { label: "plan_exit", itemType: "dynamic_tool_call", toolName: "plan_exit" },
+      kind: "tool",
+      words: "Used plan exit",
+    },
+    {
+      name: "an ACP search of the web",
+      partial: {
+        label: "Searched files",
+        itemType: "web_search",
+        toolName: "websearch",
+        callInput: { query: "zerops yaml" },
+      },
+      kind: "web",
+      words: "Searched the web for zerops yaml",
+    },
+    {
+      name: "a Zerops tool by its MCP name",
+      partial: {
+        label: "Running zerops_knowledge",
+        itemType: "dynamic_tool_call",
+        toolName: "mcp__zerops__zerops_knowledge",
+      },
+      kind: "tool",
+      words: "Read the Zerops guides",
+    },
+    {
       name: "a Grok tool its title names",
       partial: { label: "enter_plan_mode", itemType: "dynamic_tool_call" },
       kind: "tool",
