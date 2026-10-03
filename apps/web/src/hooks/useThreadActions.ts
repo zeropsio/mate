@@ -40,7 +40,7 @@ import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
-import { useAtomCommand } from "../state/use-atom-command";
+import { useMateCommand } from "../zerops/accountEnvironments";
 import { showUndoToast } from "./showUndoToast";
 import * as ThreadUndo from "./threadUndo";
 
@@ -168,45 +168,45 @@ export async function navigateAfterThreadDeletion(navigate: () => Promise<void>)
 }
 
 export function useThreadActions() {
-  const closeTerminal = useAtomCommand(terminalEnvironment.close);
-  const archiveThreadMutation = useAtomCommand(threadEnvironment.archive, {
+  const closeTerminal = useMateCommand(terminalEnvironment.close);
+  const archiveThreadMutation = useMateCommand(threadEnvironment.archive, {
     reportFailure: false,
   });
-  const unarchiveThreadMutation = useAtomCommand(threadEnvironment.unarchive, {
+  const unarchiveThreadMutation = useMateCommand(threadEnvironment.unarchive, {
     reportFailure: false,
   });
-  const deleteThreadMutation = useAtomCommand(threadEnvironment.delete, {
+  const deleteThreadMutation = useMateCommand(threadEnvironment.delete, {
     reportFailure: false,
   });
-  const settleThreadMutation = useAtomCommand(threadEnvironment.settle, {
+  const settleThreadMutation = useMateCommand(threadEnvironment.settle, {
     reportFailure: false,
   });
-  const unsettleThreadMutation = useAtomCommand(threadEnvironment.unsettle, {
+  const unsettleThreadMutation = useMateCommand(threadEnvironment.unsettle, {
     reportFailure: false,
   });
-  const pinThreadMutation = useAtomCommand(threadEnvironment.pin, {
+  const pinThreadMutation = useMateCommand(threadEnvironment.pin, {
     reportFailure: false,
   });
-  const unpinThreadMutation = useAtomCommand(threadEnvironment.unpin, {
+  const unpinThreadMutation = useMateCommand(threadEnvironment.unpin, {
     reportFailure: false,
   });
-  const setThreadAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
+  const setThreadAutoSettleMutation = useMateCommand(threadEnvironment.setAutoSettle, {
     reportFailure: false,
   });
-  const reorderPinnedThreadMutation = useAtomCommand(threadEnvironment.reorderPin, {
+  const reorderPinnedThreadMutation = useMateCommand(threadEnvironment.reorderPin, {
     reportFailure: false,
   });
-  const snoozeThreadMutation = useAtomCommand(threadEnvironment.snooze, {
+  const snoozeThreadMutation = useMateCommand(threadEnvironment.snooze, {
     reportFailure: false,
   });
-  const unsnoozeThreadMutation = useAtomCommand(threadEnvironment.unsnooze, {
+  const unsnoozeThreadMutation = useMateCommand(threadEnvironment.unsnooze, {
     reportFailure: false,
   });
-  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession);
-  const removeWorktree = useAtomCommand(vcsEnvironment.removeWorktree, {
+  const stopThreadSession = useMateCommand(threadEnvironment.stopSession);
+  const removeWorktree = useMateCommand(vcsEnvironment.removeWorktree, {
     reportFailure: false,
   });
-  const refreshVcsStatus = useAtomCommand(vcsEnvironment.refreshStatus, {
+  const refreshVcsStatus = useMateCommand(vcsEnvironment.refreshStatus, {
     reportFailure: false,
   });
   const sidebarThreadSortOrder = useClientSettings((settings) => settings.sidebarThreadSortOrder);

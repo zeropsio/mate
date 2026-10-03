@@ -8,13 +8,33 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
+import type { AtomCommand } from "@t3tools/client-runtime/state/runtime";
+import { act, createElement as h } from "react";
+import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
-import { connectMate, connectResult, type MateConnectTarget } from "./accountEnvironments";
+import {
+  bindAccountEnvironments,
+  connectMate,
+  connectResult,
+  useMateCommand,
+  whileMateHeld,
+  type MateConnectTarget,
+} from "./accountEnvironments";
 import { onZeropsInvalidation } from "./accountInvalidations";
 
 const ENV = "env-1" as EnvironmentId;
+
+/** What happened, in order: the Mate held and let go, the command sent. */
+const sent = vi.hoisted(() => ({ log: [] as Array<string> }));
+
+vi.mock("../state/use-atom-command", () => ({
+  useAtomCommand: () => async (value: { readonly input: string }) => {
+    sent.log.push(`command ${value.input}`);
+    return "answered";
+  },
+}));
 
 const organizationRef = (organizationId: string): OrganizationRef => ({
   kind: "organization",
@@ -27,6 +47,7 @@ const organizationRef = (organizationId: string): OrganizationRef => ({
 
 afterEach(() => {
   vi.useRealTimers();
+  sent.log.length = 0;
 });
 
 describe("connectMate: the user's Connect by a Mate's target key or by the origin it was seen at", () => {
@@ -163,5 +184,77 @@ describe("connectResult: the user's Connect as the projects page reads it", () =
     },
   ])("$name", ({ outcome, result }) => {
     expect(connectResult(outcome)).toMatchObject(result);
+  });
+});
+
+// A9: a command sent from outside a Mate's own view holds it connected — an action's lease — for
+// as long as the command takes, and lets it go however it ends.
+describe("whileMateHeld: an action's lease around its command", () => {
+  const holder = () => {
+    const log: Array<string> = [];
+    return {
+      log,
+      environments: {
+        hold: (environmentId: EnvironmentId) => {
+          log.push(`hold ${environmentId}`);
+          return () => {
+            log.push(`release ${environmentId}`);
+          };
+        },
+      },
+    };
+  };
+
+  it("holds the Mate before its command and lets it go once the command answers", async () => {
+    const { log, environments } = holder();
+    expect(
+      await whileMateHeld(environments, ENV, async () => {
+        log.push("command");
+        return "answered";
+      }),
+    ).toBe("answered");
+    expect(log).toEqual(["hold env-1", "command", "release env-1"]);
+  });
+
+  it("lets it go when the command fails, and says why", async () => {
+    const { log, environments } = holder();
+    await expect(
+      whileMateHeld(environments, ENV, async () => {
+        throw new Error("refused");
+      }),
+    ).rejects.toThrow("refused");
+    expect(log).toEqual(["hold env-1", "release env-1"]);
+  });
+
+  it("runs the command as it is where no account is bound", async () => {
+    expect(await whileMateHeld(null, ENV, async () => "answered")).toBe("answered");
+  });
+});
+
+describe("useMateCommand: a Mate's command, sent with its action lease", () => {
+  it("holds the Mate the command names until the command answers", async () => {
+    const unbind = bindAccountEnvironments({
+      hold: (environmentId: EnvironmentId) => {
+        sent.log.push(`hold ${environmentId}`);
+        return () => {
+          sent.log.push(`release ${environmentId}`);
+        };
+      },
+    } as unknown as AccountEnvironments);
+    type Stop = { readonly environmentId: EnvironmentId; readonly input: string };
+    const command = {} as AtomCommand<Stop, string, never>;
+    const senders: Array<(value: Stop) => Promise<unknown>> = [];
+    function Probe() {
+      senders.push(useMateCommand(command));
+      return null;
+    }
+    act(() => {
+      create(h(Probe));
+    });
+    const send = senders.at(-1)!;
+
+    expect(await send({ environmentId: ENV, input: "stop" })).toBe("answered");
+    expect(sent.log).toEqual(["hold env-1", "command stop", "release env-1"]);
+    unbind();
   });
 });

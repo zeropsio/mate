@@ -5,9 +5,14 @@
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees no environments.
  */
+import type {
+  AtomCommand,
+  AtomCommandOptions,
+  AtomCommandResult,
+} from "@t3tools/client-runtime/state/runtime";
 import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { OrganizationRef } from "@t3tools/client-runtime/zerops/data";
+import type { CapabilityRefusal, OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type { IdentityExchangeReason } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   reachabilityPhrase,
@@ -18,8 +23,10 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useSyncExternalStore } from "react";
 
+import { useAtomCommand } from "../state/use-atom-command";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates } from "./inventoryContext";
@@ -143,6 +150,40 @@ export function useContainerMachines(): ReadonlyMap<TargetKey, ContainerMachine>
 /** The descriptor index over every present target (§4.8). */
 export function useDescriptorIndex(): DescriptorIndex {
   return useAccountEnvironmentsSnapshot(indexOf, NO_INDEX);
+}
+
+// ── An action's lease ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Runs `command` with the Mate of `environmentId` held connected — an action's lease (A9): a
+ * command sent from outside the Mate's own view (a menu's Stop, the jump box's send, a chat's
+ * rename) connects a parked Mate for as long as it takes, and lets it go however it ends. Where no
+ * account is bound, the command runs as it is.
+ */
+export async function whileMateHeld<T>(
+  environments: { readonly hold: (environmentId: EnvironmentId) => () => void } | null,
+  environmentId: EnvironmentId,
+  command: () => Promise<T>,
+): Promise<T> {
+  const release = environments?.hold(environmentId);
+  try {
+    return await command();
+  } finally {
+    release?.();
+  }
+}
+
+/** A Mate's command as a surface outside its own view sends it: with its action lease. */
+export function useMateCommand<A, E, W extends { readonly environmentId: EnvironmentId }>(
+  command: AtomCommand<W, A, E>,
+  options?: string | AtomCommandOptions,
+): (value: W) => Promise<AtomCommandResult<A, E | CapabilityRefusal>> {
+  const send = useAtomCommand(command, options);
+  const environments = useAccountEnvironments();
+  return useCallback(
+    (value: W) => whileMateHeld(environments, value.environmentId, () => send(value)),
+    [environments, send],
+  );
 }
 
 // ── The user's Connect ───────────────────────────────────────────────────────────────────────
