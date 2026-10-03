@@ -9,6 +9,7 @@ import {
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
 import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
+import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type {
   EnvironmentId,
   OrchestrationThread,
@@ -25,6 +26,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { orchestrationEnvironment } from "./orchestration";
 import { isPaginatedBranchesNextPagePending } from "./paginatedBranches";
+import { environmentPresentations } from "./presentation";
 import { projectContentSearch, projectEnvironment } from "./projects";
 import { useEnvironmentQuery } from "./query";
 import { vcsEnvironment } from "./vcs";
@@ -76,13 +78,35 @@ export function useDebouncedValue<A>(value: A, delayMs: number): A {
   return debounced;
 }
 
-export function useThreadSearch(
+/**
+ * The environments of `environmentIds` this browser holds a socket to: a search never wakes a
+ * Mate that is not open.
+ */
+export function connectedEnvironmentIds(
   environmentIds: ReadonlyArray<EnvironmentId>,
+  presentations: ReadonlyMap<
+    EnvironmentId,
+    { readonly connection: Pick<EnvironmentPresentation["connection"], "phase"> }
+  >,
+): ReadonlyArray<EnvironmentId> {
+  return environmentIds.filter(
+    (environmentId) => presentations.get(environmentId)?.connection.phase === "connected",
+  );
+}
+
+/** Searches the conversations of the connected environments of `requestedEnvironmentIds`. */
+export function useThreadSearch(
+  requestedEnvironmentIds: ReadonlyArray<EnvironmentId>,
   query: string,
 ): {
   readonly matches: ReadonlyArray<EnvironmentThreadSearchMatch>;
   readonly isPending: boolean;
 } {
+  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const environmentIds = useMemo(
+    () => connectedEnvironmentIds(requestedEnvironmentIds, presentations),
+    [presentations, requestedEnvironmentIds],
+  );
   const normalizedQuery = query.trim();
   const debouncedQuery = useDebouncedValue(normalizedQuery, THREAD_SEARCH_DEBOUNCE_MS);
   const canSearch = environmentIds.length > 0 && normalizedQuery.length >= 2;
