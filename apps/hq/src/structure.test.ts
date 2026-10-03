@@ -99,6 +99,8 @@ const withStructure = <A, E, B = never>(
     view: Ref.Ref<Org>,
     down: Ref.Ref<boolean>,
     zerops: FakeWorld,
+    /** How each read of the org was asked for, in order. */
+    asked: Ref.Ref<ReadonlyArray<"view" | "fresh" | "recent">>,
   ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
   before?: Effect.Effect<void, B, SqlClient.SqlClient>,
 ) =>
@@ -110,10 +112,22 @@ const withStructure = <A, E, B = never>(
     const view = yield* Ref.make(VIEW);
     const down = yield* Ref.make(false);
     const zerops = emptyWorld();
+    const asked = yield* Ref.make<ReadonlyArray<"view" | "fresh" | "recent">>([]);
+    const ask = (how: "view" | "fresh" | "recent") =>
+      Ref.update(asked, (before) => [...before, how]);
     const roles = Layer.succeed(Roles, {
-      view: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
-      fresh: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "fresh" as const })),
-      recent: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
+      view: Effect.andThen(
+        ask("view"),
+        Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
+      ),
+      fresh: Effect.andThen(
+        ask("fresh"),
+        Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "fresh" as const })),
+      ),
+      recent: Effect.andThen(
+        ask("recent"),
+        Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
+      ),
       exists: (projectId) =>
         Effect.flatMap(Ref.get(down), (isDown) =>
           isDown
@@ -131,7 +145,7 @@ const withStructure = <A, E, B = never>(
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(zerops))),
       ),
     );
-    return yield* Effect.andThen(untilActive, use(view, down, zerops)).pipe(
+    return yield* Effect.andThen(untilActive, use(view, down, zerops, asked)).pipe(
       Effect.provide(context),
     );
   });
@@ -993,6 +1007,20 @@ describe("structure", () => {
             assert.strictEqual((yield* sql`SELECT 1 FROM hq_mate`).length, 0);
           }),
         ),
+    );
+
+    // The lead, 2026-10-03: the reconcile every minute forced a fresh read of KRLS's member and
+    // project lists. It reads the org as recent — the view at most 30 s old another read left —
+    // and a fresh read stays a write's.
+    it.effect("reconciles over the org as recently read, never forcing a fresh read", () =>
+      withStructure((_view, _down, _zerops, asked) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          yield* Ref.set(asked, []);
+          yield* structure.reconcile;
+          assert.deepStrictEqual(yield* Ref.get(asked), ["recent"]);
+        }),
+      ),
     );
 
     // An application's environments live in HQ (SPEC §3.2b): recorded with the attach, named as
