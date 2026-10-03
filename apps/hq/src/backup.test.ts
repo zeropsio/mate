@@ -54,24 +54,23 @@ const storedBefore = (storeDir: string, monthsAgo: ReadonlyArray<number>, bytes:
     }),
   );
 
-/** The sets in the store `storeDir`, once it holds one. */
-const untilSets = (storeDir: string) =>
-  Effect.sync(() =>
-    NodeFS.existsSync(NodePath.join(storeDir, "sets"))
-      ? NodeFS.readdirSync(NodePath.join(storeDir, "sets"))
-      : [],
-  ).pipe(
-    Effect.filterOrFail((sets) => sets.length > 0),
-    Effect.retry(Schedule.spaced(Duration.millis(50))),
-    Effect.timeout(Duration.seconds(10)),
-  );
-
 /** What `/health` says of backup. */
 const backupHealth = (call: Call) =>
   Effect.map(call("GET", "/health"), (response) => [
     response.status,
     (response.body as { readonly backup: unknown }).backup,
   ]);
+
+/**
+ * What `/health` says of backup once a set is no longer pending. Never the store's folders: a
+ * set's appear with its first file, before it is whole and told.
+ */
+const untilTold = (call: Call) =>
+  backupHealth(call).pipe(
+    Effect.filterOrFail(([, backup]) => (backup as { readonly state: string }).state !== "pending"),
+    Effect.retry(Schedule.spaced(Duration.millis(50))),
+    Effect.timeout(Duration.seconds(10)),
+  );
 
 const NOW = DateTime.makeUnsafe("2026-10-02T12:00:00.000Z");
 
@@ -345,8 +344,12 @@ describe("a backup set, taken", () => {
         yield* leading(a);
         const b = yield* startCore(true, { ...hourly, url: a.url });
         yield* untilHealth(b.call, "standby");
-        const [set] = yield* untilSets(a.storeDir);
-        assert.deepStrictEqual(yield* backupHealth(a.call), [200, { state: "ok", set }]);
+        const [status, backup] = yield* untilTold(a.call);
+        const set = (backup as { readonly set?: string }).set ?? "";
+        assert.deepStrictEqual([status, backup], [200, { state: "ok", set }]);
+        // Kept whole: its manifest goes last, before the Core tells of it.
+        assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.storeDir, "sets")), [set]);
+        assert.isTrue(NodeFS.existsSync(NodePath.join(a.storeDir, "sets", set, "manifest.json")));
         // The standby takes none.
         yield* Effect.sleep("500 millis");
         assert.deepStrictEqual(NodeFS.readdirSync(b.storeDir), []);
