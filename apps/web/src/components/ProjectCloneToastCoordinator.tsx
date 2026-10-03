@@ -21,20 +21,22 @@ import { useEnvironmentProjectClones } from "../state/projectClones";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
 import { type DraftId, useComposerDraftStore } from "../composerDraftStore";
+import { useMateHeld } from "../zerops/accountEnvironments";
 import { toastManager } from "./ui/toast";
 import { stackedThreadToast } from "./ui/toastHelpers";
 
 /**
- * One toast per clone in flight, on every connected environment: a Mate this
- * browser holds no socket to is not woken to report one. The palette that
- * started a clone closes right away, so this is where its progress lives:
- * the toast updates in place as git reports stages, then settles into a
- * success or failure state with the matching action.
+ * One toast per clone in flight, on every environment this browser keeps a
+ * link to — connected, or coming back from a drop, so a running clone's hold
+ * on its Mate outlasts the drop. A parked Mate is not woken to report one.
+ * The palette that started a clone closes right away, so this is where its
+ * progress lives: the toast updates in place as git reports stages, then
+ * settles into a success or failure state with the matching action.
  */
 export function ProjectCloneToastCoordinator() {
   const { environments } = useEnvironments();
   return environments
-    .filter((environment) => environment.connection.phase === "connected")
+    .filter((environment) => environment.connection.phase !== "available")
     .map((environment) => (
       <EnvironmentCloneToasts
         key={environment.environmentId}
@@ -56,6 +58,8 @@ function renderKey(clone: ProjectCloneSnapshot): string {
 
 function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentId }) {
   const clones = useEnvironmentProjectClones(environmentId);
+  // A clone running holds its Mate: parked, its toast would go with the socket mid-clone.
+  useMateHeld(clones.some((clone) => clone.phase === "running") ? environmentId : null);
   const handleNewThread = useNewThreadHandler();
   const { draftId: routeDraftId } = useParams({ strict: false });
   const cancelClone = useAtomCommand(sourceControlEnvironment.cancelProjectClone, {
