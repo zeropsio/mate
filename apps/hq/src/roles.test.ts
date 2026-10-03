@@ -114,7 +114,8 @@ describe("rolesLayer", () => {
 
 // E2E 2026-10-03: a4's recipe answered 503 `zerops_unavailable` right after its birth, and B's
 // read late for a minute — KRLS's member list not answering inside HQ's 10 s. A read verb decides
-// over the last good view for five minutes while Zerops does not answer; a write never does.
+// over the last good view for five minutes while Zerops does not answer, as a write's first pass
+// does (F22, option A); a write's confirmation never.
 describe("the last good view, while Zerops does not answer", () => {
   const layer = (world: ReturnType<typeof emptyWorld>) =>
     Layer.build(
@@ -144,25 +145,30 @@ describe("the last good view, while Zerops does not answer", () => {
   /** The member list failing as KRLS's did: an outage dressed as an empty answer. */
   const membersFail = (made: ReturnType<typeof emptyWorld>) => made.members.set("ORG", []);
 
-  it.effect("answers a read verb with it inside the window, a write never, past it neither", () =>
-    Effect.gen(function* () {
-      const made = world();
-      const roles = Context.get(yield* layer(made), Roles);
-      assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
+  it.effect(
+    "answers a read verb and a write with it inside the window, a write's confirmation never, past it neither",
+    () =>
+      Effect.gen(function* () {
+        const made = world();
+        const roles = Context.get(yield* layer(made), Roles);
+        assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
 
-      membersFail(made);
-      yield* TestClock.adjust("31 seconds");
-      const served = yield* roles.view;
-      assert.deepStrictEqual(userIds(served), ["owner"]);
-      assert.strictEqual(served.freshness, "cached");
-      assert.strictEqual((yield* Effect.flip(readNow(roles)))._tag, "ZeropsUnavailable");
+        membersFail(made);
+        yield* TestClock.adjust("31 seconds");
+        const served = yield* roles.view;
+        assert.deepStrictEqual(userIds(served), ["owner"]);
+        assert.strictEqual(served.freshness, "cached");
+        assert.deepStrictEqual(userIds(yield* roles.forWrite), ["owner"]);
+        assert.strictEqual((yield* Effect.flip(readNow(roles)))._tag, "ZeropsUnavailable");
 
-      // Five minutes after the last good read, nothing is decided over it.
-      yield* TestClock.adjust("269 seconds");
-      assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
-      yield* TestClock.adjust("1 millis");
-      assert.strictEqual((yield* Effect.flip(roles.view))._tag, "ZeropsUnavailable");
-    }),
+        // Five minutes after the last good read, nothing is decided over it.
+        yield* TestClock.adjust("269 seconds");
+        assert.deepStrictEqual(userIds(yield* roles.view), ["owner"]);
+        assert.deepStrictEqual(userIds(yield* roles.forWrite), ["owner"]);
+        yield* TestClock.adjust("1 millis");
+        assert.strictEqual((yield* Effect.flip(roles.view))._tag, "ZeropsUnavailable");
+        assert.strictEqual((yield* Effect.flip(roles.forWrite))._tag, "ZeropsUnavailable");
+      }),
   );
 
   it.effect("answers at once in an outage, and asks Zerops again at most every 30 s", () =>
@@ -238,35 +244,38 @@ describe("a slow read, aged from its answer", () => {
   const membersRead = (world: ReturnType<typeof emptyWorld>) =>
     world.calls.filter((call) => call.startsWith("members:")).length;
 
-  it.effect("serves a read that took 40 s as recent once it answered, a write never", () =>
-    Effect.gen(function* () {
-      const world = made();
-      const roles = yield* slowRoles(world);
-      const reading = yield* Effect.forkChild(roles.recent);
-      yield* TestClock.adjust("40 seconds");
-      yield* Fiber.join(reading);
-      const before = membersRead(world);
+  it.effect(
+    "serves a read that took 40 s as recent once it answered, a write's confirmation never",
+    () =>
+      Effect.gen(function* () {
+        const world = made();
+        const roles = yield* slowRoles(world);
+        const reading = yield* Effect.forkChild(roles.recent);
+        yield* TestClock.adjust("40 seconds");
+        yield* Fiber.join(reading);
+        const before = membersRead(world);
 
-      yield* TestClock.adjust("1 seconds");
-      assert.deepStrictEqual(
-        (yield* roles.recent).members.map((row) => row.userId),
-        ["owner"],
-      );
-      assert.strictEqual(membersRead(world) - before, 0);
+        yield* TestClock.adjust("1 seconds");
+        assert.deepStrictEqual(
+          (yield* roles.recent).members.map((row) => row.userId),
+          ["owner"],
+        );
+        assert.strictEqual(membersRead(world) - before, 0);
 
-      // A write being confirmed reads now: its wait ends at 35 s, its read lands at 40.
-      const writing = yield* Effect.forkChild(readNow(roles));
-      yield* TestClock.adjust("40 seconds");
-      assert.strictEqual((yield* Effect.flip(Fiber.join(writing)))._tag, "ZeropsUnavailable");
-      assert.strictEqual(membersRead(world) - before, 1);
-    }),
+        // A write being confirmed reads now: its wait ends at 35 s, its read lands at 40.
+        const writing = yield* Effect.forkChild(readNow(roles));
+        yield* TestClock.adjust("40 seconds");
+        assert.strictEqual((yield* Effect.flip(Fiber.join(writing)))._tag, "ZeropsUnavailable");
+        assert.strictEqual(membersRead(world) - before, 1);
+      }),
   );
 });
 
 // F22 (2026-10-03): a release waited on a fresh read while KRLS's org-wide reads stalled 25 s, the
 // client gave up at 20 s, and the release was gone with it. A write is decided over the view at
-// most 30 s old; a refusal of its facts is confirmed over a fresh read; its waits on Zerops end
-// within 35 s, and a read it left lands for the write asked again.
+// most 30 s old — or, once Zerops leaves its read 3 s unanswered, the last good one (option A); a
+// refusal of its facts is confirmed over a fresh read; its waits on Zerops end within 35 s, and a
+// read it left lands for the write asked again.
 describe("a write's view of the org", () => {
   class Refused extends Schema.TaggedError<Refused>()("Refused", { reason: Schema.String }) {}
   const made = (membersTake?: Duration.Input) => {
@@ -342,22 +351,50 @@ describe("a write's view of the org", () => {
     }),
   );
 
-  it.effect("answers a write unavailable within 35 s while Zerops stalls, its read kept", () =>
-    Effect.gen(function* () {
-      const { world, roles: build } = made("40 seconds");
-      const roles = yield* build;
-      const writing = yield* Effect.forkChild(confirmingRefusal(roles.forWrite));
-      yield* TestClock.adjust("35 seconds");
-      const answer = writing.pollUnsafe();
-      assert.strictEqual(answer?._tag, "Failure");
-      assert.strictEqual((yield* Effect.flip(Fiber.join(writing)))._tag, "ZeropsUnavailable");
-      assert.strictEqual(orgReads(world), 1);
+  it.effect(
+    "decides a write over the last good view once Zerops leaves a read 3 s unanswered",
+    () =>
+      Effect.gen(function* () {
+        const { world, roles: build } = made("40 seconds");
+        const roles = yield* build;
+        const first = yield* Effect.forkChild(roles.recent);
+        yield* TestClock.adjust("40 seconds");
+        yield* Fiber.join(first);
+        yield* TestClock.adjust("31 seconds");
 
-      // The read it left lands at 40 s, for the write asked again after its Retry-After.
-      yield* TestClock.adjust("6 seconds");
-      assert.strictEqual((yield* confirmingRefusal(roles.forWrite)).freshness, "recent");
-      assert.strictEqual(orgReads(world), 1);
-    }),
+        // The write's own read: three seconds unanswered, and it is decided over the last view.
+        const writing = yield* Effect.forkChild(roles.forWrite);
+        yield* TestClock.adjust("2999 millis");
+        assert.isUndefined(writing.pollUnsafe());
+        yield* TestClock.adjust("1 millis");
+        assert.strictEqual((yield* Fiber.join(writing)).freshness, "recent");
+        // A write asked a second later waits no longer than that read already has.
+        yield* TestClock.adjust("1 seconds");
+        const next = yield* Effect.forkChild(roles.forWrite);
+        yield* TestClock.adjust("1 millis");
+        assert.strictEqual(next.pollUnsafe()?._tag, "Success");
+        assert.strictEqual(orgReads(world), 2);
+      }),
+  );
+
+  it.effect(
+    "answers a write unavailable within 35 s while Zerops stalls with no good view, its read kept",
+    () =>
+      Effect.gen(function* () {
+        const { world, roles: build } = made("40 seconds");
+        const roles = yield* build;
+        const writing = yield* Effect.forkChild(confirmingRefusal(roles.forWrite));
+        yield* TestClock.adjust("35 seconds");
+        const answer = writing.pollUnsafe();
+        assert.strictEqual(answer?._tag, "Failure");
+        assert.strictEqual((yield* Effect.flip(Fiber.join(writing)))._tag, "ZeropsUnavailable");
+        assert.strictEqual(orgReads(world), 1);
+
+        // The read it left lands at 40 s, for the write asked again after its Retry-After.
+        yield* TestClock.adjust("6 seconds");
+        assert.strictEqual((yield* confirmingRefusal(roles.forWrite)).freshness, "recent");
+        assert.strictEqual(orgReads(world), 1);
+      }),
   );
 });
 

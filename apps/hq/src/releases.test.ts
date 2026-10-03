@@ -521,6 +521,99 @@ describe("an application's releases in HQ", () => {
   });
 });
 
+/**
+ * Over HQ's API: Shop, whose recipe's production tier builds its service `app` from the repository
+ * appdev, merged; production attached with its deploy token kept and `app` in its project; appdev's
+ * `main` buildable (`app`). The owner's POSTs to the application timed (`inTime`: answered within
+ * 5 s), and its releases' tags as the owner reads them.
+ */
+const productionApp = Effect.gen(function* () {
+  const { call, fake, origin, url, gitHost } = yield* startCore(true);
+  yield* untilHealth(call, "active");
+  const owner = yield* sessionFor(call, "door-owner");
+  const { appId, credential, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+  addProject(fake, "P_PROD");
+  yield* call("POST", `/api/apps/${appId}/projects`, {
+    session: owner,
+    body: { projectId: "P_PROD", kind: "production", environment: { name: "production" } },
+  });
+  fake.tokens.set("key-prod", {
+    id: "T_PROD",
+    name: "deploy-production",
+    orgId: "ORG",
+    roleCode: "NO_ACCESS",
+    canCreateProjects: false,
+    canViewFinances: false,
+    canEditFinances: false,
+    projects: [{ projectId: "P_PROD", roleCode: "BASIC_USER" }],
+    createdMs: 0,
+    createdByUser: "owner",
+  });
+  const kept = yield* call("PUT", `/api/apps/${appId}/environments/production/deploy-token`, {
+    session: owner,
+    body: { token: "key-prod" },
+  });
+  assert.strictEqual(kept.status, 204);
+  fake.services.push({
+    id: "S-app-prod",
+    projectId: "P_PROD",
+    name: "app",
+    status: "ACTIVE",
+    isSystem: false,
+    subdomainAccess: false,
+    http: true,
+    named: { id: "V0-app", name: "" },
+    activeVersionId: "V0-app",
+  });
+  // The service's repository, buildable, and the recipe's production tier built from it.
+  yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+  const git = yield* gitHost.git;
+  const appdev = { appId, id: "appdev" };
+  const built = yield* git.commitFiles(appdev, "refs/heads/main", {
+    files: {
+      "zerops.yaml": "zerops:\n  - setup: app\n    run:\n      start: node index.js\n",
+    },
+    expectedHead: yield* mainOf(git, appdev),
+    message: "Build it",
+    author: AUTHOR,
+  });
+  const app = "sha" in built ? built.sha : "";
+  const number = yield* propose(call, auth);
+  const group = yield* groupCheckout(yield* gitClient, origin, credential, appId, "group");
+  yield* group.write(
+    {
+      "4 — Small Production/import.yaml": [
+        "services:",
+        "  - hostname: app",
+        "    type: nodejs@22",
+        `    buildFromGit: ${origin}/git/${appId}/appdev.git`,
+        "    zeropsSetup: app",
+        "",
+      ].join("\n"),
+    },
+    "The production's",
+  );
+  yield* group.push("P_MATE", number);
+  yield* stateBecomes(call, owner, appId, number, "merged");
+  const groupHead = yield* group.main;
+  const timed = (path: string, body: unknown) =>
+    Effect.map(
+      Effect.timed(call("POST", `/api/apps/${appId}${path}`, { session: owner, body })),
+      ([took, answer]) => ({
+        status: answer.status,
+        inTime: Duration.toMillis(took) < 5000,
+      }),
+    );
+  const tags = Effect.map(
+    call("GET", `/api/apps/${appId}/releases`, { session: owner }),
+    (answer) =>
+      (answer.body as { readonly releases: ReadonlyArray<Release> }).releases.map(
+        (release) => release.tag,
+      ),
+  );
+  return { fake, url, app, groupHead, timed, tags };
+});
+
 describe("an application's releases over HQ's API", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -647,92 +740,9 @@ describe("an application's releases over HQ's API", () => {
       "answers a release, a rollback and a redeploy within 5 s while production's build runs",
       () =>
         Effect.gen(function* () {
-          const { call, fake, origin, url, gitHost } = yield* startCore(true);
-          yield* untilHealth(call, "active");
-          const owner = yield* sessionFor(call, "door-owner");
-          const { appId, credential, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
-          addProject(fake, "P_PROD");
-          yield* call("POST", `/api/apps/${appId}/projects`, {
-            session: owner,
-            body: { projectId: "P_PROD", kind: "production", environment: { name: "production" } },
-          });
-          fake.tokens.set("key-prod", {
-            id: "T_PROD",
-            name: "deploy-production",
-            orgId: "ORG",
-            roleCode: "NO_ACCESS",
-            canCreateProjects: false,
-            canViewFinances: false,
-            canEditFinances: false,
-            projects: [{ projectId: "P_PROD", roleCode: "BASIC_USER" }],
-            createdMs: 0,
-            createdByUser: "owner",
-          });
-          const kept = yield* call(
-            "PUT",
-            `/api/apps/${appId}/environments/production/deploy-token`,
-            { session: owner, body: { token: "key-prod" } },
-          );
-          assert.strictEqual(kept.status, 204);
-          fake.services.push({
-            id: "S-app-prod",
-            projectId: "P_PROD",
-            name: "app",
-            status: "ACTIVE",
-            isSystem: false,
-            subdomainAccess: false,
-            http: true,
-            named: { id: "V0-app", name: "" },
-            activeVersionId: "V0-app",
-          });
-          // The service's repository, buildable, and the recipe's production tier built from it.
-          yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
-          const git = yield* gitHost.git;
-          const appdev = { appId, id: "appdev" };
-          const built = yield* git.commitFiles(appdev, "refs/heads/main", {
-            files: {
-              "zerops.yaml": "zerops:\n  - setup: app\n    run:\n      start: node index.js\n",
-            },
-            expectedHead: yield* mainOf(git, appdev),
-            message: "Build it",
-            author: AUTHOR,
-          });
-          const app = "sha" in built ? built.sha : "";
-          const number = yield* propose(call, auth);
-          const group = yield* groupCheckout(yield* gitClient, origin, credential, appId, "group");
-          yield* group.write(
-            {
-              "4 — Small Production/import.yaml": [
-                "services:",
-                "  - hostname: app",
-                "    type: nodejs@22",
-                `    buildFromGit: ${origin}/git/${appId}/appdev.git`,
-                "    zeropsSetup: app",
-                "",
-              ].join("\n"),
-            },
-            "The production's",
-          );
-          yield* group.push("P_MATE", number);
-          yield* stateBecomes(call, owner, appId, number, "merged");
-          const groupHead = yield* group.main;
+          const { fake, url, app, groupHead, timed, tags } = yield* productionApp;
           // Production's builds never end here.
           fake.outcome = () => "BUILDING";
-          const timed = (path: string, body: unknown) =>
-            Effect.map(
-              Effect.timed(call("POST", `/api/apps/${appId}${path}`, { session: owner, body })),
-              ([took, answer]) => ({
-                status: answer.status,
-                inTime: Duration.toMillis(took) < 5000,
-              }),
-            );
-          const tags = Effect.map(
-            call("GET", `/api/apps/${appId}/releases`, { session: owner }),
-            (answer) =>
-              (answer.body as { readonly releases: ReadonlyArray<Release> }).releases.map(
-                (release) => release.tag,
-              ),
-          );
 
           const first = yield* timed("/releases", {
             tag: "v0.1.0",
@@ -771,6 +781,29 @@ describe("an application's releases over HQ's API", () => {
               { status: 202, inTime: true },
               ["v0.2.1", "v0.2.0", "v0.1.0"],
             ],
+          );
+        }),
+      { timeout: 60_000 },
+    );
+
+    // F22, option A (2026-10-03): while Zerops left KRLS's member list unanswered for minutes, a
+    // release waited on it for its client's whole 20 s. A write waits on Zerops 3 s, then is
+    // decided over the last view Zerops answered within five minutes.
+    it.effect(
+      "answers a release within 5 s while Zerops's member list stalls, over a view read within the last five minutes",
+      () =>
+        Effect.gen(function* () {
+          const { fake, app, groupHead, timed } = yield* productionApp;
+          fake.membersTake = 40_000;
+          // Past the view's 200 ms here: the last one Zerops answered is all there is.
+          yield* Effect.sleep(Duration.millis(500));
+          assert.deepStrictEqual(
+            yield* timed("/releases", {
+              tag: "v0.1.0",
+              groupHead,
+              entries: [{ service: "app", sha: app }],
+            }),
+            { status: 201, inTime: true },
           );
         }),
       { timeout: 60_000 },
