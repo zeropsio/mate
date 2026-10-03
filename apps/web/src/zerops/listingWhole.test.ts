@@ -1,12 +1,8 @@
-import type {
-  AccessState,
-  CollectionRead,
-  Evidence,
-  ProjectRecord,
-} from "@t3tools/client-runtime/zerops/data";
+import { projectsNeverSeen } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { CollectionRead, ProjectRecord } from "@t3tools/client-runtime/zerops/data";
 import { describe, expect, it } from "vite-plus/test";
 
-import { listingWholeForPerson, projectsNeverSeen } from "./listingWhole";
+import { listingWholeForPerson } from "./listingWhole";
 
 type Read = Pick<CollectionRead<ProjectRecord>, "query" | "value">;
 type Member = Read["value"][number];
@@ -116,40 +112,5 @@ describe("listingWholeForPerson — a listing that lacks nothing on its way", ()
         neverSeen: neverSeen ?? SEES_ALL,
       }),
     ).toBe(whole);
-  });
-});
-
-describe("projectsNeverSeen — the projects this person can never see", () => {
-  const evidence = {
-    projects: new Map([
-      ["vault", { access: { role: "NO_ACCESS" } }],
-      ["nova", { access: { role: "DEVELOPER" } }],
-    ]),
-    unverified: new Map([["fresh", { failure: null }]]),
-    closedProjects: new Map([
-      ["gone", { confirmation: { status: "confirmed" } }],
-      ["leaving", { confirmation: { status: "due" } }],
-    ]),
-  } as unknown as Evidence;
-  const access = {
-    status: "verified",
-    projects: [{ project: { projectId: "made" }, role: "NO_ACCESS" }],
-  } as unknown as AccessState;
-  const never = projectsNeverSeen({
-    evidence,
-    access,
-    withheld: (id) => id === "leaving",
-  });
-
-  it.each([
-    { projectId: "vault", never: true },
-    { projectId: "gone", never: true },
-    { projectId: "made", never: true },
-    { projectId: "leaving", never: true },
-    { projectId: "nova", never: false },
-    { projectId: "fresh", never: false },
-    { projectId: "unknown", never: false },
-  ])("$projectId: $never", ({ projectId, never: expected }) => {
-    expect(never(projectId)).toBe(expected);
   });
 });

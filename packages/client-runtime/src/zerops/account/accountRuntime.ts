@@ -81,6 +81,7 @@ export {
   heldEvidence,
   inventoryProjectRefs,
   pendingDenials,
+  projectsNeverSeen,
 } from "./inventoryDemand.ts";
 
 export interface AccountRuntimePorts {
