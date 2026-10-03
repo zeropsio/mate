@@ -305,7 +305,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     unparked: () => [...parked].flatMap(([environmentId, held]) => (held ? [] : [environmentId])),
     /** Fires every timer armed for this delay. */
     fire: (delayMs: number) => {
-      for (const timer of [...timers]) {
+      // Only the timers armed before this fire: one a fire arms waits for the next.
+      for (const timer of Array.from(timers)) {
         if (timer.delayMs !== delayMs) continue;
         timers.delete(timer);
         timer.fire();
