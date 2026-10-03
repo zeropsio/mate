@@ -14,6 +14,7 @@ import {
   earlierShown,
   FOLLOW_SLACK_PX,
   followAfter,
+  type RunScrollFollow,
   footTop,
   forgetRunFolds,
   laidOutPosition,
@@ -560,34 +561,44 @@ describe("standsAtFoot", () => {
 });
 
 // While the run goes on its scroll follows its newest line: every arrival
-// keeps the foot in view. Only the person moving it up, away from the foot,
-// stops it — told by the move itself, whatever made it (a wheel, keys, a
-// find, a drag-select, focus); growth, a plop, a resync, a re-measure, its
-// own follow or the browser clamping it never does — and back at the foot it
-// follows again.
+// keeps the foot in view. Only the person moving it up stops it — told by
+// the move itself, a pixel and a half or more from where it last stood,
+// whatever made it (a wheel, keys, a find, a drag-select, focus) — and only
+// the person moving it down onto its foot follows again; growth, a plop, a
+// resync, a re-measure, its own follow or the browser clamping it keeps it as
+// it was. Opening something in it stops it; closing the last thing they
+// opened follows again, if it followed then and they did not move it up since.
 describe("followAfter", () => {
+  const at = (follows: boolean, stood: number): RunScrollFollow => ({
+    follows,
+    stood,
+    opened: 0,
+    resumes: false,
+  });
   const foot = { scrollTop: 560, scrollHeight: 1000, clientHeight: 440 };
   const nearFoot = { ...foot, scrollTop: 560 - FOLLOW_SLACK_PX };
   const up = { ...foot, scrollTop: 300 };
   // An arrival grew it under where it stood: the foot moved on, it did not.
   const grownUnder = { scrollTop: 560, scrollHeight: 1065, clientHeight: 440 };
-  // A row's travel ended: the browser clamped it onto the shorter foot.
+  // A row's travel ended, or the card grew taller: the browser clamped it
+  // onto the shorter foot.
   const clamped = { scrollTop: 500, scrollHeight: 940, clientHeight: 440 };
+  // A card below its cap: it cannot scroll, so it always stands at its foot.
+  const belowCap = { scrollTop: 0, scrollHeight: 420, clientHeight: 420 };
   it.each([
     { name: "moved up, away from the foot", follows: true, stood: 560, position: up, after: false },
-    { name: "moved up a hair", follows: true, stood: 560, position: nearFoot, after: true },
+    {
+      name: "moved up inside the slack",
+      follows: true,
+      stood: 560,
+      position: nearFoot,
+      after: false,
+    },
     { name: "moved back to the foot", follows: false, stood: 300, position: foot, after: true },
     { name: "moved back near it", follows: false, stood: 300, position: nearFoot, after: true },
     { name: "moved down, still above", follows: false, stood: 120, position: up, after: false },
     { name: "moved further up", follows: false, stood: 400, position: up, after: false },
     { name: "an arrival under it", follows: true, stood: 560, position: grownUnder, after: true },
-    {
-      name: "a wheel that did not move it",
-      follows: true,
-      stood: 560,
-      position: grownUnder,
-      after: true,
-    },
     {
       name: "its own follow, read late",
       follows: true,
@@ -604,23 +615,77 @@ describe("followAfter", () => {
     },
     { name: "moved down, while following", follows: true, stood: 120, position: up, after: true },
     { name: "a sub-pixel settle", follows: true, stood: 300.4, position: up, after: true },
+    // Stopped, nothing but the person's move down brings it back.
+    { name: "stopped, read at its foot", follows: false, stood: 560, position: foot, after: false },
+    {
+      name: "stopped, grown under it",
+      follows: false,
+      stood: 560,
+      position: grownUnder,
+      after: false,
+    },
+    {
+      name: "stopped, clamped onto its foot",
+      follows: false,
+      stood: 560,
+      position: clamped,
+      after: false,
+    },
+    {
+      name: "stopped below its cap, re-read",
+      follows: false,
+      stood: 0,
+      position: belowCap,
+      after: false,
+    },
+    {
+      name: "following below its cap, re-read",
+      follows: true,
+      stood: 0,
+      position: belowCap,
+      after: true,
+    },
   ])("$name: $after", ({ follows, stood, position, after }) => {
-    expect(followAfter({ follows, stood }, { kind: "scrolled", position }).follows).toBe(after);
+    expect(followAfter(at(follows, stood), { kind: "scrolled", position }).follows).toBe(after);
   });
 
   it.each([
-    { name: "a move it heard", stood: 560, position: up, at: 300 },
-    { name: "a move down", stood: 120, position: up, at: 300 },
+    { name: "a move it heard", stood: 560, position: up, top: 300 },
+    { name: "a move down", stood: 120, position: up, top: 300 },
+    { name: "a clamp", stood: 560, position: clamped, top: 500 },
     // Read again from where it stood, so a slow drag adds up to a move.
-    { name: "less than a pixel up", stood: 300.4, position: up, at: 300.4 },
-  ])("stands where $name left it", ({ stood, position, at }) => {
-    expect(followAfter({ follows: true, stood }, { kind: "scrolled", position }).stood).toBe(at);
+    { name: "less than a pixel and a half up", stood: 301.4, position: up, top: 301.4 },
+  ])("stands where $name left it", ({ stood, position, top }) => {
+    expect(followAfter(at(true, stood), { kind: "scrolled", position }).stood).toBe(top);
   });
 
   it("creeping up a fraction of a pixel at a time stops following once it adds up", () => {
-    let state = { follows: true, stood: 300 };
-    for (const scrollTop of [299.8, 299.6, 299.4]) {
+    let state = at(true, 560);
+    for (const scrollTop of [559.6, 559.2, 558.8]) {
       state = followAfter(state, { kind: "scrolled", position: { ...foot, scrollTop } });
+    }
+    expect(state.follows).toBe(true);
+    state = followAfter(state, { kind: "scrolled", position: { ...foot, scrollTop: 558.4 } });
+    expect(state.follows).toBe(false);
+  });
+
+  // Each line arriving moves its foot on and its own follow puts it there;
+  // the person dragging up between them still moved it up.
+  it("a slow drag up between arrivals stops following", () => {
+    let state = at(true, 560);
+    let height = 1000;
+    let top = 560;
+    for (let wrap = 0; wrap < 5; wrap += 1) {
+      top -= 3;
+      state = followAfter(state, {
+        kind: "scrolled",
+        position: { scrollTop: top, scrollHeight: height, clientHeight: 440 },
+      });
+      height += 20;
+      if (state.follows) {
+        top = height - 440;
+        state = followAfter(state, { kind: "set", top });
+      }
     }
     expect(state.follows).toBe(false);
   });
@@ -629,17 +694,48 @@ describe("followAfter", () => {
     { follows: true, after: true },
     { follows: false, after: false },
   ])("its own move keeps it as it was ($follows)", ({ follows, after }) => {
-    expect(followAfter({ follows, stood: 0 }, { kind: "set", top: 460 })).toEqual({
-      follows: after,
-      stood: 460,
-    });
+    expect(followAfter(at(follows, 0), { kind: "set", top: 460 })).toEqual(at(after, 460));
   });
 
   it("stops when the person opens something in it", () => {
-    expect(followAfter({ follows: true, stood: 560 }, { kind: "held" })).toEqual({
-      follows: false,
-      stood: 560,
-    });
+    expect(followAfter(at(true, 560), { kind: "opened" }).follows).toBe(false);
+  });
+
+  // The person opened a call to read it, and closed it again: what they
+  // stopped it for is done.
+  it.each([
+    { name: "closing what they opened at its foot", steps: ["opened", "closed"], after: true },
+    {
+      name: "closing the last of two",
+      steps: ["opened", "opened", "closed", "closed"],
+      after: true,
+    },
+    { name: "closing one of two", steps: ["opened", "opened", "closed"], after: false },
+    {
+      name: "closing what they opened scrolled up",
+      steps: ["up", "opened", "closed"],
+      after: false,
+    },
+    { name: "closing it after moving up", steps: ["opened", "up", "closed"], after: false },
+    { name: "closing what was open before", steps: ["closed"], after: true },
+    { name: "closing, stopped, what was open before", steps: ["up", "closed"], after: false },
+    {
+      name: "closing it after moving up and back down",
+      steps: ["opened", "up", "down", "closed"],
+      after: true,
+    },
+  ])("$name: follows $after", ({ steps, after }) => {
+    let state = at(true, 560);
+    for (const step of steps) {
+      if (step === "up") {
+        state = followAfter(state, { kind: "scrolled", position: up });
+      } else if (step === "down") {
+        state = followAfter(state, { kind: "scrolled", position: foot });
+      } else {
+        state = followAfter(state, { kind: step as "opened" | "closed" });
+      }
+    }
+    expect(state.follows).toBe(after);
   });
 });
 

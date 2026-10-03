@@ -595,7 +595,7 @@ function Instruments({
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
     // following its end, so the bar they pressed stays where it is (K12).
-    hold();
+    hold(!open.has(key));
     setOpen((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);

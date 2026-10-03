@@ -311,10 +311,11 @@ const CALL_SURFACE = "ring-1 ring-foreground/9";
 const ChatShownContext = createContext<{ readonly current: boolean } | null>(null);
 
 /**
- * The run's scroll, to the lines in it: what the person opens or closes there
- * holds the scroll where it stands, rather than following its foot.
+ * The run's scroll, to the lines in it: what the person opens there holds the
+ * scroll where it stands, rather than following its foot; closing the last of
+ * it lets it follow again (`followAfter`).
  */
-const RunScrollHoldContext = createContext<(() => void) | null>(null);
+const RunScrollHoldContext = createContext<((opens: boolean) => void) | null>(null);
 
 /**
  * Whether a bubble stands in the live slot (pass 35): drawn as the row it
@@ -412,13 +413,12 @@ const HOLD_NOTHING = () => {};
  * line they clicked stays where it is and only what is under it moves. Drawn
  * outside a conversation, it holds nothing.
  */
-export function useHoldReading(): () => void {
+export function useHoldReading(): (opens: boolean) => void {
   const ctx = use(TimelineRowCtx) as TimelineRowSharedState | null;
   const holdScroll = use(RunScrollHoldContext);
   const holdPage = ctx?.onHoldReading ?? HOLD_NOTHING;
-  if (holdScroll === null) return holdPage;
-  return () => {
-    holdScroll();
+  return (opens) => {
+    holdScroll?.(opens);
     holdPage();
   };
 }
@@ -533,7 +533,7 @@ function useFold(eligible: boolean, foldsLive = false): Fold {
     folded: eligible && folded,
     offered: eligible && (folded || opened),
     toggle: () => {
-      hold();
+      hold(folded);
       setOpened(folded);
       setFolded(!folded);
     },
@@ -639,11 +639,11 @@ function useDisclosure(initial = false, part = "open", follows = false) {
   return {
     open,
     set: (next: boolean) => {
-      hold();
+      hold(next);
       setOpen(next);
     },
     toggle: () => {
-      hold();
+      hold(!open);
       setOpen(!open);
     },
   };
@@ -741,7 +741,7 @@ function OutputBlock({
       {taller ? (
         <MoreToggle
           onToggle={() => {
-            hold();
+            hold(!open);
             setOpen((value) => !value);
           }}
           open={open}
@@ -1081,7 +1081,7 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
   });
   const toggle = (next: boolean) => {
     handOnRef.current = true;
-    hold();
+    hold(next);
     setOpen(next);
   };
   if (text.trim().length === 0) return null;
@@ -1922,7 +1922,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
           aria-expanded={open}
           className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           onClick={() => {
-            hold();
+            hold(!open);
             setOpen((value) => !value);
           }}
           type="button"
@@ -3410,7 +3410,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
                 <WorkToggle
                   onToggle={() => {
-                    hold();
+                    hold(folded);
                     // Watched to its end and still open over its line: it
                     // folds into the line as a run settling does.
                     if (fold === "watched") {
@@ -3692,9 +3692,15 @@ function RunScroll({
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   // It follows its foot until the person moves it up or opens something in
-  // it; where its top last stood tells their move from the page's. It opens
-  // at its foot.
-  const followRef = useRef<RunScrollFollow>({ follows: true, stood: Number.POSITIVE_INFINITY });
+  // it, and again once they move it down onto its foot or close what they
+  // opened; where its top last stood tells their move from the page's. It
+  // opens at its foot.
+  const followRef = useRef<RunScrollFollow>({
+    follows: true,
+    stood: Number.POSITIVE_INFINITY,
+    opened: 0,
+    resumes: false,
+  });
   const follow = useMemo(() => {
     const heard = (event: RunScrollEvent) => {
       followRef.current = followAfter(followRef.current, event);
@@ -3703,14 +3709,40 @@ function RunScroll({
       scrollRef.current?.toggleAttribute("data-follows", follows);
       if (event.kind !== "set" && readingRef !== undefined) readingRef.current = !follows;
     };
+    /** The page puts its top at `top`, and remembers where the browser took it. */
+    const putAt = (element: HTMLElement, top: number) => {
+      element.scrollTop = top;
+      heard({ kind: "set", top: element.scrollTop });
+    };
+    /**
+     * Read where it stands — a move up not heard yet (a scroll event comes a
+     * frame late) is the person's — and, while it follows, put it at its foot.
+     */
+    const keep = () => {
+      const element = scrollRef.current;
+      if (element === null) return;
+      const position = positionOf(element);
+      heard({ kind: "scrolled", position });
+      if (followRef.current.follows) putAt(element, footTop(position));
+      markEdges(element);
+    };
     return {
       heard,
-      /** The page puts its top at `top`, and remembers where the browser took it. */
-      putAt: (element: HTMLElement, top: number) => {
-        element.scrollTop = top;
-        heard({ kind: "set", top: element.scrollTop });
+      putAt,
+      keep,
+      hold: (opens: boolean) => {
+        heard({ kind: opens ? "opened" : "closed" });
+        if (opens || !followRef.current.follows) return;
+        // Closing the last thing they opened, it catches up to its foot —
+        // once the press has kept itself in place (`collapseInPlace`), so
+        // that keeping is not read as their move up.
+        queueMicrotask(() => {
+          const element = scrollRef.current;
+          if (element === null || !followRef.current.follows) return;
+          putAt(element, footTop(positionOf(element)));
+          markEdges(element);
+        });
       },
-      hold: () => heard({ kind: "held" }),
     };
   }, [readingRef]);
   // How far above its foot the scroll stood before earlier lines were drawn
@@ -3747,14 +3779,7 @@ function RunScroll({
     const element = scrollRef.current;
     const list = listRef.current;
     if (element === null || list === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      // Read before it follows: a move up not heard yet (a scroll event comes
-      // a frame late) is the person's, and a clamp landed on the foot.
-      const position = positionOf(element);
-      follow.heard({ kind: "scrolled", position });
-      if (followRef.current.follows) follow.putAt(element, footTop(position));
-      markEdges(element);
-    });
+    const observer = new ResizeObserver(follow.keep);
     observer.observe(list);
     observer.observe(element);
     return () => observer.disconnect();
@@ -4082,7 +4107,7 @@ export function BackgroundLine({
           aria-label={`${words}, ${where}. ${open ? "Hide" : "Show"} what it reported`}
           className="group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-md px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset"
           onClick={() => {
-            hold();
+            hold(!open);
             setOpen((value) => !value);
           }}
           type="button"
