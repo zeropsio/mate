@@ -6,9 +6,9 @@
  * - **Up**, the Mate's overview for every surface that draws a Mate it has not opened: its main
  *   chat as the shell fields a menu row reads, a digest of its other chats, its logins and its
  *   crew. The whole overview first on every link, then only the sections that changed, at most one
- *   frame per {@link MATE_SUMMARY_EVERY_MS}. Bounded: texts to {@link MATE_LINK_TEXT_MAX}
+ *   frame per {@link MATE_OVERVIEW_EVERY_MS}. Bounded: texts to {@link MATE_LINK_TEXT_MAX}
  *   characters, titles to {@link MATE_TITLE_MAX}, a frame to {@link MATE_LINK_FRAME_MAX} bytes.
- *   The summary before it (`summary`) is still read until every Mate sends an overview.
+ *   An older Mate's `summary` is a type this build does not know.
  * - **Down**, the Mate's own state in HQ: its record, its birth (who asked for its stand-up,
  *   whether its project is closed off), and its changes with their outcome (`hqChanges.ts`).
  *
@@ -40,7 +40,7 @@ import { MateChanges } from "./hqChanges.ts";
 export const MATE_LINK_TEXT_MAX = 280;
 /** A frame's bound in UTF-8 bytes (`linkFrameBytes`), which the sender checks before it sends. */
 export const MATE_LINK_FRAME_MAX = 64 * 1024;
-export const MATE_SUMMARY_EVERY_MS = 500;
+export const MATE_OVERVIEW_EVERY_MS = 500;
 export const MATE_TITLE_MAX = 120;
 /** The chats an overview lists: every one that is not idle, then the newest. */
 export const MATE_OVERVIEW_THREADS_MAX = 40;
@@ -54,49 +54,6 @@ const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(
 const Title = TrimmedNonEmptyString.check(Schema.isMaxLength(MATE_TITLE_MAX));
 const Line = TrimmedNonEmptyString.check(Schema.isMaxLength(MATE_LINK_TEXT_MAX));
 const atMost = (max: number) => Schema.isMaxLength(max);
-
-/** `resolveThreadStatus`'s kinds (`threadStatus.ts`), as a summary carries them. */
-export const MateChatStatus = Schema.Literals([
-  "approval",
-  "input",
-  "failed",
-  "connecting",
-  "working",
-  "planReady",
-  "monitoring",
-  "done",
-  "woke",
-  "idle",
-]);
-
-export const MateMainChat = Schema.Struct({
-  threadId: Schema.String,
-  status: MateChatStatus,
-  /** The person's last request. */
-  lastRequest: Schema.NullOr(Text),
-  /** The agent's last words. */
-  lastWords: Schema.NullOr(Text),
-  /** When the last turn was asked for, ISO. */
-  lastTurnAt: Schema.NullOr(Schema.String),
-  /** The question the agent waits on the person for. */
-  waitingQuestion: Schema.NullOr(Text),
-  /** The first line of the last error. */
-  firstError: Schema.NullOr(Text),
-  /** What the agent does right now, while a turn runs. */
-  liveStep: Schema.NullOr(Text),
-});
-export type MateMainChat = typeof MateMainChat.Type;
-
-export const MateSummary = Schema.Struct({
-  main: Schema.NullOr(MateMainChat),
-  /** Chats with a turn running. */
-  running: Count,
-  /** Chats waiting on the person: a question or an approval. */
-  waiting: Count,
-  /** Who signed each agent login in, by login key (`claude-code`, `codex`, …): a Zerops user id. */
-  signers: Schema.Record(Schema.String, Schema.String),
-});
-export type MateSummary = typeof MateSummary.Type;
 
 /**
  * The Mate as HQ holds it: its record, its birth, and the application it is in with its changes
@@ -305,7 +262,6 @@ export type MateOverviewSections = typeof MateOverviewSections.Type;
 
 export const MateLinkUp = Schema.Union([
   Schema.Struct({ type: Schema.Literal("pong") }),
-  Schema.Struct({ type: Schema.Literal("summary"), summary: MateSummary }),
   Schema.Struct({
     type: Schema.Literal("overview"),
     full: Schema.Literal(true),
@@ -365,7 +321,3 @@ const utf8 = new TextEncoder();
 export function linkFrameBytes(frame: string): number {
   return utf8.encode(frame).byteLength;
 }
-
-/** Cuts a text to what a summary carries. */
-export const linkText = (text: string): string =>
-  text.length <= MATE_LINK_TEXT_MAX ? text : `${text.slice(0, MATE_LINK_TEXT_MAX - 1)}…`;

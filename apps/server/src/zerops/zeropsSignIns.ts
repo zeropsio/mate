@@ -1,7 +1,7 @@
 /**
  * Who signed each login in last, as this server saw it: the one record of whose a login is.
  *
- * The turn gate (`ZeropsProjectSigners`), the logins' rows and the Mate's summary to its HQ all
+ * The turn gate (`ZeropsProjectSigners`), the logins' rows and the Mate's overview to its HQ all
  * go by the person this server watched sign a login in — the subject of the door session that
  * started it. The credential lives on under `/home/zerops` across a restart, so the knowledge of
  * whose it is has to as well.
@@ -171,7 +171,7 @@ export const memorySignInStore = (initial: SignInRecords = {}) =>
 
 /**
  * The one store of a running server: the login walker writes it, and the gate, the logins' rows
- * and the Mate's summary read it.
+ * and the Mate's overview read it.
  */
 export class ZeropsSignIns extends Context.Service<ZeropsSignIns, SignInStore>()(
   "t3/zerops/zeropsSignIns",

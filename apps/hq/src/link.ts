@@ -6,7 +6,7 @@
  *   its changes (`changes.ts`), and `ping` every 20 s;
  * - **up**, `pong`, and its overview (`overview`): the whole of it first, then the sections that
  *   changed, kept by `mateOverviews.ts` for whoever may observe the Mate on their structure socket.
- *   A frame whose type HQ does not know is passed by, and so is an older Mate's `summary`.
+ *   A frame whose type HQ does not know is passed by — an older Mate's `summary` among them.
  *
  * Closes with `4401` once the credential is revoked (enroll again), `1001` when this Core stops
  * leading or shuts down (reconnect: another Core leads), `4408` after three silent pings, `1007` for a

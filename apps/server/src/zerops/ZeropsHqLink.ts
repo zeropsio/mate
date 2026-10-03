@@ -11,7 +11,7 @@
  *   (`POST /api/mate/link-ticket`), then `wss://<hq>/api/mate/link?ticket=`. A refused ticket
  *   opens nothing and is asked for again later — zcp enrolls anew meanwhile.
  * - **Up:** the Mate's overview (`zeropsHqOverview.ts`): the whole of it first on every link, then
- *   only the sections that changed, at most once per `MATE_SUMMARY_EVERY_MS`, looked at again when
+ *   only the sections that changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when
  *   something it is made of moves — a domain event, the crew's snapshot, a login, the update line —
  *   and never on a timer; `pong` to each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks.
@@ -22,7 +22,7 @@
  */
 import type { CrewSnapshot, OrchestrationThreadShell } from "@t3tools/contracts";
 import {
-  MATE_SUMMARY_EVERY_MS,
+  MATE_OVERVIEW_EVERY_MS,
   MateLinkDown,
   MateLinkUp,
   type MateOverview,
@@ -106,7 +106,7 @@ export interface ZeropsHqLinkOptions {
   readonly changes: Stream.Stream<unknown>;
   /** The waits before each next attempt; the last one repeats. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
-  /** The least time between two frames of the overview (`MATE_SUMMARY_EVERY_MS`). */
+  /** The least time between two frames of the overview (`MATE_OVERVIEW_EVERY_MS`). */
   readonly overviewEveryMs?: number;
 }
 
@@ -161,7 +161,7 @@ export const makeZeropsHqLink = (
     const http = yield* HttpClient.HttpClient;
     const state = yield* SubscriptionRef.make<Option.Option<MateState>>(Option.none());
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
-    const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_SUMMARY_EVERY_MS);
+    const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
 
     /** A ticket for the link, minted with the Mate's credential; none when HQ refuses or is away. */
     const ticketFor = (enrollment: HqEnrollment) =>
