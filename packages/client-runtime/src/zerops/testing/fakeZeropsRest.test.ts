@@ -98,6 +98,44 @@ describe("FakeZeropsRest", () => {
     await expect(failureOf(clientOf(rest).listClientProjects("org-2"))).resolves.toBe("forbidden");
   });
 
+  // Measured 2026-10-03 as the KRLS Developer (NO_ACCESS, OWNER on Cyd by its grant): the
+  // organization's list answers 403; `/project/search` lists the projects their grants name, each
+  // row carrying only their own grant; `GET /project/{id}` answers one of those whole, every
+  // member's grant on it.
+  it("answers a NO_ACCESS member as Zerops does: refused the list, searched to their grants", async () => {
+    const rest = platform();
+    const developer: ZeropsUser = {
+      id: "user-dev",
+      email: "developer@example.test",
+      clientUserList: [{ id: "cu-dev", clientId: "org-1", roleCode: "NO_ACCESS" }],
+    };
+    rest.addUser({ user: developer, password: "secret" });
+    const grants = [
+      { clientUserId: "cu-mate", roleCode: "BASIC_USER" },
+      { clientUserId: "cu-dev", roleCode: "OWNER" },
+    ];
+    rest.addProject({
+      id: "cyd",
+      clientId: "org-1",
+      name: "Cyd",
+      status: "ACTIVE",
+      userRoles: grants,
+    });
+    const client = clientOf(rest, rest.issueSession("user-dev"));
+
+    await expect(failureOf(client.listClientProjects("org-1"))).resolves.toBe("forbidden");
+    const searched = await client.listAccessibleClientProjects("org-1");
+    expect(
+      searched.map(({ id, userRoles }) => [
+        id,
+        userRoles?.map(({ clientUserId, roleCode }) => [clientUserId, roleCode]),
+      ]),
+    ).toEqual([["cyd", [["cu-dev", "OWNER"]]]]);
+    expect(searched[0]?.userRoles?.[0]).toMatchObject({ clientId: "org-1", projectId: "cyd" });
+    await expect(client.fetchProject("cyd")).resolves.toMatchObject({ userRoles: grants });
+    await expect(failureOf(client.fetchProject("p1"))).resolves.toBe("forbidden");
+  });
+
   it("answers each project with the failure a test gives it", async () => {
     const rest = platform();
     const client = clientOf(rest);

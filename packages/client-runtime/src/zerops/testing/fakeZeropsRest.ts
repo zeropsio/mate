@@ -150,6 +150,37 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     [...projects.values()].filter((project) => project.clientId === clientId);
   const memberOf = (userId: string, clientId: string | undefined) =>
     accounts.get(userId)?.user.clientUserList?.some((m) => m.clientId === clientId) === true;
+  const membershipOf = (userId: string, clientId: string | undefined) =>
+    accounts.get(userId)?.user.clientUserList?.find((m) => m.clientId === clientId);
+  /**
+   * A NO_ACCESS member sees an organization only through their project grants (measured
+   * 2026-10-03 as the KRLS Developer): its list answers 403, a search lists the projects their
+   * grants name, and only those projects answer them.
+   */
+  const throughGrantsOnly = (userId: string, clientId: string | undefined) =>
+    membershipOf(userId, clientId)?.roleCode === "NO_ACCESS";
+  const grantedTo = (userId: string, project: ZeropsProject) => {
+    const membership = membershipOf(userId, project.clientId);
+    return project.userRoles?.some(({ clientUserId }) => clientUserId === membership?.id) === true;
+  };
+  /** A search row: the project with only the searcher's own grants, in the search's own shape. */
+  const searchRow = (userId: string, project: ZeropsProject) => {
+    const membership = membershipOf(userId, project.clientId);
+    return {
+      ...project,
+      userRoles: (project.userRoles ?? [])
+        .filter(({ clientUserId }) => clientUserId === membership?.id)
+        .map(({ clientUserId, roleCode }) => ({
+          id: `role-${project.id}-${clientUserId}`,
+          clientId: project.clientId,
+          clientUserId,
+          projectId: project.id,
+          roleCode,
+          created: "2026-10-03T00:00:00Z",
+          lastUpdate: "2026-10-03T00:00:00Z",
+        })),
+    };
+  };
 
   const handle = (request: FakeZeropsRequest): Response => {
     const bearer = request.token === null ? undefined : accessTokens.get(request.token)?.userId;
@@ -157,6 +188,7 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     if (projectList !== null) {
       if (bearer === undefined) return failure(401, "unauthorized");
       if (!memberOf(bearer, projectList[1])) return failure(403, "forbidden");
+      if (throughGrantsOnly(bearer, projectList[1])) return failure(403, "insufficientPermissions");
       const list = projectsOf(projectList[1]!);
       return json(200, { list, total: list.length });
     }
@@ -169,6 +201,8 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       const project = projects.get(projectId!);
       if (project === undefined) return failure(404, "projectNotFound");
       if (!memberOf(bearer, project.clientId)) return failure(403, "forbidden");
+      if (throughGrantsOnly(bearer, project.clientId) && !grantedTo(bearer, project))
+        return failure(403, "insufficientPermissions");
       if (method === "GET") return json(200, project);
       const concurrent = concurrentTagWrites.get(projectId!);
       concurrentTagWrites.delete(projectId!);
@@ -245,6 +279,21 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
         accessTokens.delete(request.token!);
         refreshTokens.delete(session.refreshToken);
         return json(200, {});
+      }
+      case "POST /project/search": {
+        if (bearer === undefined) return failure(401, "unauthorized");
+        const { search } = request.body as {
+          readonly search: ReadonlyArray<{ readonly name: string; readonly value: string }>;
+        };
+        const clientId = search.find(({ name }) => name === "clientId")?.value;
+        const items = projectsOf(clientId ?? "")
+          .filter(
+            (project) =>
+              memberOf(bearer, project.clientId) &&
+              (!throughGrantsOnly(bearer, project.clientId) || grantedTo(bearer, project)),
+          )
+          .map((project) => searchRow(bearer, project));
+        return json(200, { items, totalHits: items.length });
       }
       case "GET /user/info": {
         const account = bearer === undefined ? undefined : accounts.get(bearer);

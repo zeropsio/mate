@@ -453,6 +453,52 @@ describe("the REST access verifier keeps each project's grants", () => {
   );
 });
 
+// The KRLS Developer, measured 2026-10-03: refused the organization's list, they read it through
+// `/project/search`, whose row names only their own grant; the project's own read names everyone's.
+// The round keeps the read's, never the row's: a Mate's OWNER who is somebody else stays its owner.
+describe("the REST access verifier over a searched list", () => {
+  it.effect("keeps every member's grants from the project's read, not the row's own one", () =>
+    Effect.gen(function* () {
+      const everyone = [
+        { clientUserId: "mate-key", roleCode: "BASIC_USER" },
+        { clientUserId: "membership", roleCode: "OWNER" },
+      ];
+      const searched: ZeropsProject = {
+        ...project("cyd"),
+        userRoles: [
+          {
+            id: "role-1",
+            clientId: orgId,
+            clientUserId: "membership",
+            projectId: "cyd",
+            roleCode: "OWNER",
+            created: "2026-10-03T00:00:00Z",
+            lastUpdate: "2026-10-03T00:00:00Z",
+          } as { readonly clientUserId: string; readonly roleCode: string },
+        ],
+      };
+      const { outcomes } = yield* round({
+        fetchUser: async () => ({
+          ...user,
+          clientUserList: [{ id: "membership", clientId: orgId, roleCode: "NO_ACCESS" }],
+        }),
+        readAccessibleClientProjects: async () => ({ projects: [searched], direct: false }),
+        fetchProject: async (id) => ({ ...project(id), userRoles: everyone }),
+      });
+
+      expect(outcomes.get(ZeropsProjectId.make("cyd"))).toEqual({
+        kind: "verified",
+        access: {
+          project: projectRef("cyd"),
+          role: "OWNER",
+          mutationsAllowed: true,
+          userRoles: everyone,
+        },
+      });
+    }),
+  );
+});
+
 describe("the REST access verifier's read of one project between rounds", () => {
   it.effect("judges the read against the membership the last round read", () =>
     Effect.gen(function* () {
