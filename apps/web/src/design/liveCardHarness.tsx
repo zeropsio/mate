@@ -373,7 +373,8 @@ function operationEntry(
   const operation: ZeropsOperation = {
     key: `op:${item.id}`,
     kind: item.kind,
-    phase: settled ? "done" : "running",
+    // A stand-up's call settles it as its report said, its builds running on.
+    phase: settled || (item.kind === "standup" && returned) ? "done" : "running",
     anchorAt: iso(item.start),
     anchorActivityId: `activity-${item.id}`,
     ...(settled ? { settledAt: iso(item.end) } : {}),
