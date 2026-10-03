@@ -466,6 +466,7 @@ const zeropsMateUpdateFixtureLayer = () =>
     ZeropsMateUpdateModule.ZeropsMateUpdate,
     ZeropsMateUpdateModule.ZeropsMateUpdate.of({
       current: Effect.succeed(undefined),
+      changes: Stream.make(undefined),
       refresh: Effect.void,
       check: Effect.succeed(undefined),
     }),
