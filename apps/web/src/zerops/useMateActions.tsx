@@ -326,19 +326,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [asker, moveChoicesFor],
   );
-  // The member list is read only where somebody could be handed a Mate, and
-  // where a Mate about to be deleted may be a colleague's, to say whose.
-  const anyAssignable = useMemo(
-    () =>
-      viewer !== null &&
-      candidates.some(
-        (candidate) => resolveMateVerbs({ project: candidate.project, viewer }).assign,
-      ),
-    [candidates, viewer],
-  );
+  // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
+  // about to be deleted says whose it is from HQ's people.
   const members = useZeropsOrganizationMembers({
     clientId: activeOrganization?.id,
-    enabled: anyAssignable || dialog?.kind === "delete",
+    enabled: dialog?.kind === "assign",
   });
 
   /** One write, with its busy key and its refusal, wherever it came from. */
