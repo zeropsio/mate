@@ -33,7 +33,10 @@ import { Roles } from "./roles.ts";
 import { ZeropsApi, ZeropsDeploy, type ZeropsMember } from "./zerops/api.ts";
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
-const ZEROPS_YAML = "zerops:\n  - setup: web\n    run:\n      start: node index.js\n";
+/** A `zerops.yaml` carrying `setup`. */
+const zeropsYaml = (setup: string) =>
+  `zerops:\n  - setup: ${setup}\n    run:\n      start: node index.js\n`;
+const ZEROPS_YAML = zeropsYaml("web");
 const FAST: DeploysOptions = {
   pollEvery: Duration.millis(20),
   patience: Duration.millis(800),
@@ -138,16 +141,19 @@ const fakeService = (name: string, over: Partial<FakeService> = {}): FakeService
   ...over,
 });
 
+/** A commit's files: content, or null to delete one. */
+type Files = Readonly<Record<string, string | null>>;
+
 interface Rig {
   readonly appId: string;
   readonly world: FakeWorld;
   /** Each application's tiers, by `<appId>/<tier>`. */
   readonly tiers: Map<string, RecipeTierResponse>;
   /**
-   * Commits `files` to `main` of `repo`, made with its first commit; the new head, once HQ has
+   * Commits `files` (null deletes one) to `main` of `repo`, made with its first commit; the new head, once HQ has
    * recorded main moving.
    */
-  readonly commit: (repo: string, files: Readonly<Record<string, string>>) => Effect.Effect<string>;
+  readonly commit: (repo: string, files: Files) => Effect.Effect<string>;
   /** The deploys HQ records, oldest first. */
   readonly deploys: Effect.Effect<
     ReadonlyArray<{
@@ -245,7 +251,7 @@ const withDeploys = <A, E>(
     });
 
     const heads = new Map<string, string>();
-    const commit = (repo: string, files: Readonly<Record<string, string>>) =>
+    const commit = (repo: string, files: Files) =>
       Effect.gen(function* () {
         const at = { appId, id: repo };
         if (!heads.has(repo)) {
@@ -410,7 +416,7 @@ describe("deploys", () => {
         Effect.gen(function* () {
           world.services.push(fakeService("api"));
           const web = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          const api = yield* commit("api", { "zerops.yaml": ZEROPS_YAML });
+          const api = yield* commit("api", { "zerops.yaml": zeropsYaml("api") });
           tiers.set(
             `${appId}/stage`,
             stageTier(appId, [{ hostname: "web" }, { hostname: "api", priority: 5 }]),
@@ -580,7 +586,7 @@ describe("deploys", () => {
             stageTier(appId, [{ hostname: "web" }, { hostname: "worker" }]),
           );
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* commit("worker", { "zerops.yaml": ZEROPS_YAML });
+          yield* commit("worker", { "zerops.yaml": zeropsYaml("worker") });
           yield* (yield* Deploys).catchUp;
           yield* until((rows) => rows.length === 2 && settled("live")(rows));
           assert.deepStrictEqual(
@@ -926,21 +932,81 @@ describe("deploys", () => {
       ),
     );
 
-    // A commit with no `zerops.yaml` (zcli's first name, then `zerops.yml`) cannot deploy: its own
-    // failure.
-    it.effect("fails a commit with no zerops.yaml, and deploys one with a zerops.yml", () =>
+    // F17, main #162: a stage's first deploy waits while the head of main has no zerops.yaml
+    // carrying the tier's setup — nothing recorded, so the stage reads "Nothing deployed yet", and
+    // the next merge deploys it. Once a deploy was recorded there, a commit with none (zcli's first
+    // name, then `zerops.yml`) cannot deploy: its own failure.
+    it.effect.each<{
+      readonly name: string;
+      /** A commit deployed there before, if any. */
+      readonly before?: Files;
+      readonly head: Files;
+      readonly verdict: "waits" | "deploys" | "fails";
+    }>([
+      {
+        name: "first, no zerops.yaml: waits",
+        head: { "README.md": "# Shop\n" },
+        verdict: "waits",
+      },
+      {
+        name: "first, no setup for the tier: waits",
+        head: { "zerops.yaml": zeropsYaml("api") },
+        verdict: "waits",
+      },
+      // Code main has deploys at once: under zcli's second name too.
+      {
+        name: "first, a zerops.yml with it: deploys",
+        head: { "zerops.yml": ZEROPS_YAML },
+        verdict: "deploys",
+      },
+      // What Zerops makes of a zerops.yaml HQ cannot read is Zerops' to say.
+      {
+        name: "first, a zerops.yaml not YAML: deploys",
+        head: { "zerops.yaml": "zerops: [\n" },
+        verdict: "deploys",
+      },
+      {
+        name: "after a deploy, no zerops.yaml: fails",
+        before: { "zerops.yaml": ZEROPS_YAML },
+        head: { "zerops.yaml": null },
+        verdict: "fails",
+      },
+    ])("a stage's deploy of main's head: $name", ({ before, head, verdict }) =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-          const bare = yield* commit("web", { "index.js": "one\n" });
-          yield* until(settled("failed"));
+          if (before !== undefined) {
+            yield* commit("web", before);
+            yield* until(settled("live"));
+          }
+          const sha = yield* commit("web", head);
+          yield* (yield* Deploys).catchUp;
+          if (verdict === "deploys") {
+            yield* until((rows) => rows.some((row) => row.sha === sha && row.state === "live"));
+            assert.deepStrictEqual(
+              [...world.appVersions.values()].map(({ name, zeropsYaml }) => [name, zeropsYaml]),
+              [[`main ${sha.slice(0, 7)}`, head["zerops.yaml"] ?? head["zerops.yml"]]],
+            );
+            return;
+          }
+          if (verdict === "fails") {
+            yield* until((rows) => rows.some((row) => row.sha === sha && row.state === "failed"));
+            assert.deepStrictEqual(
+              (yield* deploys)
+                .filter((row) => row.sha === sha)
+                .map(({ failure, message }) => [failure, message]),
+              [["job", `web has no zerops.yaml at ${sha.slice(0, 7)}`]],
+            );
+            return;
+          }
+          assert.deepStrictEqual(yield* deploys, []);
+          assert.deepStrictEqual(versions(world), []);
+          const next = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
           assert.deepStrictEqual(
-            (yield* deploys).map(({ failure, message }) => [failure, message]),
-            [["job", `web has no zerops.yaml at ${bare.slice(0, 7)}`]],
+            (yield* deploys).map(({ sha, state }) => [sha, state]),
+            [[next, "live"]],
           );
-          yield* commit("web", { "zerops.yml": ZEROPS_YAML });
-          yield* until((rows) => rows.some((row) => row.state === "live"));
-          assert.strictEqual([...world.appVersions.values()][0]?.zeropsYaml, ZEROPS_YAML);
         }),
       ),
     );
@@ -1079,6 +1145,33 @@ describe("deploys", () => {
               ["web", web],
               ["web", next],
             ],
+          );
+        }),
+      ),
+    );
+
+    // F17: production moves only on a release, so its first deploy never waits for main — a release
+    // listing a commit with no zerops.yaml is that commit's own failure.
+    it.effect("fails production's first deploy of a release with no zerops.yaml, never waits", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          yield* withProduction(appId, world);
+          const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+          tiers.set(`${appId}/production`, tierOf(...runtime(appId, "web")));
+          const bare = yield* commit("web", { "README.md": "# Shop\n" });
+          yield* (yield* Releases).release("dev", appId, {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "web", sha: bare }],
+          });
+          yield* until((rows) =>
+            rows.some((row) => row.project === "P_PROD" && row.state === "failed"),
+          );
+          assert.deepStrictEqual(
+            (yield* deploys)
+              .filter((row) => row.project === "P_PROD")
+              .map(({ failure, message }) => [failure, message]),
+            [["job", `web has no zerops.yaml at ${bare.slice(0, 7)}`]],
           );
         }),
       ),

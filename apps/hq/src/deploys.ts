@@ -21,6 +21,10 @@
  *   (checked again at every hand-over, `deployTokens.ts`), a Zerops that did not answer, git that
  *   failed — are asked again by the next pass, and a deploy still running after `patience` (20
  *   min) is deployed again (B38).
+ * - **A stage's first deploy waits for code** (F17, main #162): while HQ has recorded no deploy of
+ *   a stage's service and main's head has no `zerops.yaml` carrying the tier's setup, nothing is
+ *   asked or recorded — the stage reads "Nothing deployed yet" — and the next merge deploys it.
+ *   Production moves only on a release, and never waits.
  * - **Every pass is a catch-up**: at takeover and every 5 min, each environment's wanted commits
  *   against what its services run (B22); `main` moving asks only for the commits with no deploy
  *   yet. Only the leading Core deploys.
@@ -44,10 +48,12 @@ import type * as NodeStream from "node:stream";
 
 import type { HqGit } from "@t3tools/hq-git";
 import { zeropsDidNotAnswer } from "@t3tools/shared/hqDeploys";
+import { fromYaml } from "@t3tools/shared/schemaYaml";
 import { REASONS, can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
@@ -178,6 +184,15 @@ const ARCHIVE_MAX = 512 * 1024 * 1024;
 const YAML_MAX = 1024 * 1024;
 /** The names zcli looks for, in its order. */
 const YAML_NAMES = ["zerops.yaml", "zerops.yml"] as const;
+
+/** The setups a `zerops.yaml` carries; `undefined` where it does not read as one. */
+const setupsOf = (content: string) => {
+  const decoded = decodeSetups(content);
+  return Exit.isSuccess(decoded) ? decoded.value.zerops.map((entry) => entry.setup) : undefined;
+};
+const decodeSetups = Schema.decodeUnknownExit(
+  fromYaml(Schema.Struct({ zerops: Schema.Array(Schema.Struct({ setup: Schema.String })) })),
+);
 
 const short = (sha: string) => sha.slice(0, 7);
 
@@ -381,6 +396,8 @@ export const deploysLayer = (
             : [
                 {
                   projectId: environment.project_id,
+                  name: environment.name,
+                  tier: environment.tier,
                   targets: targets.map((target): Target => ({
                     ...target,
                     projectId: environment.project_id,
@@ -514,31 +531,59 @@ export const deploysLayer = (
         return untilEnded.pipe(Effect.timeoutOption(patience), Effect.map(Option.getOrUndefined));
       };
 
-      /** The archive and `zerops.yaml` of the commit, or why the commit cannot deploy. */
-      const commitOf = (git: HqGit, target: Target) =>
+      /** The commit's `zerops.yaml` under the first name zcli looks for, as read; none without one. */
+      const zeropsYamlOf = (git: HqGit, target: Target) =>
         Effect.gen(function* () {
           const repo = { appId: target.appId, id: target.repo };
           const root = yield* git.tree(repo, target.sha, "");
           const name = YAML_NAMES.find((candidate) =>
             root.items.some((entry) => entry.path === candidate && entry.type === "blob"),
           );
-          if (name === undefined) {
+          if (name === undefined) return undefined;
+          return { name, read: yield* git.file(repo, target.sha, name, YAML_MAX) };
+        });
+
+      /** The archive and `zerops.yaml` of the commit, or why the commit cannot deploy. */
+      const commitOf = (git: HqGit, target: Target) =>
+        Effect.gen(function* () {
+          const yaml = yield* zeropsYamlOf(git, target);
+          if (yaml === undefined) {
             return job(`${target.repo} has no zerops.yaml at ${short(target.sha)}`);
           }
-          const yaml = yield* git.file(repo, target.sha, name, YAML_MAX);
-          if (yaml.truncated) {
+          const { name, read } = yaml;
+          if (read.truncated) {
             return job(`${name} of ${target.repo} at ${short(target.sha)} is larger than 1 MiB`);
           }
-          const archive = yield* Effect.flatMap(git.archive(repo, target.sha), (stream) =>
-            readWhole(stream, ARCHIVE_MAX),
+          const archive = yield* Effect.flatMap(
+            git.archive({ appId: target.appId, id: target.repo }, target.sha),
+            (stream) => readWhole(stream, ARCHIVE_MAX),
           );
           if (archive === undefined) {
             return job(
               `the archive of ${target.repo} at ${short(target.sha)} is larger than 512 MiB`,
             );
           }
-          return { zeropsYaml: yaml.content.toString("utf8"), archive };
+          return { zeropsYaml: read.content.toString("utf8"), archive };
         });
+
+      /**
+       * Whether a stage's first deploy waits for main (F17, main #162): HQ has recorded no deploy
+       * of the service there, and `target`'s commit has no `zerops.yaml` carrying the tier's setup,
+       * so the next merge deploys it. A `zerops.yaml` HQ cannot read deploys: what is wrong with it
+       * is Zerops' to say. Once a deploy was recorded there, a commit with none is its own failure.
+       */
+      const waitsForMain = (target: Target) =>
+        Effect.gen(function* () {
+          const deployed = yield* sql`
+            SELECT 1 FROM hq_deploy
+            WHERE project_id = ${target.projectId} AND service = ${target.service} LIMIT 1`;
+          if (deployed.length > 0) return false;
+          const git = yield* gitHost.git;
+          const yaml = yield* zeropsYamlOf(git, target);
+          if (yaml === undefined) return true;
+          const setups = setupsOf(yaml.read.content.toString("utf8"));
+          return setups !== undefined && !setups.includes(target.setup);
+        }).pipe(Effect.catchTag("GitError", () => Effect.succeed(false)));
 
       /** A refusal of HQ's own on `target`, unless it is live or its build's own failure stands. */
       const refuseUnsettled = (target: Target, ended: Ended) => record(target, ended, "unsettled");
@@ -800,8 +845,9 @@ export const deploysLayer = (
 
       /**
        * The pass of the Core that leads now — every environment's commits, those with no deploy yet
-       * recorded pending, then queued (B20): `all` queues every environment (a catch-up), else only
-       * those with a commit new to them (main moved).
+       * recorded pending (a stage's first deploy waiting for main left out), then queued (B20): `all`
+       * queues every environment (a catch-up), else only those with a commit new to them (main
+       * moved).
        */
       const leading = yield* Ref.make<
         Option.Option<(all: boolean, only?: string) => Effect.Effect<void>>
@@ -811,15 +857,15 @@ export const deploysLayer = (
       const lead = Effect.gen(function* () {
         const queues = new Map<
           string,
-          { targets: ReadonlyArray<Target>; version: number; working: boolean }
+          { name: string; targets: ReadonlyArray<Target>; version: number; working: boolean }
         >();
         const work = (projectId: string): Effect.Effect<void> =>
           Effect.gen(function* () {
             for (;;) {
               const queue = queues.get(projectId);
               if (queue === undefined) return;
-              const { targets, version } = queue;
-              const key = yield* keyOf(projectId, targets[0]?.envName ?? "").pipe(
+              const { name, targets, version } = queue;
+              const key = yield* keyOf(projectId, name).pipe(
                 Effect.catch((error) =>
                   Effect.as(Effect.logWarning("deploy key not checked", error), undefined),
                 ),
@@ -845,9 +891,10 @@ export const deploysLayer = (
             }
           });
         const scope = yield* Effect.scope;
-        const enqueue = (projectId: string, targets: ReadonlyArray<Target>) =>
+        const enqueue = (projectId: string, name: string, targets: ReadonlyArray<Target>) =>
           Effect.gen(function* () {
-            const queue = queues.get(projectId) ?? { targets, version: 0, working: false };
+            const queue = queues.get(projectId) ?? { name, targets, version: 0, working: false };
+            queue.name = name;
             queue.targets = targets;
             queue.version += 1;
             queues.set(projectId, queue);
@@ -864,17 +911,20 @@ export const deploysLayer = (
                 Effect.catch((error) => Effect.logWarning("recipe deltas failed", error)),
               );
             }
-            for (const { projectId, targets } of yield* wanted) {
+            for (const { projectId, name, tier, targets } of yield* wanted) {
               if (only !== undefined && projectId !== only) continue;
               let fresh = false;
+              const ready: Array<Target> = [];
               for (const target of targets) {
                 if ((yield* recordOf(target)) === undefined) {
+                  if (tier === "stage" && (yield* waitsForMain(target))) continue;
                   fresh = true;
                   // A hold written since the read stands.
                   yield* record(target, { state: "pending" }, "none");
                 }
+                ready.push(target);
               }
-              if (all || fresh) yield* enqueue(projectId, targets);
+              if (all || fresh) yield* enqueue(projectId, name, ready);
             }
           }).pipe(Effect.catch((error) => Effect.logWarning("deploy pass failed", error)));
         yield* Effect.acquireRelease(Ref.set(leading, Option.some(pass)), () =>
@@ -924,7 +974,7 @@ export const deploysLayer = (
       const hold: Deploys["Service"]["hold"] = (projectIds, credential) =>
         Effect.gen(function* () {
           const held: Array<HeldEnvironment> = [];
-          for (const { projectId, targets } of yield* wanted) {
+          for (const { projectId, name, targets } of yield* wanted) {
             if (!projectIds.includes(projectId)) continue;
             const services = yield* zerops.services(projectId)(credential);
             const states: Array<HeldEnvironment["services"][number]> = [];
@@ -947,7 +997,7 @@ export const deploysLayer = (
                 runs: now,
               });
             }
-            held.push({ projectId, name: targets[0]?.envName ?? "", services: states });
+            held.push({ projectId, name, services: states });
           }
           return held;
         });
