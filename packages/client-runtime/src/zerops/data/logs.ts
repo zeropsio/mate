@@ -58,7 +58,11 @@ export interface BuildLogLease {
   setFollow(follow: boolean): void;
   loadOlder(): Promise<void>;
   retry(): Promise<void>;
-  /** Idempotent. The final release closes the shared session immediately. */
+  /**
+   * Idempotent. The final release stops following at once and keeps what was read for
+   * {@link LOG_RELEASE_GRACE_MS}: a card drawn again for the same build in it (a row that
+   * plops from the live slot into the history) reads nothing again.
+   */
   release(): void;
 }
 
@@ -566,10 +570,15 @@ class BuildLogSession implements SharedBuildLogSession {
   }
 }
 
+/** How long a build's log nobody holds is kept before it is closed. */
+export const LOG_RELEASE_GRACE_MS = 5_000;
+
 interface RegistryEntry {
   readonly project: ProjectRef;
   readonly session: BuildLogSession;
   readonly follows: Map<number, boolean>;
+  /** Its close, pending since its final release. */
+  closing?: unknown;
 }
 
 export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLogRegistry {
@@ -609,6 +618,7 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       const allowedUntil = accessDeadline(entry.project);
       if (allowedUntil === null) {
         sessions.delete(key);
+        if (entry.closing !== undefined) options.clearTimer(entry.closing);
         entry.session.dispose("access");
       } else deadline = allowedUntil;
     }
@@ -628,6 +638,14 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
     }
   };
 
+  const close = (key: BuildLogSessionKey, entry: RegistryEntry): void => {
+    if (entry.closing !== undefined) options.clearTimer(entry.closing);
+    entry.closing = undefined;
+    if (sessions.get(key) === entry) sessions.delete(key);
+    entry.session.dispose();
+    reconcileAccess();
+  };
+
   const acquire: BuildLogRegistry["acquire"] = (project, query, leaseOptions = {}) => {
     if (closed) throw new BuildLogRegistryError("closed");
     if (!sameAccount(options.scope, project)) throw new BuildLogRegistryError("account");
@@ -635,7 +653,16 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
     if (accessDeadline(project) === null) throw new BuildLogRegistryError("access");
     const key = buildLogSessionKeyOf(project, query);
     let entry = sessions.get(key);
+    if (entry?.closing !== undefined) {
+      options.clearTimer(entry.closing);
+      entry.closing = undefined;
+    }
     if (entry === undefined) {
+      // A log nobody holds gives way to one asked for.
+      for (const [heldKey, held] of sessions) {
+        if (sessions.size < options.policy.activeLogSessionsPerAccount) break;
+        if (held.follows.size === 0) close(heldKey, held);
+      }
       if (sessions.size >= options.policy.activeLogSessionsPerAccount) {
         throw new BuildLogRegistryError("capacity");
       }
@@ -659,9 +686,15 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       released = true;
       ownedEntry.follows.delete(leaseId);
       if (ownedEntry.follows.size === 0) {
-        if (sessions.get(key) === ownedEntry) sessions.delete(key);
-        ownedEntry.session.dispose();
-        reconcileAccess();
+        ownedEntry.session.setFollow(false);
+        if (closed || sessions.get(key) !== ownedEntry) {
+          close(key, ownedEntry);
+          return;
+        }
+        ownedEntry.closing = options.setTimer(() => {
+          ownedEntry.closing = undefined;
+          close(key, ownedEntry);
+        }, LOG_RELEASE_GRACE_MS);
         return;
       }
       ownedEntry.session.setFollow([...ownedEntry.follows.values()].some(Boolean));
@@ -685,7 +718,10 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
   const shutdown = (): void => {
     if (closed) return;
     closed = true;
-    for (const entry of sessions.values()) entry.session.dispose();
+    for (const entry of sessions.values()) {
+      if (entry.closing !== undefined) options.clearTimer(entry.closing);
+      entry.session.dispose();
+    }
     sessions.clear();
     reconcileAccess();
     options.transport.shutdown();

@@ -16,7 +16,6 @@
  * until the work ends.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { PipelineSpokenState } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
@@ -47,7 +46,9 @@ import {
   detailLines,
   importLines,
   lineSegments,
+  observedLinesOf,
   operationSubject,
+  PIPELINE_BAR,
   settledOperationWords,
 } from "./operationBar.logic";
 import { opensOnto, standsOpen } from "./opens.logic";
@@ -82,15 +83,6 @@ function useArrivedLive(): boolean {
 // ---------------------------------------------------------------------------
 // The status bars
 // ---------------------------------------------------------------------------
-
-const PIPELINE_BAR: Record<PipelineSpokenState, BarTone> = {
-  finished: "done",
-  running: "running",
-  activating: "running",
-  failed: "failed",
-  waiting: "waiting",
-  cancelled: "waiting",
-};
 
 const STEP_BAR: Record<string, BarTone> = {
   done: "done",
@@ -301,7 +293,7 @@ function DeployInstrument({
   const subject = operationSubject(operation);
   const opens = opensOnto({
     control: "operation",
-    lines: detailLines(operation, null),
+    lines: detailLines(operation, null, observedLinesOf(reading.regions.observed)),
     reasonCut: false,
   });
   const settledMs =
@@ -595,7 +587,7 @@ function Instruments({
   const toggle = (key: string) => {
     // What the person opened is theirs to read: the conversation stops
     // following its end, so the bar they pressed stays where it is (K12).
-    hold();
+    hold(!open.has(key), key);
     setOpen((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);

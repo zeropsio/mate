@@ -11,7 +11,7 @@
  * one piece of state this layer needs that isn't derivable from props), and
  * attaches the `ZeropsBuildLog` node when there is a build to show one for.
  */
-import { createElement, useRef, useState, type ReactElement } from "react";
+import { createElement, useEffect, useRef, useState, type ReactElement } from "react";
 
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
@@ -72,28 +72,48 @@ function hostnamesFor(operation: ZeropsOperation): ReadonlyArray<string> {
 }
 
 /**
- * `null` for a kind the Observation layer has no attribution rules for
- * (bootstrap, mount, verify, env, error) — those never get a region — and
- * for a batch deploy, whose per-target rows are its steps from birth to
- * settle.
+ * What a card reads of its operation in the account store. `null` for a kind
+ * the Observation layer has no attribution rules for (bootstrap, mount,
+ * verify, env, error). A running one is read by its services and its start —
+ * a batch deploy by all of its services, its card following the one the
+ * platform says is building; a settled one only when it is a deploy whose
+ * result named its app versions or processes, and then only by those — never
+ * guessed by time and service, which is how a failed deploy that named
+ * nothing took on a later deploy's pipeline and log. Without them its card
+ * shows what its call returned.
  */
 export function observationTargetFor(operation: ZeropsOperation): ObservationTarget | null {
-  if (!isObservedKind(operation.kind) || operation.batch === true) {
+  if (!isObservedKind(operation.kind)) {
     return null;
   }
-  const appVersionId = operation.version?.id;
+  const batch = operation.batch === true;
+  const appVersionIds = batch
+    ? (operation.appVersionIds ?? [])
+    : operation.version?.id === undefined
+      ? []
+      : [operation.version.id];
   const processIds = operation.processIds ?? [];
+  const named = appVersionIds.length > 0 || processIds.length > 0;
+  const running = operation.phase === "running";
+  if (!running && (operation.kind !== "deploy" || !named)) {
+    return null;
+  }
   return {
     key: operation.key,
     kind: operation.kind,
-    hostnames: hostnamesFor(operation),
+    hostnames: batch ? operation.steps.map((step) => step.label) : hostnamesFor(operation),
     startedAtMs: Date.parse(operation.anchorAt),
-    running: operation.phase === "running",
-    ...(appVersionId === undefined && processIds.length === 0
+    running,
+    ...(batch ? { batch } : {}),
+    ...(!named
       ? {}
       : {
           exact: {
-            ...(appVersionId === undefined ? {} : { appVersionId }),
+            ...(appVersionIds.length === 0
+              ? {}
+              : batch
+                ? { appVersionIds }
+                : { appVersionId: appVersionIds[0]! }),
             ...(processIds.length === 0 ? {} : { processIds }),
           },
         }),
@@ -231,10 +251,11 @@ function readoutOf(
 
 /**
  * Pure: `(operation kind, phase, current state, remembered history, now) → region`.
- * A settled operation (`phase !== "running"`) always prefers its history —
- * the steps it last saw while running, kept under the result's verdict with
- * its build log in place — over whatever the current `state` happens to
- * compute, per the concept's "the result is the verdict" rule (§3). While
+ * A settled operation (`phase !== "running"`) draws its newest fresh read —
+ * the store reads it on until its outcome is read — else its history once
+ * that read the outcome; a remembered read from mid-run keeps its build log
+ * and its secondary processes but never its steps, which would run on under
+ * the result's verdict (§3, "the result is the verdict"). While
  * running, `state` drives the region once a read has produced a pipeline or
  * secondary processes; until then — and whenever the feed goes quiet or off
  * — the history holds what was already shown (steps, secondary processes,
@@ -273,7 +294,24 @@ export function deriveObservedStepsRegion(
   };
 
   if (phase !== "running") {
-    return history === undefined ? undefined : regionOf(history, "");
+    // Its call settled; the store reads on until the outcome is read. The
+    // newest fresh read is drawn; a remembered one only once it read the
+    // outcome — one from mid-run is never drawn as live under the verdict.
+    const fresh =
+      state.kind === "observing" && state.observation.pipeline !== undefined
+        ? state.observation
+        : undefined;
+    const source = fresh ?? history;
+    if (source === undefined) {
+      return undefined;
+    }
+    if (source === fresh || source.outcome !== undefined) {
+      return regionOf(source, "");
+    }
+    const { pipeline: _midRun, ...remembered } = source;
+    return remembered.chips.length === 0 && remembered.buildLog === undefined
+      ? undefined
+      : regionOf(remembered, "");
   }
 
   const current =
@@ -287,6 +325,13 @@ export function deriveObservedStepsRegion(
   }
   return regionOf(source, provenanceFor(state, source, nowMs));
 }
+
+/** A settled operation whose one read failed: it says so, over what its call returned. */
+const UNREAD_REGION: ObservedStepsRegion = {
+  steps: [],
+  chips: [],
+  provenance: "Couldn't read its build from Zerops",
+};
 
 /** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
 export function browserScreenshotFor(operation: ZeropsOperation): BrowserScreenshot | undefined {
@@ -355,24 +400,69 @@ export interface OperationCardRegions {
   readonly live?: boolean;
   /** `browser` only: the latest live frame, kept across the running→done transition. */
   readonly liveFrame?: LiveBrowserFrame;
+  /** A batch deploy only: the service its card shows — the one building, else one that failed, else the last that ended. */
+  readonly service?: string;
 }
 
+/** A batch's service the observation's step source names, by the client's topology view. */
+export function batchServiceFor(
+  operation: ZeropsOperation,
+  observation: Observation | undefined,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  if (operation.batch !== true || observation?.serviceIds === undefined) return undefined;
+  const ids = new Set(observation.serviceIds);
+  const hostnames = new Set(operation.steps.map((step) => step.label));
+  return topology?.services.find(
+    (service) => ids.has(service.serviceId) && hostnames.has(service.hostname),
+  )?.hostname;
+}
+
+/** Whether a build log's dialog is open, and how to open or close it. */
+export type LogDialogState = readonly [open: boolean, set: (open: boolean) => void];
+
+/**
+ * `logDialog`: where the whole log's dialog keeps whether it is open — its
+ * line, so a dialog the person opened stays open as the line plops from the
+ * live slot into the history; the card's own state otherwise. `readsLog`:
+ * whether its build's log is read — not for a line in the live slot that
+ * stands closed.
+ */
 export function useOperationCard(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
+  logDialog?: LogDialogState,
+  readsLog = true,
 ): OperationCardRegions {
   const target = observationTargetFor(operation);
-  const nowMs = useSecondsNowMs(operation.phase === "running");
-  const { state, history, buildLog } = useOperationObservation(target, environmentId, nowMs);
+  const running = operation.phase === "running";
+  // A settled one still read moves on the clock too: its read ends at the ceiling.
+  const [settledReading, setSettledReading] = useState(false);
+  const nowMs = useSecondsNowMs(running || settledReading);
+  const { state, history, buildLog, wantsPoll, settledRead } = useOperationObservation(
+    target,
+    environmentId,
+    nowMs,
+    readsLog,
+  );
+  const reading = !running && wantsPoll;
+  useEffect(() => setSettledReading(reading), [reading]);
   const topology = useZeropsTopology(environmentId);
   // The whole log opens in a dialog, only when asked for.
-  const [logOpen, setLogOpen] = useState(false);
+  const ownLogDialog = useState(false);
+  const [logOpen, setLogOpen] = logDialog ?? ownLogDialog;
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
   const browserScreenshot = browserScreenshotFor(operation);
   const subjectHost = browserSubjectHostFor(operation, topology);
+  const seen =
+    state.kind === "off" || state.observation.serviceIds === undefined
+      ? history
+      : state.observation;
+  const service = batchServiceFor(operation, seen, topology);
   const fields = {
+    ...(service === undefined ? {} : { service }),
     ...(devServerUrl === undefined ? {} : { devServerUrl }),
     ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
     ...(subjectHost === undefined ? {} : { subjectHost }),
@@ -381,14 +471,18 @@ export function useOperationCard(
       : {}),
   };
 
-  const region = deriveObservedStepsRegion(
-    operation.kind,
-    operation.phase,
-    state,
-    history,
-    nowMs,
-    pipelineServiceFor(operation, topology),
-  );
+  const region =
+    deriveObservedStepsRegion(
+      operation.kind,
+      operation.phase,
+      state,
+      history,
+      nowMs,
+      pipelineServiceFor(
+        service === undefined ? operation : { ...operation, target: { hostname: service } },
+        topology,
+      ),
+    ) ?? (target !== null && !running && settledRead === "failed" ? UNREAD_REGION : undefined);
   if (region === undefined) {
     return fields;
   }
@@ -398,6 +492,10 @@ export function useOperationCard(
     provenance: region.provenance,
     ...(region.pipeline === undefined ? {} : { pipeline: region.pipeline }),
   };
+  // The log is drawn as soon as the card knows the build: a running one's
+  // newest lines' room and a settled one's way to it stand before its lines
+  // are read, so the card's height is final as it opens and as it lands.
+  const stands = operation.phase !== "running";
   if (region.buildLogQuery === undefined) {
     return { observed, ...fields };
   }
@@ -406,8 +504,9 @@ export function useOperationCard(
     lines: buildLog.lines,
     onToggle: () => setLogOpen(!logOpen),
     open: logOpen,
+    stands,
     status: buildLog.status,
-    subject: operation.subject,
+    subject: service ?? operation.subject,
   });
   return { observed: { ...observed, log }, ...fields };
 }

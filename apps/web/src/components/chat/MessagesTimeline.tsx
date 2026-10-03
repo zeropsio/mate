@@ -20,6 +20,17 @@ const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
+  classifyTimelineScroll,
+  nextTimelineReading,
+  nextPersonScrollSession,
+  PERSON_SCROLL_IDLE,
+  personIsScrolling,
+  type PersonScrollSession,
+  type PersonScrollSessionEvent,
+  type TimelineScrollDirection,
+  type TimelineScrollReading,
+} from "@t3tools/client-runtime/zerops/timelineFollow";
+import {
   Fragment,
   memo,
   use,
@@ -97,6 +108,13 @@ import {
   resolveTimelineScrollAnchor,
   shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
+import {
+  isTimelineScrollTarget,
+  isVerticalWheel,
+  latchWheelGesture,
+  timelineScrollKeyInput,
+  type WheelGestureLatch,
+} from "./timelineScrollTarget";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
@@ -240,6 +258,10 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
  * pixels in a few frames, and LegendList's own tenth of a viewport lost it.
  */
 const TIMELINE_FOLLOW_THRESHOLD = 1;
+/** An input a person gave the list, before it moved it. */
+export type TimelinePersonInput =
+  | { readonly kind: "wheel" | "key"; readonly direction: "up" | "down" }
+  | { readonly kind: "touch-move" | "scrollbar" | "content-pointer" };
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -288,7 +310,19 @@ interface MessagesTimelineProps {
    * scroll-mode refs whenever the user drifts near the bottom.
    */
   liveFollowEnabled: boolean;
-  onIsAtEndChange: (isAtEnd: boolean) => void;
+  /**
+   * Where the list stands: at its end or not, which way it moved, and whether
+   * a person's scroll moved it (`nextTimelineFollow`'s "position").
+   */
+  onIsAtEndChange: (
+    isAtEnd: boolean,
+    scroll: {
+      readonly byPerson: boolean;
+      readonly direction: TimelineScrollDirection | null;
+    },
+  ) => void;
+  /** A person's input on the list, as it comes: whether it leaves the end is the caller's to tell. */
+  onPersonInput: (input: TimelinePersonInput) => void;
   onManualNavigation: () => void;
   /** Filled while a remembered reading position is being restored; calling it hands scrolling back. */
   cancelPositionRestoreRef?: React.RefObject<(() => void) | null>;
@@ -358,6 +392,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   contentInsetEndAdjustment,
   liveFollowEnabled,
   onIsAtEndChange,
+  onPersonInput,
   onManualNavigation,
   cancelPositionRestoreRef,
   hideEmptyPlaceholder = false,
@@ -699,61 +734,194 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [rememberPosition]);
   useLayoutEffect(() => () => void rememberPositionRef.current(), []);
 
-  const handleScroll = useCallback(() => {
-    const state = listRef.current?.getState?.();
-    if (restoringReadingPosition || state?.data !== rows) return;
-    const isAtEnd = rememberPosition();
-    if (isAtEnd !== undefined) {
-      onIsAtEndChange(isAtEnd);
-    }
-    if (!state || minimapItems.length === 0) {
-      return;
-    }
-
-    const scrollTop = state.scroll ?? 0;
-    const scrollBottom = scrollTop + (state.scrollLength ?? 0);
-
-    const itemBounds = minimapItems.map((item) => ({
-      top: resolveTimelineRowTop(state, item.rowIndex),
-      height: resolveTimelineRowHeight(state, item.rowIndex),
-    }));
-
-    for (const [index, item] of minimapItems.entries()) {
-      const strip = minimapStripMap.get(item.id);
-      const bounds = itemBounds[index];
-      const rowTop = bounds?.top ?? null;
-      const rowHeight = bounds?.height ?? null;
-      const inView =
-        rowTop !== null &&
-        rowTop < scrollBottom &&
-        rowTop + Math.max(1, rowHeight ?? 1) > scrollTop;
-
-      if (strip) {
-        strip.dataset.inView = inView ? "true" : "false";
-      }
-    }
-    const nextCurrentIndex = resolveTimelineMinimapCurrentIndex({
-      scrollTop,
-      scrollBottom,
-      itemBounds,
-    });
-    setMinimapCurrentIndex((current) =>
-      current === nextCurrentIndex ? current : nextCurrentIndex,
-    );
-  }, [
-    listRef,
-    minimapItems,
-    minimapStripMap,
-    onIsAtEndChange,
-    rememberPosition,
-    restoringReadingPosition,
-    rows,
-  ]);
-
+  // What a person is doing to the list, so a scroll they make is told from
+  // one the list or the browser makes as rows land, grow, settle or shrink.
+  const personSessionRef = useRef<PersonScrollSession>(PERSON_SCROLL_IDLE);
+  const notePersonSession = useCallback((event: PersonScrollSessionEvent) => {
+    personSessionRef.current = nextPersonScrollSession(personSessionRef.current, event);
+  }, []);
+  const onPersonInputRef = useRef(onPersonInput);
+  useLayoutEffect(() => {
+    onPersonInputRef.current = onPersonInput;
+  }, [onPersonInput]);
+  // Every input a person gives the list, observed here once: each starts or
+  // holds their scroll session, and each is handed up to decide follow.
   useEffect(() => {
-    const frame = requestAnimationFrame(handleScroll);
+    const wrapper = timelineViewportElement;
+    if (!wrapper) return;
+    const scrollNode = () => listRef.current?.getScrollableNode() ?? null;
+    const input = (personInput: TimelinePersonInput) => {
+      notePersonSession({ type: "input", at: performance.now() });
+      onPersonInputRef.current(personInput);
+    };
+    let wheelLatch: WheelGestureLatch | null = null;
+    const onWheel = (event: WheelEvent) => {
+      const node = scrollNode();
+      if (!node || event.ctrlKey || !isVerticalWheel(event.deltaX, event.deltaY)) return;
+      // Whatever it scrolls, the wheel is the person's: should the browser
+      // hand the rest of a gesture to the list, the list's move is theirs.
+      notePersonSession({ type: "input", at: performance.now() });
+      // A wheel that started in a nested scroller (a run's own scroll, a code
+      // block) does not leave the end, for the whole gesture it started.
+      const direction = event.deltaY < 0 ? "up" : "down";
+      wheelLatch = latchWheelGesture(wheelLatch, { at: performance.now(), direction }, () =>
+        isTimelineScrollTarget(event.target, node, event.deltaY),
+      );
+      if (wheelLatch.targetsList) onPersonInputRef.current({ kind: "wheel", direction });
+    };
+    const onTouchStart = () =>
+      notePersonSession({ type: "hold", by: "touch", at: performance.now() });
+    const onTouchMove = () => input({ kind: "touch-move" });
+    const onTouchEnd = () =>
+      notePersonSession({ type: "release", by: "touch", at: performance.now() });
+    // The scrollbar: the only pointerdown whose target is the scroll node itself.
+    const onPointerDown = (event: PointerEvent) => {
+      const node = scrollNode();
+      if (!node || !(event.target instanceof Node) || !node.contains(event.target)) return;
+      if (event.target === node) {
+        notePersonSession({ type: "hold", by: "pointer", at: performance.now() });
+        onPersonInputRef.current({ kind: "scrollbar" });
+      } else {
+        onPersonInputRef.current({ kind: "content-pointer" });
+      }
+    };
+    const onPointerUp = () =>
+      notePersonSession({ type: "release", by: "pointer", at: performance.now() });
+    // With the focus on the page (a click on message text leaves it there),
+    // scroll keys move the scroller around what was last clicked.
+    let lastPointerTarget: Element | null = null;
+    const onDocumentPointerDown = (event: PointerEvent) => {
+      const node = scrollNode();
+      lastPointerTarget =
+        node !== null && event.target instanceof Element && node.contains(event.target)
+          ? event.target
+          : null;
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const node = scrollNode();
+      if (!node || event.defaultPrevented) return;
+      const direction = timelineScrollKeyInput({
+        key: event.key,
+        shiftKey: event.shiftKey,
+        target: event.target,
+        timeline: node,
+        lastPointerTarget,
+      });
+      if (direction !== null) input({ kind: "key", direction });
+    };
+    // The end of a scroll ends the person's session with it.
+    const onScrollEnd = (event: Event) => {
+      if (event.target === scrollNode()) notePersonSession({ type: "scroll-ended" });
+    };
+    const document = wrapper.ownerDocument;
+    const view = document.defaultView ?? window;
+    wrapper.addEventListener("wheel", onWheel, { passive: true });
+    wrapper.addEventListener("touchstart", onTouchStart, { passive: true });
+    wrapper.addEventListener("touchmove", onTouchMove, { passive: true });
+    wrapper.addEventListener("pointerdown", onPointerDown, { passive: true });
+    wrapper.addEventListener("scrollend", onScrollEnd, { capture: true });
+    document.addEventListener("pointerdown", onDocumentPointerDown, {
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener("keydown", onKeyDown);
+    view.addEventListener("touchend", onTouchEnd, { passive: true });
+    view.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    view.addEventListener("pointerup", onPointerUp, { passive: true });
+    view.addEventListener("pointercancel", onPointerUp, { passive: true });
+    return () => {
+      wrapper.removeEventListener("wheel", onWheel);
+      wrapper.removeEventListener("touchstart", onTouchStart);
+      wrapper.removeEventListener("touchmove", onTouchMove);
+      wrapper.removeEventListener("pointerdown", onPointerDown);
+      wrapper.removeEventListener("scrollend", onScrollEnd, { capture: true });
+      document.removeEventListener("pointerdown", onDocumentPointerDown, { capture: true });
+      document.removeEventListener("keydown", onKeyDown);
+      view.removeEventListener("touchend", onTouchEnd);
+      view.removeEventListener("touchcancel", onTouchEnd);
+      view.removeEventListener("pointerup", onPointerUp);
+      view.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [listRef, notePersonSession, timelineViewportElement]);
+
+  // Where the list stood at the last read: what tells which way it moved since.
+  const lastReadingRef = useRef<TimelineScrollReading | null>(null);
+
+  const readList = useCallback(
+    (personScrolling: boolean) => {
+      const node = listRef.current?.getScrollableNode();
+      const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
+      const scroll = reading
+        ? classifyTimelineScroll({
+            previous: lastReadingRef.current,
+            current: reading,
+            personScrolling,
+          })
+        : { byPerson: false, direction: null };
+      lastReadingRef.current = reading && nextTimelineReading(lastReadingRef.current, reading);
+      notePersonSession({ type: "scrolled", at: performance.now(), byPerson: scroll.byPerson });
+      const state = listRef.current?.getState?.();
+      if (restoringReadingPosition || state?.data !== rows) return;
+      const isAtEnd = rememberPosition();
+      if (isAtEnd !== undefined) {
+        onIsAtEndChange(isAtEnd, scroll);
+      }
+      if (!state || minimapItems.length === 0) {
+        return;
+      }
+
+      const scrollTop = state.scroll ?? 0;
+      const scrollBottom = scrollTop + (state.scrollLength ?? 0);
+
+      const itemBounds = minimapItems.map((item) => ({
+        top: resolveTimelineRowTop(state, item.rowIndex),
+        height: resolveTimelineRowHeight(state, item.rowIndex),
+      }));
+
+      for (const [index, item] of minimapItems.entries()) {
+        const strip = minimapStripMap.get(item.id);
+        const bounds = itemBounds[index];
+        const rowTop = bounds?.top ?? null;
+        const rowHeight = bounds?.height ?? null;
+        const inView =
+          rowTop !== null &&
+          rowTop < scrollBottom &&
+          rowTop + Math.max(1, rowHeight ?? 1) > scrollTop;
+
+        if (strip) {
+          strip.dataset.inView = inView ? "true" : "false";
+        }
+      }
+      const nextCurrentIndex = resolveTimelineMinimapCurrentIndex({
+        scrollTop,
+        scrollBottom,
+        itemBounds,
+      });
+      setMinimapCurrentIndex((current) =>
+        current === nextCurrentIndex ? current : nextCurrentIndex,
+      );
+    },
+    [
+      listRef,
+      minimapItems,
+      minimapStripMap,
+      notePersonSession,
+      onIsAtEndChange,
+      rememberPosition,
+      restoringReadingPosition,
+      rows,
+    ],
+  );
+  const handleScroll = useCallback(
+    () => readList(personIsScrolling(personSessionRef.current, performance.now())),
+    [readList],
+  );
+
+  // Rows changed under the list: where it stands now is none of the person's doing.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => readList(false));
     return () => cancelAnimationFrame(frame);
-  }, [handleScroll, rows.length]);
+  }, [readList, rows.length]);
 
   useEffect(() => {
     if (!timelineViewportElement) {
@@ -1157,7 +1325,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
               {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
               contentInsetEndAdjustment={contentInsetEndAdjustment}
-              maintainScrollAtEndThreshold={TIMELINE_FOLLOW_THRESHOLD}
+              // Off, no band: an end scroll LegendList queued before the person
+              // left is dropped once their scroll lands.
+              maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
               maintainScrollAtEnd={followingEnd ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
               onItemSizeChanged={onItemSizeChanged}
               maintainVisibleContentPosition={
@@ -1192,6 +1362,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               stripMap={minimapStripMap}
               onSelect={(item) => {
                 onManualNavigation();
+                // The person picked where to go: the list's way there is
+                // theirs, and landing on the latest follows it.
+                notePersonSession({ type: "input", at: performance.now() });
                 void listRef.current?.scrollToIndex({
                   index: item.rowIndex,
                   animated: true,

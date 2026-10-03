@@ -65,13 +65,171 @@ export interface RunScrollPosition {
   readonly clientHeight: number;
 }
 
+/** How near its foot the scroll may stand and still count as at it: it follows from there. */
+export const FOLLOW_SLACK_PX = 4;
+
 /**
- * Whether the scroll stands at its foot, a pixel's slack for a fractional
- * zoom: there, it follows what arrives; scrolled up, it stays where the
- * person put it.
+ * How far a move must go to be one: a re-read of where it stood can settle a
+ * fraction, and the browser snaps to sub-pixels.
+ */
+const MOVED_PX = 1.5;
+
+/**
+ * Whether the scroll stands at its foot, a few pixels' slack: there, it
+ * follows what arrives; scrolled up, it stays where the person put it.
  */
 export function standsAtFoot(scroll: RunScrollPosition): boolean {
-  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1;
+  return fromFoot(scroll) <= FOLLOW_SLACK_PX;
+}
+
+function fromFoot(scroll: RunScrollPosition): number {
+  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+}
+
+/** Nothing the person opened in a run's scroll. */
+export const NOTHING_OPENED: ReadonlySet<string> = new Set();
+
+/** Whether the run's scroll follows its foot, where its top last stood, and what the person opened in it. */
+export interface RunScrollFollow {
+  readonly follows: boolean;
+  /** Where its top last stood: where a move left it, or where the page last put it. */
+  readonly stood: number;
+  /**
+   * What the person opened in it since it last followed, still open: each by
+   * its own switch's key, so a close of something they never opened (a
+   * command that opened itself in the slot) is not theirs.
+   */
+  readonly opened: ReadonlySet<string>;
+  /** Whether closing the last of them follows again: it followed as they opened the first, and they have not moved it up since. */
+  readonly resumes: boolean;
+  /**
+   * The foot as the person's move down set out for it — End, a wheel run to
+   * the bottom glides there — while that move lasts: lines arriving meanwhile
+   * move the foot on under it, and reaching where it stood reaches it.
+   */
+  readonly reach: number | null;
+  /** Its foot as it was last read: where a move down that starts now sets out for. */
+  readonly foot: number | null;
+}
+
+/** What happened to the run's scroll, for whether it follows its foot. */
+export type RunScrollEvent =
+  /** It was read where it stands now: after a scroll, or as what it holds grew. */
+  | { readonly kind: "scrolled"; readonly position: RunScrollPosition }
+  /** The page put its top at `top` (read back as the browser took it). */
+  | { readonly kind: "set"; readonly top: number }
+  /** The person opened something in it, by its switch `key`: theirs to read. */
+  | { readonly kind: "opened"; readonly key: string }
+  /** The person closed something in it, by its switch `key`. */
+  | { readonly kind: "closed"; readonly key: string }
+  /** A move of the person's ended (the browser's `scrollend`). */
+  | { readonly kind: "ended" };
+
+/**
+ * Whether the run's scroll follows its foot after `event`: every arrival
+ * keeps its newest line in view while it does. A top that moved up from
+ * where it last stood is the person's — a wheel, keys, a find, a
+ * drag-select, focus moving into it, whatever made it, inside the foot's
+ * slack too — and stops it, unless it landed on the foot exactly: that is
+ * the browser clamping it (a row's travel ending, the card growing taller).
+ * A top that moved down onto the foot is the person's too, and follows
+ * again — onto the foot as it stood when that move began, too, so End
+ * reaches it though a line arrived as it glided. Opening something in it stops it; closing the last thing they
+ * opened follows again, if it followed as they opened it and they have not
+ * moved it up since. Nothing else changes it: an arrival grows it under its
+ * top, a card below its cap stands at its foot whatever happens, and the
+ * page's own move is the page's.
+ */
+export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunScrollFollow {
+  switch (event.kind) {
+    case "opened": {
+      if (state.opened.has(event.key)) return state;
+      return {
+        ...state,
+        follows: false,
+        opened: new Set(state.opened).add(event.key),
+        resumes: state.opened.size === 0 ? state.follows : state.resumes,
+        reach: null,
+      };
+    }
+    case "closed": {
+      // Closing what they never opened here counts for nothing.
+      if (!state.opened.has(event.key)) return state;
+      const opened = new Set(state.opened);
+      opened.delete(event.key);
+      const back = opened.size === 0 && state.resumes;
+      return {
+        ...state,
+        follows: state.follows || back,
+        opened,
+        resumes: opened.size > 0 && state.resumes,
+      };
+    }
+    case "set":
+      return { ...state, stood: event.top, reach: null };
+    case "ended":
+      return state.reach === null ? state : { ...state, reach: null };
+    case "scrolled": {
+      const { position } = event;
+      const top = position.scrollTop;
+      const foot = footTop(position);
+      if (top < state.stood - MOVED_PX) {
+        // Onto its foot exactly: the browser clamped it there.
+        if (fromFoot(position) <= MOVED_PX) return { ...state, stood: top, reach: null, foot };
+        return { ...state, follows: false, stood: top, resumes: false, reach: null, foot };
+      }
+      if (top > state.stood + MOVED_PX) {
+        // A line that landed since the move began is read with its first step.
+        const reach = state.reach ?? state.foot ?? foot;
+        if (standsAtFoot(position) || top >= reach - FOLLOW_SLACK_PX) {
+          return {
+            follows: true,
+            stood: top,
+            opened: NOTHING_OPENED,
+            resumes: false,
+            reach: null,
+            foot,
+          };
+        }
+        return { ...state, stood: top, reach, foot };
+      }
+      // Less than a move: kept from where it stood, so a slow drag adds up.
+      return state.foot === foot ? state : { ...state, foot };
+    }
+  }
+}
+
+/**
+ * The scroll as its lines are laid out: a row travelling into its place (a
+ * plop from the live slot, a rise) paints past their foot for a moment, and
+ * the browser counts that as more to scroll to. It is not: the foot is where
+ * the lines end.
+ */
+export function laidOutPosition(
+  scroll: RunScrollPosition & { readonly laidHeight: number },
+): RunScrollPosition {
+  return {
+    scrollTop: scroll.scrollTop,
+    scrollHeight: Math.min(scroll.scrollHeight, scroll.laidHeight),
+    clientHeight: scroll.clientHeight,
+  };
+}
+
+/** Where a scroll at its foot stands: its last line's end at its bottom edge. */
+export function footTop(scroll: RunScrollPosition): number {
+  return Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+}
+
+/** The edges lines are cut past: a fade says so there, and only there. */
+export function cutEdges(scroll: RunScrollPosition): {
+  readonly above: boolean;
+  readonly below: boolean;
+} {
+  const overflows = scroll.scrollHeight > scroll.clientHeight + 1;
+  return {
+    above: overflows && scroll.scrollTop > 1,
+    below: overflows && !standsAtFoot(scroll),
+  };
 }
 
 /** Whether the scroll nears its top with earlier lines still undrawn: then it draws them. */

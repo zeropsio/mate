@@ -18,6 +18,7 @@
  * and the build log then belong to exactly that operation.
  */
 import type { ActivityProcess } from "./dto.ts";
+import { getPipelineState } from "./pipelineState.ts";
 
 export type ObservedKind = "deploy" | "import" | "subdomain" | "delete" | "scale" | "manage";
 
@@ -51,8 +52,16 @@ export interface AttributionInput {
    */
   readonly exact?: {
     readonly appVersionId?: string;
+    /** A batch deploy's: the versions its entries named. */
+    readonly appVersionIds?: ReadonlyArray<string>;
     readonly processIds?: ReadonlyArray<string>;
   };
+  /**
+   * A batch deploy, whose services deploy one after another: its step source
+   * is the one the platform says is building, else one that failed, else the
+   * last that ended — not merely the newest.
+   */
+  readonly batch?: boolean;
 }
 
 export interface AttributionResult {
@@ -74,12 +83,13 @@ const EMPTY: AttributionResult = { chips: [], projectMismatch: false };
 
 /** The exact-key test when the card has one, else the time + service window. */
 function matchesFor(input: AttributionInput): (process: ActivityProcess) => boolean {
-  const appVersionId = input.exact?.appVersionId;
+  const appVersionIds = new Set(input.exact?.appVersionIds);
+  if (input.exact?.appVersionId !== undefined) appVersionIds.add(input.exact.appVersionId);
   const processIds = new Set(input.exact?.processIds);
-  if (appVersionId !== undefined || processIds.size > 0) {
+  if (appVersionIds.size > 0 || processIds.size > 0) {
     return (process) =>
       processIds.has(process.id) ||
-      (appVersionId !== undefined && process.appVersion?.id === appVersionId);
+      (process.appVersion?.id !== undefined && appVersionIds.has(process.appVersion.id));
   }
   const serviceIds = new Set(input.serviceIds);
   const threshold = input.startedAtMs - ATTRIBUTION_LOOKBACK_MS;
@@ -90,6 +100,22 @@ function matchesFor(input: AttributionInput): (process: ActivityProcess) => bool
     const createdAtMs = Date.parse(process.created);
     return !Number.isNaN(createdAtMs) && createdAtMs >= threshold;
   };
+}
+
+const RUNNING_STATUSES: ReadonlySet<string> = new Set(["PENDING", "RUNNING"]);
+
+/** Newest first: the one building, else one that failed, else the last that ended. */
+function batchStepSource(newestFirst: ReadonlyArray<ActivityProcess>): ActivityProcess | undefined {
+  const endedAtMs = (process: ActivityProcess) => Date.parse(process.finished ?? process.created);
+  return (
+    newestFirst.find((process) => RUNNING_STATUSES.has(process.status)) ??
+    newestFirst.find(
+      (process) =>
+        process.status === "FAILED" ||
+        Object.values(getPipelineState(process.appVersion)).includes("failed"),
+    ) ??
+    [...newestFirst].sort((a, b) => endedAtMs(b) - endedAtMs(a))[0]
+  );
 }
 
 export function attributeActivity(input: AttributionInput): AttributionResult {
@@ -113,7 +139,7 @@ export function attributeActivity(input: AttributionInput): AttributionResult {
     .filter((process) => actionSet.has(process.actionName))
     .sort((a, b) => Date.parse(b.created) - Date.parse(a.created));
 
-  const stepSource = stepCandidates[0];
+  const stepSource = input.batch === true ? batchStepSource(stepCandidates) : stepCandidates[0];
   const chips = matches.filter((process) => process !== stepSource);
 
   return { ...(stepSource === undefined ? {} : { stepSource }), chips, projectMismatch: false };
