@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { ZeropsApiError } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
@@ -127,6 +128,24 @@ function run(
 }
 
 describe("runEnvironmentCreation", () => {
+  it.each<{ readonly case: string; readonly cause: unknown; readonly uncertain: boolean }>([
+    {
+      case: "a project the platform may have made anyway",
+      cause: new ZeropsApiError("Zerops may have created it.", "uncertain"),
+      uncertain: true,
+    },
+    {
+      case: "a project the platform refused",
+      cause: new ZeropsApiError("No room.", "forbidden", 403),
+      uncertain: false,
+    },
+  ])("says whether a stop is certain: $case", async ({ cause, uncertain }) => {
+    const { platform } = fakePlatform({ createProject: () => Promise.reject(cause) });
+    const { outcome } = await run(plan("dev"), platform);
+    expect(outcome).toMatchObject({ ok: false, projectId: undefined });
+    expect(outcome.ok === false && outcome.uncertain === true).toBe(uncertain);
+  });
+
   it("stops before any platform call when the account lifetime has ended", async () => {
     const { platform, calls } = fakePlatform();
     const { outcome } = await run(plan("dev"), platform, { isCurrent: () => false });
