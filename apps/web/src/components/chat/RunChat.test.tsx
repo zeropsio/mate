@@ -1024,6 +1024,50 @@ describe("RunChat, as the person uses it", () => {
     }
   });
 
+  // A call that joins the slot while the person watches rises in (E5).
+  it("lets a call joining the live slot rise in", () => {
+    const rising = (renderer: ReactTestRenderer) =>
+      renderer.root.findAll(
+        (node) =>
+          node.props["data-run-rises"] !== undefined &&
+          node.findAll((child) => child.props["data-chat-kind"] === "step:command").length > 0,
+      ).length;
+    const running = (id: string, text: string) =>
+      stepOf(
+        command(id, text, {
+          callInput: { description: `Run ${text}` },
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      );
+    const renderer = mount(
+      record([], {
+        live: true,
+        status: status(),
+        now: { kind: "step", step: running("w1", "pnpm build") },
+      }),
+    );
+    expect(rising(renderer)).toBe(0);
+    act(() =>
+      renderer.update(
+        <Rows>
+          <RunChat
+            row={record([], {
+              live: true,
+              status: status(),
+              now: {
+                kind: "step",
+                step: running("w2", "pnpm test"),
+                others: [{ kind: "step", step: running("w1", "pnpm build") }],
+              },
+            })}
+          />
+        </Rows>,
+      ),
+    );
+    expect(rising(renderer)).toBe(1);
+  });
+
   // A resync brings what nobody watched happen: it is simply there, never a
   // rise-in, in the history or in the slot (E2).
   it("lets nothing a resync brings rise in", () => {

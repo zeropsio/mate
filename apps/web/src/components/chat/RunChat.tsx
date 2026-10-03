@@ -1308,7 +1308,6 @@ function CallRow({
   const { syncing } = use(TimelineRowCtx);
   const [joined] = useState(() => (group?.current ?? false) && !syncing);
   const lineKey = use(ChatLineContext);
-  const inSlot = use(InSlotContext);
   // As it mounted: a call that landed by a plop never rises in later.
   const plopping = use(PlopsContext);
   const [plops] = useState(plopping);
@@ -1316,9 +1315,9 @@ function CallRow({
     <div
       className={cn(
         "relative min-w-0 first:rounded-t-2xl last:rounded-b-2xl",
-        joined && !inSlot && !plops && "run-rise",
+        joined && !plops && "run-rise",
       )}
-      data-run-rises={joined && !inSlot && !plops ? "" : undefined}
+      data-run-rises={joined && !plops ? "" : undefined}
       data-chat-bubble={failure === null ? "tool" : "failed"}
       data-chat-failed={failure ?? undefined}
       data-chat-kind={kind}
@@ -2273,9 +2272,9 @@ function gatherCalls(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
  * its first call, so one whose first call leaves stays the same card.
  */
 function slotEntries(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
-  let cards = 0;
+  // A card is its first call's: a new card is a new row, and rises in.
   return gatherCalls(lines).map((entry) =>
-    "calls" in entry ? { ...entry, key: `calls#${cards++}` } : entry,
+    "calls" in entry ? { ...entry, key: `calls#${entry.calls[0]?.key ?? entry.key}` } : entry,
   );
 }
 
