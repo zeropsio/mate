@@ -42,12 +42,12 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
-import { pendingUploadOf } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import {
   claimMessageAttachments,
+  pendingUploadOf,
   releaseClaimedAttachments,
-} from "../../orchestration/Normalizer.ts";
+} from "../../orchestration/Services/MessageAttachments.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../../spi/providerInstances.ts";
