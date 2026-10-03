@@ -2311,6 +2311,52 @@ describe("restoreQueuedToComposer", () => {
   });
 });
 
+describe("restoreQueuedToComposer's room", () => {
+  const P = "\uFFFB";
+  const F = "\uFFFA";
+  const MAX = PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
+  const weigh = (image: string) => (image.endsWith("+original") ? 2 : 1);
+
+  it.each([
+    [
+      "the composer's files count against it",
+      { imageCount: MAX - 3, fileCount: 2, heldAttachments: MAX - 1 },
+      [{ prompt: `${P}${P}`, images: ["a", "b"] }],
+      { images: ["a"], overflow: ["b"], files: [] },
+    ],
+    [
+      "the composer's kept originals count against it",
+      { imageCount: MAX - 2, fileCount: 0, heldAttachments: MAX - 1 },
+      [{ prompt: `${P}${P}`, images: ["a", "b"] }],
+      { images: ["a"], overflow: ["b"], files: [] },
+    ],
+    [
+      "a queued picture's kept original takes room too",
+      { imageCount: MAX - 3, fileCount: 0, heldAttachments: MAX - 3 },
+      [{ prompt: `${P}${P}`, images: ["a+original", "b+original"] }],
+      { images: ["a+original"], overflow: ["b+original"], files: [] },
+    ],
+    [
+      "the queued files take it before the pictures",
+      { imageCount: MAX - 2, fileCount: 0, heldAttachments: MAX - 2 },
+      [{ prompt: `${F}${P}`, images: ["a"], files: ["x", "y"] }],
+      { images: [], overflow: ["a"], files: ["x", "y"] },
+    ],
+  ])("%s", (_label, held, messages, expected) => {
+    const restored = restoreQueuedToComposer({
+      prompt: "",
+      ...held,
+      weigh,
+      messages,
+    });
+    expect({
+      images: restored.images,
+      overflow: restored.overflow,
+      files: restored.files,
+    }).toEqual(expected);
+  });
+});
+
 // A load never paints something it takes back: an empty conversation's opening ("What should
 // Quinn do…") waits until the conversation is known to be empty, not merely not read yet.
 describe("conversationContentPending", () => {
