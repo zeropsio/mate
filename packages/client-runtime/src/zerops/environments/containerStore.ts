@@ -10,7 +10,8 @@
  *   a visible wake that finds it unread for `WAKE_REREAD_MS` and whenever someone asks
  *   (`request`): ready is never terminal. A container behind a live socket is never read: the
  *   socket proves it up. Neither is one whose Mate HQ holds online (`setOnline`), unless it is the
- *   route's or holds an intent of ours: those are read whatever HQ says.
+ *   route's or holds an intent of ours: those are read whatever HQ says. A Mate first seen while
+ *   HQ's word is awaited waits `HQ_WAIT_MS` at most for it before its first read.
  * - Intents are persisted in this tab's storage as `{target, kind, since, from?}`, so a reload
  *   inside an intent's budget shows `restarting(you)` or `updating` again instead of guesses. An
  *   intent restored for a target not yet listed waits for it.
@@ -101,9 +102,11 @@ export interface ContainerStore {
   readonly link: (key: TargetKey, connected: boolean) => void;
   /**
    * The projects whose Mate HQ holds online now: each proves its container up as a socket does,
-   * and HQ letting one go reads it again.
+   * and HQ letting one go reads it again. Null while HQ's word is not current — not yet, or not
+   * any more: what it last held online proves for `HQ_WAIT_MS` more, and a Mate first seen
+   * meanwhile waits as long for its word before its first read.
    */
-  readonly setOnline: (projectIds: ReadonlySet<string>) => void;
+  readonly setOnline: (projectIds: ReadonlySet<string> | null) => void;
   /** Our verb was accepted: its level holds until a read fact settles it. */
   readonly intend: (key: TargetKey, intent: IntentRequest) => void;
   /**
@@ -190,6 +193,9 @@ const toRecord = (target: TargetKey, intent: ContainerIntent): IntentRecord =>
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
+/** How long a Mate first seen while HQ has not answered waits for its word before it is read. */
+export const HQ_WAIT_MS = 3_000;
+
 /** A visible wake reads a container no socket holds once its last reading is this old. */
 export const WAKE_REREAD_MS = 60_000;
 
@@ -235,6 +241,14 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   let persisted = ports.intents.read();
   let first: ReadonlySet<TargetKey> = new Set();
   let online: ReadonlySet<string> = new Set();
+  /**
+   * HQ's word: `answered`; `awaited` — none yet, or none since its last — for `HQ_WAIT_MS` at
+   * most, its last still holding; or `silent` past that, every container read as if no HQ held it.
+   */
+  let hq: "answered" | "awaited" | "silent" = "answered";
+  let cancelHqWait: (() => void) | null = null;
+  /** Mates first seen while HQ's answer was awaited, their first read held for it. */
+  const held = new Set<TargetKey>();
   let disposed = false;
 
   const probes = makeProbeStore({ clock, probe: ports.probe });
@@ -301,6 +315,20 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     if (proven === (entry.machine.connectedSince !== null)) return;
     transition(key, entry, { type: "LINK", connected: proven });
     if (!proven) requestFor(entry, { fresh: true });
+  };
+
+  /** HQ's word, or its silence: proves what it holds online, and reads what waited for it. */
+  const hear = (projectIds: ReadonlySet<string>, word: "answered" | "silent") => {
+    cancelHqWait?.();
+    cancelHqWait = null;
+    hq = word;
+    online = projectIds;
+    proveAll();
+    for (const key of held) {
+      const entry = entries.get(key);
+      if (entry !== undefined) requestFor(entry, { fresh: false });
+    }
+    held.clear();
   };
 
   /** Every target's proof again, once what it is composed of moved. */
@@ -406,6 +434,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           if (listed.has(key)) continue;
           entry.cancelTimer?.();
           entries.delete(key);
+          held.delete(key);
         }
         for (const target of targets) {
           const existing = entries.get(target.key);
@@ -427,8 +456,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
             }
             // Proven once its intent is back: a proof stepped first would read as its end.
             prove(target.key, entry);
-            // A Mate seen for the first time: the read its connect makes will do.
-            requestFor(entry, { fresh: false });
+            // A Mate seen for the first time: the read its connect makes will do. While HQ's answer
+            // is awaited it waits for it, as that may prove it up — never the route's.
+            if (hq === "awaited" && !first.has(target.key)) held.add(target.key);
+            else requestFor(entry, { fresh: false });
             continue;
           }
           const moved = existing.origin !== target.origin;
@@ -455,8 +486,13 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       }),
     setOnline: (projectIds) =>
       batch(() => {
-        online = projectIds;
-        proveAll();
+        if (projectIds !== null) {
+          hear(projectIds, "answered");
+          return;
+        }
+        if (hq !== "answered") return;
+        hq = "awaited";
+        cancelHqWait = clock.setTimer(HQ_WAIT_MS, () => batch(() => hear(new Set(), "silent")));
       }),
     intend: (key, intent) =>
       batch(() => {
@@ -489,12 +525,19 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     request: (key, ask = { fresh: true }) =>
       batch(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) requestFor(entry, ask);
+        if (entry === undefined) return;
+        held.delete(key);
+        requestFor(entry, ask);
       }),
     setFirst: (keys) =>
       batch(() => {
         first = keys;
         proveAll();
+        for (const key of keys) {
+          const entry = entries.get(key);
+          if (entry === undefined || !held.delete(key)) continue;
+          requestFor(entry, { fresh: false });
+        }
       }),
     next: (origin) => probes.next(origin),
     setVisible: (visible) => probes.setVisible(visible),
@@ -505,9 +548,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
         for (const [key, entry] of entries) {
           step(key, entry, { type: "TICK" });
           // A container on a poll is read on its own cadence; one read on demand, once its last
-          // reading is old enough to say nothing any more.
+          // reading is old enough to say nothing any more and it does not wait for HQ's word.
           if (
             visible &&
+            !held.has(key) &&
             probeCadence(entry.machine).kind === "on-demand" &&
             unreadSince(entry.machine, now)
           )
@@ -532,6 +576,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       unsubscribeProbes();
       requests.clear();
       probes.dispose();
+      cancelHqWait?.();
       for (const entry of entries.values()) entry.cancelTimer?.();
       entries.clear();
       listeners.clear();

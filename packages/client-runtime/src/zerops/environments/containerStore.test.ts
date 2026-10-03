@@ -6,6 +6,7 @@ import { makeDescriptorShare } from "../descriptorShare.ts";
 import type { MateFlag, PlatformStatus } from "./containerMachine.ts";
 import {
   bindContainerStore,
+  HQ_WAIT_MS,
   INIT_AT_READ_DEADLINE_MS,
   makeContainerStore,
   type ContainerStore,
@@ -786,6 +787,99 @@ describe("container store: a Mate HQ holds online (krok-a §4)", () => {
     await clock.advance(0);
     expect(after.probes).toEqual([]);
     after.store.dispose();
+  });
+
+  it.each([
+    ["holds it online: it is never read", new Set(["project-1"]), []],
+    ["does not hold it online: it is read", new Set<string>(), [ORIGIN]],
+  ] as const)(
+    "a Mate first seen before HQ answers waits for its word; HQ %s",
+    async (_name, online, reads) => {
+      const { clock, store, probes } = rig();
+      store.setOnline(null);
+      store.setTargets([target("ACTIVE")]);
+      await clock.advance(0);
+      expect(probes).toEqual([]);
+
+      store.setOnline(online);
+      await clock.advance(0);
+      expect(probes).toEqual(reads);
+      store.dispose();
+    },
+  );
+
+  it("a Mate first seen before HQ answers is read once HQ_WAIT_MS passes without its word", async () => {
+    const { clock, store, probes } = rig();
+    store.setOnline(null);
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(HQ_WAIT_MS - 1);
+    expect(probes).toEqual([]);
+    await clock.advance(1);
+    expect(probes).toEqual([ORIGIN]);
+
+    // HQ answering late proves it up from then on; a Mate listed after the wait is read at once.
+    store.setOnline(new Set(["project-1"]));
+    const other = "https://zcp-2.prg1.zerops.app";
+    store.setTargets([
+      target("ACTIVE"),
+      { ...target("ACTIVE", other), key: "project-2:service-2" },
+    ]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, other]);
+    store.dispose();
+  });
+
+  it("the route's Mate never waits for HQ's word", async () => {
+    const { clock, store, probes } = rig();
+    const other = "https://zcp-2.prg1.zerops.app";
+    const otherKey = "project-2:service-2";
+    store.setOnline(null);
+    store.setFirst(new Set([KEY]));
+    store.setTargets([target("ACTIVE"), { ...target("ACTIVE", other), key: otherKey }]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+
+    // The route moving onto a Mate that waits reads it at once.
+    store.setFirst(new Set([otherKey]));
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, other]);
+    store.dispose();
+  });
+
+  it("a visible wake reads no Mate that waits for HQ's word", async () => {
+    const { clock, store, probes } = rig();
+    store.setOnline(null);
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    store.wake(true);
+    await clock.advance(0);
+    expect(probes).toEqual([]);
+    store.setOnline(new Set(["project-1"]));
+    await clock.advance(0);
+    expect(probes).toEqual([]);
+    store.dispose();
+  });
+
+  it("HQ going quiet keeps its word HQ_WAIT_MS, then reads what it held online", async () => {
+    const { clock, store, probes } = rig();
+    store.setOnline(new Set(["project-1"]));
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+
+    // Its stream ends and comes back within the wait: nothing is read.
+    store.setOnline(null);
+    await clock.advance(HQ_WAIT_MS - 1);
+    store.setOnline(new Set(["project-1"]));
+    await clock.advance(HQ_WAIT_MS);
+    expect(probes).toEqual([]);
+
+    // It stays quiet past the wait: its Mate is read as if no HQ held it.
+    store.setOnline(null);
+    await clock.advance(HQ_WAIT_MS - 1);
+    expect(probes).toEqual([]);
+    await clock.advance(1);
+    expect(probes).toEqual([ORIGIN]);
+    store.dispose();
   });
 });
 
