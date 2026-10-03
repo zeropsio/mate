@@ -1221,7 +1221,9 @@ export function operationLineWords(operation: ZeropsOperation): string {
     // "Complete app" read oddly too: a set-up session stands its services up.
     case "bootstrap":
       if (failed) return `${subject}: ${statusWord.toLowerCase()}`;
-      return statusWord === "Complete" ? `Stood ${subject} up` : `${statusWord} ${subject}`;
+      if (statusWord !== "Complete") return `${statusWord} ${subject}`;
+      // An adopt-route session took over what stood already (its kicker, "Adopt · …").
+      return operation.kicker.startsWith("Adopt ·") ? `Adopted ${subject}` : `Stood ${subject} up`;
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.
