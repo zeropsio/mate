@@ -5,27 +5,28 @@
  * - **down**, the Mate's state (`state`) at once and after every change of its record, its birth or
  *   its changes (`changes.ts`), and `ping` every 20 s;
  * - **up**, `pong`, and its summary (`summary`), kept in memory (`mateLive.ts`) for whoever may
- *   operate the Mate to follow on their structure socket.
+ *   operate the Mate to follow on their structure socket. A frame whose type HQ does not know is
+ *   passed by.
  *
  * Closes with `4401` once the credential is revoked (enroll again), `1001` when this Core stops
  * leading or shuts down (reconnect: another Core leads), `4408` after three silent pings, `1007` for a
  * frame that is no link message, `1009` for one past {@link MATE_LINK_FRAME_MAX}, `1011` when HQ
- * cannot read the Mate's state.
+ * cannot read the Mate's state. A frame's size is counted in UTF-8 bytes.
  *
  * @module link
  */
 import {
   MATE_LINK_FRAME_MAX,
   type MateLinkDown,
-  MateLinkUp,
   type MateState,
+  linkFrameBytes,
+  readLinkUp,
 } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 
@@ -43,7 +44,6 @@ export interface LinkOptions {
   readonly recheck?: Duration.Duration;
 }
 
-const decodeUp = Schema.decodeUnknownEffect(Schema.fromJsonString(MateLinkUp));
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
 /** Serves the link of the Mate `projectId` holds `credential` for, until either side ends it. */
@@ -93,11 +93,13 @@ export const serveMateLink = (
           const frames = yield* pull;
           yield* Effect.flatMap(Clock.currentTimeMillis, (now) => Ref.set(heard, now));
           for (const frame of frames) {
-            if (frame.length > MATE_LINK_FRAME_MAX) return yield* close(1009, "frame too big");
-            const message = yield* Effect.option(decodeUp(frame));
-            if (Option.isNone(message)) return yield* close(1007, "no link message");
-            if (message.value.type === "summary") {
-              yield* live.report(projectId, message.value.summary);
+            if (linkFrameBytes(frame) > MATE_LINK_FRAME_MAX) {
+              return yield* close(1009, "frame too big");
+            }
+            const read = readLinkUp(frame);
+            if (read.kind === "invalid") return yield* close(1007, "no link message");
+            if (read.kind === "message" && read.message.type === "summary") {
+              yield* live.report(projectId, read.message.summary);
             }
           }
         }
