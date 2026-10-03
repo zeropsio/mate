@@ -873,6 +873,96 @@ describe("EnvironmentRegistry", () => {
     }),
   );
 
+  // A9 (krok-a-hub §3): a Mate is connected while something holds a lease on it. Every Mate this
+  // browser ever opened is a registration; on a load each opened its socket, the 20+-Mate account
+  // twenty-odd at once. A parked registration keeps its session and data and has no socket.
+  const ZEROPS_CREDENTIAL = new BearerConnectionCredential({
+    token: "kept-token",
+    origin: "zerops-identity",
+  });
+
+  it.effect("parks a registration with no lease and keeps its data", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+      );
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* registry.unpark(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        yield* registry.park(BEARER_TARGET.environmentId);
+        const parked = yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => !state.desired && state.phase !== "connected",
+        );
+        expect(parked.desired).toBe(false);
+        expect(yield* Ref.get(harness.releasedSessions)).toBe(1);
+        expect(
+          (yield* SubscriptionRef.get(registry.entries)).has(BEARER_TARGET.environmentId),
+        ).toBe(true);
+        expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toEqual(
+          ZEROPS_CREDENTIAL,
+        );
+        expect(yield* Ref.get(harness.cacheClears)).toEqual([]);
+        expect(yield* Ref.get(harness.ownedDataClears)).toEqual([]);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("unparks on its kept session with no door", () =>
+    Effect.gen(function* () {
+      const renewals = yield* Ref.make(0);
+      const presented = yield* Ref.make<ReadonlyArray<string | undefined>>([]);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+        {
+          credentialRenewer: {
+            renew: () => Ref.update(renewals, (count) => count + 1).pipe(Effect.as(Option.none())),
+          },
+          authenticate: (_environmentId, credential) =>
+            Ref.update(presented, (tokens) => [...tokens, credential?.token]),
+        },
+      );
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* registry.unpark(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        yield* registry.park(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => !state.desired,
+        );
+
+        yield* registry.unpark(BEARER_TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          BEARER_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        expect(yield* Ref.get(harness.sessions)).toHaveLength(2);
+        expect(yield* Ref.get(presented)).toEqual(["kept-token", "kept-token"]);
+        expect(yield* Ref.get(renewals)).toBe(0);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
   it.effect("never renews a credential that carries no deadline", () =>
     Effect.gen(function* () {
       // Records persisted before the deadline was stored. Proactive renewal is
