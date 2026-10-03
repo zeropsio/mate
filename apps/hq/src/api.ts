@@ -56,8 +56,8 @@
  * or their own) — the words for a person are the client's; a
  * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8
  * KiB at the doors, 128 KiB for a change's words, 20 MiB for its picture, 64 KiB elsewhere: `413
- * too_large`), and each door is limited per client address (`rateLimit.ts`: `429
- * too_many_requests`).
+ * too_large`), and each door is limited per client address, a person's door per person too
+ * (`rateLimit.ts`: `429 too_many_requests`).
  *
  * @module api
  */
@@ -99,7 +99,7 @@ import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
-import { DoorRateLimit } from "./rateLimit.ts";
+import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
 import { Sessions } from "./sessions.ts";
 import {
@@ -117,7 +117,6 @@ class MateCredentialRequired extends Schema.TaggedError<MateCredentialRequired>(
   {},
 ) {}
 class TooLarge extends Schema.TaggedError<TooLarge>()("TooLarge", {}) {}
-class TooManyRequests extends Schema.TaggedError<TooManyRequests>()("TooManyRequests", {}) {}
 
 const DOOR_BODY_LIMIT = 8 * 1024;
 const BODY_LIMIT = 64 * 1024;
@@ -325,7 +324,8 @@ const knock = (door: "person" | "mate" | "git") =>
     const request = yield* HttpServerRequest.HttpServerRequest;
     const address =
       request.headers["x-real-ip"] ?? Option.getOrElse(request.remoteAddress, () => "unknown");
-    if (!(yield* (yield* DoorRateLimit).take(`${door} ${address}`))) {
+    const limit = door === "person" ? PERSON_ADDRESS_LIMIT : DOOR_LIMIT;
+    if (!(yield* (yield* DoorRateLimit).take(`${door} ${address}`, limit))) {
       return yield* new TooManyRequests();
     }
   });

@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- the tests reach Core as a client does: over HTTP and a WebSocket.
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeFSP from "node:fs/promises";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
@@ -520,8 +521,11 @@ describe("HQ API", () => {
             call("POST", "/api/door", { body: { token: "unknown" }, headers: { "x-real-ip": ip } }),
             (answer) => answer.status,
           );
-        const statuses = yield* Effect.forEach(Array.from({ length: 11 }), () => knock("10.0.0.1"));
-        assert.deepStrictEqual(statuses, [...Array(10).fill(401), 429]);
+        // A whole office comes from one address (t12, 2026-10-03): 120 at once, then one a second.
+        const statuses = yield* Effect.forEach(Array.from({ length: 121 }), () =>
+          knock("10.0.0.1"),
+        );
+        assert.deepStrictEqual(statuses, [...Array(120).fill(401), 429]);
         assert.strictEqual(yield* knock("10.0.0.2"), 401);
 
         const session = yield* sessionFor(call, "door-owner");
@@ -540,6 +544,63 @@ describe("HQ API", () => {
             [413, "too_large"],
           ],
         );
+      }),
+    );
+
+    // t12, 2026-10-03: our agents and Karel come from one address, and HQ's door answered them
+    // 429 at ten a minute. An office behind one NAT gets in; one person's flood of throwaways is
+    // stopped at the person, never at their colleagues.
+    it.effect("lets an office behind one address in, and stops one person's flood alone", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const now = yield* Clock.currentTimeMillis;
+        const throwaways = (userId: string, count: number) => {
+          fake.members.get("ORG")!.push({
+            name: userId,
+            kind: "person",
+            roleCode: "BASIC_USER",
+            status: "ACTIVE",
+            userId,
+            clientUserId: `C-${userId}`,
+            canCreateProjects: false,
+          });
+          return Array.from({ length: count }, (_, index) => {
+            const value = `door-${userId}-${String(index)}`;
+            fake.tokens.set(value, {
+              id: value,
+              name: "mate-door:HQ1:n0nce",
+              orgId: "ORG",
+              roleCode: "NO_ACCESS",
+              canCreateProjects: false,
+              canViewFinances: false,
+              canEditFinances: false,
+              projects: [],
+              createdMs: now,
+              createdByUser: userId,
+            });
+            return value;
+          });
+        };
+        const office = Array.from({ length: 20 }, (_, person) =>
+          throwaways(`staff-${String(person)}`, 3),
+        );
+        const flood = throwaways("flooder", 21);
+        const colleague = throwaways("colleague", 1);
+        // Past the org view the boot read: the new people are in the next.
+        yield* Effect.sleep(Duration.millis(400));
+        const enter = (token: string) =>
+          Effect.map(
+            call("POST", "/api/door", { body: { token }, headers: { "x-real-ip": "10.0.0.9" } }),
+            (answer) => answer.status,
+          );
+        // Twenty people, three doors each — a reload, another tab, a reload — inside a minute.
+        assert.deepStrictEqual(
+          new Set(yield* Effect.forEach(office.flat(), enter)),
+          new Set([200]),
+        );
+        assert.deepStrictEqual(yield* Effect.forEach(flood, enter), [...Array(20).fill(200), 429]);
+        assert.deepStrictEqual(yield* Effect.forEach(colleague, enter), [200]);
       }),
     );
 
