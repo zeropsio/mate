@@ -268,8 +268,8 @@ describe("ZeropsSetup: the stand-up", () => {
           // On the agent the person signed in, not the conversation's other one.
           assert.strictEqual(turn!.modelSelection?.instanceId, "claudeAgent");
           assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
-            kind: "session",
-            subject: "zerops-user:user-a",
+            kind: "standup",
+            startedBy: "user-a",
           });
         }),
       );
@@ -470,8 +470,8 @@ describe("ZeropsSetup: the stand-up", () => {
           eventually(turnsOf(world), (turns) => turns.length === 1),
         );
         assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
-          kind: "session",
-          subject: "zerops-user:user-a",
+          kind: "standup",
+          startedBy: "user-a",
         });
       }),
   );

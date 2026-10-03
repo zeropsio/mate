@@ -515,7 +515,7 @@ const fixtureSignersLayer = Layer.succeed(
       Effect.succeed(
         ZeropsProjectSigners.loginTurnRefusal({ state, token, signer: undefined, subject }),
       ),
-    isActiveMember: () => Effect.succeed(undefined),
+    hasProjectAccess: () => Effect.succeed(undefined),
     checkLeaversNow: Effect.succeed(0),
   }),
 );

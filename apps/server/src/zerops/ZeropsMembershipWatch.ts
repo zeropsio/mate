@@ -161,16 +161,29 @@ export const readProjectMembership = Effect.fn("ZeropsMembershipWatch.read")(fun
   // as an answer, so it is read as an outage too.
   if (entries === null || entries.length === 0) return { ok: false } as const;
 
+  return { ok: true, opensFor: opensForOf(projectId, project, entries) } as const;
+});
+
+/**
+ * Every Zerops user the project `projectId` opens for, by the door's own rule over its roles and the
+ * org's member list: what keeps a session open here, and what admits a turn no session stands
+ * behind (`ZeropsProjectSigners.hasProjectAccess`, X3).
+ */
+export function opensForOf(
+  projectId: string,
+  project: ProjectRoles,
+  entries: ReadonlyArray<unknown>,
+): ReadonlySet<string> {
   const opensFor = new Set<string>();
   for (const member of readOrgMembers(entries)) {
     if (doorOpensFor({ projectId, member, overrides: project.overrides })) {
       opensFor.add(member.userId);
     }
   }
-  return { ok: true, opensFor } as const;
-});
+  return opensFor;
+}
 
-interface ProjectRoles {
+export interface ProjectRoles {
   readonly clientId: string;
   /** `clientUserId` → the role this project gives them. */
   readonly overrides: Readonly<Record<string, string>>;

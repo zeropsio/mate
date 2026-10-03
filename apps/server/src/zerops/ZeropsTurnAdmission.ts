@@ -80,14 +80,20 @@ import {
  *   is the session's subject as the auth layer holds it.
  * - `crew`: a turn the crew dispatches later on a person's behalf;
  *   `startedBy` is that person's Zerops user id.
+ * - `standup`: the stand-up this server starts for the person who asked for
+ *   it (`ZeropsSetup`), `startedBy` theirs — no session of theirs sends it.
+ *
+ * Neither `crew` nor `standup` has a session the membership watch would end:
+ * each is admitted only while this project opens for its person (X3).
  */
 export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: string }
-  | { readonly kind: "crew"; readonly startedBy: string };
+  | { readonly kind: "crew"; readonly startedBy: string }
+  | { readonly kind: "standup"; readonly startedBy: string };
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): string | undefined {
-  if (principal.kind === "crew") return principal.startedBy;
+  if (principal.kind !== "session") return principal.startedBy;
   return principal.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
     ? principal.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
     : undefined;
@@ -230,18 +236,19 @@ export const make = Effect.gen(function* () {
       : Effect.succeed(isTurnStartingCommand(command));
 
   /**
-   * A crew turn runs for somebody who is not at the keyboard, so it re-checks
-   * that they are still in the org. A person's own session needs no such
-   * check: the membership watch ends a session whose person left.
+   * A crew turn or a stand-up runs for somebody who is not at the keyboard, so
+   * it asks what a session of theirs is kept by: whether this project still
+   * opens for them (X3). A person's own session needs no such check: the
+   * membership watch ends a session this project no longer opens for.
    */
-  const refuseDepartedStarter = Effect.fnUntraced(function* (startedBy: string) {
-    const active = yield* projectSigners.isActiveMember(startedBy);
-    if (active === true) return;
+  const refuseWithoutAccess = Effect.fnUntraced(function* (startedBy: string) {
+    const access = yield* projectSigners.hasProjectAccess(startedBy);
+    if (access === true) return;
     return yield* new OrchestrationDispatchCommandError({
       message:
-        active === false
-          ? "The person this turn runs for is no longer an active member of this Zerops organization."
-          : "Could not confirm that the person this turn runs for is still a member of this Zerops organization. Try again in a moment.",
+        access === false
+          ? "The person this turn runs for no longer has access to this project."
+          : "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.",
     });
   });
 
@@ -328,7 +335,7 @@ export const make = Effect.gen(function* () {
       });
       if (profile === undefined) return yield* refuse(CREW_THREAD_REFUSALS.notRunning);
     }
-    if (principal.kind === "crew") yield* refuseDepartedStarter(principal.startedBy);
+    if (principal.kind !== "session") yield* refuseWithoutAccess(principal.startedBy);
     yield* refuseSomeoneElsesAgent(command, thread, principal);
   });
 
