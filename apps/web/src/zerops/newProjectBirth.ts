@@ -543,22 +543,27 @@ export function progressNewProjectBirth(
 }
 
 /**
- * What ends an Add refused before Zerops took anything — a quota, a right: *Dismiss* takes it
- * out of the menu, and *Start over* asks for it again over its project, its name there to change.
- * Null for any other creation: one running, one Zerops may have made (its way is the projects),
- * one Zerops took (its press finishes it), a New project's (its own *Try again*).
+ * What ends a creation that stopped before Zerops took its project as far as this tab knows:
+ * *Dismiss* takes it out of the menu — and, for an Add refused for certain (a quota, a right),
+ * *Start over* asks for it again over its project, its name there to change. One Zerops may have
+ * made is dismissed, never started over: a second could make it twice. Null for any other: one
+ * running, one Zerops took (its press finishes it), a New project refused for certain (its own
+ * *Try again*).
  */
-export function addEnds(
-  birth: NewProjectBirth,
-): { readonly groupId: string; readonly again: NewMateAgain } | null {
-  if (birth.adds === undefined || birth.projectId !== null) return null;
-  if (birth.failed === null || birth.failed.uncertain) return null;
+export function creationEnds(birth: NewProjectBirth): {
+  readonly startOver: { readonly groupId: string; readonly again: NewMateAgain } | null;
+} | null {
+  if (birth.projectId !== null || birth.failed === null) return null;
+  if (birth.failed.uncertain) return { startOver: null };
+  if (birth.adds === undefined) return null;
   return {
-    groupId: birth.groupId,
-    again: {
-      botName: birth.botName,
-      name: birth.adds.displayName,
-      tint: birth.face.tint,
+    startOver: {
+      groupId: birth.groupId,
+      again: {
+        botName: birth.botName,
+        name: birth.adds.displayName,
+        tint: birth.face.tint,
+      },
     },
   };
 }
@@ -573,13 +578,13 @@ export function dismissNewProjectBirth(birthId: string): void {
   });
 }
 
-/** *Start over*: an Add that can end (`addEnds`) is let go of, and asked for again, prefilled. */
+/** *Start over*: an Add refused for certain (`creationEnds`) is let go of, and asked for again, prefilled. */
 export function startAddOver(birthId: string): void {
   const birth = useNewProjectBirths.getState().births[birthId];
-  const ends = birth === undefined ? null : addEnds(birth);
-  if (ends === null) return;
+  const startOver = birth === undefined ? null : creationEnds(birth)?.startOver;
+  if (startOver == null) return;
   dismissNewProjectBirth(birthId);
-  useNewMate.getState().ask(ends.groupId, ends.again);
+  useNewMate.getState().ask(startOver.groupId, startOver.again);
 }
 
 /** *Try again* on a creation a step stopped: it resumes from that step, with the same project. */

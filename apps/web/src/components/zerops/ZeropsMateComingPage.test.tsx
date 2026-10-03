@@ -897,6 +897,33 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
     const rendered = render({ kind: "failed", line: REASON, verb: "go-to-projects" });
     expect(notes(rendered)).toEqual([]);
   });
+
+  // Run 6's second review: a create Zerops may have made had no way to end but the projects.
+  it("lets one Zerops may have made be dismissed beside the way to the projects, never started over", () => {
+    let dismissed = 0;
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: { kind: "failed", line: REASON, verb: "go-to-projects" },
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          ends: {
+            onDismiss: () => {
+              dismissed += 1;
+            },
+          },
+          projects: h("a", { href: "/zerops" }),
+        }),
+      );
+    });
+    const buttons = rendered!.root.findAllByType("button");
+    expect(buttons.map((button) => button.children)).toEqual([["Go to projects"], ["Dismiss"]]);
+    act(() => buttons[1]!.props.onClick());
+    expect(dismissed).toBe(1);
+  });
 });
 
 // The stop's words come from what made the stop: a step this tab ran says why in its place, and

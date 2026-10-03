@@ -739,14 +739,24 @@ describe("deriveZeropsGroups — creations under way", () => {
       environments: { new: ["p-made"] },
     },
     {
-      // Its project made, its container's import refused: the stopped row and its Try again stay.
-      case: "a creation that stopped stays pending, its project listed or not",
+      // Run 6's second review: a stopped Ida stood beside the listed Ida all session. Its group
+      // lists a Mate by its name: the project exists after all, and the listed row is it.
+      case: "a creation that stopped is its Mate once its group lists it",
       projects: [project("Todo - Wren", ["mate:g:new", "mate:bot:Wren"], "p-made")],
       births: [
         { ...birth("new", "new", 1, { botName: "Wren" }), awaitingProject: true, failed: true },
       ],
-      pending: { new: ["new"] },
+      pending: { new: [] },
       environments: { new: ["p-made"] },
+    },
+    {
+      case: "a creation that stopped stays pending while nothing lists it",
+      projects: [],
+      births: [
+        { ...birth("new", "new", 1, { botName: "Wren" }), awaitingProject: true, failed: true },
+      ],
+      pending: { new: ["new"] },
+      environments: { new: [] },
     },
     {
       case: "a creation not named yet stays pending beside a listed Mate of another name",

@@ -27,7 +27,7 @@ import {
   type NewProjectPatch,
   type NewProjectPorts,
   addCreateProject,
-  addEnds,
+  creationEnds,
   comingPlanned,
   dismissNewProjectBirth,
   startAddOver,
@@ -1219,21 +1219,29 @@ describe("addCreateProject — an Add's press as its creation's port", () => {
 
 // Run 6's review: an Add refused before Zerops took anything (quota, rights) stood in the menu all
 // session, failed, its one way on Try again with the same name.
-describe("addEnds — an Add refused before Zerops took anything can end", () => {
+describe("creationEnds — a creation that stopped can end", () => {
   const refused = added({ failed: { reason: "No room.", uncertain: false } });
   it.each([
     {
-      case: "refused for certain: dismissed, or started over with its name to change",
+      case: "an Add refused for certain: dismissed, or started over with its name to change",
       made: refused,
       want: {
-        groupId: "g-acme",
-        again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+        startOver: {
+          groupId: "g-acme",
+          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+        },
       },
     },
+    // Run 6's second review: the menu showed the listed Ida beside a failed Ida all session.
     {
-      case: "one Zerops may have made: neither, its way is the projects",
+      case: "an Add Zerops may have made: dismissed, never started over",
       made: added({ failed: { reason: "Lost.", uncertain: true } }),
-      want: null,
+      want: { startOver: null },
+    },
+    {
+      case: "a New project Zerops may have made: dismissed",
+      made: birth({ step: "create", failed: { reason: "Lost.", uncertain: true } }),
+      want: { startOver: null },
     },
     { case: "running: neither", made: added(), want: null },
     {
@@ -1242,12 +1250,12 @@ describe("addEnds — an Add refused before Zerops took anything can end", () =>
       want: null,
     },
     {
-      case: "a New project's: its own Try again",
+      case: "a New project refused for certain: its own Try again",
       made: birth({ failed: { reason: "No room.", uncertain: false } }),
       want: null,
     },
   ])("$case", ({ made, want }) => {
-    expect(addEnds(made)).toEqual(want);
+    expect(creationEnds(made)).toEqual(want);
   });
 
   describe("on the page and from the row", () => {
@@ -1276,6 +1284,15 @@ describe("addEnds — an Add refused before Zerops took anything can end", () =>
         groupId: "g-acme",
         again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
       });
+    });
+
+    it("never starts over one Zerops may have made: it could make it twice", () => {
+      useNewProjectBirths.setState({
+        births: { "add-1": added({ failed: { reason: "Lost.", uncertain: true } }) },
+      });
+      startAddOver("add-1");
+      expect(useNewProjectBirths.getState().births["add-1"]).toBeDefined();
+      expect(useNewMate.getState().asked).toBeNull();
     });
 
     it("leaves one still running alone", () => {

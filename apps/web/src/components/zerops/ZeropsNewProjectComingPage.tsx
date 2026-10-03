@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
-  addEnds,
+  creationEnds,
   creationManaged,
   creationSubsteps,
   dismissNewProjectBirth,
@@ -108,8 +108,9 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         };
   const projects = <Link to="/zerops" />;
   const coming = birth === undefined ? undefined : newProjectComing(birth);
-  // An Add refused before Zerops took anything ends here, or starts over with its name to change.
-  const ends = birth === undefined ? null : addEnds(birth);
+  // A creation that stopped before Zerops took it ends here — an Add refused for certain also
+  // starts over with its name to change.
+  const ends = birth === undefined ? null : creationEnds(birth);
   const view: MateEmptyComing =
     coming === undefined
       ? {
@@ -141,7 +142,9 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
                 ? {}
                 : {
                     ends: {
-                      onStartOver: () => startAddOver(birthId),
+                      ...(ends.startOver === null
+                        ? {}
+                        : { onStartOver: () => startAddOver(birthId) }),
                       onDismiss: () => dismissNewProjectBirth(birthId),
                     },
                   })}

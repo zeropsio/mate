@@ -894,10 +894,13 @@ export function ComingBelow({
   readonly onFinishSetup?: () => void;
   readonly onTryAgain?: () => void;
   /**
-   * An Add refused before Zerops took anything (`addEnds`): beside *Try again*, *Start over* with
-   * its name to change, and *Dismiss*, which takes it out of the menu.
+   * A creation that stopped before Zerops took it as far as this tab knows (`creationEnds`):
+   * *Dismiss*, which takes it out of the menu — and, for an Add refused for certain, *Start over*
+   * with its name to change.
    */
-  readonly ends?: { readonly onStartOver: () => void; readonly onDismiss: () => void } | undefined;
+  readonly ends?:
+    | { readonly onStartOver?: (() => void) | undefined; readonly onDismiss: () => void }
+    | undefined;
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
@@ -936,19 +939,26 @@ export function ComingBelow({
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <>
           <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+          {ends?.onStartOver === undefined ? null : (
+            <Button onClick={ends.onStartOver} variant="outline">
+              Start over
+            </Button>
+          )}
           {ends === undefined ? null : (
-            <>
-              <Button onClick={ends.onStartOver} variant="outline">
-                Start over
-              </Button>
-              <Button onClick={ends.onDismiss} variant="ghost">
-                Dismiss
-              </Button>
-            </>
+            <Button onClick={ends.onDismiss} variant="ghost">
+              Dismiss
+            </Button>
           )}
         </>
       ) : coming.verb === "go-to-projects" && projects !== undefined ? (
-        <Button render={projects}>Go to projects</Button>
+        <>
+          <Button render={projects}>Go to projects</Button>
+          {ends === undefined ? null : (
+            <Button onClick={ends.onDismiss} variant="ghost">
+              Dismiss
+            </Button>
+          )}
+        </>
       ) : null
     ) : null;
   // What the steps leave to read whole, under them and over the way on — each step keeps one line:
