@@ -195,6 +195,21 @@ export function firstDeployHeadKey(read: Pick<FirstDeployHeadRead, "projectId" |
 }
 
 /**
+ * A stage the broker deploys `main`'s head to as it is declared: on push, fed by `main` alone. One
+ * deployed on request waits for nobody's ask, and one fed by another branch, or a mixed one
+ * deployed from its own merge commit, does not run `main`'s head.
+ */
+function deploysMainHead(declaration: GroupEnvironment): boolean {
+  return (
+    declaration.tier === "stage" &&
+    declaration.deploy !== "on-request" &&
+    declaration.sources !== "release" &&
+    declaration.sources.length === 1 &&
+    declaration.sources[0] === "main"
+  );
+}
+
+/**
  * Which `main` heads a stage's first deploy has to read (run 5): each service's repository, as its
  * tier's `buildFromGit` names it, of a declared stage none of whose services runs a deployed
  * commit yet — the broker deploys `main` there as the stage is declared, and a job that fails
@@ -212,7 +227,7 @@ export function planFirstDeployHeadReads(input: {
 }): ReadonlyArray<FirstDeployHeadRead> {
   const reads: Array<FirstDeployHeadRead> = [];
   for (const declaration of input.declarations) {
-    if (declaration.tier !== "stage") continue;
+    if (!deploysMainHead(declaration)) continue;
     const own = input.services.filter((service) => service.projectId === declaration.project);
     const runs = own.some(
       (service) => deployedCommit(input.versions.get(service.serviceId)) !== undefined,

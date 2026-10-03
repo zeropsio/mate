@@ -427,6 +427,24 @@ describe("what a stage's first deploy has to read", () => {
       reads: [],
     },
     { case: "nothing declared: nothing", declarations: [], versions: NOTHING, reads: [] },
+    {
+      case: "a stage deployed on request: nothing — nobody asked for its deploy",
+      declarations: [{ ...stage, deploy: "on-request" as const }],
+      versions: NOTHING,
+      reads: [],
+    },
+    {
+      case: "a stage fed by another branch: nothing — main is not what it deploys",
+      declarations: [{ ...stage, sources: ["develop"] }],
+      versions: NOTHING,
+      reads: [],
+    },
+    {
+      case: "a mixed stage, deployed from its own merge commit: nothing",
+      declarations: [{ ...stage, sources: ["main", "feature"] }],
+      versions: NOTHING,
+      reads: [],
+    },
   ])("$case", ({ declarations, versions, reads }) => {
     expect(
       planFirstDeployHeadReads({ declarations, services, versions, repositories }).map(
