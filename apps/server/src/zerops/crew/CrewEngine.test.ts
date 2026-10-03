@@ -22,7 +22,6 @@ import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { CrewEngine } from "./CrewEngine.ts";
 import { CREW_ID } from "./CrewHome.ts";
-import { DEV_SERVER_PIDFILE } from "./CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
 import { CrewStore } from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
@@ -33,6 +32,7 @@ import {
   withCrewEngine,
   withCrewEngines,
   writeCrewHome,
+  type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import {
   KAREL,
@@ -1412,10 +1412,10 @@ describe("CrewEngine", () => {
   );
 
   /** zcp's dev server, faked: a process started in `cwd` whose pid is in zcp's pidfile. */
-  const startDevServer = (cwd: string) => {
+  const startDevServer = (world: CrewWorld, cwd: string) => {
     const child = NodeChildProcess.spawn("sleep", ["60"], { cwd, detached: true, stdio: "ignore" });
     child.unref();
-    NodeFS.writeFileSync(DEV_SERVER_PIDFILE, `${child.pid}\n`);
+    NodeFS.writeFileSync(world.devServerPidFile, `${child.pid}\n`);
     return child.pid!;
   };
 
@@ -1433,7 +1433,7 @@ describe("CrewEngine", () => {
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
           const directory = yield* CrewThreadDirectory;
           const member = Option.getOrThrow(yield* directory.memberFor(thread));
@@ -1450,7 +1450,7 @@ describe("CrewEngine", () => {
           );
           const claimTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
           const shaped = Option.getOrThrow(yield* directory.memberFor(thread)).gate;
-          started.push(startDevServer(NodePath.join(world.root, ".crew/backend")));
+          started.push(startDevServer(world, NodePath.join(world.root, ".crew/backend")));
           yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
           const held = yield* snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "held",
@@ -1461,7 +1461,7 @@ describe("CrewEngine", () => {
           );
           yield* command({ _tag: "claimRelease", host: "appdev" });
           const releaseTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
           const released = yield* snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "none",
@@ -1503,7 +1503,6 @@ describe("CrewEngine", () => {
                 process.kill(pid);
               } catch {}
             }
-            NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
           }),
         ),
       );
@@ -1575,7 +1574,7 @@ describe("CrewEngine", () => {
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
           const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
           yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1616,7 +1615,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
@@ -1636,7 +1634,7 @@ describe("CrewEngine", () => {
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
           const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
           yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1680,7 +1678,6 @@ describe("CrewEngine", () => {
                 process.kill(pid);
               } catch {}
             }
-            NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
           }),
         ),
       );
@@ -1699,7 +1696,7 @@ describe("CrewEngine", () => {
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
-        started.push(startDevServer(world.root));
+        started.push(startDevServer(world, world.root));
         const thread = yield* firstTurn(world, () => undefined);
         yield* command({ _tag: "showOnDev", handle: "backend" });
         const turnsWhileRunning = (yield* dispatchedOf(world, "thread.turn.start")).length;
@@ -1732,7 +1729,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
@@ -1759,7 +1755,7 @@ describe("CrewEngine", () => {
           devGrant: true,
           leadMayStart: false,
         });
-        started.push(startDevServer(world.root));
+        started.push(startDevServer(world, world.root));
         const thread = yield* firstTurn(world, () => undefined);
         const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
         yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1790,7 +1786,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
@@ -1808,7 +1803,7 @@ describe("CrewEngine", () => {
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
-        started.push(startDevServer(world.root));
+        started.push(startDevServer(world, world.root));
         yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
         const [created] = yield* dispatchedOf(world, "thread.crew.create");
         yield* world.publish(spiEvent("turn.completed", created!.threadId, { state: "completed" }));
@@ -1844,7 +1839,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
