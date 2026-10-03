@@ -192,18 +192,19 @@ describe("writeTokenProjectsFresh", () => {
           ],
     );
 
-  it("writes from the list read under the token's lock, never from an older one", async () => {
-    // Between the read that found the token and the read under its lock, another writer gave
+  it("writes from the token read under its lock, never from the list it started from", async () => {
+    // Between the list that found the token and the read under its lock, another writer gave
     // it STAGE: the write keeps STAGE, as the platform holds it now.
-    const answers: ReadonlyArray<ReadonlyArray<ZeropsIntegrationToken>> = [
-      [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV)] }],
-      [{ id: "tok-a", name: "a", roleCode: "READ_ONLY", projects: [grant(DEV), grant(STAGE)] }],
-    ];
-    let reads = 0;
     const held: string[] = [];
     const written: Array<MateKeyWrite> = [];
     const count = await writeTokenProjectsFresh({
-      read: async () => answers[Math.min(reads++, answers.length - 1)]!,
+      tokens: [{ id: "tok-a", name: "a", roleCode: "NO_ACCESS", projects: [grant(DEV)] }],
+      readOne: async (tokenId) => ({
+        id: tokenId,
+        name: "a",
+        roleCode: "READ_ONLY",
+        projects: [grant(DEV), grant(STAGE)],
+      }),
       plan: wantProd,
       hold: (tokenId, run) => {
         held.push(tokenId);
@@ -222,27 +223,53 @@ describe("writeTokenProjectsFresh", () => {
     ]);
   });
 
-  it("writes nothing for a token another writer already brought where it should be", async () => {
-    const answers: ReadonlyArray<ReadonlyArray<ZeropsIntegrationToken>> = [
-      [{ id: "tok-a", name: "a", projects: [grant(DEV)] }],
-      [{ id: "tok-a", name: "a", projects: [grant(DEV), grant(PROD)] }],
-    ];
-    let reads = 0;
-    let writes = 0;
-    const count = await writeTokenProjectsFresh({
-      read: async () => answers[Math.min(reads++, answers.length - 1)]!,
+  it("reads only the tokens owed a write, each by its id, and none where none is", async () => {
+    const reads: string[] = [];
+    const readOne = async (tokenId: string) => {
+      reads.push(tokenId);
+      return { id: tokenId, name: tokenId, projects: [grant(DEV)] };
+    };
+    const owed = { id: "tok-a", name: "a", projects: [grant(DEV)] };
+    const settled = { id: "tok-b", name: "b", projects: [grant(DEV), grant(PROD)] };
+    await writeTokenProjectsFresh({
+      tokens: [settled],
+      readOne,
       plan: wantProd,
-      write: async () => {
-        writes += 1;
-      },
+      write: async () => {},
     });
-    expect([count, writes]).toEqual([0, 0]);
+    expect(reads).toEqual([]);
+
+    await writeTokenProjectsFresh({
+      tokens: [owed, settled],
+      readOne,
+      plan: wantProd,
+      write: async () => {},
+    });
+    expect(reads).toEqual(["tok-a"]);
   });
 
-  it("writes no more than its first plan asked for, whatever the platform answers", async () => {
+  it("writes nothing for a token another writer already brought where it should be, or took away", async () => {
+    let writes = 0;
+    const answers = [{ id: "tok-a", name: "a", projects: [grant(DEV), grant(PROD)] }, undefined];
+    for (const answer of answers) {
+      const count = await writeTokenProjectsFresh({
+        tokens: [{ id: "tok-a", name: "a", projects: [grant(DEV)] }],
+        readOne: async () => answer,
+        plan: wantProd,
+        write: async () => {
+          writes += 1;
+        },
+      });
+      expect(count).toBe(0);
+    }
+    expect(writes).toBe(0);
+  });
+
+  it("writes no more than the starting list's plan asked for, whatever the platform answers", async () => {
     let writes = 0;
     await writeTokenProjectsFresh({
-      read: async () => [{ id: "tok-a", name: "a", projects: [] }],
+      tokens: [{ id: "tok-a", name: "a", projects: [] }],
+      readOne: async (tokenId) => ({ id: tokenId, name: "a", projects: [] }),
       plan: (tokens) =>
         tokens.map((token) => ({ tokenId: token.id, name: token.name, projects: [] })),
       write: async () => {
@@ -253,17 +280,48 @@ describe("writeTokenProjectsFresh", () => {
   });
 });
 
+describe("writeTokenProjectsFresh once its signal aborts", () => {
+  it("reads and writes no token more: one waiting for its lock, nor one just read", async () => {
+    const abort = new AbortController();
+    const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
+      { id: "tok-a", name: "a", projects: [] },
+      { id: "tok-b", name: "b", projects: [] },
+    ];
+    const reads: string[] = [];
+    const writes: string[] = [];
+    await writeTokenProjectsFresh({
+      tokens,
+      readOne: async (tokenId) => {
+        reads.push(tokenId);
+        // The page left while the platform answered tok-a.
+        abort.abort();
+        return tokens.find((token) => token.id === tokenId);
+      },
+      plan: (listed) =>
+        listed
+          .filter((token) => (token.projects ?? []).length === 0)
+          .map((token) => ({ tokenId: token.id, name: token.name, projects: [] })),
+      write: async (write) => {
+        writes.push(write.tokenId);
+      },
+      signal: abort.signal,
+    });
+    expect([reads, writes]).toEqual([["tok-a"], []]);
+  });
+});
+
 describe("writeTokenProjectsFresh with a write the platform refuses", () => {
   it("still writes the other tokens, then fails so its caller backs off", async () => {
-    let held: ReadonlyArray<ZeropsIntegrationToken> = [
+    const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
       { id: "tok-a", name: "a", projects: [] },
       { id: "tok-b", name: "b", projects: [] },
     ];
     const attempts: string[] = [];
     const run = writeTokenProjectsFresh({
-      read: async () => held,
-      plan: (tokens) =>
-        tokens
+      tokens,
+      readOne: async (tokenId) => tokens.find((token) => token.id === tokenId),
+      plan: (listed) =>
+        listed
           .filter((token) => (token.projects ?? []).length === 0)
           .map((token) => ({
             tokenId: token.id,
@@ -273,9 +331,6 @@ describe("writeTokenProjectsFresh with a write the platform refuses", () => {
       write: async (write) => {
         attempts.push(write.tokenId);
         if (write.tokenId === "tok-a") throw new Error("refused");
-        held = held.map((token) =>
-          token.id === write.tokenId ? { ...token, projects: write.projects } : token,
-        );
       },
     });
     await expect(run).rejects.toThrow("refused");

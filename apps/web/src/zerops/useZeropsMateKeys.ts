@@ -108,6 +108,8 @@ export function useZeropsMateKeys(input: {
     readonly attempts: number;
     readonly retryAtMs: number;
   } | null>(null);
+  /** The repair running now, settled or not: the next waits for it, so one runs at a time. */
+  const running = useRef<Promise<void>>(Promise.resolve());
   const [wake, setWake] = useState(0);
   const wakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -154,31 +156,46 @@ export function useZeropsMateKeys(input: {
     const runKey = `${clientId}:${key}:${tokenSetKey}`;
     if (lastKey.current === runKey) return;
     lastKey.current = runKey;
+    // The shared list says whether anything is owed; where nothing is, nothing more is read — the
+    // organization's token list is one heavy response, and every projects page loads it.
+    if (planAccountMateKeys({ mateProjectIds, tokens }).length === 0) return;
 
-    let cancelled = false;
+    const abort = new AbortController();
     let finished = false;
-    void (async () => {
+    const previous = running.current;
+    const run = (async () => {
+      // One repair at a time: the one this replaced stops where it stands, and this starts once
+      // it has — never two reading and writing the same keys side by side.
+      await previous;
       try {
-        // The shared list says whether anything is owed; each write replaces a token's whole
-        // project list, so it is planned from the list read live right before it.
+        // The shared list says which keys are owed; each write replaces a token's whole project
+        // list, so it is planned from that token read by its id right before it.
         const organization = organizationRef(clientId);
         await writeTokenProjectsFresh({
-          read: async () =>
-            integrationTokensFromGrantMetadata(
-              await runZeropsCommand(runtime.commands.listIntegrationTokenGrants(organization)),
-            ),
-          plan: (fresh) =>
-            cancelled ? [] : planAccountMateKeys({ mateProjectIds, tokens: fresh }),
+          tokens,
+          readOne: async (tokenId) => {
+            const read = await runZeropsCommand(
+              runtime.commands.readIntegrationTokenGrant({ organization, tokenId }),
+              abort.signal,
+            );
+            return read === null ? undefined : integrationTokensFromGrantMetadata([read])[0];
+          },
+          plan: (fresh) => planAccountMateKeys({ mateProjectIds, tokens: fresh }),
           write: (write) =>
             runZeropsCommand(
               runtime.commands.setIntegrationTokenProjects({ organization, ...write }),
             ).then(() => undefined),
           hold: tokenWrites,
+          signal: abort.signal,
         });
         finished = true;
+        // Replaced before it wrote what was owed: it answers nothing about a refusal.
+        if (abort.signal.aborted) return;
         if (refused.current?.key === planKey) refused.current = null;
       } catch {
         finished = true;
+        // Replaced or gone: what it had left is the next run's, never a refusal to back off from.
+        if (abort.signal.aborted) return;
         // Background repair: never an error the person did not ask for, and never a loop on a
         // write the platform keeps refusing — it is planned again after 30 s, 2 min, then 10 min.
         const attempts = (refused.current?.key === planKey ? refused.current.attempts : 0) + 1;
@@ -193,8 +210,10 @@ export function useZeropsMateKeys(input: {
       }
     })();
 
+    running.current = run;
+
     return () => {
-      cancelled = true;
+      abort.abort();
       // Cut short — the list was read again, or the page went — what it had left is still owed:
       // the next run plans it again, whatever key the list shows.
       if (!finished) lastKey.current = null;

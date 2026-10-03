@@ -2474,15 +2474,15 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
-  it.effect("a token listing answers beside a stuck write, and is no write itself", () =>
+  it.effect("a token's read answers beside a stuck write, and is no write itself", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
       const runtime = yield* commandRuntime(registry, (command) =>
-        command.kind === "list-integration-token-grants"
+        command.kind === "read-integration-token-grant"
           ? Effect.succeed({
               processRefs: [],
               observations: [],
-              result: { kind: command.kind, value: [] },
+              result: { kind: command.kind, value: null },
             } as never)
           : Effect.never,
       );
@@ -2490,13 +2490,16 @@ describe("makeZeropsDataRuntime", () => {
         runtime.commands.setIntegrationTokenProjects(tokenWrite),
       );
       for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-      const listing = yield* Effect.forkChild(
-        runtime.commands.listIntegrationTokenGrants(topologyDescriptor.project.organization),
+      const reading = yield* Effect.forkChild(
+        runtime.commands.readIntegrationTokenGrant({
+          organization: topologyDescriptor.project.organization,
+          tokenId: "token-a",
+        }),
       );
       for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
 
-      expect(listing.pollUnsafe()).toBeDefined();
-      expect((yield* Fiber.join(listing)).value).toEqual([]);
+      expect(reading.pollUnsafe()).toBeDefined();
+      expect((yield* Fiber.join(reading)).value).toBeNull();
       const commands = [...registry.get(runtime.stateAtom).commands.values()];
       expect(commands.map((attempt) => attempt.commandKind)).toEqual([
         "set-integration-token-projects",

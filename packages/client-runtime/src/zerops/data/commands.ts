@@ -40,7 +40,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "create-project":
     case "create-project-with-mate":
     case "import-project":
-    case "list-integration-token-grants":
+    case "read-integration-token-grant":
     case "set-integration-token-projects":
     case "list-token-delegations":
     case "delete-token-delegation":

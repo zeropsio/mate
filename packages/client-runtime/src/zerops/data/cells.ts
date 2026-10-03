@@ -145,6 +145,24 @@ export const CELL_FRESH_MS: Readonly<Record<ZeropsCellKind, number>> = {
   env: 60_000,
 };
 
+/**
+ * How long a read of its kind may go unanswered before it fails as Zerops not answering and climbs
+ * the retry ladder like any other — its request aborted. The token and member lists are each one
+ * heavy answer the whole organization's, and a read the platform sat on held its cell reading for
+ * as long as it did. A kind not named waits as long as its source does.
+ */
+const CELL_READ_DEADLINE_MS: Readonly<Partial<Record<ZeropsCellKind, number>>> = {
+  tokens: 30_000,
+  members: 30_000,
+};
+
+/** A read past its kind's deadline: Zerops did not answer, and a retry may. */
+const READ_PAST_DEADLINE: ZeropsCellSourceError = {
+  _tag: "ZeropsCellSourceError",
+  kind: "transport",
+  retryable: true,
+};
+
 export type ZeropsCellValue<Request extends ZeropsCellRequest> = ZeropsCellValues[Request["kind"]];
 
 export type ZeropsCellKey = string & { readonly ZeropsCellKey: unique symbol };
@@ -658,10 +676,23 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     const atMs = now();
     entry.inFlight = inFlight;
     apply(entry, { kind: "read-started", ordinal: inFlight.ordinal, atMs });
+    const read = readCell(options.adapter, entry.request, {
+      abortSignal: inFlight.controller.signal,
+    });
+    const deadlineMs = CELL_READ_DEADLINE_MS[entry.request.kind];
     inFlight.fiber = fork(
-      readCell(options.adapter, entry.request, {
-        abortSignal: inFlight.controller.signal,
-      }).pipe(
+      (deadlineMs === undefined
+        ? read
+        : read.pipe(
+            Effect.timeoutOrElse({
+              duration: Duration.millis(deadlineMs),
+              orElse: () =>
+                Effect.sync(() => inFlight.controller.abort()).pipe(
+                  Effect.andThen(Effect.fail(READ_PAST_DEADLINE)),
+                ),
+            }),
+          )
+      ).pipe(
         Effect.exit,
         Effect.flatMap((exit) => Effect.sync(() => completeRead(entry, inFlight, atMs, exit))),
       ),

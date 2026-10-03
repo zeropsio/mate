@@ -45,9 +45,14 @@ import type {
 import { ZeropsProcessId, tableEntityOf, type TableQueryDescriptor } from "./types.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
+import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
 import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
-import type { ZeropsCellAdapter, ZeropsCellSourceError } from "./cells.ts";
+import type {
+  ZeropsCellAdapter,
+  ZeropsCellSourceError,
+  ZeropsIntegrationTokenGrantMetadata,
+} from "./cells.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
 
@@ -1430,29 +1435,20 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           }),
           Effect.mapError(uncertainCommandError),
         );
-      case "list-integration-token-grants":
+      case "read-integration-token-grant":
         return executeApi(context, (signal) =>
-          options.client.listIntegrationTokens(command.organization.organizationId, signal),
+          options.client.readIntegrationToken(
+            command.organization.organizationId,
+            command.tokenId,
+            signal,
+          ),
         ).pipe(
-          Effect.map((tokens): PlatformCommandReceipt => ({
+          Effect.map((token): PlatformCommandReceipt => ({
             processRefs: [],
             observations: [],
             result: {
               kind: command.kind,
-              // Metadata only: a token's value never leaves the API client.
-              value: tokens.map((token) => ({
-                tokenId: token.id,
-                name: token.name,
-                grants: token.projects ?? [],
-                ...(token.created === undefined ? {} : { created: token.created }),
-                ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
-                ...(token.createdByUser === undefined
-                  ? {}
-                  : { createdByUser: token.createdByUser }),
-                ...(token.createdByUser === undefined
-                  ? {}
-                  : { createdByUser: token.createdByUser }),
-              })),
+              value: token === undefined ? null : tokenGrantMetadata(token),
             },
           })),
           Effect.mapError(uncertainCommandError),
@@ -1562,6 +1558,18 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   };
 }
 
+/** A token as grant metadata: a token's value never leaves the API client. */
+const tokenGrantMetadata = (
+  token: ZeropsIntegrationToken,
+): ZeropsIntegrationTokenGrantMetadata => ({
+  tokenId: token.id,
+  name: token.name,
+  grants: token.projects ?? [],
+  ...(token.created === undefined ? {} : { created: token.created }),
+  ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
+  ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
+});
+
 const cellReadError = (cause: unknown): ZeropsCellSourceError => {
   if (cause instanceof ZeropsApiError) {
     switch (cause.kind) {
@@ -1613,14 +1621,7 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
       cellRead(async () =>
         (
           await client.listIntegrationTokens(input.organization.organizationId, context.abortSignal)
-        ).map((token) => ({
-          tokenId: token.id,
-          name: token.name,
-          grants: token.projects ?? [],
-          ...(token.created === undefined ? {} : { created: token.created }),
-          ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
-          ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
-        })),
+        ).map(tokenGrantMetadata),
       ),
     readOrganizationMembers: (input, context) =>
       cellRead(() =>

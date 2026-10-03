@@ -1580,7 +1580,7 @@ export type PlatformCommandKind =
   | "create-project-with-mate"
   | "import-project"
   | "import-services"
-  | "list-integration-token-grants"
+  | "read-integration-token-grant"
   | "set-integration-token-projects"
   | "list-token-delegations"
   | "delete-token-delegation"
@@ -1901,17 +1901,18 @@ export interface ImportServicesCommandIntent {
 }
 
 /**
- * `GET /client/{id}/integration-token/list`, as grant metadata.
+ * `GET /client/{id}/integration-token/{tokenId}`, as grant metadata.
  *
  * A read shaped as a command because its caller is a write sequence, not a
- * screen: `secure-container-token` has to look up the token the container
- * import just minted, in the middle of a creation, and a resource lease is the
- * wrong instrument for one answer used once. Grant metadata carries no token
- * value, exactly as the resource of the same name does.
+ * screen: the Mate-key repair reads a token right before it rewrites it, and a
+ * resource lease is the wrong instrument for one answer used once. One token,
+ * never the organization's whole list. Grant metadata carries no token value,
+ * exactly as the resource of the tokens does.
  */
-export interface ListIntegrationTokenGrantsCommandIntent {
-  readonly kind: "list-integration-token-grants";
+export interface ReadIntegrationTokenGrantCommandIntent {
+  readonly kind: "read-integration-token-grant";
   readonly organization: OrganizationRef;
+  readonly tokenId: string;
 }
 
 export interface SetIntegrationTokenProjectsCommandIntent {
@@ -1983,7 +1984,7 @@ export type PlatformCommandIntent =
   | CreateProjectWithMateCommandIntent
   | ImportProjectCommandIntent
   | ImportServicesCommandIntent
-  | ListIntegrationTokenGrantsCommandIntent
+  | ReadIntegrationTokenGrantCommandIntent
   | SetIntegrationTokenProjectsCommandIntent
   | ListTokenDelegationsCommandIntent
   | DeleteTokenDelegationCommandIntent
@@ -2039,8 +2040,9 @@ export type PlatformCommandResult =
   | { readonly kind: "import-project"; readonly value: { readonly projectId: string } }
   | { readonly kind: "import-services"; readonly value: void }
   | {
-      readonly kind: "list-integration-token-grants";
-      readonly value: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+      readonly kind: "read-integration-token-grant";
+      /** `null` once the token is gone. */
+      readonly value: ZeropsIntegrationTokenGrantMetadata | null;
     }
   | { readonly kind: "set-integration-token-projects"; readonly value: void }
   | {
@@ -2286,10 +2288,12 @@ export interface ZeropsDataCommands {
     project: ProjectRef,
     yaml: string,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly listIntegrationTokenGrants: (
-    organization: OrganizationRef,
+  readonly readIntegrationTokenGrant: (
+    input: Omit<ReadIntegrationTokenGrantCommandIntent, "kind" | "organization"> & {
+      readonly organization: OrganizationRef;
+    },
   ) => Effect.Effect<
-    CommandExecution<ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>>,
+    CommandExecution<ZeropsIntegrationTokenGrantMetadata | null>,
     CommandAdmissionError | AdapterError
   >;
   readonly setIntegrationTokenProjects: (

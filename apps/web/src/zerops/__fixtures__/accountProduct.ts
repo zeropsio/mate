@@ -33,15 +33,20 @@ import { harnessRuntime } from "./harnessRuntime";
 export function AccountProduct({
   datastream,
   cellAdapter,
+  overRest,
   children,
 }: {
   readonly datastream: FakeDatastream;
   /** Where the runtime's cells read; every cell is unavailable without one. */
   readonly cellAdapter?: ZeropsCellAdapter;
+  /** Cells, commands and token writes through the harness's REST platform (`harnessRuntime`). */
+  readonly overRest?: boolean;
   readonly children: ReactNode;
 }) {
   const [registry] = useState(() => AtomRegistry.make());
-  const [makeRuntime] = useState(() => harnessRuntime(datastream, cellAdapter));
+  const [makeRuntime] = useState(() =>
+    harnessRuntime(datastream, cellAdapter, overRest === undefined ? {} : { overRest }),
+  );
   return createElement(RegistryContext, {
     value: registry,
     children: createElement(ZeropsDataProvider, {

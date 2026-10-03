@@ -849,22 +849,21 @@ describe("ZeropsApiClient project reads", () => {
     expect(result).toEqual({ restarted: false, steps: 0 });
   });
 
-  it("hardening lowers the Mate's token from a read under the token's lock", async () => {
+  it("hardening lowers the Mate's token from its own read, by its id, under its lock", async () => {
     const log: string[] = [];
+    const token = {
+      id: "token-1",
+      name: "zcp-project-1",
+      roleCode: "ADMIN",
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    };
     const stub = recordingFetch((request) => {
       if (request.url.includes("integration-token"))
         log.push(`${request.method} ${new URL(request.url).pathname.split("/").slice(-1)[0]}`);
       if (request.url.endsWith("/integration-token/list"))
-        return jsonResponse(200, {
-          list: [
-            {
-              id: "token-1",
-              name: "zcp-project-1",
-              roleCode: "ADMIN",
-              projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
-            },
-          ],
-        });
+        return jsonResponse(200, { list: [token] });
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, token);
       if (request.method === "PUT" && request.url.endsWith("/integration-token/token-1"))
         return jsonResponse(200, {});
       if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
@@ -905,7 +904,9 @@ describe("ZeropsApiClient project reads", () => {
     await client.hardenMate("org-1", "project-1");
 
     const held = log.slice(log.indexOf("hold token-1"), log.indexOf("let go token-1") + 1);
-    expect(held).toEqual(["hold token-1", "GET list", "PUT token-1", "let go token-1"]);
+    expect(held).toEqual(["hold token-1", "GET token-1", "PUT token-1", "let go token-1"]);
+    // The organization's list once, to find the Mate's keys; never again per key.
+    expect(log.filter((entry) => entry === "GET list")).toHaveLength(1);
     const write = stub.requests.find(
       (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-1"),
     );
@@ -922,19 +923,23 @@ describe("ZeropsApiClient project reads", () => {
       created,
       projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
     });
+    const keys = [
+      adminKey("token-1", "2026-10-01T09:00:00Z"),
+      adminKey("token-2", "2026-10-01T10:00:00Z"),
+      {
+        id: "token-3",
+        name: "zcp-project-1",
+        projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+      },
+    ];
     const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/integration-token/list"))
-        return jsonResponse(200, {
-          list: [
-            adminKey("token-1", "2026-10-01T09:00:00Z"),
-            adminKey("token-2", "2026-10-01T10:00:00Z"),
-            {
-              id: "token-3",
-              name: "zcp-project-1",
-              projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
-            },
-          ],
-        });
+      if (request.url.endsWith("/integration-token/list")) return jsonResponse(200, { list: keys });
+      const byId = /\/integration-token\/(token-\d)$/u.exec(request.url)?.[1];
+      if (request.method === "GET" && byId !== undefined)
+        return jsonResponse(
+          200,
+          keys.find((key) => key.id === byId),
+        );
       if (request.url.includes("/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [] });
       if (request.url.endsWith("/project/search"))
@@ -956,21 +961,23 @@ describe("ZeropsApiClient project reads", () => {
       )
       .map((request) => request.url.split("/").at(-1));
     expect(lowered.toSorted()).toEqual(["token-1", "token-2"]);
+    expect(
+      stub.requests.filter((request) => request.url.endsWith("/integration-token/list")),
+    ).toHaveLength(1);
   });
 
   it("hardening lowers the Mate's token and drops its delegations before health is asked", async () => {
+    const token = {
+      id: "token-1",
+      name: "zcp-project-1",
+      roleCode: "ADMIN",
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    };
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list"))
-        return jsonResponse(200, {
-          list: [
-            {
-              id: "token-1",
-              name: "zcp-project-1",
-              roleCode: "ADMIN",
-              projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
-            },
-          ],
-        });
+        return jsonResponse(200, { list: [token] });
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, token);
       if (request.method === "PUT" && request.url.endsWith("/integration-token/token-1"))
         return jsonResponse(200, {});
       if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
@@ -1054,11 +1061,12 @@ describe("ZeropsApiClient project reads", () => {
       written: null,
     },
   ])("hardening lowers only the Mate's own grant: $case", async ({ grants, written }) => {
+    const token = { id: "token-1", name: "zcp-project-1", roleCode: "NO_ACCESS", projects: grants };
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list"))
-        return jsonResponse(200, {
-          list: [{ id: "token-1", name: "zcp-project-1", roleCode: "NO_ACCESS", projects: grants }],
-        });
+        return jsonResponse(200, { list: [token] });
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, token);
       if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [] });
       if (request.url.endsWith("/project/search"))
@@ -1084,18 +1092,17 @@ describe("ZeropsApiClient project reads", () => {
   });
 
   it("a hardened Mate is left alone", async () => {
+    const token = {
+      id: "token-1",
+      name: "zcp-project-1",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+    };
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list"))
-        return jsonResponse(200, {
-          list: [
-            {
-              id: "token-1",
-              name: "zcp-project-1",
-              roleCode: "NO_ACCESS",
-              projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
-            },
-          ],
-        });
+        return jsonResponse(200, { list: [token] });
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, token);
       if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [] });
       if (request.url.endsWith("/project/search"))
