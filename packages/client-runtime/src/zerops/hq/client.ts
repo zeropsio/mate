@@ -39,7 +39,7 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { FetchImplementation } from "../api.ts";
+import { parseRetryAfterMs, type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords } from "./refusals.ts";
 import { structureEventOf, type HqStructureEvent } from "./stream.ts";
@@ -336,15 +336,48 @@ const stopped = (cause: unknown, signal: AbortSignal | null | undefined) =>
 /**
  * One call to HQ: its answer, or an {@link HqError}. A read whose connection drops under it is
  * tried once more — a kept-alive connection is cut as HQ's Core is redeployed (measured on the rig,
- * 2026-10-02) — and HQ's own answer never is. A write is never sent twice: one whose answer was
- * lost — its deadline passed, or its connection dropped — is `uncertain`, for what HQ holds to
- * decide.
+ * 2026-10-02) — and HQ's own answer never is.
+ *
+ * A write HQ would make twice is never sent twice: one whose answer was lost — its deadline passed,
+ * its connection dropped, or HQ failed it on its way (`5xx`, but `not_active`) — is `uncertain`,
+ * for what HQ holds to decide. A write that sets a value HQ answered `503` with a `Retry-After` is
+ * asked once more after it, a wait of 45 s at most (F22: HQ could not read Zerops in time).
  */
 async function send(
   fetch: FetchImplementation,
   url: string,
   init: RequestInit,
   write?: Write,
+): Promise<Response> {
+  const response = await sendOnce(fetch, url, init, write);
+  if (write !== "idempotent" || response.status !== 503) return answered(response, write);
+  // @effect-diagnostics-next-line globalDate:off -- an HTTP date is read against the wall clock it names.
+  const wait = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
+  if (wait === null) return answered(response, write);
+  // @effect-diagnostics-next-line globalTimers:off -- plain promises: the wait HQ asked for.
+  await new Promise((resolve) => setTimeout(resolve, Math.min(wait, WRITE_TIMEOUT_MS)));
+  return answered(await sendOnce(fetch, url, init, write), write);
+}
+
+/**
+ * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
+ * for a Core that does not lead (`not_active`), which writes nothing.
+ */
+async function answered(response: Response, write: Write | undefined): Promise<Response> {
+  if (response.ok) return response;
+  const error = await errorOf(response);
+  if (write === "once" && response.status >= 500 && error.code !== "not_active") {
+    throw uncertain();
+  }
+  throw error;
+}
+
+/** The call sent, with its deadline, and HQ's answer whatever it says. */
+async function sendOnce(
+  fetch: FetchImplementation,
+  url: string,
+  init: RequestInit,
+  write: Write | undefined,
 ): Promise<Response> {
   const signal =
     init.signal ?? AbortSignal.timeout(write === undefined ? CALL_TIMEOUT_MS : WRITE_TIMEOUT_MS);
@@ -366,7 +399,6 @@ async function send(
         message: "HQ could not be reached.",
       });
     }
-    if (!response.ok) throw await errorOf(response);
     return response;
   }
 }

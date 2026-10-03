@@ -1029,6 +1029,62 @@ describe("makeHqApi — a write HQ may have made", () => {
     });
   });
 
+  // HQ answers a write it could not finish for want of Zerops `503` with `Retry-After` (F22).
+  it("asks a write that sets a value again once HQ's Retry-After has passed", async () => {
+    await onTheClock(async () => {
+      let busy = true;
+      const hq = fakeHq((seen) => {
+        if (seen.path !== "/api/apps/app-1" || !busy) return undefined;
+        busy = false;
+        return new Response(JSON.stringify({ code: "zerops_unavailable" }), {
+          status: 503,
+          headers: { "content-type": "application/json", "retry-after": "2" },
+        });
+      });
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: doors().throughDoor,
+        openSocket: NO_SOCKET,
+      });
+      const renamed = api.renameApp("app-1", "Harbor");
+      const settled = vi.fn();
+      renamed.then(settled, settled);
+      const patches = () => hq.seen.filter((entry) => entry.method === "PATCH").length;
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(patches()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(renamed).resolves.toBeUndefined();
+      expect(patches()).toBe(2);
+    });
+  });
+
+  it("reads a release HQ asked to wait for back, never asking for it twice", async () => {
+    const hq = fakeHq((seen) => {
+      if (seen.path !== "/api/apps/app-1/releases") return undefined;
+      if (seen.method === "GET") return json(200, { releases: [] });
+      return new Response(JSON.stringify({ code: "zerops_unavailable" }), {
+        status: 503,
+        headers: { "content-type": "application/json", "retry-after": "2" },
+      });
+    });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
+      kind: "uncertain",
+      message: HQ_WRITE_UNCERTAIN,
+    });
+    expect(
+      hq.seen
+        .filter((entry) => entry.path === "/api/apps/app-1/releases")
+        .map((entry) => entry.method),
+    ).toEqual(["POST", "GET"]);
+  });
+
   it("asks HQ what it holds when a release goes unanswered for 45 s", async () => {
     await onTheClock(async () => {
       const hq = fakeHq((seen) =>
