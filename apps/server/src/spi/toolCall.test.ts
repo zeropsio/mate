@@ -497,6 +497,14 @@ describe("readToolCall — OpenCode", () => {
     { tool: "github_create_issue", name: "create_issue", server: "github" },
     { tool: "read", name: "read", server: undefined },
     { tool: "apply_patch", name: "apply_patch", server: undefined },
+    // OpenCode's own underscored tools are no MCP tool's.
+    { tool: "plan_exit", name: "plan_exit", server: undefined },
+    { tool: "plan_enter", name: "plan_enter", server: undefined },
+    { tool: "lsp_diagnostics", name: "lsp_diagnostics", server: undefined },
+    { tool: "lsp_hover", name: "lsp_hover", server: undefined },
+    // An MCP tool named as a native one stays the MCP server's.
+    { tool: "db_execute", name: "execute", server: "db" },
+    { tool: "docs_read", name: "read", server: "docs" },
   ])("names $tool as $name", ({ tool, name, server }) => {
     const result = readToolCall(
       itemEvent({
@@ -586,13 +594,15 @@ const acpEvent = (options: {
   });
 
 describe("readToolCall — ACP (cursor, grok, antigravity)", () => {
+  // The whole-name rule the crew's gate reads a title by (`mcpToolTitle.ts`).
   it.each([
-    { title: "Running zerops_deploy", name: "zerops_deploy", server: undefined },
+    { title: "Running zerops_deploy", name: "zerops_deploy", server: "zerops" },
     { title: "mcp__zerops__zerops_deploy", name: "zerops_deploy", server: "zerops" },
-    { title: "zerops-zerops_deploy", name: "zerops_deploy", server: "zerops" },
-    { title: "zerops_zerops_deploy", name: "zerops_deploy", server: "zerops" },
     { title: "zerops: zerops_deploy", name: "zerops_deploy", server: "zerops" },
-    { title: "zerops_deploy", name: "zerops_deploy", server: undefined },
+    { title: "zerops/zerops_deploy", name: "zerops_deploy", server: "zerops" },
+    { title: "zerops_deploy", name: "zerops_deploy", server: "zerops" },
+    { title: "mcp__github__create_issue", name: "create_issue", server: "github" },
+    { title: "github: create_issue", name: "create_issue", server: "github" },
     { title: "enter_plan_mode", name: "enter_plan_mode", server: undefined },
   ])("names the call titled $title as $name", ({ title, name, server }) => {
     const result = readToolCall(
@@ -610,20 +620,81 @@ describe("readToolCall — ACP (cursor, grok, antigravity)", () => {
   });
 
   it.each([
-    { kind: "read", title: "Read file" },
-    { kind: "edit", title: "Changed files" },
-    { kind: "search", title: "Searched files" },
-    { kind: "execute", title: "Ran command" },
-  ])("names a native $kind call by its kind", ({ kind, title }) => {
-    const result = readToolCall(acpEvent({ title, data: { kind } }));
-    expect(result.kind === "toolCall" && result.call.name).toBe(kind);
+    "Update notes in zerops_import.yaml",
+    "Check the zerops_standup progress",
+    "`grep -r zerops_deploy src`",
+  ])("names nothing by what its title only mentions: %s", (title) => {
+    const result = readToolCall(acpEvent({ title, data: { kind: "other" } }));
+    expect(result.kind === "toolCall" && result.call).toEqual({ name: "other", rawName: "other" });
   });
 
-  it("never names a native call by what its title mentions", () => {
+  it.each([
+    { kind: "read", title: "Read file", name: "read" },
+    { kind: "edit", title: "Changed files", name: "edit" },
+    { kind: "search", title: "Searched files", name: "search" },
+    { kind: "execute", title: "Ran command", name: "execute" },
+    { kind: "execute", title: "ls", name: "execute" },
+    { kind: "read", title: "src/app", name: "read" },
+    { kind: "execute", title: "`grep -r zerops_deploy src`", name: "execute" },
+  ])("names a native $kind call titled $title by its kind", ({ kind, title, name }) => {
+    const result = readToolCall(acpEvent({ title, data: { kind } }));
+    expect(result.kind === "toolCall" && result.call).toEqual({ name, rawName: name });
+  });
+
+  // A search for words and nowhere to look is a search of the web
+  // (Antigravity's google_web_search); one for a pattern in the code a grep.
+  it.each([
+    { rawInput: { query: "zerops yaml" }, name: "websearch" },
+    { rawInput: { pattern: "TODO", path: "src" }, name: "search" },
+    { rawInput: { query: "TODO", path: "src" }, name: "search" },
+    { rawInput: undefined, name: "search" },
+  ])("names a search of $rawInput $name", ({ rawInput, name }) => {
     const result = readToolCall(
-      acpEvent({ title: "`grep -r zerops_deploy src`", data: { kind: "execute" } }),
+      acpEvent({
+        title: "Searched files",
+        data: { kind: "search", ...(rawInput === undefined ? {} : { rawInput }) },
+      }),
     );
-    expect(result.kind === "toolCall" && result.call.name).toBe("execute");
+    expect(result.kind === "toolCall" && result.call.name).toBe(name);
+  });
+
+  // An MCP call an agent tags with a native kind is still the MCP tool: its
+  // agent's own title (`data.title`, kept by `AcpRuntimeModel.ts`) or its
+  // input names it — the card, the stand-up relay and the crew's deploy
+  // freeze read it by that name.
+  it.each([
+    {
+      name: "a title in Claude's spelling over execute",
+      data: { kind: "execute", title: "mcp__zerops__zerops_deploy" },
+    },
+    { name: "a Zerops name over fetch", data: { kind: "fetch", title: "zerops_deploy" } },
+    {
+      name: "a server/tool title over execute",
+      data: { kind: "execute", title: "zerops/zerops_deploy" },
+    },
+    {
+      name: "an input naming its server and tool",
+      data: {
+        kind: "execute",
+        rawInput: {
+          server: "zerops",
+          toolName: "zerops_deploy",
+          arguments: { targetService: "api" },
+        },
+      },
+    },
+  ])("names the MCP tool over its native kind: $name", ({ data }) => {
+    const result = readToolCall(
+      acpEvent({
+        title: "Ran command",
+        data: { rawInput: { targetService: "api" }, ...data },
+      }),
+    );
+    expect(result.kind === "toolCall" && result.call).toMatchObject({
+      name: "zerops_deploy",
+      server: "zerops",
+      arguments: { targetService: "api" },
+    });
   });
 
   it.each(["grok", "antigravity"])("reads %s the same way", (provider) => {

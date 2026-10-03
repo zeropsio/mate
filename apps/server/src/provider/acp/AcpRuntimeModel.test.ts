@@ -192,6 +192,8 @@ describe("AcpRuntimeModel", () => {
             toolCallId: "tool-1",
             kind: "execute",
             command: "bun run typecheck",
+            // The agent's own title, which its presentation replaced.
+            title: "Terminal",
             rawInput: {
               executable: "bun",
               args: ["run", "typecheck"],

@@ -1,0 +1,413 @@
+[
+  {
+    "type": "session.started",
+    "eventId": "evt-0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "payload": {
+      "resume": {
+        "_meta": {
+          "modelState": {
+            "currentModelId": "grok-4.6",
+            "availableModels": [
+              {
+                "modelId": "grok-4.6",
+                "name": "Grok 4.6",
+                "_meta": {
+                  "totalContextTokens": 500000,
+                  "supportsReasoningEffort": true,
+                  "reasoningEffort": "high",
+                  "reasoningEfforts": [
+                    {
+                      "id": "xhigh",
+                      "value": "xhigh",
+                      "label": "Extra High Effort",
+                      "default": false
+                    },
+                    {
+                      "id": "high",
+                      "value": "high",
+                      "label": "High Effort",
+                      "default": true
+                    },
+                    {
+                      "id": "low",
+                      "value": "low",
+                      "label": "Low Effort",
+                      "default": false
+                    }
+                  ]
+                }
+              },
+              {
+                "modelId": "grok-mock-alt",
+                "name": "Grok Mock Alt"
+              }
+            ]
+          }
+        },
+        "agentCapabilities": {
+          "loadSession": true,
+          "sessionCapabilities": {
+            "resume": {}
+          }
+        },
+        "protocolVersion": 1
+      }
+    }
+  },
+  {
+    "type": "session.state.changed",
+    "eventId": "evt-1",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "payload": {
+      "state": "ready",
+      "reason": "Cursor ACP session ready"
+    }
+  },
+  {
+    "type": "thread.started",
+    "eventId": "evt-2",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "payload": {
+      "providerThreadId": "mock-session-1"
+    }
+  },
+  {
+    "type": "turn.started",
+    "eventId": "evt-3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "model": "default"
+    }
+  },
+  {
+    "type": "item.updated",
+    "eventId": "evt-4",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "dynamic_tool_call",
+      "status": "inProgress",
+      "title": "zerops: zerops_discover",
+      "data": {
+        "toolCallId": "item-0",
+        "kind": "other",
+        "rawInput": {
+          "targetService": "api"
+        },
+        "title": "zerops: zerops_discover"
+      }
+    },
+    "raw": {
+      "source": "acp.jsonrpc",
+      "method": "session/update",
+      "payload": {
+        "sessionId": "mock-session-1",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "kind": "other",
+          "rawInput": {
+            "targetService": "api"
+          },
+          "status": "pending",
+          "title": "zerops: zerops_discover",
+          "toolCallId": "item-0"
+        }
+      }
+    },
+    "toolCall": {
+      "name": "zerops_discover",
+      "rawName": "zerops: zerops_discover",
+      "server": "zerops",
+      "arguments": {
+        "targetService": "api"
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-5",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "dynamic_tool_call",
+      "status": "completed",
+      "title": "Tool",
+      "detail": "{\"status\":\"FINISHED\"}",
+      "data": {
+        "toolCallId": "item-0",
+        "kind": "other",
+        "rawInput": {
+          "targetService": "api"
+        },
+        "title": "zerops: zerops_discover",
+        "rawOutput": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"status\":\"FINISHED\"}"
+            }
+          ]
+        },
+        "content": [
+          {
+            "type": "content",
+            "content": {
+              "type": "text",
+              "text": "{\"status\":\"FINISHED\"}"
+            }
+          }
+        ]
+      }
+    },
+    "raw": {
+      "source": "acp.jsonrpc",
+      "method": "session/update",
+      "payload": {
+        "sessionId": "mock-session-1",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"status\":\"FINISHED\"}"
+              }
+            }
+          ],
+          "rawOutput": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"status\":\"FINISHED\"}"
+              }
+            ]
+          },
+          "status": "completed",
+          "toolCallId": "item-0"
+        }
+      }
+    },
+    "toolCall": {
+      "name": "zerops_discover",
+      "rawName": "zerops: zerops_discover",
+      "server": "zerops",
+      "arguments": {
+        "targetService": "api"
+      },
+      "result": {
+        "text": "{\"status\":\"FINISHED\"}",
+        "failed": false
+      }
+    }
+  },
+  {
+    "type": "item.updated",
+    "eventId": "evt-6",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "inProgress",
+      "title": "Ran command",
+      "data": {
+        "toolCallId": "item-1",
+        "kind": "execute",
+        "rawInput": {
+          "targetService": "api"
+        },
+        "title": "mcp__zerops__zerops_deploy"
+      }
+    },
+    "raw": {
+      "source": "acp.jsonrpc",
+      "method": "session/update",
+      "payload": {
+        "sessionId": "mock-session-1",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "kind": "execute",
+          "rawInput": {
+            "targetService": "api"
+          },
+          "status": "pending",
+          "title": "mcp__zerops__zerops_deploy",
+          "toolCallId": "item-1"
+        }
+      }
+    },
+    "toolCall": {
+      "name": "zerops_deploy",
+      "rawName": "mcp__zerops__zerops_deploy",
+      "server": "zerops",
+      "arguments": {
+        "targetService": "api"
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-7",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "completed",
+      "title": "Tool",
+      "detail": "{\"status\":\"FINISHED\"}",
+      "data": {
+        "toolCallId": "item-1",
+        "kind": "execute",
+        "rawInput": {
+          "targetService": "api"
+        },
+        "title": "mcp__zerops__zerops_deploy",
+        "rawOutput": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"status\":\"FINISHED\"}"
+            }
+          ]
+        },
+        "content": [
+          {
+            "type": "content",
+            "content": {
+              "type": "text",
+              "text": "{\"status\":\"FINISHED\"}"
+            }
+          }
+        ]
+      }
+    },
+    "raw": {
+      "source": "acp.jsonrpc",
+      "method": "session/update",
+      "payload": {
+        "sessionId": "mock-session-1",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"status\":\"FINISHED\"}"
+              }
+            }
+          ],
+          "rawOutput": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"status\":\"FINISHED\"}"
+              }
+            ]
+          },
+          "status": "completed",
+          "toolCallId": "item-1"
+        }
+      }
+    },
+    "toolCall": {
+      "name": "zerops_deploy",
+      "rawName": "mcp__zerops__zerops_deploy",
+      "server": "zerops",
+      "arguments": {
+        "targetService": "api"
+      },
+      "result": {
+        "text": "{\"status\":\"FINISHED\"}",
+        "failed": false
+      }
+    }
+  },
+  {
+    "type": "item.started",
+    "eventId": "evt-8",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "itemId": "item-2",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "inProgress"
+    }
+  },
+  {
+    "type": "content.delta",
+    "eventId": "evt-9",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "itemId": "item-2",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "deployed"
+    },
+    "raw": {
+      "source": "acp.jsonrpc",
+      "method": "session/update",
+      "payload": {
+        "sessionId": "mock-session-1",
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "deployed"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-10",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "itemId": "item-2",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "completed"
+    }
+  },
+  {
+    "type": "turn.completed",
+    "eventId": "evt-11",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "cursor",
+    "threadId": "spi-replay-cursor-mcp-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "state": "completed",
+      "stopReason": "end_turn"
+    }
+  }
+]
