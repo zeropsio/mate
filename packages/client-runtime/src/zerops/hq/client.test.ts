@@ -274,6 +274,23 @@ describe("makeHqApi", () => {
     });
   });
 
+  // KRLS, 2026-10-03: one door attempt per HQ at a time — calls that come together join it.
+  it("comes through one door for calls that ask at once", async () => {
+    const hq = fakeHq();
+    const door = doors();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: NO_SOCKET,
+    });
+
+    await Promise.all([api.structure(), api.structure(), api.createApp("Acme")]);
+
+    expect(door.minted).toEqual(["door-1"]);
+    expect(hq.seen.filter((entry) => entry.path === "/api/door")).toHaveLength(1);
+  });
+
   // Key by id (audit K3): the id of the key a Mate's container holds, as the Mate named it to HQ.
   it("reads the id of the key a Mate named, and none where it named none", async () => {
     const hq = fakeHq((seen) =>
