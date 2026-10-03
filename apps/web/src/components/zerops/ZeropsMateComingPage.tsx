@@ -59,7 +59,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
-import { useProjects, useThreadShells, useThreadStatus } from "~/state/entities";
+import { useProjects, useThreadDetail, useThreadShells, useThreadStatus } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
@@ -132,6 +132,8 @@ import { ComposerStandIn, type StandInTyped } from "../chat/ComposerStandIn";
 import { PanelLayoutControls } from "../chat/PanelLayoutControls";
 import { EllipsisIcon } from "lucide-react";
 import { rememberedActivity } from "~/zerops/menuMemory";
+import { rememberedMateOfProject } from "~/zerops/mateIdentityMemory";
+import { ConversationFooterStandIn, standInFooter } from "./ConversationFooterStandIn";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
@@ -273,6 +275,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const tints = useMemo(() => assignCandidateMateTints(held.rows), [held.rows]);
   const mate = useMemo((): ZeropsMateIdentity => {
     if (candidate !== undefined) return zeropsMateIdentityOf(candidate, tints);
+    // Before the listing is read, the Mate this browser last knew in the project: never a
+    // placeholder name, and its face from the first frame.
+    const known =
+      creation === undefined && press === undefined
+        ? rememberedMateOfProject(projectId)?.mate
+        : undefined;
+    if (known !== undefined) return { ...known, connected: false };
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
     return {
       name: creation?.botName ?? press?.placement?.botName ?? press?.placement?.displayName ?? "",
@@ -321,12 +330,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     const timer = setTimeout(() => setGraceOver(true), LIVE_GRACE_MS);
     return () => clearTimeout(timer);
   }, [environmentId]);
-  // A new Mate hands over once its conversation is read live and its sign-in known, or a few
-  // seconds on; any other Mate the moment its conversation can be opened.
+  // It hands over once its conversation can paint its first frame — read (live, or held already
+  // for a Mate that did not come up here) and its sign-in known — or a few seconds on: the page
+  // stands until then, never a blank between it and the conversation.
+  const detailHeld = useThreadDetail(threadRef) !== null;
   const up =
     environmentId !== null &&
     threadRef !== null &&
-    (!cameUp || (empty.signInKnown && status === "live") || graceOver);
+    ((empty.signInKnown && (status === "live" || (!cameUp && detailHeld))) || graceOver);
 
   // The hand-over: a new Mate's words turn in place, then the conversation takes the route with
   // that frame; any other Mate's conversation takes it at once. What the door that opened it asked
@@ -580,8 +591,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     signIn: "unknown",
     attempt: "none",
   });
-  // Any other Mate: its name — "This Mate" where nothing names it, as on its conversation's route —
-  // and under it what its link waits for, or why it cannot be opened.
+  // Any other Mate: its name over what its link waits for, or why it cannot be opened — nameless
+  // where nothing names it, never a placeholder over its face; only its link's words say "This
+  // Mate" then.
   const named = mate.name.length > 0 ? mate : { ...mate, name: "This Mate" };
   // The minute clock its pose reads (`mateArriving`).
   const clockMs = useNowMs();
@@ -681,7 +693,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   return (
     <MateComingFrame
-      composer={standsInComposer ? <ComposerStandIn onType={type} typed={typed} /> : null}
+      composer={
+        standsInComposer ? (
+          <ConversationFooterStandIn
+            composer={<ComposerStandIn onType={type} typed={typed} />}
+            footer={standInFooter(
+              environmentId ?? rememberedMateOfProject(projectId)?.environmentId ?? null,
+            )}
+          />
+        ) : null
+      }
       header={
         <MateComingHeader
           arriving={shown !== undefined && !handingArrival}
@@ -705,7 +726,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           coming={view}
           // Handed over to from the creation's view, whose headline held the focus.
           focusOnArrival={made !== undefined}
-          mate={{ ...(shown === undefined ? named : mate), connected: environmentId !== null }}
+          mate={{ ...mate, connected: environmentId !== null }}
           onRetry={empty.onRetry}
           phase={handingArrival ? empty.phase : phaseAhead}
           signIn={handingArrival ? empty.signIn : null}
