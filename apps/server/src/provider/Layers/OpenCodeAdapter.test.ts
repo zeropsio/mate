@@ -6381,6 +6381,11 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           ["item.completed", "call-failed", "failed"],
         ],
       );
+      // The calls of one assistant message are one batch: its start names it.
+      NodeAssert.deepEqual(
+        tools.map((event) => event.type === "item.started" && event.payload.responseId),
+        [messageID, false, false, false],
+      );
       NodeAssert.partialDeepStrictEqual(tools[2]?.payload.data, {
         command: "pwd",
         result: "/repo\n",

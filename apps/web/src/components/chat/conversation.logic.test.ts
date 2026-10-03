@@ -1000,6 +1000,51 @@ describe("activityCounts", () => {
         { kind: "tool", count: 1 },
       ],
     },
+    {
+      name: "an ACP agent's calls, named by their kind",
+      calls: [
+        entry({ label: "Read file", itemType: "dynamic_tool_call", toolName: "read" }, true),
+        entry({ label: "Searched files", itemType: "web_search", toolName: "search" }, true),
+        entry({ label: "Searched files", itemType: "web_search", toolName: "fetch" }, true),
+        ...[1, 2, 3, 4, 5].map(() =>
+          entry(
+            {
+              label: "Changed files",
+              itemType: "file_change",
+              toolName: "edit",
+              changedFiles: ["/app/src/app.ts"],
+            },
+            true,
+          ),
+        ),
+      ],
+      counts: [
+        { kind: "edit", count: 1 },
+        { kind: "read", count: 1 },
+        { kind: "code-search", count: 1 },
+        { kind: "search", count: 1 },
+      ],
+    },
+    {
+      name: "OpenCode's calls, by their names",
+      calls: [
+        entry({ label: "src/app.ts", itemType: "dynamic_tool_call", toolName: "read" }, true),
+        entry({ label: "TODO", itemType: "dynamic_tool_call", toolName: "grep" }, true),
+        entry({ label: "**/*.ts", itemType: "dynamic_tool_call", toolName: "glob" }, true),
+        entry({ label: "src", itemType: "dynamic_tool_call", toolName: "list" }, true),
+        entry({ label: "https://x.dev", itemType: "web_search", toolName: "webfetch" }, true),
+        entry(
+          { label: "zerops_workflow", itemType: "dynamic_tool_call", toolName: "zerops_workflow" },
+          true,
+        ),
+      ],
+      counts: [
+        { kind: "read", count: 1 },
+        { kind: "code-search", count: 3 },
+        { kind: "search", count: 1 },
+        { kind: "workflow", count: 1 },
+      ],
+    },
     { name: "nothing", calls: [], counts: [] },
   ])("$name", ({ calls, counts }) => {
     expect(activityCounts(calls)).toEqual(counts);
