@@ -47,6 +47,7 @@ vi.mock("./accountGiteaSessions", () => ({
       return Promise.reject(new Error("Gitea answered 401."));
     };
     return {
+      listUserRepositories: async () => [],
       listOrganizationRepositories: async () => {
         if (!gitea.readable) return refuse();
         gitea.listings += 1;
@@ -188,6 +189,7 @@ describe("deployGroupKey", () => {
 /** The group repo declares one stage; the version read is the caller's. */
 function groupRepo() {
   return {
+    listUserRepositories: async () => [],
     listOrganizationRepositories: async () => LISTED,
     listDirectory: async () => ["environments.yaml", "README.md"],
     readFile: async (_owner: string, _repo: string, path: string) =>
@@ -548,6 +550,7 @@ function listedGroupRepo() {
   ]);
   const repo = groupRepo();
   const client = {
+    listUserRepositories: async () => [],
     listOrganizationRepositories: async () => {
       calls.push("repos");
       return [...listed].map(([name, fields]) => ({ name, default_branch: "main", ...fields }));
@@ -650,6 +653,7 @@ describe("a listing that does not answer", () => {
     const { client: base, calls } = listedGroupRepo();
     const client = {
       ...base,
+      listUserRepositories: async () => [],
       listOrganizationRepositories: async () => {
         calls.push("repos");
         throw new GiteaApiError("Gitea answered 500.", 500);
@@ -678,6 +682,7 @@ describe("a group whose org the broker has not made yet", () => {
     const { client: base, calls } = listedGroupRepo();
     const client = {
       ...base,
+      listUserRepositories: async () => [],
       listOrganizationRepositories: async () => {
         calls.push("repos");
         throw new GiteaApiError("Gitea answered 404.", 404);

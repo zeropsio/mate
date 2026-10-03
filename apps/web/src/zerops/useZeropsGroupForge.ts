@@ -212,13 +212,16 @@ export function useZeropsGroupForge(input: {
   const { enabled, giteaOrigin, readable } = input;
   useEffect(() => {
     if (!watching || !enabled || !readable || giteaOrigin === undefined) return;
+    const withClient = <T>(read: (client: GiteaClient) => Promise<T>): Promise<T> => {
+      const client = giteaClientFor(giteaOrigin);
+      return client === null ? Promise.reject(new Error("No Gitea session")) : read(client);
+    };
     const watch = createPullWatch({
       reads,
-      list: (owner) => {
-        const client = giteaClientFor(giteaOrigin);
-        return client === null
-          ? Promise.reject(new Error("No Gitea session"))
-          : client.listOrganizationRepositories(owner);
+      lists: {
+        listUserRepositories: () => withClient((client) => client.listUserRepositories()),
+        listOrganizationRepositories: (owner) =>
+          withClient((client) => client.listOrganizationRepositories(owner)),
       },
       moved: (groupId, repository) => invalidate(groupId, { kind: "repository", repository }),
     });
@@ -467,15 +470,13 @@ export async function readForge(
   }
   // Read before the listing is asked: its own 404 is recorded as "not made" (`ForgeReads`).
   const made = reads.organizations().get(slug) === true;
-  const listed = await reads
-    .repositories(slug, () => client.listOrganizationRepositories(slug))
-    .catch((cause: unknown) => {
-      // The broker has not made its org yet (`ForgeReads.organizations`): there is nothing to
-      // read, and nothing failed — its row says it is being set up. An org listed before that
-      // answers 404 now is a failure, and what was held stays.
-      if (giteaNotFound(cause) && !made) return null;
-      throw cause;
-    });
+  const listed = await reads.repositories(slug, client).catch((cause: unknown) => {
+    // The broker has not made its org yet (`ForgeReads.organizations`): there is nothing to
+    // read, and nothing failed — its row says it is being set up. An org listed before that
+    // answers 404 now is a failure, and what was held stays.
+    if (giteaNotFound(cause) && !made) return null;
+    throw cause;
+  });
   if (listed === null) return () => NOTHING_YET;
   const repositories = listed.map((repository) => repository.name);
   const read = new Map<string, RepositoryPulls>();

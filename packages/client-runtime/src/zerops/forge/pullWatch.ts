@@ -11,8 +11,8 @@
  * `open_pr_counter` moves when a pull request opens, closes or merges, its `updated_at` with
  * every push (`forge/forgeReads.ts`).
  *
- * So every {@link PULL_WATCH_MS} the watch lists one org, through the listing both group readers
- * share: of the groups with an open pull request updated in the last {@link PULL_WATCH_QUIET_MS},
+ * So every {@link PULL_WATCH_MS} the watch looks at one org, through the account listing every
+ * group's readers share: of the groups with an open pull request updated in the last {@link PULL_WATCH_QUIET_MS},
  * the one looked at longest ago, the most recently updated first. What that listing drops of a
  * repository's pull requests is read again at once (`moved`).
  *
@@ -30,7 +30,7 @@
  * @module forge/pullWatch
  */
 import type { GiteaRepository } from "../giteaClient.ts";
-import type { ForgeReads } from "./forgeReads.ts";
+import type { ForgeReads, RepositoryLists } from "./forgeReads.ts";
 
 /** How often the forge is read again while nothing is watched: the group readers' own clock. */
 export const FORGE_REFRESH_MS = 60_000;
@@ -111,7 +111,7 @@ export interface PullWatch {
 
 export function createPullWatch(options: {
   readonly reads: ForgeReads;
-  readonly list: (owner: string) => Promise<ReadonlyArray<GiteaRepository>>;
+  readonly lists: RepositoryLists;
   /** A repository's pull requests moved: read them again now. */
   readonly moved: (groupId: string, repository: string) => void;
   readonly now?: () => number;
@@ -139,7 +139,7 @@ export function createPullWatch(options: {
     const dropped: Array<string> = [];
     let listed: ReadonlyArray<GiteaRepository>;
     try {
-      listed = await options.reads.repositories(group.slug, () => options.list(group.slug), {
+      listed = await options.reads.repositories(group.slug, options.lists, {
         maxAgeMs: PULL_WATCH_LISTING_MAX_AGE_MS,
         moved: (reread) => {
           for (const [repository, parts] of reread)

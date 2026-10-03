@@ -621,6 +621,8 @@ export const GITEA_REQUEST_DEADLINE_MS = 15_000;
 const PAGE_SIZE = 50;
 /** More pages than any account here has repositories for; a stop, not a target. */
 const MAX_PAGES = 40;
+/** The most a paged list answers: one this long may have stopped short of the end. */
+export const GITEA_LIST_LIMIT = PAGE_SIZE * MAX_PAGES;
 
 /** An attachment's address on Gitea, as its own editor and its API write it. */
 const ATTACHMENT_PATH =

@@ -55,6 +55,7 @@ vi.mock("./accountGiteaSessions", () => ({
   giteaClientFor: (_origin: string, onUnauthorized?: () => void) =>
     gitea.readable
       ? {
+          listUserRepositories: async () => [],
           listOrganizationRepositories: async () => {
             gitea.listings += 1;
             if (gitea.loseTokenOnRead) {
@@ -117,6 +118,7 @@ function forge(refusing: ReadonlySet<string> = new Set()) {
     ["apidev", [pull(7)]],
   ]);
   const client = {
+    listUserRepositories: async () => [],
     listOrganizationRepositories: async (org: string) => {
       calls.push(`repos ${org}`);
       return [{ name: "appdev" }, { name: "apidev" }];
@@ -222,6 +224,7 @@ describe("readForge", () => {
   // there, and nothing failed.
   it("reads a group whose org the broker has not made yet as nothing yet, never a failure", async () => {
     const client = {
+      listUserRepositories: async () => [],
       listOrganizationRepositories: async () => {
         throw new GiteaApiError("Gitea answered 404.", 404);
       },
@@ -245,6 +248,7 @@ describe("readForge", () => {
       vi.advanceTimersByTime(GATE_FRESH_MS + 1);
       const gone = {
         ...client,
+        listUserRepositories: async () => [],
         listOrganizationRepositories: async () => {
           throw new GiteaApiError("Gitea answered 404.", 404);
         },
@@ -357,6 +361,7 @@ describe("readForge", () => {
     const { client: base, calls } = forge();
     const client = {
       ...base,
+      listUserRepositories: async () => [],
       listOrganizationRepositories: async () => [
         { name: "group", updated_at: "2026-09-01T08:00:00Z", open_pr_counter: 0 },
       ],
@@ -404,6 +409,7 @@ function listedOrg() {
   ]);
   const tags = [{ name: "v0.1.0", commit: { sha: "r1" } }];
   const client = {
+    listUserRepositories: async () => [],
     listOrganizationRepositories: async () => {
       calls.push("repos");
       return [...listed].map(([name, fields]) => ({ name, default_branch: "main", ...fields }));

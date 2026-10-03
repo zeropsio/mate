@@ -3,9 +3,10 @@
  * for the readers that ask on a clock of their own rather than through the forge store
  * (`useZeropsGroupForge`, `useZeropsGroupDeploys`).
  *
- * Gitea has no event stream, so a clock is the only freshness there is; but one listing of an
- * org's repositories (`GET /orgs/{o}/repos`) carries, per repository, what moves with nearly
- * everything the group readers draw (measured on Gitea 1.27.2, 2026-10-02):
+ * Gitea has no event stream, so a clock is the only freshness there is; but a listing of
+ * repositories (`GET /user/repos`, `GET /orgs/{o}/repos` — the same fields) carries, per
+ * repository, what moves with nearly everything the group readers draw (measured on Gitea 1.27.2,
+ * 2026-10-02):
  *
  * - `updated_at` moves with every push to any branch — a commit through the contents API, a
  *   merge, a git push of a branch or a tag;
@@ -13,8 +14,9 @@
  * - neither moves for a pull request's new title, a commit status, a branch made without a
  *   commit, or a tag made through the API (`POST /repos/{o}/{r}/tags`, what Release does).
  *
- * So each refresh lists each org once — shared by both readers while it is
- * {@link GATE_FRESH_MS} old — and what the listing moved is dropped: a pushed repository's pull
+ * So each refresh lists the person's whole account once (`GET /user/repos`, a page per 50
+ * repositories) — shared by every org's readers while it is {@link GATE_FRESH_MS} old — and cuts
+ * each org's part from it; what an org's part moved is dropped: a pushed repository's pull
  * requests, code and commit statuses ({@link planGateReads}), only the pull requests where only
  * the counter moved. Everything else is answered from what was kept. A repository the listing
  * does not name, or names without those fields, is never kept. Tags, which the listing cannot
@@ -22,20 +24,31 @@
  * memo's: pending ones on its back-off, settled ones until forgotten — or, on a commit that still
  * takes contexts, on a slower back-off of their own (`forge/statusMemo.ts`).
  *
- * The listing is also the one answer to whether the broker has made a group's org yet: a `404` is
- * "not made yet" ({@link ForgeReads.organizations}), kept for {@link GATE_FRESH_MS} like a
- * listing, and the next refresh's `200` is "made". A group created a moment ago is a real state
+ * `/user/repos` names every repository of an org the person is on a team of (gitea-mate's teams
+ * include all of the org's repositories), and only those the person can see. An org it names
+ * nothing of — one the broker has not made yet, one with no repository yet, one the person is on no
+ * team of — and every org, when the listing stopped at the client's page limit, is listed on its
+ * own as before. That own listing is also the one answer to whether the broker has made a group's
+ * org yet: a `404` is "not made yet" ({@link ForgeReads.organizations}), kept for
+ * {@link GATE_FRESH_MS} like a listing, and the next refresh's `200`, or the account listing naming
+ * it, is "made". A group created a moment ago is a real state
  * its row says out loud while the broker builds it (30–80 s), and the reader's own clock takes
  * the line away on any screen, in any tab — no page asks `GET /orgs/{o}` of its own.
  *
  * Every open tab re-read every group whole every minute — the org's repositories, each one's open
  * and closed pull requests, the group repo's tags, files and branches — about 160 requests a
- * minute per tab (pass 31, 2026-10-02: 317 in the first 140 s after a load). Now an idle tab
- * lists each org once a minute.
+ * minute per tab (pass 31, 2026-10-02: 317 in the first 140 s after a load). Then an idle tab
+ * listed each org once a minute — 13.4 a minute of a window's 22 with 14 orgs (run 6,
+ * 2026-10-03). Now it lists the account once a minute, a request per 50 repositories.
  *
  * @module forge/forgeReads
  */
-import { GiteaApiError, type GiteaRepository } from "../giteaClient.ts";
+import {
+  GiteaApiError,
+  GITEA_LIST_LIMIT,
+  type GiteaClient,
+  type GiteaRepository,
+} from "../giteaClient.ts";
 import { createCommitStatusMemo, type CommitStatusMemo } from "./statusMemo.ts";
 
 /** How long one listing of an org answers for every reader that asks: under the readers' clock. */
@@ -124,6 +137,46 @@ export function planGateReads(
   return { gate, reread };
 }
 
+/** The two listings an org's repositories are read from: the person's whole account, or one org. */
+export type RepositoryLists = Pick<
+  GiteaClient,
+  "listUserRepositories" | "listOrganizationRepositories"
+>;
+
+/** One account listing, split by owner (lower case, as Gitea compares logins). */
+interface AccountListing {
+  /** `undefined` when it stopped at the page limit: each org is then listed on its own. */
+  readonly byOwner: ReadonlyMap<string, ReadonlyArray<GiteaRepository>> | undefined;
+  readonly atMs: number;
+}
+
+const ownerKey = (owner: string) => owner.toLowerCase();
+
+/** The owner a listed repository belongs to: its owner's login, else its full name's first part. */
+const ownerOf = (repository: GiteaRepository): string | undefined => {
+  const login = repository.owner?.login ?? repository.full_name.split("/")[0];
+  return login === undefined || login === "" ? undefined : ownerKey(login);
+};
+
+/**
+ * The account listing split by owner — or `undefined` when it stopped at the client's page limit,
+ * which may have cut any org's repositories short.
+ */
+export function splitAccountListing(
+  listed: ReadonlyArray<GiteaRepository>,
+): ReadonlyMap<string, ReadonlyArray<GiteaRepository>> | undefined {
+  if (listed.length >= GITEA_LIST_LIMIT) return undefined;
+  const byOwner = new Map<string, Array<GiteaRepository>>();
+  for (const repository of listed) {
+    const owner = ownerOf(repository);
+    if (owner === undefined) continue;
+    const held = byOwner.get(owner);
+    if (held === undefined) byOwner.set(owner, [repository]);
+    else held.push(repository);
+  }
+  return byOwner;
+}
+
 /** One read the gate keeps: which repository's which part, and what was asked of it. */
 export interface ForgeReadRef {
   readonly owner: string;
@@ -143,13 +196,14 @@ export interface ForgeRead<T> {
 
 export interface ForgeReads {
   /**
-   * The org's repositories: one listing shared by every reader while it is {@link GATE_FRESH_MS}
-   * old — or `maxAgeMs`, for a reader that looks more often (`forge/pullWatch.ts`) — and a listing
-   * that moved drops what it moved before it answers.
+   * The org's repositories, cut from one listing of the account shared by every org's readers
+   * while it is {@link GATE_FRESH_MS} old — or `maxAgeMs`, for a reader that looks more often
+   * (`forge/pullWatch.ts`) — or from the org's own listing where that names none of them; a
+   * listing that moved drops what it moved before it answers.
    */
   readonly repositories: (
     owner: string,
-    load: () => Promise<ReadonlyArray<GiteaRepository>>,
+    lists: RepositoryLists,
     options?: {
       readonly maxAgeMs?: number | undefined;
       /**
@@ -208,6 +262,8 @@ interface Listing {
   readonly gate: OrgGate;
   readonly repositories: ReadonlyArray<GiteaRepository>;
   readonly atMs: number;
+  /** The account listing it was cut from; `undefined` for the org's own listing. */
+  readonly from: AccountListing | undefined;
 }
 
 const signatureOf = (value: unknown): string => JSON.stringify(value) ?? "";
@@ -238,6 +294,9 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
   };
   const listings = new Map<string, Listing>();
   const listing = new Map<string, Promise<ReadonlyArray<GiteaRepository>>>();
+  /** The last account listing, and the one running: shared by every org. */
+  let account: AccountListing | undefined;
+  let accountRead: Promise<AccountListing> | undefined;
   /** Each owner's last `404`, shared like a listing while it is fresh. */
   const notFound = new Map<string, { readonly cause: unknown; readonly atMs: number }>();
   let organizations: ReadonlyMap<string, boolean> = new Map();
@@ -279,6 +338,30 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
     if (parts.has("statuses")) statuses.forget(owner, repo);
   };
 
+  /**
+   * The person's whole account listed once while it is `freshMs` old, shared by every org that
+   * asks.
+   */
+  const accountListing = (
+    lists: RepositoryLists,
+    at: number,
+    freshMs: number,
+  ): Promise<AccountListing> => {
+    if (account !== undefined && at - account.atMs < freshMs) return Promise.resolve(account);
+    if (accountRead !== undefined) return accountRead;
+    const read = counted(() => lists.listUserRepositories())()
+      .then((repositories) => {
+        const whole: AccountListing = { byOwner: splitAccountListing(repositories), atMs: at };
+        account = whole;
+        return whole;
+      })
+      .finally(() => {
+        accountRead = undefined;
+      });
+    accountRead = read;
+    return read;
+  };
+
   return {
     statuses,
     forget,
@@ -291,7 +374,7 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       };
     },
 
-    repositories: (owner, load, listOptions) => {
+    repositories: (owner, lists, listOptions) => {
       const held = listings.get(owner);
       const at = now();
       const freshMs = listOptions?.maxAgeMs ?? GATE_FRESH_MS;
@@ -304,19 +387,26 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
       }
       const running = listing.get(owner);
       if (running !== undefined) return running;
-      const read = counted(load)()
-        .then(
-          (repositories) => {
-            const previous = listings.get(owner)?.gate;
-            const plan = planGateReads(previous, repositories, at);
-            for (const [repo, parts] of plan.reread) forget(owner, repo, parts);
-            if (previous !== undefined) listOptions?.moved?.(plan.reread);
-            listings.set(owner, { gate: plan.gate, repositories, atMs: at });
-            notFound.delete(owner);
-            listedOnce.add(owner);
-            made(owner, true);
-            return repositories;
-          },
+      /** What a listing answered for `owner`, as its gate keeps it and the readers see it. */
+      const listed = (
+        repositories: ReadonlyArray<GiteaRepository>,
+        atMs: number,
+        from: AccountListing | undefined,
+      ) => {
+        const previous = listings.get(owner)?.gate;
+        const plan = planGateReads(previous, repositories, atMs);
+        for (const [repo, parts] of plan.reread) forget(owner, repo, parts);
+        if (previous !== undefined) listOptions?.moved?.(plan.reread);
+        listings.set(owner, { gate: plan.gate, repositories, atMs, from });
+        notFound.delete(owner);
+        listedOnce.add(owner);
+        made(owner, true);
+        return repositories;
+      };
+      /** The org's own listing: for an org the account listing does not name, or could not. */
+      const ownListing = () =>
+        counted(() => lists.listOrganizationRepositories(owner))().then(
+          (repositories) => listed(repositories, at, undefined),
           (cause: unknown) => {
             if (giteaNotFound(cause)) {
               notFound.set(owner, { cause, atMs: at });
@@ -324,7 +414,16 @@ export function createForgeReads(options: { readonly now?: () => number } = {}):
             }
             throw cause;
           },
-        )
+        );
+      const read = accountListing(lists, at, freshMs)
+        .then((whole) => {
+          const named = whole.byOwner?.get(ownerKey(owner));
+          if (named === undefined) return ownListing();
+          const current = listings.get(owner);
+          // Another reader of this org already took its part of this listing.
+          if (current?.from === whole) return current.repositories;
+          return listed(named, whole.atMs, whole);
+        })
         .finally(() => {
           listing.delete(owner);
         });

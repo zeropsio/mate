@@ -38,9 +38,11 @@ function rig(orgs: Record<string, Array<GiteaRepository>>) {
     listings.push(owner);
     return state.orgs[owner] ?? [];
   };
+  // An account listing that names no org: each org is listed on its own, and counted.
+  const lists = { listUserRepositories: async () => [], listOrganizationRepositories: load };
   const watch = createPullWatch({
     reads,
-    list: load,
+    lists,
     moved: (groupId, repository) => moved.push(`${groupId} ${repository}`),
     now: () => clock,
   });
@@ -50,7 +52,7 @@ function rig(orgs: Record<string, Array<GiteaRepository>>) {
     moved,
     watch,
     /** The forge pass's own minute tick: the shared listing at its usual freshness. */
-    pass: (owner: string) => reads.repositories(owner, () => load(owner)),
+    pass: (owner: string) => reads.repositories(owner, lists),
     advance: (ms: number) => {
       clock += ms;
     },
@@ -246,7 +248,10 @@ describe("createPullWatch", () => {
     const moved: string[] = [];
     const failing = createPullWatch({
       reads: createForgeReads({ now: () => NOW }),
-      list: () => Promise.reject(new Error("offline")),
+      lists: {
+        listUserRepositories: () => Promise.reject(new Error("offline")),
+        listOrganizationRepositories: () => Promise.reject(new Error("offline")),
+      },
       moved: (groupId, repository) => moved.push(`${groupId} ${repository}`),
       now: () => NOW,
     });

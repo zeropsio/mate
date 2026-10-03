@@ -283,18 +283,16 @@ export async function readGroupDeploys(input: {
   // group repo itself, this once. A 401 is the session's, and ends the read.
   // Read before the listing is asked: its own 404 is recorded as "not made" (`ForgeReads`).
   const made = reads.organizations().get(group.slug) === true;
-  const listed = await reads
-    .repositories(group.slug, () => input.client.listOrganizationRepositories(group.slug))
-    .then(
-      () => "listed" as const,
-      (cause: unknown) => {
-        if (giteaUnauthorized(cause)) throw cause;
-        // The broker has not made the group's org yet: no group repo to read, and nothing failed
-        // (`readForge`).
-        if (giteaNotFound(cause) && !made) return "not-made" as const;
-        return "unlisted" as const;
-      },
-    );
+  const listed = await reads.repositories(group.slug, input.client).then(
+    () => "listed" as const,
+    (cause: unknown) => {
+      if (giteaUnauthorized(cause)) throw cause;
+      // The broker has not made the group's org yet: no group repo to read, and nothing failed
+      // (`readForge`).
+      if (giteaNotFound(cause) && !made) return "not-made" as const;
+      return "unlisted" as const;
+    },
+  );
   if (listed === "not-made") return () => NOTHING_DECLARED;
   const client = listed === "listed" ? kept : input.client;
   const declarations = await readDeclarations(client, group.slug);
