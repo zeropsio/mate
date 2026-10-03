@@ -423,7 +423,6 @@ describe("ZeropsProjectFlowProvider", () => {
       dispose: () => undefined,
     } as DeploymentStore;
     const unbind = bindAccountFlow({
-      forge: null,
       deployments,
       services: { serviceOf: () => null },
     });
@@ -488,7 +487,6 @@ describe("ZeropsProjectFlowProvider", () => {
     ]);
     const demanded = new Set<string>();
     const unbind = bindAccountFlow({
-      forge: null,
       deployments: {
         demand: (project: ProjectRef) => {
           demanded.add(project.projectId);
