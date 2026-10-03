@@ -1983,6 +1983,26 @@ describe("RunChat, as the person uses it", () => {
       expect(run.fromFoot()).toBe(0);
     });
 
+    // A browser that never says a move ended (Safari before `scrollend`; no
+    // page here has one): the move ends once the scroll stands still a moment.
+    it("sets out anew once a move down paused, where nothing says it ended", () => {
+      vi.useFakeTimers();
+      try {
+        const run = liveScroll();
+        run.grow(400);
+        run.scrolled(100);
+        run.scrolled(300);
+        act(() => vi.advanceTimersByTime(200));
+        run.grow(35);
+        // Where the foot stood as it set out, short of the one it reads now.
+        run.scrolled(560);
+        run.grow(65);
+        expect(run.box.scrollTop).toBe(560);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     // A slow drag up while a thought streams: each wrap moves the foot on
     // between the person's moves, each a few pixels.
     it("stops following on a slow drag up between arrivals", () => {

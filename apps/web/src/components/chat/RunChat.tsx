@@ -3669,6 +3669,9 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
   );
 }
 
+/** How long a scroll stands still before its move counts as ended, where the browser never says so. */
+const SCROLL_QUIET_MS = 150;
+
 /**
  * The run's one scroll (the owner, 2026-09-29: "open with scroll and all
  * events"): every line it said and did, in the order it happened, the newest
@@ -3808,6 +3811,23 @@ function RunScroll({
     observer.observe(element);
     return () => observer.disconnect();
   }, [follow]);
+  // Where the browser never says a move ended (Safari before `scrollend`),
+  // it ended once the scroll stood still a moment.
+  const quietRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (quietRef.current !== null) clearTimeout(quietRef.current);
+    },
+    [],
+  );
+  const endsOnQuiet = () => {
+    if (typeof window !== "undefined" && "onscrollend" in window) return;
+    if (quietRef.current !== null) clearTimeout(quietRef.current);
+    quietRef.current = setTimeout(() => {
+      quietRef.current = null;
+      follow.heard({ kind: "ended" });
+    }, SCROLL_QUIET_MS);
+  };
   const shown = gatherCalls(
     (from > 0 ? lines.slice(from) : lines).map((line) =>
       plopsIn(landing, line.key) ? { ...line, plops: true } : line,
@@ -3833,6 +3853,7 @@ function RunScroll({
               markEdges(element);
             }
             drawEarlier(position);
+            endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
           role="region"
