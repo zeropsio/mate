@@ -1029,14 +1029,22 @@ describe("comingPlanned — what a Mate's view names before its project lists it
       runtimes: [{ hostname: "appdev", role: "dev" }],
     },
   });
-  const press = { managed: ["db"], runtimes: [{ hostname: "appdev", role: "dev" as const }] };
+  // The press's plan names what the recipe read at the press did not: the press's comes first.
+  const press = {
+    managed: ["db", "cache"],
+    runtimes: [
+      { hostname: "appdev", role: "dev" as const },
+      { hostname: "workerdev", role: "dev" as const },
+    ],
+  };
+  const creation = { managed: ["db"], runtimes: [{ hostname: "appdev", role: "dev" as const }] };
   it.each([
-    { case: "its press held: the press's", press, made, want: press },
+    { case: "its press held: the press's, over the creation's", press, made, want: press },
     {
       case: "its press over, its creation held: the creation's",
       press: undefined,
       made,
-      want: press,
+      want: creation,
     },
     { case: "held by neither", press: undefined, made: undefined, want: {} },
   ])("$case", ({ press: held, made: holding, want }) => {
@@ -1083,7 +1091,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
       });
     };
     expect(before).toEqual(["copy[db]", "workspace[appdev]", "you[]"]);
-    expect(mateView(press)).toEqual(before);
+    expect(mateView(creation)).toEqual(before);
     expect(mateView(undefined)).toEqual(before);
   });
 });
@@ -1269,11 +1277,16 @@ describe("creationEnds — a creation that stopped can end", () => {
       useNewMate.setState({ asked: null });
     });
 
-    it("Dismiss takes it out of the menu, and asks for nothing", () => {
+    it("Dismiss takes it out of the menu, another Add beside it staying, and asks for nothing", () => {
+      useNewProjectBirths.setState({
+        births: { "add-1": refused, "add-2": added({ id: "add-2", botName: "Otto" }) },
+      });
       dismissNewProjectBirth("add-1");
       expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
       const held = Object.values(useNewProjectBirths.getState().births);
-      expect(placedNewProjects(held, ASK.organizationId)).toEqual([]);
+      expect(placedNewProjects(held, ASK.organizationId).map((placed) => placed.projectId)).toEqual(
+        ["add-2"],
+      );
       expect(useNewMate.getState().asked).toBeNull();
     });
 
