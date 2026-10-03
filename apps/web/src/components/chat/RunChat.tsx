@@ -3240,11 +3240,6 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     };
   };
   const paintedRef = useRef<ReturnType<typeof paintedNow> | null>(null);
-  // Read after each draw of a live run's card, once its landing glides
-  // started: the next change starts from here.
-  useLayoutEffect(() => {
-    paintedRef.current = slotted ? paintedNow() : null;
-  });
   // What left the slot lands: the history at its foot, its lines gliding
   // where the landing moved them, each landed line plopping from where it
   // stood in the slot. Once the card holds its height the slot glides to its
@@ -3298,6 +3293,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       glideBy(row, stood - holderStood - (row.getBoundingClientRect().top - base));
     }
   }, [landing]);
+  // Read after each draw of a live run's card, once its landing glides
+  // started — declared after the landing, so it runs after it: the next
+  // change starts from what shows, never from the glides' destinations.
+  useLayoutEffect(() => {
+    paintedRef.current = slotted ? paintedNow() : null;
+  });
   const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
   // A folded line whose call the slot still holds stands unfolded, that call
   // left out: it folds in once the call lands.
