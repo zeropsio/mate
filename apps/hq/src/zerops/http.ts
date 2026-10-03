@@ -128,6 +128,7 @@ const Created = Schema.Struct({ id: Schema.String });
 const Imported = Schema.Struct({
   serviceStacks: Schema.Array(Schema.Struct({ name: Schema.String })),
 });
+const AppVersionRow = Schema.Struct({ status: Schema.String });
 const ProcessRow = Schema.Struct({
   status: Schema.Literals(["PENDING", "RUNNING", "FINISHED", "FAILED", "CANCELED"]),
   error: Schema.optionalKey(
@@ -434,6 +435,21 @@ export const makeZeropsDeployHttp = (
             while: (error) => error._tag === "ZeropsUnavailable",
           }),
           Effect.map(({ value }) => toProcess(value)),
+        ),
+      appVersion: (appVersionId) => (credential) =>
+        ask(
+          client,
+          "appVersion",
+          credential,
+          HttpClientRequest.get(`${baseUrl}/app-version/${appVersionId}`),
+          AppVersionRow,
+        ).pipe(
+          Effect.retry({
+            schedule: BACKOFF,
+            times: RETRIES,
+            while: (error) => error._tag === "ZeropsUnavailable",
+          }),
+          Effect.map(({ value }) => ({ status: value.status })),
         ),
       enableSubdomainAccess: (serviceId) => (credential) =>
         send(

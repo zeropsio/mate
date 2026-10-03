@@ -22,8 +22,13 @@
  * - **A build's own failure is final** (B37): only a person asks for that commit again. HQ's own
  *   refusals — no key (E08), or one that no longer answers or now reaches more than its project
  *   (checked again at every hand-over, `deployTokens.ts`), a Zerops that did not answer, git that
- *   failed — are asked again by the next pass, and a deploy still running after `patience` (20
- *   min) is deployed again (B38).
+ *   failed — are asked again by the next pass (B38).
+ * - **A build is submitted once** (audit H6): Zerops takes no idempotency key, so the version HQ
+ *   makes for a commit is recorded before its archive goes up, and its build's job once
+ *   build-and-deploy answers. However long the build takes, and after a lost answer or a restart,
+ *   each pass reads that job, else that version, where it stands — never a second version or build
+ *   of the commit while the first builds or its fate is unknown. A version still waiting for its
+ *   archive was never submitted, and the commit is deployed anew.
  * - **A stage's first deploy waits for code** (F17, main #162): while HQ has recorded no deploy of
  *   a stage's service and main's head has no `zerops.yaml` carrying the tier's setup, nothing is
  *   asked or recorded — the stage reads "Nothing deployed yet" — and the next merge deploys it.
@@ -95,7 +100,7 @@ export interface DeploysOptions {
   readonly catchUpEvery?: Duration.Duration;
   /** How often a running deploy's job is read; 10 s. */
   readonly pollEvery?: Duration.Duration;
-  /** How long a running deploy is waited for before it is deployed again (B38); 20 min. */
+  /** How long one pass watches a running deploy before the next reads it again; 20 min. */
   readonly patience?: Duration.Duration;
 }
 
@@ -211,6 +216,15 @@ const decodeSetups = Schema.decodeUnknownExit(
 
 const short = (sha: string) => sha.slice(0, 7);
 
+/** The statuses a version's build or deploy ends badly in (the SDK's `AppVersionStatusEnum`). */
+const VERSION_FAILURES: ReadonlySet<string> = new Set([
+  "BUILD_FAILED",
+  "BUILD_VALIDATION_FAILED",
+  "PREPARING_RUNTIME_FAILED",
+  "DEPLOY_FAILED",
+  "CANCELLED",
+]);
+
 /**
  * Whether a service runs `sha` as a version's name spells it: the version it names is the one it
  * runs, and its name spells the commit. Read only where HQ kept no version it made — the import's
@@ -299,7 +313,6 @@ export const deploysLayer = (
       const catchUpEvery = options.catchUpEvery ?? Duration.minutes(5);
       const pollEvery = options.pollEvery ?? Duration.seconds(10);
       const patience = options.patience ?? Duration.minutes(20);
-      const patienceSeconds = Duration.toSeconds(patience);
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
 
@@ -445,11 +458,8 @@ export const deploysLayer = (
             readonly failure: string | null;
             readonly app_version_id: string | null;
             readonly process_id: string | null;
-            readonly fresh: boolean;
           }>`
-            SELECT service_id, state, failure, app_version_id, process_id,
-                   COALESCE(started_at > now() - make_interval(secs => ${patienceSeconds}), false)
-                     AS fresh
+            SELECT service_id, state, failure, app_version_id, process_id
             FROM hq_deploy
             WHERE project_id = ${target.projectId} AND service = ${target.service}
               AND sha = ${target.sha}`,
@@ -460,7 +470,9 @@ export const deploysLayer = (
        * The record of `target` now `state`: written by the leader, told to the structure. `over`
        * says what record it may replace, judged in the write itself, so a record written between a
        * read and this write is never lost: `any`; `none`, a first record only; `unsettled`, neither
-       * a live one nor a build's own failure (a hold's, B37). What it does not replace stays, untold.
+       * a live one, a build's own failure (a hold's, B37), nor a build HQ submitted, whose fate HQ
+       * reads (audit H6). What it does not replace stays, untold. A deploying write says its build's
+       * job as far as it is known: none until build-and-deploy answered.
        * `serviceId` is the service it is now for, where the write says it (audit N6).
        */
       const record = (
@@ -470,7 +482,8 @@ export const deploysLayer = (
           | {
               readonly state: "deploying";
               readonly appVersionId: string;
-              readonly processId: string;
+              /** Its build's job, once build-and-deploy answered. */
+              readonly processId?: string;
             }
           | Ended,
         over: "any" | "none" | "unsettled" = "any",
@@ -479,26 +492,26 @@ export const deploysLayer = (
         Effect.flatMap(
           leader.write(sql`
             INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message,
-              app_version_id, process_id, started_at, service_id)
+              app_version_id, process_id, service_id)
             VALUES (${target.projectId}, ${target.service}, ${target.sha}, ${target.repo},
               ${row.state}, ${row.state === "failed" ? row.failure : null},
               ${row.state === "failed" ? cut(row.message) : null},
               ${row.state === "deploying" || row.state === "live" ? (row.appVersionId ?? null) : null},
-              ${row.state === "deploying" ? row.processId : null},
-              ${row.state === "deploying" ? sql`now()` : null}, ${serviceId ?? null})
+              ${row.state === "deploying" ? (row.processId ?? null) : null}, ${serviceId ?? null})
             ON CONFLICT (project_id, service, sha) ${
               over === "none"
                 ? sql`DO NOTHING`
                 : sql`DO UPDATE SET
               state = EXCLUDED.state, failure = EXCLUDED.failure, message = EXCLUDED.message,
               app_version_id = COALESCE(EXCLUDED.app_version_id, hq_deploy.app_version_id),
-              process_id = COALESCE(EXCLUDED.process_id, hq_deploy.process_id),
-              started_at = COALESCE(EXCLUDED.started_at, hq_deploy.started_at),
+              process_id = CASE WHEN EXCLUDED.state = 'deploying' THEN EXCLUDED.process_id
+                ELSE COALESCE(EXCLUDED.process_id, hq_deploy.process_id) END,
               service_id = COALESCE(EXCLUDED.service_id, hq_deploy.service_id),
               updated_at = now()
               ${
                 over === "unsettled"
-                  ? sql`WHERE hq_deploy.state <> 'live' AND hq_deploy.failure IS DISTINCT FROM 'job'`
+                  ? sql`WHERE hq_deploy.state NOT IN ('live', 'deploying')
+                      AND hq_deploy.failure IS DISTINCT FROM 'job'`
                   : sql``
               }`
             }
@@ -588,27 +601,25 @@ export const deploysLayer = (
         );
 
       /**
-       * A running deploy's job, read until it ends or `patience` passes, then what the service runs:
-       * live once it runs `versionId`, the version HQ made for it; the build's own failure; or —
-       * still running — nothing yet (the next pass decides).
+       * The deploy of `versionId`, the version HQ made for `target`, as Zerops says it stands (audit
+       * H6): read by its build's job where HQ heard it, else by the version itself, until it ends or
+       * `patience` passes. Live once the service runs the version; the build's own failure; never
+       * submitted, where its version still waits for its archive; or — still running, or not to be
+       * read now — nothing yet: the next pass reads again, and never submits it again meanwhile.
        */
       const watch = (
         target: Target,
         token: Redacted.Redacted,
         serviceId: string,
-        processId: string,
         versionId: string,
-      ): Effect.Effect<Ended | undefined, ZeropsError> => {
-        const once: Effect.Effect<Ended | undefined, ZeropsError> = Effect.gen(function* () {
-          const process = yield* deploy.process(processId)(token);
-          if (process.status === "FAILED" || process.status === "CANCELED") {
-            return job(`failed: ${process.failure ?? "the build failed"}`);
-          }
-          if (process.status !== "FINISHED") return undefined;
+        processId: string | null,
+      ): Effect.Effect<Ended | "unsubmitted" | undefined> => {
+        /** Where it stands once its build ended well: what the service runs. */
+        const landed = Effect.gen(function* () {
           const service = yield* zerops.service(serviceId)(token);
           if (service.activeVersionId === versionId) {
             yield* openIfIntended(target, service, token);
-            return { state: "live" };
+            return { state: "live" } as const;
           }
           // Its build is the last one started, and not yet what the service runs.
           if (service.named?.id === versionId) return undefined;
@@ -618,6 +629,50 @@ export const deploysLayer = (
               : "another version";
           return job(`the deploy finished, but ${target.service} runs ${other}`);
         });
+        /** Where it stands by its version's own status. */
+        const byVersion = Effect.gen(function* () {
+          const { status } = yield* deploy.appVersion(versionId)(token);
+          if (status === "UPLOADING") return "unsubmitted" as const;
+          if (status === "ACTIVE" || status === "BACKUP") return yield* landed;
+          if (VERSION_FAILURES.has(status)) return job(`failed: the version is ${status}`);
+          return undefined;
+        });
+        const byJob = (id: string) =>
+          Effect.gen(function* () {
+            const process = yield* deploy.process(id)(token);
+            if (process.status === "FAILED" || process.status === "CANCELED") {
+              return job(`failed: ${process.failure ?? "the build failed"}`);
+            }
+            if (process.status !== "FINISHED") return undefined;
+            return yield* landed;
+          }).pipe(
+            // A job Zerops no longer keeps says nothing: its version does.
+            Effect.catchIf(
+              (error) => error._tag === "ZeropsRefused" && error.reason === "not_found",
+              () => byVersion,
+            ),
+          );
+        const once = (processId === null ? byVersion : byJob(processId)).pipe(
+          // A version Zerops no longer has was never built: HQ's own refusal, asked again.
+          Effect.catchIf(
+            (error) =>
+              error._tag === "ZeropsRefused" &&
+              error.reason === "not_found" &&
+              error.operation === "appVersion",
+            (error) => Effect.succeed(zeropsEnded(target, error)),
+          ),
+          // What cannot be read now says nothing of the build: it is read again, never submitted.
+          Effect.catch((error) =>
+            Effect.as(
+              Effect.logWarning("a deploy's build not read", {
+                environment: target.envName,
+                service: target.service,
+                error,
+              }),
+              undefined,
+            ),
+          ),
+        );
         const untilEnded = Effect.gen(function* () {
           for (;;) {
             const ended = yield* once;
@@ -926,7 +981,7 @@ export const deploysLayer = (
                   UPDATE hq_deploy
                   SET service_id = ${service.id}, state = 'pending', failure = NULL,
                       message = NULL, app_version_id = NULL, process_id = NULL,
-                      started_at = NULL, updated_at = now()
+                      updated_at = now()
                   WHERE project_id = ${target.projectId} AND service = ${target.service}
                     AND sha = ${target.sha} AND service_id = ${existing.service_id}`,
           );
@@ -949,16 +1004,16 @@ export const deploysLayer = (
                 ZeropsUnavailable: (error) => Effect.succeed({ ended: zeropsEnded(target, error) }),
               }),
             );
-          const service = "service" in read ? read.service : undefined;
+          // What HQ could not read says nothing of a deploy settled or submitted (B37, audit H6).
+          if ("ended" in read) return yield* refuseUnsettled(target, read.ended);
+          const service = read.service;
           if (service === undefined) {
-            // A build's own failure is final (B37): what HQ could not read says nothing of it.
+            // A build's own failure is final (B37).
             const before = yield* recordOf(target);
             if (before?.state === "failed" && before.failure === "job") return;
             yield* record(
               target,
-              "ended" in read
-                ? read.ended
-                : refused(`the environment's project has no service ${target.service}`),
+              refused(`the environment's project has no service ${target.service}`),
             );
             return;
           }
@@ -986,19 +1041,17 @@ export const deploysLayer = (
               if (existing?.state === "deploying") yield* openIfIntended(target, service, token);
               return existing?.state === "live" ? undefined : ({ state: "live" } as const);
             }
-            if (
-              existing?.state === "deploying" &&
-              existing.fresh &&
-              existing.process_id !== null &&
-              existing.app_version_id !== null
-            ) {
-              return yield* watch(
+            // A build HQ submitted is read where it stands, never submitted again (audit H6) —
+            // unless its version still waits for its archive: never submitted at all.
+            if (existing?.state === "deploying" && existing.app_version_id !== null) {
+              const where = yield* watch(
                 target,
                 token,
                 service.id,
-                existing.process_id,
                 existing.app_version_id,
+                existing.process_id,
               );
+              if (where !== "unsubmitted") return where;
             }
             const git = yield* gitHost.git;
             const commit = yield* commitOf(git, target);
@@ -1013,18 +1066,39 @@ export const deploysLayer = (
               service.id,
               versionName(target.label, target.sha),
             )(token);
-            yield* deploy.upload(version.id, commit.archive)(token);
-            const started = yield* deploy.buildAndDeploy(
-              version.id,
-              commit.zeropsYaml,
-              target.setup,
-            )(token);
+            // Kept before anything is submitted with it: whatever answer is lost from here on,
+            // the next pass reads this version instead of making another (audit H6).
+            yield* record(target, { state: "deploying", appVersionId: version.id });
+            const started = yield* Effect.andThen(
+              deploy.upload(version.id, commit.archive)(token),
+              deploy.buildAndDeploy(version.id, commit.zeropsYaml, target.setup)(token),
+            ).pipe(
+              Effect.map(Option.some),
+              Effect.catchTag("ZeropsUnavailable", (error) =>
+                Effect.as(
+                  Effect.logWarning("a deploy's submission went unanswered", {
+                    environment: target.envName,
+                    service: target.service,
+                    error,
+                  }),
+                  Option.none(),
+                ),
+              ),
+            );
+            if (Option.isNone(started)) return undefined;
             yield* record(target, {
               state: "deploying",
               appVersionId: version.id,
-              processId: started.processId,
+              processId: started.value.processId,
             });
-            return yield* watch(target, token, service.id, started.processId, version.id);
+            const where = yield* watch(
+              target,
+              token,
+              service.id,
+              version.id,
+              started.value.processId,
+            );
+            return where === "unsubmitted" ? undefined : where;
           }).pipe(
             Effect.catchTags({
               ZeropsRefused: (error) => Effect.succeed(zeropsEnded(target, error)),
