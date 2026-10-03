@@ -242,6 +242,13 @@ describe("opens — a control is drawn only when it opens onto something not on 
       asked: [],
     },
     {
+      // A trailing slash says nothing more (E13).
+      name: "a page with a trailing slash: its line says it all",
+      url: "https://docs.example.dev/start/",
+      asked: [],
+    },
+    { name: "a host alone, with its slash", url: "https://docs.example.dev/", asked: [] },
+    {
       name: "an address with a query: the whole address",
       url: "https://search.example.dev/find?q=hono+routes&page=2",
       asked: [
