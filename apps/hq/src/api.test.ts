@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- the tests reach Core as a client does: over HTTP and a WebSocket.
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
@@ -16,6 +17,7 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
+import { tempDir } from "../test/harness/tempDir.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { failure } from "./api.ts";
@@ -84,6 +86,38 @@ describe("HQ API", () => {
             ],
           });
         }),
+    );
+
+    // The lead, 2026-10-03: under load an application was answered before its repository existed:
+    // git opens a moment after the lead (its takeover converges every repository first), and the
+    // repository's making was only logged as missed. Create answers once its repository is made.
+    it.effect("answers a new application once its repository is made, though git opens late", () =>
+      Effect.gen(function* () {
+        // The volume is a file until git may open: no repository root can be made under it.
+        const dir = yield* tempDir("hq-late-git-");
+        const volume = NodePath.join(dir, "vol");
+        yield* Effect.promise(() => NodeFSP.writeFile(volume, ""));
+        const gitRoot = NodePath.join(volume, "git");
+        const { call } = yield* startCore(true, { gitRoot });
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        yield* Effect.forkChild(
+          Effect.andThen(
+            Effect.sleep(Duration.millis(300)),
+            Effect.promise(() => NodeFSP.rm(volume)),
+          ),
+        );
+        const created = yield* call("POST", "/api/apps", { session, body: { name: "Shop" } });
+        assert.strictEqual(created.status, 201);
+        const appId = (created.body as { readonly id: string }).id;
+        const head = yield* Effect.promise(() =>
+          NodeFSP.stat(NodePath.join(gitRoot, appId, "group.git", "HEAD")).then(
+            (found) => found.isFile(),
+            () => false,
+          ),
+        );
+        assert.isTrue(head, "its repository is there when HQ answers");
+      }),
     );
 
     // E2E 2026-10-03 (F5): an application a stopped New project left holds its recipe repository

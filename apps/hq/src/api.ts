@@ -118,6 +118,9 @@ class MateCredentialRequired extends Schema.TaggedError<MateCredentialRequired>(
 ) {}
 class TooLarge extends Schema.TaggedError<TooLarge>()("TooLarge", {}) {}
 
+/** How long an application's creation waits for git to open after a takeover. */
+const GIT_OPEN_WAIT = Duration.seconds(10);
+
 const DOOR_BODY_LIMIT = 8 * 1024;
 const BODY_LIMIT = 64 * 1024;
 /**
@@ -750,8 +753,12 @@ const routes = (
         Effect.gen(function* () {
           const { userId } = yield* principal;
           const { name } = yield* jsonBody(AppBody, BODY_LIMIT);
+          // Its recipe repository comes with it, and HQ answers once it is made: git, opening a
+          // moment after the lead, is waited for before anything is written (`503 not_active`
+          // past the wait, for the client to ask again). One that still fails is made on first
+          // need.
+          yield* (yield* GitHost).opened(GIT_OPEN_WAIT);
           const app = yield* (yield* Structure).createApp(userId, name);
-          // Its recipe repository comes with it; should it not now, it is made on first need.
           yield* (yield* Changes)
             .ensureGroupRepo(app.id)
             .pipe(Effect.catch((error) => Effect.logWarning("recipe repository not made", error)));

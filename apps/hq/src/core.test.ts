@@ -28,6 +28,7 @@ describe("the drain", () => {
         }),
         Layer.succeed(GitHost, {
           git: Effect.fail(new NotLeader({ reason: "standby" })),
+          opened: () => Effect.fail(new NotLeader({ reason: "standby" })),
           serve: () => Effect.die("no git"),
           close: note("git closed"),
           recorded: Stream.empty,

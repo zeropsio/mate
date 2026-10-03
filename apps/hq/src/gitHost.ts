@@ -66,6 +66,11 @@ export class GitHost extends Context.Service<
     /** The git layer, while this Core leads and has it open. */
     readonly git: Effect.Effect<HqGit, NotLeader>;
     /**
+     * The git layer once open, waited for up to `wait`: it opens a moment after the lead, its
+     * takeover converging every repository first. Not open by then is `NotLeader`.
+     */
+    readonly opened: (wait: Duration.Duration) => Effect.Effect<HqGit, NotLeader>;
+    /**
      * Serves one git request with the layer's smart HTTP; ends with the response. `decide` is told
      * the repository and the service as the layer itself reads the request — a fetch's or a push's,
      * so a verb is never chosen on another reading of its address — and answers who serves it, or
@@ -414,6 +419,14 @@ export const gitHostLayer = (options: {
       );
       return GitHost.of({
         git,
+        opened: (wait) =>
+          git.pipe(
+            Effect.retry(Schedule.spaced(Duration.millis(50))),
+            Effect.timeoutOrElse({
+              duration: wait,
+              orElse: () => Effect.fail(new NotLeader({ reason: "standby" })),
+            }),
+          ),
         serve: (request, decide, mayRead) =>
           Effect.gen(function* () {
             const layer = yield* git;
