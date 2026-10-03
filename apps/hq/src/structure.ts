@@ -93,7 +93,11 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
 export interface AttachInput {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
-  readonly mate?: { readonly name: string; readonly face: string };
+  /**
+   * A Mate's record. `standUp`: the caller asks for its stand-up, where no birth intent carries
+   * the ask (`recordBirth`); recorded in the same write as the record (B3).
+   */
+  readonly mate?: { readonly name: string; readonly face: string; readonly standUp?: boolean };
   /** A stage's or a production's environment, named as given; else named from its project. */
   readonly environment?: { readonly name: string };
   /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
@@ -165,6 +169,11 @@ export interface MateRecord {
   readonly face: string;
 }
 
+/** A Mate's record as it is set up: the caller may ask for its stand-up in the same write (B3). */
+export interface NewMateRecord extends MateRecord {
+  readonly standUp?: boolean;
+}
+
 /**
  * A Mate as a reader sees it: its record and its birth. What it does goes beside the structure, to
  * whoever may observe it (`stream.ts`, `mateOverviews.ts`).
@@ -177,7 +186,7 @@ export interface MateView {
    * the person whose sign-in it waits for. Nobody for a Mate recorded before HQ kept it.
    */
   readonly madeBy: string | null;
-  /** Who asked for its stand-up (`markBirth`), or nobody yet. */
+  /** Who asked for its stand-up, with its record (B3), or nobody. */
   readonly standupRequestedBy: string | null;
   /** Whether its project is closed off, so its runtimes may be imported. */
   readonly closedOff: boolean;
@@ -254,17 +263,24 @@ export class Structure extends Context.Service<
     >;
     /**
      * Records a Mate's birth intent, before its project exists: its application, name and face,
-     * by whoever sees the application. Its attach (`birth`) closes it, the Mate made by whoever
-     * recorded it. The same person's intents a week old, never attached, go with the write.
+     * and whether the recorder asks for its stand-up, by whoever sees the application. Its attach
+     * (`birth`) closes it, the Mate made by whoever recorded it and its stand-up asked by them
+     * where they asked, in the same write as its record (B3). The same person's intents a week
+     * old, never attached, go with the write.
      */
     readonly recordBirth: (
       userId: string,
-      birth: { readonly appId: string; readonly name: string; readonly face: string },
+      birth: {
+        readonly appId: string;
+        readonly name: string;
+        readonly face: string;
+        readonly standUp?: boolean;
+      },
     ) => Effect.Effect<BirthIntent, WriteError>;
-    /** Sets a Mate up: its record, in no application until it is moved into one. */
+    /** Sets a Mate up: its record, in no application until it is moved into one, and its ask. */
     readonly createMate: (
       userId: string,
-      mate: MateRecord,
+      mate: NewMateRecord,
     ) => Effect.Effect<MateRecord, WriteError>;
     /** Renames a Mate, changes its face, or both. */
     readonly patchMate: (
@@ -273,14 +289,12 @@ export class Structure extends Context.Service<
       patch: { readonly name?: string; readonly face?: string },
     ) => Effect.Effect<MateRecord, WriteError>;
     /**
-     * Records a Mate's birth, as the client that set it up does: that the caller asks for its
-     * stand-up, or that its project is closed off (its runtimes may be imported). By whoever may
-     * edit the Mate's record.
+     * Records that a Mate's project is closed off, as the client that set it up does: the press's
+     * close-off step done. By whoever may edit the Mate's record.
      */
-    readonly markBirth: (
+    readonly markClosedOff: (
       userId: string,
       projectId: string,
-      mark: "standup" | "closed_off",
     ) => Effect.Effect<MateRecordState, WriteError>;
     /**
      * Keeps the deploy token of the application's environment `name` (SPEC §3.2b): handed over
@@ -581,20 +595,16 @@ export const structureLayer = (options: {
             yield* changed;
           }),
         ),
-        markBirth: confirmed((userId, projectId, mark) =>
+        markClosedOff: confirmed((userId, projectId) =>
           Effect.gen(function* () {
             const view = yield* roles.forWrite;
             const marked = yield* leader.write(
               Effect.gen(function* () {
                 const held = yield* heldOf(sql, projectId);
                 yield* allowed(userId, "edit_mate_record", { projectId, held }, view);
-                return yield* mark === "standup"
-                  ? sql`
-                      UPDATE hq_mate SET standup_requested_by = ${userId}
-                      WHERE project_id = ${projectId} RETURNING 1`
-                  : sql`
-                      UPDATE hq_mate SET closed_off_at = COALESCE(closed_off_at, now())
-                      WHERE project_id = ${projectId} RETURNING 1`;
+                return yield* sql`
+                  UPDATE hq_mate SET closed_off_at = COALESCE(closed_off_at, now())
+                  WHERE project_id = ${projectId} RETURNING 1`;
               }),
             );
             if (marked.length === 0) return yield* refuse("mate_not_found", "mate_not_found");
@@ -773,18 +783,22 @@ export const structureLayer = (options: {
                   }
                   // A Mate set up already keeps its record: renaming it is its admin's
                   // (`edit_mate_record`), not an attacher's. One born under an intent was made by
-                  // whoever started its birth, whose sign-in it waits for, whoever finishes it.
+                  // whoever started its birth, whose sign-in it waits for, whoever finishes it, and
+                  // asked for its stand-up by them where they asked: the record and its ask are one
+                  // write (B3). One with no intent carries its own ask.
                   if (input.mate !== undefined) {
                     yield* sql`
-                      INSERT INTO hq_mate (project_id, name, face, made_by)
-                      VALUES (
-                        ${input.projectId}, ${input.mate.name}, ${input.mate.face},
-                        COALESCE(
-                          (SELECT made_by FROM hq_birth_intent
-                           WHERE id::text = ${input.birth ?? null} AND app_id::text = ${appId}),
-                          ${userId}
-                        )
-                      )
+                      INSERT INTO hq_mate (project_id, name, face, made_by, standup_requested_by)
+                      SELECT ${input.projectId}, ${input.mate.name}, ${input.mate.face},
+                        COALESCE(intent.made_by, ${userId}),
+                        CASE
+                          WHEN intent.made_by IS NOT NULL THEN
+                            CASE WHEN intent.standup THEN intent.made_by END
+                          WHEN ${input.mate.standUp === true} THEN ${userId}
+                        END
+                      FROM (SELECT 1) AS one
+                      LEFT JOIN hq_birth_intent AS intent
+                        ON intent.id::text = ${input.birth ?? null} AND intent.app_id::text = ${appId}
                       ON CONFLICT (project_id) DO NOTHING`;
                   }
                   // The intent it was born under is done with, as its application's.
@@ -929,8 +943,9 @@ export const structureLayer = (options: {
                   DELETE FROM hq_birth_intent
                   WHERE made_by = ${userId} AND created_at < now() - interval '7 days'`;
                 return yield* sql<{ readonly id: string }>`
-                  INSERT INTO hq_birth_intent (app_id, name, face, made_by)
-                  VALUES (${birth.appId}::uuid, ${name}, ${birth.face}, ${userId})
+                  INSERT INTO hq_birth_intent (app_id, name, face, made_by, standup)
+                  VALUES (${birth.appId}::uuid, ${name}, ${birth.face}, ${userId},
+                    ${birth.standUp === true})
                   RETURNING id::text AS id`;
               }),
             );
@@ -962,8 +977,9 @@ export const structureLayer = (options: {
                     view,
                   );
                   yield* sql`
-                    INSERT INTO hq_mate (project_id, name, face, made_by)
-                    VALUES (${mate.projectId}, ${name}, ${mate.face}, ${userId})`;
+                    INSERT INTO hq_mate (project_id, name, face, made_by, standup_requested_by)
+                    VALUES (${mate.projectId}, ${name}, ${mate.face}, ${userId},
+                      ${mate.standUp === true ? userId : null})`;
                 }),
               ),
               "mate_record_exists",

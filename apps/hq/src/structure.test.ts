@@ -825,7 +825,7 @@ describe("structure", () => {
                 ...UNBORN,
               });
 
-              yield* structure.markBirth("owner", "P_OWN", "closed_off");
+              yield* structure.markClosedOff("owner", "P_OWN");
               assert.strictEqual((yield* mateOf("P_OWN"))?.closedOff, true);
             }),
           Effect.gen(function* () {
@@ -837,8 +837,9 @@ describe("structure", () => {
         ),
     );
 
-    // The press records its ask and the close-off as the Mate is born (`markBirth`); whoever reads
-    // the project reads them with the record, and the structure is told at once.
+    // The press asks for the stand-up with the Mate's record and records the close-off as it is
+    // born (`markClosedOff`); whoever reads the project reads both with the record, and the
+    // structure is told at once.
     it.effect("reads a Mate's birth with its record, and says so as it is marked", () =>
       withStructure(() =>
         Effect.gen(function* () {
@@ -847,6 +848,7 @@ describe("structure", () => {
             projectId: "P_MATE",
             name: "Ada",
             face: "face-3",
+            standUp: true,
           });
           const mateOf = (userId: string) =>
             Effect.map(structure.read(userId), (read) => read.ungrouped[0]?.mate);
@@ -854,7 +856,7 @@ describe("structure", () => {
             name: "Ada",
             face: "face-3",
             madeBy: "owner",
-            standupRequestedBy: null,
+            standupRequestedBy: "owner",
             closedOff: false,
           });
 
@@ -862,9 +864,8 @@ describe("structure", () => {
             Effect.forkChild,
           );
           yield* Effect.yieldNow;
-          yield* structure.markBirth("owner", "P_MATE", "standup");
+          yield* structure.markClosedOff("owner", "P_MATE");
           assert.isTrue(Option.isSome(yield* Fiber.join(told)));
-          yield* structure.markBirth("owner", "P_MATE", "closed_off");
 
           assert.deepStrictEqual(yield* mateOf("reader"), {
             name: "Ada",

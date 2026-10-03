@@ -19,7 +19,7 @@ import {
   ticketFor,
   untilHealth,
 } from "../test/harness/runningCore.ts";
-import { rowsWhere } from "../test/harness/mates.ts";
+import { addProject, rowsWhere } from "../test/harness/mates.ts";
 import { mainAt, overviewOf } from "../test/harness/overviews.ts";
 import { tempDir } from "../test/harness/tempDir.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -794,6 +794,65 @@ describe("HQ API", () => {
         }),
     );
 
+    // B3: a Mate's stand-up ask rides in the write that records the Mate, so the two never part. An
+    // attach under a birth intent that asked records the intent's maker as the asker; under one that
+    // did not, nobody. An attach, or a record set up, with no intent carries its own ask.
+    it.effect("records a Mate's stand-up ask in the write that records the Mate", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        for (const id of ["P_ASKED", "P_UNASKED", "P_PLAIN"]) addProject(fake, id);
+        const appId = (
+          (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
+            readonly id: string;
+          }
+        ).id;
+        const intent = (standUp: boolean) =>
+          Effect.map(
+            call("POST", "/api/births", {
+              session,
+              body: { appId, name: "Gus", face: "rose:seal", standUp },
+            }),
+            (answer) => (answer.body as { readonly id: string }).id,
+          );
+        const attach = (projectId: string, extra: Record<string, unknown>) =>
+          call("POST", `/api/apps/${appId}/projects`, {
+            session,
+            body: { projectId, kind: "mate", mate: { name: "Gus", face: "rose:seal" }, ...extra },
+          });
+        yield* attach("P_ASKED", { birth: yield* intent(true) });
+        yield* attach("P_UNASKED", { birth: yield* intent(false) });
+        yield* attach("P_PLAIN", { mate: { name: "Gus", face: "rose:seal", standUp: true } });
+        yield* call("POST", "/api/mates", {
+          session,
+          body: { projectId: "P_MATE", name: "Ada", face: "face-1", standUp: true },
+        });
+        const read = (yield* call("GET", "/api/structure", { session })).body as {
+          readonly apps: ReadonlyArray<{
+            readonly projects: ReadonlyArray<{
+              readonly projectId: string;
+              readonly mate: { readonly standupRequestedBy: string | null } | null;
+            }>;
+          }>;
+          readonly ungrouped: ReadonlyArray<{
+            readonly projectId: string;
+            readonly mate: { readonly standupRequestedBy: string | null };
+          }>;
+        };
+        const asker = (projectId: string) =>
+          [...read.apps.flatMap((app) => app.projects), ...read.ungrouped].find(
+            (project) => project.projectId === projectId,
+          )?.mate?.standupRequestedBy;
+        assert.deepStrictEqual(["P_ASKED", "P_UNASKED", "P_PLAIN", "P_MATE"].map(asker), [
+          "owner",
+          null,
+          "owner",
+          "owner",
+        ]);
+      }),
+    );
+
     it.effect("records a Mate's birth intent in its application, and its attach closes it", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(true);
@@ -1302,7 +1361,13 @@ describe("HQ API", () => {
         Effect.gen(function* () {
           const { call, fake } = yield* startCore(true);
           yield* untilHealth(call, "active");
-          const owner = yield* setUpMate(call, "P_MATE");
+          const owner = yield* sessionFor(call, "door-owner");
+          // Its stand-up asked in the write that sets it up (B3): no mark of its own any more.
+          const created = yield* call("POST", "/api/mates", {
+            session: owner,
+            body: { projectId: "P_MATE", name: "Ada", face: "face-1", standUp: true },
+          });
+          assert.strictEqual(created.status, 201);
           const credential = yield* enrollMate(call, fake, "P_MATE");
           const self = Effect.map(
             call("GET", "/api/mate/self", { headers: { authorization: `Mate ${credential}` } }),
@@ -1313,14 +1378,10 @@ describe("HQ API", () => {
           const none = { appId: null, appName: null, changes: [] };
           assert.deepStrictEqual(yield* self, [
             200,
-            { ...born, standupRequestedBy: null, closedOff: false, ...none },
+            { ...born, standupRequestedBy: "owner", closedOff: false, ...none },
           ]);
-
           const standup = yield* call("POST", "/api/mates/P_MATE/standup", { session: owner });
-          assert.deepStrictEqual(
-            [standup.status, standup.body],
-            [200, { ...born, standupRequestedBy: "owner", closedOff: false }],
-          );
+          assert.strictEqual(standup.status, 404);
           const closed = yield* call("POST", "/api/mates/P_MATE/closed-off", { session: owner });
           assert.deepStrictEqual(
             [closed.status, closed.body],

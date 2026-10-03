@@ -54,14 +54,17 @@ vi.mock("./accountHq", () => ({
     },
     attachProject: async (
       appId: string,
-      attach: { readonly mate?: { readonly name: string }; readonly birth?: string },
+      attach: {
+        readonly mate?: { readonly name: string; readonly standUp?: boolean };
+        readonly birth?: string;
+      },
     ) => {
       hq.calls?.push(
-        `attach ${appId} ${attach.mate?.name ?? ""}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}`,
+        `attach ${appId} ${attach.mate?.name ?? ""}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
       );
     },
-    recordStandUp: async () => {
-      hq.calls?.push("standup");
+    createMate: async (mate: { readonly name: string; readonly standUp?: boolean }) => {
+      hq.calls?.push(`record ${mate.name}${mate.standUp === true ? " asking its stand-up" : ""}`);
     },
     mateKey: async () => hq.key,
   }),
@@ -760,7 +763,7 @@ describe("finishMateSetup — the harden path", () => {
           groupId: "app-d",
           kind: "mate",
           mate: { name: "Dan", face: undefined },
-          birth: { standUp: false },
+          standUp: false,
         },
         hq: { projectId: "hq-project", address: "https://hq.test" },
         isCurrent: () => true,
@@ -794,7 +797,7 @@ describe("finishMateSetup — the harden path", () => {
           groupId: "app-g",
           kind: "mate",
           mate: { name: "Gus", face: undefined },
-          birth: { standUp: false },
+          standUp: false,
           intent: "b-gus",
         },
         hq: { projectId: "hq-project", address: "https://hq.test" },
@@ -805,6 +808,52 @@ describe("finishMateSetup — the harden path", () => {
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toContain("attach app-g Gus closing b-gus");
+    forgetPress("p-old");
+  });
+
+  // Audit B3: the person's stand-up ask rides in the write that records the Mate, so no Mate is
+  // ever recorded without the ask it was made with — never a call of its own after it.
+  it.each([
+    {
+      case: "an attach",
+      registration: {
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        groupId: "app-d",
+        kind: "mate" as const,
+        mate: { name: "Dan", face: undefined },
+        standUp: true,
+      },
+      write: "attach app-d Dan asking its stand-up",
+    },
+    {
+      case: "a record in no application",
+      registration: {
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        kind: "mate-record" as const,
+        record: { name: "Dan", face: "" },
+        standUp: true,
+      },
+      write: "record Dan asking its stand-up",
+    },
+  ])("asks for the stand-up in $case", async ({ registration, write }) => {
+    begin();
+    const calls: Array<string> = [];
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: inputs(() => true, calls),
+        projectId: "p-old",
+        projectName: "mate-rig-e2e-d - Dan",
+        container: null,
+        registration,
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        harden: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual(["harden", write, "mark"]);
     forgetPress("p-old");
   });
 
@@ -1136,7 +1185,7 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
       random: first,
     });
     if (expected === null) expect(registration).toBeNull();
-    else expect(registration).toMatchObject({ hq: HQ, birth: { standUp: false }, ...expected });
+    else expect(registration).toMatchObject({ hq: HQ, standUp: false, ...expected });
   });
 });
 

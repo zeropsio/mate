@@ -314,7 +314,7 @@ function NewProjectDialog() {
               groupId: appId,
               kind: "mate",
               mate: { name: botName, face },
-              birth: { standUp: false },
+              standUp: false,
               intent,
             },
             hq,

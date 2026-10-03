@@ -451,11 +451,6 @@ describe("setupDocument", () => {
       { reason: "not_linked" },
       { id: "standup", state: "waiting", at: "", reason: "not_linked" },
     ],
-    [
-      "HQ names nobody who asked",
-      { reason: "awaiting_request" },
-      { id: "standup", state: "waiting", at: "", reason: "awaiting_request" },
-    ],
     ["asked: the sign-in says the rest", undefined, { id: "standup", state: "waiting", at: "" }],
   ];
   for (const [name, wait, step] of waits) {

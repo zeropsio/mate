@@ -82,12 +82,6 @@ export const STAND_UP_POLL = Duration.seconds(10);
 export const STAND_UP_FAST_FOR = Duration.minutes(30);
 /** …and then, until the stand-up is settled. */
 export const STAND_UP_SLOW_POLL = Duration.seconds(60);
-/**
- * HQ naming nobody who asked settles the stand-up as `none` only after this
- * long up: the press records its ask as it makes the Mate, and that record
- * may still be on its way.
- */
-export const STAND_UP_NONE_AFTER = Duration.minutes(5);
 
 /** The reads this needs from outside the process; a test hands in its own. */
 export class ZeropsSetupReads extends Context.Service<
@@ -161,20 +155,18 @@ export interface ZeropsSetupTimings {
   readonly poll: Duration.Duration;
   readonly fastFor: Duration.Duration;
   readonly slowPoll: Duration.Duration;
-  readonly noneAfter: Duration.Duration;
 }
 
 const TIMINGS: ZeropsSetupTimings = {
   poll: STAND_UP_POLL,
   fastFor: STAND_UP_FAST_FOR,
   slowPoll: STAND_UP_SLOW_POLL,
-  noneAfter: STAND_UP_NONE_AFTER,
 };
 
 /** How long to wait before the next look, this far (ms) into the wait for the stand-up. */
 export const standUpPollDelay = (
   elapsedMs: number,
-  timings: Pick<ZeropsSetupTimings, "poll" | "fastFor" | "slowPoll"> = TIMINGS,
+  timings: ZeropsSetupTimings = TIMINGS,
 ): Duration.Duration =>
   elapsedMs < Duration.toMillis(timings.fastFor) ? timings.poll : timings.slowPoll;
 
@@ -351,10 +343,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           record === undefined
             ? undefined
             : { startedAt: record.startedAt, ran, claimed: record.source.endsWith(":claimed") },
-        // HQ's birth record is whole — the press records the ask before the close-off — and
-        // names nobody: a Mate with no stand-up to run.
-        nobodyAsked:
-          hq?.kind === "linked" && hq.mate.standupRequestedBy === null && hq.mate.closedOff,
+        // HQ's record carries its ask from the write that made it (audit B3), and names nobody:
+        // a Mate with no stand-up to run.
+        nobodyAsked: hq?.kind === "linked" && hq.mate.standupRequestedBy === null,
         standUpTurn: ran ? yield* turnOf(record) : undefined,
         unknown: [
           ...(signinKnown ? [] : (["signin"] as const)),
@@ -378,7 +369,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      * server claimed and died before sending (its ids make the engine take it
      * once); whether there is nothing left to do — only a terminal record.
      */
-    const tick = (upMs: number) =>
+    const tick = () =>
       Effect.gen(function* () {
         const held = yield* recordOf;
         if (held !== undefined && TERMINAL.has(held.source)) return true;
@@ -414,9 +405,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           }
           return true;
         }
-        if (requestedBy === undefined) {
-          return upMs >= Duration.toMillis(timings.noneAfter) ? yield* settle("none") : false;
-        }
+        // HQ's record carries its ask from the write that made it (audit B3): naming nobody,
+        // nobody asked.
+        if (requestedBy === undefined) return yield* settle("none");
         const project = Option.getOrUndefined(
           yield* projection
             .getActiveProjectByWorkspaceRoot(config.cwd)
@@ -540,7 +531,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const since = yield* Clock.currentTimeMillis;
       while (true) {
         const upMs = (yield* Clock.currentTimeMillis) - since;
-        if (yield* tick(upMs)) return;
+        if (yield* tick()) return;
         yield* Effect.sleep(standUpPollDelay(upMs, timings));
       }
     });
@@ -580,7 +571,7 @@ const standUpWaitOf = (hq: HqStanding): StandUpWait | undefined => {
     case "not-linked":
       return { reason: "not_linked" };
     case "linked":
-      return hq.mate.standupRequestedBy === null ? { reason: "awaiting_request" } : undefined;
+      return undefined;
   }
 };
 

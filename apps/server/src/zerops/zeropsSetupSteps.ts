@@ -218,15 +218,13 @@ export interface SetupStep {
 
 /**
  * Why a stand-up nothing started waits, as far as the server knows: zcp found no official HQ;
- * zcp holds no enrollment (with HQ's refusal code, where it refused); HQ has not sent the Mate;
- * HQ names nobody who asked. A stand-up asked for waits on its asker's sign-in, which the
- * sign-in step says.
+ * zcp holds no enrollment (with HQ's refusal code, where it refused); HQ has not sent the Mate.
+ * A stand-up asked for waits on its asker's sign-in, which the sign-in step says.
  */
 export type StandUpWait =
   | { readonly reason: "no_hq" }
   | { readonly reason: "not_enrolled"; readonly code?: string }
-  | { readonly reason: "not_linked" }
-  | { readonly reason: "awaiting_request" };
+  | { readonly reason: "not_linked" };
 
 /**
  * The Mate's Git access: its enrollment with HQ, whose credential reaches its application's
@@ -272,8 +270,8 @@ export interface SetupFacts {
       }
     | undefined;
   /**
-   * HQ's birth record of the Mate is whole — its project closed off, which the press records after
-   * the ask — and names nobody who asked: a Mate with no stand-up to run (a New project's first).
+   * HQ's record of the Mate, which carries its ask from the write that made it (audit B3), names
+   * nobody who asked: a Mate with no stand-up to run (a New project's first).
    */
   readonly nobodyAsked?: boolean;
   /** Steps this server cannot say: left out of the document rather than guessed. */
@@ -333,8 +331,7 @@ const standUpStep = (facts: SetupFacts): SetupStep | null => {
   if (facts.record === undefined) {
     if (zcpState !== undefined)
       return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };
-    // Nothing asked and nothing started: a Mate with no stand-up to run — once HQ's birth
-    // record is whole and says so.
+    // Nothing asked and nothing started: a Mate with no stand-up to run, as HQ's record says.
     if (facts.nobodyAsked === true) return { id: "standup", state: "none", at: "" };
     return { id: "standup", state: "waiting", at: "", ...facts.standUpWait };
   }

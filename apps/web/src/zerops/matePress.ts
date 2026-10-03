@@ -62,12 +62,7 @@ import {
 } from "./mateLocks";
 import { accountHqApi } from "./accountHq";
 import { addGroupEnvironment } from "./addGroupEnvironment";
-import {
-  createMateRecord,
-  markClosedOffAtHq,
-  recordMateBirth,
-  type MateBirth,
-} from "./hqMateBirth";
+import { createMateRecord, markClosedOffAtHq } from "./hqMateBirth";
 import {
   pressSteps,
   pressThrough,
@@ -342,7 +337,7 @@ export function placedMateRegistration(
     groupId: placement.groupId,
     kind: "mate",
     mate: { name: placement.botName ?? placement.displayName, face: placement.face },
-    birth: { standUp: false },
+    standUp: false,
   };
 }
 
@@ -393,7 +388,7 @@ export function mateFinishRegistration(input: {
             ? undefined
             : { tint: face.tint, shape: face.shape },
       },
-      birth: { standUp: false },
+      standUp: false,
     };
   }
   const { birth } = readZeropsMembership(input.project);
@@ -411,7 +406,7 @@ export function mateFinishRegistration(input: {
             ? undefined
             : { tint: face.tint, shape: face.shape },
       },
-      birth: { standUp: false },
+      standUp: false,
       intent: birth,
     };
   }
@@ -421,7 +416,7 @@ export function mateFinishRegistration(input: {
   const record = setUpMateRecord(input);
   return record === undefined
     ? null
-    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: input.standUp } };
+    : { hq: input.hq, kind: "mate-record", record, standUp: input.standUp };
 }
 
 /** The project is gone: nothing more is said of it. */
@@ -623,7 +618,11 @@ export type PressRegistration = {
       readonly groupId: string;
       /** Its face as picked; none where the press gives it its name's own. */
       readonly mate: { readonly name: string; readonly face: ZeropsMateFace | undefined };
-      readonly birth: MateBirth;
+      /**
+       * The person pressing asks for its stand-up, in its attach; one that closes a birth intent
+       * takes the intent's ask instead.
+       */
+      readonly standUp: boolean;
       /** The birth intent its project was created under: the attach closes it. */
       readonly intent?: string;
     }
@@ -632,7 +631,8 @@ export type PressRegistration = {
       readonly kind: "mate-record";
       /** Its name and its face as HQ records them (`setUpMateRecord`). */
       readonly record: { readonly name: string; readonly face: string };
-      readonly birth: MateBirth;
+      /** The person pressing asks for its stand-up, with its record. */
+      readonly standUp: boolean;
     }
   | {
       readonly kind: "stage" | "production";
@@ -642,8 +642,8 @@ export type PressRegistration = {
 );
 
 /**
- * The `register` step: a Mate's record in HQ — attached to its application, or in none — then its
- * birth (`recordMateBirth`); for a stage or a production, `addGroupEnvironment` — the attachment
+ * The `register` step: a Mate's record in HQ — attached to its application, or in none — with its
+ * stand-up ask in the same write; for a stage or a production, `addGroupEnvironment` — the attachment
  * and its deploy key. Each write reads what is there first, so asking again writes nothing twice.
  */
 export function pressRegistration(
@@ -653,8 +653,11 @@ export function pressRegistration(
   const hq = accountHqApi(inputs.client, inputs.organizationId, registration.hq);
   return async (projectId) => {
     if (registration.kind === "mate-record") {
-      await createMateRecord(hq, { projectId, ...registration.record });
-      await recordMateBirth(hq, projectId, registration.birth);
+      await createMateRecord(hq, {
+        projectId,
+        ...registration.record,
+        standUp: registration.standUp,
+      });
       return;
     }
     if (registration.kind === "mate") {
@@ -665,10 +668,10 @@ export function pressRegistration(
           name: registration.mate.name,
           // Empty where none was picked: the Mate wears its name's tint.
           face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
+          standUp: registration.standUp,
         },
         ...(registration.intent === undefined ? {} : { birth: registration.intent }),
       });
-      await recordMateBirth(hq, projectId, registration.birth);
       return;
     }
     const added = await addGroupEnvironment({
