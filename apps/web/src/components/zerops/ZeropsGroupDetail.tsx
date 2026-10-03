@@ -146,6 +146,8 @@ import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { findInventoryProjectRef, withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
+import { PageWaitLine } from "./WaitLine";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -681,8 +683,10 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
   if (flow === undefined) {
     return (
-      <DetailShell crumbs={crumbs} title={groupName ?? "Project"}>
-        <Note>This project has not been read yet.</Note>
+      <DetailShell crumbs={crumbs} title={groupName}>
+        <UnreadDetail trouble={flowValue?.signInTrouble ?? null}>
+          This project has not been read yet.
+        </UnreadDetail>
       </DetailShell>
     );
   }
@@ -699,7 +703,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         if (affordance.kind === "go-to-projects") openProjects();
         else rereadMates();
       }}
-      name={groupName ?? flow.groupId}
+      name={groupName}
       onAct={attention.onAct}
       names={names}
       menu={
@@ -764,7 +768,8 @@ export function ZeropsGroupPane({
   readonly commits: ZeropsCommitsState;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly groupId: string;
-  readonly name: string;
+  /** The project's name; undefined while the listing has not named it — never its id. */
+  readonly name: string | undefined;
   readonly crumbs: ReadonlyArray<Crumb>;
   /** Where a project with nothing set up goes to get something set up. */
   readonly onSetUp: () => void;
@@ -1024,8 +1029,10 @@ export function ZeropsStopDetailPage({
 
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
-      <DetailShell crumbs={crumbs} title="Environment">
-        <Note>This environment has not been read yet.</Note>
+      <DetailShell crumbs={crumbs} title={undefined}>
+        <UnreadDetail trouble={flowValue?.signInTrouble ?? null}>
+          This environment has not been read yet.
+        </UnreadDetail>
       </DetailShell>
     );
   }
@@ -2144,6 +2151,21 @@ export interface Crumb {
   readonly onClick: () => void;
 }
 
+/**
+ * A detail page whose flow is not read yet: the boot's wait line past its beat while the app reads
+ * it, and the sentence only where nothing reads it — Gitea refused the app's own sign-in.
+ */
+function UnreadDetail({
+  trouble,
+  children,
+}: {
+  readonly trouble: string | null;
+  readonly children: React.ReactNode;
+}) {
+  if (trouble !== null) return <Note>{children}</Note>;
+  return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
+}
+
 function DetailShell({
   title,
   titleTag,
@@ -2152,7 +2174,8 @@ function DetailShell({
   crumbs,
   children,
 }: {
-  readonly title: string;
+  /** Undefined while the name is not read: its line is held, with no placeholder in it. */
+  readonly title: string | undefined;
   /** What kind of thing the page is about, as a pill trailing its name. */
   readonly titleTag?: React.ReactNode;
   readonly subtitle?: string;
@@ -2180,7 +2203,7 @@ function DetailShell({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2.5">
               <h1 className="min-w-0 text-2xl leading-8 font-semibold tracking-tight wrap-anywhere">
-                {title}
+                {title ?? <span aria-hidden="true">{"\u00a0"}</span>}
               </h1>
               {titleTag}
             </div>

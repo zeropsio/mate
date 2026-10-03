@@ -87,7 +87,7 @@ function render(
   who: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
     "mates" | "matesNotice" | "onMatesNoticeAct"
-  > = {
+  > & { readonly name?: string | undefined } = {
     mates: [
       mate("theo", "Theo", "Cache the link previews"),
       mate("iris", "Iris", "Split the checkout"),
@@ -105,10 +105,10 @@ function render(
       attention={[]}
       commits={{ kind: "no-gitea" }}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
-      groupId="shop"
+      groupId="grp7Kq2"
+      name="Shop"
       {...who}
       {...stops}
-      name="Shop"
       names={{ mateNames: new Map(), groupName: "Shop" }}
       onAct={() => {}}
       onAddMate={() => {}}
@@ -168,6 +168,15 @@ describe("ZeropsGroupPane", () => {
         projectId === "stage" ? { kind: "runner", why: "waking" } : undefined,
     });
     expect(markup).toContain("Waiting for the runner · it’s waking up");
+  });
+
+  it("holds its title's line while the listing has not named the project: no id, no placeholder", () => {
+    const markup = render({ mates: [], name: undefined });
+    const title = markup.slice(markup.indexOf("<h1"), markup.indexOf("</h1>"));
+
+    expect(title).not.toContain("grp7Kq2");
+    expect(title).not.toContain("Project");
+    expect(title.replace(/<[^>]*>/gu, "")).toBe("\u00a0");
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
