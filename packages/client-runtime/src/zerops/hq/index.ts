@@ -37,6 +37,7 @@ export {
   type HqStructure,
   type OpenHqSocket,
 } from "./client.ts";
+export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
 export {
   placeListing,
   placeProject,
@@ -49,6 +50,7 @@ export {
   applyStructureEvent,
   structureEventOf,
   type HqChanges,
+  type HqMates,
   type HqStructureEvent,
 } from "./stream.ts";
 export { environmentsOf, type HqDeploy, type HqEnvironment } from "./environments.ts";

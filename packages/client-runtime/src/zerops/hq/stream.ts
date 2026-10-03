@@ -7,14 +7,25 @@
  * `null` once the reader may no longer read them. A reconnect starts with a fresh snapshot, so
  * nothing held from before it is needed to read it right.
  *
- * Changes are read through the contract's own schemas: changes this build cannot read are none,
- * and never take the structure beside them down.
+ * The same socket carries the Mates the reader may observe (`@t3tools/shared/hqMates`): the
+ * snapshot holds each of them whole, with the people the view names; a `mate` message, what
+ * changed of one Mate, or `null` once the reader may no longer observe it; a `people` message, the
+ * people map whole. Their fold is `mates.ts`.
+ *
+ * Changes and Mates are read through the contract's own schemas: what this build cannot read is
+ * none, and never takes the structure beside it down; a field it does not know is passed by.
  *
  * Pure: the messages and the folds; the client holds the socket (`client.ts`).
  *
  * @module hq/stream
  */
 import { ChangesMessage, ChangesSnapshot, type HqChange } from "@t3tools/shared/hqChanges";
+import {
+  HqMatesMessage,
+  HqPeople,
+  MateLiveView,
+  type MateLiveChange,
+} from "@t3tools/shared/hqMates";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -30,12 +41,18 @@ const UNGROUPED_KEY = "ungrouped";
 /** Each application's changes, by its id: the open ones and the latest settled, newest first. */
 export type HqChanges = ReadonlyMap<string, ReadonlyArray<HqChange>>;
 
+/** Each Mate the reader may observe, by its project: its presence, and its overview's sections. */
+export type HqMates = ReadonlyMap<string, MateLiveView>;
+
 export type HqStructureEvent =
   | {
       readonly kind: "snapshot";
       readonly structure: HqStructure;
       /** `null` where HQ sent none, or none this build can read. */
       readonly changes: HqChanges | null;
+      /** `null` where HQ sent none — an HQ from before the Mates' overviews — or none readable. */
+      readonly mates: HqMates | null;
+      readonly people: HqPeople | null;
     }
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
   | { readonly kind: "ungrouped"; readonly mates: HqUngrouped }
@@ -44,10 +61,20 @@ export type HqStructureEvent =
       readonly appId: string;
       /** `null` once the reader may no longer read them. */
       readonly changes: ReadonlyArray<HqChange> | null;
-    };
+    }
+  | {
+      readonly kind: "mate";
+      readonly projectId: string;
+      /** What changed of it, each part whole; `null` once the reader may no longer observe it. */
+      readonly value: MateLiveChange | null;
+    }
+  | { readonly kind: "people"; readonly people: HqPeople };
 
 const readSnapshotChanges = Schema.decodeUnknownOption(ChangesSnapshot);
 const readChangesMessage = Schema.decodeUnknownOption(ChangesMessage);
+const readMateView = Schema.decodeUnknownOption(MateLiveView);
+const readPeople = Schema.decodeUnknownOption(HqPeople);
+const readMatesMessage = Schema.decodeUnknownOption(HqMatesMessage);
 
 const isApp = (value: unknown): value is HqApp =>
   typeof value === "object" &&
@@ -73,6 +100,17 @@ function appOf(value: HqApp): HqApp {
   return environments === undefined ? app : { ...app, environments };
 }
 
+/** The Mates a snapshot sent, each read on its own: one this build cannot read is left out. */
+function matesOf(sent: unknown): HqMates | null {
+  if (typeof sent !== "object" || sent === null || Array.isArray(sent)) return null;
+  const mates = new Map<string, MateLiveView>();
+  for (const [projectId, view] of Object.entries(sent)) {
+    const read = readMateView(view);
+    if (Option.isSome(read)) mates.set(projectId, read.value);
+  }
+  return mates;
+}
+
 /** A message from the socket, parsed, as a structure event; nothing for one that is not. */
 export function structureEventOf(message: unknown): HqStructureEvent | undefined {
   if (typeof message !== "object" || message === null) return undefined;
@@ -82,10 +120,14 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       apps,
       ungrouped = [],
       changes,
+      mates,
+      people,
     } = message as {
       readonly apps?: unknown;
       readonly ungrouped?: unknown;
       readonly changes?: unknown;
+      readonly mates?: unknown;
+      readonly people?: unknown;
     };
     // An HQ from before the Mates in no application names none of them.
     if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
@@ -96,7 +138,18 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
         onNone: () => null,
         onSome: (byApp) => new Map(Object.entries(byApp)),
       }),
+      mates: matesOf(mates),
+      people: Option.getOrNull(readPeople(people)),
     };
+  }
+  if (type === "mate" || type === "people") {
+    return Option.match(readMatesMessage(message), {
+      onNone: () => undefined,
+      onSome: (read): HqStructureEvent =>
+        read.type === "mate"
+          ? { kind: "mate", projectId: read.projectId, value: read.value }
+          : { kind: "people", people: read.people },
+    });
   }
   if (type === "changes") {
     return Option.match(readChangesMessage(message), {
@@ -119,15 +172,16 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
 /**
  * The structure an event leaves: a snapshot replaces it; a change replaces its application in
  * place, adds it at the end, or takes it out, and the Mates in no application all at once. A change
- * before any snapshot leaves nothing known.
+ * before any snapshot leaves nothing known; changes and the Mates' messages leave it as it is.
  */
 export function applyStructureEvent(
   structure: HqStructure | null,
   event: HqStructureEvent,
 ): HqStructure | null {
   if (event.kind === "snapshot") return event.structure;
-  if (structure === null || event.kind === "changes") return structure;
+  if (structure === null) return null;
   if (event.kind === "ungrouped") return { ...structure, ungrouped: event.mates };
+  if (event.kind !== "change") return structure;
   const { appId, app } = event;
   const others = structure.apps.filter((entry) => entry.id !== appId);
   if (app === null) return { ...structure, apps: others };

@@ -445,7 +445,13 @@ describe("makeHqApi — the structure socket", () => {
 
     expect(socket.url).toBe("wss://hq-30db-8080.prg1.zerops.app/api/structure/ws?ticket=t-1");
     expect(stream.events).toEqual([
-      { kind: "snapshot", structure: { ungrouped: [], apps: [] }, changes: null },
+      {
+        kind: "snapshot",
+        structure: { ungrouped: [], apps: [] },
+        changes: null,
+        mates: null,
+        people: null,
+      },
       { kind: "change", appId: "app-1", app: { id: "app-1", name: "Acme", projects: [] } },
     ]);
     expect(socket.sent).toEqual([JSON.stringify({ type: "pong" })]);

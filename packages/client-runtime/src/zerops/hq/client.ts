@@ -142,10 +142,11 @@ export class HqError extends Error {
 export interface HqApi {
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
   /**
-   * The structure as it changes (`stream.ts`), over a socket opened with a ticket for the session:
-   * every event to `onEvent`, every message — events and pings alike — to `onAlive`. Ends when HQ
-   * hands the reader to another Core, or ends the session (the next call enters the door again);
-   * fails when the socket breaks; runs until `signal` aborts.
+   * The structure as it changes (`stream.ts`), with the Mates the reader observes and the people
+   * its view names (`mates.ts`), over a socket opened with a ticket for the session: every event
+   * to `onEvent`, every message — events and pings alike — to `onAlive`. Ends when HQ hands the
+   * reader to another Core, or ends the session (the next call enters the door again); fails when
+   * the socket breaks; runs until `signal` aborts.
    */
   readonly streamStructure: (
     handlers: {
