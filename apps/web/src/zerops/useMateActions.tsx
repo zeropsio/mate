@@ -728,20 +728,46 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * Deletes the Mate's project. The dialog stays open until the platform
-   * answers: a refusal is said there, and nothing else changes. Once it
-   * accepts, the row says *Deleting…* until the listing lets it go, the
-   * listing is read again, and nothing this browser remembers of the Mate —
-   * its row, its crew, a birth — is left for a reload to paint.
+   * The id of the key a Mate's container holds, as the Mate named it to HQ; none where it named
+   * none, or HQ does not say.
+   */
+  const mateKeyOf = useCallback(
+    async (projectId: string): Promise<string | null> => {
+      try {
+        return await hqApi().mateKey(projectId);
+      } catch {
+        return null;
+      }
+    },
+    [hqApi],
+  );
+
+  /**
+   * Deletes the Mate's project, and its key with it — by the id the Mate named to HQ, read before
+   * its project goes; none is matched by name (audit K3: a deleted Mate's key was left on the
+   * account, and a member holding tokens cannot be taken off the org). The dialog stays open until
+   * the platform answers: a refusal is said there, and nothing else changes. Once it accepts, the
+   * row says *Deleting…* until the listing lets it go, the listing is read again, and nothing this
+   * browser remembers of the Mate — its row, its crew, a birth — is left for a reload to paint.
    */
   const deleteMate = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
-      const organization = organizationRef(activeOrganization.id);
+      const clientId = activeOrganization.id;
+      const organization = organizationRef(clientId);
       const projectId = candidate.project.id;
       setPress({ pending: true, error: null });
-      runZeropsCommand(runtime.commands.deleteProject({ organization, projectId })).then(
+      void (async () => {
+        const keyTokenId = await mateKeyOf(projectId);
+        await runZeropsCommand(runtime.commands.deleteProject({ organization, projectId }));
+        // Its project gone, its key goes too; a key Zerops will not delete stays behind.
+        if (keyTokenId !== null) {
+          await client
+            .deleteIntegrationToken({ clientId, tokenId: keyTokenId })
+            .catch(() => undefined);
+        }
+      })().then(
         () => {
           if (!isCurrent()) return;
           markMateDeleting(projectId);
@@ -758,7 +784,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         },
       );
     },
-    [activeOrganization, leaveDeleted, organizationRef, runtime.commands, setDialog],
+    [
+      activeOrganization,
+      client,
+      leaveDeleted,
+      mateKeyOf,
+      organizationRef,
+      runtime.commands,
+      setDialog,
+    ],
   );
 
   /**
