@@ -19,7 +19,9 @@
  * ## Two reads, not two per person
  *
  * The member list and the project are the same two documents whoever is
- * signed in, so one pass costs two calls however many people are connected.
+ * signed in, so one pass costs two calls however many people are connected —
+ * and the member list is the one the door and the signers read too, read once
+ * for all of them (`ZeropsOrgRead`).
  *
  * ## A failed read keeps people in, once
  *
@@ -48,17 +50,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
-import * as HttpClient from "effect/unstable/http/HttpClient";
 
 import * as ServerConfig from "../config.ts";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import { requestWithMateKey } from "./ZeropsMateKey.ts";
-import { readJson, zeropsGet } from "./zeropsApiRead.ts";
+import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 import {
-  readMemberEntries,
   readOrgMembers,
   resolveDoorVisibility,
   type ZeropsOrgMember,
@@ -142,41 +141,22 @@ export const readProjectMembership = Effect.fn("ZeropsMembershipWatch.read")(fun
   const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
   const identityStatus = yield* ZeropsIdentityStatusModule.ZeropsIdentityStatus;
 
-  // This is also the read the descriptor's `identity` field reports (S4).
-  const { response: projectResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
+  // Both reads are the ones the door and the signers make too, read once for
+  // all of them. The project's is also the read the descriptor's `identity`
+  // field reports (S4).
+  const orgRead = yield* ZeropsOrgRead;
+  const own = yield* orgRead.project({ apiBaseUrl, projectId });
   yield* identityStatus.record({
-    ok: projectResponse?.status === 200,
+    ok: own.kind === "answered" && own.status === 200,
     keySource: yield* mateKey.lastSource,
   });
-  if (projectResponse === undefined || projectResponse.status !== 200)
-    return { ok: false } as const;
-  const projectBody = yield* readJson(projectResponse).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-  );
-  const project = readProjectRoles(projectBody);
+  if (own.kind !== "answered" || own.status !== 200) return { ok: false } as const;
+  const project = readProjectRoles(own.body);
   if (project === null) return { ok: false } as const;
 
-  const { response: memberResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({
-      url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-      token,
-    }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
-  if (memberResponse === undefined || memberResponse.status !== 200) return { ok: false } as const;
-  const memberBody = yield* readJson(memberResponse).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-  );
-  const entries = readMemberEntries(memberBody);
+  const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
+  if (members.kind !== "answered" || members.status !== 200) return { ok: false } as const;
+  const entries = readMemberEntries(members.body);
   // An unreadable list is an outage; an empty one would be a lockout dressed
   // as an answer, so it is read as an outage too.
   if (entries === null || entries.length === 0) return { ok: false } as const;
@@ -282,21 +262,21 @@ export const make = Effect.gen(function* () {
   const environment = config.zerops;
   const failures = yield* Ref.make(0);
   const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-  const httpClient = yield* HttpClient.HttpClient;
-  // The process-wide reader and identity status, shared with the door and
-  // the signers gate — provided by the layer this service's own layer
-  // composes above (`zeropsFeedsLayer.ts`).
+  // The process-wide reader, identity status and member list read once for
+  // all, shared with the door and the signers gate — provided by the layer
+  // this service's own layer composes above (`zeropsFeedsLayer.ts`).
   const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
   const identityStatus = yield* ZeropsIdentityStatusModule.ZeropsIdentityStatus;
+  const orgRead = yield* ZeropsOrgRead;
 
   const recheckNow: ZeropsMembershipWatch["Service"]["recheckNow"] =
     environment === undefined
       ? Effect.succeed(0)
       : runMembershipRecheck({ environment, failures }).pipe(
           Effect.provideService(EnvironmentAuth.EnvironmentAuth, serverAuth),
-          Effect.provideService(HttpClient.HttpClient, httpClient),
           Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
           Effect.provideService(ZeropsIdentityStatusModule.ZeropsIdentityStatus, identityStatus),
+          Effect.provideService(ZeropsOrgRead, orgRead),
           // A pass that dies must not take the loop with it: the next one is
           // minutes away and is the recovery.
           Effect.catchCause(() => Effect.succeed(0)),

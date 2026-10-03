@@ -57,15 +57,12 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
-import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as NodeOS from "node:os";
 
 import * as ServerConfig from "../config.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import { requestWithMateKey } from "./ZeropsMateKey.ts";
-import { readJson, zeropsGet } from "./zeropsApiRead.ts";
-import { readMemberEntries, readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
+import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
+import { readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
 import { readProjectRoles } from "./ZeropsMembershipWatch.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
@@ -194,9 +191,6 @@ export function isTurnStartingCommand(
   );
 }
 
-/** How long a read of the org's member list stays good. */
-export const MEMBERS_CACHE_TTL = Duration.seconds(30);
-
 /**
  * How long a turn waits on a code being checked whose outcome decides it: a success makes the
  * login its person's, a failure leaves it the signer's before. The CLI writes the credential
@@ -239,9 +233,9 @@ export class ZeropsProjectSigners extends Context.Service<
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * Whether the org lists `userId` as an `ACTIVE` member, from a read no
-     * older than {@link MEMBERS_CACHE_TTL}; `undefined` when the member list
-     * cannot be read and nothing was known before. A read that fails answers
-     * from the last list read.
+     * older than `ORG_READ_MAX_AGE` (`ZeropsOrgRead`); `undefined` when the
+     * member list cannot be read and nothing was known before. A read that
+     * fails answers from the last list read.
      */
     readonly isActiveMember: (userId: string) => Effect.Effect<boolean | undefined>;
     /** Runs one leave check now and answers how many agents it signed out. */
@@ -276,43 +270,23 @@ export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")
   readonly environment: ZeropsEnvironment;
 }) {
   const { apiBaseUrl, projectId } = input.environment;
-  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
-  const { response: projectResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
-  if (projectResponse === undefined || projectResponse.status !== 200) return undefined;
-  const project = readProjectRoles(
-    yield* readJson(projectResponse).pipe(
-      Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-    ),
-  );
+  // The project and the member list this Mate reads once for the signers, the
+  // door and the watch.
+  const orgRead = yield* ZeropsOrgRead;
+  const own = yield* orgRead.project({ apiBaseUrl, projectId });
+  if (own.kind !== "answered" || own.status !== 200) return undefined;
+  const project = readProjectRoles(own.body);
   if (project === null) return undefined;
 
-  const { response: memberResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({
-      url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-      token,
-    }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
-  if (memberResponse === undefined || memberResponse.status !== 200) return undefined;
-  const memberBody = yield* readJson(memberResponse).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-  );
-  const entries = readMemberEntries(memberBody);
+  const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
+  if (members.kind !== "answered" || members.status !== 200) return undefined;
+  const entries = readMemberEntries(members.body);
   // An empty list is an outage dressed as an answer, and acting on it would
   // delete every login in the container.
   if (entries === null || entries.length === 0) return undefined;
   // A partial page changes nothing (S6): a signer merely off this page is
   // not a signer the org lost.
-  if (!isMemberListComplete(memberBody, entries.length)) return undefined;
+  if (!isMemberListComplete(members.body, entries.length)) return undefined;
   return new Set(
     readOrgMembers(entries)
       .filter((member) => member.status === "ACTIVE")
@@ -323,49 +297,37 @@ export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const environment = config.zerops;
-  const httpClient = yield* HttpClient.HttpClient;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const homeDir = NodeOS.homedir();
   const signIns = yield* ZeropsSignIns;
-  const members = yield* Ref.make<{
-    readonly at: number;
-    readonly value: ReadonlySet<string>;
-  } | null>(null);
-  // The process-wide reader, shared with the door and the watch — provided
-  // by the layer this service's own layer composes above
-  // (`zeropsFeedsLayer.ts`).
-  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
+  // The project and the member list read once for all, shared with the door
+  // and the watch — provided by the layer this service's own layer composes
+  // above (`zeropsFeedsLayer.ts`).
+  const orgRead = yield* ZeropsOrgRead;
+  /** The org's active members as last read: a read that fails answers from it. */
+  const lastRead = yield* Ref.make<ReadonlySet<string> | undefined>(undefined);
 
-  const withHttp = <A>(
-    effect: Effect.Effect<A, never, HttpClient.HttpClient | ZeropsMateKeyModule.ZeropsMateKey>,
-  ) =>
-    effect.pipe(
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-      Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-    );
-
-  /** The org's active members read now, cached on success. */
+  /** The org's active members, read through the shared read and kept on success. */
   const readMembersThrough = (environment: ZeropsEnvironment) =>
     Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const read = yield* withHttp(readActiveMemberIds({ environment }));
-      if (read !== undefined) yield* Ref.set(members, { at: now, value: read });
+      const read = yield* readActiveMemberIds({ environment }).pipe(
+        Effect.provideService(ZeropsOrgRead, orgRead),
+      );
+      if (read !== undefined) yield* Ref.set(lastRead, read);
       return read;
     });
 
   const isActiveMember: ZeropsProjectSigners["Service"]["isActiveMember"] = (userId) =>
     environment === undefined
       ? Effect.succeed(undefined)
-      : Effect.gen(function* () {
-          const now = yield* Clock.currentTimeMillis;
-          const held = yield* Ref.get(members);
-          if (held !== null && now - held.at < Duration.toMillis(MEMBERS_CACHE_TTL)) {
-            return held.value.has(userId);
-          }
-          const read = yield* readMembersThrough(environment);
-          return (read ?? held?.value)?.has(userId);
-        });
+      : readMembersThrough(environment).pipe(
+          Effect.flatMap((read) =>
+            read === undefined
+              ? Ref.get(lastRead).pipe(Effect.map((last) => last?.has(userId)))
+              : Effect.succeed(read.has(userId)),
+          ),
+        );
 
   const signers: ZeropsProjectSigners["Service"]["signers"] = signIns.load.pipe(
     Effect.map(signersOf),

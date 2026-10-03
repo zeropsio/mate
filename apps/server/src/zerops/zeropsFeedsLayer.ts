@@ -36,6 +36,7 @@ import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
@@ -149,6 +150,10 @@ const liveLayer = Layer.mergeAll(
   // platform to re-read.
   ZeropsMembershipWatchModule.layer,
 ).pipe(
+  // The org's member list, read once for the watch, the signers and the door
+  // alike (`ZeropsOrgRead`), over the one own-key reader below; it reaches
+  // the door the same way that reader does.
+  Layer.provideMerge(ZeropsOrgReadModule.layer),
   // The process-wide own-key reader: one cache, one invalidation, shared by
   // the watch and the signers gate above, and (via this layer's own merged
   // output flowing up through the runtime composition in `server.ts`) by the

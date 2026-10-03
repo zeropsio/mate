@@ -36,6 +36,7 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
@@ -581,6 +582,16 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     Layer.succeed(
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+    ),
+    // The project and the member list the door would read with that key
+    // answer the same, and reach for no platform: there is no key to read
+    // them with.
+    Layer.succeed(
+      ZeropsOrgReadModule.ZeropsOrgRead,
+      ZeropsOrgReadModule.ZeropsOrgRead.of({
+        project: () => Effect.succeed({ kind: "no-key" }),
+        members: () => Effect.succeed({ kind: "no-key" }),
+      }),
     ),
   );
 };

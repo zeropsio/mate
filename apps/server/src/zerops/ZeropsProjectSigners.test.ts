@@ -31,12 +31,13 @@ import {
 } from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
+import { ORG_READ_MAX_AGE } from "./ZeropsOrgRead.ts";
 import {
   isMemberListComplete,
   loginTurnRefusal,
   isTurnStartingCommand,
   make as makeProjectSigners,
-  MEMBERS_CACHE_TTL,
   planAgentSignOut,
   readActiveMemberIds,
   SIGN_IN_CHECK_WAIT,
@@ -304,15 +305,19 @@ const httpLayer = (
   ),
 ) => {
   const seen: Array<string | undefined> = [];
-  const layer = Layer.mergeAll(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request) => {
-        seen.push(request.headers.authorization);
-        return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
-      }),
+  const layer = ZeropsOrgReadModule.layer.pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make((request) => {
+            seen.push(request.headers.authorization);
+            return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
+          }),
+        ),
+        Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+      ),
     ),
-    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
   );
   return { layer, seen } as const;
 };
@@ -749,7 +754,7 @@ describe("isActiveMember", () => {
       yield* TestClock.adjust(Duration.seconds(5));
       yield* signers.isActiveMember(EVA);
       assert.strictEqual(reads(), 1);
-      yield* TestClock.adjust(MEMBERS_CACHE_TTL);
+      yield* TestClock.adjust(ORG_READ_MAX_AGE);
       yield* signers.isActiveMember(JAN);
       assert.strictEqual(reads(), 2);
     }).pipe(Effect.scoped),
@@ -760,7 +765,7 @@ describe("isActiveMember", () => {
       const { signers, setMembers, reads } = yield* members(janActive);
       assert.isTrue(yield* signers.isActiveMember(JAN));
       setMembers({ message: "down" }, 500);
-      yield* TestClock.adjust(MEMBERS_CACHE_TTL);
+      yield* TestClock.adjust(ORG_READ_MAX_AGE);
       assert.isTrue(yield* signers.isActiveMember(JAN));
       assert.strictEqual(reads(), 2);
     }).pipe(Effect.scoped),
