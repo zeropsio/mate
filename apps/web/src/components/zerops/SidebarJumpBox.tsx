@@ -40,9 +40,8 @@ import { newMessageId } from "~/lib/utils";
 import { useThreadShells } from "~/state/entities";
 import { useThreadSearch } from "~/state/queries";
 import { threadEnvironment, useEnvironmentThread } from "~/state/threads";
-import { useAtomCommand } from "~/state/use-atom-command";
 import { formatShortTimestamp } from "~/timestampFormat";
-import { useMateHeld } from "~/zerops/accountEnvironments";
+import { useMateCommand, useMateHeld } from "~/zerops/accountEnvironments";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useMateReadOnly, useMatesReadOnly } from "~/zerops/useMateReadOnly";
@@ -247,8 +246,9 @@ function useJumpWrite(
   const readOnly = useMateReadOnly(environmentId, shell?.modelSelection.instanceId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const landed = useZeropsChangeLandedEvents(environmentId);
-  const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
-  const respondToUserInput = useAtomCommand(threadEnvironment.respondToUserInput, {
+  // A parked Mate's cached conversation reads before its link is up: the send waits for it.
+  const startTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const respondToUserInput = useMateCommand(threadEnvironment.respondToUserInput, {
     reportFailure: false,
   });
   // Words sent while the conversation was still being read: they go once it is.
