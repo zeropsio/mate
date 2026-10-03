@@ -43,6 +43,7 @@
  * @module ZeropsMembershipWatch
  */
 import type { AuthSessionId } from "@t3tools/contracts";
+import { opensForOf, readProjectRoles } from "@t3tools/shared/mateAccess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -57,11 +58,6 @@ import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
-import {
-  readOrgMembers,
-  resolveDoorVisibility,
-  type ZeropsOrgMember,
-} from "./ZeropsThrowawayIdentity.ts";
 
 /** The subject prefix every session the Zerops door mints carries. */
 export const ZEROPS_SUBJECT_PREFIX = "zerops-user:";
@@ -163,67 +159,6 @@ export const readProjectMembership = Effect.fn("ZeropsMembershipWatch.read")(fun
 
   return { ok: true, opensFor: opensForOf(projectId, project, entries) } as const;
 });
-
-/**
- * Every Zerops user the project `projectId` opens for, by the door's own rule over its roles and the
- * org's member list: what keeps a session open here, and what admits a turn no session stands
- * behind (`ZeropsProjectSigners.hasProjectAccess`, X3).
- */
-export function opensForOf(
-  projectId: string,
-  project: ProjectRoles,
-  entries: ReadonlyArray<unknown>,
-): ReadonlySet<string> {
-  const opensFor = new Set<string>();
-  for (const member of readOrgMembers(entries)) {
-    if (doorOpensFor({ projectId, member, overrides: project.overrides })) {
-      opensFor.add(member.userId);
-    }
-  }
-  return opensFor;
-}
-
-export interface ProjectRoles {
-  readonly clientId: string;
-  /** `clientUserId` → the role this project gives them. */
-  readonly overrides: Readonly<Record<string, string>>;
-}
-
-/** The two fields of a project read this loop needs, or `null` if neither is there. */
-export function readProjectRoles(body: unknown): ProjectRoles | null {
-  if (typeof body !== "object" || body === null) return null;
-  const record = body as Record<string, unknown>;
-  const clientId = record["clientId"];
-  if (typeof clientId !== "string" || clientId.length === 0) return null;
-  const overrides: Record<string, string> = {};
-  const userRoles = record["userRoles"];
-  if (Array.isArray(userRoles)) {
-    for (const entry of userRoles) {
-      if (typeof entry !== "object" || entry === null) continue;
-      const row = entry as Record<string, unknown>;
-      if (typeof row["clientUserId"] === "string" && typeof row["roleCode"] === "string") {
-        overrides[row["clientUserId"]] = row["roleCode"];
-      }
-    }
-  }
-  return { clientId, overrides };
-}
-
-function doorOpensFor(input: {
-  readonly projectId: string;
-  readonly member: ZeropsOrgMember;
-  readonly overrides: Readonly<Record<string, string>>;
-}): boolean {
-  const override =
-    input.member.clientUserId.length === 0 ? undefined : input.overrides[input.member.clientUserId];
-  return (
-    resolveDoorVisibility({
-      projectId: input.projectId,
-      member: input.member,
-      override,
-    }).visibility === "open"
-  );
-}
 
 export class ZeropsMembershipWatch extends Context.Service<
   ZeropsMembershipWatch,

@@ -67,6 +67,10 @@
       "types": "./src/zeropsPermissions.ts",
       "import": "./src/zeropsPermissions.ts"
     },
+    "./mateAccess": {
+      "types": "./src/mateAccess.ts",
+      "import": "./src/mateAccess.ts"
+    },
     "./mateLink": {
       "types": "./src/mateLink.ts",
       "import": "./src/mateLink.ts"
