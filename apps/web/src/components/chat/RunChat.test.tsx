@@ -784,6 +784,37 @@ describe("RunChat", () => {
     expect(done).toMatch(/<button[^>]*data-report-take="desktop"/);
   });
 
+  // An operation whose call never returned is behind the newer batch: it says
+  // what was asked, never "Running"; once the run is over, "No result" (D3).
+  it.each([
+    { noResult: "stale" as const, time: null },
+    { noResult: "closed" as const, time: "No result" },
+  ])("draws an operation whose call never returned: $noResult", ({ noResult, time }) => {
+    const entry = operation("d1", "turn-1", 1, {
+      kind: "deploy",
+      subject: "appdev",
+      phase: "running",
+      voice: "Deploying appdev.",
+    });
+    if (entry.kind !== "operation") throw new Error("an operation");
+    const html = draw(
+      record([
+        {
+          kind: "operation",
+          key: "operation:op:d1",
+          at: at(1),
+          operation: entry.operation,
+          noResult,
+        },
+      ]),
+    );
+    expect(html).toContain(">Deploy appdev<");
+    expect(html).not.toContain("Deploying appdev");
+    expect(html).not.toContain(">Running<");
+    if (time === null) expect(html).not.toContain("No result");
+    else expect(html).toContain(`>${time}<`);
+  });
+
   // Before anything is in the chat the card is its status line alone, the
   // first thing seen after every message: the face as far from the card's
   // top as from its foot, where the empty list's room stood it 31 px down

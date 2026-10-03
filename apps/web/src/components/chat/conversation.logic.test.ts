@@ -19,6 +19,7 @@ import {
   noteLine,
   incidentsStanding,
   operationLineWords,
+  operationUnreturnedWords,
   standingIncidents,
   splitStandup,
   readCrewCard,
@@ -2449,6 +2450,28 @@ describe("deriveOutcome", () => {
     expect(outcome?.notDone).toEqual([
       expect.objectContaining({ subject: "gitea", reason: "Gitea isn't connected yet" }),
     ]);
+  });
+});
+
+// A call that never returned says what was asked, never that it runs or how
+// it came out (D3): "Deploy app", then "No result" once the run is over.
+describe("operationUnreturnedWords", () => {
+  it.each([
+    { kind: "deploy", words: "Deploy app" },
+    { kind: "verify", words: "Check app" },
+    { kind: "browser", words: "Check app" },
+    { kind: "import", words: "Create app" },
+    { kind: "logs", words: "Read the app log" },
+    { kind: "events", words: "Read the events of app" },
+    { kind: "discover", words: "Look at app" },
+    { kind: "process", words: "Follow app" },
+    { kind: "bootstrap", words: "Set up app" },
+    { kind: "standup", words: "Stand app up" },
+    { kind: "subdomain", words: "Update the subdomain of app" },
+  ] as const)("$kind: $words", ({ kind, words }) => {
+    const entry = operation("x", "t1", 1, { kind, subject: "app", phase: "running" });
+    if (entry.kind !== "operation") throw new Error("an operation");
+    expect(operationUnreturnedWords(entry.operation)).toBe(words);
   });
 });
 

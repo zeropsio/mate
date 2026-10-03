@@ -102,6 +102,7 @@ import {
   browserTakeState,
   formatWorkDuration,
   operationLineWords,
+  operationUnreturnedWords,
   type BrowserStripModel,
   type IncidentModel,
   type OutcomeModel,
@@ -1548,11 +1549,17 @@ function StandupBubble({
 function OperationBubble({
   operation,
   undone = false,
+  noResult,
   lines = detailLines(operation, null),
 }: {
   readonly operation: ZeropsOperation;
   /** It failed, and a later one on the same service went through: quiet (K9). */
   readonly undone?: boolean;
+  /**
+   * Its call never returned: what was asked, never "Running" — "stale" while
+   * the run goes on, "closed" ("No result") once it is over.
+   */
+  readonly noResult?: "stale" | "closed" | undefined;
   /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
   readonly lines?: number;
 }) {
@@ -1561,10 +1568,11 @@ function OperationBubble({
   const inSlot = use(InSlotContext);
   const failed = operation.phase === "failed";
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
-  const running = operation.phase === "running";
+  const running = noResult === undefined && operation.phase === "running";
   // Live in the slot, its pipeline as it goes and the step it is on.
   const live = running && inSlot ? liveOperationBar(operation) : null;
-  const words = operationLineWords(operation);
+  const words =
+    noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
   const detail =
     reason ?? (operation.kind === "deploy" ? (versionText(operation.version?.name) ?? null) : null);
@@ -1579,7 +1587,9 @@ function OperationBubble({
     <Headline
       column
       opens={opens}
-      time={operationTime(operation)}
+      time={
+        noResult === undefined ? operationTime(operation) : noResult === "closed" ? NO_RESULT : null
+      }
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
@@ -1591,7 +1601,7 @@ function OperationBubble({
             <StatusBar className="w-12" segments={live.segments} />
             {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}
           </>
-        ) : running ? null : (
+        ) : running || noResult !== undefined ? null : (
           <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
         )}
         {detail !== null ? (
@@ -2372,10 +2382,14 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
       return {
         key: item.key,
         bubble:
-          item.operation.kind === "standup" ? (
+          item.operation.kind === "standup" && item.noResult === undefined ? (
             <StandupBubble operation={item.operation} undone={undone.has(item.key)} />
           ) : (
-            <OperationBubble operation={item.operation} undone={undone.has(item.key)} />
+            <OperationBubble
+              noResult={item.noResult}
+              operation={item.operation}
+              undone={undone.has(item.key)}
+            />
           ),
         call: true,
       };

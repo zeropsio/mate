@@ -831,6 +831,28 @@ describe("deriveMessagesTimelineRows", () => {
       ["step:w2", at(1, 20)],
       ["operation:op:d1", at(2, 0)],
     ]);
+    // Stale, it no longer runs (D3); settled, it closes as no result.
+    expect(live?.items.find((item) => item.key === "operation:op:d1")).toMatchObject({
+      noResult: "stale",
+    });
+    const settled = recordOf(
+      rows({
+        entries: entries.map((entry) =>
+          entry.kind === "operation"
+            ? { ...entry, operation: { ...entry.operation, phase: "interrupted" as const } }
+            : entry,
+        ),
+        settled: "t1",
+      }),
+    );
+    expect(settled?.items.find((item) => item.key === "operation:op:d1")).toMatchObject({
+      noResult: "closed",
+    });
+    // It stays where it went stale.
+    expect(settled?.items.map((item) => [item.key, item.at]).slice(0, 2)).toEqual([
+      ["step:w2", at(1, 20)],
+      ["operation:op:d1", at(2, 0)],
+    ]);
   });
 
   it("says a stale step in the past tense", () => {

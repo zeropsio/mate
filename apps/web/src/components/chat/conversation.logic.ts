@@ -1153,6 +1153,53 @@ export function isActivityWork(entry: WorkLogEntry): boolean {
 export type WorkLineFace = "working" | "idle" | "produced" | "failed" | "paused" | "stopped";
 
 /**
+ * A platform operation whose call never returned, as a step's words: what was
+ * asked ("Deploy app"), never that it runs or how it came out. The record
+ * says it once a newer batch left it behind, and "No result" once the run is
+ * over (pass 35).
+ */
+export function operationUnreturnedWords(operation: ZeropsOperation): string {
+  const { subject } = operation;
+  switch (operation.kind) {
+    case "deploy":
+      return `Deploy ${subject}`;
+    case "verify":
+    case "browser":
+      return `Check ${subject}`;
+    case "import":
+      return `Create ${subject}`;
+    case "mount":
+      return `Mount ${subject}`;
+    case "subdomain":
+      return `Update the subdomain of ${subject}`;
+    case "delete":
+      return `Delete ${subject}`;
+    case "scale":
+      return `Scale ${subject}`;
+    case "manage":
+      return `Manage ${subject}`;
+    case "env":
+      return `Update the environment of ${subject}`;
+    case "devServer":
+      return `Manage the dev server on ${subject}`;
+    case "logs":
+      return `Read the ${subject} log`;
+    case "events":
+      return `Read the events of ${subject}`;
+    case "process":
+      return `Follow ${subject}`;
+    case "discover":
+      return `Look at ${subject}`;
+    case "bootstrap":
+      return `Set up ${subject}`;
+    case "standup":
+      return `Stand ${subject} up`;
+    case "error":
+      return operation.voice.replace(/\.$/, "");
+  }
+}
+
+/**
  * A platform operation as a step's words: running, its own voice ("Deploying
  * app"); settled, what it came to in a sentence — "Deployed app", "app is
  * healthy", "Workflow failed" — never its status word before its name

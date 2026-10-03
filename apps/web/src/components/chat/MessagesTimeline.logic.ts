@@ -740,6 +740,11 @@ export type RecordItem =
       readonly key: string;
       readonly at: string;
       readonly operation: ZeropsOperation;
+      /**
+       * Its call never returned: "stale" while the run goes on (a newer batch
+       * started), "closed" once it settled without it — "No result".
+       */
+      readonly noResult?: "stale" | "closed";
     }
   /** Helpers it started, a batch or a workflow at once. */
   | {
@@ -1101,7 +1106,8 @@ function batchCallOf(
     if (op.returnedAt !== undefined) {
       return { startedAt, returnedAt: epoch(op.returnedAt), response };
     }
-    if (op.phase !== "running") {
+    // Its call never returned — still running, or cut off as its run ended.
+    if (op.phase !== "running" && op.phase !== "interrupted") {
       return { startedAt, returnedAt: epoch(op.settledAt) ?? startedAt, response };
     }
     return { startedAt, returnedAt: null, response };
@@ -1534,8 +1540,9 @@ function stretchRecord(input: {
         const op = entry.operation;
         const staleAt = staleOperationSince.get(op.key);
         if (op.kind === "browser") {
-          // One an older batch left marked open joins where it went stale.
-          if (staleAt !== undefined && runLive) {
+          // One an older batch left marked open joins where it went stale,
+          // and stays there once the run is over.
+          if (staleAt !== undefined) {
             joinCheck(op, staleAt);
             break;
           }
@@ -1557,14 +1564,25 @@ function stretchRecord(input: {
         // What the Mate waits on stands in the live slot until its call
         // returns; one that runs on after (a stand-up's builds) is the band's,
         // and its line joins the record where its call returned.
-        if (runLive && op.phase === "running" && op.returnedAt === undefined) {
-          // One an older batch left marked open joins where it went stale.
-          if (staleAt !== undefined) {
-            push({ kind: "operation", key: `operation:${op.key}`, at: staleAt, operation: op });
-            break;
-          }
-          if (stretch.live) break;
+        // Its call never returned: one an older batch left marked open joins
+        // where it went stale, and stays there once the run is over.
+        const unreturned =
+          op.returnedAt === undefined && (op.phase === "running" || op.phase === "interrupted");
+        if (unreturned && staleAt !== undefined) {
+          push({
+            kind: "operation",
+            key: `operation:${op.key}`,
+            at: staleAt,
+            operation: op,
+            noResult: runLive ? "stale" : "closed",
+          });
+          break;
         }
+        if (runLive && op.phase === "running" && op.returnedAt === undefined && stretch.live) {
+          break;
+        }
+        // The run is over without it: no result.
+        const closed = !runLive && unreturned;
         push({
           kind: "operation",
           key: `operation:${op.key}`,
@@ -1573,6 +1591,7 @@ function stretchRecord(input: {
             entry.createdAt,
           ),
           operation: op,
+          ...(closed ? { noResult: "closed" as const } : {}),
         });
         break;
       }
