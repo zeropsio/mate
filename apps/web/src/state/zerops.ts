@@ -184,6 +184,15 @@ export const hqMatesViewAtom = Atom.make<HqMatesView | null>(null).pipe(
   Atom.withLabel("zerops:hq-mates-view"),
 );
 
+/**
+ * Whether the organization in view has an official HQ, as `useAccountHq` decided it — from the
+ * verdict this browser keeps, or its member list. Null while neither has said.
+ */
+export const hqOfficialAtom = Atom.make<boolean | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-official"),
+);
+
 /** The people HQ last named for the reader's view, by their Zerops user id. */
 export interface HqPeopleView {
   readonly organizationId: string;

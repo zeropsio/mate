@@ -105,7 +105,10 @@ export interface ContainerMachine {
   readonly processEndedAt: Instant | null;
   /** The newest probe reading and when its probe was sent; null before one. */
   readonly reading: { readonly reading: ProbeReading; readonly sentAt: Instant } | null;
-  /** When the link connected; null while it is not connected. */
+  /**
+   * When something began proving the container up: its socket, or HQ holding its Mate online
+   * (`containerStore`). Null while nothing does.
+   */
   readonly connectedSince: Instant | null;
   /**
    * When the container was last known up outside a socket: the latest probe it answered ready

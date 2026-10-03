@@ -25,12 +25,18 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
+import {
+  hqMatesViewAtom,
+  hqOfficialAtom,
+  zeropsSessionAtom,
+  type HqMatesView,
+} from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   hqIndexPort,
   keptSessionUnanswered,
   linkPhaseOf,
+  onlinePort,
   recordsStorage,
 } from "./environmentPorts";
 
@@ -237,6 +243,60 @@ describe("the records port: the account's own storage", () => {
 
     openAccountLifetime("user-a");
     expect(records.list().map((entry) => entry.targetKey)).toEqual(["project-a:service-a"]);
+  });
+});
+
+describe("onlinePort: the projects whose Mate HQ holds online", () => {
+  const presence = (online: boolean) => ({
+    presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
+  });
+  const mates = new Map([
+    ["p-up", presence(true)],
+    ["p-down", presence(false)],
+  ]) as never;
+  const registryWith = (view: HqMatesView | null, official: boolean | null = true) => {
+    const registry = AtomRegistry.make();
+    registry.set(hqMatesViewAtom, view);
+    registry.set(hqOfficialAtom, official);
+    return registry;
+  };
+
+  it.each([
+    ["HQ's answer now, whatever organization is in view", { mates, current: true }, ["p-up"]],
+    ["HQ naming no Mates", { mates: null, current: true }, []],
+  ] as const)("reads %s", (_name, view, expected) => {
+    const read = onlinePort(registryWith({ organizationId: "org-2", ...view })).read();
+    expect(read === null ? null : [...read]).toEqual(expected);
+  });
+
+  // HQ's word is not current: the container store waits for it, a bounded while — but only for an
+  // HQ that is there, or not decided yet.
+  const lastKnown = { organizationId: "org-1", mates, current: false } as const;
+  it.each([
+    ["what was last known of them, of an HQ that is there", lastKnown, true],
+    ["what was last known of them, of an HQ not decided yet", lastKnown, null],
+    ["nothing, of an HQ that is there", null, true],
+  ] as const)("reads no word while all it holds is %s", (_name, view, official) => {
+    expect(onlinePort(registryWith(view, official)).read()).toBeNull();
+  });
+
+  it.each([
+    ["what was last known of them", lastKnown],
+    ["nothing", null],
+  ] as const)(
+    "reads that none is online where the organization has no official HQ, holding %s",
+    (_name, view) => {
+      expect([...(onlinePort(registryWith(view, false)).read() ?? ["waits"])]).toEqual([]);
+    },
+  );
+
+  it("tells its listener when the organization's HQ is decided", () => {
+    const registry = registryWith(null, null);
+    let told = 0;
+    const stop = onlinePort(registry).subscribe(() => void (told += 1));
+    registry.set(hqOfficialAtom, false);
+    stop();
+    expect(told).toBe(1);
   });
 });
 

@@ -185,6 +185,15 @@ export interface AccountEnvironmentPorts {
     readonly read: () => boolean;
     readonly subscribe: (listener: () => void) => () => void;
   };
+  /**
+   * The projects whose Mate HQ holds online now: each proves its container up without a probe
+   * (`ContainerStore.setOnline`). Null while HQ's word is not current: a Mate first listed
+   * meanwhile waits for it, a bounded while. Without it, every container is read as before.
+   */
+  readonly online?: {
+    readonly read: () => ReadonlySet<string> | null;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
 }
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
@@ -825,6 +834,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const stops: Array<() => void> = [];
     driver.setVisible(!options.hidden);
     containers.setVisible(!options.hidden);
+    // HQ's word before the listing's first targets, so no Mate it holds online is read on sight.
+    const updateOnline = () =>
+      containers.setOnline(ports.online === undefined ? new Set() : ports.online.read());
+    updateOnline();
     const holdBackground = () => driver.holdBackground(ports.pressInFlight?.read() ?? false);
     holdBackground();
     stops.push(
@@ -851,6 +864,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         updateRoute();
         updateActions();
       }) ?? (() => undefined),
+      ports.online?.subscribe(updateOnline) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
