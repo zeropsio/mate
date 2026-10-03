@@ -175,4 +175,38 @@ describe("ZeropsInventoryProvider grants", () => {
 
     expect(tab.text()).toContain(`grants ${JSON.stringify([["p1", grants]])}`);
   });
+
+  // F11 (e2e, 2026-10-03): after Hand over, a Mate's owner is its OWNER grant (#12), which the
+  // menu's rows read — never only whoever signed its agent in.
+  it("carries them onto the menu's rows, where a Mate's owner is read", async () => {
+    const grants = [
+      { clientUserId: "cu-1", roleCode: "BASIC_USER" },
+      { clientUserId: "cu-dev", roleCode: "OWNER" },
+    ];
+    const harness = makeAccountHarness({
+      people: [{ user: person, password: "secret" }],
+      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: grants }],
+      signedIn: "user-1",
+    });
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      page: async () => {
+        const { AccountProduct } = await import("./__fixtures__/accountProduct");
+        const { useAtomValue } = await import("@effect/atom-react");
+        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
+        const { candidateRowsAtom } = await import("../state/zerops");
+        function Rows() {
+          const rows = heldCandidates(useAtomValue(candidateRowsAtom)).rows;
+          return `rows ${JSON.stringify(rows.map(({ project }) => [project.id, project.userRoles ?? null]))}`;
+        }
+        return (
+          <AccountProduct datastream={harness.datastream}>
+            <Rows />
+          </AccountProduct>
+        );
+      },
+    });
+    await settle();
+
+    expect(tab.text()).toContain(`rows ${JSON.stringify([["p1", grants]])}`);
+  });
 });

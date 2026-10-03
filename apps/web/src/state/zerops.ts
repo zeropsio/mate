@@ -2,7 +2,13 @@ import {
   connectionCatalogDisplayUrl,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import type { ZeropsService, ZeropsStatHistoryItem } from "@t3tools/client-runtime/zerops";
+import {
+  grantListing,
+  projectGrantsOf,
+  type ZeropsService,
+  type ZeropsStatHistoryItem,
+} from "@t3tools/client-runtime/zerops";
+import { heldEvidence } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   processRecordToActivityProcess,
   projectKeyOf,
@@ -236,9 +242,12 @@ const organizationListingAtom = Atom.make(
     );
     const placements = get(hqPlacementsAtom) ?? NO_PLACEMENTS;
     const listing = listed?.listing ?? UNREAD;
+    // Each project's own grants, as the access grant's last round read them: the records carry
+    // none, and a Mate's owner is its `OWNER` grant (F11).
+    const grants = projectGrantsOf(heldEvidence(get(runtime.access.view).machine));
     return {
       // Each project where HQ places it (ADR 0002): its group, its kind, its Mate's name and face.
-      listing: placeListing(listing, placements),
+      listing: grantListing(placeListing(listing, placements), grants),
       withheldMembers: get(runtime.reads.projectsOf(organization)).value.some(
         (member) => member.knowledge === "unavailable" && member.reason === "forbidden",
       ),
