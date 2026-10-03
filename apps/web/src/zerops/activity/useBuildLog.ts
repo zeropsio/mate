@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 
 import type { BuildLogLine, BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import {
@@ -138,7 +138,9 @@ export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
   }, [appVersionId, buildServiceStackId, fromIso, project]);
   const store = useMemo(() => new BuildLogBindingStore(), []);
 
-  useEffect(() => {
+  // Bound before the first paint: a card drawn again for a build whose log
+  // the registry still keeps (a row that plopped) paints it at once.
+  useLayoutEffect(() => {
     if (active === null) return;
     return store.bind(runtime, runtime.logs, active);
   }, [active, runtime, store]);

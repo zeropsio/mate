@@ -375,16 +375,26 @@ export interface OperationCardRegions {
   readonly liveFrame?: LiveBrowserFrame;
 }
 
+/** Whether a build log's dialog is open, and how to open or close it. */
+export type LogDialogState = readonly [open: boolean, set: (open: boolean) => void];
+
+/**
+ * `logDialog`: where the whole log's dialog keeps whether it is open — its
+ * line, so a dialog the person opened stays open as the line plops from the
+ * live slot into the history; the card's own state otherwise.
+ */
 export function useOperationCard(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
+  logDialog?: LogDialogState,
 ): OperationCardRegions {
   const target = observationTargetFor(operation);
   const nowMs = useSecondsNowMs(operation.phase === "running");
   const { state, history, buildLog } = useOperationObservation(target, environmentId, nowMs);
   const topology = useZeropsTopology(environmentId);
   // The whole log opens in a dialog, only when asked for.
-  const [logOpen, setLogOpen] = useState(false);
+  const ownLogDialog = useState(false);
+  const [logOpen, setLogOpen] = logDialog ?? ownLogDialog;
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
@@ -416,7 +426,11 @@ export function useOperationCard(
     provenance: region.provenance,
     ...(region.pipeline === undefined ? {} : { pipeline: region.pipeline }),
   };
-  if (region.buildLogQuery === undefined) {
+  // The way to the log is drawn once the build wrote a line, and for a
+  // settled build at once: its row stands before its lines are read, so the
+  // card's height is final as it lands.
+  const stands = operation.phase !== "running";
+  if (region.buildLogQuery === undefined || (!stands && buildLog.lines.length === 0)) {
     return { observed, ...fields };
   }
 
@@ -424,6 +438,7 @@ export function useOperationCard(
     lines: buildLog.lines,
     onToggle: () => setLogOpen(!logOpen),
     open: logOpen,
+    stands,
     status: buildLog.status,
     subject: operation.subject,
   });
