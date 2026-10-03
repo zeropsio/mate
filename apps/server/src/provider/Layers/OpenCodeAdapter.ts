@@ -3018,6 +3018,13 @@ export function makeOpenCodeAdapter(
       },
     );
 
+    /** A session as the MCP tab's hook sees it: sessions on one server share its connections. */
+    const openCodeMcpSession = (context: OpenCodeSessionContext) => ({
+      runtime: openCodeMcpClient(context.client),
+      profiled: context.threadSetup !== undefined,
+      shareKey: context.server,
+    });
+
     const sendTurn: OpenCodeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
       const context = yield* ensureSessionContext(sessions, input.threadId);
       yield* awaitOpenCodeContextReady(context);
@@ -3969,12 +3976,9 @@ export function makeOpenCodeAdapter(
       mcp: openCodeMcpControl({
         get: (threadId) => {
           const context = sessions.get(threadId);
-          return context === undefined ? undefined : openCodeMcpClient(context.client);
+          return context === undefined ? undefined : openCodeMcpSession(context);
         },
-        all: () =>
-          [...new Map([...sessions.values()].map((c) => [c.server, c.client])).values()].map(
-            openCodeMcpClient,
-          ),
+        all: () => [...sessions.values()].map(openCodeMcpSession),
       }),
       get streamEvents() {
         return Stream.fromQueue(runtimeEvents);

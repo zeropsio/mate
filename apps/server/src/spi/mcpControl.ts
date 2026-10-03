@@ -74,6 +74,44 @@ const fromPromise = <A>(run: () => Promise<A>): Effect.Effect<A, ProviderMcpErro
 const asMcpError = <A>(effect: Effect.Effect<A, Error>): Effect.Effect<A, ProviderMcpError> =>
   effect.pipe(Effect.mapError((cause) => new ProviderMcpError({ detail: detailOf(cause) })));
 
+/**
+ * One running session as a hook sees it. A `profiled` one runs a thread tool
+ * profile (a crewmate): its MCP servers are the profile's, so no MCP tab
+ * press or config change ever reaches it — a Codex reload would re-read
+ * `config.toml` and bring zcp's server back past the profile's override.
+ * Sessions with one `shareKey` share their MCP connections (one OpenCode
+ * server): a change reaches one of them.
+ */
+export interface McpSession<R> {
+  readonly runtime: R;
+  readonly profiled: boolean;
+  readonly shareKey?: unknown;
+}
+
+/** A crewmate's conversation: the MCP tab neither reconnects nor toggles its servers. */
+export const CREW_KEEPS_MCP = new ProviderMcpError({
+  detail: "A crewmate's tools are the crew's to set; its MCP servers can't be changed here.",
+});
+
+/** The sessions a config change reaches: none that is profiled, one per shared connection. */
+const unprofiled = <R>(sessions: ReadonlyArray<McpSession<R>>): ReadonlyArray<R> => {
+  const reached = new Map<unknown, R>();
+  for (const session of sessions) {
+    if (session.profiled) continue;
+    const key = session.shareKey ?? session.runtime;
+    if (!reached.has(key)) reached.set(key, session.runtime);
+  }
+  return [...reached.values()];
+};
+
+/** The thread's session for a press: none running, or a crewmate's, refuses. */
+const pressable = <R>(session: McpSession<R> | undefined): Effect.Effect<R, ProviderMcpError> =>
+  session === undefined
+    ? Effect.fail(NOT_RUNNING)
+    : session.profiled
+      ? Effect.fail(CREW_KEEPS_MCP)
+      : Effect.succeed(session.runtime);
+
 /** No running session: no live state, and nothing to reconnect. */
 export const NOT_RUNNING = new ProviderMcpError({
   detail: "No conversation is running on this agent.",
@@ -159,12 +197,12 @@ export interface ClaudeMcpQuery {
 }
 
 export function claudeMcpControl(sessions: {
-  readonly get: (threadId: ThreadId) => ClaudeMcpQuery | undefined;
-  readonly all: () => ReadonlyArray<ClaudeMcpQuery>;
+  readonly get: (threadId: ThreadId) => McpSession<ClaudeMcpQuery> | undefined;
+  readonly all: () => ReadonlyArray<McpSession<ClaudeMcpQuery>>;
 }): ProviderAdapterMcp {
   return {
     status: (threadId) => {
-      const query = sessions.get(threadId);
+      const query = sessions.get(threadId)?.runtime;
       const read = query?.mcpServerStatus;
       if (read === undefined) return Effect.undefined;
       return fromPromise(() => read.call(query)).pipe(
@@ -173,25 +211,25 @@ export function claudeMcpControl(sessions: {
         Effect.catch(() => Effect.undefined),
       );
     },
-    reconnect: (threadId, name) => {
-      const query = sessions.get(threadId);
-      const reconnect = query?.reconnectMcpServer;
-      return reconnect === undefined
-        ? Effect.fail(NOT_RUNNING)
-        : fromPromise(() => reconnect.call(query, name));
-    },
-    setEnabled: (threadId, name, enabled) => {
-      const query = sessions.get(threadId);
-      const toggle = query?.toggleMcpServer;
-      return toggle === undefined
-        ? Effect.fail(NOT_RUNNING)
-        : fromPromise(() => toggle.call(query, name, enabled));
-    },
+    reconnect: (threadId, name) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (query) => {
+        const reconnect = query.reconnectMcpServer;
+        return reconnect === undefined
+          ? Effect.fail(NOT_RUNNING)
+          : fromPromise(() => reconnect.call(query, name));
+      }),
+    setEnabled: (threadId, name, enabled) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (query) => {
+        const toggle = query.toggleMcpServer;
+        return toggle === undefined
+          ? Effect.fail(NOT_RUNNING)
+          : fromPromise(() => toggle.call(query, name, enabled));
+      }),
     configChanged: (change) =>
       change.kind !== "enabled"
         ? Effect.void
         : Effect.forEach(
-            sessions.all(),
+            unprofiled(sessions.all()),
             (query) => {
               const toggle = query.toggleMcpServer;
               return toggle === undefined
@@ -258,16 +296,18 @@ export interface CodexMcpRuntime {
 }
 
 export function codexMcpControl(sessions: {
-  readonly get: (threadId: ThreadId) => CodexMcpRuntime | undefined;
-  readonly all: () => ReadonlyArray<CodexMcpRuntime>;
+  readonly get: (threadId: ThreadId) => McpSession<CodexMcpRuntime> | undefined;
+  readonly all: () => ReadonlyArray<McpSession<CodexMcpRuntime>>;
 }): ProviderAdapterMcp {
-  const reload = (threadId: ThreadId) => {
-    const reloadMcpServers = sessions.get(threadId)?.reloadMcpServers;
-    return reloadMcpServers === undefined ? Effect.fail(NOT_RUNNING) : asMcpError(reloadMcpServers);
-  };
+  const reload = (threadId: ThreadId) =>
+    Effect.flatMap(pressable(sessions.get(threadId)), (runtime) =>
+      runtime.reloadMcpServers === undefined
+        ? Effect.fail(NOT_RUNNING)
+        : asMcpError(runtime.reloadMcpServers),
+    );
   return {
     status: (threadId) => {
-      const listMcpServers = sessions.get(threadId)?.listMcpServers;
+      const listMcpServers = sessions.get(threadId)?.runtime.listMcpServers;
       if (listMcpServers === undefined) return Effect.undefined;
       return listMcpServers.pipe(
         Effect.map(codexMcpLiveServers),
@@ -280,7 +320,7 @@ export function codexMcpControl(sessions: {
     setEnabled: (threadId) => reload(threadId),
     configChanged: () =>
       Effect.forEach(
-        sessions.all(),
+        unprofiled(sessions.all()),
         (runtime) => Effect.ignore(runtime.reloadMcpServers ?? Effect.void),
         {
           concurrency: "unbounded",
@@ -321,19 +361,17 @@ export interface OpenCodeMcpClient {
 }
 
 export function openCodeMcpControl(sessions: {
-  readonly get: (threadId: ThreadId) => OpenCodeMcpClient | undefined;
-  /** One client per running server: sessions on one server share its MCP connections. */
-  readonly all: () => ReadonlyArray<OpenCodeMcpClient>;
+  readonly get: (threadId: ThreadId) => McpSession<OpenCodeMcpClient> | undefined;
+  /** Sessions on one server (one `shareKey`) share its MCP connections. */
+  readonly all: () => ReadonlyArray<McpSession<OpenCodeMcpClient>>;
 }): ProviderAdapterMcp {
-  const withClient = (threadId: ThreadId, run: (client: OpenCodeMcpClient) => Promise<unknown>) => {
-    const client = sessions.get(threadId);
-    return client === undefined
-      ? Effect.fail(NOT_RUNNING)
-      : fromPromise(() => run(client)).pipe(Effect.asVoid);
-  };
+  const withClient = (threadId: ThreadId, run: (client: OpenCodeMcpClient) => Promise<unknown>) =>
+    Effect.flatMap(pressable(sessions.get(threadId)), (client) =>
+      fromPromise(() => run(client)).pipe(Effect.asVoid),
+    );
   return {
     status: (threadId) => {
-      const client = sessions.get(threadId);
+      const client = sessions.get(threadId)?.runtime;
       if (client === undefined) return Effect.undefined;
       return fromPromise(() => client.status()).pipe(
         Effect.map(openCodeMcpLiveServers),
@@ -350,7 +388,7 @@ export function openCodeMcpControl(sessions: {
       withClient(threadId, (client) => (enabled ? client.connect(name) : client.disconnect(name))),
     configChanged: (change) =>
       Effect.forEach(
-        sessions.all(),
+        unprofiled(sessions.all()),
         (client) =>
           fromPromise(() =>
             change.kind === "added"
