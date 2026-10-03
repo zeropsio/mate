@@ -214,6 +214,7 @@ import {
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
+import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -4404,8 +4405,16 @@ export default function ChatView(props: ChatViewProps) {
           }
           return;
         }
+        // At once, not on the next render: LegendList pins the end on every
+        // row that lands or grows while follow is on, and a stream lands rows
+        // every few frames — a deferred off lost the person's scroll to the
+        // next one, and the list jumped back to the end under them.
         const handleManualNavigation = () => {
-          cancelTimelineLiveFollowForUserNavigationRef.current();
+          if (liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current) {
+            flushSync(() => cancelTimelineLiveFollowForUserNavigationRef.current());
+          } else {
+            cancelTimelineLiveFollowForUserNavigationRef.current();
+          }
         };
         // The gestures below must only break follow when they can actually
         // move the viewport away from the live edge. Follow now gates
@@ -4558,18 +4567,22 @@ export default function ChatView(props: ChatViewProps) {
     requestAnimationFrame(() => positionAnchor(12));
   }, []);
 
-  const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
-    if (
-      !isAtEnd &&
-      liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current
-    ) {
+  const onIsAtEndChange = useCallback((isAtEnd: boolean, byPerson: boolean) => {
+    const following =
+      liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current;
+    const followsNext = nextTimelineFollow(following, {
+      type: "position",
+      atEnd: isAtEnd,
+      byPerson,
+    });
+    if (following) {
       showScrollDebouncer.current.cancel();
       setShowScrollToBottom(false);
       return;
     }
-    if (isAtEndRef.current === isAtEnd) return;
+    const wasAtEnd = isAtEndRef.current;
     isAtEndRef.current = isAtEnd;
-    if (isAtEnd) {
+    if (followsNext) {
       timelineScrollModeRef.current = "following-end";
       liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
       setTimelineLiveFollowEnabled(true);
@@ -4578,6 +4591,15 @@ export default function ChatView(props: ChatViewProps) {
       // edge and expects the stream to stick to it again, exactly like the
       // scroll-to-bottom pill.
       setTimelineAnchor(releaseChatTimelineAnchor);
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+      return;
+    }
+    // Still reading: the list landed at its end under the person (a card
+    // below settled shorter) or moved off it as rows came; only the
+    // jump-to-latest control follows what they are or are not at.
+    if (wasAtEnd === isAtEnd) return;
+    if (isAtEnd) {
       showScrollDebouncer.current.cancel();
       setShowScrollToBottom(false);
     } else {
@@ -4642,7 +4664,10 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     setPullRequestDialogState(null);
     // A thread left mid-read reopens where the reader was; any other opens at its end.
-    const followEnd = readTimelinePosition(routeThreadKey)?.atEnd !== false;
+    const followEnd = nextTimelineFollow(
+      liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+      { type: "opened", atEnd: readTimelinePosition(routeThreadKey)?.atEnd !== false },
+    );
     isAtEndRef.current = followEnd;
     timelineScrollModeRef.current = followEnd ? "following-end" : "free-scrolling";
     liveFollowUserScrollGenerationRef.current = followEnd
