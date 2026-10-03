@@ -70,6 +70,12 @@ export const McpServerEntry = Schema.Struct({
   transport: McpServerTransport,
   /** Written by Zerops (zcp's `zerops`): shown and reconnected, never edited or removed here. */
   managed: Schema.Boolean,
+  /**
+   * Where the server is configured: `user`, each agent's own config, which
+   * the tab edits; `project`, the repo's `.mcp.json`, shown read-only and
+   * edited there. Absent means `user`.
+   */
+  scope: Schema.optionalKey(Schema.Literals(["user", "project"])),
   agents: Schema.Array(McpServerAgent),
 });
 export type McpServerEntry = typeof McpServerEntry.Type;
