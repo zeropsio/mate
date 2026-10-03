@@ -112,7 +112,8 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * D1, 2026-09-30). One state, one phrase whichever flow made it (run 4, 2026-10-02). A Mate whose
  * sign-in somebody is waited for never reads like a failure (the owner, 2026-10-01): anybody else
  * reads that it waits for a sign-in, quietly, and a viewer not known yet reads nothing. A Mate
- * that names nobody reads the fact.
+ * that names nobody reads the fact. A Mate with an agent to run that needs no sign-in (Cursor,
+ * OpenCode…) waits on nobody's sign-in and says none of it; its maker holds its seat.
  */
 export function mateOwnerView(input: {
   readonly owner:
@@ -134,15 +135,24 @@ export function mateOwnerView(input: {
    * the page cannot offer yet.
    */
   readonly linked?: boolean | undefined;
+  /**
+   * It has an agent to run that Mate signs nobody in to (Cursor, OpenCode, Grok, Antigravity):
+   * it waits on no sign-in, and its maker is its person (`resolveMateOwner`).
+   */
+  readonly runsWithoutSignIn?: boolean | undefined;
 }): MateOwnerView {
   const { owner, records } = input;
+  const runs = input.runsWithoutSignIn === true;
+  const named = records.named || (runs && (input.madeBy ?? input.standUpBy) !== undefined);
   const seat: OwnerSeat =
     owner !== undefined
       ? { kind: "person", mark: ownerMark(owner) }
-      : records.named
+      : named
         ? { kind: "unnamed" }
         : { kind: "nobody", label: NOBODY_OWNS };
-  if (records.signedIn || input.asked) return { seat, signInLine: undefined, waitsOnViewer: false };
+  if (records.signedIn || input.asked || runs) {
+    return { seat, signInLine: undefined, waitsOnViewer: false };
+  }
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
   const awaited = input.madeBy ?? input.standUpBy;
   if (awaited === undefined) {
