@@ -521,6 +521,7 @@
       "status": "inProgress",
       "title": "Tool call",
       "detail": "ToolSearch: {}",
+      "responseId": "msg_011CeWiWRgQFZSqGmLxTBM3X",
       "data": {
         "toolName": "ToolSearch",
         "input": {}
@@ -574,7 +575,8 @@
       "data": {
         "toolName": "ToolSearch",
         "input": {}
-      }
+      },
+      "unreturned": true
     },
     "providerRefs": {
       "providerItemId": "item-1"

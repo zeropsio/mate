@@ -427,6 +427,7 @@
       "status": "inProgress",
       "title": "Tool call",
       "detail": "AskUserQuestion: {}",
+      "responseId": "msg_011CeWiapMXCeGdFrPYo51eg",
       "data": {
         "toolName": "AskUserQuestion",
         "input": {}
