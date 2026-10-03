@@ -186,7 +186,7 @@ export function beginHarnessPress(input: {
         ? {
             adds: {
               appId: "g-harness",
-              displayName: `${input.project} - ${input.botName}`,
+              displayName: input.botName,
               registers: true,
               // As its recipe names them, at the press.
               managed,

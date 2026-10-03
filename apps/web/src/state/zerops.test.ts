@@ -195,7 +195,7 @@ describe("the candidate rows", () => {
                 projectId: PROJECT.id,
                 name: PROJECT.name,
                 kind: "mate",
-                mate: { name: "Ada", face: "" },
+                mate: { face: "" },
               },
             ],
           },
@@ -210,7 +210,7 @@ describe("the candidate rows", () => {
       appId: "app-kanban",
       appName: "Kanban",
       kind: "mate",
-      mate: { name: "Ada", face: "" },
+      mate: { face: "" },
     });
 
     // Who signed Ada's agent in, as HQ's overview of her says it: on her row, which stays the
@@ -230,7 +230,7 @@ describe("the candidate rows", () => {
       current: true,
     });
     const row = heldCandidates(registry.get(candidateRowsAtom)).rows[0];
-    expect(row?.project.hq?.mate).toEqual({ name: "Ada", face: "", logins });
+    expect(row?.project.hq?.mate).toEqual({ face: "", logins });
     registry.set(hqMatesViewAtom, {
       organizationId: organization.organizationId,
       mates: new Map([[PROJECT.id, told(true)]]),
@@ -246,12 +246,13 @@ describe("the names the organization's Mates go by", () => {
   const UMA: ZeropsProject = {
     id: "project-uma",
     clientId: owner.organization.organizationId,
-    name: "heron uma",
+    name: "Uma",
     status: "ACTIVE",
     tagList: ["mate"],
   };
-  const named = { ...PROJECT, tagList: ["mate"] };
-  /** HQ names both Mates, in one application. */
+  // D3: each Mate goes by its project's name.
+  const named = { ...PROJECT, name: "Ada", tagList: ["mate"] };
+  /** HQ places both Mates, in one application. */
   const STRUCTURE: HqStructure = {
     ungrouped: [],
     apps: [
@@ -259,8 +260,8 @@ describe("the names the organization's Mates go by", () => {
         id: "app-heron",
         name: "Heron",
         projects: [
-          { projectId: PROJECT.id, name: "kanban", kind: "mate", mate: { name: "Ada", face: "" } },
-          { projectId: UMA.id, name: "heron uma", kind: "mate", mate: { name: "Uma", face: "" } },
+          { projectId: PROJECT.id, name: "Ada", kind: "mate", mate: { face: "" } },
+          { projectId: UMA.id, name: "Uma", kind: "mate", mate: { face: "" } },
         ],
       },
     ],

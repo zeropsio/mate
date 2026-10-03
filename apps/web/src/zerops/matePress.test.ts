@@ -1,7 +1,6 @@
 import {
   finishMateSetupVerb,
   PRESS_STEP_ATTEMPTS,
-  type RandomBytes,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -59,7 +58,7 @@ vi.mock("./accountHq", () => ({
       appId: string,
       attach: {
         readonly mate?: {
-          readonly name: string;
+          readonly face: string;
           readonly standUp?: boolean;
           readonly serviceId?: string;
         };
@@ -71,16 +70,16 @@ vi.mock("./accountHq", () => ({
         throw hq.attachFailure;
       }
       hq.calls?.push(
-        `attach ${appId} ${attach.mate?.name ?? ""}${attach.mate?.serviceId === undefined ? "" : ` as ${attach.mate.serviceId}`}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
+        `attach ${appId}${attach.mate?.serviceId === undefined ? "" : ` as ${attach.mate.serviceId}`}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
       );
     },
     createMate: async (mate: {
-      readonly name: string;
+      readonly face: string;
       readonly standUp?: boolean;
       readonly serviceId?: string;
     }) => {
       hq.calls?.push(
-        `record ${mate.name}${mate.serviceId === undefined ? "" : ` as ${mate.serviceId}`}${mate.standUp === true ? " asking its stand-up" : ""}`,
+        `record ${mate.face}${mate.serviceId === undefined ? "" : ` as ${mate.serviceId}`}${mate.standUp === true ? " asking its stand-up" : ""}`,
       );
     },
     mateKey: async () => hq.key,
@@ -94,7 +93,7 @@ const mate = (serviceId: string | undefined, closedOff: boolean | undefined) => 
       appId: null,
       appName: null,
       kind: "mate" as const,
-      mate: { name: "Ada", face: "", ...(closedOff === undefined ? {} : { closedOff }) },
+      mate: { face: "", ...(closedOff === undefined ? {} : { closedOff }) },
     },
   },
 });
@@ -792,7 +791,7 @@ describe("finishMateSetup — the harden path", () => {
           hq: { projectId: "hq-project", address: "https://hq.test" },
           groupId: "app-d",
           kind: "mate",
-          mate: { name: "Dan", face: undefined },
+          mate: { face: undefined },
           standUp: false,
         },
         hq: { projectId: "hq-project", address: "https://hq.test" },
@@ -802,7 +801,7 @@ describe("finishMateSetup — the harden path", () => {
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toEqual([
-      "attach app-d Dan",
+      "attach app-d",
       "container",
       "read isolation",
       "read isolation",
@@ -855,7 +854,7 @@ describe("finishMateSetup — the harden path", () => {
         hq: HQ_ENDPOINT,
         groupId: "app-g",
         kind: "mate",
-        mate: { name: "Gus", face: undefined },
+        mate: { face: undefined },
         standUp: false,
         intent: "b-gus",
       },
@@ -903,7 +902,7 @@ describe("finishMateSetup — the harden path", () => {
             id: "app-g",
             name: "mate-rig-e2e-g",
             projects: [],
-            births: [{ id: "b-gus", name: "Gus", face: "rose:seal" }],
+            births: [{ id: "b-gus", face: "rose:seal" }],
           },
         ],
       },
@@ -918,8 +917,6 @@ describe("finishMateSetup — the harden path", () => {
       mayCreateRecord: true,
       standUp: false,
       candidates: [],
-      taken: [],
-      random: (bytes) => bytes.fill(0),
     });
     expect(registration).toMatchObject({ groupId: "app-g", intent: "b-gus" });
     beginPress({
@@ -944,7 +941,7 @@ describe("finishMateSetup — the harden path", () => {
         sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
-    expect(calls).toContain("attach app-g Gus closing b-gus");
+    expect(calls).toContain("attach app-g closing b-gus");
     forgetPress("gus-project");
   });
 
@@ -963,7 +960,7 @@ describe("finishMateSetup — the harden path", () => {
           hq: { projectId: "hq-project", address: "https://hq.test" },
           groupId: "app-g",
           kind: "mate",
-          mate: { name: "Gus", face: undefined },
+          mate: { face: undefined },
           standUp: false,
           intent: "b-gus",
         },
@@ -974,7 +971,7 @@ describe("finishMateSetup — the harden path", () => {
         sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
-    expect(calls).toContain("attach app-g Gus closing b-gus");
+    expect(calls).toContain("attach app-g closing b-gus");
     forgetPress("p-old");
   });
 
@@ -987,20 +984,20 @@ describe("finishMateSetup — the harden path", () => {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         groupId: "app-d",
         kind: "mate" as const,
-        mate: { name: "Dan", face: undefined },
+        mate: { face: undefined },
         standUp: true,
       },
-      write: "attach app-d Dan asking its stand-up",
+      write: "attach app-d asking its stand-up",
     },
     {
       case: "a record in no application",
       registration: {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         kind: "mate-record" as const,
-        record: { name: "Dan", face: "" },
+        record: { face: "sand:seal" },
         standUp: true,
       },
-      write: "record Dan asking its stand-up",
+      write: "record sand:seal asking its stand-up",
     },
   ])("asks for the stand-up in $case", async ({ registration, write }) => {
     begin();
@@ -1214,7 +1211,7 @@ describe("finishMateSetup — the harden path", () => {
       registration: {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         kind: "mate-record" as const,
-        record: { name: "Ada", face: "" },
+        record: { face: "sky:seal" },
         standUp: false,
       },
       hq: { projectId: "hq-project", address: "https://hq.test" },
@@ -1236,7 +1233,7 @@ describe("finishMateSetup — the harden path", () => {
     if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
     services.pop();
     await stopped.retry();
-    expect(calls).toEqual(["harden", "record Ada as svc-1", "mark"]);
+    expect(calls).toEqual(["harden", "record sky:seal as svc-1", "mark"]);
     forgetPress("p-old");
   });
 
@@ -1247,20 +1244,20 @@ describe("finishMateSetup — the harden path", () => {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         groupId: "app-d",
         kind: "mate" as const,
-        mate: { name: "Dan", face: undefined },
+        mate: { face: undefined },
         standUp: false,
       },
-      write: "attach app-d Dan as svc-1",
+      write: "attach app-d as svc-1",
     },
     {
       case: "a record in no application",
       registration: {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         kind: "mate-record" as const,
-        record: { name: "Dan", face: "" },
+        record: { face: "sand:seal" },
         standUp: false,
       },
-      write: "record Dan as svc-1",
+      write: "record sand:seal as svc-1",
     },
   ])("names the project's one zcp service in $case", async ({ registration, write }) => {
     begin();
@@ -1322,7 +1319,7 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
       appId,
       appName: appId === null ? null : "mate-rig-e2e-d",
       kind: "mate",
-      mate: { name: "Dan", face: "coral:gem" },
+      mate: { face: "coral:gem" },
     },
   });
   const pressOf = (kind: "mate" | "stage"): MatePress => ({
@@ -1335,13 +1332,10 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
       groupName: "mate-rig-e2e-d",
       kind,
       displayName: "mate-rig-e2e-d - Dan",
-      botName: "Dan",
       face: FACE,
     },
     state: { kind: "pressing" },
   });
-  // Bytes that pick the first free name.
-  const first: RandomBytes = (bytes) => bytes.fill(0);
   /** HQ's structure: G, holding the birth intent Gus's project was created under. */
   const STRUCTURE = {
     ungrouped: [],
@@ -1350,7 +1344,7 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
         id: "app-g",
         name: "mate-rig-e2e-g",
         projects: [],
-        births: [{ id: "b-gus", name: "Gus", face: "rose:seal" }],
+        births: [{ id: "b-gus", face: "rose:seal" }],
       },
     ],
   };
@@ -1371,9 +1365,9 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
 
   it.each([
     {
-      name: "HQ holds it in its application: there, under HQ's name and face",
+      name: "HQ holds it in its application: there, under HQ's face",
       input: { ...BASE, project: held("app-d") },
-      expected: { kind: "mate", groupId: "app-d", mate: { name: "Dan", face: FACE } },
+      expected: { kind: "mate", groupId: "app-d", mate: { face: FACE } },
     },
     {
       name: "HQ holds it in its application, for someone who does not write the registry: nothing",
@@ -1391,24 +1385,24 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
       expected: null,
     },
     {
-      name: "no record, a press here placed it: into that application, under its name and face",
+      name: "no record, a press here placed it: into that application, under its face",
       input: { ...BASE, press: pressOf("mate"), project: DAN },
-      expected: { kind: "mate", groupId: "app-d", mate: { name: "Dan", face: FACE } },
+      expected: { kind: "mate", groupId: "app-d", mate: { face: FACE } },
     },
     {
-      name: "no record and no press here, its project naming its birth intent: into the intent's application, under its name and face, closing it",
+      name: "no record and no press here, its project naming its birth intent: into the intent's application, under its face, closing it",
       input: { ...BASE, project: GUS },
       expected: {
         kind: "mate",
         groupId: "app-g",
-        mate: { name: "Gus", face: { tint: "rose", shape: "seal" } },
+        mate: { face: { tint: "rose", shape: "seal" } },
         intent: "b-gus",
       },
     },
     {
       name: "no record, a press here placed it, its project naming its birth intent: the intent",
       input: { ...BASE, press: pressOf("mate"), project: GUS },
-      expected: { kind: "mate", groupId: "app-g", mate: { name: "Gus" }, intent: "b-gus" },
+      expected: { kind: "mate", groupId: "app-g", intent: "b-gus" },
     },
     {
       name: "no record and no press here: a new Mate in no application, for who may write it",
@@ -1432,11 +1426,14 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
       project: input.project as never,
       standUp: false,
       candidates: [],
-      taken: [],
-      random: first,
     });
     if (expected === null) expect(registration).toBeNull();
     else expect(registration).toMatchObject({ hq: HQ, standUp: false, ...expected });
+    // D3: a Mate's name is its project's in Zerops; nothing registered in HQ carries one.
+    if (registration?.kind === "mate") expect(registration.mate).not.toHaveProperty("name");
+    if (registration?.kind === "mate-record") {
+      expect(registration.record).not.toHaveProperty("name");
+    }
   });
 });
 

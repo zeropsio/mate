@@ -6,8 +6,8 @@ import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import { makeProjectTagWriter, type ProjectTagSource } from "./tagWriter.ts";
 
 /**
- * One project on a platform with no conditional PUT: a write replaces the tag list wholesale.
- * `between` runs another device's write at a named point of ours.
+ * One project on a platform with no conditional PUT: a write replaces its record — its name and its
+ * tag list — wholesale. `between` runs another device's write at a named point of ours.
  */
 function platform(
   tags: ReadonlyArray<string>,
@@ -30,19 +30,19 @@ function platform(
       log.push("GET");
       return project;
     },
-    writeProjectTags: async (_read, tagList) => {
+    writeProject: async (read, record) => {
       log.push("PUT");
       before = project.tagList ?? [];
-      project = { ...project, tagList };
+      project = { ...project, ...record };
       if (afterWrite !== undefined) {
-        // Another device read before our write landed, and writes its whole list after it.
-        project = { ...project, tagList: afterWrite(before) };
+        // Another device read before our write landed, and writes its whole record after it.
+        project = { ...project, name: read.name, tagList: afterWrite(before) };
         afterWrite = undefined;
       }
-      return { ...project, tagList };
+      return { ...project, ...record };
     },
   };
-  return { source, log, tags: () => project.tagList ?? [] };
+  return { source, log, tags: () => project.tagList ?? [], name: () => project.name };
 }
 
 describe("updateProjectTags' writer", () => {
@@ -96,8 +96,8 @@ describe("updateProjectTags' writer", () => {
     const rest = platform([]);
     const replaced: ProjectTagSource = {
       ...rest.source,
-      // Every write lands and is at once replaced by a list without it.
-      writeProjectTags: async (project) => project,
+      // Every write lands and is at once replaced by a record without it.
+      writeProject: async (project) => project,
     };
     const writer = makeProjectTagWriter({ source: replaced });
 
@@ -163,5 +163,47 @@ describe("updateProjectTags' writer", () => {
       `${first.id} GET /project/p1`,
       `${second.id} GET /project/p1`,
     ]);
+  });
+});
+
+// D3: a Mate's name is its project's, written through the same record a tag write puts back.
+describe("a project renamed by the project's one writer", () => {
+  it("renames on a fresh read and puts back every tag the platform holds", async () => {
+    const rest = platform(["mate", "person:own"], {
+      beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
+    });
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    const renamed = await writer.rename("p1", "Nova");
+
+    expect(renamed).toMatchObject({ kind: "written", project: { name: "Nova" } });
+    expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate", "person:own", "theirs"]]);
+    expect(rest.log).toEqual(["GET", "PUT", "GET"]);
+  });
+
+  it("a name the project already has costs a read and writes nothing", async () => {
+    const rest = platform(["mate"]);
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    expect((await writer.rename("p1", "One")).kind).toBe("unchanged");
+    expect(rest.log).toEqual(["GET"]);
+  });
+
+  it("a rename and a tag write to one project never undo each other", async () => {
+    const rest = platform([]);
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    await Promise.all([writer.write("p1", { kind: "mate" }), writer.rename("p1", "Nova")]);
+
+    expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate"]]);
+  });
+
+  it("names it again where another writer's record replaced the name", async () => {
+    const rest = platform(["mate"], { afterWrite: (tags: ReadonlyArray<string>) => tags });
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    expect((await writer.rename("p1", "Nova")).kind).toBe("written");
+    expect(rest.name()).toBe("Nova");
+    expect(rest.log).toEqual(["GET", "PUT", "GET", "PUT", "GET"]);
   });
 });

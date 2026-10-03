@@ -3,17 +3,12 @@
  * groups it under, and the person who owns it — so the Usage page can roll an
  * environment's spend up per Mate, per project and per person.
  *
- * Every name is the one the left menu draws: the Mate by `botDisplayName`, the
+ * Every name is the one the left menu draws: the Mate by its project's name, the
  * project by the group header `buildZeropsGroupTree` derives, the owner by
  * `resolveMateOwnerPerson` over HQ's people — no member list read. An
  * environment no Mate lives in is left out.
  */
-import {
-  botDisplayName,
-  buildZeropsGroupTree,
-  hasMate,
-  readZeropsMembership,
-} from "@t3tools/client-runtime/zerops";
+import { buildZeropsGroupTree, hasMate } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
@@ -85,9 +80,8 @@ export function usageEnvironmentIdentities(input: {
     const environmentId = rowEnvironment(candidate, input.registeredOrigins);
     if (environmentId === undefined || identities.has(environmentId) || !hasMate(candidate))
       continue;
-    const tags = readZeropsMembership(candidate.project);
     identities.set(environmentId, {
-      mateName: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
+      mateName: candidate.project.name,
       projectName: projectNames.get(candidate.project.id) ?? null,
       owner: usageOwner(
         resolveMateOwnerPerson({ project: candidate.project, people: input.people }),

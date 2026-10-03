@@ -36,10 +36,10 @@ function mate(
     key: `${id}:zcp`,
     project: {
       id,
-      name: `${bot} - dev`,
+      name: bot,
       status: "ACTIVE",
       tagList: ["mate"],
-      hq: { appId: "shop", appName: "Shop", kind: "mate", mate: { name: bot, face: "" } },
+      hq: { appId: "shop", appName: "Shop", kind: "mate", mate: { face: "" } },
     },
     group: "connected",
     environmentId: EnvironmentId.make(`env-${id}`),

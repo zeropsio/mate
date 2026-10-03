@@ -33,14 +33,12 @@ function form(props: Partial<Props> = {}): ReactElement {
   return (
     <Dialog open onOpenChange={() => {}}>
       <ZeropsEnvironmentCreationForm
-        defaultBotName="Otto"
-        defaultName="Acme Docs - Otto"
+        defaultName="Otto"
         defaultTintFor={(name) => TINTS[name] ?? "slate"}
         defaultWithAgent
         groupName="Acme Docs"
         onCancel={() => {}}
         onCreate={() => {}}
-        proposeName={(botName) => `Acme Docs - ${botName}`}
         role="dev"
         takenBotNames={{ names: ["Fen"], complete: true }}
         tier={TIER}
@@ -299,6 +297,7 @@ describe("the New Mate dialog", () => {
     expect(option(tree, to).props["aria-checked"]).toBe(true);
   });
 
+  // D3: its project is named as the Mate is, whole.
   it("adds the Mate with the project's recipe, its name and the face it was given", () => {
     const made: EnvironmentCreationChoice[] = [];
     const tree = mount(form({ onCreate: (choice) => made.push(choice) }));
@@ -309,9 +308,8 @@ describe("the New Mate dialog", () => {
     press(tree);
     expect(made).toEqual([
       {
-        name: "Acme Docs - Ada Lin",
+        name: "Ada Lin",
         withAgent: true,
-        botName: "Ada Lin",
         recipe: TIER,
         face: { tint: "amber", shape: "hexagon" },
       },
@@ -403,7 +401,7 @@ describe("the New Mate dialog", () => {
     });
     expect(made).toEqual([]);
     press(tree);
-    expect(made.map((choice) => choice.botName)).toEqual([name]);
+    expect(made.map((choice) => choice.name)).toEqual([name]);
   });
 
   it("waits for every Mate's name before a new one passes as free", () => {
@@ -416,7 +414,7 @@ describe("the New Mate dialog", () => {
     act(() => {
       tree.update(form({ onCreate, takenBotNames: { names: ["Fen"], complete: true } }));
     });
-    expect(made.map((choice) => choice.botName)).toEqual(["Otto"]);
+    expect(made.map((choice) => choice.name)).toEqual(["Otto"]);
   });
 });
 
@@ -532,6 +530,6 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
     expect(made).toEqual([]);
     // What was typed stayed, out of sight, while the door was shut.
     press(tree);
-    expect(made.map((choice) => [choice.botName, choice.recipe])).toEqual([["Ada", TIER]]);
+    expect(made.map((choice) => [choice.name, choice.recipe])).toEqual([["Ada", TIER]]);
   });
 });

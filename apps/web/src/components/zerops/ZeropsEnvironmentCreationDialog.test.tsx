@@ -9,14 +9,12 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
   return renderToStaticMarkup(
     <Dialog open onOpenChange={() => {}}>
       <ZeropsEnvironmentCreationForm
-        defaultBotName="Otto"
         defaultName="Acme Docs - stage"
         defaultTintFor={() => "violet"}
         defaultWithAgent
         groupName="Acme Docs"
         onCancel={() => {}}
         onCreate={() => {}}
-        proposeName={() => "Acme Docs - stage"}
         role="stage"
         takenBotNames={{ names: ["Fen"], complete: true }}
         tier={{
@@ -40,15 +38,17 @@ function submitDisabled(html: string): boolean {
 }
 
 describe("ZeropsEnvironmentCreationForm", () => {
-  it("prefills the environment and the agent from the role and the group", () => {
+  // D3: one name, its project's — an agent in it goes by it too, with no name of its own.
+  it("prefills the environment from the role and the group, and asks no agent's name", () => {
     const html = render();
     expect(html).toContain('value="Acme Docs - stage"');
-    expect(html).toContain('value="Otto"');
+    expect(html).not.toContain("Agent&#x27;s name");
+    expect(html).not.toContain("Mate&#x27;s name");
     expect(html).toContain("Add stage to Acme Docs");
   });
 
-  it("hands a Mate to a form of its own: who it is, and nothing else", () => {
-    const html = render({ role: "dev", defaultName: "Acme Docs - Otto" });
+  it("hands a Mate to a form of its own: who it is, its project named as it is", () => {
+    const html = render({ role: "dev", defaultName: "Otto" });
     expect(html).toContain('data-zerops-surface="new-mate-form"');
     expect(html).toContain(">New Mate on Acme Docs<");
     expect(html).toContain("Add Otto to Acme Docs");
@@ -98,9 +98,8 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(submitDisabled(html)).toBe(true);
   });
 
-  it("hides the agent's name when production runs without one", () => {
+  it("says why production usually runs no agent", () => {
     const html = render({ role: "prod", defaultWithAgent: false });
-    expect(html).not.toContain("Agent&#x27;s name");
     expect(html).toContain("Production usually does not");
   });
 

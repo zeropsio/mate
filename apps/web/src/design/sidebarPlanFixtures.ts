@@ -62,14 +62,13 @@ function mate(
     key: `${id}:zcp`,
     project: {
       id,
-      name: `${bot} - dev`,
+      name: bot,
       status: "ACTIVE",
       tagList: ["mate"],
       hq: {
         ...app,
         kind: "mate",
         mate: {
-          name: bot,
           face: "",
           // Who signed it in, as HQ's overview of its logins names them.
           ...(signer === null

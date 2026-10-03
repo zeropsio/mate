@@ -15,13 +15,11 @@ import {
 } from "@t3tools/client-runtime/connection";
 import {
   formatMateFace,
-  generateBotName,
   hasMate,
   isGenericPlatformError,
   mayOffer,
   newMateTint,
   type OfferAsker,
-  type RandomBytes,
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -163,21 +161,17 @@ export function setUpMateVerb(input: {
 }
 
 /**
- * The record *Set up Mate* writes to HQ (`POST /api/mates`): a name nobody in the organization goes
- * by, and the face a new Mate of that name is born with — its tint among the account's
- * (`newMateTint`) and that tint's shape. None for a project whose Mate HQ holds already.
+ * The record *Set up Mate* writes to HQ (`POST /api/mates`): the face a new Mate is born with —
+ * the tint its name gets among the account's (`newMateTint`) and that tint's shape. Its name is its
+ * project's in Zerops (D3). None for a project whose Mate HQ holds already.
  */
 export function setUpMateRecord(input: {
   readonly project: ZeropsCandidate["project"];
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  /** The names the organization's Mates go by (`TakenBotNames.names`). */
-  readonly taken: ReadonlyArray<string>;
-  readonly random: RandomBytes;
-}): { readonly name: string; readonly face: string } | undefined {
+}): { readonly face: string } | undefined {
   if (input.project.hq?.mate != null) return undefined;
-  const name = generateBotName(input.taken, input.random);
-  const tint = newMateTint(input.candidates, name);
-  return { name, face: formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] }) };
+  const tint = newMateTint(input.candidates, input.project.name);
+  return { face: formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] }) };
 }
 
 export interface ZeropsRowPresentation {

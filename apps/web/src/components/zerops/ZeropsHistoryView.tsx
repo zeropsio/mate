@@ -33,7 +33,6 @@ import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 /** What to call the things a history row names. */
 export interface HistoryNames {
   readonly mateNames?: ReadonlyMap<string, string> | undefined;
-  readonly groupName?: string | undefined;
 }
 
 export interface ZeropsHistoryRequest {

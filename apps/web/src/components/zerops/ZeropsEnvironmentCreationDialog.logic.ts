@@ -3,10 +3,8 @@
  */
 
 import {
-  botDisplayName,
   hasMate,
   isRecipeProposal,
-  readZeropsMembership,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -79,16 +77,18 @@ export function recipeOptions(input: {
   return options;
 }
 
+/**
+ * A stage's or a production's form: one name, its project's, whether an agent runs in it or not —
+ * its agent goes by it (D3).
+ */
 export interface CreationForm {
   readonly name: string;
   readonly withAgent: boolean;
-  readonly botName: string;
   readonly recipeId: string;
 }
 
 export interface CreationFormErrors {
   readonly name?: string;
-  readonly botName?: string;
   readonly recipe?: string;
 }
 
@@ -145,19 +145,13 @@ export function validateBotName(
 export function validateCreationForm(
   form: CreationForm,
   context: {
-    readonly takenBotNames: TakenBotNames;
     readonly options: ReadonlyArray<RecipeOption>;
     /** Where the recipe stands (`creationRecipe`). */
     readonly recipe: CreationRecipe;
   },
 ): CreationFormErrors {
-  const errors: { name?: string; botName?: string; recipe?: string } = {};
+  const errors: { name?: string; recipe?: string } = {};
   if (form.name.trim().length === 0) errors.name = "Give the environment a name.";
-
-  if (form.withAgent) {
-    const botError = validateBotName(form.botName, context.takenBotNames);
-    if (botError !== undefined) errors.botName = botError;
-  }
 
   // What is created comes from this read: a recipe not read yet, or not read at all, holds it.
   const held = creationRecipeHold(context.recipe);
@@ -198,25 +192,21 @@ export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
 }
 
 export function hasCreationErrors(errors: CreationFormErrors): boolean {
-  return errors.name !== undefined || errors.botName !== undefined || errors.recipe !== undefined;
+  return errors.name !== undefined || errors.recipe !== undefined;
 }
 
 /**
- * What to call a new environment: a Mate after its bot — `Todo - Fen`, the
- * name the person will say — and a stage or a production after its role;
- * numbered once the plain name is taken, since a group holds N Mates and two
- * environments must not share one name (the owner, 2026-09-17, on
- * "Todo - dev 2": "why is it called that and not Todo - Fen?").
+ * What to call a new stage or production: after its project and its role — `Todo - stage` — so it
+ * reads in the organization's project list in Zerops, numbered once the plain name is taken. A
+ * suggestion the person may change, here or in Zerops: nothing reads it back (D3). A Mate's project
+ * is called what the Mate is.
  */
 export function proposedEnvironmentName(input: {
   readonly groupName: string;
   readonly roleLabel: string;
-  /** The Mate's bot, when the environment runs one; it names the Mate. */
-  readonly botName?: string | undefined;
   readonly taken: ReadonlyArray<string>;
 }): string {
-  const who = input.botName?.trim() ? input.botName.trim() : input.roleLabel;
-  const base = `${input.groupName} - ${who}`;
+  const base = `${input.groupName} - ${input.roleLabel}`;
   const taken = new Set(input.taken.map((name) => name.trim().toLowerCase()));
   if (!taken.has(base.toLowerCase())) return base;
   for (let suffix = 2; ; suffix += 1) {
@@ -228,8 +218,7 @@ export function proposedEnvironmentName(input: {
 /**
  * The New Mate dialog asks three things — a name, a colour, a shape — and decides the rest: the
  * Mate gets its own copy of the project with the project's recipe deployed (the tier read from
- * the group repo's `main`), runs its agent, and is called what the project calls it
- * (`proposedEnvironmentName`).
+ * the group repo's `main`), runs its agent, and its project is called what the Mate is (D3).
  */
 
 /** The name a new Mate's face follows: what is typed, or while the field is blank the last name typed. */
@@ -424,7 +413,7 @@ export function newMateDoor(input: {
 }
 
 /**
- * The project's Mates, as the door counts and names them: the listed ones by their agent, in the
+ * The project's Mates, as the door counts and names them: the listed ones by their project, in the
  * tree's order, then the ones still coming up — a Mate the platform took and the listing does not
  * hold yet is setting the project up as surely as one it does.
  */
@@ -437,10 +426,7 @@ export function newMateDoorMates(input: {
       ? [
           {
             projectId: item.project.id,
-            name: botDisplayName({
-              bot: readZeropsMembership(item.project).bot,
-              projectName: item.project.name,
-            }),
+            name: item.project.name,
           },
         ]
       : [],

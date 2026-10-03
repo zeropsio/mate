@@ -122,7 +122,6 @@ const isBirth = (value: unknown): value is HqBirth =>
   typeof value === "object" &&
   value !== null &&
   typeof (value as { readonly id?: unknown }).id === "string" &&
-  typeof (value as { readonly name?: unknown }).name === "string" &&
   typeof (value as { readonly face?: unknown }).face === "string";
 
 /**

@@ -246,16 +246,3 @@ function pick(size: number, randomBytes: RandomBytes): number {
     }
   }
 }
-
-/**
- * What to call this environment in a menu row: its agent's name, falling back
- * to the project's own name for an environment created before names existed or
- * by something that does not know about them.
- */
-export function botDisplayName(input: {
-  readonly bot: string | undefined;
-  readonly projectName: string;
-}): string {
-  const bot = input.bot?.trim();
-  return bot !== undefined && bot.length > 0 ? bot : input.projectName;
-}

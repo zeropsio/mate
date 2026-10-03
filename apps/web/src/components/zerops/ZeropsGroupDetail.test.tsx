@@ -115,7 +115,7 @@ function render(
       {...who}
       {...stops}
       name="Shop"
-      names={{ mateNames: new Map(), groupName: "Shop" }}
+      names={{ mateNames: new Map() }}
       onAct={() => {}}
       onAddMate={() => {}}
       onOpenMate={() => {}}
@@ -503,8 +503,7 @@ function renderStop(input: StopCase): string {
       deployed={new Map(view.version?.sha === undefined ? [] : [[name, view.version.sha]])}
       history={input.history ?? { kind: "reading" }}
       groupId="shop"
-      groupName="Shop"
-      names={{ mateNames: new Map(), groupName: "Shop" }}
+      names={{ mateNames: new Map() }}
       onOpenProject={() => {}}
       onRollBack={() => {}}
       pending={new Set()}

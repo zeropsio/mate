@@ -355,14 +355,15 @@ describe("findCandidate", () => {
 });
 
 describe("takenBotNames", () => {
-  /** A Mate HQ records by `name`, in its application. */
+  /** A Mate HQ places in its application, its project named `name` in Zerops. */
   const named = (id: string, name: string, presence: CandidateRow["presence"] = "known") => {
-    const base = row(id, presence, ["mate"]);
+    const base = row(id, presence);
     return {
       ...base,
       project: {
         ...base.project,
-        hq: { appId: "app-acme", appName: "Acme", kind: "mate" as const, mate: { name, face: "" } },
+        name,
+        hq: { appId: "app-acme", appName: "Acme", kind: "mate" as const, mate: { face: "" } },
       },
     };
   };
@@ -375,7 +376,8 @@ describe("takenBotNames", () => {
     readonly taken: object;
   }>([
     {
-      name: "a complete listing names every Mate HQ records, a presence unread included",
+      // D3: a Mate's name is its project's in Zerops; a project that is no Mate names nobody.
+      name: "a complete listing names every Mate by its project, a presence unread included",
       listing: known([named("a", "Fen"), named("b", "Ada", "unknown"), row("c")]),
       taken: { names: ["Fen", "Ada"], complete: true },
     },
@@ -389,13 +391,13 @@ describe("takenBotNames", () => {
       name: "a complete listing before HQ's structure is known is not all of them",
       listing: known([named("a", "Fen"), row("b", "known", ["mate"])]),
       structureKnown: false,
-      taken: { names: ["Fen"], complete: false },
+      taken: { names: ["Fen", "b"], complete: false },
     },
     {
-      // A name planted in a tag is nobody's name: HQ is the only record of one.
+      // A name planted in a tag is nobody's name: the project's own is the Mate's.
       name: "a name a project's tags carry is no Mate's",
       listing: known([row("a", "known", ["mate", "mate:bot:Fen"])]),
-      taken: { names: [], complete: true },
+      taken: { names: ["a"], complete: true },
     },
     {
       name: "a complete listing whose list held a member it may not read is not all of them",

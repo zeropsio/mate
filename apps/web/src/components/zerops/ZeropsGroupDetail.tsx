@@ -18,13 +18,11 @@
 import {
   cannotTellWhatRuns,
   assignCandidateMateTints,
-  botDisplayName,
   buildZeropsGroupTree,
   hasMate,
   mateShapeOf,
   changeState,
   deployWord,
-  environmentNameUnderGroup,
   flowVerbKey,
   flowVerbLabel,
   readZeropsMembership,
@@ -259,7 +257,7 @@ function useMateMenus(): {
       return (
         <ZeropsMateUpdateControl
           environmentId={candidate.environmentId}
-          mateName={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+          mateName={candidate.project.name}
         >
           {({ menuActions }) => menu(menuActions)}
         </ZeropsMateUpdateControl>
@@ -335,14 +333,11 @@ function groupRepository(environments: ReadonlyArray<EnvironmentRow>): string | 
   return undefined;
 }
 
-/**
- * What a history may call things: a Mate by its name rather than its bot
- * login, and a stop without the project's name in front of it.
- */
-function useHistoryNames(groupName: string | undefined): HistoryNames {
+/** What a history may call a Mate: its name rather than its bot login. */
+function useHistoryNames(): HistoryNames {
   const flowValue = useZeropsProjectFlowOptional();
   const mateNames = flowValue?.mateNames;
-  return useMemo(() => ({ mateNames, groupName }), [mateNames, groupName]);
+  return useMemo(() => ({ mateNames }), [mateNames]);
 }
 
 /** How "Who is on it" names the listing it is drawn from, while that listing cannot say "none". */
@@ -619,7 +614,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const mates_ = useMateMenus();
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
-  const names = useHistoryNames(groupName);
+  const names = useHistoryNames();
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
   const openMate = useOpenMateOf();
   const { withheldNotice, shown } = useWithheldStops(environments);
@@ -836,7 +831,6 @@ export function ZeropsGroupPane({
               <StopLine
                 environment={environment}
                 groupId={groupId}
-                groupName={name}
                 key={environment.projectId}
                 notice={withheldNotice?.(environment.projectId) ?? null}
                 firstDeploy={firstDeployOf?.(environment.projectId)}
@@ -944,7 +938,7 @@ export function ZeropsStopDetailPage({
   const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
-  const names = useHistoryNames(stopGroupName);
+  const names = useHistoryNames();
   const openProjects = useOpenProjects();
   const { routes, offers } = useStopRoutes(projectId);
   const route = useEnableRoute();
@@ -1033,7 +1027,6 @@ export function ZeropsStopDetailPage({
       history={history}
 
       groupId={groupId}
-      groupName={stopGroupName}
       names={names}
       onEnableRoute={(serviceId) => {
         void route.enable(projectId, serviceId);
@@ -1213,7 +1206,6 @@ export function ZeropsStopPane({
   deployed,
   enablingServiceId,
   groupId,
-  groupName,
   history,
   names,
   onEnableRoute,
@@ -1239,8 +1231,6 @@ export function ZeropsStopPane({
 }: {
   readonly crumbs: ReadonlyArray<Crumb>;
   readonly groupId: string;
-  /** The project's name, so the stop's own title does not repeat it. */
-  readonly groupName: string | undefined;
   readonly stop: EnvironmentRow;
   /** What the stop runs, as the left menu reads it — its menu is that menu. */
   readonly view: StopView;
@@ -1290,7 +1280,7 @@ export function ZeropsStopPane({
   readonly routeTrouble?: string | null;
 }) {
   const [allReleases, setAllReleases] = useState(false);
-  const title = environmentNameUnderGroup(groupName, stop.name);
+  const title = stop.name;
   const production = stop.tier === "production";
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
   const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
@@ -1877,13 +1867,12 @@ export function groupMateOf(input: {
   readonly update: MateUpdateStatus | null | undefined;
 }): GroupMate {
   const { item, tint, mine } = input;
-  const tags = readZeropsMembership(item.project);
   const live = activityOfNow(input.read);
   const connected = item.group === "connected" || live !== undefined;
   const subject = live?.subject;
   return {
     projectId: item.project.id,
-    name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+    name: item.project.name,
     tint,
     shape: mateShapeOf(item.project, tint),
     face: mateFaceOf({
@@ -2020,13 +2009,10 @@ function StopLine({
   environment,
   firstDeploy,
   groupId,
-  groupName,
   notice,
 }: {
   readonly environment: EnvironmentRow;
   readonly groupId: string;
-  /** The project's name, so a stop under it does not repeat it. */
-  readonly groupName: string | undefined;
   /**
    * Said in place of the stop while the grant withholds its project: its
    * tier stays, and its name, what it runs and its page do not (DESIGN §3.4).
@@ -2068,9 +2054,8 @@ function StopLine({
         onClick={open}
         type="button"
       >
-        {/* `Links - stage` under a page titled `Links` says it twice. */}
         <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {environmentNameUnderGroup(groupName, environment.name)}
+          {environment.name}
         </span>
         <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
           {stopLineVersion(deployment, environment)}

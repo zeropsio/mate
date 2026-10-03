@@ -47,9 +47,12 @@ describe("assignMateTints", () => {
   });
 });
 
-/** A Mate's record in HQ — its name and its face — in the application it is placed in. */
-function recorded(name: string, face = ""): Pick<ZeropsCandidate["project"], "hq"> {
-  return { hq: { appId: "app-acme", appName: "Acme", kind: "mate", mate: { name, face } } };
+/**
+ * A Mate's project named `name` in Zerops — its name (D3) — and its record in HQ, its face, in the
+ * application it is placed in.
+ */
+function recorded(name: string, face = ""): Pick<ZeropsCandidate["project"], "name" | "hq"> {
+  return { name, hq: { appId: "app-acme", appName: "Acme", kind: "mate", mate: { face } } };
 }
 
 describe("assignCandidateMateTints", () => {
@@ -89,7 +92,10 @@ describe("assignCandidateMateTints", () => {
 
 describe("a Mate's own face", () => {
   /** A Mate on the account, with its record in HQ where it has one. */
-  function mate(id: string, record?: Pick<ZeropsCandidate["project"], "hq">): ZeropsCandidate {
+  function mate(
+    id: string,
+    record?: Pick<ZeropsCandidate["project"], "name" | "hq">,
+  ): ZeropsCandidate {
     return {
       key: `${id}:zcp`,
       group: "ready",
@@ -165,7 +171,7 @@ describe("a Mate's own face", () => {
     },
     {
       case: "its own tint again once all eight are worn",
-      mates: MATE_TINT_IDS.map((tint) => mate(`p-${tint}`, recorded("", `${tint}:gem`))),
+      mates: MATE_TINT_IDS.map((tint) => mate(`p-${tint}`, recorded(`p-${tint}`, `${tint}:gem`))),
       name: "Quinn",
       tint: "olive",
     },
@@ -215,8 +221,11 @@ describe("a Mate's own face", () => {
 
   /** The face HQ records for `candidate` once `face` is saved over the one it wears. */
   function changed(candidate: ZeropsCandidate, face: Parameters<typeof changedMateFace>[1]) {
-    const worn = readZeropsMembership(candidate.project);
-    return mate(candidate.project.id, recorded(worn.bot ?? "", changedMateFace(worn.face, face)));
+    const worn = readZeropsMembership(candidate.project).face;
+    return mate(
+      candidate.project.id,
+      recorded(candidate.project.name, changedMateFace(worn, face)),
+    );
   }
 
   /**

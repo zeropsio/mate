@@ -213,7 +213,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     birthId: "add-1",
     botName: "Ida",
     step: "create",
-    adds: { appId: "g-acme", displayName: "Acme CRM - Ida", registers: true },
+    adds: { appId: "g-acme", displayName: "Ida", registers: true },
   };
 
   it("draws a New project's under the project's row, and asks for the tab while they run", () => {
@@ -255,7 +255,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
       then: {
         asked: expect.objectContaining({
           groupId: "g-acme",
-          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
+          again: { botName: "Ida", tint: "rose", shape: "seal" },
         }),
       },
     },

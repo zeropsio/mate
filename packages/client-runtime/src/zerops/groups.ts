@@ -9,10 +9,12 @@
  *
  * ## Where the facts live
  *
- * - **Membership, kind, the application's name, a Mate's name and face** are
- *   HQ's: it is their only writer, and the client joins where HQ places each
- *   project onto the projects it reads from Zerops (`ZeropsProject.hq`,
- *   `hq/placement.ts`). Delete a project in Zerops and HQ lets it go.
+ * - **Membership, kind, the application's name, a Mate's face** are HQ's: it is
+ *   their only writer, and the client joins where HQ places each project onto
+ *   the projects it reads from Zerops (`ZeropsProject.hq`, `hq/placement.ts`).
+ *   Delete a project in Zerops and HQ lets it go.
+ * - **A Mate's name** is its project's in Zerops (D3): renamed there, or by
+ *   Mate through the project's own record, and never held anywhere else.
  * - **That a Mate lives here** is the project's own `mate` marker, for the
  *   Zerops GUI too, and a Mate HQ places is one whatever its tags say.
  * - **Who asked for the project's development to be stood up** is the Mate's
@@ -87,8 +89,6 @@ export interface ZeropsMembership {
   readonly role: ZeropsEnvironmentRole | undefined;
   /** Its application's name, as HQ holds it. */
   readonly label: string | undefined;
-  /** The Mate's own name, the thing a person addresses. */
-  readonly bot: string | undefined;
   /** Who asked for the project's development to be stood up, as HQ's birth record names them. */
   readonly standUp?: { readonly by: string } | undefined;
   /**
@@ -143,14 +143,12 @@ export function readZeropsMembership(
   // A Mate HQ holds in no application has its record, and no place.
   const app = placed?.appId === null ? undefined : placed;
   const label = app?.appName.trim();
-  const name = placed?.mate?.name.trim();
   return {
     // A dev/stage is a Mate too: its project also serves as its application's stage.
     mate: marker || placed?.kind === "mate" || placed?.kind === "devstage",
     groupId: app?.appId,
     role: app === undefined ? undefined : ROLE_OF_KIND[app.kind],
     label: label === undefined || label === "" ? undefined : label,
-    bot: name === undefined || name === "" ? undefined : name,
     standUp: asker === undefined || asker === "" ? undefined : { by: asker },
     madeBy: maker === undefined || maker === "" ? undefined : maker,
     face:
@@ -277,10 +275,8 @@ export interface BirthPlacement {
   /** The group's name as the press knew it; names a group the listing does not hold yet. */
   readonly groupName: string;
   readonly kind: RoleProjectKind;
-  /** What the person called the environment. */
+  /** What the person called the environment: its project's name, a Mate's own (D3). */
   readonly displayName: string;
-  /** What a Mate is called — its name, not its environment's — drawn while it comes up. */
-  readonly botName?: string;
   /** The face its person picked for a Mate, worn asleep while it comes up. */
   readonly face?: ZeropsMateFace;
 }
@@ -538,7 +534,7 @@ export function deriveZeropsGroups(
       pending: coming.map((birth): ZeropsGroupPendingMember => ({
         projectId: birth.projectId,
         kind: birth.placement.kind,
-        name: birth.placement.botName ?? birth.placement.displayName,
+        name: birth.placement.displayName,
         startedAt: birth.startedAt,
         ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
         ...(birth.failed === true ? { failed: true } : {}),

@@ -2,11 +2,12 @@
  * Adding an environment to a group, as a short form.
  *
  * A Mate is somebody: its dialog asks who — a name, a colour, a shape — and
- * decides the rest (`ZeropsNewMateForm`). A stage or a production leaves
- * three things to the person: what the environment is called, whether it
- * runs an agent and what that agent is called, and what application goes in
- * — the group's published recipe, or nothing yet. Everything else follows
- * from the role.
+ * decides the rest (`ZeropsNewMateForm`), its project named as it is (D3). A
+ * stage or a production leaves three things to the person: what the
+ * environment is called — the one name its project has, an agent in it going
+ * by it too — whether it runs an agent, and what application goes in — the
+ * group's published recipe, or nothing yet. Everything else follows from the
+ * role.
  */
 import type {
   EnvironmentRecipeChoice,
@@ -48,10 +49,9 @@ import { ProcessSteps, type ProcessStep } from "./primitives";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 
 export interface EnvironmentCreationChoice {
+  /** The project's name: where an agent runs, the Mate's own (D3). */
   readonly name: string;
   readonly withAgent: boolean;
-  /** Present when `withAgent`. */
-  readonly botName?: string;
   readonly recipe: EnvironmentRecipeChoice;
   /** The face its person picked: present for a Mate. */
   readonly face?: ZeropsMateFace;
@@ -60,16 +60,13 @@ export interface EnvironmentCreationChoice {
 export interface ZeropsEnvironmentCreationFormProps {
   readonly groupName: string;
   readonly role: ZeropsEnvironmentRole;
+  /**
+   * The name the form starts with: its project's, which is a Mate's own (D3), or a stage's or a
+   * production's suggested after its project and role (`proposedEnvironmentName`).
+   */
   readonly defaultName: string;
-  readonly defaultBotName: string;
   /** Another name free on the account, for a Mate's die (`ZeropsNewMateForm`). */
   readonly proposeAnotherName?: ((current: string) => string) | undefined;
-  /**
-   * What the project calls an environment whose agent goes by `botName`: a
-   * Mate after its bot, so renaming Fen to Ada renames "Todo - Fen" to
-   * "Todo - Ada"; a stage or a production after its role.
-   */
-  readonly proposeName: (botName: string) => string;
   readonly defaultWithAgent: boolean;
   /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
   readonly takenBotNames: TakenBotNames;
@@ -135,22 +132,21 @@ export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFo
 
 function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   if (props.role !== "dev") return <EnvironmentForm {...props} />;
-  const { groupName, defaultBotName, proposeName, takenBotNames, tier, recipe } = props;
+  const { groupName, defaultName, takenBotNames, tier, recipe } = props;
   const { defaultTintFor, defaultShapeFor, closed, onDoorAction, onCancel, onCreate } = props;
   return (
     <ZeropsNewMateForm
       closed={closed}
-      defaultBotName={defaultBotName}
+      defaultBotName={defaultName}
       defaultShapeFor={defaultShapeFor}
       defaultTintFor={defaultTintFor}
       groupName={groupName}
       onCancel={onCancel}
       onDoorAction={onDoorAction}
-      onCreate={({ name, botName, recipe, face }) => {
-        onCreate({ name, withAgent: true, botName, recipe, face });
+      onCreate={({ name, recipe, face }) => {
+        onCreate({ name, withAgent: true, recipe, face });
       }}
       proposeAnotherName={props.proposeAnotherName}
-      proposeName={proposeName}
       takenBotNames={takenBotNames}
       tier={tier}
       tierLoading={recipe === "reading"}
@@ -163,10 +159,7 @@ function EnvironmentForm({
   groupName,
   role,
   defaultName,
-  defaultBotName,
-  proposeName,
   defaultWithAgent,
-  takenBotNames,
   tier,
   tierServices,
   recipe,
@@ -184,9 +177,7 @@ function EnvironmentForm({
   // A recipe being read, or one that could not be read, holds Add: what is created comes from it.
   const held = creationRecipeHold(recipe);
   const [name, setName] = useState(defaultName);
-  const [nameTouched, setNameTouched] = useState(false);
   const [withAgent, setWithAgent] = useState(defaultWithAgent);
-  const [botName, setBotName] = useState(defaultBotName);
   // The best option on offer is the default, and it improves the moment the
   // group repo answers; a choice the person made sticks.
   const [chosenRecipeId, setChosenRecipeId] = useState<string | null>(null);
@@ -194,8 +185,8 @@ function EnvironmentForm({
   const [submitted, setSubmitted] = useState(false);
 
   const errors: CreationFormErrors = validateCreationForm(
-    { name, withAgent, botName, recipeId },
-    { takenBotNames, options, recipe },
+    { name, withAgent, recipeId },
+    { options, recipe },
   );
   const showErrors = submitted;
 
@@ -209,12 +200,7 @@ function EnvironmentForm({
         if (hasCreationErrors(errors)) return;
         const option = options.find((entry) => entry.id === recipeId);
         if (option === undefined) return;
-        onCreate({
-          name: name.trim(),
-          withAgent,
-          ...(withAgent ? { botName: botName.replace(/\s+/g, " ").trim() } : {}),
-          recipe: option.choice,
-        });
+        onCreate({ name: name.trim(), withAgent, recipe: option.choice });
       }}
     >
       <DialogHeader>
@@ -233,7 +219,6 @@ function EnvironmentForm({
             id={`${id}-name`}
             onChange={(event) => {
               setName(event.target.value);
-              setNameTouched(true);
             }}
             value={name}
           />
@@ -257,25 +242,6 @@ function EnvironmentForm({
               }}
             />
           </label>
-          {withAgent ? (
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-bot`}>Agent's name</Label>
-              <Input
-                aria-invalid={showErrors && errors.botName !== undefined ? true : undefined}
-                id={`${id}-bot`}
-                onChange={(event) => {
-                  setBotName(event.target.value);
-                  if (!nameTouched) {
-                    setName(proposeName(event.target.value.replace(/\s+/g, " ").trim()));
-                  }
-                }}
-                value={botName}
-              />
-              {showErrors && errors.botName !== undefined ? (
-                <FieldError>{errors.botName}</FieldError>
-              ) : null}
-            </div>
-          ) : null}
         </div>
 
         <div className="space-y-2">

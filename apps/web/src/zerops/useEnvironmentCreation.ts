@@ -91,24 +91,24 @@ export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
 
 /**
  * The birth intent a Mate added to a group is pressed under (F6c): recorded at HQ before its
- * project exists — its application, its name, its face and, for a dev Mate, the person's ask for
- * its stand-up — so a press cut off between the project and its attach is finished where and as
- * it was asked for, in any browser, its attach recording the ask with the Mate (audit B3). None
- * for a stage or a production, or an environment with no agent: no Mate is born.
+ * project exists — its application, its face and, for a dev Mate, the person's ask for its
+ * stand-up — so a press cut off between the project and its attach is finished where and as it
+ * was asked for, in any browser, its attach recording the ask with the Mate (audit B3). Its name
+ * is its project's (D3). None for a stage or a production, or an environment with no agent: no
+ * Mate is born.
  */
 export async function addedMateBirth(
   hq: Pick<HqApi, "recordBirth">,
   input: {
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
-    readonly choice: Pick<EnvironmentCreationChoice, "name" | "botName" | "face" | "withAgent">;
+    readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent">;
   },
 ): Promise<string | undefined> {
   const { choice } = input;
   if ((input.role !== "dev" && input.role !== "devstage") || !choice.withAgent) return undefined;
   const { id } = await hq.recordBirth({
     appId: input.groupId,
-    name: choice.botName ?? choice.name,
     // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
     face: choice.face === undefined ? "" : formatMateFace(choice.face),
     standUp: input.role === "dev",
@@ -210,7 +210,7 @@ export function useEnvironmentCreation(): (
                 hq,
                 groupId: group.groupId,
                 kind: "mate",
-                mate: { name: choice.botName ?? name, face: choice.face },
+                mate: { face: choice.face },
                 // The person adding a dev Mate with its agent asks for its stand-up — with its
                 // birth intent, which its attach closes; the press's close-off marks it closed
                 // off, after its record (`planEnvironmentCreation`).
@@ -250,7 +250,6 @@ export function useEnvironmentCreation(): (
               groupName: group.name,
               kind: tier ?? "mate",
               displayName: name,
-              ...(tier === null && choice.botName !== undefined ? { botName: choice.botName } : {}),
               ...(choice.face === undefined ? {} : { face: choice.face }),
             },
           });

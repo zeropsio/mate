@@ -31,6 +31,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "enable-subdomain-access":
       return intent.service;
     case "update-project-tags":
+    case "rename-project":
     case "set-project-member-role":
     case "import-development-container":
     case "import-services":

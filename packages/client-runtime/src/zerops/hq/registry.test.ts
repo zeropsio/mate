@@ -7,9 +7,7 @@ describe("registryFromHq", () => {
     expect(
       registryFromHq({
         // A Mate in no application is in no group.
-        ungrouped: [
-          { projectId: "p5", name: "scratch", mate: { name: "Ada", face: "sky:flower" } },
-        ],
+        ungrouped: [{ projectId: "p5", name: "scratch", mate: { face: "sky:flower" } }],
         apps: [
           {
             id: "app-1",

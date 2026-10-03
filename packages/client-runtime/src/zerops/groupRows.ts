@@ -70,35 +70,6 @@ export function deployedCommit(appVersionName: string | undefined): string | und
 }
 
 /**
- * An environment's name as a row under its project's own heading says it.
- *
- * A Zerops project carries its group's name — `Links - stage`, `Todo -
- * production` — so under a heading that already reads `Links`, the prefix is
- * the same word twice on two adjacent lines, and the row spends its width
- * saying nothing. Dropped, the row says the one thing that tells it from its
- * neighbour.
- *
- * Only a prefix is dropped, and only when something is left: a name somebody
- * chose that merely contains the group's, or equals it, is theirs and stays
- * whole. The separator may be a dash, an en dash or plain space, because the
- * name is typed by a person and Zerops keeps whatever they typed.
- */
-export function environmentNameUnderGroup(
-  groupName: string | undefined,
-  environmentName: string,
-): string {
-  const name = environmentName.trim();
-  const group = groupName?.trim();
-  if (group === undefined || group.length === 0) return name;
-  if (!name.toLocaleLowerCase().startsWith(group.toLocaleLowerCase())) return name;
-  const rest = name
-    .slice(group.length)
-    .replace(/^[\s\u2010-\u2015_/:-]+/u, "")
-    .trim();
-  return rest.length === 0 ? name : rest;
-}
-
-/**
  * What is deployed, as a person talks about it: its name, and the commit
  * underneath.
  *

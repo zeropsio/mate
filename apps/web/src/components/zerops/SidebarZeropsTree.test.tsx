@@ -134,16 +134,20 @@ const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subjec
   truncated: false,
 });
 
-/** Where HQ places a project: in application `appId`, named `appName`, as `kind`; a Mate by its name. */
+/**
+ * Where HQ places a project: in application `appId`, named `appName`, as `kind`; with a Mate's
+ * record where `recorded` — its name is its project's (D3).
+ */
 function inApp(
   appId: string,
   appName: string,
   kind: HqPlacement["kind"] = "mate",
-  mate?: string,
+  recorded = false,
 ): HqPlacement {
-  return { appId, appName, kind, mate: mate === undefined ? null : { name: mate, face: "" } };
+  return { appId, appName, kind, mate: recorded ? { face: "" } : null };
 }
-const AAA = (kind?: HqPlacement["kind"], mate?: string) => inApp("aaa", "Beviro CRM", kind, mate);
+const AAA = (kind?: HqPlacement["kind"], recorded?: boolean) =>
+  inApp("aaa", "Beviro CRM", kind, recorded);
 const IN_LINKS = (kind?: HqPlacement["kind"]) => inApp("links", "Links", kind);
 
 /** A project's own tags, and where HQ places it, if anywhere. */
@@ -184,7 +188,7 @@ const SIGNER = "u-ada";
 
 /** `placed`, its Mate's record at HQ saying `over` too. */
 function recorded(placed: HqPlacement, over: Partial<HqMate>): HqPlacement {
-  return { ...placed, mate: { name: "", face: "", ...placed.mate, ...over } };
+  return { ...placed, mate: { face: "", ...placed.mate, ...over } };
 }
 
 /** A Mate's logins as HQ's overview says them, naming `signer` as who signed Claude in. */
@@ -2038,9 +2042,9 @@ describe("a project collapsed to its heading", () => {
   // that need you, work, or finished unseen, a dot for what is not work.
   it("shows its busy Mates' faces while folded, and none while open", () => {
     const MATES = [
-      { ...named("crm-a", "CRM - a", { tags: ["mate"], hq: AAA("mate", "Ada") }) },
-      { ...named("crm-b", "CRM - b", { tags: ["mate"], hq: AAA("mate", "Bo") }) },
-      { ...named("crm-c", "CRM - c", { tags: ["mate"], hq: AAA("mate", "Cy") }) },
+      { ...named("crm-a", "Ada", { tags: ["mate"], hq: AAA("mate", true) }) },
+      { ...named("crm-b", "Bo", { tags: ["mate"], hq: AAA("mate", true) }) },
+      { ...named("crm-c", "Cy", { tags: ["mate"], hq: AAA("mate", true) }) },
     ].map((item) => mine({ ...item, group: "connected" }) as ZeropsCandidate);
     session.viewer = "u-ada";
     const busy = (id: string): ZeropsAgentActivity => ({
@@ -2488,7 +2492,7 @@ describe("a project collapsed to its heading", () => {
 });
 
 describe("the Mate's card", () => {
-  const NAMED = candidate("crm-dev", { tags: ["mate"], hq: AAA("mate", "Ada") });
+  const NAMED = named("crm-dev", "Ada", { tags: ["mate"], hq: AAA("mate", true) });
   const working: ZeropsAgentActivity = {
     threadId: "t1" as ZeropsAgentActivity["threadId"],
     kind: "working",
@@ -3563,7 +3567,7 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
 
 describe("a long list, kept scannable", () => {
   const QUIET_MATE = {
-    ...named("crm-old", "CRM - old", { tags: ["mate"], hq: AAA("mate", "Olga") }),
+    ...named("crm-old", "Olga", { tags: ["mate"], hq: AAA("mate", true) }),
     group: "connected",
   } as ZeropsCandidate;
   const act = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
@@ -3623,7 +3627,7 @@ describe("a long list, kept scannable", () => {
       getActivity: (item: ZeropsCandidate) => activities(item.project.id),
       activeProjectId: "crm-old",
     });
-    expect(names(html)).toEqual(["Olga", "crm-dev"]);
+    expect(names(html)).toEqual(["crm-dev", "Olga"]);
     expect(html).not.toContain("quiet Mate");
   });
 
@@ -3790,8 +3794,8 @@ describe("what the jump box finds in the menu", () => {
       ]),
     ).toEqual([["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name]]);
     expect(index()?.stops.map((stop) => [stop.projectId, stop.title])).toEqual([
-      ["links-stage", "Links stage"],
-      ["links-prod", "Links production"],
+      ["links-stage", "Links - stage"],
+      ["links-prod", "Links - production"],
     ]);
     act_(() => {
       mounted.unmount();

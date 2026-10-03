@@ -37,15 +37,13 @@ describe("a Mate's birth at HQ", () => {
   // Finish setup asked again after the record was written: the record stands.
   it("keeps a record HQ holds already", async () => {
     const hq = hqOf({ createMate: "conflict" });
-    await expect(
-      createMateRecord(hq.api, { projectId: "p1", name: "Ada", face: "" }),
-    ).resolves.toBeUndefined();
+    await expect(createMateRecord(hq.api, { projectId: "p1", face: "" })).resolves.toBeUndefined();
   });
 
   it("says any other refusal of the record", async () => {
     const hq = hqOf({ createMate: "forbidden" });
-    await expect(
-      createMateRecord(hq.api, { projectId: "p1", name: "Ada", face: "" }),
-    ).rejects.toMatchObject({ code: "forbidden" });
+    await expect(createMateRecord(hq.api, { projectId: "p1", face: "" })).rejects.toMatchObject({
+      code: "forbidden",
+    });
   });
 });

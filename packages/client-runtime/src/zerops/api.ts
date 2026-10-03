@@ -171,7 +171,7 @@ export interface ZeropsProject {
   readonly tagList?: ReadonlyArray<string>;
   /**
    * Where the organization's HQ places this project (ADR 0002): its application, its kind, its
-   * Mate's name and face. Not a platform field: the client joins it from HQ's structure where
+   * Mate's face. Not a platform field: the client joins it from HQ's structure where
    * projects enter the screen (`placeProjects`), and it is absent while that structure is unknown
    * or places no such project.
    */
@@ -179,7 +179,7 @@ export interface ZeropsProject {
   /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**
-   * Round-tripped by every tag write (`writeProjectTags`). `PUT
+   * Round-tripped by every record write (`writeProject`). `PUT
    * /project/{id}` replaces the record, so a tag write that omitted these two
    * would quietly take a shared IPv4 away or reset somebody's credit limit on
    * any project.
@@ -189,14 +189,14 @@ export interface ZeropsProject {
 }
 
 /**
- * The body of `PUT /project/{id}` that writes a project's tags.
+ * The body of `PUT /project/{id}` that writes a project's name and tags.
  *
  * Five fields, and `userRoles` is not among them. The platform replaces the
  * record, and `userRoles` is an object on the wire whose omission means "leave
  * the roles alone" and whose inclusion would rewrite who can reach the
- * project. A tag write has no business doing that.
+ * project. A name or a tag write has no business doing that.
  */
-function projectTagWriteBody(input: {
+function projectWriteBody(input: {
   readonly name: string;
   readonly description?: string | undefined;
   readonly tagList: ReadonlyArray<string>;
@@ -1228,17 +1228,17 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `PUT /project/{id}` with `tagList` — the one call that writes a project's
-   * tags, and only the TagWriter makes it (`data/tagWriter.ts`), with a list
-   * it just applied a patch to.
+   * `PUT /project/{id}` with `name` and `tagList` — the one call that writes a
+   * project's name and tags, and only the TagWriter makes it
+   * (`data/tagWriter.ts`), with a record it just read and changed.
    *
-   * `project` is the read that list came from: the platform replaces the
+   * `project` is the read the record came from: the platform replaces the
    * record, so the fields the write must not change are round-tripped from it
-   * (`projectTagWriteBody`), and `userRoles` is never sent.
+   * (`projectWriteBody`), and `userRoles` is never sent.
    */
-  async writeProjectTags(
+  async writeProject(
     project: ZeropsProject,
-    tagList: ReadonlyArray<string>,
+    record: { readonly name: string; readonly tagList: ReadonlyArray<string> },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
@@ -1248,10 +1248,10 @@ export class ZeropsApiClient {
         method: "PUT",
         signal: signal ?? null,
         body: JSON.stringify(
-          projectTagWriteBody({
-            name: project.name,
+          projectWriteBody({
+            name: record.name,
             description: project.description,
-            tagList,
+            tagList: record.tagList,
             publicIpV4Shared: project.publicIpV4Shared,
             maxCreditLimit: project.maxCreditLimit,
           }),

@@ -6,7 +6,7 @@ import { fixMatesOf, runFixMate } from "./fixMates";
 
 const GROUP = "group-snap";
 
-/** A Mate's candidate: its project in a group, named as HQ records it. */
+/** A Mate's candidate: its project in a group, named as the Mate is (D3). */
 function mate(
   id: string,
   bot: string,
@@ -21,14 +21,9 @@ function mate(
     key: `candidate-${id}`,
     project: {
       id,
-      name: `${bot.toLowerCase()}-project`,
+      name: bot,
       tagList: ["mate"],
-      hq: {
-        appId: overrides.group ?? GROUP,
-        appName: "Snap",
-        kind: "mate",
-        mate: { name: bot, face: "" },
-      },
+      hq: { appId: overrides.group ?? GROUP, appName: "Snap", kind: "mate", mate: { face: "" } },
     },
     group: overrides.missingContainer
       ? "unavailable"

@@ -48,9 +48,7 @@
 import { useWarmIntent } from "../chat/warmTimeline";
 import {
   assignCandidateMateTints,
-  botDisplayName,
   buildZeropsGroupTree,
-  environmentNameUnderGroup,
   groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
@@ -952,10 +950,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     }
     const names = new Map<string, string>();
     for (const { item } of mateEntries) {
-      const name = botDisplayName({
-        bot: readZeropsMembership(item.project).bot,
-        projectName: item.project.name,
-      });
+      const name = item.project.name;
       names.set(item.project.id, name);
       jumpMates.push(
         jumpMateOf({
@@ -1088,8 +1083,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         : releasesComing
           ? { kind: "waiting" }
           : { kind: "absent" };
-    const stopName = (stop: GroupFlowStop) =>
-      environmentNameUnderGroup(groupName, stopItem(stop.projectId)?.project.name ?? stop.name);
+    const stopName = (stop: GroupFlowStop) => stopItem(stop.projectId)?.project.name ?? stop.name;
     const stages = projectFlow.stages.map((stop) => ({
       name: stopName(stop),
       stop,
@@ -1197,9 +1191,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           )}
         </>
       );
-    // The jump box finds each of them, with the dot and words its chip's menu
-    // gives it — only where the heading draws its chip: a find lands on it.
-    const title = (name: string) => (groupName === undefined ? name : `${groupName} ${name}`);
+    // The jump box finds each of them, by its name as Zerops has it (D3), with the dot and words
+    // its chip's menu gives it — only where the heading draws its chip: a find lands on it.
     const jumpStopsHere: ReadonlyArray<JumpStop> = [
       ...(stageChipDrawn === undefined
         ? []
@@ -1208,7 +1201,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             return {
               projectId: stop.projectId,
               groupId: id,
-              title: title(name),
+              title: name,
               line: stop.version?.label ?? "",
               dot: own === undefined ? STOP_DOT[stop.state] : chipDot(own),
               word:
@@ -1223,7 +1216,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             {
               projectId: productionStop.projectId,
               groupId: id,
-              title: title(stopName(productionStop)),
+              title: stopName(productionStop),
               line: productionStop.version?.label ?? "",
               dot: chipDot(prodChip),
               word: chipFace(prodChip).words,
@@ -1253,10 +1246,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             const view = coming === undefined ? read : mateComingRowView(read, coming);
             return {
               projectId: item.project.id,
-              name: botDisplayName({
-                bot: readZeropsMembership(item.project).bot,
-                projectName: item.project.name,
-              }),
+              name: item.project.name,
               ...faceOf(item.project),
               state: view.state,
               face: view.face,
@@ -2458,7 +2448,7 @@ function MateRow<T extends RosterCandidate>({
   readonly reviewWaits?: boolean;
 }) {
   const tags = readZeropsMembership(candidate.project);
-  const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+  const name = candidate.project.name;
   // On its way off Zerops (`deletingMates.ts`): it says so in its last line,
   // offers no menu and does not open, until the listing lets it go.
   const deletingIds = useDeletingMates();

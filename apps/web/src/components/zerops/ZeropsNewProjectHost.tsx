@@ -283,13 +283,13 @@ function NewProjectDialog() {
             projectId,
             projectName: placement.displayName,
             // After its attach: a press that stops before it leaves a Mate HQ holds in its
-            // application, which any browser finishes under its name.
+            // application, which any browser finishes.
             container: { agents: ask.agents },
             registration: {
               hq,
               groupId: appId,
               kind: "mate",
-              mate: { name: botName, face },
+              mate: { face },
               standUp: false,
               intent,
             },

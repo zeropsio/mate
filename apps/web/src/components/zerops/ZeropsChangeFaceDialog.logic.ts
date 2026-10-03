@@ -33,16 +33,15 @@ export function changeFaceWords(name: string): ChangeFaceWords {
 }
 
 /**
- * Whether a Mate's menus offer *Change face…*: on a Mate, where this viewer may rename it — the
- * same write of the Mate's record in HQ (`edit_mate_record`), so a face HQ would refuse is never
- * offered.
+ * Whether a Mate's menus offer *Change face…*: on a Mate, where HQ's rule lets this viewer edit its
+ * record (`edit_mate_record`), so a face HQ would refuse is never offered.
  */
 export function changeFaceOffered(input: {
   readonly candidate: ZeropsCandidate;
   /** Whether HQ's rule offers the viewer the Mate's record (`mayOffer`); never for an unknown one. */
-  readonly mayRename: boolean;
+  readonly mayEdit: boolean;
 }): boolean {
-  return input.mayRename && hasMate(input.candidate);
+  return input.mayEdit && hasMate(input.candidate);
 }
 
 /**

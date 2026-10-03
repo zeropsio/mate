@@ -52,10 +52,10 @@ function mate(bot: string): ZeropsCandidate {
     group: "ready",
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status: "ACTIVE",
       tagList: ["mate"],
-      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { name: bot, face: "" } },
+      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { face: "" } },
     },
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
   };

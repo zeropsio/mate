@@ -60,10 +60,8 @@ import {
   newMateDoor,
   newMateDoorMates,
   newMateRecipeChange,
-  proposedEnvironmentName,
   recipeChangeView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import { emptyApplications } from "./projects/emptyApps.logic";
 
 export function ZeropsNewMateHost() {
@@ -182,20 +180,11 @@ function NewMateDialog({
     }),
     rereading: recipe.rereading,
   });
-  const roleLabel = environmentRoleLabel("dev")?.toLowerCase() ?? "dev";
-  const proposeName = (botName: string) =>
-    proposedEnvironmentName({
-      groupName: group.name,
-      roleLabel,
-      botName,
-      taken: environments.map(({ item }) => item.project.name),
-    });
-
   return (
     <ZeropsEnvironmentCreationDialog
       closed={door.kind === "closed" ? door : undefined}
-      defaultBotName={defaultBotName}
-      defaultName={again?.name ?? proposeName(defaultBotName)}
+      // A Mate's project is named as the Mate is (D3): started over, the name it was asked with.
+      defaultName={defaultBotName}
       defaultTintFor={(name) =>
         name === again?.botName ? again.tint : newMateTint(candidates, name)
       }
@@ -207,7 +196,7 @@ function NewMateDialog({
       onCancel={dismiss}
       onCreate={(choice) => {
         if (activeOrganization === null) return;
-        const name = choice.botName ?? choice.name;
+        const { name } = choice;
         const face = choice.face ?? { tint: "slate", shape: "squircle" };
         const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
         // Its own id, its view's: a random one, as a New project's group's.
@@ -225,7 +214,7 @@ function NewMateDialog({
             agents: [],
             adds: {
               appId: group.groupId,
-              displayName: choice.name,
+              displayName: name,
               // As the press decides it: an owner or an admin writes a Mate's registration.
               registers: true,
               // Named from the press, so its copy's and its workspace's lines stand before the
@@ -285,7 +274,6 @@ function NewMateDialog({
       proposeAnotherName={(current) =>
         generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes))
       }
-      proposeName={proposeName}
       role="dev"
       takenBotNames={taken}
       tier={recipe.tier}

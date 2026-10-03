@@ -2254,7 +2254,7 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
   });
 });
 
-describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
+describe("ZeropsApiClient.writeProject — the TagWriter's one PUT", () => {
   const project = {
     id: "p1",
     name: "Fen",
@@ -2267,18 +2267,18 @@ describe("ZeropsApiClient.writeProjectTags — the TagWriter's one PUT", () => {
     userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
   };
 
-  it("sends the list with the fields the platform would otherwise reset, and never userRoles", async () => {
+  it("sends the name and the list with the fields the platform would otherwise reset, and never userRoles", async () => {
     const stub = recordingFetch(() => jsonResponse(200, project));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.writeProjectTags(project, ["billing:team-a", "mate"]);
+    await client.writeProject(project, { name: "Nova", tagList: ["billing:team-a", "mate"] });
 
     expect(stub.requests.map((request) => request.method)).toEqual(["PUT"]);
-    // A tag write must never carry `userRoles`: the platform replaces what it
+    // A record write must never carry `userRoles`: the platform replaces what it
     // is sent, and a stale list would silently rewrite who may open the Mate.
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      name: "Fen",
+      name: "Nova",
       description: "A Mate",
       tagList: ["billing:team-a", "mate"],
       publicIpV4Shared: true,

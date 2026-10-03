@@ -121,7 +121,7 @@ export function resolveMateProjectRole(input: {
 
 /**
  * What this person may do to a Mate's project on the platform — opening it is HQ's rule's
- * (`observe_mate`, `mateRowCan`), and so are its name, face and place (`mayOffer`).
+ * (`observe_mate`, `mateRowCan`), and so are its face and place (`mayOffer`).
  *
  * One rule for the whole screen (guide 0.8): **a verb a person cannot finish
  * is not offered**. Every one of these is a platform write that the platform
@@ -137,6 +137,9 @@ export function resolveMateProjectRole(input: {
  *   for every role below `ADMIN`). The creator of a Mate is its `OWNER`, so
  *   their own Mate is theirs to delete; an org owner or admin may delete
  *   anyone's.
+ * - `rename` — renaming the Mate's project, whose name is the Mate's (D3): a
+ *   `PUT /project/{id}`, which needs effective `OWNER` or `ADMIN` there as
+ *   deleting it does (measured: tags and rename need effective `OWNER`/`ADMIN`).
  * - `assign` — handing a Mate to somebody else, which writes a per-project
  *   role override and is therefore an org `OWNER`/`ADMIN` verb only (D11).
  *   The Mate's own owner cannot give it away; being able to would let anyone
@@ -144,6 +147,7 @@ export function resolveMateProjectRole(input: {
  */
 export interface MateVerbs {
   readonly delete: boolean;
+  readonly rename: boolean;
   readonly assign: boolean;
 }
 
@@ -152,8 +156,10 @@ export function resolveMateVerbs(input: {
   readonly viewer: MateAccessViewer;
 }): MateVerbs {
   const orgAdmin = roleAtLeast(input.viewer.roleCode, "ADMIN");
+  const projectAdmin = roleAtLeast(resolveMateProjectRole(input), "ADMIN");
   return {
-    delete: roleAtLeast(resolveMateProjectRole(input), "ADMIN"),
+    delete: projectAdmin,
+    rename: projectAdmin,
     assign: orgAdmin && input.project.clientId === input.viewer.id,
   };
 }

@@ -35,10 +35,6 @@ import {
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
-/** The account's Mates' names, read in full. */
-const FEN_TAKEN = { names: ["Fen"], complete: true };
-const NONE_TAKEN = { names: [], complete: true };
-
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
   kind: "tier" as const,
@@ -169,83 +165,32 @@ describe("validateCreationForm", () => {
     services: ["app"],
     recipe: "present",
   });
-  const valid = {
-    name: "Acme Docs - stage",
-    withAgent: true,
-    botName: "Otto",
-    recipeId: "tier",
-  };
+  const valid = { name: "Acme Docs - stage", withAgent: true, recipeId: "tier" };
 
   it("accepts a complete form", () => {
-    expect(
-      hasCreationErrors(
-        validateCreationForm(valid, { takenBotNames: FEN_TAKEN, options, recipe: "present" }),
-      ),
-    ).toBe(false);
-  });
-
-  it("wants a name for the environment", () => {
-    expect(
-      validateCreationForm(
-        { ...valid, name: " " },
-        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
-      ).name,
-    ).toBe("Give the environment a name.");
-  });
-
-  it("wants a name for the agent, short and unused", () => {
-    expect(
-      validateCreationForm(
-        { ...valid, botName: "" },
-        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
-      ).botName,
-    ).toBe("Give the agent a name.");
-    expect(
-      validateCreationForm(
-        { ...valid, botName: "x".repeat(25) },
-        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
-      ).botName,
-    ).toContain("24");
-    expect(
-      validateCreationForm(
-        { ...valid, botName: "fen" },
-        { takenBotNames: FEN_TAKEN, options, recipe: "present" },
-      ).botName,
-    ).toContain("already");
-  });
-
-  it("waits for the rest of the listing before a name it has not read passes as free", () => {
-    expect(
-      validateCreationForm(valid, {
-        takenBotNames: { names: ["Fen"], complete: false },
-        options,
-        recipe: "present",
-      }).botName,
-    ).toBe("Checking which names are taken…");
-  });
-
-  it("does not care about the agent's name when there is no agent", () => {
-    const errors = validateCreationForm(
-      { ...valid, withAgent: false, botName: "" },
-      { takenBotNames: NONE_TAKEN, options, recipe: "present" },
+    expect(hasCreationErrors(validateCreationForm(valid, { options, recipe: "present" }))).toBe(
+      false,
     );
-    expect(errors.botName).toBeUndefined();
+  });
+
+  // D3: one name, the project's, whether an agent runs in it or not.
+  it.each([true, false])("wants a name for the environment, the agent %s", (withAgent) => {
+    expect(
+      validateCreationForm({ ...valid, withAgent, name: " " }, { options, recipe: "present" }).name,
+    ).toBe("Give the environment a name.");
   });
 
   it("refuses nothing yet without an agent, and names a way out", () => {
     const errors = validateCreationForm(
       { ...valid, withAgent: false, recipeId: "none" },
-      { takenBotNames: NONE_TAKEN, options, recipe: "present" },
+      { options, recipe: "present" },
     );
     expect(errors.recipe).toContain("switch the agent on");
   });
 
   it("refuses an option that is not on offer", () => {
     expect(
-      validateCreationForm(
-        { ...valid, recipeId: "store" },
-        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
-      ).recipe,
+      validateCreationForm({ ...valid, recipeId: "store" }, { options, recipe: "present" }).recipe,
     ).toBe("Choose what goes in the environment.");
   });
 });
@@ -282,8 +227,8 @@ describe("validateCreationForm, on an environment with no agent", () => {
       const options = recipeOptions({ roleLabel: "Prod", tier: undefined, services: [], recipe });
       expect(
         validateCreationForm(
-          { name: "Acme - production", withAgent, botName: "Otto", recipeId: "none" },
-          { takenBotNames: NONE_TAKEN, options, recipe },
+          { name: "Acme - production", withAgent, recipeId: "none" },
+          { options, recipe },
         ).recipe,
       ).toBe(says);
     },
@@ -298,8 +243,8 @@ describe("validateCreationForm, on an environment with no agent", () => {
     });
     expect(
       validateCreationForm(
-        { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
-        { takenBotNames: NONE_TAKEN, options, recipe: "present" },
+        { name: "Acme - production", withAgent: false, recipeId: "none" },
+        { options, recipe: "present" },
       ).recipe,
     ).toBe("Take the project's recipe, or switch the agent on to have one set up.");
   });
@@ -320,75 +265,50 @@ describe("creationRecipe — where the project's recipe stands for the creation 
 });
 
 describe("proposedEnvironmentName", () => {
-  it("names a Mate after its bot, not its role", () => {
-    expect(
-      proposedEnvironmentName({
-        groupName: "Todo",
-        roleLabel: "dev",
-        botName: "Fen",
-        taken: ["Todo - dev", "Todo - Vera"],
-      }),
-    ).toBe("Todo - Fen");
-  });
-
-  it("numbers a Mate whose bot's name is taken, and falls back to the role for a blank bot", () => {
-    expect(
-      proposedEnvironmentName({
-        groupName: "Todo",
-        roleLabel: "dev",
-        botName: "Fen",
-        taken: ["todo - fen"],
-      }),
-    ).toBe("Todo - Fen 2");
-    expect(
-      proposedEnvironmentName({ groupName: "Todo", roleLabel: "dev", botName: "  ", taken: [] }),
-    ).toBe("Todo - dev");
-  });
-
   it("names the environment after its role while that name is free", () => {
-    expect(proposedEnvironmentName({ groupName: "Shortlink", roleLabel: "dev", taken: [] })).toBe(
-      "Shortlink - dev",
+    expect(proposedEnvironmentName({ groupName: "Shortlink", roleLabel: "stage", taken: [] })).toBe(
+      "Shortlink - stage",
     );
   });
 
-  it("numbers the second Mate rather than proposing the first one's name", () => {
+  it("numbers the second stage rather than proposing the first one's name", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["Shortlink - dev"],
+        roleLabel: "stage",
+        taken: ["Shortlink - stage"],
       }),
-    ).toBe("Shortlink - dev 2");
+    ).toBe("Shortlink - stage 2");
   });
 
   it("keeps counting past a run of them", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["Shortlink - dev", "Shortlink - dev 2", "Shortlink - dev 3"],
+        roleLabel: "stage",
+        taken: ["Shortlink - stage", "Shortlink - stage 2", "Shortlink - stage 3"],
       }),
-    ).toBe("Shortlink - dev 4");
+    ).toBe("Shortlink - stage 4");
   });
 
   it("fills a gap left by a deleted environment", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["Shortlink - dev", "Shortlink - dev 3"],
+        roleLabel: "stage",
+        taken: ["Shortlink - stage", "Shortlink - stage 3"],
       }),
-    ).toBe("Shortlink - dev 2");
+    ).toBe("Shortlink - stage 2");
   });
 
   it("reads a taken name regardless of case or padding", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["  SHORTLINK - DEV  "],
+        roleLabel: "stage",
+        taken: ["  SHORTLINK - STAGE  "],
       }),
-    ).toBe("Shortlink - dev 2");
+    ).toBe("Shortlink - stage 2");
   });
 
   it("counts only the role it is naming", () => {
@@ -396,7 +316,7 @@ describe("proposedEnvironmentName", () => {
       proposedEnvironmentName({
         groupName: "Shortlink",
         roleLabel: "stage",
-        taken: ["Shortlink - dev", "Shortlink - dev 2"],
+        taken: ["Shortlink - production", "Shortlink - production 2"],
       }),
     ).toBe("Shortlink - stage");
   });
@@ -872,20 +792,20 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
   function listed(
     id: string,
     kind: HqPlacement["kind"],
-    mate: string | null = null,
+    name = `Beviro - ${id}`,
   ): { readonly item: ZeropsCandidate } {
     const hq: HqPlacement = {
       appId: "beviro",
       appName: "Beviro",
       kind,
-      mate: mate === null ? null : { name: mate, face: "" },
+      mate: kind === "mate" ? { face: "" } : null,
     };
     return {
       item: {
         key: `${id}:zcp`,
         project: {
           id,
-          name: `Beviro - ${id}`,
+          name,
           status: "ACTIVE",
           tagList: kind === "mate" ? ["mate"] : [],
           hq,
@@ -902,12 +822,12 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
   ): ZeropsGroupPendingMember {
     return { projectId, kind, name, startedAt: 0 };
   }
-  it("names each Mate by its agent, then those still coming, and leaves the stops out", () => {
+  it("names each Mate by its project, then those still coming, and leaves the stops out", () => {
     const mates = newMateDoorMates({
       environments: [
         listed("cleo-project", "mate", "Cleo"),
         listed("stage-project", "stage"),
-        listed("unnamed-project", "mate"),
+        listed("beviro-project", "mate"),
       ],
       pending: [
         coming("wren-project", "mate", "Wren"),
@@ -917,7 +837,7 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
     });
     expect(mates).toEqual([
       { projectId: "cleo-project", name: "Cleo" },
-      { projectId: "unnamed-project", name: "Beviro - unnamed-project" },
+      { projectId: "beviro-project", name: "Beviro - beviro-project" },
       { projectId: "wren-project", name: "Wren" },
     ]);
   });

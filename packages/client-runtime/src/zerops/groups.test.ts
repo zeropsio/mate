@@ -14,6 +14,7 @@ import {
   ZEROPS_GROUP_ID_LENGTH,
   type ZeropsPlacedBirth,
 } from "./groups.ts";
+import type { HqMate } from "./hq/client.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 
 /** Where HQ places a project: in application `appId`, as `kind`, with its Mate's record. */
@@ -59,8 +60,8 @@ describe("readZeropsMembership", () => {
     },
     {
       name: "reads a Mate that is also its application's stage as a Mate, in the dev/stage role",
-      input: { hq: placed("abc", "devstage", { mate: { name: "Ada", face: "" } }) },
-      expected: { mate: true, groupId: "abc", role: "devstage", bot: "Ada" },
+      input: { hq: placed("abc", "devstage", { mate: { face: "" } }) },
+      expected: { mate: true, groupId: "abc", role: "devstage" },
     },
     {
       name: "is absent for a project HQ does not place",
@@ -99,9 +100,10 @@ describe("readZeropsMembership", () => {
       expected: {},
     },
     {
-      name: "reads the Mate's name HQ records, trimmed",
-      input: { hq: placed("abc", "mate", { mate: { name: " Ada ", face: "" } }) },
-      expected: { mate: true, groupId: "abc", role: "dev", bot: "Ada" },
+      // D3: a Mate's name is its project's in Zerops; one an HQ before it still sends is nobody's.
+      name: "keeps no Mate's name HQ still sends",
+      input: { hq: placed("abc", "mate", { mate: { name: "Ada", face: "" } as HqMate }) },
+      expected: { mate: true, groupId: "abc", role: "dev" },
     },
     {
       name: "reads a Mate HQ holds in no application by its record, in no group",
@@ -110,10 +112,10 @@ describe("readZeropsMembership", () => {
           appId: null,
           appName: null,
           kind: "mate",
-          mate: { name: "Ada", face: "sky:flower" },
+          mate: { face: "sky:flower" },
         } satisfies HqPlacement,
       },
-      expected: { mate: true, bot: "Ada", face: { tint: "sky", shape: "flower" } },
+      expected: { mate: true, face: { tint: "sky", shape: "flower" } },
     },
     {
       name: "reads the birth intent a Mate's project was created under, by its id",
@@ -125,18 +127,12 @@ describe("readZeropsMembership", () => {
       input: { tagList: ["mate", "mate:birth:"] },
       expected: { mate: true },
     },
-    {
-      name: "takes a blank Mate name for none",
-      input: { hq: placed("abc", "mate", { mate: { name: "  ", face: "" } }) },
-      expected: { mate: true, groupId: "abc", role: "dev" },
-    },
   ])("$name", ({ input, expected }) => {
     expect(readZeropsMembership(input)).toEqual({
       mate: false,
       groupId: undefined,
       role: undefined,
       label: undefined,
-      bot: undefined,
       standUp: undefined,
       face: undefined,
       ...expected,
@@ -149,7 +145,6 @@ describe("readZeropsMembership", () => {
       groupId: undefined,
       role: undefined,
       label: undefined,
-      bot: undefined,
       standUp: undefined,
       face: undefined,
     });
@@ -186,11 +181,7 @@ describe("withZeropsMateTag", () => {
 describe("who asked for a Mate's stand-up, as HQ's birth record names them", () => {
   const born = (standupRequestedBy: string | null | undefined) =>
     placed("abc", "mate", {
-      mate: {
-        name: "Ada",
-        face: "",
-        ...(standupRequestedBy === undefined ? {} : { standupRequestedBy }),
-      },
+      mate: { face: "", ...(standupRequestedBy === undefined ? {} : { standupRequestedBy }) },
     });
   it.each([
     { name: "names who asked for it", hq: born("u-ada"), standUp: { by: "u-ada" } },
@@ -212,7 +203,7 @@ describe("who asked for a Mate's stand-up, as HQ's birth record names them", () 
 describe("who made a Mate, as HQ's record names them", () => {
   const made = (madeBy: string | null | undefined) =>
     placed("abc", "mate", {
-      mate: { name: "Ada", face: "", ...(madeBy === undefined ? {} : { madeBy }) },
+      mate: { face: "", ...(madeBy === undefined ? {} : { madeBy }) },
     });
   it.each([
     { name: "names who made it", hq: made("u-ada"), madeBy: "u-ada" },
@@ -735,11 +726,12 @@ describe("deriveZeropsGroups — creations under way", () => {
     expect(group?.pending.map((entry) => entry.failed)).toEqual([expected]);
   });
 
-  it("names a pending Mate as the Mate it will be, and anything else as its environment", () => {
+  // D3: a pending Mate's project is named as the Mate is; its name is that one name.
+  it("names a pending member as its project will be named, a Mate by its own name", () => {
     const [group] = deriveZeropsGroups([], {
       order: "name",
       births: [
-        birth("p-quinn", "aaa", 1, { displayName: "Todo - Quinn", botName: "Quinn" }),
+        birth("p-quinn", "aaa", 1, { displayName: "Quinn" }),
         birth("p-stage", "aaa", 2, { kind: "stage", displayName: "Todo - stage" }),
       ],
     }).groups;
@@ -806,18 +798,6 @@ describe("deriveZeropsGroups — creations under way", () => {
   });
 });
 
-describe("a Mate's name, as HQ records it", () => {
-  it("reads the Mate's name off where HQ places it", () => {
-    expect(
-      readZeropsMembership({ hq: placed("aaa", "mate", { mate: { name: "Ada", face: "" } }) }).bot,
-    ).toBe("Ada");
-  });
-
-  it("has no name where HQ records no Mate", () => {
-    expect(readZeropsMembership({ hq: placed("aaa", "mate") }).bot).toBeUndefined();
-  });
-});
-
 /**
  * A Mate's face — the colour and the shape its person picked — is one value in HQ's record of
  * it, `<tint>:<shape>`. Read permissively: a part this client does not know is left out, so the
@@ -857,7 +837,7 @@ describe("a Mate's face, as HQ records it", () => {
   });
 
   it("reads the face off where HQ places its Mate, and none where HQ records no Mate", () => {
-    const ada = placed("aaa", "mate", { mate: { name: "Ada", face: "violet:flower" } });
+    const ada = placed("aaa", "mate", { mate: { face: "violet:flower" } });
     expect(readZeropsMembership({ hq: ada }).face).toEqual({ tint: "violet", shape: "flower" });
     expect(readZeropsMembership({ hq: placed("aaa", "mate") }).face).toBeUndefined();
   });

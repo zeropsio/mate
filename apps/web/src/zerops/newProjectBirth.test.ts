@@ -255,8 +255,7 @@ describe("the menu draws it from the press", () => {
       groupId: "b-acme",
       groupName: "Acme CRM",
       kind: "mate",
-      displayName: "Acme CRM - Vera",
-      botName: "Vera",
+      displayName: "Vera",
       face: { tint: "rose", shape: "seal" },
     },
   } as const;
@@ -308,7 +307,7 @@ describe("the menu draws it from the press", () => {
   });
 });
 
-const PROJECT = { id: "p-vera", name: "Acme CRM - Vera", status: "ACTIVE" } as const;
+const PROJECT = { id: "p-vera", name: "Vera", status: "ACTIVE" } as const;
 
 type RegisterArgs = Parameters<NewProjectPorts["registerGroup"]>[0];
 type IntentArgs = Parameters<NewProjectPorts["recordBirth"]>[0];
@@ -322,8 +321,8 @@ function ports(over: Partial<NewProjectPorts> = {}) {
       order.push(`register:${hq.projectId}:${name}`);
       return { appId: "app-acme" };
     }),
-    recordBirth: vi.fn(async ({ appId, name, face }: IntentArgs) => {
-      order.push(`intent:${appId}:${name}:${face}`);
+    recordBirth: vi.fn(async ({ appId, face }: IntentArgs) => {
+      order.push(`intent:${appId}:${face}`);
       return { id: "b-vera" };
     }),
     createProject: vi.fn(async () => {
@@ -349,7 +348,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     // and its Mate goes into the application HQ named.
     expect(order).toEqual([
       "register:hq-1:Acme CRM",
-      "intent:app-acme:Vera:rose:seal",
+      "intent:app-acme:rose:seal",
       "create",
       "accepted:p-vera:hq-1:app-acme",
     ]);
@@ -376,10 +375,10 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
     expect(order.slice(0, 3)).toEqual([
       "register:hq-1:Acme CRM",
-      "intent:app-acme:Vera:rose:seal",
+      "intent:app-acme:rose:seal",
       "create",
     ]);
-    expect(made.createProject).toHaveBeenCalledWith({ name: "Acme CRM - Vera", birth: "b-vera" });
+    expect(made.createProject).toHaveBeenCalledWith({ name: "Vera", birth: "b-vera" });
     expect(made.accepted).toHaveBeenCalledWith(
       "p-vera",
       expect.objectContaining({ appId: "app-acme", intent: "b-vera" }),
@@ -398,16 +397,17 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
     {
-      // Its application, name and face are HQ's: the press's registration writes them.
-      case: "named after its Mate, and nothing of its place on the project",
+      // D3: the project's name is its Mate's, whole; its application and face are HQ's, which
+      // the press's registration writes.
+      case: "named as its Mate is, and nothing of its place on the project",
       ask: {},
-      args: { name: "Acme CRM - Vera", birth: "b-1" },
+      args: { name: "Vera", birth: "b-1" },
     },
     {
       // Its agents are its container's, which its press imports.
       case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: { name: "Acme CRM - Vera", location: "prg1", birth: "b-1" },
+      args: { name: "Vera", location: "prg1", birth: "b-1" },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made } = ports();
@@ -446,7 +446,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       case: "a creation the platform refused leaves a registered project, and no Mate",
       birth: birth(),
       over: { createProject: () => Promise.reject(new Error("Project name is taken.")) },
-      order: ["register:hq-1:Acme CRM", "intent:app-acme:Vera:rose:seal"],
+      order: ["register:hq-1:Acme CRM", "intent:app-acme:rose:seal"],
       failed: { reason: "Project name is taken.", uncertain: false },
     },
     {
@@ -460,7 +460,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
             message: "The project may already exist.",
           }),
       },
-      order: ["register:hq-1:Acme CRM", "intent:app-acme:Vera:rose:seal"],
+      order: ["register:hq-1:Acme CRM", "intent:app-acme:rose:seal"],
       failed: { reason: "The project may already exist.", uncertain: true },
     },
   ])("stops where it fails: $case", async ({ birth: made, over, order: expected, failed }) => {
@@ -482,7 +482,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       birth: birth(),
       order: [
         "register:hq-1:Acme CRM",
-        "intent:app-acme:Vera:rose:seal",
+        "intent:app-acme:rose:seal",
         "create",
         "accepted:p-vera:hq-1:app-acme",
       ],
@@ -490,7 +490,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     {
       case: "its Mate's birth intent, its application not made again",
       birth: birth({ appId: "app-1" }),
-      order: ["intent:app-1:Vera:rose:seal", "create", "accepted:p-vera:hq-1:app-1"],
+      order: ["intent:app-1:rose:seal", "create", "accepted:p-vera:hq-1:app-1"],
     },
     {
       case: "its Mate's creation, with nothing before it made again",
@@ -550,7 +550,7 @@ describe("the tab holds a New project's creation until the platform takes it", (
     await vi.waitFor(() => expect(held()?.step).toBe("created"));
     expect(order).toEqual([
       "register",
-      "intent:app-acme:Vera:rose:seal",
+      "intent:app-acme:rose:seal",
       "create",
       "accepted:p-vera:hq-1:app-acme",
     ]);
@@ -610,7 +610,7 @@ const pressed = (...entries: ReadonlyArray<readonly [Kind, RunState]>) =>
   entries.map(([kind, state]) => ({
     step:
       kind === "create-project"
-        ? ({ kind, name: "Acme CRM - Ida" } as never)
+        ? ({ kind, name: "Ida" } as never)
         : kind === "import-managed"
           ? ({ kind, yaml: "" } as never)
           : kind === "import-container"
@@ -626,7 +626,7 @@ const added = (over: Partial<NewProjectBirth> = {}) =>
     birthId: "add-1",
     appId: "app-acme",
     botName: "Ida",
-    adds: { appId: "app-acme", displayName: "Acme CRM - Ida", registers: true },
+    adds: { appId: "app-acme", displayName: "Ida", registers: true },
     step: "create",
     ...over,
   });
@@ -763,7 +763,7 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
     },
     {
       case: "where its registration is nobody's here to write",
-      made: added({ adds: { appId: "app-acme", displayName: "Acme CRM - Ida", registers: false } }),
+      made: added({ adds: { appId: "app-acme", displayName: "Ida", registers: false } }),
       want: ["Created:active", "Container:waiting", "Closed off:waiting"],
     },
     {
@@ -864,7 +864,8 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
 });
 
 describe("an added Mate held from the press", () => {
-  it("is placed in its project by its own id, its environment named as Add named it", () => {
+  // D3: its project is named as the Mate is, the one name its row draws.
+  it("is placed in its project by its own id, its project named as Add named it", () => {
     expect(placedNewProjects([added()], ASK.organizationId)).toEqual([
       expect.objectContaining({
         projectId: "add-1",
@@ -872,8 +873,7 @@ describe("an added Mate held from the press", () => {
         placement: expect.objectContaining({
           groupId: "app-acme",
           groupName: "Acme CRM",
-          displayName: "Acme CRM - Ida",
-          botName: "Ida",
+          displayName: "Ida",
         }),
       }),
     ]);
@@ -888,7 +888,7 @@ describe("an added Mate held from the press", () => {
     await runNewProjectBirth(added(), fake, () => undefined);
     expect(fake.registerGroup).not.toHaveBeenCalled();
     expect(fake.recordBirth).not.toHaveBeenCalled();
-    expect(fake.createProject).toHaveBeenCalledWith({ name: "Acme CRM - Ida" });
+    expect(fake.createProject).toHaveBeenCalledWith({ name: "Ida" });
     expect(fake.accepted).toHaveBeenCalledWith("p-vera", null, PRESSED_AT);
   });
 });
@@ -905,7 +905,7 @@ describe("creationManaged — the managed services an added Mate's copy waits on
       made: added({
         adds: {
           appId: "app-acme",
-          displayName: "Acme CRM - Ida",
+          displayName: "Ida",
           registers: true,
           managed: ["db"],
         },
@@ -917,7 +917,7 @@ describe("creationManaged — the managed services an added Mate's copy waits on
       made: added({
         adds: {
           appId: "app-acme",
-          displayName: "Acme CRM - Ida",
+          displayName: "Ida",
           registers: true,
           managed: ["db"],
         },
@@ -927,7 +927,7 @@ describe("creationManaged — the managed services an added Mate's copy waits on
     },
     {
       case: "a recipe that brings none",
-      made: added({ adds: { appId: "app-acme", displayName: "Acme CRM - Ida", registers: true } }),
+      made: added({ adds: { appId: "app-acme", displayName: "Ida", registers: true } }),
       want: undefined,
     },
   ])("$case", ({ made, want }) => {
@@ -952,14 +952,14 @@ describe("creationRuntimes — the runtimes an added Mate's workspace brings, fr
     {
       case: "pressed: as its recipe names them",
       made: added({
-        adds: { appId: "app-acme", displayName: "Acme CRM - Ida", registers: true, runtimes: APP },
+        adds: { appId: "app-acme", displayName: "Ida", registers: true, runtimes: APP },
       }),
       want: APP,
     },
     {
       case: "planned: as its plan names them",
       made: added({
-        adds: { appId: "app-acme", displayName: "Acme CRM - Ida", registers: true },
+        adds: { appId: "app-acme", displayName: "Ida", registers: true },
         progress: [
           {
             step: {
@@ -991,7 +991,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     projectId: "p-ida",
     adds: {
       appId: "app-acme",
-      displayName: "Acme CRM - Ida",
+      displayName: "Ida",
       registers: true,
       managed: ["db"],
       runtimes: [{ hostname: "appdev", role: "dev" }],
@@ -1023,7 +1023,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     const pressedAdd = added({
       adds: {
         appId: "app-acme",
-        displayName: "Acme CRM - Ida",
+        displayName: "Ida",
         registers: true,
         managed: ["db"],
         runtimes: [{ hostname: "appdev", role: "dev" }],
@@ -1068,7 +1068,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
 // Run 6's review: an Add's port flattened its stop to a string, so one Zerops may have made
 // offered Try again, which made a second; and a run that threw left Created spinning for good.
 describe("addCreateProject — an Add's press as its creation's port", () => {
-  const STEP = { kind: "create-project", name: "Acme CRM - Ida", tagList: [] } as never;
+  const STEP = { kind: "create-project", name: "Ida", tagList: [] } as never;
   type Script = (onAccepted: (projectId: string) => void) => Promise<never> | Promise<unknown>;
   const portOf = (script: Script) => {
     const settled = vi.fn();
@@ -1177,7 +1177,7 @@ describe("addCreateProject — an Add's press as its creation's port", () => {
         ...ASK,
         birthId: "add-1",
         botName: "Ida",
-        adds: { appId: "app-acme", displayName: "Acme CRM - Ida", registers: true },
+        adds: { appId: "app-acme", displayName: "Ida", registers: true },
       },
       hq: HQ,
       now: 0,
@@ -1209,7 +1209,7 @@ describe("creationEnds — a creation that stopped can end", () => {
       want: {
         startOver: {
           groupId: "app-acme",
-          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
+          again: { botName: "Ida", tint: "rose", shape: "seal" },
         },
       },
     },
@@ -1268,7 +1268,7 @@ describe("creationEnds — a creation that stopped can end", () => {
       expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
       expect(useNewMate.getState().asked).toMatchObject({
         groupId: "app-acme",
-        again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
+        again: { botName: "Ida", tint: "rose", shape: "seal" },
       });
     });
 
@@ -1384,7 +1384,7 @@ describe("an Add's HQ intent in its creation progress", () => {
       {
         step: {
           kind: "create-project",
-          name: "Acme CRM - Ida",
+          name: "Ida",
           tagList: ["mate", "mate:birth:hq-birth"],
           location: undefined,
         },

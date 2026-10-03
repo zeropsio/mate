@@ -99,7 +99,9 @@ const MemberSchema = Schema.Struct({
   ),
 });
 
-const MateRecordSchema = Schema.Struct({ name: Schema.String, face: Schema.String });
+// A Mate's face as HQ records it; its name is its project's in Zerops (D3), and one a memory from
+// before still holds is passed by.
+const MateRecordSchema = Schema.Struct({ face: Schema.String });
 
 /** An organization's structure as its HQ answered it (`GET /api/structure`), and when. */
 const StructureSchema = Schema.Struct({

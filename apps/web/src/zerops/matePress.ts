@@ -28,7 +28,6 @@ import {
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   formatMateFace,
-  type RandomBytes,
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsApiClient,
@@ -306,8 +305,8 @@ export function readMatePress(projectId: string): MatePress | undefined {
 }
 
 /**
- * Where a Mate's press placed it — its application, its name and its face — as the press knew it
- * when it began; undefined for a press of a stage or a production, or one that placed nothing.
+ * Where a Mate's press placed it — its application and its face — as the press knew it when it
+ * began; undefined for a press of a stage or a production, or one that placed nothing.
  */
 export function matePressPlacement(press: MatePress | undefined): BirthPlacement | undefined {
   return press?.placement?.kind === "mate" ? press.placement : undefined;
@@ -315,7 +314,7 @@ export function matePressPlacement(press: MatePress | undefined): BirthPlacement
 
 /**
  * A Mate HQ holds no record of, finished into the application its press placed it in, under the
- * name and the face it was made with — never a new Mate in none (F6b, 2026-10-03).
+ * face it was made with — never a new Mate in none (F6b, 2026-10-03).
  */
 export function placedMateRegistration(
   hq: HqEndpoint,
@@ -325,7 +324,7 @@ export function placedMateRegistration(
     hq,
     groupId: placement.groupId,
     kind: "mate",
-    mate: { name: placement.botName ?? placement.displayName, face: placement.face },
+    mate: { face: placement.face },
     standUp: false,
   };
 }
@@ -335,14 +334,15 @@ export function placedMateRegistration(
  * Mate where HQ holds one or may yet (F6b, F6c, 2026-10-03):
  *
  * - HQ's structure not read: nothing — a project it places nowhere has no record only once it is;
- * - HQ holds it in its application: there again, under HQ's name and face, by a registry writer —
- *   an attach that finds it there writes nothing; nothing for anyone else;
+ * - HQ holds it in its application: there again, under HQ's face, by a registry writer — an
+ *   attach that finds it there writes nothing; nothing for anyone else;
  * - HQ holds it in no application: nothing, its record standing;
  * - HQ holds no record of it: into the application its project's birth intent names, under its
- *   name and face, the attach closing the intent — in any browser; else into the application the
- *   press this tab still holds placed it in, under its name and face; else, for whoever HQ's rule
- *   lets write one, a new Mate in no application (`setUpMateRecord`) — what a refused attach
- *   leaves; else nothing.
+ *   face, the attach closing the intent — in any browser; else into the application the press
+ *   this tab still holds placed it in, under its face; else, for whoever HQ's rule lets write one,
+ *   a new Mate in no application (`setUpMateRecord`) — what a refused attach leaves; else nothing.
+ *
+ * Its name is none of these: it is its project's in Zerops (D3).
  */
 export function mateFinishRegistration(input: {
   readonly hq: HqEndpoint;
@@ -359,19 +359,16 @@ export function mateFinishRegistration(input: {
   /** The stand-up a new record asks for. */
   readonly standUp: boolean;
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  readonly taken: ReadonlyArray<string>;
-  readonly random: RandomBytes;
 }): PressRegistration | null {
   if (!input.hqKnown) return null;
   if (heldOf(input.project) !== "none") {
-    const { groupId, bot, face } = readZeropsMembership(input.project);
+    const { groupId, face } = readZeropsMembership(input.project);
     if (groupId === undefined || !input.writer) return null;
     return {
       hq: input.hq,
       groupId,
       kind: "mate",
       mate: {
-        name: bot ?? input.project.name,
         face:
           face?.tint === undefined || face.shape === undefined
             ? undefined
@@ -389,7 +386,6 @@ export function mateFinishRegistration(input: {
       groupId: intent.appId,
       kind: "mate",
       mate: {
-        name: intent.name,
         face:
           face?.tint === undefined || face.shape === undefined
             ? undefined
@@ -593,9 +589,9 @@ export interface PressInputs {
 
 /**
  * The group registration a press writes, as the person who pressed may write it: into the
- * organization's HQ, a Mate with its name, its face and its birth — in its application, or in
- * none where HQ holds no record of it — a stage or a production as an environment of its
- * application, keyed.
+ * organization's HQ, a Mate with its face and its birth — in its application, or in none where HQ
+ * holds no record of it — a stage or a production as an environment of its application, keyed.
+ * A Mate's name is its project's in Zerops (D3), and none of HQ's.
  */
 export type PressRegistration = {
   /** The organization's HQ, where the registry lives. */
@@ -606,7 +602,7 @@ export type PressRegistration = {
       /** The project's group: its application in HQ. */
       readonly groupId: string;
       /** Its face as picked; none where the press gives it its name's own. */
-      readonly mate: { readonly name: string; readonly face: ZeropsMateFace | undefined };
+      readonly mate: { readonly face: ZeropsMateFace | undefined };
       /**
        * The person pressing asks for its stand-up, in its attach; one that closes a birth intent
        * takes the intent's ask instead.
@@ -618,8 +614,8 @@ export type PressRegistration = {
   | {
       /** A Mate HQ holds no record of, set up in no application (`POST /api/mates`). */
       readonly kind: "mate-record";
-      /** Its name and its face as HQ records them (`setUpMateRecord`). */
-      readonly record: { readonly name: string; readonly face: string };
+      /** Its face as HQ records it (`setUpMateRecord`). */
+      readonly record: { readonly face: string };
       /** The person pressing asks for its stand-up, with its record. */
       readonly standUp: boolean;
     }
@@ -659,7 +655,6 @@ export function pressRegistration(
         projectId,
         kind: "mate",
         mate: {
-          name: registration.mate.name,
           // Empty where none was picked: the Mate wears its name's tint.
           face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
           standUp: registration.standUp,

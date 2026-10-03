@@ -86,7 +86,7 @@ describe("same-origin Zerops identity bootstrap", () => {
 
   it("routes project and service writes through typed runtime commands", () => {
     for (const method of [
-      "writeProjectTags",
+      "writeProject",
       "importDevelopmentContainer",
       "enableZeropsMate",
       "enableSubdomainAccess",
@@ -695,13 +695,14 @@ describe("an environment's menu", () => {
     // HQ's by HQ's rule (`mayOffer`), none of either for an unknown person.
     expect(mateActionsSource).toContain("resolveMateVerbs({ project: candidate.project, viewer })");
     expect(mateActionsSource).toContain("...(platformVerbs.assign");
+    // A Mate's name is its project's (D3): renaming it is the platform's verb.
+    expect(mateActionsSource).toContain("...(platformVerbs.rename");
     expect(mateActionsSource).toContain('mayOffer(asker, "edit_mate_record"');
-    expect(mateActionsSource).toContain("...(hqVerbs.edit");
     expect(mateActionsSource).toContain("...(hqVerbs.move");
     expect(mateActionsSource).toContain("...(hqVerbs.leave && tags.groupId !== undefined");
-    // Change face writes HQ's record of the Mate, as a rename does: the same gate, on a Mate.
+    // Change face writes HQ's record of the Mate: HQ's gate, on a Mate.
     expect(mateActionsSource).toContain(
-      "if (!changeFaceOffered({ candidate, mayRename: hqVerbsOf(candidate).edit })) return undefined;",
+      "if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit })) return undefined;",
     );
   });
 

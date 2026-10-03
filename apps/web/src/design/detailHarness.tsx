@@ -121,10 +121,7 @@ const ROUTES = [
   },
 ];
 
-const NAMES = {
-  mateNames: new Map([["p-theo", "Theo"]]),
-  groupName: "Shop",
-};
+const NAMES = { mateNames: new Map([["p-theo", "Theo"]]) };
 
 const crumbs = (group: string) => [
   { label: "Projects", onClick: () => {} },
@@ -643,7 +640,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       enablingServiceId={null}
       groupId={group.toLowerCase()}
       history={history}
-      groupName={group}
       names={NAMES}
       onEnableRoute={() => {}}
       onOpenProject={() => {}}

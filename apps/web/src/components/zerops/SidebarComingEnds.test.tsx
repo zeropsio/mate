@@ -21,7 +21,7 @@ const IDA: NewProjectBirth = {
   face: { tint: "rose", shape: "seal" },
   locationId: null,
   agents: [],
-  adds: { appId: "g-acme", displayName: "Acme CRM - Ida", registers: true },
+  adds: { appId: "g-acme", displayName: "Ida", registers: true },
   startedAt: 0,
   step: "create",
   failed: null,
@@ -90,7 +90,7 @@ describe("a coming Mate's ⋯ in the menu", () => {
     expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
     expect(useNewMate.getState().asked).toMatchObject({
       groupId: "g-acme",
-      again: { botName: "Ida", name: "Acme CRM - Ida" },
+      again: { botName: "Ida" },
     });
   });
 

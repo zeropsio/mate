@@ -26,13 +26,14 @@
  * listing lets it go (`deletingMates.ts`), and a viewer who was in its
  * conversation is taken to the next Mate of its project, or to the projects.
  *
- * *Change face…* writes the Mate's face to HQ, where every surface reads it from: offered where
- * *Rename Mate* is, its dialog open until HQ answers, a refusal said there.
+ * *Rename Mate* renames the Mate's project in Zerops, whose name is the Mate's (D3), by the
+ * account's one writer of a project's record, where the platform takes it from this person.
+ * *Change face…* writes the Mate's face to HQ, where every surface reads it from, where HQ's rule
+ * lets them: its dialog open until HQ answers, a refusal said there.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
   assignCandidateMateTints,
-  botDisplayName,
   buildZeropsGroupTree,
   changedMateFace,
   hasMate,
@@ -164,14 +165,6 @@ interface DialogPress {
 }
 
 const UNPRESSED: DialogPress = { pending: false, error: null };
-
-/** The Mate's name, as its row says it. */
-function mateName(candidate: ZeropsCandidatePresentation): string {
-  return botDisplayName({
-    bot: readZeropsMembership(candidate.project).bot,
-    projectName: candidate.project.name,
-  });
-}
 
 export interface MateActions {
   /**
@@ -438,17 +431,33 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [activeOrganization, client, projectRef, refresh, runtime, write],
   );
 
-  /** HQ's API, where a Mate's name and face and its application live (ADR 0002). */
+  /** HQ's API, where a Mate's face and its application live (ADR 0002). */
   const hqApi = useCallback(() => {
     if (activeOrganization === null) throw new Error("No organization is open.");
     return accountHqApi(client, activeOrganization.id, officialHq(accountHq));
   }, [accountHq, activeOrganization, client]);
 
+  /** Renames the Mate's project in Zerops: its name is the Mate's (D3). */
   const rename = useCallback(
     (candidate: ZeropsCandidatePresentation, name: string) => {
-      void write(candidate.key, () => hqApi().updateMate(candidate.project.id, { name }));
+      if (activeOrganization === null) return;
+      const project = projectRef(activeOrganization.id, candidate.project.id);
+      void write(
+        candidate.key,
+        () => runZeropsCommand(runtime.commands.renameProject(project, name)),
+        refresh,
+      );
     },
-    [hqApi, write],
+    [activeOrganization, projectRef, refresh, runtime.commands, write],
+  );
+
+  /** The platform's verbs on a Mate, by the role function it enforces: none for nobody. */
+  const platformVerbsOf = useCallback(
+    (candidate: ZeropsCandidatePresentation) =>
+      viewer === null || user === null
+        ? { delete: false, rename: false, assign: false }
+        : resolveMateVerbs({ project: candidate.project, viewer }),
+    [user, viewer],
   );
 
   /**
@@ -598,7 +607,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       // (step A, A11).
       const adopting = recordMissing(candidate) && mayCreateRecord(candidate);
       // What it registers, by the rule Set up Mate registers by: in the application HQ or the
-      // press this tab holds places it in, under that name and face; a new Mate in no application
+      // press this tab holds places it in, under that face; a new Mate in no application
       // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
       const registration = mateFinishRegistration({
         hq: officialHq(accountHq),
@@ -610,8 +619,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         mayCreateRecord: mayCreateRecord(candidate),
         standUp: candidate.service !== undefined && interrupted.has(candidate.service.id),
         candidates,
-        taken: taken.names,
-        random: (bytes) => crypto.getRandomValues(bytes),
       });
       // A close-off alone has nothing to finish on a Mate with no container.
       if (!whole && !adopting && registration === null && candidate.service === undefined) {
@@ -671,7 +678,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       recordMissing,
       refresh,
       runtime,
-      taken.names,
       user,
       write,
     ],
@@ -832,7 +838,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   const changeFace = useCallback(
     (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
-      if (!changeFaceOffered({ candidate, mayRename: hqVerbsOf(candidate).edit })) return undefined;
+      if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit })) return undefined;
       return () => {
         setPress(UNPRESSED);
         setDialog({ kind: "face", candidate });
@@ -847,12 +853,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       tags: ZeropsMembership,
       extraQuick: ReadonlyArray<ZeropsMenuEntry> = [],
     ): ReadonlyArray<ZeropsMenuEntry> => {
-      // The platform's own verbs — delete, hand over — by the role function the platform enforces;
-      // HQ's by HQ's rule. Either way, a person the session does not name is offered none.
-      const platformVerbs =
-        viewer === null || user === null
-          ? { delete: false, assign: false }
-          : resolveMateVerbs({ project: candidate.project, viewer });
+      // The platform's own verbs — delete, rename, hand over — by the role function the platform
+      // enforces; HQ's by HQ's rule. Either way, a person the session does not name is offered none.
+      const platformVerbs = platformVerbsOf(candidate);
       const hqVerbs = hqVerbsOf(candidate);
       const deletable = deleteMateOffered({
         candidate,
@@ -887,7 +890,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       return [
         ...quick,
         ...(quick.length > 0 ? [{ id: "quick", separator: true } as const] : []),
-        ...(hqVerbs.edit
+        ...(platformVerbs.rename
           ? [
               {
                 id: "rename-agent",
@@ -950,7 +953,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               { id: "delete-apart", separator: true } as const,
               {
                 id: "delete",
-                label: deleteMateVerb(mateName(candidate)),
+                label: deleteMateVerb(candidate.project.name),
                 variant: "destructive" as const,
                 disabled: busy,
                 onSelect: () => {
@@ -989,25 +992,23 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       setDialog,
       start,
       hqVerbsOf,
-      user,
-      viewer,
+      platformVerbsOf,
     ],
   );
 
   const renameInPlace = useCallback(
     (candidate: ZeropsCandidatePresentation): MateRenameInPlace | undefined => {
-      if (!hqVerbsOf(candidate).edit) return undefined;
-      const current = readZeropsMembership(candidate.project).bot;
+      if (!platformVerbsOf(candidate).rename) return undefined;
+      const current = candidate.project.name;
       return {
-        initialValue: current ?? "",
-        validate: (value) =>
-          validateBotName(value, taken, current === undefined ? {} : { current }),
+        initialValue: current,
+        validate: (value) => validateBotName(value, taken, { current }),
         commit: (value) => {
           rename(candidate, value.replace(/\s+/g, " ").trim());
         },
       };
     },
-    [hqVerbsOf, rename, taken],
+    [platformVerbsOf, rename, taken],
   );
 
   const close = useCallback(() => setDialog(null), [setDialog]);
@@ -1015,7 +1016,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     <>
       {dialog?.kind === "rename" ? (
         <ZeropsRenameDialog
-          initialValue={readZeropsMembership(dialog.candidate.project).bot ?? ""}
+          initialValue={dialog.candidate.project.name}
           key={`rename-agent:${dialog.candidate.key}`}
           label="Mate's name"
           onCancel={close}
@@ -1029,11 +1030,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           }}
           open
           submitLabel="Rename"
-          title={`Rename the Mate in ${dialog.candidate.project.name}`}
-          validate={(value) => {
-            const current = readZeropsMembership(dialog.candidate.project).bot;
-            return validateBotName(value, taken, current === undefined ? {} : { current });
-          }}
+          title={`Rename ${dialog.candidate.project.name}`}
+          validate={(value) =>
+            validateBotName(value, taken, { current: dialog.candidate.project.name })
+          }
         />
       ) : null}
       {dialog?.kind === "face" ? (
@@ -1046,7 +1046,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               dialog.candidate.project,
           )}
           key={`face:${dialog.candidate.key}`}
-          name={mateName(dialog.candidate)}
+          name={dialog.candidate.project.name}
           onCancel={() => {
             setDialog({ ...dialog, closing: true });
           }}
@@ -1105,14 +1105,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             move(candidate, membership);
           }}
           open
-          name={mateName(dialog.candidate)}
+          name={dialog.candidate.project.name}
         />
       ) : null}
       {dialog?.kind === "delete" ? (
         <ZeropsDeleteMateDialog
           error={press.error}
           key={`delete:${dialog.candidate.key}`}
-          name={mateName(dialog.candidate)}
+          name={dialog.candidate.project.name}
           onCancel={close}
           onConfirm={() => {
             deleteMate(dialog.candidate);
@@ -1123,7 +1123,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           open
           pending={press.pending}
           words={deleteMateWords({
-            name: mateName(dialog.candidate),
+            name: dialog.candidate.project.name,
             environment: dialog.candidate.project.name,
             services: deleteMateServiceCount(dialog.candidate),
             owner: colleagueOf(dialog.candidate),

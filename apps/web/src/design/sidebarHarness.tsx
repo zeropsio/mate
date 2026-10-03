@@ -40,7 +40,6 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   assignCandidateMateTints,
-  botDisplayName,
   deployedVersion,
   mateShapeOf,
   readZeropsMembership,
@@ -231,12 +230,7 @@ function activity(input: {
 
 /** A project of the harness — an application in its HQ — placing a Mate or a stop in it. */
 const group = (appId: string, appName: string) => ({
-  mate: (name: string): HqPlacement => ({
-    appId,
-    appName,
-    kind: "mate",
-    mate: { name, face: "" },
-  }),
+  mate: (): HqPlacement => ({ appId, appName, kind: "mate", mate: { face: "" } }),
   stop: (kind: "stage" | "production"): HqPlacement => ({ appId, appName, kind, mate: null }),
 });
 
@@ -284,9 +278,9 @@ const LONG = group("design-tokens", "Design system tokens and primitives");
 
 const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   // A busy, healthy project: three Mates, a change of each kind waiting.
-  candidate("links-enzo", "Links - enzo", LINKS.mate("Enzo")),
-  candidate("links-theo", "Links - theo", LINKS.mate("Theo")),
-  candidate("links-wren", "Links - wren", LINKS.mate("Wren")),
+  candidate("links-enzo", "Enzo", LINKS.mate()),
+  candidate("links-theo", "Theo", LINKS.mate()),
+  candidate("links-wren", "Wren", LINKS.mate()),
   candidate("links-stage", "Links - stage", LINKS.stop("stage"), {
     container: false,
     routes: routes(["app", "links-stage.zerops.app"]),
@@ -298,8 +292,8 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
 
   // The hostile one: a Mate buried in pull requests, a production ten routes
   // wide and twelve changes behind, a stage mid-deploy.
-  candidate("shop-mira", "Shop - mira", SHOP.mate("Mira")),
-  candidate("shop-otto", "Shop - otto", SHOP.mate("Otto")),
+  candidate("shop-mira", "Mira", SHOP.mate()),
+  candidate("shop-otto", "Otto", SHOP.mate()),
   candidate("shop-stage", "Shop - stage", SHOP.stop("stage"), {
     container: false,
     routes: routes(["app", "shop-stage.zerops.app"], ["api", "api-shop-stage.zerops.app"]),
@@ -321,22 +315,22 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   }),
 
   // A production somebody deployed by hand, and a stage that does not exist.
-  candidate("notes-iris", "Notes - iris", NOTES.mate("Iris")),
-  candidate("notes-kai", "Notes - kai", NOTES.mate("Kai")),
-  candidate("notes-lena", "Notes - lena", NOTES.mate("Lena")),
+  candidate("notes-iris", "Iris", NOTES.mate()),
+  candidate("notes-kai", "Kai", NOTES.mate()),
+  candidate("notes-lena", "Lena", NOTES.mate()),
   // Signed in, and nobody has asked either anything yet: one says so, one holds a draft.
-  candidate("notes-juno", "Notes - juno", NOTES.mate("Juno")),
-  candidate("notes-rhea", "Notes - rhea", NOTES.mate("Rhea")),
+  candidate("notes-juno", "Juno", NOTES.mate()),
+  candidate("notes-rhea", "Rhea", NOTES.mate()),
   candidate("notes-prod", "Notes - production", NOTES.stop("production"), {
     container: false,
     routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
   }),
 
   // The dead end: a production whose last deploy failed, running nothing.
-  candidate("todo-vera", "Todo - vera", TODO.mate("Vera")),
-  candidate("todo-fen", "Todo - fen", TODO.mate("Fen")),
+  candidate("todo-vera", "Vera", TODO.mate()),
+  candidate("todo-fen", "Fen", TODO.mate()),
   // A colleague's Mate asking its owner, beside Vera asking the viewer.
-  candidate("todo-nils", "Todo - nils", TODO.mate("Nils")),
+  candidate("todo-nils", "Nils", TODO.mate()),
   candidate("todo-stage", "Todo - stage", TODO.stop("stage"), {
     container: false,
     routes: routes(["app", "todo-stage.zerops.app"]),
@@ -345,7 +339,7 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
 
   // A name longer than any width here, and a project that is only a Mate:
   // nothing has been set up for it to travel to yet.
-  candidate("tokens-ada", "Design system tokens and primitives - ada", LONG.mate("Ada")),
+  candidate("tokens-ada", "Ada", LONG.mate()),
 ];
 
 const ACTIVITY = new Map<string, ZeropsAgentActivity>([
@@ -1017,7 +1011,7 @@ function SidebarFrame({
               toggleUnread: () => {},
               copyLink: () => {},
               rename: {
-                initialValue: item.project.hq?.mate?.name ?? item.project.name,
+                initialValue: item.project.name,
                 validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
                 commit: () => {},
               },
@@ -1244,10 +1238,7 @@ function ConversationPane({ open }: { readonly open: string }) {
   const candidate = FIXTURES.candidates.find((item) => item.project.id === open);
   const activity = FIXTURES.activity.get(open);
   const tint = TINTS.get(open) ?? "slate";
-  const name = botDisplayName({
-    bot: readZeropsMembership(candidate?.project).bot,
-    projectName: candidate?.project.name ?? open,
-  });
+  const name = candidate?.project.name ?? open;
   return (
     <main className="flex min-w-0 flex-1 flex-col">
       <WorkspacePageHeader className="relative bg-background" data-chat-header>

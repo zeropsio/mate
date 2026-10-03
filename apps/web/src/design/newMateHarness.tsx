@@ -57,10 +57,10 @@ function mate(bot: string): ZeropsCandidate {
     group: "ready",
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status: "ACTIVE",
       tagList: ["mate"],
-      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { name: bot, face: "" } },
+      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { face: "" } },
     },
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
   };
@@ -139,8 +139,11 @@ function Harness() {
     <div className="min-h-screen bg-background text-foreground">
       <ZeropsEnvironmentCreationDialog
         closed={read && SHUTS?.kind === "closed" ? SHUTS : undefined}
-        defaultBotName={NAME}
-        defaultName={role === "dev" ? `Acme Docs - ${NAME}` : "Acme Docs - stage"}
+        defaultName={
+          role === "dev"
+            ? NAME
+            : proposedEnvironmentName({ groupName: "Acme Docs", roleLabel: role, taken: TAKEN })
+        }
         defaultTintFor={(name) => newMateTint(MATES, name)}
         defaultWithAgent={role === "dev"}
         groupName="Acme Docs"
@@ -153,7 +156,7 @@ function Harness() {
             beginHarnessPress({
               flow: "add",
               project: "Acme Docs",
-              botName: choice.botName ?? choice.name,
+              botName: choice.name,
             }),
           );
         }}
@@ -168,14 +171,6 @@ function Harness() {
         onOpenChange={() => {}}
         open
         proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
-        proposeName={(botName) =>
-          proposedEnvironmentName({
-            groupName: "Acme Docs",
-            roleLabel: role,
-            botName: role === "dev" ? botName : undefined,
-            taken: TAKEN,
-          })
-        }
         role={role}
         takenBotNames={{ names: ["Fen", "Ada", "Nova"], complete: true }}
         tier={loaded ? TIER : undefined}

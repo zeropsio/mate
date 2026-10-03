@@ -71,8 +71,7 @@ beforeEach(() => {
       groupId: "g-acme",
       groupName: "Acme CRM",
       kind: "mate",
-      displayName: "Acme CRM - Vera",
-      botName: "Vera",
+      displayName: "Vera",
     },
     container: true,
   });
@@ -96,10 +95,10 @@ const open = (again?: Parameters<ReturnType<typeof useNewMate.getState>["ask"]>[
 
 describe("Add a Mate's dialog, from its host", () => {
   // Run 6's reviews: Start over reopens Add over its project with what it asked for, to change.
-  it("reads an Add started over into the dialog: its name, its environment's, its face", () => {
-    const dialog = open({ botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" });
-    expect(dialog.defaultBotName).toBe("Ida");
-    expect(dialog.defaultName).toBe("Acme CRM - Ida");
+  // D3: the name it was asked with is its project's too, whole.
+  it("reads an Add started over into the dialog: its name, its project's too, and its face", () => {
+    const dialog = open({ botName: "Ida", tint: "rose", shape: "seal" });
+    expect(dialog.defaultName).toBe("Ida");
     expect((dialog.defaultTintFor as (name: string) => string)("Ida")).toBe("rose");
     expect((dialog.defaultShapeFor as (name: string) => string | undefined)("Ida")).toBe("seal");
     // Renamed, the face is the new name's own.
@@ -110,7 +109,7 @@ describe("Add a Mate's dialog, from its host", () => {
 
   it("asks for a fresh one where nothing was started over", () => {
     const dialog = open();
-    expect(dialog.defaultBotName).not.toBe("Ida");
+    expect(dialog.defaultName).not.toBe("Ida");
     expect((dialog.defaultShapeFor as (name: string) => string | undefined)("Ida")).toBeUndefined();
   });
 

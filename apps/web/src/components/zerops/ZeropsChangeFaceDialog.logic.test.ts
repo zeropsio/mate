@@ -21,12 +21,12 @@ import {
 const ORG = "org-acme";
 
 /** Where HQ places a project of Acme Docs, as `kind`; a Mate by its name and face. */
-function inAcme(kind: HqPlacement["kind"], mate?: { name: string; face?: string }): HqPlacement {
+function inAcme(kind: HqPlacement["kind"], mate?: { face?: string }): HqPlacement {
   return {
     appId: "acme",
     appName: "Acme Docs",
     kind,
-    mate: mate === undefined ? null : { name: mate.name, face: mate.face ?? "" },
+    mate: mate === undefined ? null : { face: mate.face ?? "" },
   };
 }
 
@@ -47,12 +47,12 @@ function project(
   };
 }
 
-/** A Mate of Acme Docs, named and faced as HQ records it. */
+/** A Mate of Acme Docs, its project named `name` in Zerops, faced as HQ records it. */
 function mate(id: string, name: string, face?: string): ZeropsCandidate {
   return {
     key: `${id}:zcp`,
     group: "ready",
-    project: project(id, ["mate"], inAcme("mate", face === undefined ? { name } : { name, face })),
+    project: { ...project(id, ["mate"], inAcme("mate", face === undefined ? {} : { face })), name },
     service: { id: `zcp-${id}`, name: "zcp", status: "ACTIVE" },
   };
 }
@@ -113,16 +113,16 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
       project: project(
         "fen",
         ["mate"],
-        inAcme("mate", { name: "Fen" }),
+        inAcme("mate", {}),
         override === undefined ? undefined : [{ clientUserId: "member-ada", roleCode: override }],
       ),
     };
-    const mayRename = mayOffer(offerAsker(viewer(role), [candidate.project]), "edit_mate_record", {
+    const mayEdit = mayOffer(offerAsker(viewer(role), [candidate.project]), "edit_mate_record", {
       projectId: candidate.project.id,
       held: heldOf(candidate.project),
     });
-    expect(changeFaceOffered({ candidate, mayRename })).toBe(offered);
-    expect(mayRename).toBe(offered);
+    expect(changeFaceOffered({ candidate, mayEdit })).toBe(offered);
+    expect(mayEdit).toBe(offered);
   });
 
   it("is never offered where no Mate lives: a stage has no face to change", () => {
@@ -133,7 +133,7 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
       missingContainer: true,
       project: project("stage", [], inAcme("stage")),
     };
-    expect(changeFaceOffered({ candidate: stage, mayRename: true })).toBe(false);
+    expect(changeFaceOffered({ candidate: stage, mayEdit: true })).toBe(false);
   });
 });
 

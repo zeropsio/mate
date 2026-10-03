@@ -24,22 +24,24 @@ const JAN_OWNER = { id: "user-jan", name: "Jan Novak", initials: "JN", avatarUrl
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
 
 /**
- * A Mate HQ places in application `appId`, named `appName`, as `name`; its logins name who signed
- * Claude in where `signer` is given.
+ * A Mate HQ places in application `appId`, named `appName`; its logins name who signed Claude in
+ * where `signer` is given. Its name is its project's (D3).
  */
-function placedMate(appId: string, appName: string, name: string, signer?: string): HqPlacement {
+function placedMate(appId: string, appName: string, signer?: string): HqPlacement {
   const logins =
     signer === undefined
       ? {}
       : { logins: { "claude-code": { signedInBy: signer, present: true, token: false } } };
-  return { appId, appName, kind: "mate", mate: { name, face: "", ...logins } };
+  return { appId, appName, kind: "mate", mate: { face: "", ...logins } };
 }
 
-const titan = (name: string) => placedMate("titan", "Imperial Titan", name);
-const docs = (name: string, signer?: string) => placedMate("docs", "Acme Docs", name, signer);
+const titan = () => placedMate("titan", "Imperial Titan");
+const docs = (signer?: string) => placedMate("docs", "Acme Docs", signer);
 
 function candidate(input: {
   readonly id: string;
+  /** Its project's name in Zerops, the Mate's; its id where none is given. */
+  readonly name?: string;
   readonly tags: ReadonlyArray<string>;
   readonly hq?: HqPlacement;
   readonly environmentId?: EnvironmentId;
@@ -49,7 +51,7 @@ function candidate(input: {
     key: `${input.id}:zcp`,
     project: {
       id: input.id,
-      name: input.id,
+      name: input.name ?? input.id,
       status: "ACTIVE",
       tagList: input.tags,
       ...(input.hq === undefined ? {} : { hq: input.hq }),
@@ -77,7 +79,13 @@ describe("usageEnvironmentIdentities", () => {
     {
       name: "names a Mate by its name and its project by the group's header",
       candidates: [
-        candidate({ id: "titan-dev", tags: ["mate"], hq: titan("Lena"), environmentId: LENA }),
+        candidate({
+          id: "titan-dev",
+          tags: ["mate"],
+          name: "Lena",
+          hq: titan(),
+          environmentId: LENA,
+        }),
       ],
       expected: [[LENA, { mateName: "Lena", projectName: "Imperial Titan", owner: null }]],
     },
@@ -87,14 +95,16 @@ describe("usageEnvironmentIdentities", () => {
         candidate({
           id: "titan-dev",
           tags: ["mate"],
-          hq: titan("Lena"),
+          name: "Lena",
+          hq: titan(),
           environmentId: LENA,
           ownerMemberId: "member-jan",
         }),
         candidate({
           id: "titan-otto",
           tags: ["mate"],
-          hq: titan("Otto"),
+          name: "Otto",
+          hq: titan(),
           environmentId: OTTO,
           ownerMemberId: "member-eva",
         }),
@@ -125,8 +135,9 @@ describe("usageEnvironmentIdentities", () => {
       candidates: [
         candidate({
           id: "loose-dev",
+          name: "Lena",
           tags: ["mate"],
-          hq: placedMate("k2m9", "", "Lena"),
+          hq: placedMate("k2m9", ""),
           environmentId: LENA,
         }),
       ],
@@ -149,7 +160,7 @@ describe("usageEnvironmentIdentities", () => {
       name: "knows a Mate by its container's origin before its socket is up",
       candidates: [
         {
-          ...candidate({ id: "titan-dev", tags: ["mate"], hq: titan("Lena") }),
+          ...candidate({ id: "titan-dev", tags: ["mate"], name: "Lena", hq: titan() }),
           containerOrigin: "https://node-lena.runtime.zcp.zerops.app",
         },
       ],
@@ -177,21 +188,24 @@ describe("usageEnvironmentIdentities", () => {
         candidate({
           id: "titan-dev",
           tags: ["mate"],
-          hq: titan("Lena"),
+          name: "Lena",
+          hq: titan(),
           environmentId: LENA,
           ownerMemberId: "member-jan",
         }),
         candidate({
           id: "docs-dev",
           tags: ["mate"],
-          hq: docs("Otto"),
+          name: "Otto",
+          hq: docs(),
           environmentId: OTTO,
           ownerMemberId: "member-jan",
         }),
         candidate({
           id: "docs-fen",
           tags: ["mate"],
-          hq: docs("Fen", "user-eva"),
+          name: "Fen",
+          hq: docs("user-eva"),
           environmentId: FEN,
         }),
       ],

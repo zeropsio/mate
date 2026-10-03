@@ -41,11 +41,11 @@ export type ComingPhase = (typeof COMING_PHASES)[number];
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 /** A Mate of Acme Docs as HQ places it, wearing `face`, its record saying `record` too. */
-const acme = (name: string, face: string, record: Partial<HqMate>): HqPlacement => ({
+const acme = (face: string, record: Partial<HqMate>): HqPlacement => ({
   appId: "acme",
   appName: "Acme Docs",
   kind: "mate",
-  mate: { name, face, ...record },
+  mate: { face, ...record },
 });
 /** Signed in by the harness's person, as HQ's overview of the Mate names them. */
 const SIGNED: Partial<HqMate> = {
@@ -75,10 +75,10 @@ function mate(
     key: `${id}:zcp`,
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status,
       tagList: ["mate"],
-      hq: acme(bot, face, record),
+      hq: acme(face, record),
     },
     group,
     ...(service === null ? {} : { service: { id: "zcp", name: "zcp", status: service.status } }),
@@ -178,8 +178,7 @@ function birth(over: Partial<ZeropsPlacedBirth> = {}): ZeropsPlacedBirth {
       groupId: "acme",
       groupName: "Acme Docs",
       kind: "mate",
-      displayName: "Acme Docs - Quinn",
-      botName: "Quinn",
+      displayName: "Quinn",
       face: { tint: "coral", shape: "gem" },
     },
     ...over,
