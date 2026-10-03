@@ -1103,6 +1103,91 @@ describe("RunChat, as the person uses it", () => {
     }
   });
 
+  // A card of calls in the slot keeps the identity it formed with: its first
+  // call leaving first never remounts the rest, and nothing rises in again
+  // (B4); a new batch's card is a new card, and rises in (E5).
+  it("keeps a slot card whole when its first call leaves first, and lets a new one rise in", () => {
+    vi.useFakeTimers();
+    try {
+      const running = (id: string) =>
+        stepOf(
+          command(id, `pnpm ${id}`, {
+            callInput: { description: `Run ${id}` },
+            toolLifecycleStatus: "inProgress",
+            sourceActivityKind: "tool.started",
+          }),
+        );
+      const live = (items: ReadonlyArray<RecordItem>, ids: ReadonlyArray<string>) =>
+        record(items, {
+          live: true,
+          status: status(),
+          now:
+            ids.length === 0
+              ? null
+              : {
+                  kind: "step",
+                  step: running(ids.at(-1)!),
+                  ...(ids.length > 1
+                    ? {
+                        others: ids
+                          .slice(0, -1)
+                          .map((id) => ({ kind: "step" as const, step: running(id) })),
+                      }
+                    : {}),
+                },
+        });
+      const draw = (row: RecordRow) =>
+        act(() =>
+          renderer.update(
+            <Rows>
+              <RunChat row={row} />
+            </Rows>,
+          ),
+        );
+      const renderer = mount(live([], ["w1", "w2", "w3"]));
+      const card = () =>
+        renderer.root.findAll(
+          (node) =>
+            node.type === "li" && String(node.props["data-run-key"] ?? "").startsWith("calls#"),
+        );
+      const rising = () =>
+        renderer.root.findAll((node) => node.props["data-run-rises"] !== undefined).length;
+      const before = card();
+      expect(before.map((node) => node.props["data-run-key"])).toEqual(["calls#step:w1"]);
+      const rows = (id: string) =>
+        renderer.root.find(
+          (node) =>
+            node.props["data-chat-kind"] === "step:command" &&
+            node.findAll((child) => child.children.includes(`Run ${id}`)).length > 0,
+        );
+      const w2 = rows("w2");
+      const risingBefore = rising();
+      // The first call returns and lands; the other two run on.
+      draw(live([step(command("w1", "pnpm w1"))], ["w2", "w3"]));
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      draw(live([step(command("w1", "pnpm w1"))], ["w2", "w3"]));
+      expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w1"]);
+      expect(card()[0]).toBe(before[0]);
+      expect(rows("w2")).toBe(w2);
+      expect(rising()).toBeLessThanOrEqual(risingBefore);
+      // They return; a new batch's card is a new card, and rises in.
+      const landed = [
+        step(command("w1", "pnpm w1")),
+        step(command("w2", "pnpm w2")),
+        step(command("w3", "pnpm w3")),
+      ];
+      draw(live(landed, []));
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      draw(live(landed, ["w4"]));
+      expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w4"]);
+      expect(
+        card()[0]!.findAll((node) => node.props["data-run-rises"] !== undefined).length,
+      ).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // A call that joins the slot while the person watches rises in (E5).
   it("lets a call joining the live slot rise in", () => {
     const rising = (renderer: ReactTestRenderer) =>
