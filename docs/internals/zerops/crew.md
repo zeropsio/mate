@@ -348,12 +348,20 @@ the copy or the tasks.
 `crew_report`, `crew_board`, `crew_diff`, `crew_propose`, `crew_review`, `crew_finish`; plus
 `crew_memory` wherever memory is on.
 
-**Logins and Codex:** logins beyond the two defaults each have their own home under
-`~/.mate/logins/<id>` and their own signer (`ZeropsLogins.ts`). A Codex crewmate is code only: no
+**Logins and agents:** logins beyond the two defaults each have their own home under
+`~/.mate/logins/<id>` and their own signer (`ZeropsLogins.ts`). A crewmate runs on any login whose
+adapter declares `capabilities.threadProfile` (`ProviderAdapter.ts`; Claude, Codex, Cursor, Grok,
+Antigravity, OpenCode): Apply, a crewmate's own apply and turn admission refuse any other login,
+naming its agent, and a lead needs `threadProfile.tools` (`crewApply.ts` `requireCrewLogin`,
+`ZeropsTurnAdmission.ts`). Crew tools and memory follow `tools`; _Runs on_ names a login by its Mate
+label, else its provider's display name, and the editors offer every enabled, installed provider
+whose snapshot carries `threadProfile` (`CrewEditors.logic.ts`). A Codex crewmate is code only: no
 zcp tools, no crew tools and no memory, so its task completes by the person's _Add to Fen's code_.
 Codex wraps a command as `<shell> -lc "<command>"`; for zsh, bash or sh with `-lc` or `-c` the gate
 judges the command inside, and only the exact lane form passes (`codexThreadProfile.ts`, `spi.md`
-§1a).
+§1a). Run limits: spend counts Claude's and OpenCode's `totalCostUsd`; an ACP turn reports none.
+Rotation reads Claude's terminal reasons and an ACP turn's `max_tokens`; compactions are counted
+where a driver reports one (Claude, Codex, OpenCode).
 
 **Refusals:** a refused command reads as the engine's own sentence, never the tagged error, beside
 the row that was pressed and only until the next press or ten seconds; the tab's last error is the

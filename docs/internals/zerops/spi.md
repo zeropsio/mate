@@ -29,8 +29,9 @@ Consumers never read `payload.data` (a driver's raw, per-provider item shape) �
 
 ## 1a. The inbound direction: thread tool policy
 
-Everything above wraps the ported zone from outside. Three files point the other way, so a driver can
-ask owned code how to run one thread: `apps/server/src/spi/threadToolPolicy.ts` (provider-neutral —
+Everything above wraps the ported zone from outside. A few files point the other way, so a driver can
+ask owned code how to run one thread (the ACP, OpenCode and MCP-server ones are listed under _The ACP
+and OpenCode seams_ below): `apps/server/src/spi/threadToolPolicy.ts` (provider-neutral —
 `ThreadToolProfile`, `ToolDecision`, `ThreadToolPolicy`, `ThreadToolPolicyRegistry`),
 `apps/server/src/spi/claudeThreadProfile.ts` (Claude's extension — `ClaudeThreadExtension`,
 `ClaudeThreadExtensionRegistry`, and `claudeQueryOptionsPatch`, the translation of a profile into SDK
@@ -88,6 +89,27 @@ through it would make the two directories import each other.
   model; Codex reports a plain rejection. Its `request_user_input` questions still wait for the
   person, in the crewmate's chat, which is the person's surface — unlike Claude, whose gate denies
   `AskUserQuestion` and sends the crewmate to `crew_report`.
+- **The capability.** An adapter that reads the policy declares `capabilities.threadProfile`
+  (`{ tools }`, `ThreadProfileSupport` in `threadToolPolicy.ts`): Claude `{ tools: true }`, Codex
+  `{ tools: false }`, Cursor, Grok, Antigravity and OpenCode `{ tools: true }`. The instance registry
+  stamps it on every snapshot (`ServerProvider.threadProfile`); owned code reads it through
+  `ProviderInstances.agentOf`. A thread with a profile is never put on an adapter that declares none.
+- **The ACP and OpenCode seams.** `threadToolsMcp.ts` serves a profile's tools on a loopback port for
+  the session's life and hands back a stdio MCP entry (this runtime, `-e`, a token on the first
+  line). `acpThreadProfile.ts` is the one translation for Cursor, Grok and Antigravity: the stdio
+  entry rides `session/new`/`load`/`resume` as server `crew`; every `session/request_permission` is
+  shaped as Claude's calls (`execute` a `Bash`, unwrapping `<shell> -c`, declined when its `cwd` is
+  outside the session; `edit`/`delete`/`move` an `Edit` per path, `..` resolved; `read`, `search`,
+  `fetch`; an MCP call by its title) and answered `allow_once` only when every call passes unchanged,
+  else `reject_once`, never an always option; the context follows the runtime instructions on every
+  prompt; the model and effort (Cursor `reasoning`, Grok `reasoningEffort`) apply at start and every
+  turn; ACP's `max_tokens`, `max_turn_requests` and `refusal` stop reasons become `terminalReason`.
+  `openCodeThreadProfile.ts`: a profiled session's ruleset asks for every tool, the MCP server is
+  added per thread (`crew-<hash>`, keys `crew-<hash>_<tool>`), each ask is judged with the input
+  its tool part streamed (bash's `command` and `workdir`, an MCP tool's arguments), replied `once` or
+  `reject`; the context joins the prompt's `system`; effort is `variant`. What only a live CLI
+  settles: that each ACP agent asks for every MCP call (zcp's tools included) and every write in
+  approval-required mode, and that it starts the stdio entry.
 - **What a Codex crewmate is in phase C.** Code only: no zcp tools, and no crew tools either — they
   are an in-process MCP server only the Claude SDK can host — so its prompt names none
   (`CrewPromptInput.crewTools: false`). A Codex crewmate never reports its task done; its task
