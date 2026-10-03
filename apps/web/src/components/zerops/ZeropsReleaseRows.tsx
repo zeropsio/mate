@@ -3,6 +3,8 @@ import {
   flowVerbLabel,
   releaseCarriedToggleLabel,
   releaseDescription,
+  rolledBackDescription,
+  rolledBackTo,
   type FlowReleaseRow,
   type Moved,
   type MovedCommits,
@@ -119,6 +121,7 @@ function CarriedReleaseRows({
           onRollBack={onRollBack}
           pending={pending}
           release={release}
+          releases={releases}
         />
       ))}
     </>
@@ -127,6 +130,7 @@ function CarriedReleaseRows({
 
 function CarriedReleaseRow({
   release,
+  releases,
   groupId,
   pending,
   onRollBack,
@@ -134,6 +138,8 @@ function CarriedReleaseRow({
   now,
 }: {
   readonly release: FlowReleaseRow;
+  /** Every release of the project: what a roll back went back to is among them. */
+  readonly releases: ReadonlyArray<FlowReleaseRow>;
   readonly groupId: string;
   readonly pending: ReadonlySet<string>;
   readonly onRollBack: (tag: string, from: HTMLElement) => void;
@@ -144,11 +150,15 @@ function CarriedReleaseRow({
   const what = carried.carried.get(release.tag);
   const moved: ReadonlyArray<Moved> = what?.state === "known" ? what.moved : [];
   const named = moved.length > 1;
-  // A refused release's line is HQ's reason, and the reason stays.
+  // A refused release's line is HQ's reason, and the reason stays. A roll back carried nothing
+  // new: it says what it went back to.
+  const back = rolledBackTo(release, releases);
   const description =
     release.verdict === "refused" && release.detail !== undefined
       ? undefined
-      : releaseDescription(moved, release.line, now, carried.names);
+      : back !== undefined
+        ? rolledBackDescription(back, release.line)
+        : releaseDescription(moved, release.line, now, carried.names);
   const parts = releaseRowParts(release, groupId, pending, onRollBack);
   const expansion = open ? (
     <div className="flex flex-col gap-1 pl-7.5" data-zerops-surface="release-carried">

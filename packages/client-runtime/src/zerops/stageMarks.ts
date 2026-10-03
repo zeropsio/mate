@@ -29,8 +29,11 @@ export interface StopChange {
 
 /** One comparison of what a release puts live (`Moved`), and the production services it moves. */
 export interface ServiceChanges {
+  /** The repository compared, where it is named: whose `main` head says the stage runs it all. */
+  readonly repository?: string | undefined;
   /** The services' hostnames. */
   readonly services: ReadonlyArray<string>;
+  /** Newest first, as HQ compares them. */
   readonly commits: ReadonlyArray<StopChange>;
 }
 
@@ -63,7 +66,9 @@ export interface StageStandings {
 /**
  * The stage's standings from what the surfaces already hold: its environment
  * input (`ZeropsProjectFlow.environmentInputs`) and the platform's deployment.
- * A service whose version name carries no commit runs nothing this can place.
+ * A service runs the commit its version name spells, else — a version the
+ * viewer cannot read, on a stage their grant does not reach — the one HQ last
+ * put live there; one whose name carries no commit runs nothing this can place.
  */
 export function stageStandings(input: {
   readonly environment: { readonly services: ReadonlyArray<EnvironmentServiceState> };
@@ -74,7 +79,9 @@ export function stageStandings(input: {
     runs: new Map(
       environment.services.map((service) => [
         service.hostname,
-        deployedCommit(service.appVersionName),
+        service.appVersionName === undefined
+          ? service.deploy?.live?.sha
+          : deployedCommit(service.appVersionName),
       ]),
     ),
     deploying:
@@ -89,22 +96,36 @@ export function stageStandings(input: {
   };
 }
 
+/**
+ * Whether the stage says what any of its services runs: one that says nothing — a stage the
+ * viewer may not read — places no change, and is no "0 of N".
+ */
+export function stageRead(stage: StageStandings): boolean {
+  return [...stage.runs.values()].some((sha) => sha !== undefined);
+}
+
 /** Where one change production does not run stands on the stage. */
 export type StageMark = "on-stage" | "deploying-on-stage" | "failed-on-stage" | "none";
 
 /** One service's mark for one change of its list. */
 function markOnService(input: {
   readonly change: StopChange;
+  /** The list, newest first: a stage running one of them runs every one listed after it. */
+  readonly commits: ReadonlyArray<StopChange>;
+  /** The repository's `main` head, where known: a stage running it runs every change listed. */
+  readonly head: string | undefined;
   readonly service: string;
   /** What the service runs and deploys, resolved to whole shas. */
   readonly runs: string | undefined;
   readonly deploying: string | undefined;
   readonly stage: StageStandings;
 }): StageMark {
-  const { change, runs, stage } = input;
+  const { change, commits, runs, stage } = input;
   if (stage.failed.has(input.service) && sameSha(runs, change.sha)) return "failed-on-stage";
   if (sameSha(input.deploying, change.sha)) return "deploying-on-stage";
-  return sameSha(runs, change.sha) ? "on-stage" : "none";
+  if (sameSha(runs, input.head)) return "on-stage";
+  const at = commits.findIndex((listed) => sameSha(runs, listed.sha));
+  return at !== -1 && commits.indexOf(change) >= at ? "on-stage" : "none";
 }
 
 /** A change several services carry: the worst of theirs, and on stage only where all have it. */
@@ -117,17 +138,24 @@ function worstMark(left: StageMark, right: StageMark): StageMark {
 /**
  * Where each change production does not run stands on the first stage that
  * follows `main` — the question the list under production answers: has this
- * been seen running anywhere yet? Keyed by the lower-case sha. With no such
- * stage every change is `none`: nothing says, and a release never waits on a
- * stage anyway (D28).
+ * been seen running anywhere yet? Keyed by the lower-case sha. A stage running
+ * a listed commit runs every change listed before it too, and one running its
+ * repository's `main` head runs them all (main #177; F25, e2e 2026-10-03: a
+ * stage on main's head read "Stage runs 1 of 4 changes"). With no such stage
+ * every change is `none`: nothing says, and a release never waits on a stage
+ * anyway (D28).
  */
 export function stageMarks(input: {
   readonly contents: ReadonlyArray<ServiceChanges>;
   readonly stage: StageStandings | undefined;
+  /** Each repository's `main` head, by name (`ZeropsProjectFlow.repos`). */
+  readonly mainHeads?: ReadonlyMap<string, string> | undefined;
 }): ReadonlyMap<string, StageMark> {
   const marks = new Map<string, StageMark>();
   for (const entry of input.contents) {
-    const known = entry.commits.map((commit) => commit.sha);
+    const head =
+      entry.repository === undefined ? undefined : input.mainHeads?.get(entry.repository);
+    const known = [...(head === undefined ? [] : [head]), ...entry.commits.map(({ sha }) => sha)];
     const deploying = resolveCommit(input.stage?.deploying, known);
     for (const service of entry.services) {
       const runs = resolveCommit(input.stage?.runs.get(service), known);
@@ -135,7 +163,15 @@ export function stageMarks(input: {
         const mark =
           input.stage === undefined
             ? "none"
-            : markOnService({ change, service, runs, deploying, stage: input.stage });
+            : markOnService({
+                change,
+                commits: entry.commits,
+                head,
+                service,
+                runs,
+                deploying,
+                stage: input.stage,
+              });
         const key = change.sha.toLowerCase();
         const seen = marks.get(key);
         marks.set(key, seen === undefined ? mark : worstMark(seen, mark));

@@ -48,6 +48,19 @@ describe("ReleaseReviewView", () => {
     expect(markup).toContain("Can&#x27;t tell what web runs.");
   });
 
+  // e2e 2026-10-03: B's v0.1.1, 8 s into its release, said "Can't tell what app runs.": the
+  // service it redeploys is deploying, and is said so.
+  it("says a service the release redeploys is deploying, while it releases", () => {
+    const markup = render({
+      outcome: { kind: "releasing" },
+      services: ["app"],
+      untold: ["app", "web"],
+    });
+    expect(markup).toContain("app is deploying.");
+    expect(markup).toContain("Can&#x27;t tell what web runs.");
+    expect(markup).not.toContain("Can&#x27;t tell what app runs.");
+  });
+
   // F22: a release whose answer was lost, and HQ holds none of it when asked again.
   it("says to check the project, and offers Release again, when HQ could not confirm the release", () => {
     const markup = render({ press: { kind: "refused", reason: HQ_WRITE_UNCERTAIN } });

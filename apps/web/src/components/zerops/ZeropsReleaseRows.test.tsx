@@ -272,6 +272,22 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     expect(html.match(/data-zerops-environment-row/gu)).toHaveLength(1);
   });
 
+  // e2e 2026-10-03: B's roll back to v0.1.0 made v0.1.2, whose row said only its shas.
+  it("says what a roll back went back to, over its shas", () => {
+    const back = (tag: string, short: string) =>
+      release(tag, { line: `app ${short}`, entries: [{ service: "app", commit: full(short) }] });
+    const shown = [back("v0.1.2", "30f75f9"), back("v0.1.1", "3a9c925"), back("v0.1.0", "30f75f9")];
+    const html = renderToStaticMarkup(
+      carriedRows(
+        shown.map((entry, index) => row(entry, index)),
+        carriedOf([["v0.1.2", known()]]),
+      ),
+    );
+    expect(html).toMatch(
+      /data-zerops-surface="release-description">Rolled back to v0\.1\.0<\/span><span[^>]*data-zerops-surface="release-byline">app 30f75f9</u,
+    );
+  });
+
   it("writes what a release carried in the row's flexible middle, the tag and its pill before it", () => {
     const html = renderToStaticMarkup(carriedRows([NEWEST], TITAN_READ));
     expect(html).toMatch(

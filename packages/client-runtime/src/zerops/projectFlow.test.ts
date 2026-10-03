@@ -11,6 +11,7 @@ import {
   pullRequestMergeLine,
   releaseContentsSentence,
   releaseContentsCommits,
+  waitingForProduction,
   releaseContentsSummary,
   releaseWaitingLabel,
   flowChanges,
@@ -667,5 +668,63 @@ describe("a Mate's proposal of the group's recipe", () => {
   ])("tells $case", ({ repository, title, proposal }) => {
     const kind = repository === "group" ? "recipe" : "code";
     expect(isRecipeProposal(row({ repository, kind, number: 11, title }))).toBe(proposal);
+  });
+});
+
+// e2e 2026-10-03 (t8 A22): B's change, merged with production on v0.1.0, said "it's on main": HQ
+// had not compared main again, and the release listed nothing yet.
+describe("waitingForProduction: how many changes wait for production once one merged", () => {
+  const MERGE = "a".repeat(40);
+  const EARLIER = "b".repeat(40);
+  const merged = (mergedAt: string, mergeCommitSha: string | undefined = MERGE) => ({
+    merged: true,
+    mergedAt,
+    mergeCommitSha,
+  });
+  it.each([
+    {
+      name: "the change just merged, before HQ lists it",
+      listed: [],
+      change: merged("2026-10-03T09:26:00Z"),
+      liveSince: "2026-10-03T07:40:00Z",
+      count: 1,
+    },
+    {
+      name: "the change beside the ones listed before it",
+      listed: [{ sha: EARLIER }],
+      change: merged("2026-10-03T09:26:00Z"),
+      liveSince: "2026-10-03T07:40:00Z",
+      count: 2,
+    },
+    {
+      name: "the change once HQ lists it: counted once",
+      listed: [{ sha: MERGE }, { sha: EARLIER }],
+      change: merged("2026-10-03T09:26:00Z"),
+      liveSince: "2026-10-03T07:40:00Z",
+      count: 2,
+    },
+    {
+      name: "the change with no release production runs",
+      listed: [],
+      change: merged("2026-10-03T04:52:00Z"),
+      liveSince: undefined,
+      count: 1,
+    },
+    {
+      name: "a change merged before the release production runs: there already",
+      listed: [],
+      change: merged("2026-10-03T07:00:00Z"),
+      liveSince: "2026-10-03T07:40:00Z",
+      count: 0,
+    },
+    {
+      name: "a change not merged: what the release lists",
+      listed: [{ sha: EARLIER }],
+      change: { merged: false, mergedAt: undefined, mergeCommitSha: undefined },
+      liveSince: "2026-10-03T07:40:00Z",
+      count: 1,
+    },
+  ])("$name", ({ listed, change, liveSince, count }) => {
+    expect(waitingForProduction({ listed, change, liveSince })).toBe(count);
   });
 });

@@ -390,6 +390,28 @@ export function releaseContentsCommits<Commit extends { readonly sha: string }>(
 }
 
 /**
+ * How many changes wait for production, said from a merged change's review: what the release
+ * carries (`listed`, `releaseContentsCommits`), and the change itself where that does not list it
+ * yet — HQ compares `main` again after a merge, and until it has, the change just merged waits no
+ * less (t8 A22: "1 change now waits for production"). A change merged before the release
+ * production runs is in production already; one not merged waits for nothing.
+ */
+export function waitingForProduction(input: {
+  readonly listed: ReadonlyArray<{ readonly sha: string }>;
+  readonly change: Pick<FlowPullRequest, "merged" | "mergedAt" | "mergeCommitSha">;
+  /** When the release production runs was tagged; `undefined` where it runs none. */
+  readonly liveSince: string | undefined;
+}): number {
+  const { change, listed, liveSince } = input;
+  const merge = change.mergeCommitSha?.toLowerCase();
+  const listsIt = merge !== undefined && listed.some(({ sha }) => sha.toLowerCase() === merge);
+  const sinceLive =
+    liveSince === undefined ||
+    (change.mergedAt !== undefined && Date.parse(change.mergedAt) > Date.parse(liveSince));
+  return listed.length + (change.merged && sinceLive && !listsIt ? 1 : 0);
+}
+
+/**
  * The words a release is about to put in front of people.
  *
  * "Release" names the mechanism, not the thing — and someone who has never

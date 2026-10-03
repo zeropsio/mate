@@ -18,6 +18,7 @@
  */
 import {
   cannotTellWhatRuns,
+  servicesDeploying,
   buildZeropsGroupTree,
   changesCountWords,
   holdReleaseFacts,
@@ -34,6 +35,7 @@ import {
   rollbackReview,
   rollbackServices,
   shortCommit,
+  stageRead,
   stageStandings,
   type CompareRead,
   type MovedCommits,
@@ -299,7 +301,20 @@ function ReleaseData({
           }),
     [flowValue?.deployments, mainStage],
   );
-  const marks = useMemo(() => releaseStageMarks(facts, stage), [facts, stage]);
+  // A stage on a repository's `main` head runs every change the release carries from it.
+  const mainHeads = useMemo(
+    () =>
+      new Map(
+        (flow.repos ?? []).flatMap(({ name: repository, mainHead }) =>
+          mainHead === null ? [] : [[repository, mainHead] as const],
+        ),
+      ),
+    [flow.repos],
+  );
+  const marks = useMemo(
+    () => releaseStageMarks(facts, stage, mainHeads),
+    [facts, mainHeads, stage],
+  );
   const rows = reviewRowsOf(releaseChangeRows({ moved: facts.contents, marks }), {
     mates,
     mateNames: flowValue?.mateNames,
@@ -327,7 +342,8 @@ function ReleaseData({
       fixer={fixer?.name}
       gate={flow.release.gate}
       permission={flow.release.permission}
-      hasStage={mainStage !== undefined}
+      // A stage that says nothing it runs — one the viewer may not read — counts nothing.
+      hasStage={stage !== undefined && stageRead(stage)}
       name={name}
       now={now}
       onClose={onClose}
@@ -402,6 +418,13 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   });
   const fix = model.verdict.fix;
   const refused = press.kind === "refused" ? press.reason : undefined;
+  // While it releases, a service it redeploys is deploying: its version names what is going, or
+  // nothing yet, and is no fact to be unable to tell.
+  const deploying =
+    props.outcome.kind === "releasing"
+      ? props.untold.filter((service) => props.services.includes(service))
+      : [];
+  const untold = props.untold.filter((service) => !deploying.includes(service));
   return (
     <ZeropsReviewSurface
       consequence={refused ?? model.consequence}
@@ -446,8 +469,11 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           title="What goes out"
         >
           {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
-          {props.untold.length === 0 ? null : (
-            <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(props.untold)}.</p>
+          {deploying.length === 0 ? null : (
+            <p className="text-sm text-muted-foreground">{servicesDeploying(deploying)}.</p>
+          )}
+          {untold.length === 0 ? null : (
+            <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
           )}
         </ReviewSection>
       )}

@@ -328,6 +328,8 @@ export {
 export {
   releaseCarriedToggleLabel,
   releaseDescription,
+  rolledBackDescription,
+  rolledBackTo,
   type ReleaseDescription,
 } from "./releaseCarried.ts";
 export {
@@ -391,6 +393,7 @@ export {
 } from "./stopComing.ts";
 export {
   stageMarks,
+  stageRead,
   stageStandings,
   type ServiceChanges,
   type StageMark,
@@ -399,6 +402,7 @@ export {
 } from "./stageMarks.ts";
 export {
   cannotTellWhatRuns,
+  servicesDeploying,
   changesCountWords,
   changesNotLive,
   PROJECT_ALL_CLEAR,
@@ -481,6 +485,7 @@ export {
   releaseWaitingLabel,
   type ReleaseContentsSummary,
   releaseContentsCommits,
+  waitingForProduction,
   releaseContentsSummary,
   sidebarChangeLabel,
   changeNamesRepository,
