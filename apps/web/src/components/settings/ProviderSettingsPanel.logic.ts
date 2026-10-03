@@ -158,3 +158,16 @@ export function classifyProviderEnvironmentAccess(input: {
   }
   return { kind: "editable" };
 }
+
+/**
+ * What the provider editor says with no provider to show: nothing while the device's providers
+ * are not read (unknown is not empty), then that the one asked for is gone, or that none is
+ * configured.
+ */
+export function providerEditorEmpty(input: {
+  readonly providersRead: boolean;
+  readonly targetInstanceMissing: boolean;
+}): "reading" | "missing" | "none" {
+  if (!input.providersRead) return "reading";
+  return input.targetInstanceMissing ? "missing" : "none";
+}
