@@ -1,4 +1,8 @@
-import type { OrchestrationThreadShell } from "@t3tools/contracts";
+import type {
+  OrchestrationLatestTurn,
+  OrchestrationSession,
+  OrchestrationThreadShell,
+} from "@t3tools/contracts";
 import type { RelayAgentAwarenessPhase } from "@t3tools/contracts/relay";
 import type { MateMarkState } from "./brand.ts";
 import { isLatestTurnSettled } from "./orchestrationTiming.ts";
@@ -36,6 +40,18 @@ export type ThreadStatusInput = Pick<
 > & {
   readonly lastVisitedAt?: string | null;
   readonly wokeAt?: string | null;
+};
+
+/**
+ * What the resolver reads of a thread: a shell's turn and session hold more, a Mate's overview of
+ * its chat (`@t3tools/shared/mateLink`) no more than this.
+ */
+export type ThreadStatusFields = Omit<ThreadStatusInput, "latestTurn" | "session"> & {
+  readonly latestTurn: Pick<
+    OrchestrationLatestTurn,
+    "turnId" | "state" | "startedAt" | "completedAt"
+  > | null;
+  readonly session: Pick<OrchestrationSession, "status"> | null;
 };
 
 export interface ThreadStatus {
@@ -91,7 +107,7 @@ function status(kind: ThreadStatusKind): ThreadStatus {
   return { kind, toneId: toneIdForKind(kind) };
 }
 
-export function resolveThreadStatus(thread: ThreadStatusInput): ThreadStatus {
+export function resolveThreadStatus(thread: ThreadStatusFields): ThreadStatus {
   if (thread.hasPendingApprovals) return status("approval");
   if (thread.hasPendingUserInput) return status("input");
   if (thread.session?.status === "running" || thread.latestTurn?.state === "running") {
