@@ -15,6 +15,7 @@ import {
   resolveOwnedAgentId,
   type ZeropsAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
+import type { ConversationFooter } from "@t3tools/client-runtime/zerops/conversationWriter";
 import {
   agentIdForDriverKind,
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -553,6 +554,28 @@ export function resolveZeropsConversationReadOnly(input: {
   const notice = agentOwnershipComposerNotice(input.ownership);
   if (notice === undefined) return null;
   return { notice, waitingLabel: "Waiting for the agent's owner" };
+}
+
+/** Someone else's conversation as its footer says it, before the answer is read again. */
+export const REMEMBERED_READ_ONLY: ZeropsConversationReadOnly = {
+  notice: agentOwnershipComposerNotice("someone-else")!,
+  waitingLabel: "Waiting for the agent's owner",
+};
+
+/**
+ * The read-only strip the footer shows (`conversationFooter`), and whether it rests on a read
+ * answer. Only a read answer is acted on: a strip painted from this browser's memory says whose
+ * agent it was, but offers no sign-in and names no owner over a pending request — those come with
+ * the read answer.
+ */
+export function zeropsReadOnlyFooter(input: {
+  readonly footer: ConversationFooter;
+  readonly readOnly: ZeropsConversationReadOnly | null;
+}): { readonly readOnly: ZeropsConversationReadOnly; readonly answered: boolean } | null {
+  if (input.footer !== "read-only") return null;
+  return input.readOnly === null
+    ? { readOnly: REMEMBERED_READ_ONLY, answered: false }
+    : { readOnly: input.readOnly, answered: true };
 }
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */

@@ -13,7 +13,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
 import { rememberedWriter } from "~/zerops/writerMemory";
-import { resolveZeropsConversationReadOnly } from "../ChatView.logic";
+import { REMEMBERED_READ_ONLY } from "../ChatView.logic";
 import { ComposerRoomHeld, ComposerStandInDock } from "../chat/ComposerStandIn";
 import { ZeropsReadOnlyConversationFooter } from "./ZeropsReadOnlyConversationFooter";
 
@@ -27,14 +27,6 @@ export function standInFooter(conversation: ScopedThreadRef | null): Conversatio
     conversation === null ? undefined : rememberedWriter(conversation),
   );
 }
-
-/** Someone else's conversation, as its footer will say it — named as it was last known. */
-export const REMEMBERED_READ_ONLY = resolveZeropsConversationReadOnly({
-  agent: { flagToken: false },
-  ownership: "someone-else",
-})!;
-
-const nothing = () => undefined;
 
 export function ConversationFooterStandIn({
   footer,
@@ -50,15 +42,12 @@ export function ConversationFooterStandIn({
     case "read-only":
       return (
         <ComposerStandInDock>
-          {/* Its sign-in answers once the conversation is open, as its own footer's does. */}
-          <div className="contents" inert>
-            <ZeropsReadOnlyConversationFooter
-              onSignIn={nothing}
-              pendingApprovals={[]}
-              pendingUserInputs={[]}
-              readOnly={REMEMBERED_READ_ONLY}
-            />
-          </div>
+          {/* Only remembered: its sign-in comes with the read answer, in the conversation. */}
+          <ZeropsReadOnlyConversationFooter
+            pendingApprovals={[]}
+            pendingUserInputs={[]}
+            readOnly={REMEMBERED_READ_ONLY}
+          />
         </ComposerStandInDock>
       );
     case "held":

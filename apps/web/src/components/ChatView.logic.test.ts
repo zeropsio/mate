@@ -53,6 +53,7 @@ import {
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   resolveZeropsConversationReadOnly,
+  zeropsReadOnlyFooter,
   resolveZeropsOwnedAgentSendBlockReason,
   resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
@@ -2187,6 +2188,27 @@ describe("resolveZeropsConversationReadOnly", () => {
     ["no Zerops agent at all", undefined, "someone-else", null],
   ] as const)("%s", (_label, agent, ownership, expected) => {
     expect(resolveZeropsConversationReadOnly({ agent, ownership })).toEqual(expected);
+  });
+});
+
+describe("zeropsReadOnlyFooter", () => {
+  const known = {
+    notice: "Signed in by another project member — only they can run this agent.",
+    waitingLabel: "Waiting for the agent's owner",
+  };
+
+  it.each([
+    ["a read answer: its strip, answered", "read-only", known, { readOnly: known, answered: true }],
+    [
+      "a remembered answer: the strip, not answered yet",
+      "read-only",
+      null,
+      { readOnly: known, answered: false },
+    ],
+    ["the composer: no strip", "composer", null, null],
+    ["the room held: no strip", "held", known, null],
+  ] as const)("%s", (_label, footer, readOnly, expected) => {
+    expect(zeropsReadOnlyFooter({ footer, readOnly })).toEqual(expected);
   });
 });
 

@@ -37,8 +37,8 @@ describe("the footer of a conversation that is not open yet", () => {
     const html = render("someone");
     expect(html).toContain("only they can run this agent");
     expect(html).not.toContain("<textarea");
-    // Nothing on it acts before the conversation opens.
-    expect(html).toContain("inert");
+    // Only remembered, it offers no action: its sign-in comes with the read answer.
+    expect(html).not.toContain("<button");
   });
 
   it("paints the composer where this browser remembers it as the viewer's", () => {

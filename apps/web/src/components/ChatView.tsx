@@ -188,7 +188,6 @@ import { useKnownMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
-import { REMEMBERED_READ_ONLY } from "./zerops/ConversationFooterStandIn";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
 import { rememberedWriter, rememberWriter } from "../zerops/writerMemory";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
@@ -467,6 +466,7 @@ import {
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
+  zeropsReadOnlyFooter,
   conversationContentPending,
   localThreadErrorStanding,
   queuedSendOutcome,
@@ -3917,8 +3917,12 @@ export default function ChatView(props: ChatViewProps) {
   });
   // Remembered by the conversation: another chat of the same Mate runs on its own login.
   const zeropsFooter = conversationFooter(zeropsWriter, rememberedWriter(routeThreadRef));
-  const zeropsShownReadOnly =
-    zeropsFooter === "read-only" ? (zeropsReadOnly ?? REMEMBERED_READ_ONLY) : null;
+  // Someone else's strip; painted from memory it offers no sign-in and names no owner until read.
+  const zeropsReadOnlyStrip = zeropsReadOnlyFooter({
+    footer: zeropsFooter,
+    readOnly: zeropsReadOnly,
+  });
+  const zeropsShownReadOnly = zeropsReadOnlyStrip?.readOnly ?? null;
   const zeropsWriterKind = zeropsWriter.kind;
   const zeropsKnownWriter = rememberableWriter(zeropsWriter, zeropsAgentAuthRead);
   useEffect(() => {
@@ -8541,9 +8545,17 @@ export default function ChatView(props: ChatViewProps) {
                           {zeropsShownReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
                               readOnly={zeropsShownReadOnly}
-                              pendingApprovals={pendingApprovals}
-                              pendingUserInputs={pendingUserInputs}
-                              onSignIn={openAgentAuthDialog}
+                              pendingApprovals={
+                                zeropsReadOnlyStrip?.answered === true ? pendingApprovals : []
+                              }
+                              pendingUserInputs={
+                                zeropsReadOnlyStrip?.answered === true ? pendingUserInputs : []
+                              }
+                              onSignIn={
+                                zeropsReadOnlyStrip?.answered === true
+                                  ? openAgentAuthDialog
+                                  : undefined
+                              }
                             />
                           ) : zeropsFooter === "held" ? (
                             <ComposerRoomHeld />

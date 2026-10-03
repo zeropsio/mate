@@ -30,10 +30,8 @@ import {
   ComposerStandInDock,
   type StandInTyped,
 } from "~/components/chat/ComposerStandIn";
-import {
-  ConversationFooterStandIn,
-  REMEMBERED_READ_ONLY,
-} from "~/components/zerops/ConversationFooterStandIn";
+import { REMEMBERED_READ_ONLY } from "~/components/ChatView.logic";
+import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -69,7 +67,7 @@ function ConversationFooter({ writer }: { readonly writer: ConversationWriter })
     return (
       <ComposerStandInDock>
         <ZeropsReadOnlyConversationFooter
-          onSignIn={nothing}
+          onSignIn={writer.kind === "someone" ? nothing : undefined}
           pendingApprovals={[]}
           pendingUserInputs={[]}
           readOnly={REMEMBERED_READ_ONLY}
