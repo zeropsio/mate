@@ -68,6 +68,16 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Reading Acme…<\/option>/u);
   });
 
+  it("says it could not read the organization's people, with the way to read them again", () => {
+    const html = renderToStaticMarkup(
+      form({ members: [], readFailed: { organization: "Acme", onReadAgain: () => {} } }),
+    );
+    expect(html).toMatch(
+      /role="alert"[^>]*>Couldn(&#x27;|')t read Acme(&#x27;|')s members from Zerops\.</u,
+    );
+    expect(html).toMatch(/<button[^>]*>Try again<\/button>/u);
+  });
+
   it("picks nobody: the hand-over waits on the person's own pick", () => {
     const html = renderToStaticMarkup(form());
     expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Pick a person<\/option>/u);

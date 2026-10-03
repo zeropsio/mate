@@ -21,6 +21,9 @@ import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface AssignDialogProps {
   readonly readingOrganization?: string | undefined;
+  readonly readFailed?:
+    | { readonly organization: string; readonly onReadAgain: () => void }
+    | undefined;
   readonly pending: boolean;
   readonly error: string | null;
   readonly onSubmit: (clientUserId: string) => void;
@@ -68,6 +71,8 @@ const mock = vi.hoisted(() => ({
   membersEnabled: [] as Array<boolean>,
   /** The member list's read, as it stands. */
   membersStatus: "ready" as "idle" | "loading" | "ready" | "failed",
+  /** The account HQ's read of the member list again. */
+  reread: vi.fn(),
 }));
 
 vi.mock("./accountInvalidations", () => ({
@@ -157,7 +162,7 @@ vi.mock("./accountHq", async (original) => ({
     status: "ready",
     hq: { kind: "official", projectId: "p-hq", address: "https://hq.example.test" },
     admins: [],
-    reread: () => {},
+    reread: mock.reread,
   }),
   accountHqApi: () => ({ updateMate: mock.updateMate, mateKey: async () => mock.mateKey }),
 }));
@@ -247,6 +252,7 @@ beforeEach(() => {
   mock.deletedTokens = [];
   mock.membersEnabled = [];
   mock.membersStatus = "ready";
+  mock.reread.mockReset();
   mock.mateKey = null;
   mock.deleteDialog.current = null;
   mock.updateMate.mockReset();
@@ -433,6 +439,17 @@ describe("useMateActions — Hand this Mate over", () => {
     mount();
     openAssign();
     expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
+  });
+
+  it("says it could not read the organization's people, and reads them again on Try again", () => {
+    mock.membersStatus = "failed";
+    mount();
+    openAssign();
+    expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
+    act(() => {
+      mock.assignDialog.current!.readFailed!.onReadAgain();
+    });
+    expect(mock.reread).toHaveBeenCalledTimes(1);
   });
 
   it("says a refused hand-over's reason in the dialog, which stays open", async () => {

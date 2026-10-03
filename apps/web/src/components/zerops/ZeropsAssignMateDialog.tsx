@@ -55,11 +55,16 @@ export function ZeropsAssignMateForm({
   pending,
   error,
   readingOrganization,
+  readFailed,
 }: {
   readonly projectName: string;
   readonly members: ReadonlyArray<AssignableMember>;
   /** The organization whose people are still being read, while there is nobody to pick yet. */
   readonly readingOrganization?: string | undefined;
+  /** The organization whose people could not be read, and the way to read them again. */
+  readonly readFailed?:
+    | { readonly organization: string; readonly onReadAgain: () => void }
+    | undefined;
   readonly onCancel: () => void;
   readonly onSubmit: (clientUserId: string) => void;
   /** The platform is answering the hand-over. */
@@ -113,6 +118,16 @@ export function ZeropsAssignMateForm({
             ))}
           </select>
         </div>
+        {readFailed === undefined ? null : (
+          <div className="mt-3 flex flex-col items-start gap-3">
+            <p className="text-sm text-foreground" role="alert">
+              Couldn't read {readFailed.organization}'s members from Zerops.
+            </p>
+            <Button onClick={readFailed.onReadAgain} size="sm" type="button" variant="secondary">
+              Try again
+            </Button>
+          </div>
+        )}
       </DialogPanel>
       <DialogFooter>
         <p

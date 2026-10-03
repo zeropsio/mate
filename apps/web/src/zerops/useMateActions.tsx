@@ -1056,6 +1056,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               ? activeOrganization?.name
               : undefined
           }
+          readFailed={
+            membersStatus === "failed" && members.length === 0 && activeOrganization !== null
+              ? { organization: activeOrganization.name, onReadAgain: accountHq.reread }
+              : undefined
+          }
           onCancel={close}
           onOpenChange={(open) => {
             if (!open) close();
