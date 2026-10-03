@@ -5,6 +5,7 @@ import {
   isFreeMate,
   jumpGroups,
   jumpKey,
+  EMPTY_JUMP_INDEX,
   jumpMateOf,
   jumpWritePlan,
   readJumpQuery,
@@ -321,6 +322,64 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
       conversation: undefined,
     });
     expect(jumpMateOf({ ...base, connected: true, activity: undefined }).face).toBe("idle");
+  });
+
+  // Its pose as on its row (`matePose`): waking from its press until its agent answers.
+  it.each([
+    {
+      case: "coming up",
+      life: "coming",
+      signedIn: false,
+      connected: false,
+      read: undefined,
+      face: "waking",
+    },
+    {
+      case: "did not come",
+      life: "failed",
+      signedIn: false,
+      connected: false,
+      read: undefined,
+      face: "sleep",
+    },
+    {
+      case: "up, waiting for its sign-in",
+      life: "up",
+      signedIn: false,
+      connected: true,
+      read: undefined,
+      face: "waking",
+    },
+    {
+      case: "up, signed in",
+      life: "up",
+      signedIn: true,
+      connected: true,
+      read: undefined,
+      face: "idle",
+    },
+    {
+      case: "up, talked to before its sign-in was recorded",
+      life: "up",
+      signedIn: false,
+      connected: true,
+      read: activity({ kind: "idle", face: "idle" }),
+      face: "idle",
+    },
+    {
+      case: "never signed in, not running",
+      life: "up",
+      signedIn: false,
+      connected: false,
+      read: undefined,
+      face: "sleep",
+    },
+  ] as const)("$case: $face", ({ life, signedIn, connected, read, face }) => {
+    const listed = jumpMateOf({ ...base, connected, activity: read, life, signedIn });
+    expect(listed.face).toBe(face);
+    // Read afresh, it keeps the pose.
+    const fresh = withLiveMates({ ...EMPTY_JUMP_INDEX, mates: [listed] }, () => read);
+    expect(fresh.mates[0]?.face).toBe(face);
   });
 
   // Its change waiting for review needs you in the box as on its row (`mateFaceOf`).

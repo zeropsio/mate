@@ -800,13 +800,13 @@ describe("a creation under way in the menu", () => {
   const comingRows = (html: string) =>
     html.match(/data-zerops-surface="sidebar-mate-coming"/gu) ?? [];
 
-  it("draws a Mate being created after the listed ones: asleep, named, how far it has got", () => {
+  it("draws a Mate being created after the listed ones: waking, named, how far it has got", () => {
     const html = render([CRM_DEV], { births: [birth()] });
     expect(comingRows(html)).toHaveLength(1);
     const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(at);
     const row = html.slice(html.lastIndexOf("<div", at));
-    expect(row).toContain('data-mate-face-state="sleep"');
+    expect(row).toContain('data-mate-face-state="waking"');
     expect(row).toContain(">Vera<");
     // On the clock from when the platform took it (board D1, 2026-09-30).
     expect(row).toMatch(/>Coming up · \d+(:\d\d|h \d\dm)</u);
@@ -815,7 +815,8 @@ describe("a creation under way in the menu", () => {
   it("says a creation that stopped in its line, in red", () => {
     const html = render([CRM_DEV], { births: [{ ...birth(), failed: true }] });
     const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');
-    const row = html.slice(at, html.indexOf("</button>", at));
+    const row = html.slice(html.lastIndexOf("<button", at), html.indexOf("</button>", at));
+    expect(row).toContain('data-mate-face-state="sleep"');
     expect(row).toContain(">Setting up stopped<");
     expect(row).toContain('data-zerops-coming-tone="failed"');
   });
@@ -851,7 +852,7 @@ describe("a creation under way in the menu", () => {
     expect(unit).toBeDefined();
   });
 
-  // Picked in the New Mate dialog: the Mate wears it from its first moment, asleep.
+  // Picked in the New Mate dialog: the Mate wears it from its first moment, waking.
   it.each([
     {
       case: "the face its person picked",
@@ -866,7 +867,7 @@ describe("a creation under way in the menu", () => {
     const row = html.slice(at, html.indexOf("</button>", at));
     expect(row).toContain(`data-mate-face-tint="${tint}"`);
     expect(row).toContain(`data-mate-face-shape="${shape}"`);
-    expect(row).toContain('data-mate-face-state="sleep"');
+    expect(row).toContain('data-mate-face-state="waking"');
   });
 
   it("stands the listed Mate in its place once the listing holds it, never both", () => {
@@ -907,14 +908,20 @@ describe("a listed Mate still coming up", () => {
   };
 
   it.each([
-    { case: "coming up", coming: COMING, says: "Coming up", tone: "muted" },
-    { case: "not created", coming: FAILED, says: "Setting up stopped", tone: "failed" },
+    { case: "coming up", coming: COMING, says: "Coming up", tone: "muted", face: "waking" },
+    {
+      case: "not created",
+      coming: FAILED,
+      says: "Setting up stopped",
+      tone: "failed",
+      face: "sleep",
+    },
   ] as const)(
-    "says it is $case in its line, asleep, with no sign-in line",
-    ({ coming, says, tone }) => {
+    "says it is $case in its line, $face, with no sign-in line",
+    ({ coming, says, tone, face }) => {
       const html = render([CRM_DEV], { getComing: () => coming });
       const row = rowOf(html);
-      expect(row).toContain('data-mate-face-state="sleep"');
+      expect(row).toContain(`data-mate-face-state="${face}"`);
       expect(row).toContain(`>${says}<`);
       expect(row).toContain(`data-zerops-coming-tone="${tone}"`);
       expect(row).not.toContain("Nobody has signed in yet");
@@ -2363,11 +2370,17 @@ describe("the Mate's card", () => {
   it("gives a connected environment with nothing running open eyes, and no word about it", () => {
     // The socket is the client's business; the row answers what the agent is
     // up to — with its face. Nothing known about the conversation, no line.
-    const html = render([{ ...NAMED, group: "connected" }]);
+    const html = render([mine({ ...NAMED, group: "connected" })]);
     expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain(">Idle<");
     expect(html).not.toContain("Connected");
     expect(html).not.toContain("sidebar-mate-subject");
+  });
+
+  // Up with nobody signed in yet, its agent has not answered: it is still on its way (`matePose`).
+  it("wakes for a connected environment nobody has signed in yet", () => {
+    const html = render([{ ...NAMED, group: "connected" }]);
+    expect(html).toContain('data-mate-face-state="waking"');
   });
 
   it("is asleep for a container nobody has connected to", () => {

@@ -339,6 +339,7 @@ export {
   mateProjectOfLogin,
 } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
+export { matePose, type MateLife } from "./matePose.ts";
 export {
   compareForRelease,
   isReleaseTag,

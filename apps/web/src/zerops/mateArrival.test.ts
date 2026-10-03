@@ -5,6 +5,7 @@ import { signInPhrase } from "~/components/zerops/ZeropsAgentSignIn.logic";
 
 import {
   arrivalFace,
+  arrivalHeaderFace,
   arrivalHeadline,
   arrivalSentence,
   arrivalSteps,
@@ -366,25 +367,25 @@ describe("the stage's words", () => {
       kind: "coming",
       headline: "Wren is coming up on Beviro.",
       sentence: "About two minutes.",
-      face: "sleep",
+      face: "waking",
     },
     {
       kind: "sign-in",
       headline: "Sign Wren in to start.",
       sentence: "Once it's signed in, Wren stands up development on Beviro.",
-      face: "idle",
+      face: "waking",
     },
     {
       kind: "sign-in-plain",
       headline: "Sign Wren in to start.",
       sentence: "Once it's signed in, Wren writes and runs code on its own copy of Beviro.",
-      face: "idle",
+      face: "waking",
     },
     {
       kind: "sign-in-colleague",
       headline: "Sign Wren in to start.",
       sentence: "Nobody has signed Wren in yet. Sign it in with your own account and it's yours.",
-      face: "idle",
+      face: "waking",
     },
     {
       kind: "standing-up",
@@ -442,5 +443,54 @@ describe("the stage's words", () => {
   it("sleeps until it answers", () => {
     expect(arrivalFace("sign-in", false)).toBe("sleep");
     expect(arrivalFace("coming-failed", false)).toBe("needs");
+  });
+});
+
+// The header over a Mate's arrival wears the stage's pose (`matePose`): waking while it comes up
+// and until its agent answers, asleep where it did not come, at rest once signed in.
+describe("arrivalHeaderFace", () => {
+  it.each([
+    {
+      case: "coming up",
+      kind: "coming",
+      over: false,
+      signInRequired: true,
+      connected: false,
+      face: "waking",
+    },
+    {
+      case: "up, waiting for its sign-in",
+      kind: "coming",
+      over: true,
+      signInRequired: true,
+      connected: true,
+      face: "waking",
+    },
+    {
+      case: "up, signed in",
+      kind: "coming",
+      over: true,
+      signInRequired: false,
+      connected: true,
+      face: "idle",
+    },
+    {
+      case: "did not come",
+      kind: "failed",
+      over: false,
+      signInRequired: true,
+      connected: false,
+      face: "sleep",
+    },
+    {
+      case: "its link not made",
+      kind: "reaching",
+      over: false,
+      signInRequired: false,
+      connected: false,
+      face: "sleep",
+    },
+  ] as const)("$case: $face", ({ case: _case, face, ...input }) => {
+    expect(arrivalHeaderFace(input)).toBe(face);
   });
 });

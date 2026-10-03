@@ -162,8 +162,11 @@ vi.mock("./ZeropsMateEmptyState", () => ({
 }));
 vi.mock("../chat/ConversationStrip", () => ({
   // What the header's line says after the Mate's name: what it is on.
-  ConversationStripView: ({ mate }: { readonly mate: { readonly tooltip: string | null } }) =>
-    h("span", null, mate.tooltip),
+  ConversationStripView: ({
+    mate,
+  }: {
+    readonly mate: { readonly tooltip: string | null; readonly face: string };
+  }) => h("span", { "data-header-face": mate.face }, mate.tooltip),
 }));
 vi.mock("../chat/ChatHeader", () => ({ ZeropsProjectLink: () => null }));
 vi.mock("../chat/PanelLayoutControls", () => ({ PanelLayoutControls: () => null }));
@@ -554,6 +557,18 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("coming");
     expect(said()).not.toContain("Reconnecting");
     expect(composer()).toHaveLength(0);
+  });
+
+  // One pose wherever its face shows (`matePose`): the header wears the stage's, waking.
+  it("wears its waking face in the header while it comes up", () => {
+    app.creations = { [PROJECT]: QUINN_MADE };
+    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
+    openView();
+    const faces =
+      tree?.root
+        .findAll((node) => node.type === "span" && node.props["data-header-face"] !== undefined)
+        .map((node) => node.props["data-header-face"]) ?? [];
+    expect(faces).toEqual(["waking"]);
   });
 
   it.each([
