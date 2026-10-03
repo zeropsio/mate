@@ -699,6 +699,35 @@ describe("deploys", () => {
 
     // Main B36/B37: a build's own failure is final, but a person who develops the application asks
     // for it again ("Run again"): that commit is deployed once more, and the record says who asked.
+    // Audit N6: a deploy's record is its service's, by the service's id; the hostname only names it.
+    // A service deleted and made again under the same hostname inherits nothing of the one before.
+    it.effect(
+      "deploys a service made again under its hostname, its predecessor's failure not its own",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, until }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            world.outcome = () => "BUILD_FAILED";
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("failed"));
+            world.outcome = () => "ACTIVE";
+            world.services.splice(
+              world.services.findIndex((service) => service.id === "S-web"),
+              1,
+              fakeService("web", { id: "S-web-again" }),
+            );
+            yield* (yield* Deploys).catchUp;
+            yield* until(settled("live"));
+            assert.lengthOf(versions(world), 2);
+            assert.deepStrictEqual(
+              yield* sql<{ readonly service_id: string }>`SELECT service_id FROM hq_deploy`,
+              [{ service_id: "S-web-again" }],
+            );
+          }),
+        ),
+    );
+
     it.effect("deploys again a commit whose build failed, once a developer asks", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
@@ -832,7 +861,24 @@ describe("deploys", () => {
                 services: [{ service: "web", sha, state: "live", runs: sha.slice(0, 7) }],
               },
             ]);
+            // Kept as the version its service runs, so no pass deploys it again (audit N6, N7).
+            const sql = yield* SqlClient.SqlClient;
+            assert.deepStrictEqual(
+              yield* sql<{ readonly service_id: string; readonly app_version_id: string }>`
+                SELECT service_id, app_version_id FROM hq_deploy`,
+              [{ service_id: "S-web", app_version_id: "V-imported" }],
+            );
             yield* firstKey;
+            // Once the key's pass has read the services.
+            yield* Effect.sync(() => world.calls.includes("services:key-stage")).pipe(
+              Effect.filterOrFail(
+                (read) => read,
+                () => "not yet",
+              ),
+              Effect.retry(Schedule.spaced(Duration.millis(20))),
+              Effect.timeout(Duration.seconds(10)),
+              Effect.orDie,
+            );
             assert.deepStrictEqual(
               (yield* deploys).map((row) => [row.sha, row.state]),
               [[sha, "live"]],

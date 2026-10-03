@@ -42,6 +42,9 @@
  *
  * A deploy's record (`hq_deploy`) is per environment, service and commit: pending, deploying, live
  * or failed — the build's own (`job`) or HQ's (`refused`) — with the platform's version and job.
+ * The hostname names it; the service's id says whose it is (audit N6): a record made for a service
+ * its hostname no longer names — deleted, another made under the same hostname — starts afresh for
+ * the one there now, which a final failure of its predecessor's never holds back.
  * The deploy token never leaves Core: no record, log or error carries it.
  *
  * @module deploys
@@ -419,13 +422,14 @@ export const deploysLayer = (
       const recordOf = (target: Target) =>
         Effect.map(
           sql<{
+            readonly service_id: string | null;
             readonly state: string;
             readonly failure: string | null;
             readonly app_version_id: string | null;
             readonly process_id: string | null;
             readonly fresh: boolean;
           }>`
-            SELECT state, failure, app_version_id, process_id,
+            SELECT service_id, state, failure, app_version_id, process_id,
                    COALESCE(started_at > now() - make_interval(secs => ${patienceSeconds}), false)
                      AS fresh
             FROM hq_deploy
@@ -439,6 +443,7 @@ export const deploysLayer = (
        * says what record it may replace, judged in the write itself, so a record written between a
        * read and this write is never lost: `any`; `none`, a first record only; `unsettled`, neither
        * a live one nor a build's own failure (a hold's, B37). What it does not replace stays, untold.
+       * `serviceId` is the service it is now for, where the write says it (audit N6).
        */
       const record = (
         target: Target,
@@ -451,17 +456,18 @@ export const deploysLayer = (
             }
           | Ended,
         over: "any" | "none" | "unsettled" = "any",
+        serviceId?: string,
       ) =>
         Effect.flatMap(
           leader.write(sql`
             INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message,
-              app_version_id, process_id, started_at)
+              app_version_id, process_id, started_at, service_id)
             VALUES (${target.projectId}, ${target.service}, ${target.sha}, ${target.repo},
               ${row.state}, ${row.state === "failed" ? row.failure : null},
               ${row.state === "failed" ? cut(row.message) : null},
               ${row.state === "deploying" || row.state === "live" ? (row.appVersionId ?? null) : null},
               ${row.state === "deploying" ? row.processId : null},
-              ${row.state === "deploying" ? sql`now()` : null})
+              ${row.state === "deploying" ? sql`now()` : null}, ${serviceId ?? null})
             ON CONFLICT (project_id, service, sha) ${
               over === "none"
                 ? sql`DO NOTHING`
@@ -470,6 +476,7 @@ export const deploysLayer = (
               app_version_id = COALESCE(EXCLUDED.app_version_id, hq_deploy.app_version_id),
               process_id = COALESCE(EXCLUDED.process_id, hq_deploy.process_id),
               started_at = COALESCE(EXCLUDED.started_at, hq_deploy.started_at),
+              service_id = COALESCE(EXCLUDED.service_id, hq_deploy.service_id),
               updated_at = now()
               ${
                 over === "unsettled"
@@ -483,8 +490,9 @@ export const deploysLayer = (
         );
 
       /**
-       * Whether `service` runs `target`'s commit: the version it runs is one HQ made there from that
-       * repository's commit, as HQ recorded it (audit N7) — never what a version's name spells.
+       * Whether `service` runs `target`'s commit: the version it runs is one HQ made for that service
+       * from that repository's commit, as HQ recorded it (audit N6, N7) — never what a version's name
+       * spells.
        */
       const runsTarget = (target: Target, service: ZeropsService) =>
         service.activeVersionId === null
@@ -492,7 +500,7 @@ export const deploysLayer = (
           : Effect.map(
               sql<{ readonly repo: string; readonly sha: string }>`
                 SELECT repo, sha FROM hq_deploy
-                WHERE project_id = ${target.projectId} AND service = ${target.service}
+                WHERE project_id = ${target.projectId} AND service_id = ${service.id}
                   AND app_version_id = ${service.activeVersionId}`,
               (rows) => rows.some((row) => row.repo === target.repo && row.sha === target.sha),
             );
@@ -869,18 +877,66 @@ export const deploysLayer = (
           }),
         );
 
+      /**
+       * The record of `target` as the service its hostname names now holds it (audit N6): one with
+       * no service yet — a pass's pending, or one from before HQ kept them — is that service's; one
+       * made for another service, gone, starts afresh for this one, pending, still saying who asked
+       * for the commit there.
+       */
+      const heldBy = (target: Target, service: ZeropsService) =>
+        Effect.gen(function* () {
+          const existing = yield* recordOf(target);
+          if (existing === undefined || existing.service_id === service.id) return existing;
+          yield* leader.write(
+            existing.service_id === null
+              ? sql`
+                  UPDATE hq_deploy SET service_id = ${service.id}
+                  WHERE project_id = ${target.projectId} AND service = ${target.service}
+                    AND sha = ${target.sha} AND service_id IS NULL`
+              : sql`
+                  UPDATE hq_deploy
+                  SET service_id = ${service.id}, state = 'pending', failure = NULL,
+                      message = NULL, app_version_id = NULL, process_id = NULL,
+                      started_at = NULL, updated_at = now()
+                  WHERE project_id = ${target.projectId} AND service = ${target.service}
+                    AND sha = ${target.sha} AND service_id = ${existing.service_id}`,
+          );
+          if (existing.service_id !== null) yield* tick;
+          return yield* recordOf(target);
+        });
+
       /** One service of an environment brought to `target.sha` with its key, as far as it goes now. */
       const deployOne = (target: Target, token: Redacted.Redacted) =>
         Effect.gen(function* () {
-          const existing = yield* recordOf(target);
-          // A build's own failure is final (B37).
-          if (existing?.state === "failed" && existing.failure === "job") return;
+          // Which service the hostname names now: a record is its service's (audit N6).
+          const read = yield* zerops
+            .services(target.projectId)(token)
+            .pipe(
+              Effect.map((services) => ({
+                service: services.find((candidate) => candidate.name === target.service),
+              })),
+              Effect.catchTags({
+                ZeropsRefused: (error) => Effect.succeed({ ended: zeropsEnded(target, error) }),
+                ZeropsUnavailable: (error) => Effect.succeed({ ended: zeropsEnded(target, error) }),
+              }),
+            );
+          const service = "service" in read ? read.service : undefined;
+          if (service === undefined) {
+            // A build's own failure is final (B37): what HQ could not read says nothing of it.
+            const before = yield* recordOf(target);
+            if (before?.state === "failed" && before.failure === "job") return;
+            yield* record(
+              target,
+              "ended" in read
+                ? read.ended
+                : refused(`the environment's project has no service ${target.service}`),
+            );
+            return;
+          }
           const ended = yield* Effect.gen(function* () {
-            const services = yield* zerops.services(target.projectId)(token);
-            const service = services.find((candidate) => candidate.name === target.service);
-            if (service === undefined) {
-              return refused(`the environment's project has no service ${target.service}`);
-            }
+            const existing = yield* heldBy(target, service);
+            // A build's own failure is final (B37).
+            if (existing?.state === "failed" && existing.failure === "job") return undefined;
             // A record called live before HQ kept the version a service runs takes over the
             // version its name spells as HQ named it, once (audit N7).
             if (
@@ -1105,6 +1161,8 @@ export const deploysLayer = (
                   : job(
                       `Held at migration: ${target.service} runs ${now}; Run brings it to ${short(target.sha)}.`,
                     ),
+                "any",
+                service?.id,
               );
               states.push({
                 service: target.service,
