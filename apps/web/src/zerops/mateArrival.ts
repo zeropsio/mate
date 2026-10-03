@@ -215,16 +215,36 @@ export interface ArrivalSubstep {
   readonly id: string;
   readonly label: string;
   /**
-   * `owner`: refused here, and left to whoever may finish it — the Mate runs on without it (a
-   * registration an owner writes), so nothing waits on it and nothing stopped.
+   * `unfinished`: refused here, and left to *Finish setup* — the Mate runs on without it (its
+   * registration), so nothing waits on it and nothing stopped.
    */
-  readonly state: "done" | "active" | "waiting" | "failed" | "owner";
-  /** Why it stopped and what to do — or, left to an owner, who finishes it — in its own words. */
+  readonly state: "done" | "active" | "waiting" | "failed" | "unfinished";
+  /** Why it stopped, or why it is not finished, in its own words. */
   readonly why?: string;
 }
 
-/** A step through as far as this tab goes: done, or left to an owner. */
-const through = (step: ArrivalSubstep): boolean => step.state === "done" || step.state === "owner";
+/** A step through as far as this tab goes: done, or left unfinished. */
+const through = (step: ArrivalSubstep): boolean =>
+  step.state === "done" || step.state === "unfinished";
+
+/**
+ * What the steps this tab runs leave to read whole under them, where the actions are — each step
+ * keeps one line, so a long reason is cut there and read here, by anyone, without a hover: why
+ * one stopped, else what is not finished and why. Nothing while they run or once through.
+ */
+export function pressNote(press: ReadonlyArray<ArrivalSubstep> | undefined): {
+  readonly kind: "stopped" | "unfinished";
+  readonly text: string;
+} | null {
+  const stopped = press?.find((step) => step.state === "failed" && step.why !== undefined);
+  if (stopped?.why !== undefined) return { kind: "stopped", text: stopped.why };
+  const left = press?.find((step) => step.state === "unfinished");
+  if (left === undefined) return null;
+  return {
+    kind: "unfinished",
+    text: left.why === undefined ? `${left.label}.` : `${left.label}: ${left.why}`,
+  };
+}
 
 /** What the page says while the steps this tab runs are under way: the one thing that stops them. */
 export const KEEP_TAB_OPEN_LINE =

@@ -82,6 +82,7 @@ import {
   comingSentence,
   inFirstSeenOrder,
   KEEP_TAB_OPEN_LINE,
+  pressNote,
   pressRuns,
   type ArrivalSubstep,
 } from "~/zerops/mateArrival";
@@ -510,8 +511,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         };
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
-  // offered to an owner or an admin in any browser.
-  const halfMade = coming?.kind === "failed" && coming.verb === "finish-setup";
+  // offered to an owner or an admin in any browser — and at once, where this tab saw its
+  // registration refused (`registrationUnfinished`).
+  const unregistered = pressNote(lineProgress?.press)?.kind === "unfinished";
+  const halfMade = (coming?.kind === "failed" && coming.verb === "finish-setup") || unregistered;
   const registryState = useZeropsRegistry(activeOrganization?.id);
   const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
   const finishEntry =
@@ -523,8 +526,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const finishSetup =
     finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;
 
-  // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end.
-  const finish = finishSetupView(press);
+  // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end — on
+  // a Mate this tab made, its own step under the project's row follows it instead
+  // (`refinishNewProjectBirth`), and nothing above it moves.
+  const finish = made === undefined ? finishSetupView(press) : undefined;
 
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -946,15 +951,38 @@ export function ComingBelow({
         <Button render={projects}>Go to projects</Button>
       ) : null
     ) : null;
-  if (verb === null) {
+  // A registration not finished while it comes up: what is not, why, and this person's own
+  // *Finish setup*, at once.
+  const note = pressNote(progress?.press);
+  const left = note?.kind === "unfinished" ? note : null;
+  const finishVerb =
+    left !== null && coming?.kind === "coming" && onFinishSetup !== undefined ? (
+      <Button disabled={finishing} onClick={onFinishSetup}>
+        {FINISH_MATE_SETUP_VERB}
+      </Button>
+    ) : null;
+  const acts = verb ?? finishVerb;
+  if (acts === null && left === null) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
   // Under the steps, where nothing is read yet: a stop, and *Try again* taking it back, never move
   // the rows they stand under.
   return (
-    <div className="flex flex-col gap-5.5" data-zerops-surface="mate-coming-failed">
+    <div
+      className="flex flex-col gap-5.5"
+      data-zerops-surface={
+        coming?.kind === "failed" ? "mate-coming-failed" : "mate-coming-progress"
+      }
+    >
       {steps}
-      <div className="arrival-acts">{verb}</div>
+      <div className="arrival-acts-block">
+        {left === null ? null : (
+          <p className="arrival-acts-note" data-press-note="">
+            {left.text}
+          </p>
+        )}
+        {acts === null ? null : <div className="arrival-acts">{acts}</div>}
+      </div>
     </div>
   );
 }

@@ -37,6 +37,8 @@ import {
   recipeManaged,
   recipeRuntimes,
   progressNewProjectBirth,
+  refinishNewProjectBirth,
+  registrationUnfinished,
 } from "./newProjectBirth";
 
 /** What Create asked for: Acme CRM, and Vera in it. */
@@ -753,7 +755,7 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       ],
     },
     {
-      case: "a registration refused: an owner registers it",
+      case: "a registration refused: not registered, and why",
       made: birth({
         step: "created",
         projectId: "p-1",
@@ -763,7 +765,7 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:done",
         "Closed off:done",
-        "Vera registered:owner (An owner registers Vera for Git.)",
+        "Not registered:unfinished (Register said no.)",
       ],
     },
     {
@@ -865,7 +867,7 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
       want: ["Created:done", "Container:done", "Closed off:done", "Ida registered:done"],
     },
     {
-      case: "a registration refused: Ida runs on, and an owner registers it",
+      case: "a registration refused: Ida runs on, not registered, and why",
       made: added({
         step: "created",
         projectId: "p-ida",
@@ -881,7 +883,7 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         "Created:done",
         "Container:done",
         "Closed off:done",
-        "Ida registered:owner (An owner registers Ida for Git.)",
+        "Not registered:unfinished (Register said no.)",
       ],
     },
   ])("$case", ({ made, want }) => {
@@ -1281,6 +1283,88 @@ describe("addEnds — an Add refused before Zerops took anything can end", () =>
       startAddOver("add-1");
       expect(useNewProjectBirths.getState().births["add-1"]).toBeDefined();
       expect(useNewMate.getState().asked).toBeNull();
+    });
+  });
+});
+
+// Run 6's second review: an owner whose broker grant timed out read "An owner registers Ida for
+// Git." with a hollow mark, never why, and Finish setup came two minutes on, or never where the
+// registry write had landed. The step keeps why, and Finish setup is theirs at once.
+describe("a registration not finished — Finish setup at once, and its step following it", () => {
+  const refused = added({
+    step: "created",
+    projectId: "p-ida",
+    progress: pressed(
+      ["create-project", "done"],
+      ["import-container", "done"],
+      ["close-off", "done"],
+      ["register", "failed"],
+      ["share-reach", "done"],
+    ),
+  });
+  const through = added({
+    step: "created",
+    projectId: "p-ida",
+    progress: pressed(["close-off", "done"], ["register", "done"]),
+  });
+
+  it.each([
+    { case: "refused here: Finish setup at once", births: { "add-1": refused }, want: true },
+    { case: "registered", births: { "add-1": through }, want: false },
+    {
+      case: "another Mate's",
+      births: { "add-2": { ...refused, projectId: "p-other" } },
+      want: false,
+    },
+    { case: "nothing made here", births: {}, want: false },
+  ])("$case", ({ births, want }) => {
+    expect(registrationUnfinished(births, "p-ida")).toBe(want);
+  });
+
+  describe("Finish setup's own steps", () => {
+    beforeEach(() => {
+      openAccountLifetime("u-ada");
+      useNewProjectBirths.setState({ births: { "add-1": refused } });
+    });
+    afterEach(() => closeAccountLifetime());
+
+    it.each([
+      {
+        case: "registering",
+        finish: pressed(["close-off", "done"], ["register", "running"]),
+        want: "Ida registered:active",
+      },
+      {
+        case: "registered",
+        finish: pressed(["close-off", "done"], ["register", "done"]),
+        want: "Ida registered:done",
+      },
+      {
+        case: "refused again: the new reason",
+        finish: [
+          { step: { kind: "close-off" } as never, state: "done" as const },
+          {
+            step: { kind: "register" } as never,
+            state: "failed" as const,
+            error: "Still no grant.",
+          },
+        ],
+        want: "Not registered:unfinished (Still no grant.)",
+      },
+      {
+        case: "not at its registration yet",
+        finish: pressed(["close-off", "running"]),
+        want: "Not registered:unfinished (Register said no.)",
+      },
+    ])("draw its registration: $case", ({ finish, want }) => {
+      refinishNewProjectBirth("p-ida", finish);
+      const made = useNewProjectBirths.getState().births["add-1"]!;
+      expect(drawnSubsteps(made).at(-1)).toBe(want);
+    });
+
+    it("once through, offers it no more", () => {
+      refinishNewProjectBirth("p-ida", pressed(["register", "done"]));
+      expect(registrationUnfinished(useNewProjectBirths.getState().births, "p-ida")).toBe(false);
     });
   });
 });

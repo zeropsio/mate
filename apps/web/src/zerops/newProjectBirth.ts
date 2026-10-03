@@ -590,6 +590,42 @@ export function retryNewProjectBirth(birthId: string): void {
   void drive(birthId);
 }
 
+const REGISTRATION_REFUSED = "It was refused.";
+
+/**
+ * Whether the creation this tab made of this Mate saw its registration refused, and nothing has
+ * finished it since: its *Finish setup* is offered at once — this tab saw the press end, so no
+ * press elsewhere is still at it.
+ */
+export function registrationUnfinished(
+  births: Readonly<Record<string, NewProjectBirth>>,
+  projectId: string,
+): boolean {
+  const made = newProjectBirthOf(births, projectId);
+  return (
+    made?.progress?.some((entry) => entry.step.kind === "register" && entry.state === "failed") ===
+    true
+  );
+}
+
+/**
+ * *Finish setup* ran its steps on a Mate this tab made: its registration, as that press moves,
+ * becomes the creation's own — its step under the project's row follows it, and once through the
+ * verb is offered no more.
+ */
+export function refinishNewProjectBirth(
+  projectId: string,
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+): void {
+  const registration = progress.find((entry) => entry.step.kind === "register");
+  if (registration === undefined || registration.state === "queued") return;
+  const made = newProjectBirthOf(useNewProjectBirths.getState().births, projectId);
+  if (made?.progress == null) return;
+  patchBirth(made.id, {
+    progress: made.progress.map((entry) => (entry.step.kind === "register" ? registration : entry)),
+  });
+}
+
 /** The creation this tab made whose first Mate's project this is, while the tab holds it. */
 export function newProjectBirthOf(
   births: Readonly<Record<string, NewProjectBirth>>,
@@ -714,13 +750,17 @@ export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalS
     return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
   };
   // A Mate's registration comes after its close-off, and the press goes on past a refusal: the
-  // Mate runs, and an owner registers it (*Finish setup*). Nothing stopped.
-  const leftToOwner = (step: ArrivalSubstep, who: string): ArrivalSubstep =>
-    step.state === "failed" ? said(step.id, step.label, "owner", who) : step;
-  const registered = leftToOwner(
-    fromPress("registered", `${birth.botName} registered`),
-    `An owner registers ${birth.botName} for Git.`,
-  );
+  // Mate runs, its registration not finished, and why — *Finish setup* finishes it. Nothing stopped.
+  const pressedRegistration = fromPress("registered", `${birth.botName} registered`);
+  const registered =
+    pressedRegistration.state === "failed"
+      ? said(
+          "registered",
+          "Not registered",
+          "unfinished",
+          asSentence(pressedRegistration.why ?? "") || REGISTRATION_REFUSED,
+        )
+      : pressedRegistration;
   if (birth.adds === undefined) {
     const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {
       const state = birth.step === "gitea" ? "waiting" : stateOf(birth, step);

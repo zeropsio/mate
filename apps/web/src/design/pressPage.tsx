@@ -12,7 +12,7 @@
  * off and registered (`endPress`). `?fail=<step>` stops the press there to watch a stop said where
  * the app says it: `created` before the take (on `/mate/new`, *Try again* goes through),
  * `closed-off` after it (on the Mate's own view, with its press's *Try again*), `registered` a
- * registration refused (left to an owner, never a stop). Fixtures only: nothing here ships, and
+ * registration refused (not finished, with Finish setup, never a stop). Fixtures only: nothing here ships, and
  * no route imports this module.
  */
 import {
@@ -52,6 +52,7 @@ import {
   newProjectComing,
   newProjectProgress,
   progressNewProjectBirth,
+  refinishNewProjectBirth,
   retryNewProjectBirth,
   useNewProjectBirths,
   type NewProjectBirth,
@@ -388,6 +389,11 @@ function HarnessMatePage({
               mate={mate}
               nowMs={nowMs}
               {...(retry === null ? {} : { onTryAgain: () => void retry() })}
+              // Finish setup, as the app runs it on a registration not finished: its own step
+              // follows it, here at once through.
+              onFinishSetup={() =>
+                refinishNewProjectBirth(projectId, [{ step: { kind: "register" }, state: "done" }])
+              }
               progress={progress}
               you={{ initials: "AR", avatarUrl: null }}
             />
