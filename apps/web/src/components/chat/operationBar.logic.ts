@@ -7,6 +7,10 @@
  * lives on the failed service's line.
  */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import type {
+  PipelineReadout,
+  PipelineSpokenState,
+} from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
@@ -188,20 +192,52 @@ export function settledOperationBar(
   }));
 }
 
+/** A pipeline step's state as its segment's tone. */
+export const PIPELINE_BAR: Record<PipelineSpokenState, BarTone> = {
+  finished: "done",
+  running: "running",
+  activating: "running",
+  failed: "failed",
+  waiting: "waiting",
+  cancelled: "waiting",
+};
+
+/** A pipeline whose steps the platform has listed. */
+function listed(pipeline: PipelineReadout): boolean {
+  return !pipeline.calculating && pipeline.steps.length > 0;
+}
+
 /**
  * A running operation's bar in the live slot: a segment per step in its
  * state's tone, one running segment while it names none, and the step it is
- * on in words — "Building", as the Zerops GUI says it.
+ * on in words — "Build", as the Zerops GUI names it. A deploy's pipeline, read
+ * off the platform (`pipeline`), stands for the steps its call reserved.
  */
-export function liveOperationBar(operation: ZeropsOperation): {
+export function liveOperationBar(
+  operation: ZeropsOperation,
+  pipeline?: PipelineReadout,
+): {
   readonly segments: ReadonlyArray<{ readonly key: string; readonly tone: BarTone }>;
   readonly word: string | null;
 } {
+  if (pipeline !== undefined && listed(pipeline)) {
+    const now =
+      pipeline.steps.find((step) => step.id === pipeline.currentStepId) ??
+      pipeline.steps.find((step) => PIPELINE_BAR[step.state] === "running") ??
+      null;
+    return {
+      segments: pipeline.steps.map((step) => ({ key: step.id, tone: PIPELINE_BAR[step.state] })),
+      word: now === null ? null : now.label,
+    };
+  }
   const steps =
     operation.kind === "standup"
       ? operation.steps.filter((step) => standupStepRole(step) === "own")
       : operation.steps;
-  if (steps.length === 0) return { segments: [{ key: "whole", tone: "running" }], word: null };
+  const calculating = pipeline?.calculating === true ? "Calculating steps" : null;
+  if (steps.length === 0) {
+    return { segments: [{ key: "whole", tone: "running" }], word: calculating };
+  }
   const now =
     steps.find((step) => step.state === "running") ??
     steps.find((step) => step.state === "failed") ??
@@ -218,8 +254,50 @@ export function liveOperationBar(operation: ZeropsOperation): {
               ? "failed"
               : "waiting",
     })),
-    word: now === null ? null : now.stateLabel || now.label,
+    word: calculating ?? (now === null ? null : now.stateLabel || now.label),
   };
+}
+
+/**
+ * What an operation's card read of the platform (`useOperationCard`'s
+ * observed region), counted: its pipeline's steps or its own, the processes
+ * beside it, and whether it has a build log. Null while it read nothing.
+ */
+export interface ObservedLines {
+  readonly steps: number;
+  readonly chips: number;
+  readonly log: boolean;
+}
+
+export function observedLinesOf(
+  observed:
+    | {
+        readonly steps: ReadonlyArray<unknown>;
+        readonly chips?: ReadonlyArray<unknown>;
+        readonly pipeline?: PipelineReadout;
+        readonly log?: unknown;
+      }
+    | undefined,
+): ObservedLines | null {
+  if (observed === undefined) return null;
+  return {
+    steps:
+      observed.pipeline !== undefined && listed(observed.pipeline)
+        ? observed.pipeline.steps.length
+        : observed.steps.length,
+    chips: observed.chips?.length ?? 0,
+    log: observed.log !== undefined && observed.log !== null,
+  };
+}
+
+/**
+ * Whether the live slot draws an operation open onto its card: once the card
+ * read anything of the platform its line does not say — its pipeline's
+ * steps, the processes beside it, its build log — while it runs, and as it
+ * ended there, so it lands in the history as it stood.
+ */
+export function showsCardInSlot(observed: ObservedLines | null): boolean {
+  return observed !== null && (observed.steps > 0 || observed.chips > 0 || observed.log);
 }
 
 /**
@@ -227,12 +305,18 @@ export function liveOperationBar(operation: ZeropsOperation): {
  * "you don't need an arrow if it doesn't show anything"): a stand-up's
  * services, an import's, else the parts its own card draws — its steps, a
  * reason and its log, the version whose pipeline and log it reads, its links,
- * what a read returned, a check's picture or what it read of the page. None:
- * a deploy with no steps and no log yet opens onto nothing.
+ * what a read returned, a check's picture or what it read of the page — and
+ * what its card read of the platform (`observed`): a running deploy's
+ * pipeline and build log. None: a deploy with no steps and no log yet opens
+ * onto nothing.
  */
-export function detailLines(operation: ZeropsOperation, standupRows: number | null): number {
+export function detailLines(
+  operation: ZeropsOperation,
+  standupRows: number | null,
+  observed: ObservedLines | null = null,
+): number {
   if (operation.kind === "standup") return standupRows ?? 0;
-  if (operation.kind === "import") return operation.steps.length;
+  if (operation.kind === "import") return Math.max(operation.steps.length, observed?.steps ?? 0);
   const read = operation.readResult;
   const returned =
     read === undefined
@@ -242,8 +326,15 @@ export function detailLines(operation: ZeropsOperation, standupRows: number | nu
         : read.kind === "events" || read.kind === "discover"
           ? read.rows.length
           : 0;
+  // What it read of the platform stands for the steps its call reserved.
+  const drawn =
+    observed === null
+      ? operation.steps.length
+      : (observed.steps > 0 ? observed.steps : operation.steps.length) +
+        observed.chips +
+        (observed.log ? 1 : 0);
   return (
-    operation.steps.length +
+    drawn +
     operation.links.length +
     returned +
     (operation.explanation === undefined ? 0 : 1) +
