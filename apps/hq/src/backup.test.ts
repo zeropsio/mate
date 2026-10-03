@@ -12,7 +12,7 @@ import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 
-import { mateWithChange, rowsWhere } from "../test/harness/mates.ts";
+import { mateInApp, mateWithChange, rowsWhere } from "../test/harness/mates.ts";
 import { type Call, sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempDir } from "../test/harness/tempDir.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -199,6 +199,35 @@ describe("the room a set makes in its store", () => {
 
 describe("a backup set, taken", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // A repository git quarantined (`gitHost.ts`) cannot be bundled: the set fails, and says which.
+    it.effect("fails while a repository is quarantined, naming it", () =>
+      Effect.gen(function* () {
+        const a = yield* startCore(true);
+        yield* leading(a);
+        const owner = yield* sessionFor(a.call, "door-owner");
+        const ada = yield* mateInApp(a.call, a.fake, owner, "P_MATE", "Shop");
+        yield* a.call("POST", "/api/mate/repos", { headers: ada.auth, body: { name: "web" } });
+        yield* a.stop;
+        // web's config is no file git can read: it cannot converge.
+        const config = NodePath.join(a.gitRoot, ada.appId, "web.git", "config");
+        NodeFS.rmSync(config);
+        NodeFS.mkdirSync(config);
+        const b = yield* startCore(true, {
+          url: a.url,
+          gitRoot: a.gitRoot,
+          storeDir: a.storeDir,
+          stagingDir: a.stagingDir,
+        });
+        yield* leading(b);
+        const failed = yield* Effect.flip(b.backup.take);
+        assert.strictEqual(failed._tag, "RepoQuarantined");
+        assert.deepStrictEqual(yield* backupHealth(b.call), [
+          200,
+          { state: "failed", reason: "repo_quarantined", repo: `${ada.appId}/web` },
+        ]);
+      }),
+    );
+
     // H4: a set's bundles are every repository its dump names. An application deleted between the
     // two takes its repositories away only once the set has them.
     it.effect("bundles every repository its dump names, an application deleted meanwhile too", () =>
