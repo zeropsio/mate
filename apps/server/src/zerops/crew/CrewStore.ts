@@ -4,7 +4,7 @@
  * Rows are plain values; JSON columns are decoded here so no caller parses
  * SQL text. Every write publishes a {@link CrewStoreChange} so a snapshot
  * subscriber re-reads without polling. Git is the truth for lanes - a lane
- * row is what the engine last wrote and saw, re-derived by the boot sweep.
+ * row is what the engine last wrote and saw; boot reports unfinished operations.
  *
  * The git core reads and writes definition seq, crewmates, lanes, task
  * landings and dev-service crew ports; the crew tools Show-on-dev claims and
@@ -20,6 +20,8 @@ import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+
+import { CrewOperation } from "@t3tools/contracts";
 
 import type {
   CrewClaimState,
@@ -119,13 +121,6 @@ export interface CrewAssignmentRow {
 }
 
 /** A landing the integration branch must keep carrying (its `Crew-Assignment:` trailer). */
-export interface CrewLanding {
-  readonly crew: string;
-  readonly member: string;
-  readonly assignment: string;
-  readonly title: string;
-  readonly landedCommit: string;
-}
 
 export interface CrewHostPort {
   readonly port: number;
@@ -176,7 +171,7 @@ export interface CrewMemoryRow {
   readonly updatedAt: string;
 }
 
-/** `parked`: the engine stopped using the lane until the person triages it · `lost`: a recovery could not bring it back. */
+/** `parked`: the engine stopped using the lane until the person triages it · `lost`: its saved copy was lost. */
 export type CrewLaneState = "ready" | "parked" | "lost";
 
 export interface CrewLaneRow {
@@ -272,6 +267,7 @@ export interface CrewLogEntry {
 export interface CrewStoreChange {
   readonly crew: string | null;
   readonly table:
+    | "operation"
     | "definition"
     | "member"
     | "lane"
@@ -284,6 +280,14 @@ export interface CrewStoreChange {
 }
 
 export interface CrewStoreService {
+  readonly putOperation: (row: CrewOperation) => Effect.Effect<void, CrewStoreError>;
+  readonly getOperation: (
+    id: string,
+  ) => Effect.Effect<Option.Option<CrewOperation>, CrewStoreError>;
+  /** Only running, failed and interrupted attempts; completed history stays out of snapshots. */
+  readonly operations: (
+    crew: string,
+  ) => Effect.Effect<ReadonlyArray<CrewOperation>, CrewStoreError>;
   readonly putDefinition: (row: CrewDefinitionRow) => Effect.Effect<void, CrewStoreError>;
   readonly getDefinition: (
     crew: string,
@@ -303,10 +307,6 @@ export interface CrewStoreService {
     crew: string,
     member: string,
   ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
-  /** Every recorded landing by a crewmate on `host`, oldest first. */
-  readonly landingsOnHost: (
-    host: string,
-  ) => Effect.Effect<ReadonlyArray<CrewLanding>, CrewStoreError>;
   readonly putHost: (row: CrewHostRow) => Effect.Effect<void, CrewStoreError>;
   readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
   readonly getClaim: (host: string) => Effect.Effect<Option.Option<CrewClaimRow>, CrewStoreError>;
@@ -739,7 +739,37 @@ export const make = Effect.gen(function* () {
       Effect.flatMap((rows) => Effect.forEach(rows, assignmentFromSql)),
     );
 
+  const operationJson = Schema.fromJsonString(CrewOperation);
+  const readOperations = (rows: ReadonlyArray<{ readonly data: string }>) =>
+    Effect.forEach(rows, (row) =>
+      Schema.decodeEffect(operationJson)(row.data).pipe(Effect.mapError(decodeError("operation"))),
+    );
+
   return CrewStore.of({
+    putOperation: (row) =>
+      Effect.gen(function* () {
+        const data = yield* Schema.encodeEffect(operationJson)(row).pipe(
+          Effect.mapError(decodeError("putOperation")),
+        );
+        yield* sql`INSERT INTO crew_operation (id, crew, status, data) VALUES (${row.id}, ${row.crew}, ${row.status}, ${data})
+        ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data`.pipe(
+          Effect.mapError(sqlError("putOperation")),
+        );
+        yield* publish({ crew: row.crew, table: "operation" });
+      }),
+    getOperation: (id) =>
+      sql<{ readonly data: string }>`SELECT data FROM crew_operation WHERE id = ${id}`.pipe(
+        Effect.mapError(sqlError("getOperation")),
+        Effect.flatMap(readOperations),
+        Effect.map((rows) => Option.fromUndefinedOr(rows[0])),
+      ),
+    operations: (crew) =>
+      sql<{
+        readonly data: string;
+      }>`SELECT data FROM crew_operation WHERE crew = ${crew} AND status IN ('running', 'failed', 'interrupted') ORDER BY rowid`.pipe(
+        Effect.mapError(sqlError("operations")),
+        Effect.flatMap(readOperations),
+      ),
     putDefinition: (row) =>
       Effect.gen(function* () {
         const spec = yield* encodeJson(row.spec).pipe(
@@ -901,16 +931,6 @@ export const make = Effect.gen(function* () {
         Effect.mapError(sqlError("assignmentsOf")),
         Effect.map((rows) => rows.map((row) => row.assignment)),
       ),
-    landingsOnHost: (host) =>
-      sql<CrewLanding>`
-        SELECT
-          a.crew, a.member, a.assignment, a.title,
-          a.landed_commit AS "landedCommit"
-        FROM crew_assignment a
-        JOIN crew_member m ON m.crew = a.crew AND m.handle = a.member
-        WHERE m.host = ${host} AND a.landed_commit IS NOT NULL
-        ORDER BY a.updated_at, a.number
-      `.pipe(Effect.mapError(sqlError("landingsOnHost"))),
     putHost: (row) =>
       Effect.gen(function* () {
         const crewPorts = yield* decode("putHost", encodeCrewPorts(row.crewPorts));

@@ -1,3 +1,12 @@
+import {
+  acknowledgeOperations,
+  beginOperation,
+  operationHolds,
+  operationStep,
+  updateOperation,
+  finishOperation,
+} from "./crewOperations.ts";
+import type { CrewOperation } from "@t3tools/contracts";
 /**
  * crewTasks — tasks and the turns that work them, without a run (PRD §5.2,
  * §5.2a, §5.3, §6).
@@ -21,6 +30,7 @@
  */
 import type {
   ChatAttachment,
+  OrchestrationCommand,
   CrewCommandError,
   CrewTaskSource,
   CrewTaskState,
@@ -29,6 +39,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
+import { refreshLaneStats } from "./crewLanding.ts";
 import { carriedCard, continueCard, taskCard } from "./crewCards.ts";
 import {
   asRefusal,
@@ -73,7 +84,6 @@ const ROTATED_TOO_OFTEN = "its conversation outgrew its context too often";
 /** The board's words for the machine's own reasons to park (`crewMachines`); the engine's are words already. */
 const PARK_WORDS: Readonly<Record<string, string>> = {
   reworks: "it came back for rework too often",
-  infrastructure: "its turn broke off twice",
   rotations: ROTATED_TOO_OFTEN,
   "empty-merge-base": "your tree's history was rewritten",
   "disk-full": "the service's disk is full",
@@ -191,8 +201,8 @@ export const stepTask = (
   row: CrewAssignmentRow,
   event: TaskEvent,
   change: (next: CrewAssignmentRow) => CrewAssignmentRow = (next) => next,
-  /** Counters the row does not carry: re-queues are counted from the task's attempts. */
-  counted: Partial<Pick<TaskCounters, "requeues" | "rotations">> = {},
+  /** Counters the row does not carry. */
+  counted: Partial<Pick<TaskCounters, "rotations">> = {},
 ) =>
   Effect.gen(function* () {
     const step = taskTransition(
@@ -202,7 +212,6 @@ export const stepTask = (
           attempt: Math.max(1, row.attempt),
           reworks: row.reworks,
           remerges: row.remerges,
-          requeues: counted.requeues ?? 0,
           rotations: counted.rotations ?? 0,
         },
       },
@@ -230,29 +239,6 @@ export const stepTask = (
         ...(parked === undefined ? {} : { waiting: parked }),
       }),
     );
-  });
-
-/**
- * An infrastructure ending (the Mate server restarted mid-turn, the provider
- * or the session setup failed): the attempt ends with `detail`, and the task
- * queues again once — the second time it stops (ARCHITECTURE §4 *Assignment*).
- */
-export const requeueTask = (core: CrewCore, task: CrewAssignmentRow, detail: string) =>
-  Effect.gen(function* () {
-    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
-    const attempt = attempts.find((row) => row.attempt === task.attempt);
-    if (attempt !== undefined) {
-      yield* asRefusal(
-        core.store.putAttempt({
-          ...attempt,
-          ending: "infrastructure",
-          endingDetail: detail,
-          endedAt: yield* core.now,
-        }),
-      );
-    }
-    const requeues = attempts.filter((row) => row.ending === "infrastructure").length;
-    return yield* stepTask(core, task, { type: "infrastructure-ending" }, undefined, { requeues });
   });
 
 /** Parks a task with the engine's own words for why. */
@@ -413,19 +399,49 @@ export const sendTurn = (
   principal: TurnPrincipal,
   text: string,
   attachments: ReadonlyArray<ChatAttachment> = [],
+  operation?: CrewOperation,
+  admittedCommand?: OrchestrationCommand,
 ) =>
   Effect.gen(function* () {
-    const command = yield* crewTurnCommand(core, {
-      threadId: stint.threadId,
-      modelSelection: yield* modelSelectionFor(core, member.row),
-      text,
-      attachments,
-      createdAt: yield* core.now,
+    const task = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), member.row.handle);
+    const owned =
+      operation ??
+      (yield* beginOperation(core, {
+        kind: "dispatch",
+        handle: member.row.handle,
+        task,
+        startedBy: principalUser(principal),
+      }));
+    const command =
+      admittedCommand ??
+      (yield* crewTurnCommand(core, {
+        threadId: stint.threadId,
+        modelSelection: yield* modelSelectionFor(core, member.row),
+        text,
+        attachments,
+        createdAt: yield* core.now,
+      }));
+    yield* updateOperation(core, owned.id, {
+      targets: { ...owned.targets, threadId: stint.threadId, commandId: command.commandId },
+      confirmedStage: admittedCommand === undefined ? "attempt-recorded" : "admitted",
     });
-    yield* admitCrewTurn(core, command, principal);
+    if (admittedCommand === undefined)
+      yield* operationStep(
+        core,
+        owned.id,
+        "admitting",
+        admitCrewTurn(core, command, principal),
+        "admitted",
+      );
     core.memory.working.add(stint.threadId);
     yield* followCrewWork(core);
-    yield* dispatchCrewTurn(core, command).pipe(
+    yield* operationStep(
+      core,
+      owned.id,
+      "dispatching",
+      dispatchCrewTurn(core, command),
+      "dispatched",
+    ).pipe(
       Effect.tapError(() =>
         Effect.suspend(() => {
           core.memory.working.delete(stint.threadId);
@@ -451,25 +467,56 @@ export const startTask = (
   Effect.gen(function* () {
     const held = (reason: string): StartOutcome => ({ _tag: "held", reason });
     if (isWorking(core, applied, member.row.handle)) return held("lane-busy");
-    const stint = yield* stintForTurn(core, applied, member, "task-start", task.fresh);
+    const owned = yield* beginOperation(core, {
+      kind: "dispatch",
+      handle: member.row.handle,
+      task,
+      startedBy: principalUser(principal),
+    });
+    const stint = yield* operationStep(
+      core,
+      owned.id,
+      "opening-conversation",
+      stintForTurn(core, applied, member, "task-start", task.fresh),
+    );
     let resetTo: string | null = null;
     let dispatchCommit: string | null = null;
     if (member.row.kind === "writer") {
       const key = { crew: CREW_ID, handle: member.row.handle };
-      const prepared = yield* asRefusal(core.workspace.prepareDispatch(key));
+      const prepared = yield* operationStep(
+        core,
+        owned.id,
+        "preparing-copy",
+        asRefusal(core.workspace.prepareDispatch(key)),
+      );
       switch (prepared._tag) {
+        case "dirty":
+          yield* updateOperation(core, owned.id, {
+            detail: "Its copy has preserved edits. Continue to preserve them and start this task.",
+          });
+          yield* finishOperation(core, owned.id, prepared, true);
+          yield* refreshLaneStats(core, member);
+          return held("its copy still has preserved edits; continue or preserve them first");
         case "frozen":
+          yield* finishOperation(core, owned.id, prepared, true);
           return held("host-frozen");
         case "lane-missing":
           core.memory.missingLanes.add(member.row.handle);
+          yield* finishOperation(core, owned.id, prepared, true);
           return held("lane-missing");
         case "parked":
           yield* parkTask(core, task, "its copy of the code moved outside the engine");
+          yield* finishOperation(core, owned.id, prepared, true);
           return held("parked");
         case "ready":
           dispatchCommit = prepared.dispatchCommit;
           resetTo = prepared.reset ? prepared.dispatchCommit : null;
-          yield* asRefusal(core.integration.snapshotRefs(key));
+          yield* operationStep(
+            core,
+            owned.id,
+            "snapshotting-refs",
+            asRefusal(core.integration.snapshotRefs(key)),
+          );
       }
     }
     const card = readTaskCard(task.card) ?? { brief: task.title, doneWhen: "", note: null };
@@ -480,7 +527,22 @@ export const startTask = (
       card,
       resetTo,
     });
-    const refused = yield* sendTurn(core, member, stint, principal, text, attachments).pipe(
+    const probe = yield* crewTurnCommand(core, {
+      threadId: stint.threadId,
+      modelSelection: yield* modelSelectionFor(core, member.row),
+      text,
+      attachments,
+      createdAt: yield* core.now,
+    });
+    yield* updateOperation(core, owned.id, {
+      targets: { ...owned.targets, threadId: stint.threadId, commandId: probe.commandId },
+    });
+    const refused = yield* operationStep(
+      core,
+      owned.id,
+      "admitting",
+      admitCrewTurn(core, probe, principal),
+    ).pipe(
       Effect.as(undefined),
       Effect.catchTag("CrewCommandError", (error) =>
         error.reason === "not-allowed" ? Effect.succeed(error.detail ?? "") : Effect.fail(error),
@@ -512,6 +574,20 @@ export const startTask = (
         endedAt: null,
       }),
     );
+    yield* updateOperation(core, owned.id, {
+      confirmedStage: "attempt-recorded",
+      targets: { ...owned.targets, attempt: started.attempt },
+    });
+    yield* sendTurn(
+      core,
+      member,
+      stint,
+      principal,
+      text,
+      attachments,
+      { ...owned, targets: { ...owned.targets, attempt: started.attempt } },
+      probe,
+    );
     return { _tag: "started", task: started } satisfies StartOutcome as StartOutcome;
   });
 
@@ -531,8 +607,20 @@ export const continueTask = (
   attachments: ReadonlyArray<ChatAttachment> = [],
 ) =>
   Effect.gen(function* () {
+    const owned = yield* beginOperation(core, {
+      kind: "dispatch",
+      handle: member.row.handle,
+      task,
+      startedBy: principalUser(principal),
+    });
+    yield* acknowledgeOperations(core, member.row.handle, task.assignment);
     const before = currentStint(applied, member.row.handle);
-    const stint = yield* stintForTurn(core, applied, member, "turn-start", false, task);
+    const stint = yield* operationStep(
+      core,
+      owned.id,
+      "opening-conversation",
+      stintForTurn(core, applied, member, "turn-start", false, task),
+    );
     const sent =
       before !== undefined && before.threadId !== stint.threadId
         ? carriedCard({ number: task.number, title: task.title, reason: stint.reason ?? "", text })
@@ -544,7 +632,10 @@ export const continueTask = (
       attachments,
       createdAt: yield* core.now,
     });
-    yield* admitCrewTurn(core, probe, principal);
+    yield* updateOperation(core, owned.id, {
+      targets: { ...owned.targets, threadId: stint.threadId, commandId: probe.commandId },
+    });
+    yield* operationStep(core, owned.id, "admitting", admitCrewTurn(core, probe, principal));
     // A rework is a new attempt: an accept of the last one no longer stands (a reject's note stays).
     const working = yield* stepTask(core, task, { type: "message" }, (next) =>
       task.state === "rework"
@@ -557,8 +648,12 @@ export const continueTask = (
     );
     const key = `${working.assignment}:${working.attempt}`;
     core.memory.turns.set(key, (core.memory.turns.get(key) ?? 0) + 1);
-    yield* sendTurn(core, member, stint, principal, sent, attachments);
     yield* openAttempt(core, working, stint);
+    const recorded = yield* updateOperation(core, owned.id, {
+      confirmedStage: "attempt-recorded",
+      targets: { ...owned.targets, attempt: working.attempt },
+    });
+    yield* sendTurn(core, member, stint, principal, sent, attachments, recorded, probe);
     return working;
   });
 
@@ -603,14 +698,19 @@ export const leadTurn = (
   attachments: ReadonlyArray<ChatAttachment> = [],
 ) =>
   Effect.gen(function* () {
-    yield* sendTurn(
+    const operation = yield* beginOperation(core, {
+      kind: "dispatch",
+      handle: lead.row.handle,
+      startedBy: principalUser(principal),
+    });
+    if (principal.kind === "session") yield* acknowledgeOperations(core, lead.row.handle);
+    const stint = yield* operationStep(
       core,
-      lead,
-      yield* currentOrFirstStint(core, lead),
-      principal,
-      text,
-      attachments,
+      operation.id,
+      "opening-conversation",
+      currentOrFirstStint(core, lead),
     );
+    yield* sendTurn(core, lead, stint, principal, text, attachments, operation);
   });
 
 /* ------------------------------------------------------------ the queue */
@@ -632,6 +732,7 @@ export const pump = (
   now?: { readonly taskId: string; readonly principal: TurnPrincipal },
 ) =>
   Effect.gen(function* () {
+    if (yield* operationHolds(core, handle)) return;
     const applied = yield* core.applied;
     if (applied === undefined) return;
     const member = memberOf(applied, handle);
@@ -902,6 +1003,7 @@ export const retryTask = (core: CrewCore, principal: TurnPrincipal, taskId: stri
     if (row.state !== "parked" && !refused) {
       return yield* refuse("wrong-state", `#${row.number} is ${row.state}`);
     }
+    yield* acknowledgeOperations(core, row.member, taskId);
     const queued =
       row.state === "queued"
         ? row

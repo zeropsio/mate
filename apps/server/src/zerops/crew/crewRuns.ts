@@ -311,17 +311,6 @@ export const ensureRunTick = (core: CrewCore) =>
     );
   });
 
-/**
- * After a restart a running run counts its time again once its crew works;
- * the downtime is not its time.
- */
-export const runOnAfterRestart = (core: CrewCore) =>
-  Effect.gen(function* () {
-    if ((yield* core.applied)?.run?.state !== "running") return;
-    yield* clockFromNow(core);
-    yield* ensureRunTick(core);
-  });
-
 export const startRun = (core: CrewCore, principal: TurnPrincipal, options: CrewRunOptions) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);

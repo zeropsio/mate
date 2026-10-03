@@ -49,6 +49,7 @@ import {
   crewNeedSentence,
   crewNoDevHostWord,
   crewOnItsOwnWords,
+  crewOperationStageWord,
   crewPendingNotice,
   crewPersonLands,
   crewPlanStartLine,
@@ -74,6 +75,17 @@ import {
   CREW_NOT_SHIPPED_SHORT,
   mateOwnChatWord,
 } from "./phrases.ts";
+
+it.each([
+  ["preparing-copy", "its copy preparation ended"],
+  ["committing", "its preservation step ended"],
+  ["merging", "its merge ended"],
+  ["setting-up", "its setup ended"],
+  ["checking", "its check ended"],
+  ["landing", "its landing ended"],
+])("a confirmed %s receipt describes the ending without claiming success", (stage, word) => {
+  expect(crewOperationStageWord(stage)).toBe(word);
+});
 
 const crew = crewSnapshotFixture();
 const run = crew.run!;
@@ -427,6 +439,8 @@ describe("crewNeedSentence", () => {
 describe("a row's words", () => {
   it("names each press in plain words", () => {
     expect(Object.values(CREW_ROW_VERBS)).toEqual([
+      "Rebuild crew copy",
+      "Use crew copy",
       "Answer",
       "Review",
       "Review what it has",

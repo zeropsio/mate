@@ -11,9 +11,7 @@ import {
   crewGitLayer,
   git,
   gitExit,
-  memberRow,
   read,
-  taskRow,
   TEST_HOST,
   withCrewService,
   write,
@@ -303,11 +301,11 @@ describe("CrewIntegration", () => {
           const integration = yield* CrewIntegration.CrewIntegration;
           yield* laneWork(root, "src/score.ts", "export const score = 1;\n");
           squashAndAnchor(root);
-          const resolved = yield* integration.inFlight(TEST_HOST);
+          const resolved = yield* integration.landingEvidence(TEST_HOST, TASK.assignment);
           const landed = yield* integration.land(TASK);
           assert.deepStrictEqual(
             { resolved, landed: landed._tag, trailers: trailerCount(root) },
-            { resolved: [{ _tag: "restart", assignment: "a-1" }], landed: "landed", trailers: 1 },
+            { resolved: null, landed: "landed", trailers: 1 },
           );
         }),
       ),
@@ -322,7 +320,7 @@ describe("CrewIntegration", () => {
           yield* laneWork(root, "src/score.ts", "export const score = 1;\n");
           const squash = squashAndAnchor(root);
           git(root, ["merge", "--ff-only", "-q", squash]);
-          const resolved = yield* integration.inFlight(TEST_HOST);
+          const resolved = yield* integration.landingEvidence(TEST_HOST, TASK.assignment);
           const again = yield* integration.land(TASK);
           assert.deepStrictEqual(
             {
@@ -332,7 +330,7 @@ describe("CrewIntegration", () => {
               anchors: git(root, ["for-each-ref", "refs/t3/crew/landing/"]),
             },
             {
-              resolved: [{ _tag: "landed", assignment: "a-1", commit: squash }],
+              resolved: squash,
               again: { _tag: "already-landed", commit: squash },
               trailers: 1,
               anchors: "",
@@ -341,6 +339,25 @@ describe("CrewIntegration", () => {
         }),
       ),
   );
+
+  for (const fastForwarded of [false, true]) {
+    it.effect(`inspecting a landing leaves its anchor intact (landed: ${fastForwarded})`, () =>
+      withCrew((root) =>
+        Effect.gen(function* () {
+          const integration = yield* CrewIntegration.CrewIntegration;
+          yield* laneWork(root, "src/score.ts", "export const score = 1;\n");
+          const squash = squashAndAnchor(root);
+          if (fastForwarded) git(root, ["merge", "--ff-only", "-q", squash]);
+          const head = git(root, ["rev-parse", "HEAD"]);
+          const anchors = git(root, ["for-each-ref", "refs/t3/crew/landing/"]);
+          const result = yield* integration.landingEvidence(TEST_HOST, TASK.assignment);
+          assert.strictEqual(result, fastForwarded ? squash : null);
+          assert.strictEqual(git(root, ["for-each-ref", "refs/t3/crew/landing/"]), anchors);
+          assert.strictEqual(git(root, ["rev-parse", "HEAD"]), head);
+        }),
+      ),
+    );
+  }
 
   it.effect("parks a lane whose turn moved a ref nobody explains", () =>
     withCrew((root) =>
@@ -375,27 +392,6 @@ describe("CrewIntegration", () => {
             ],
             state: "parked",
           },
-        );
-      }),
-    ),
-  );
-
-  it.effect("names a recorded landing the person's branch no longer carries", () =>
-    withCrew((root) =>
-      Effect.gen(function* () {
-        const integration = yield* CrewIntegration.CrewIntegration;
-        const store = yield* CrewStore.CrewStore;
-        yield* store.putMember(memberRow("backend"));
-        yield* laneWork(root, "src/score.ts", "export const score = 1;\n");
-        const landed = yield* integration.land(TASK);
-        const commit = landed._tag === "landed" ? landed.commit : "";
-        yield* store.putAssignment({ ...taskRow("a-1", 1, "backend", commit), title: TASK.title });
-        const kept = yield* integration.verifyLandings(TEST_HOST);
-        git(root, ["reset", "-q", "--hard", "HEAD~1"]);
-        const dropped = yield* integration.verifyLandings(TEST_HOST);
-        assert.deepStrictEqual(
-          { kept, dropped },
-          { kept: [], dropped: [{ assignment: "a-1", title: TASK.title }] },
         );
       }),
     ),

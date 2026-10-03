@@ -55,8 +55,7 @@ or with the switch off, it builds the inert engine (the feed says `off` once, ev
 `unavailable`, no thread is a crewmate's, every crew tool answers that it is not available).
 Otherwise the live engine runs, and with no crew applied it opens no ssh session and installs
 nothing into the thread policy registries, so every thread's adapter options stay byte-identical.
-An applied crew, at boot or by Apply, installs the crew's thread policies and a watch on sign-ins
-for the engine's life.
+An applied crew, at boot or by Apply, installs the crew's thread policies for the engine's life. A refused dispatch waits for an explicit Try again.
 
 ## 3. Where the code lives
 
@@ -65,7 +64,7 @@ for the engine's life.
 | Wire           | `packages/contracts/src/zeropsCrew.ts`, `zeropsCrewStates.ts`                                                                              | the RPC shapes (`CrewSnapshot`, `CrewCommand`, `CrewFiles`, `CrewSeam`); the closed unions every crew slice shares                                    |
 | Shared         | `packages/shared/src/crewHome.ts`, `crewTemplates.ts`; `userAsk.ts`                                                                        | the crew home's format, parser and validation; the three starting crews; `CREW_CARD_OPENER`, which marks a server-written task card                   |
 | Server engine  | `apps/server/src/zerops/crew/` — `crewLayer.ts`, `CrewEngine.ts`, `crewCore.ts`                                                            | the layer and its gates, the command switch, the snapshot hub; the engine service and its inert form; the state every engine part shares              |
-|                | `crewApply.ts`, `crewTasks.ts`, `crewTurns.ts`, `crewLanding.ts`, `crewClaims.ts`, `crewBoot.ts`                                           | Apply and saves; messages, tasks and queues; provider events at turn end; merge-in, check and landing; Show on dev; restart recovery                  |
+|                | `crewApply.ts`, `crewTasks.ts`, `crewTurns.ts`, `crewLanding.ts`, `crewClaims.ts`, `crewBoot.ts`                                           | Apply and saves; messages, tasks and queues; provider events at turn end; merge-in, check and landing; Show on dev; restart interruption records      |
 |                | `crewRuns.ts`, `crewRunFlow.ts`, `crewLead.ts`, `crewMemoryCommands.ts`                                                                    | runs and their meters; what a running run does by itself; the lead's plans, reviews, questions and finish; the person's presses on memory             |
 |                | `CrewDispatch.ts`, `CrewStints.ts`, `crewCards.ts`, `crewSeamLines.ts`, `crewSnapshot.ts`, `crewDirectory.ts`                              | the one crew turn builder; stints and rotation; the cards the engine writes into a chat; seam lines; one feed frame; the engine's side of the seam    |
 | Pure core      | `crewMachines.ts`, `crewRouting.ts`, `crewPrompt.ts`, `crewVersions.ts`, `rotationDecision.ts`, `CrewPolicy.ts`, `CrewPacket.ts`           | task, run, stint and claim machines; where a message goes; the system prompt; versions and pending; when a stint rotates; the gate; packet and delta  |
@@ -245,7 +244,7 @@ engine never deploys); the crewmate's app (`appRun`, `appStop`); person-started 
 `message`, `tell`, `taskCreate`, `taskEdit`, `discard`, `markFresh`, `taskRetry`; the WIP commit
 at every turn end; merge-in, check, `land` and `landNow` with landing refusals classified
 (`classifyLandingRefusal.ts`); `startFresh`; `briefSave` and `jobSave` with rotation;
-`removeCrewmate`; `deliverDraft`, `orphanScan`, `adopt`; recovery after a Mate server restart.
+`removeCrewmate`; `deliverDraft`, `orphanScan`, `adopt`; explicit continuation after a Mate server restart.
 Every crew turn traces to a person's press.
 
 **Show on dev** (`crewClaims.ts`, `CrewRuntime.ts`): the crewmate asks with `crew_show_on_dev` (the
@@ -254,8 +253,7 @@ request times out after 10 minutes); the person answers with `claimGrant`, `clai
 — as request and grant at once. A grant pressed while the crewmate's turn runs waits for that turn's
 end, then sends the claim turn as the person who pressed it, and keeps the request from timing out;
 a deny or any other move of the claim drops it. The waiting grant is `grantWaiting` on the wire —
-the crewmate's row reads "Shows its work at Fen's dev address once its current step ends." — and a
-`crew_log` note, sent at boot when a restart ended the turn. Show on dev restarts the dev server zcp
+the crewmate's row reads "Shows its work at Fen's dev address once its current step ends." — and the retained request after a restart. Show on dev restarts the dev server zcp
 started; with none, the refusal says to ask the Mate to start it, or to open the crewmate's own app
 when it has a crew port.
 
@@ -287,7 +285,7 @@ the CLI caps a process's own spend (§8) — and a run's start or resume restart
 so each takes the new cap: an idle one at once, a working one when its turn ends. While running, the
 run starts queued tasks, sends rework back, lands per its mode, nudges a turn that ended without a
 report once per attempt, and with the dev grant allows a request to show on dev. A run's start or
-resume, and a boot inside a running run, take up what waits on someone (`takeUpWaiting` in
+resume take up what waits on someone (`takeUpWaiting` in
 `crewRunFlow.ts`): every crewmate whose task stands `working` with no turn running gets a carry-on
 turn as the run's starter (a turn the run's own pause stopped carries on in the pause's words), and
 every review, and every question not passed on to the person, that the lead was woken for and no
@@ -298,20 +296,20 @@ still is either taken up by a running run or named to the person in its crewmate
 queue waits behind its open task until that task lands, parks or is discarded, so a task nobody acts
 on holds every task after it.
 
-| A task stands                               | A running run                                                                                         | In its crewmate's row                                                  |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `working`, no turn running                  | carries it on at start, resume and boot; nudges it once an attempt after a turn ends without a report | `stalled` once nobody has acted for five minutes, in a run too         |
-| `review`, no turn of the lead's on it       | wakes the lead again at start, resume and boot                                                        | `review-wait` once nobody has acted for five minutes, in a run too     |
-| `ready`                                     | lands it when its landing is _check_, or _lead_ after the lead's accept                               | `ready-to-land`, always                                                |
-| `blocked` on a question                     | wakes the lead first, again at start, resume and boot                                                 | `question` at once without a run; in one after 15 minutes or passed on |
-| `rework` after a review's reject            | sends it back to its crewmate at once                                                                 | `sent-back` when no run is running                                     |
-| `queued` behind a discarded or stopped task | nothing starts it                                                                                     | `dependency-gone`                                                      |
+| A task stands                               | A running run                                                                                   | In its crewmate's row                                                  |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `working`, no turn running                  | carries it on at start and resume; nudges it once an attempt after a turn ends without a report | `stalled` once nobody has acted for five minutes, in a run too         |
+| `review`, no turn of the lead's on it       | wakes the lead again at start and resume                                                        | `review-wait` once nobody has acted for five minutes, in a run too     |
+| `ready`                                     | lands it when its landing is _check_, or _lead_ after the lead's accept                         | `ready-to-land`, always                                                |
+| `blocked` on a question                     | wakes the lead first, again at start and resume                                                 | `question` at once without a run; in one after 15 minutes or passed on |
+| `rework` after a review's reject            | sends it back to its crewmate at once                                                           | `sent-back` when no run is running                                     |
+| `queued` behind a discarded or stopped task | nothing starts it                                                                               | `dependency-gone`                                                      |
 
 A turn that leaves its task `working` ends the task's attempt — `crew_attempt.ending` is `budget`,
 `run-paused`, `run-stopped`, `interrupted`, `failed` or `no-report`, with its words in
 `ending_detail` and `ended_at` — and the attempt's next turn opens it again; a rework's new
 attempt has a row of its own. At boot an attempt a turn left open without the engine seeing it end
-ends at the task's last move. The five minutes are one rule (`UNATTENDED_MS`): a `stalled` row
+ends interrupted at restart, with its dirty files untouched and its last confirmed operation stage visible immediately. The five minutes are one rule (`UNATTENDED_MS`): a `stalled` row
 counts from the attempt's end, a `review-wait` row from the task's move into review, and the feed
 publishes again when they pass.
 
@@ -398,3 +396,27 @@ Measured 2026-09-27 against Claude Code 2.1.283; the measurements are the ledger
   resumed with a $0.005 cap over a carried $0.0185 ran two responses and stopped once its own
   spend reached $0.0065). So a turn costs its total's rise, and a session's cap is the run's
   remainder (`crewRuns.ts`, `crewDirectory.ts`).
+
+A conversation whose recorded path differs from its crew copy keeps that path across server
+restarts. Its crew row shows “Conversation points elsewhere” with the current and crew paths.
+“Use crew copy” changes only the selected current conversation, as its login's operator; a path
+changed since the row was read refuses the action. New stints record their copy at creation.
+
+## Explicit operation endings
+
+`crew_operation` owns dispatch, checkpoint, merge/check, landing and selected copy rebuilds.
+An identity, actor, exact thread command or copy/ref target, and pending stage are durable before
+that stage runs. Its receipt confirms the stage afterward; the handle remains running until the
+consumer has recorded the task outcome. A fatal restart marks running handles interrupted. Boot
+reads copy status and known landing trailers, pauses a running run, and does not commit files,
+recreate copies, delete landing anchors, merge, check, dispatch, or advance queues.
+
+Interrupted rows offer Continue and, before landing, Drop it. Continue operates on the selected
+handle under the crewmate's lock, rejects a changed attempt or newer handle, and records a new
+operation for its side effects. An already landed receipt only records the task's outcome.
+Drop it ends the task's records while leaving its dirty files and HEAD in place. Missing copies
+offer Rebuild crew copy; that selected rebuild refuses a missing or changed saved branch and never
+resets an existing directory. Infrastructure and context failures likewise wait for Continue.
+Checks run once; a killed or timed-out command is a visible ending. A failed operation holds the
+crewmate's queue until a person acts. Desktop uses these same web controls; mobile currently has
+no crew controls and accepts the optional operation and assignment detail fields in the contract.
