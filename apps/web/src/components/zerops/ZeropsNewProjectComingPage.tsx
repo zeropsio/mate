@@ -15,16 +15,19 @@
  */
 import { birthCopyServices } from "@t3tools/client-runtime/zerops/birthProgress";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
+  addEnds,
   creationManaged,
   creationSubsteps,
+  dismissNewProjectBirth,
   newProjectComing,
   newProjectHandOver,
   newProjectProgress,
   retryNewProjectBirth,
+  startAddOver,
   useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
@@ -63,6 +66,17 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
     if (handOver !== null) void navigate(handOver);
   }, [handOver, navigate]);
 
+  // Let go of here or from its row (*Dismiss*, *Start over*): its view goes with it, to the
+  // projects, never standing on a creation nobody holds.
+  const held = useRef(false);
+  useEffect(() => {
+    if (birth !== undefined) {
+      held.current = true;
+      return;
+    }
+    if (held.current) void navigate({ to: "/zerops", replace: true });
+  }, [birth, navigate]);
+
   // Its clock runs while it does, from the press.
   const nowMs = useSecondsNowMs(
     birth !== undefined && birth.failed === null && birth.projectId === null,
@@ -94,6 +108,8 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         };
   const projects = <Link to="/zerops" />;
   const coming = birth === undefined ? undefined : newProjectComing(birth);
+  // An Add refused before Zerops took anything ends here, or starts over with its name to change.
+  const ends = birth === undefined ? null : addEnds(birth);
   const view: MateEmptyComing =
     coming === undefined
       ? {
@@ -121,6 +137,14 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
               onTryAgain={() => {
                 retryNewProjectBirth(birthId);
               }}
+              {...(ends === null
+                ? {}
+                : {
+                    ends: {
+                      onStartOver: () => startAddOver(birthId),
+                      onDismiss: () => dismissNewProjectBirth(birthId),
+                    },
+                  })}
               progress={progress}
               projects={projects}
               you={you}

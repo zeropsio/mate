@@ -55,7 +55,7 @@ import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProj
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import type { ArrivalSubstep } from "./mateArrival";
 import { asSentence, type MateComing } from "./mateComing";
-import { newMateView } from "./newMate";
+import { newMateView, useNewMate, type NewMateAgain } from "./newMate";
 
 /** A step of a New project's creation, before the platform has taken its first Mate's project. */
 export type NewProjectStep = "gitea" | "registry" | "create";
@@ -540,6 +540,46 @@ export function progressNewProjectBirth(
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,
 ): void {
   patchBirth(birthId, { progress });
+}
+
+/**
+ * What ends an Add refused before Zerops took anything — a quota, a right: *Dismiss* takes it
+ * out of the menu, and *Start over* asks for it again over its project, its name there to change.
+ * Null for any other creation: one running, one Zerops may have made (its way is the projects),
+ * one Zerops took (its press finishes it), a New project's (its own *Try again*).
+ */
+export function addEnds(
+  birth: NewProjectBirth,
+): { readonly groupId: string; readonly again: NewMateAgain } | null {
+  if (birth.adds === undefined || birth.projectId !== null) return null;
+  if (birth.failed === null || birth.failed.uncertain) return null;
+  return {
+    groupId: birth.groupId,
+    again: {
+      botName: birth.botName,
+      name: birth.adds.displayName,
+      tint: birth.face.tint,
+    },
+  };
+}
+
+/** *Dismiss*: the creation is let go of, and its row leaves the menu. */
+export function dismissNewProjectBirth(birthId: string): void {
+  driving.delete(birthId);
+  useNewProjectBirths.setState((state) => {
+    if (state.births[birthId] === undefined) return state;
+    const { [birthId]: _gone, ...rest } = state.births;
+    return { births: rest };
+  });
+}
+
+/** *Start over*: an Add that can end (`addEnds`) is let go of, and asked for again, prefilled. */
+export function startAddOver(birthId: string): void {
+  const birth = useNewProjectBirths.getState().births[birthId];
+  const ends = birth === undefined ? null : addEnds(birth);
+  if (ends === null) return;
+  dismissNewProjectBirth(birthId);
+  useNewMate.getState().ask(ends.groupId, ends.again);
 }
 
 /** *Try again* on a creation a step stopped: it resumes from that step, with the same project. */

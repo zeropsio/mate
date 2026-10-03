@@ -10,6 +10,7 @@ import { isUncertainZeropsFailure } from "@t3tools/client-runtime/zerops/errors"
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { arrivalSteps } from "./mateArrival";
+import { useNewMate } from "./newMate";
 import {
   beginNewProjectBirth,
   newProjectComing,
@@ -26,7 +27,10 @@ import {
   type NewProjectPatch,
   type NewProjectPorts,
   addCreateProject,
+  addEnds,
   comingPlanned,
+  dismissNewProjectBirth,
+  startAddOver,
   creationManaged,
   creationRuntimes,
   creationSubsteps,
@@ -1208,5 +1212,75 @@ describe("addCreateProject — an Add's press as its creation's port", () => {
     retryNewProjectBirth("add-1");
     expect(run).toHaveBeenCalledTimes(1);
     closeAccountLifetime();
+  });
+});
+
+// Run 6's review: an Add refused before Zerops took anything (quota, rights) stood in the menu all
+// session, failed, its one way on Try again with the same name.
+describe("addEnds — an Add refused before Zerops took anything can end", () => {
+  const refused = added({ failed: { reason: "No room.", uncertain: false } });
+  it.each([
+    {
+      case: "refused for certain: dismissed, or started over with its name to change",
+      made: refused,
+      want: {
+        groupId: "g-acme",
+        again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+      },
+    },
+    {
+      case: "one Zerops may have made: neither, its way is the projects",
+      made: added({ failed: { reason: "Lost.", uncertain: true } }),
+      want: null,
+    },
+    { case: "running: neither", made: added(), want: null },
+    {
+      case: "taken by Zerops: its press's to finish",
+      made: added({ step: "created", projectId: "p-ida" }),
+      want: null,
+    },
+    {
+      case: "a New project's: its own Try again",
+      made: birth({ failed: { reason: "No room.", uncertain: false } }),
+      want: null,
+    },
+  ])("$case", ({ made, want }) => {
+    expect(addEnds(made)).toEqual(want);
+  });
+
+  describe("on the page and from the row", () => {
+    beforeEach(() => {
+      openAccountLifetime("u-ada");
+      useNewProjectBirths.setState({ births: { "add-1": refused } });
+      useNewMate.setState({ asked: null });
+    });
+    afterEach(() => {
+      closeAccountLifetime();
+      useNewMate.setState({ asked: null });
+    });
+
+    it("Dismiss takes it out of the menu, and asks for nothing", () => {
+      dismissNewProjectBirth("add-1");
+      expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+      const held = Object.values(useNewProjectBirths.getState().births);
+      expect(placedNewProjects(held, ASK.organizationId)).toEqual([]);
+      expect(useNewMate.getState().asked).toBeNull();
+    });
+
+    it("Start over takes it out and opens Add over its project, its name there to change", () => {
+      startAddOver("add-1");
+      expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+      expect(useNewMate.getState().asked).toMatchObject({
+        groupId: "g-acme",
+        again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+      });
+    });
+
+    it("leaves one still running alone", () => {
+      useNewProjectBirths.setState({ births: { "add-1": added() } });
+      startAddOver("add-1");
+      expect(useNewProjectBirths.getState().births["add-1"]).toBeDefined();
+      expect(useNewMate.getState().asked).toBeNull();
+    });
   });
 });

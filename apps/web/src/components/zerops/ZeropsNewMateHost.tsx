@@ -34,7 +34,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
-import { useNewMate } from "~/zerops/newMate";
+import { useNewMate, type NewMateAgain } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import {
   addCreateProject,
@@ -74,7 +74,7 @@ export function ZeropsNewMateHost() {
   return (
     <>
       {asked === null ? null : (
-        <NewMateDialog create={create} groupId={asked.groupId} key={asked.at} />
+        <NewMateDialog again={asked.again} create={create} groupId={asked.groupId} key={asked.at} />
       )}
       {handOver === null ? null : (
         <KeepHandOverRead conversation={handOver} key={scopedThreadKey(handOver)} />
@@ -108,9 +108,12 @@ function KeepHandOverRead({ conversation }: { readonly conversation: ScopedThrea
 function NewMateDialog({
   groupId,
   create,
+  again,
 }: {
   readonly groupId: string;
   readonly create: ReturnType<typeof useEnvironmentCreation>;
+  /** An Add started over: its name, its environment's and its tint, there to change. */
+  readonly again?: NewMateAgain | undefined;
 }) {
   const { activeOrganization } = useZeropsSession();
   const { listing } = useZeropsCandidates();
@@ -161,8 +164,8 @@ function NewMateDialog({
   const openMate = useOpenMate();
   // A proposal only: the dialog refuses it until every Mate's name is read, and names the clash
   // if one turns up.
-  const [defaultBotName] = useState(() =>
-    generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
+  const [defaultBotName] = useState(
+    () => again?.botName ?? generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
   const dismiss = useNewMate((state) => state.dismiss);
   const created = useNewMate((state) => state.created);
@@ -195,8 +198,10 @@ function NewMateDialog({
     <ZeropsEnvironmentCreationDialog
       closed={door.kind === "closed" ? door : undefined}
       defaultBotName={defaultBotName}
-      defaultName={proposeName(defaultBotName)}
-      defaultTintFor={(name) => newMateTint(candidates, name)}
+      defaultName={again?.name ?? proposeName(defaultBotName)}
+      defaultTintFor={(name) =>
+        name === again?.botName ? again.tint : newMateTint(candidates, name)
+      }
       defaultWithAgent
       groupName={group.name}
       onCancel={dismiss}

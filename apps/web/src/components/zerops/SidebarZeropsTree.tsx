@@ -122,6 +122,12 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/men
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
+import {
+  addEnds,
+  dismissNewProjectBirth,
+  startAddOver,
+  useNewProjectBirths,
+} from "~/zerops/newProjectBirth";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -3364,7 +3370,12 @@ function ComingMateRow({
   readonly onOpen: ((projectId: string) => void) | undefined;
 }) {
   const tint = coming.face?.tint ?? "slate";
-  return (
+  // An Add refused before Zerops took anything: its ⋯ ends it, or starts it over (`addEnds`).
+  const ends = useNewProjectBirths((state) => {
+    const made = state.births[coming.projectId];
+    return made !== undefined && addEnds(made) !== null;
+  });
+  const row = (
     <button
       aria-current={active ? "true" : undefined}
       className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3393,6 +3404,31 @@ function ComingMateRow({
         <MateComingLine line={pendingBornLine(coming)} />
       </span>
     </button>
+  );
+  if (!ends) return row;
+  return (
+    // The row is the container, the menu's trigger beside its button, as a Mate's own row.
+    <div className="relative">
+      {row}
+      <span
+        className="absolute end-2 top-2.5 flex h-5 items-center opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+        data-zerops-surface="sidebar-mate-actions"
+      >
+        <Menu>
+          <MenuTrigger
+            render={
+              <button aria-label={`More for ${name}`} className={ROW_ACTION_CLASS} type="button" />
+            }
+          >
+            <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
+          </MenuTrigger>
+          <MenuPopup align="start" className="w-56" side="right">
+            <MenuItem onClick={() => startAddOver(coming.projectId)}>Start over</MenuItem>
+            <MenuItem onClick={() => dismissNewProjectBirth(coming.projectId)}>Dismiss</MenuItem>
+          </MenuPopup>
+        </Menu>
+      </span>
+    </div>
   );
 }
 

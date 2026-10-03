@@ -871,6 +871,7 @@ export function ComingBelow({
   onRemove,
   onFinishSetup,
   onTryAgain,
+  ends,
   projects,
 }: {
   readonly coming: MateComing | undefined;
@@ -885,6 +886,11 @@ export function ComingBelow({
   /** *Finish setup*, for a Mate whose press stopped before its container. */
   readonly onFinishSetup?: () => void;
   readonly onTryAgain?: () => void;
+  /**
+   * An Add refused before Zerops took anything (`addEnds`): beside *Try again*, *Start over* with
+   * its name to change, and *Dismiss*, which takes it out of the menu.
+   */
+  readonly ends?: { readonly onStartOver: () => void; readonly onDismiss: () => void } | undefined;
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
@@ -921,7 +927,19 @@ export function ComingBelow({
           {FINISH_MATE_SETUP_VERB}
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
-        <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+        <>
+          <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+          {ends === undefined ? null : (
+            <>
+              <Button onClick={ends.onStartOver} variant="outline">
+                Start over
+              </Button>
+              <Button onClick={ends.onDismiss} variant="ghost">
+                Dismiss
+              </Button>
+            </>
+          )}
+        </>
       ) : coming.verb === "go-to-projects" && projects !== undefined ? (
         <Button render={projects}>Go to projects</Button>
       ) : null

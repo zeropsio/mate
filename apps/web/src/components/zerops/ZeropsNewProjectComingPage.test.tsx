@@ -4,6 +4,7 @@ import { create, type ReactTestRenderer, type ReactTestRendererJSON } from "reac
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
+import { useNewMate } from "~/zerops/newMate";
 import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ZeropsNewProjectComingPage } from "./ZeropsNewProjectComingPage";
@@ -244,6 +245,42 @@ describe("the steps this tab runs, on the Mate's own view", () => {
       "copy › Ida registered:waiting",
     ]);
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
+  });
+
+  it.each([
+    {
+      verb: "Dismiss",
+      then: { asked: null },
+    },
+    {
+      verb: "Start over",
+      then: {
+        asked: expect.objectContaining({
+          groupId: "g-acme",
+          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose" },
+        }),
+      },
+    },
+  ])("ends an Add refused before Zerops took anything: $verb", ({ verb, then }) => {
+    useNewMate.setState({ asked: null });
+    hold({ ...IDA, failed: { reason: "No room in this account.", uncertain: false } });
+    openView("add-1");
+    expect(button("Try again")).toBeDefined();
+    act(() => {
+      button(verb)?.props.onClick();
+    });
+    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+    expect(app.navigate).toHaveBeenCalledWith({ to: "/zerops", replace: true });
+    expect(useNewMate.getState()).toMatchObject(then);
+    useNewMate.setState({ asked: null });
+  });
+
+  it("never offers to end an Add Zerops may have made", () => {
+    hold({ ...IDA, failed: { reason: "Zerops may have created it.", uncertain: true } });
+    openView("add-1");
+    expect(button("Go to projects")).toBeDefined();
+    expect(button("Dismiss")).toBeUndefined();
+    expect(button("Start over")).toBeUndefined();
   });
 
   it("says where one stopped, in its place, with Try again, and no longer asks for the tab", () => {
