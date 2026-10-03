@@ -27,9 +27,8 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
-import { activityFromMemory } from "~/zerops/menuMemory";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import {
   PROJECT_CUSTOM_ORDER_STORAGE_KEY,
@@ -1094,17 +1093,9 @@ describe("a Mate's face follows its work in the menu", () => {
       dots: true,
     },
     {
-      case: "remembered from before a reload, its socket not open yet",
+      case: "HQ's last word at rest, its socket not open yet",
       group: "ready",
-      activity: activityFromMemory({
-        subject: "Add a size guide to the product page",
-        task: "Add a size guide to the product page",
-        awaitingWords: true,
-        at: working.at,
-        unread: false,
-        threadId: "thread-1",
-        threadKey: "env:thread-1",
-      }),
+      activity: restingActivity(working),
       face: "sleep",
       dots: false,
     },
@@ -2114,13 +2105,20 @@ describe("a project collapsed to its heading", () => {
 
   it("greets nothing its folded heading only stood in for until the Mate's state was read", () => {
     stored.collapsed = new Set(["aaa"]);
-    const { remembered: _stoodIn, ...read } = activityFromMemory({
+    const told: ZeropsAgentActivity = {
+      threadId: ThreadId.make("thread-1"),
+      kind: "idle",
+      status: null,
+      face: "idle",
       subject: "Something",
       at: "2026-09-27T10:00:00.000Z",
+      snippet: undefined,
       unread: true,
-      threadId: "thread-1",
+      pausedUntil: undefined,
       threadKey: "env-crm-dev:thread-1",
-    });
+      task: undefined,
+    };
+    const { remembered: _stoodIn, ...read } = restingActivity(told);
     const tree = (item: ZeropsCandidate, activity: ZeropsAgentActivity) => (
       <SidebarZeropsTree
         candidates={[item]}
@@ -2130,18 +2128,7 @@ describe("a project collapsed to its heading", () => {
         onSelect={() => {}}
       />
     );
-    const mounted = mount(
-      tree(
-        CRM_DEV,
-        activityFromMemory({
-          subject: "Something",
-          at: "2026-09-27T10:00:00.000Z",
-          unread: true,
-          threadId: "thread-1",
-          threadKey: "env-crm-dev:thread-1",
-        }),
-      ),
-    );
+    const mounted = mount(tree(CRM_DEV, restingActivity(told)));
     session.viewer = "u-ada";
     act(() => {
       mounted.update(tree(mine(CRM_DEV_CONNECTED), { ...read, kind: "input", face: "needs" }));
@@ -3784,16 +3771,21 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     }) as unknown as ZeropsProjectFlowValue;
   const RUNS_V250 = running("v2.5.0");
 
-  it("draws a Mate whose socket is not open with the words this browser remembers — asleep, offering nothing", () => {
+  it("draws a Mate whose socket is not open with HQ's last words of it — asleep, offering nothing", () => {
     const html = render([CRM_DEV, CRM_PROD], {
       getActivity: () =>
-        activityFromMemory({
+        restingActivity({
+          threadId: ThreadId.make("thread-1"),
+          kind: "working",
+          status: null,
+          face: "working",
           subject: "Add a /status page",
-          snippet: "The page reads the build number.",
           at: "2026-09-27T10:00:00.000Z",
+          snippet: "The page reads the build number.",
           unread: false,
-          threadId: "thread-1",
+          pausedUntil: undefined,
           threadKey: "env-crm-dev:thread-1",
+          task: "Add a /status page",
         }),
     });
     expect(html).toContain("Add a /status page");
@@ -3854,12 +3846,16 @@ describe("a Mate on its way off Zerops", () => {
   afterEach(() => {
     settleDeletingMates(new Set());
   });
-  const REMEMBERED = activityFromMemory({
+  const REMEMBERED = restingActivity({
+    threadId: ThreadId.make("thread-crm"),
+    kind: "idle",
+    status: null,
+    face: "idle",
     subject: "Speed up the photo gallery",
-    snippet: "Thumbnails load lazily now.",
     at: "2026-09-29T08:00:00.000Z",
+    snippet: "Thumbnails load lazily now.",
     unread: false,
-    threadId: "thread-crm",
+    pausedUntil: undefined,
     threadKey: "env-crm-dev:thread-crm",
     task: "Speed up the photo gallery",
   });

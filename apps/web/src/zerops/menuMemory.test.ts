@@ -1,11 +1,11 @@
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { ThreadId } from "@t3tools/contracts";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import type { ZeropsAgentActivity } from "./agentActivity";
 import {
-  activityFromMemory,
   changeFromMemory,
   EMPTY_MENU_MEMORY,
   MENU_MEMORY_STORAGE_KEY,
@@ -13,30 +13,26 @@ import {
   rememberedChangeOf,
   rememberedChanges,
   rememberedCrewOf,
-  rememberedRowOf,
+  rememberedMates,
   rememberMenu,
   withChanges,
   withChips,
   withCrews,
+  withMates,
   withMembers,
   withoutMate,
-  withRows,
   withStructure,
 } from "./menuMemory";
 
-const WORKING: ZeropsAgentActivity = {
-  threadId: ThreadId.make("thread-nova"),
-  kind: "working",
-  status: null,
-  face: "working",
-  subject: "Add a /status page",
-  at: "2026-09-27T10:00:00.000Z",
-  snippet: "The page reads the build number.",
-  unread: true,
-  pausedUntil: undefined,
-  threadKey: "env-nova:thread-nova",
-  task: "Add a /status page",
-};
+/** Vera as HQ last told her: asleep, her last overview stored. */
+const VERA = Schema.decodeUnknownSync(MateLiveView)({
+  presence: { online: false, since: "2026-10-03T08:00:00.000Z", overview: "stored" },
+  identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
+  main: null,
+  threads: { list: [], omitted: 0 },
+  logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
+  crew: null,
+});
 
 const PULL: FlowPullRequest = {
   repository: "app",
@@ -55,101 +51,6 @@ const PULL: FlowPullRequest = {
   updatedAt: "2026-09-27T10:05:00.000Z",
 };
 
-describe("a remembered row", () => {
-  it("draws the words and the time the row last said, at rest, with nothing only true then", () => {
-    expect(activityFromMemory(rememberedRowOf(WORKING))).toEqual({
-      threadId: "thread-nova",
-      kind: "idle",
-      status: null,
-      face: "idle",
-      subject: "Add a /status page",
-      at: "2026-09-27T10:00:00.000Z",
-      snippet: "The page reads the build number.",
-      unread: true,
-      pausedUntil: undefined,
-      threadKey: "env-nova:thread-nova",
-      task: "Add a /status page",
-      remembered: true,
-    });
-  });
-
-  // A row whose third line stood without words to remember — words still
-  // to come, the step it was on, the question it asked, the error it stopped
-  // on before saying anything — holds that line from memory, so a reload
-  // stands the row at the height it had rather than growing it when the
-  // socket answers.
-  it.each([
-    {
-      case: "working, before its first words",
-      row: { ...WORKING, snippet: undefined },
-      holds: true,
-    },
-    {
-      case: "sent, its run not started",
-      row: {
-        ...WORKING,
-        kind: "idle" as const,
-        face: "idle" as const,
-        snippet: undefined,
-        awaitingWords: true as const,
-      },
-      holds: true,
-    },
-    {
-      case: "working on a step it relayed",
-      row: {
-        ...WORKING,
-        snippet: undefined,
-        liveStep: { words: "Compile the gallery", code: "npm run compile" },
-      },
-      holds: true,
-    },
-    {
-      case: "stopped on an error before its first words",
-      row: {
-        ...WORKING,
-        kind: "failed" as const,
-        face: "needs" as const,
-        snippet: undefined,
-        errorLine: "The build timed out after 120 s.",
-      },
-      holds: true,
-    },
-    {
-      case: "asking a question before its first words",
-      row: {
-        ...WORKING,
-        kind: "input" as const,
-        face: "needs" as const,
-        snippet: undefined,
-        question: "Pricing in CZK or EUR?",
-      },
-      holds: true,
-    },
-    { case: "with words to remember", row: WORKING, holds: false },
-    {
-      case: "at rest with no words",
-      row: { ...WORKING, kind: "idle" as const, face: "idle" as const, snippet: undefined },
-      holds: false,
-    },
-    {
-      case: "never asked anything",
-      row: { ...WORKING, subject: undefined, task: undefined, snippet: undefined },
-      holds: false,
-    },
-  ])("holds the third line of a row $case: $holds", ({ row, holds }) => {
-    const remembered = activityFromMemory(rememberedRowOf(row));
-    if (holds) expect(remembered).toMatchObject({ awaitingWords: true, snippet: undefined });
-    else expect(remembered).not.toHaveProperty("awaitingWords");
-  });
-
-  it("keeps no word the row did not say", () => {
-    const quiet = rememberedRowOf({ ...WORKING, subject: undefined, snippet: undefined });
-    expect(quiet).not.toHaveProperty("subject");
-    expect(activityFromMemory(quiet).snippet).toBeUndefined();
-  });
-});
-
 describe("a remembered change", () => {
   it("is its title where it hung, with no verdict until HQ says one again", () => {
     expect(changeFromMemory(rememberedChangeOf(PULL))).toEqual({
@@ -161,31 +62,27 @@ describe("a remembered change", () => {
 });
 
 describe("what the memory keeps", () => {
-  const row = rememberedRowOf(WORKING);
-
-  it("writes each row and forgets a Mate no longer listed", () => {
-    const first = withRows(EMPTY_MENU_MEMORY, { nova: row, kai: row }, new Set(["nova", "kai"]));
-    const next = withRows(first, {}, new Set(["nova"]));
-    expect(Object.keys(next.rows)).toEqual(["nova"]);
-  });
-
-  it("forgets everything of a deleted Mate at once, its row and its crew, and nothing else", () => {
+  it("forgets everything of a deleted Mate at once, HQ's word of it and its crew, and nothing else", () => {
     const crew = rememberedCrewOf([
       { handle: "ada", displayName: "Ada", tint: "violet", lead: true },
     ]);
-    const first = withCrews(
-      withRows(EMPTY_MENU_MEMORY, { nova: row, kai: row }, new Set(["nova", "kai"])),
-      { nova: crew, kai: crew },
-    );
+    const told = new Map([
+      ["nova", VERA],
+      ["kai", VERA],
+    ]);
+    const first = withCrews(withMates(EMPTY_MENU_MEMORY, "org-1", told, null), {
+      nova: crew,
+      kai: crew,
+    });
     const next = withoutMate(first, "nova");
-    expect(Object.keys(next.rows)).toEqual(["kai"]);
+    expect(Object.keys(next.mates["org-1"]?.mates ?? {})).toEqual(["kai"]);
     expect(Object.keys(next.crews)).toEqual(["kai"]);
     expect(withoutMate(next, "nova")).toBe(next);
   });
 
   it("is the same memory when nothing changed, so nothing is written", () => {
-    const first = withRows(EMPTY_MENU_MEMORY, { nova: row }, new Set(["nova"]));
-    expect(withRows(first, { nova: rememberedRowOf(WORKING) }, new Set(["nova"]))).toBe(first);
+    const first = withMates(EMPTY_MENU_MEMORY, "org-1", new Map([["nova", VERA]]), null);
+    expect(withMates(first, "org-1", new Map([["nova", VERA]]), null)).toBe(first);
     const changes = withChanges(first, { g1: [rememberedChangeOf(PULL)] }, new Set(["g1"]));
     expect(withChanges(changes, { g1: [rememberedChangeOf(PULL)] }, new Set(["g1"]))).toBe(changes);
   });
@@ -347,13 +244,11 @@ describe("the memory in this browser", () => {
 
   it("is written per account once the menu settles, read back, and gone when the account closes", () => {
     openAccountLifetime("user-ales");
-    rememberMenu((memory) =>
-      withRows(memory, { nova: rememberedRowOf(WORKING) }, new Set(["nova"])),
-    );
+    rememberMenu((memory) => withChanges(memory, { g1: [rememberedChangeOf(PULL)] }));
     expect(stored.size).toBe(0);
     vi.advanceTimersByTime(400);
     const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
-    expect(JSON.parse(stored.get(key) ?? "{}").rows.nova.subject).toBe("Add a /status page");
+    expect(JSON.parse(stored.get(key) ?? "{}").changes.g1[0].title).toBe("Add a /status page");
 
     closeAccountLifetime();
     expect(stored.has(key)).toBe(false);
@@ -406,13 +301,12 @@ describe("the memory in this browser", () => {
 
   // A reload after an upgrade paints what the last version drew: a memory
   // from before the production chip (with each stop's line, no chips) keeps
-  // its rows, changes and members, and simply has no chip yet.
+  // its changes and members, and simply has no chip yet.
   it("reads a memory written before the production chip, keeping all it held", () => {
     const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
     stored.set(
       key,
       JSON.stringify({
-        rows: { nova: rememberedRowOf(WORKING) },
         changes: { g1: [rememberedChangeOf(PULL)] },
         stops: { "prod-1": "v1.4.0" },
         members: { "org-1": [{ id: "cu-jan", roleCode: "OWNER" }] },
@@ -420,7 +314,6 @@ describe("the memory in this browser", () => {
     );
     openAccountLifetime("user-ales");
     const memory = menuMemory();
-    expect(Object.keys(memory.rows)).toEqual(["nova"]);
     expect(memory.changes.g1).toHaveLength(1);
     expect(memory.members["org-1"]).toEqual([{ id: "cu-jan", roleCode: "OWNER" }]);
     expect(memory.chips).toEqual({});
@@ -434,13 +327,13 @@ describe("the memory in this browser", () => {
       key,
       JSON.stringify({
         ...EMPTY_MENU_MEMORY,
-        rows: { nova: rememberedRowOf(WORKING) },
+        changes: { g1: [rememberedChangeOf(PULL)] },
         chips: { g1: { label: "prod", state: "ok", version: "v1.4.0" } },
       }),
     );
     openAccountLifetime("user-ales");
     const memory = menuMemory();
-    expect(Object.keys(memory.rows)).toEqual(["nova"]);
+    expect(memory.changes.g1).toHaveLength(1);
     expect(memory.chips).toEqual({ g1: {} });
   });
 
@@ -451,7 +344,7 @@ describe("the memory in this browser", () => {
     const key = `mate:account:user-ada:${MENU_MEMORY_STORAGE_KEY}`;
     const before: Record<string, unknown> = {
       ...EMPTY_MENU_MEMORY,
-      rows: { nova: rememberedRowOf(WORKING) },
+      changes: { g1: [rememberedChangeOf(PULL)] },
     };
     delete before.crews;
     stored.set(key, JSON.stringify(before));
@@ -459,7 +352,7 @@ describe("the memory in this browser", () => {
     stored.set(key, JSON.stringify(before));
     openAccountLifetime("user-ada");
     expect(menuMemory().crews).toEqual({});
-    expect(menuMemory().rows.nova?.subject).toBe("Add a /status page");
+    expect(menuMemory().changes.g1?.[0]?.title).toBe("Add a /status page");
   });
 
   // Only Mates open changes (SPEC §5.4): the author a change was once remembered with is not
@@ -493,13 +386,30 @@ describe("the memory in this browser", () => {
     expect(rememberedChanges("g1")?.map((pull) => pull.number)).toEqual([14]);
   });
 
+  it("remembers HQ's Mates view and nothing quoted from a shell", () => {
+    const people = { "u-ada": { name: "Ada Lovelace" } };
+    openAccountLifetime("user-ales");
+    rememberMenu((memory) => withMates(memory, "org-1", new Map([["p-vera", VERA]]), people));
+    vi.advanceTimersByTime(400);
+    const key = `mate:account:user-ales:${MENU_MEMORY_STORAGE_KEY}`;
+    const written = JSON.parse(stored.get(key) ?? "{}");
+    expect(written.mates).toEqual({ "org-1": { mates: { "p-vera": VERA }, people } });
+    expect(written).not.toHaveProperty("rows");
+
+    // A memory from before keeps its rows out, and all else it held.
+    stored.set(key, JSON.stringify({ ...written, rows: { nova: { at: "x" } } }));
+    closeAccountLifetime();
+    stored.set(key, JSON.stringify({ ...written, rows: { nova: { at: "x" } } }));
+    openAccountLifetime("user-ales");
+    expect(menuMemory()).not.toHaveProperty("rows");
+    expect(rememberedMates("org-1")).toEqual({ mates: new Map([["p-vera", VERA]]), people });
+  });
+
   it("reads nothing another account remembered", () => {
     openAccountLifetime("user-ales");
-    rememberMenu((memory) =>
-      withRows(memory, { nova: rememberedRowOf(WORKING) }, new Set(["nova"])),
-    );
+    rememberMenu((memory) => withChanges(memory, { g1: [rememberedChangeOf(PULL)] }));
     vi.advanceTimersByTime(400);
     openAccountLifetime("user-jan");
-    expect(menuMemory().rows).toEqual({});
+    expect(menuMemory().changes).toEqual({});
   });
 });

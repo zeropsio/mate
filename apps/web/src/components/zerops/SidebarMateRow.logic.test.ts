@@ -17,7 +17,6 @@ import {
   mateOwnerView,
   mateNotYours,
   ownerBadge,
-  mateRowActivity,
   mateRowAskLine,
   mateRowSentAsk,
   mateRowDraft,
@@ -1075,40 +1074,6 @@ describe("pendingBornLine — a Mate the listing does not hold yet", () => {
     const line = pendingBornLine(member);
     expect(mateBornLineText(line, 43_000)).toBe(text);
     expect(line.tone).toBe(tone);
-  });
-});
-
-// Which reading a row draws. Its conversation's while its socket is up — or only blinking,
-// reconnecting, when the conversation it was read from still stands (a Mate at its first job
-// must not fall asleep in the menu because its socket blinked) — and what this browser remembers
-// of it otherwise: a socket not opened yet this page, one that failed, or none at all.
-describe("mateRowActivity — the conversation's reading while its socket stands, memory otherwise", () => {
-  const live = { kind: "working", remembered: undefined } as unknown as ZeropsAgentActivity;
-  const remembered = { kind: "idle", remembered: true } as unknown as ZeropsAgentActivity;
-  it.each([
-    { case: "connected", phase: "connected", drawn: live },
-    { case: "reconnecting: the socket blinked", phase: "reconnecting", drawn: live },
-    {
-      case: "connecting for the first time this page: memory",
-      phase: "connecting",
-      drawn: remembered,
-    },
-    { case: "its socket failed", phase: "error", drawn: remembered },
-    { case: "offline", phase: "offline", drawn: remembered },
-    { case: "available, never opened", phase: "available", drawn: remembered },
-    { case: "no socket here at all", phase: undefined, drawn: remembered },
-  ] as const)("$case", ({ phase, drawn }) => {
-    expect(mateRowActivity({ live, phase, remembered })).toBe(drawn);
-  });
-
-  it("draws nothing where neither is known", () => {
-    expect(mateRowActivity({ live: undefined, phase: "connected", remembered: undefined })).toBe(
-      undefined,
-    );
-  });
-
-  it("draws memory where the socket stands but its conversation is not read yet", () => {
-    expect(mateRowActivity({ live: undefined, phase: "connected", remembered })).toBe(remembered);
   });
 });
 

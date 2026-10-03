@@ -195,6 +195,13 @@ export const hqPeopleViewAtom = Atom.make<HqPeopleView | null>(null).pipe(
   Atom.withLabel("zerops:hq-people-view"),
 );
 
+/** The Mates of the organization in view, as HQ last told them; null while none is known. */
+export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
+  const view = get(hqMatesViewAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId ? null : view;
+}).pipe(Atom.withLabel("zerops:hq-mates"));
+
 const NO_PLACEMENTS: ReadonlyMap<string, HqPlacement> = new Map();
 
 /** The account's inventory as `ZeropsInventoryProvider` projects it; null before its first grant. */

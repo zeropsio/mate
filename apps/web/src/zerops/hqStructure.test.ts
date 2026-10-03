@@ -1,11 +1,12 @@
 import {
   makeHqApi,
   type HqApi,
+  type HqMates,
   type HqStructure,
   type HqStructureEvent,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { HqChange } from "@t3tools/shared/hqChanges";
-import { MateLiveView } from "@t3tools/shared/hqMates";
+import { MateLiveView, type HqPeople } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -63,12 +64,14 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
   const mates: Array<HqMatesView> = [];
   const people: Array<HqPeopleView> = [];
   const kept: Array<[HqStructure, number]> = [];
+  const keptMates: Array<[HqMates, HqPeople | null]> = [];
   let now = 10_000;
   return {
     views,
     mates,
     people,
     kept,
+    keptMates,
     tick: (ms: number) => (now += ms),
     deps: {
       organizationId: "org-1",
@@ -77,6 +80,7 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
       publishMates: (view: HqMatesView) => mates.push(view),
       publishPeople: (view: HqPeopleView) => people.push(view),
       remember: (structure: HqStructure, readAt: number) => kept.push([structure, readAt]),
+      rememberMates: (mates: HqMates, told: HqPeople | null) => keptMates.push([mates, told]),
       now: () => now,
       sleep: async (ms: number) => {
         now += ms;
@@ -211,6 +215,35 @@ describe("driveHqStructure", () => {
       current: true,
     });
     expect(h.people.at(-1)).toEqual({ organizationId: "org-1", people: renamed });
+  });
+
+  it("remembers the Mates at their snapshot, then at most every ten seconds while they move", async () => {
+    const h = harness();
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: null,
+            mates: new Map([["p1", VERA]]),
+            people: null,
+          },
+          { kind: "mate", projectId: "p2", value: VERA },
+          { pingAfterMs: 5_000, tick: h.tick },
+          { kind: "mate", projectId: "p3", value: VERA },
+          { pingAfterMs: 6_000, tick: h.tick },
+        ],
+        end: "hang",
+      },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(h.keptMates).toHaveLength(2));
+    stop.abort();
+    await driving;
+
+    expect(h.keptMates.map(([mates]) => [...mates.keys()])).toEqual([["p1"], ["p1", "p2", "p3"]]);
   });
 
   it("says since when HQ is unavailable, keeps the last structure, and starts over from a fresh snapshot", async () => {

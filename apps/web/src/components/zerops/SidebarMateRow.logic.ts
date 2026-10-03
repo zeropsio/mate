@@ -2,7 +2,6 @@
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
  */
-import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   pullRequestBlocked,
@@ -276,8 +275,8 @@ export type MateRowReply =
   | { readonly kind: "live"; readonly words: string; readonly code: string | undefined }
   | { readonly kind: "pending" }
   /**
-   * The line remembered as holding words still to come, drawn from memory: its place kept, so a
-   * socket opening grows no row, and nothing in it — words on their way are only true now.
+   * The line told as holding words still to come, drawn at rest: its place kept, so a socket
+   * opening grows no row, and nothing in it — words on their way are only true now.
    */
   | { readonly kind: "held" }
   | undefined;
@@ -432,48 +431,24 @@ export function mateFinishingView(view: MateRowView): MateRowView {
   return { ...view, ask: view.reply === undefined ? undefined : view.ask, reply: undefined };
 }
 
-/** The socket's phases in which a conversation read through it still stands. */
-const STANDING_PHASES: ReadonlySet<EnvironmentConnectionPhase> = new Set([
-  "connected",
-  "reconnecting",
-]);
-
-/**
- * Which reading a Mate's row draws: its conversation's while its socket is up or only blinking —
- * reconnecting, when the conversation it was read from still stands — and what this browser
- * remembers of it otherwise (`menuMemory.ts`): a socket not opened yet this page, one that failed,
- * none at all. A Mate at its first job must not fall asleep in the menu because its socket
- * blinked (the owner, 2026-09-29).
- */
-export function mateRowActivity(input: {
-  /** Its conversation's reading, where this page has one. */
-  readonly live: ZeropsAgentActivity | undefined;
-  /** Its registered environment's socket, where there is one. */
-  readonly phase: EnvironmentConnectionPhase | undefined;
-  readonly remembered: ZeropsAgentActivity | undefined;
-}): ZeropsAgentActivity | undefined {
-  const standing = input.phase !== undefined && STANDING_PHASES.has(input.phase);
-  return (standing ? input.live : undefined) ?? input.remembered;
-}
-
 /**
  * A row's one reading of its Mate: the face and the words both from the activity it draws, so
  * the two never disagree (the owner, 2026-09-29: a new Mate at work read "Working on a reply"
  * under an asleep face — the words were this browser's memory of the row, drawn the moment its
  * candidate was not connected, and the face that moment's socket).
  *
- * | the activity drawn                    | face                    | a line of words to come |
- * | ------------------------------------- | ----------------------- | ----------------------- |
- * | read live (its socket up, or blinking) | the conversation's own  | the dots                |
- * | remembered (`menuMemory.ts`)          | asleep, idle if connected | held, empty             |
- * | none                                  | asleep, idle if connected | —                       |
+ * | the activity drawn                                  | face                      | a line of words to come |
+ * | --------------------------------------------------- | ------------------------- | ----------------------- |
+ * | live (HQ holds it live, or its socket up, blinking) | the conversation's own    | the dots                |
+ * | at rest (`restingActivity`)                         | asleep, idle if connected | held, empty             |
+ * | none                                                | asleep, idle if connected | —                       |
  *
  * Its own change waiting on the person's review lifts every face but work's to needs-you
  * (`mateFaceAwaitingReview`), as the composer's top wears it for the same fact — on the viewer's
  * own Mate only: another's waits on its owner, and rests here.
  *
  * A live reading stands while the socket blinks — reconnecting, a listing re-read — because the
- * conversation it was read from still stands; memory is only ever at rest.
+ * conversation it was read from still stands; a word at rest is only ever at rest.
  */
 export function mateRowReading(input: {
   /** Its container is connected right now. */

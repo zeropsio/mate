@@ -6,8 +6,8 @@
  * Mates the reader may observe with the people its view names (`hqMatesAtom`, `hqPeopleAtom`) —
  * in atoms of their own, since a Mate at work moves them twice a second and the structure never.
  *
- * - **First paint:** the structure this browser last read (`menuMemory`), with when, until HQ
- *   answers.
+ * - **First paint:** the structure this browser last read (`menuMemory`), with when, and the
+ *   Mates as HQ last told them, at rest, until HQ answers.
  * - **HQ down:** the last known structure stands, and the view says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
  * - **A stream that breaks, ends or stays silent** past HQ's pings (every 20 s) is opened
@@ -38,13 +38,15 @@ import {
 } from "../state/zerops";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import { accountHqApi, useAccountHq } from "./accountHq";
-import { menuMemory, rememberMenu, withStructure } from "./menuMemory";
+import { menuMemory, rememberedMates, rememberMenu, withMates, withStructure } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A stream nothing came down for this long — three pings — is given up. */
 export const HQ_STREAM_SILENCE_MS = 60_000;
 /** How long a stream that failed waits before it is opened again, by failures in a row. */
 export const HQ_STREAM_RETRY_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 10_000, 30_000];
+/** How often at most the Mates are remembered while they move: a reload's first paint needs no more. */
+const HQ_MATES_REMEMBER_MS = 10_000;
 
 /**
  * Reads the organization's structure from its HQ until `signal` aborts, telling `publish` of every
@@ -59,6 +61,11 @@ export async function driveHqStructure(input: {
   readonly publishMates: (view: HqMatesView) => void;
   readonly publishPeople: (view: HqPeopleView) => void;
   readonly remember: (structure: HqStructure, readAt: number) => void;
+  /**
+   * Told of the Mates and the people to remember: at their snapshot, at most every
+   * {@link HQ_MATES_REMEMBER_MS} while they move — a ping says it late — and as the stream ends.
+   */
+  readonly rememberMates: (mates: HqMates, people: HqPeople | null) => void;
   readonly now: () => number;
   readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   readonly signal: AbortSignal;
@@ -99,6 +106,16 @@ export async function driveHqStructure(input: {
     let changes: HqChanges | null = null;
     let mates: HqMates | null = null;
     let people: HqPeople | null = null;
+    let rememberedAt: number | null = null;
+    let unremembered = false;
+    const rememberMates = (atOnce: boolean) => {
+      if (mates === null || !unremembered) return;
+      const now = input.now();
+      if (!atOnce && rememberedAt !== null && now - rememberedAt < HQ_MATES_REMEMBER_MS) return;
+      input.rememberMates(mates, people);
+      rememberedAt = now;
+      unremembered = false;
+    };
     let broke = false;
     try {
       await input.api.streamStructure(
@@ -106,6 +123,7 @@ export async function driveHqStructure(input: {
           onAlive: () => {
             clearTimeout(silence);
             silence = setTimeout(abort, silenceMs);
+            rememberMates(false);
             // HQ still answers: what it last sent stands as of now, should it stop answering.
             if (streamed === null) return;
             const readAt = input.now();
@@ -122,6 +140,10 @@ export async function driveHqStructure(input: {
             }
             if (event.kind === "snapshot" || people !== peopleBefore) {
               input.publishPeople({ organizationId: input.organizationId, people });
+            }
+            if (event.kind === "snapshot" || mates !== matesBefore || people !== peopleBefore) {
+              unremembered = true;
+              rememberMates(event.kind === "snapshot");
             }
             // A Mate's or the people's message moves nothing of the structure.
             if (event.kind === "mate" || event.kind === "people") return;
@@ -146,6 +168,7 @@ export async function driveHqStructure(input: {
     } catch {
       broke = true;
     } finally {
+      rememberMates(true);
       clearTimeout(silence);
       input.signal.removeEventListener("abort", abort);
     }
@@ -218,6 +241,10 @@ export function ZeropsHqStructure(): null {
             structure: { ungrouped: remembered.ungrouped, apps: remembered.apps },
             readAt: remembered.readAt,
           };
+    // First paint: the Mates and the people as HQ last told this browser, none of them live.
+    const told = rememberedMates(organizationId);
+    registry.set(hqMatesViewAtom, { organizationId, mates: told?.mates ?? null, current: false });
+    registry.set(hqPeopleViewAtom, { organizationId, people: told?.people ?? null });
     // Until the member list names the organization's HQ: what this browser read of it last.
     if (hqProjectId === undefined || hqAddress === undefined) {
       registry.set(hqStructureAtom, {
@@ -246,6 +273,8 @@ export function ZeropsHqStructure(): null {
       },
       remember: (structure, readAt) =>
         rememberMenu((memory) => withStructure(memory, organizationId, structure, readAt)),
+      rememberMates: (mates, people) =>
+        rememberMenu((memory) => withMates(memory, organizationId, mates, people)),
       now: () => Date.now(),
       sleep,
       signal: stop.signal,

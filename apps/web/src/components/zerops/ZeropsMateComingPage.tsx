@@ -93,6 +93,7 @@ import {
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { useToldActivity } from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
@@ -119,7 +120,6 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { ComposerStandIn, type StandInTyped } from "../chat/ComposerStandIn";
 import { PanelLayoutControls } from "../chat/PanelLayoutControls";
 import { EllipsisIcon } from "lucide-react";
-import { rememberedActivity } from "~/zerops/menuMemory";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
@@ -327,8 +327,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // for is known before it connects — its draft is typed into as its own composer would; else
   // what is typed joins the conversation's draft as it opens.
   const liveActivity = useZeropsThreadActivity(threadRef);
-  const remembered = rememberedActivity(projectId);
-  const standInKey = liveActivity?.threadKey ?? remembered?.threadKey ?? null;
+  // Until its conversation is read here: HQ's last word of it, as its menu row reads it.
+  const toldActivity = useToldActivity(projectId);
+  const standInKey = liveActivity?.threadKey ?? toldActivity?.threadKey ?? null;
   // Where the typing went, fixed as it began: the conversation the row named then, or nowhere
   // yet — then it is the view's own until it moves into the conversation's draft.
   const [typing, setTyping] = useState<{
@@ -649,8 +650,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // for its stand-up; one that cannot be opened has nothing to write to.
   const standsInComposer = shown === undefined && page?.kind !== "unreachable";
   // What the Mate is on, as its menu row says it: its conversation's own once its conversations
-  // are read, else what the menu remembers drawing.
-  const standInSubject = liveActivity?.subject ?? remembered?.subject ?? null;
+  // are read, else HQ's last word of it.
+  const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
   return (
     <MateComingFrame
