@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- the tests write a repository behind Core's back with the host's git.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
@@ -223,6 +224,70 @@ describe("a takeover after git moved past HQ's records", () => {
         assert.strictEqual(
           (opened.body as { readonly change: { readonly number: number } }).change.number,
           8,
+        );
+      }),
+    );
+  });
+});
+
+// H1: a repository is made in git before it is recorded, so a creation cut short leaves git ahead
+// of the records — which a takeover records — never records naming what git lacks, which would hold
+// all of HQ. A record such an older build left, naming nothing in its repository, is finished.
+describe("an interrupted repository creation", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("records no repository git could not make, and the next takeover leads", () =>
+      Effect.gen(function* () {
+        const first = yield* startCore(true);
+        yield* untilHealth(first.call, "active");
+        const owner = yield* sessionFor(first.call, "door-owner");
+        const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+        // A file holds web's place in git: no repository can be made there.
+        const place = NodePath.join(first.gitRoot, ada.appId, "web.git");
+        NodeFS.mkdirSync(NodePath.dirname(place), { recursive: true });
+        NodeFS.writeFileSync(place, "");
+        const made = yield* first.call("POST", "/api/mate/repos", {
+          headers: ada.auth,
+          body: { name: "web" },
+        });
+        assert.strictEqual(made.status, 503);
+        assert.deepStrictEqual(
+          yield* rowsWhere(first.url, "SELECT name FROM hq_repo WHERE name = 'web'", () => true),
+          [],
+        );
+        yield* first.stop;
+        NodeFS.rmSync(place);
+        const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+        yield* untilHealth(next.call, "active");
+      }),
+    );
+
+    it.effect("makes a recorded repository git lacks, naming nothing in it, rather than hold", () =>
+      Effect.gen(function* () {
+        const first = yield* startCore(true);
+        yield* untilHealth(first.call, "active");
+        const owner = yield* sessionFor(first.call, "door-owner");
+        const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+        yield* first.stop;
+        // What an older build left of a creation cut short: the record, and no repository.
+        yield* rowsWhere(
+          first.url,
+          `INSERT INTO hq_repo (app_id, name, created_by)
+           VALUES ('${ada.appId}'::uuid, 'web', 'P_MATE') RETURNING name`,
+          () => true,
+        );
+        const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+        yield* untilHealth(next.call, "active");
+        const [row] = yield* rowsWhere(
+          next.url,
+          "SELECT main_head FROM hq_repo WHERE name = 'web'",
+          (rows) => rows[0]?.["main_head"] !== null,
+        );
+        assert.strictEqual(
+          bareAt(NodePath.join(first.gitRoot, ada.appId, "web.git"))([
+            "rev-parse",
+            "refs/heads/main",
+          ]),
+          row?.["main_head"],
         );
       }),
     );

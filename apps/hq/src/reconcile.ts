@@ -5,8 +5,10 @@
  * never prunes). So:
  *
  * - **What the records name, git must have** (`missing`): every recorded `main` head, change head,
- *   squash and landed head, release and its tag, deployed commit, and every repository. Records
- *   newer than git come only of mixed sources, and no Core may serve them: the caller holds the lead.
+ *   squash and landed head, release and its tag, deployed commit, and every repository a record
+ *   names anything in. Records newer than git come only of mixed sources, and no Core may serve
+ *   them: the caller holds the lead. A recorded repository naming nothing, git lacking it, is a
+ *   creation an older build cut short, recording before making (H1): `catchUp` makes it.
  * - **What git holds beyond the records is recorded** (`catchUp`): a repository of a known
  *   application without its row; a change whose squash is on `main`, merged; a change branch
  *   without its record, a change again — a Mate opens a number only while none of its own is open,
@@ -49,6 +51,31 @@ const isReleaseTag = Schema.is(ReleaseTag);
 
 /** Who a reconciled record is by. */
 const BY = "restore";
+
+/** Who writes HQ's own commits. */
+const HQ_AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
+
+/**
+ * A repository made in git, before any record names it: created, and its `main` an empty tree's
+ * commit, as Gitea's first commit gave every change a base. Each step holds when it is done
+ * already, so one cut short is finished by the next.
+ */
+export const madeRepo = (git: HqGit, repo: Repo) =>
+  Effect.gen(function* () {
+    yield* git.create(repo).pipe(
+      Effect.catchIf(
+        (error) => error.reason === "exists",
+        () => Effect.void,
+      ),
+    );
+    // A main that is there already (`head_moved`) stays as it is.
+    yield* git.commitFiles(repo, "refs/heads/main", {
+      files: {},
+      expectedHead: null,
+      message: "Initial commit",
+      author: HQ_AUTHOR,
+    });
+  });
 
 /** The applications an import queued, running, or stopped short of done has made so far. */
 export const importingApps = (
@@ -108,12 +135,18 @@ export const missing = (
     const count = (kind: string, n: number) => {
       if (n > 0) counts[kind] = (counts[kind] ?? 0) + n;
     };
-    count("repository", repos.filter((row) => !present.has(`${row.app_id}/${row.name}`)).length);
     const byRepo = new Map<string, Array<(typeof named)[number]>>();
     for (const row of named) {
       const key = `${row.app_id}/${row.repo}`;
       byRepo.set(key, [...(byRepo.get(key) ?? []), row]);
     }
+    count(
+      "repository",
+      repos.filter((row) => {
+        const key = `${row.app_id}/${row.name}`;
+        return !present.has(key) && byRepo.has(key);
+      }).length,
+    );
     for (const [key, rows] of byRepo) {
       if (withheld.has(key)) continue;
       if (!present.has(key)) {
@@ -174,7 +207,9 @@ export const catchUp = (
         .filter((row) => !aside.has(row.app_id))
         .map((row) => `${row.app_id}/${row.name}`),
     );
-    for (const repo of yield* git.list()) {
+    const listed = yield* git.list();
+    const present = new Set(listed.map((repo) => `${repo.appId}/${repo.id}`));
+    for (const repo of listed) {
       const key = `${repo.appId}/${repo.id}`;
       if (aside.has(repo.appId) || rows.has(key) || withheld.has(key)) continue;
       if (!apps.has(repo.appId)) {
@@ -187,6 +222,17 @@ export const catchUp = (
         INSERT INTO hq_repo (app_id, name, created_by)
         VALUES (${repo.appId}::uuid, ${repo.id}, ${BY}) ON CONFLICT DO NOTHING`);
       rows.add(`${repo.appId}/${repo.id}`);
+    }
+    // A recorded repository git lacks names nothing (`missing` holds the lead otherwise): its
+    // creation was cut short, and is finished.
+    for (const key of rows) {
+      if (present.has(key)) continue;
+      const [appId = "", id = ""] = key.split("/");
+      yield* madeRepo(git, { appId, id });
+      yield* Effect.logInfo("reconciled: a repository's cut-short creation finished", {
+        appId,
+        repo: id,
+      });
     }
     for (const key of rows) {
       if (withheld.has(key)) continue;
