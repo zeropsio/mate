@@ -122,6 +122,11 @@ export interface ContainerStore {
   readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
   /** The targets whose containers are read ahead of every other: the route's (§4.5). */
   readonly setFirst: (keys: ReadonlySet<TargetKey>) => void;
+  /**
+   * The targets a lease waits on — the screen's, an action's, a Connect's, the Mate left last:
+   * each is read as one starts to, and a boot nothing vouches for is polled while one does.
+   */
+  readonly setWanted: (keys: ReadonlySet<TargetKey>) => void;
   /** The reading of a probe of this origin started from now on. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   readonly setVisible: (visible: boolean) => void;
@@ -240,6 +245,9 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
   let published: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
   let persisted = ports.intents.read();
   let first: ReadonlySet<TargetKey> = new Set();
+  let wanted: ReadonlySet<TargetKey> = new Set();
+  /** Someone waits on the target's container: the route, or a lease. */
+  const watched = (key: TargetKey): boolean => first.has(key) || wanted.has(key);
   let online: ReadonlySet<string> = new Set();
   /**
    * HQ's word: `answered`; `awaited` — none yet, or none since its last — for `HQ_WAIT_MS` at
@@ -345,7 +353,7 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
     const byOrigin = new Map<string, ProbeCadence>();
     for (const [key, entry] of entries) {
       if (entry.origin === null) continue;
-      const own = probeCadence(entry.machine);
+      const own = probeCadence(entry.machine, watched(key));
       // The route's Mate is never read on the overdue ladder: the person is looking at it, and the
       // read that finds it back is what sends its exchange again (`bindContainerStore`).
       const cadence: ProbeCadence =
@@ -539,6 +547,17 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
           requestFor(entry, { fresh: false });
         }
       }),
+    setWanted: (keys) =>
+      batch(() => {
+        const before = wanted;
+        wanted = keys;
+        for (const key of keys) {
+          const entry = entries.get(key);
+          if (entry === undefined || before.has(key)) continue;
+          held.delete(key);
+          requestFor(entry, { fresh: false });
+        }
+      }),
     next: (origin) => probes.next(origin),
     setVisible: (visible) => probes.setVisible(visible),
     wake: (visible) =>
@@ -634,6 +653,9 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
     const machines = [...driver.machines()];
     store.setFirst(
       new Set(machines.filter(([, machine]) => machine.guards.routeTarget).map(([key]) => key)),
+    );
+    store.setWanted(
+      new Set(machines.filter(([, machine]) => machine.guards.want).map(([key]) => key)),
     );
     for (const [key, machine] of machines) {
       store.link(key, machine.link.phase === "connected");

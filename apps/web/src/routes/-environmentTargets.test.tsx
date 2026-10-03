@@ -1147,20 +1147,19 @@ describe("the descriptor index", () => {
 
     await rig.answer(named.origin, answering(ENV_B, named.projectId));
     // Two dead origins: their descriptor reads fail on CORS. A boot only failed reads suggest is
-    // read again at the backing-off intervals, not at once.
+    // polled by nothing: the sweep reads each once more, at once.
     await rig.fail(dead.origin);
     await rig.fail(alsoDead.origin);
     look();
+    await rig.advance(1_000);
+    const beforeSweep = rig.probed.length;
     await rig.sweep([dead.key, alsoDead.key]);
-    const sweptAtOnce = rig.probed.length;
+    expect(rig.probed.slice(beforeSweep)).toEqual([dead.origin, alsoDead.origin]);
     look();
-    // The poll reads each again at its first backed-off interval.
-    await rig.advance(10_000);
     await rig.fail(dead.origin);
     look();
     await rig.fail(alsoDead.origin);
 
-    expect(rig.probed.slice(sweptAtOnce)).toEqual([dead.origin, alsoDead.origin]);
     expect(gates).toEqual(["wait", "wait", "wait"]);
     expect(selectRouteGate(routed.read().target)).toEqual({
       kind: "unavailable",

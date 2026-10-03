@@ -1939,11 +1939,11 @@ describe("the post-grant stage's Mate environments", () => {
           { key: named.key, expected: null },
         ]);
 
-        // Read on their polls as ever, neither is read again for the route: a failed read leaves
-        // each unanswered.
+        // Neither is read again for the route: the one coming up only on its poll, the one only a
+        // failed read says is coming up not at all, as nobody waits on it. Each stays unanswered.
         yield* clock.advance(10 * SECOND);
         yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+        expect(rig.probes.filter(({ input }) => input === down.origin)).toHaveLength(1);
         expect(environments.index().unanswered).toEqual(
           expect.arrayContaining([down.key, coming.key]),
         );
@@ -1982,7 +1982,7 @@ describe("the post-grant stage's Mate environments", () => {
   );
 
   it.effect(
-    "a route nothing names waits for each unreachable Mate's next poll, and is answered once that read fails too",
+    "a route nothing names reads at once each unreachable Mate no poll reads, waits for the next poll of one coming up, and is answered once those reads fail too",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -1991,8 +1991,8 @@ describe("the post-grant stage's Mate environments", () => {
           const probed = () => rig.probes.length;
           const unanswered = () => environments.index().unanswered;
           yield* answerProbe(rig, named.origin, answering(ENV_B, named.projectId));
-          // Unreachable, it boots on a guess, read again at the backing-off intervals; a Mate still
-          // coming up answers /healthz only, read every poll interval.
+          // Unreachable, it boots on a guess, which no poll reads; a Mate still coming up answers
+          // /healthz only, read every poll interval.
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
           const beforeSweep = probed();
@@ -2001,14 +2001,14 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
           const sweptAtOnce = probed() - beforeSweep;
           const beforeItsPoll = unanswered();
-          // Its first backed-off poll is 10 s after its failure; a landing lets the poll read it.
+          // The one coming up is read on its poll; the sweep's read of the other fails too.
           yield* clock.advance(10 * SECOND);
           yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
           yield* answerProbe(rig, down.origin, { kind: "unreachable" });
 
           // The Mate coming up read again on the sweep's watch has still not answered.
           expect({ sweptAtOnce, beforeItsPoll, polled: unanswered() }).toEqual({
-            sweptAtOnce: 0,
+            sweptAtOnce: 1,
             beforeItsPoll: [down.key, coming.key],
             polled: [coming.key],
           });

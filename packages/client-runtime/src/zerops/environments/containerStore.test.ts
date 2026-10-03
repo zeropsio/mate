@@ -507,6 +507,46 @@ describe("container store (DESIGN §4.5)", () => {
   });
 });
 
+// A Mate that never answers — deleted from its zcp, or a zcp serving none — while the platform
+// still says ACTIVE: polled for good, it cost a pair of failed requests a minute (t10, 2026-10-03).
+describe("container store: a container that never answers", () => {
+  it("is read once at load, and then only when someone asks, while nobody waits on it", async () => {
+    const setup = rig();
+    const { clock, store, probes } = setup;
+    setup.answer = { kind: "unreachable" };
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(10 * 60_000);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.request(KEY);
+    await clock.advance(10 * 60_000);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+    store.dispose();
+  });
+
+  it("is polled on the backing-off ladder while a lease waits on it, read at once as it starts", async () => {
+    const setup = rig();
+    const { clock, store, probes } = setup;
+    setup.answer = { kind: "unreachable" };
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(60_000);
+    expect(probes).toEqual([ORIGIN]);
+
+    store.setWanted(new Set([KEY]));
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, ORIGIN]);
+    await clock.advance(30_000);
+    expect(probes.length).toBeGreaterThan(2);
+
+    // Let go, it is read again only when asked.
+    store.setWanted(new Set());
+    const read = probes.length;
+    await clock.advance(10 * 60_000);
+    expect(probes.length).toBe(read);
+    store.dispose();
+  });
+});
+
 describe("container store: what reads a container again", () => {
   /** The target held only by its record: the listing does not say its service's status. */
   const remembered = { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: null } };
