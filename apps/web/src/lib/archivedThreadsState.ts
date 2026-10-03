@@ -8,6 +8,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo } from "react";
 
 import { orchestrationEnvironment } from "../state/orchestration";
+import { environmentPresentations } from "../state/presentation";
+import { connectedEnvironmentIds } from "../state/queries";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 
 function archivedSnapshotAtom(environmentId: EnvironmentId) {
@@ -26,12 +28,21 @@ export function refreshArchivedThreadsForEnvironment(environmentId: EnvironmentI
   appAtomRegistry.refresh(archivedSnapshotAtom(environmentId));
 }
 
-export function useArchivedThreadSnapshots(environmentIds: ReadonlyArray<EnvironmentId>): {
+/**
+ * The archived threads of the connected environments of `requestedEnvironmentIds`: a Mate this
+ * browser holds no socket to is not woken to list them.
+ */
+export function useArchivedThreadSnapshots(requestedEnvironmentIds: ReadonlyArray<EnvironmentId>): {
   readonly snapshots: ReadonlyArray<ArchivedSnapshotEntry>;
   readonly error: string | null;
   readonly isLoading: boolean;
   readonly refresh: () => void;
 } {
+  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const environmentIds = useMemo(
+    () => connectedEnvironmentIds(requestedEnvironmentIds, presentations),
+    [presentations, requestedEnvironmentIds],
+  );
   const environmentKey = useMemo(
     () => makeArchivedThreadsEnvironmentKey(environmentIds),
     [environmentIds],
