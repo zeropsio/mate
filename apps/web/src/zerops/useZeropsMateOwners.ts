@@ -7,10 +7,13 @@
  * for "Jan's Mate — only Jan opens it" (D5) or the face in the corner of the
  * Mate's own in the left menu.
  *
- * The member list itself is read once per account, and only where a surface
- * would use it — a hand-over's picker, a login's signer on its card. What comes
- * back is metadata — names, e-mails, roles, pictures — and never a credential;
- * any token of the org may read it (measured 2026-09-15).
+ * Whoever else a surface names — a login's signer, a remark's author — HQ's
+ * people name too, while HQ has word for the organization. The member list
+ * itself is read once per account, and only where a surface would use it — a
+ * hand-over's picker, a name where the organization has no official HQ or its
+ * HQ is down. What comes back is metadata — names, e-mails, roles, pictures —
+ * and never a credential; any token of the org may read it (measured
+ * 2026-09-15).
  *
  * A read that fails leaves every name undefined: rows then say the same thing
  * without a name, and faces go without a badge. Nothing here is worth an error
@@ -35,7 +38,8 @@ import { useCallback, useContext, useEffect, useMemo } from "react";
 
 import { zeropsInitials } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
-import { hqPeopleAtom } from "../state/zerops";
+import { hqPeopleAtom, hqPeopleViewAtom, hqStructureAtom } from "../state/zerops";
+import { keptNoHq, useKeptHqVerdict, type HqVerdictOwner } from "./hqVerdict";
 import { menuMemory, rememberMenu, withMembers } from "./menuMemory";
 import { useKnown, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -121,15 +125,39 @@ export function useZeropsOrganizationMembers(input: {
 }
 
 /**
- * Who signed a login in, by name, for the coding-agents card — read from the
- * Mate's own organization, and only when a login names somebody else.
+ * Somebody of the organization `clientId` by their Zerops user id, by name — a login's signer, a
+ * remark's author: as HQ's people name them while HQ has word for the organization (its official
+ * HQ, not down), the ids being the join; else from the member list, read only while `enabled`.
  */
 export function useZeropsMemberNames(input: {
   readonly clientId: string | undefined;
   readonly enabled: boolean;
 }): (userId: string) => string | undefined {
-  const members = useZeropsOrganizationMembers(input);
-  return useCallback((userId: string) => zeropsMemberNameByUserId(members, userId), [members]);
+  const { clientId, enabled } = input;
+  const data = useContext(ZeropsDataContext);
+  const owner = useMemo<HqVerdictOwner | undefined>(
+    () =>
+      data === null || clientId === undefined
+        ? undefined
+        : { account: data.runtime.scope.account, clientId },
+    [clientId, data],
+  );
+  const kept = useKeptHqVerdict(owner);
+  const structure = useAtomValue(hqStructureAtom);
+  const peopleView = useAtomValue(hqPeopleViewAtom);
+  const down =
+    structure !== null &&
+    structure.organizationId === clientId &&
+    structure.unavailableSince !== null;
+  const hqWord = kept !== undefined && !keptNoHq(kept) && !down;
+  const people =
+    peopleView !== null && peopleView.organizationId === clientId ? peopleView.people : null;
+  const members = useZeropsOrganizationMembers({ clientId, enabled: enabled && !hqWord });
+  return useCallback(
+    (userId: string) =>
+      hqWord ? people?.[userId]?.name : zeropsMemberNameByUserId(members, userId),
+    [hqWord, members, people],
+  );
 }
 
 /**
