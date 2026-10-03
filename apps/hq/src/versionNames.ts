@@ -1,9 +1,10 @@
 /**
  * What HQ names an app version, and which commit a version's name spells (main B16): the label a
  * person reads it by — a stage's branch, a production's release tag — and the commit's short sha,
- * "main 7e2d4c1". The platform keeps the name only in the service's own variables (`appVersionName`),
- * so what a service runs is read back from it. Main's broker wrote older shapes too; every one of
- * them is read, and anything named by hand spells no commit.
+ * "main 7e2d4c1". What a service runs is the version HQ made for a commit, as HQ recorded it
+ * (`deploys.ts`, audit N7); a name is read only where HQ made none — an imported environment's
+ * hold, and a record called live before HQ kept its versions. Main's broker wrote older shapes too;
+ * every one of them is read, and anything named by hand spells no commit.
  *
  * @module versionNames
  */

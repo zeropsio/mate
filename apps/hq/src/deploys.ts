@@ -11,12 +11,12 @@
  * the commit the release lists, named `<tag> <7 hex>`; a service it does not list is reported, and
  * the rest deploy.
  *
- * - **Live is what runs**: a deploy is live only once the service runs the commit, read back from
- *   the version it names (B17); an HTTP service created for HQ to deploy — by the person's
- *   client, which said so at the attach, or by HQ's own recipe delta — gets its subdomain once its
- *   first deploy is live, with the same token (E13, measured 2026-10-02 — HQ's org Read only token
- *   may not), and on no other: a later deploy or a catch-up turns on nothing a person turned off
- *   (audit R1, D6).
+ * - **Live is what runs**: a deploy is live only once the service runs the version HQ made for the
+ *   commit (B17), as HQ recorded it — never what a version's name spells (audit N7); an HTTP
+ *   service created for HQ to deploy — by the person's client, which said so at the attach, or by
+ *   HQ's own recipe delta — gets its subdomain once its first deploy is live, with the same token
+ *   (E13, measured 2026-10-02 — HQ's org Read only token may not), and on no other: a later deploy
+ *   or a catch-up turns on nothing a person turned off (audit R1, D6).
  * - **One queue per environment, the newest wins** (B20): its services one after another, higher
  *   priority first (B19); a commit main moved past while a deploy ran is never deployed.
  * - **A build's own failure is final** (B37): only a person asks for that commit again. HQ's own
@@ -166,9 +166,9 @@ interface Target {
   readonly label: string;
 }
 
-/** Where a deploy ended, if it ended. */
+/** Where a deploy ended, if it ended: live, with the version it runs where HQ learnt it here. */
 type Ended =
-  | { readonly state: "live" }
+  | { readonly state: "live"; readonly appVersionId?: string }
   | { readonly state: "failed"; readonly failure: "job" | "refused"; readonly message: string };
 
 const job = (message: string): Ended => ({ state: "failed", failure: "job", message });
@@ -199,8 +199,13 @@ const decodeSetups = Schema.decodeUnknownExit(
 
 const short = (sha: string) => sha.slice(0, 7);
 
-/** Whether the service runs `sha`: the version it names is the one it runs, and spells it (B17). */
-const runs = (service: ZeropsService, sha: string) =>
+/**
+ * Whether a service runs `sha` as a version's name spells it: the version it names is the one it
+ * runs, and its name spells the commit. Read only where HQ kept no version it made — the import's
+ * hold (T13), and a record called live before HQ kept them — never as what HQ's own deploy runs
+ * (audit N7).
+ */
+const spellsRunning = (service: ZeropsService, sha: string) =>
   service.named !== null &&
   service.activeVersionId === service.named.id &&
   sameCommit(versionSha(service.named.name), sha);
@@ -416,10 +421,11 @@ export const deploysLayer = (
           sql<{
             readonly state: string;
             readonly failure: string | null;
+            readonly app_version_id: string | null;
             readonly process_id: string | null;
             readonly fresh: boolean;
           }>`
-            SELECT state, failure, process_id,
+            SELECT state, failure, app_version_id, process_id,
                    COALESCE(started_at > now() - make_interval(secs => ${patienceSeconds}), false)
                      AS fresh
             FROM hq_deploy
@@ -453,7 +459,7 @@ export const deploysLayer = (
             VALUES (${target.projectId}, ${target.service}, ${target.sha}, ${target.repo},
               ${row.state}, ${row.state === "failed" ? row.failure : null},
               ${row.state === "failed" ? cut(row.message) : null},
-              ${row.state === "deploying" ? row.appVersionId : null},
+              ${row.state === "deploying" || row.state === "live" ? (row.appVersionId ?? null) : null},
               ${row.state === "deploying" ? row.processId : null},
               ${row.state === "deploying" ? sql`now()` : null})
             ON CONFLICT (project_id, service, sha) ${
@@ -475,6 +481,21 @@ export const deploysLayer = (
           // Told only when it wrote.
           (written) => (written.length > 0 ? tick : Effect.void),
         );
+
+      /**
+       * Whether `service` runs `target`'s commit: the version it runs is one HQ made there from that
+       * repository's commit, as HQ recorded it (audit N7) — never what a version's name spells.
+       */
+      const runsTarget = (target: Target, service: ZeropsService) =>
+        service.activeVersionId === null
+          ? Effect.succeed(false)
+          : Effect.map(
+              sql<{ readonly repo: string; readonly sha: string }>`
+                SELECT repo, sha FROM hq_deploy
+                WHERE project_id = ${target.projectId} AND service = ${target.service}
+                  AND app_version_id = ${service.activeVersionId}`,
+              (rows) => rows.some((row) => row.repo === target.repo && row.sha === target.sha),
+            );
 
       const tokenOf = (projectId: string) =>
         Effect.map(
@@ -541,13 +562,15 @@ export const deploysLayer = (
 
       /**
        * A running deploy's job, read until it ends or `patience` passes, then what the service runs:
-       * live, the build's own failure, or — still running — nothing yet (the next pass decides).
+       * live once it runs `versionId`, the version HQ made for it; the build's own failure; or —
+       * still running — nothing yet (the next pass decides).
        */
       const watch = (
         target: Target,
         token: Redacted.Redacted,
         serviceId: string,
         processId: string,
+        versionId: string,
       ): Effect.Effect<Ended | undefined, ZeropsError> => {
         const once: Effect.Effect<Ended | undefined, ZeropsError> = Effect.gen(function* () {
           const process = yield* deploy.process(processId)(token);
@@ -556,13 +579,17 @@ export const deploysLayer = (
           }
           if (process.status !== "FINISHED") return undefined;
           const service = yield* zerops.service(serviceId)(token);
-          if (runs(service, target.sha)) {
+          if (service.activeVersionId === versionId) {
             yield* openIfIntended(target, service, token);
             return { state: "live" };
           }
-          const named = service.named === null ? "" : versionSha(service.named.name);
-          if (sameCommit(named, target.sha)) return undefined;
-          return job(`the deploy finished, but ${target.service} runs "${named}"`);
+          // Its build is the last one started, and not yet what the service runs.
+          if (service.named?.id === versionId) return undefined;
+          const other =
+            service.named !== null && service.named.id === service.activeVersionId
+              ? `"${service.named.name}"`
+              : "another version";
+          return job(`the deploy finished, but ${target.service} runs ${other}`);
         });
         const untilEnded = Effect.gen(function* () {
           for (;;) {
@@ -854,15 +881,39 @@ export const deploysLayer = (
             if (service === undefined) {
               return refused(`the environment's project has no service ${target.service}`);
             }
-            if (runs(service, target.sha)) {
+            // A record called live before HQ kept the version a service runs takes over the
+            // version its name spells as HQ named it, once (audit N7).
+            if (
+              existing?.state === "live" &&
+              existing.app_version_id === null &&
+              service.activeVersionId !== null &&
+              spellsRunning(service, target.sha)
+            ) {
+              yield* leader.write(sql`
+                UPDATE hq_deploy SET app_version_id = ${service.activeVersionId}
+                WHERE project_id = ${target.projectId} AND service = ${target.service}
+                  AND sha = ${target.sha} AND app_version_id IS NULL`);
+            }
+            if (yield* runsTarget(target, service)) {
               // Only HQ's own deploy, landed after its watch let go, opens the subdomain here: a
               // catch-up of a service that runs its commit turns on nothing a person turned off
               // (audit R1, D6).
               if (existing?.state === "deploying") yield* openIfIntended(target, service, token);
               return existing?.state === "live" ? undefined : ({ state: "live" } as const);
             }
-            if (existing?.state === "deploying" && existing.fresh && existing.process_id !== null) {
-              return yield* watch(target, token, service.id, existing.process_id);
+            if (
+              existing?.state === "deploying" &&
+              existing.fresh &&
+              existing.process_id !== null &&
+              existing.app_version_id !== null
+            ) {
+              return yield* watch(
+                target,
+                token,
+                service.id,
+                existing.process_id,
+                existing.app_version_id,
+              );
             }
             const git = yield* gitHost.git;
             const commit = yield* commitOf(git, target);
@@ -888,7 +939,7 @@ export const deploysLayer = (
               appVersionId: version.id,
               processId: started.processId,
             });
-            return yield* watch(target, token, service.id, started.processId);
+            return yield* watch(target, token, service.id, started.processId, version.id);
           }).pipe(
             Effect.catchTags({
               ZeropsRefused: (error) => Effect.succeed(zeropsEnded(target, error)),
@@ -1041,11 +1092,16 @@ export const deploysLayer = (
             for (const target of targets) {
               const service = services.find((candidate) => candidate.name === target.service);
               const now = runningOf(service);
-              const live = service !== undefined && runs(service, target.sha);
+              // Kept as the version HQ knows it runs, so no pass deploys it again (audit N7).
+              const running =
+                service !== undefined && spellsRunning(service, target.sha)
+                  ? service.activeVersionId
+                  : null;
+              const live = running !== null;
               yield* record(
                 target,
-                live
-                  ? { state: "live" }
+                running !== null
+                  ? { state: "live", appVersionId: running }
                   : job(
                       `Held at migration: ${target.service} runs ${now}; Run brings it to ${short(target.sha)}.`,
                     ),

@@ -566,17 +566,25 @@ describe("deploys", () => {
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-          // Someone else's version takes the service as the job ends.
+          // Someone else's version takes the service as the job ends, named as HQ would name a
+          // commit: what it runs is that version, whatever HQ's job said of its own (audit N7).
           world.outcome = (version) => {
             const service = world.services.find((candidate) => candidate.id === version.serviceId);
-            if (service !== undefined) service.named = { id: "V-other", name: "main 1234567" };
+            if (service !== undefined) {
+              service.named = { id: "V-other", name: "main 1234567" };
+              Object.defineProperty(service, "activeVersionId", {
+                get: () => "V-other",
+                set: () => {},
+                configurable: true,
+              });
+            }
             return "ACTIVE";
           };
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("failed"));
           assert.deepStrictEqual(
             (yield* deploys).map(({ failure, message }) => [failure, message]),
-            [["job", 'the deploy finished, but web runs "1234567"']],
+            [["job", 'the deploy finished, but web runs "main 1234567"']],
           );
         }),
       ),
@@ -832,6 +840,54 @@ describe("deploys", () => {
             assert.deepStrictEqual(versions(world), []);
           }),
         ),
+    );
+
+    // Audit N7: what a service runs is HQ's own record of the version it made, never a label: a
+    // version somebody named as HQ names a commit runs whatever they deployed.
+    it.effect("deploys over a version only named as HQ would name the commit", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const { firstKey } = yield* imported(world);
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.sha === sha));
+          running(world, `main ${sha.slice(0, 7)}`);
+          yield* firstKey;
+          yield* until(settled("live"));
+          assert.deepStrictEqual(versions(world), [`main ${sha.slice(0, 7)}`]);
+        }),
+      ),
+    );
+
+    // A record HQ called live before it kept the version a service runs (audit N7) is not deployed
+    // again: the version its name spells as HQ named it is taken over, once.
+    it.effect("takes over the version a record called live before HQ kept versions runs", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const { firstKey } = yield* imported(world);
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.sha === sha));
+          yield* sql`
+            UPDATE hq_deploy SET state = 'live', failure = NULL, message = NULL,
+              app_version_id = NULL`;
+          running(world, `main ${sha.slice(0, 7)}`);
+          yield* firstKey;
+          const kept = yield* sql<{ readonly state: string; readonly app_version_id: string }>`
+            SELECT state, app_version_id FROM hq_deploy WHERE app_version_id IS NOT NULL`.pipe(
+            Effect.filterOrFail(
+              (rows) => rows.length > 0,
+              () => "not yet",
+            ),
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout(Duration.seconds(10)),
+            Effect.orDie,
+          );
+          assert.deepStrictEqual(kept, [{ state: "live", app_version_id: "V-imported" }]);
+          assert.deepStrictEqual(versions(world), []);
+        }),
+      ),
     );
 
     it.effect("says what an imported service runs when its version's name spells no commit", () =>
