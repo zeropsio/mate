@@ -162,7 +162,9 @@ export function standupBuildsDone(
  * The stand-ups of `operations` whose builds ran on after their call returned
  * and that the project, as it stands, says are done (`standupBuildsDone`), by
  * key. One seen done stays done. It reads the project only while such a
- * stand-up runs on and is not done yet.
+ * stand-up runs on and is not done yet. Before the project is read, none is
+ * said to run on: a page opened after its builds finished never draws them
+ * building and then plays their ending.
  */
 export function useStandupsDone(
   operations: ReadonlyArray<ZeropsOperation>,
@@ -178,6 +180,7 @@ export function useStandupsDone(
   const { processes } = useProjectActivity(
     ranOn.length > 0 ? (topology?.project.id ?? null) : null,
   );
+  const unread = ranOn.length > 0 && (topology === undefined || processes === undefined);
   const doneNow = useMemo(() => {
     if (ranOn.length === 0 || topology === undefined || processes === undefined) return NONE;
     const services = standupServices(topology.services);
@@ -189,7 +192,11 @@ export function useStandupsDone(
   // Latched: a later build of the same service is no build of the stand-up's.
   const fresh = [...doneNow].filter((key) => !seenDone.has(key));
   if (fresh.length > 0) setSeenDone(new Set([...seenDone, ...fresh]));
-  return fresh.length === 0 ? seenDone : new Set([...seenDone, ...fresh]);
+  // Not read yet: held back as done, never latched.
+  const held = unread ? ranOn.map((operation) => operation.key) : [];
+  return fresh.length === 0 && held.length === 0
+    ? seenDone
+    : new Set([...seenDone, ...fresh, ...held]);
 }
 
 const NONE: ReadonlySet<string> = new Set();
