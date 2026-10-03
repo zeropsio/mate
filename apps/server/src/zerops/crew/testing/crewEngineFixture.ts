@@ -62,6 +62,7 @@ import { CrewEngine } from "../CrewEngine.ts";
 import { crewServicesLayer, makeCrewEngine, type CrewPolicyInstaller } from "../crewLayer.ts";
 import { DevServerPidFile } from "../CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
+import { CrewShell } from "../CrewShell.ts";
 import { CrewStore } from "../CrewStore.ts";
 import {
   makeServiceRepository,
@@ -342,6 +343,7 @@ export type CrewEngineServices =
   | CrewToolHost
   | ServerCommandReadiness
   | CrewStore
+  | CrewShell
   | ThreadToolPolicyRegistry;
 
 /**
