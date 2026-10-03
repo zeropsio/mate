@@ -16,7 +16,6 @@ import {
   latestFinishedWordsAt,
   messageReceipt,
   namedToolCall,
-  noteLine,
   incidentsStanding,
   operationLineWords,
   standingIncidents,
@@ -1017,17 +1016,6 @@ describe("activityCounts", () => {
     ]);
     expect(activityCounts([], [spawn(["a"])])).toEqual([{ kind: "helpers", count: 1 }]);
     expect(activityCounts([], [])).toEqual([]);
-  });
-});
-
-describe("noteLine", () => {
-  it.each([
-    ["**Deployed.** Checking `appstage` next.", "Deployed. Checking appstage next."],
-    ["## Plan\n\n- first\n- second", "Plan"],
-    ["> [!WARNING]\n> The build is broken", "The build is broken"],
-    ["See [the preview](https://x.dev/a?b=1).", "See the preview."],
-  ])("%j", (text, expected) => {
-    expect(noteLine(text)).toBe(expected);
   });
 });
 

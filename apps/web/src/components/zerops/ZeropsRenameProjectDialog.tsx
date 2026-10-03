@@ -3,7 +3,7 @@
  *
  * The dialog stays until HQ answers (M04, e2e 2026-10-03: closing at once left a slow rename
  * unseen and a refused one unsaid): it closes once HQ takes the name and keeps HQ's refusal for
- * another try. The name is HQ's alone; the project's Zerops projects keep their own.
+ * another try. The name is HQ's alone; the project's environments in Zerops keep their own.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
@@ -26,7 +26,7 @@ export function ZeropsRenameProjectDialog({
 
   return (
     <ZeropsRenameDialog
-      description="The name is kept in HQ. The project's Zerops projects keep their own names."
+      description="Mate shows the new name. Its environments in Zerops keep the names they have."
       error={error}
       initialValue={unnamed ? "" : group.name}
       label="Project name"

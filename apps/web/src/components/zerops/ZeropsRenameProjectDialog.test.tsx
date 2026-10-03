@@ -2,7 +2,7 @@
  * M04 (e2e, 2026-10-03): renaming a project closed its dialog at once, with no pending state and
  * no error: two of five renames had not applied when the watch ended, the door being slow. The
  * dialog stays until HQ answers — closed once HQ takes the name, open with its refusal — and says
- * what a rename does: the name is HQ's, and the Zerops projects keep theirs.
+ * what a rename does: Mate shows the new name, and its environments in Zerops keep theirs.
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { act } from "react";
@@ -63,10 +63,10 @@ function mount() {
 }
 
 describe("ZeropsRenameProjectDialog", () => {
-  it("says the name is HQ's, and the Zerops projects keep theirs", () => {
+  it("says Mate shows the new name, and its environments in Zerops keep theirs", () => {
     mount();
     expect(mock.dialog?.description).toBe(
-      "The name is kept in HQ. The project's Zerops projects keep their own names.",
+      "Mate shows the new name. Its environments in Zerops keep the names they have.",
     );
   });
 
