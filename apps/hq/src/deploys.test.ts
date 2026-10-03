@@ -567,17 +567,25 @@ describe("deploys", () => {
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-          // Someone else's version takes the service as the job ends.
+          // Someone else's version takes the service as the job ends, named as HQ would name a
+          // commit: what it runs is that version, whatever HQ's job said of its own (audit N7).
           world.outcome = (version) => {
             const service = world.services.find((candidate) => candidate.id === version.serviceId);
-            if (service !== undefined) service.named = { id: "V-other", name: "main 1234567" };
+            if (service !== undefined) {
+              service.named = { id: "V-other", name: "main 1234567" };
+              Object.defineProperty(service, "activeVersionId", {
+                get: () => "V-other",
+                set: () => {},
+                configurable: true,
+              });
+            }
             return "ACTIVE";
           };
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("failed"));
           assert.deepStrictEqual(
             (yield* deploys).map(({ failure, message }) => [failure, message]),
-            [["job", 'the deploy finished, but web runs "1234567"']],
+            [["job", 'the deploy finished, but web runs "main 1234567"']],
           );
         }),
       ),
@@ -692,6 +700,35 @@ describe("deploys", () => {
 
     // Main B36/B37: a build's own failure is final, but a person who develops the application asks
     // for it again ("Run again"): that commit is deployed once more, and the record says who asked.
+    // Audit N6: a deploy's record is its service's, by the service's id; the hostname only names it.
+    // A service deleted and made again under the same hostname inherits nothing of the one before.
+    it.effect(
+      "deploys a service made again under its hostname, its predecessor's failure not its own",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, until }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            world.outcome = () => "BUILD_FAILED";
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("failed"));
+            world.outcome = () => "ACTIVE";
+            world.services.splice(
+              world.services.findIndex((service) => service.id === "S-web"),
+              1,
+              fakeService("web", { id: "S-web-again" }),
+            );
+            yield* (yield* Deploys).catchUp;
+            yield* until(settled("live"));
+            assert.lengthOf(versions(world), 2);
+            assert.deepStrictEqual(
+              yield* sql<{ readonly service_id: string }>`SELECT service_id FROM hq_deploy`,
+              [{ service_id: "S-web-again" }],
+            );
+          }),
+        ),
+    );
+
     it.effect("deploys again a commit whose build failed, once a developer asks", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
@@ -825,7 +862,24 @@ describe("deploys", () => {
                 services: [{ service: "web", sha, state: "live", runs: sha.slice(0, 7) }],
               },
             ]);
+            // Kept as the version its service runs, so no pass deploys it again (audit N6, N7).
+            const sql = yield* SqlClient.SqlClient;
+            assert.deepStrictEqual(
+              yield* sql<{ readonly service_id: string; readonly app_version_id: string }>`
+                SELECT service_id, app_version_id FROM hq_deploy`,
+              [{ service_id: "S-web", app_version_id: "V-imported" }],
+            );
             yield* firstKey;
+            // Once the key's pass has read the services.
+            yield* Effect.sync(() => world.calls.includes("services:key-stage")).pipe(
+              Effect.filterOrFail(
+                (read) => read,
+                () => "not yet",
+              ),
+              Effect.retry(Schedule.spaced(Duration.millis(20))),
+              Effect.timeout(Duration.seconds(10)),
+              Effect.orDie,
+            );
             assert.deepStrictEqual(
               (yield* deploys).map((row) => [row.sha, row.state]),
               [[sha, "live"]],
@@ -833,6 +887,54 @@ describe("deploys", () => {
             assert.deepStrictEqual(versions(world), []);
           }),
         ),
+    );
+
+    // Audit N7: what a service runs is HQ's own record of the version it made, never a label: a
+    // version somebody named as HQ names a commit runs whatever they deployed.
+    it.effect("deploys over a version only named as HQ would name the commit", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const { firstKey } = yield* imported(world);
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.sha === sha));
+          running(world, `main ${sha.slice(0, 7)}`);
+          yield* firstKey;
+          yield* until(settled("live"));
+          assert.deepStrictEqual(versions(world), [`main ${sha.slice(0, 7)}`]);
+        }),
+      ),
+    );
+
+    // A record HQ called live before it kept the version a service runs (audit N7) is not deployed
+    // again: the version its name spells as HQ named it is taken over, once.
+    it.effect("takes over the version a record called live before HQ kept versions runs", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const { firstKey } = yield* imported(world);
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.sha === sha));
+          yield* sql`
+            UPDATE hq_deploy SET state = 'live', failure = NULL, message = NULL,
+              app_version_id = NULL`;
+          running(world, `main ${sha.slice(0, 7)}`);
+          yield* firstKey;
+          const kept = yield* sql<{ readonly state: string; readonly app_version_id: string }>`
+            SELECT state, app_version_id FROM hq_deploy WHERE app_version_id IS NOT NULL`.pipe(
+            Effect.filterOrFail(
+              (rows) => rows.length > 0,
+              () => "not yet",
+            ),
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout(Duration.seconds(10)),
+            Effect.orDie,
+          );
+          assert.deepStrictEqual(kept, [{ state: "live", app_version_id: "V-imported" }]);
+          assert.deepStrictEqual(versions(world), []);
+        }),
+      ),
     );
 
     it.effect("says what an imported service runs when its version's name spells no commit", () =>
