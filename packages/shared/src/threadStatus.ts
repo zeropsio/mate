@@ -81,7 +81,8 @@ function hasUnseenWake(thread: Pick<ThreadStatusInput, "lastVisitedAt" | "wokeAt
   return Number.isNaN(lastVisitedAt) || wokeAt > lastVisitedAt;
 }
 
-function toneIdForKind(kind: ThreadStatusKind): ThreadStatusToneId {
+/** The tone a status kind is drawn in: the resolver's own, for a kind read without a thread. */
+export function toneIdForKind(kind: ThreadStatusKind): ThreadStatusToneId {
   switch (kind) {
     case "approval":
     case "woke":

@@ -1,5 +1,4 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
-import * as Option from "effect/Option";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -20,6 +19,10 @@ const state = vi.hoisted(() => ({
   turnError: false,
   muted: [] as string[],
   title: "Fix the login form",
+  /** Whether the Mate is in HQ's view at all. */
+  mates: true,
+  /** Chats beside `thread-1`, as its Mate digests them. */
+  chats: [] as Array<Record<string, unknown>>,
   add: vi.fn(
     (_toast: { title: string; description: string; actionProps: { onClick: () => void } }) =>
       "toast-1",
@@ -32,36 +35,74 @@ const state = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("@effect/atom-react", () => ({
-  useAtomValue: () => ({
-    status: state.live ? "live" : "disconnected",
-    snapshot: Option.some({
-      threads: [
-        {
-          id: "thread-1",
-          title: state.title,
-          archivedAt: state.archivedAt,
-          crew: state.crew,
-          hasPendingUserInput: state.input,
-          hasPendingApprovals: state.approval,
-          session: state.sessionError ? { status: "error" } : null,
-          latestTurn: {
-            turnId: "turn-1",
-            // The shared resolver reads a running turn as working even when its session
-            // errored, so a session error arrives with the turn already stopped.
-            state: state.turnError
-              ? "error"
-              : state.completedAt
-                ? "completed"
-                : state.sessionError
-                  ? "interrupted"
-                  : "running",
-            completedAt: state.completedAt,
-          },
-        },
+/** The one Mate HQ's view holds, `thread-1` its chat as its Mate digests it from `state`. */
+function mateView() {
+  const failed = state.sessionError || state.turnError;
+  const kind = state.approval
+    ? "approval"
+    : state.input
+      ? "input"
+      : failed
+        ? "failed"
+        : state.completedAt
+          ? "idle"
+          : "working";
+  // An archived chat and a crewmate's are never in the Mate's digest of its chats.
+  const listed = state.archivedAt === null && state.crew === undefined;
+  return {
+    presence: { online: true, since: "2026-09-13T08:00:00.000Z", overview: "live" },
+    identity: { environmentId: "env-1", serverVersion: "0.11.90", update: null },
+    main: null,
+    threads: {
+      list: [
+        ...(listed
+          ? [
+              {
+                id: "thread-1",
+                title: state.title,
+                kind,
+                turnId: "turn-1",
+                turnState: state.completedAt ? "completed" : failed ? "error" : "running",
+                completedAt: state.completedAt,
+              },
+            ]
+          : []),
+        ...state.chats,
       ],
-    }),
-  }),
+      omitted: 0,
+    },
+    logins: {},
+    crew:
+      state.crew === undefined
+        ? null
+        : {
+            crewmates: [
+              {
+                handle: state.crew.crewmate,
+                displayName: "Backend",
+                tint: "sky",
+                lead: false,
+                threadId: "thread-1",
+                threadKind: kind,
+                loginKey: "claude-code",
+              },
+            ],
+            attention: [],
+            readyTasks: [],
+            personLands: true,
+          },
+  };
+}
+
+vi.mock("@effect/atom-react", () => ({
+  useAtomValue: () =>
+    state.mates
+      ? {
+          organizationId: "org-1",
+          current: state.live,
+          mates: new Map([["project-1", mateView()]]),
+        }
+      : { organizationId: "org-1", current: state.live, mates: new Map() },
 }));
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => state.navigate,
@@ -75,12 +116,7 @@ vi.mock("../hooks/useSettings", () => ({
   ) => select({ notificationMode: state.mode, inAppNotificationsEnabled: state.inApp }),
   getClientSettings: () => ({ notificationMode: state.mode }),
 }));
-vi.mock("../state/environments", () => ({
-  useEnvironments: () => ({ environments: [{ environmentId: "env-1" }] }),
-}));
-vi.mock("../state/shell", () => ({
-  environmentShell: { stateValueAtom: vi.fn() },
-}));
+vi.mock("../state/zerops", () => ({ hqMatesViewAtom: "hq-mates" }));
 vi.mock("../threadNotifications", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../threadNotifications")>()),
   playNotificationSound: state.sound,
@@ -127,6 +163,8 @@ beforeEach(() => {
     turnError: false,
     muted: [],
     title: "Fix the login form",
+    mates: true,
+    chats: [],
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", new EventTarget());
@@ -148,6 +186,56 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
+  // HQ's overview of a Mate is what rings: no socket to it, no shell of it.
+  it("rings for a thread of a Mate it holds no socket to", async () => {
+    await render();
+    state.approval = true;
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
+    expect(state.add).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: "Approval needed", description: "Fix the login form" }),
+    );
+  });
+
+  it("takes a snapshot as the baseline", async () => {
+    state.approval = true;
+    await render();
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+  });
+
+  it("rings for a chat that appears after the baseline and stops on an approval", async () => {
+    await render();
+    state.chats = [
+      {
+        id: "thread-2",
+        title: "Add a cart",
+        kind: "approval",
+        turnId: "turn-1",
+        turnState: "running",
+        completedAt: null,
+      },
+    ];
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
+    expect(state.add).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: "Approval needed", description: "Add a cart" }),
+    );
+  });
+
+  it("closes a notification when its Mate leaves HQ's view", async () => {
+    state.mode = "notifications";
+    state.focused = false;
+    await render();
+    state.input = true;
+    await render();
+    const [notification] = state.notification.mock.results.map((result) => result.value);
+    expect(notification?.close).not.toHaveBeenCalled();
+    state.mates = false;
+    await render();
+    expect(notification?.close).toHaveBeenCalled();
+  });
+
   it("rings nothing for a Mate its viewer muted: no toast, no sound, no desktop alert", async () => {
     state.mode = "notifications-and-sound";
     state.muted = ["env-1"];
@@ -206,7 +294,8 @@ describe("thread notifications", () => {
     },
   );
 
-  it("never alerts for a crewmate's thread, by toast, sound or system popup", async () => {
+  // A crewmate's chat speaks through the crew line: no toast, sound or system popup.
+  it("never rings for a crewmate's thread", async () => {
     state.mode = "notifications-and-sound";
     state.crew = { crew: "shop", crewmate: "backend", stint: 1 };
     await render();
