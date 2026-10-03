@@ -363,7 +363,12 @@ judges the command inside, and only the exact lane form passes (`codexThreadProf
 `threadProfile.reportsSpend` (Claude, OpenCode); a dollar budget is refused at Start and Keep going
 while any crewmate's agent reports none (Codex, Grok), and so is Apply of such a login while a run
 that is not over keeps one ("Grok doesn't report what it spends, so this crew can't keep a budget";
-the run dialog says the same beside the budget).
+the run dialog says the same beside the budget). Spend is counted when a turn ends, so a budget
+stops the run between turns: on OpenCode, as on Claude, nothing caps a turn's own spend mid-turn
+(Claude's session also carries `maxBudgetUsd`). A crewmate's conversation keeps the crew's mode:
+admission refuses `thread.runtime-mode.set` on it, the ACP agents and OpenCode run it in the asking
+mode whatever the thread names (`profiledRuntimeMode`), and the MCP tab neither reconnects, toggles
+nor reloads its servers (`McpSession.profiled` in `spi/mcpControl.ts`).
 Rotation reads Claude's terminal reasons and an ACP turn's `max_tokens`; compactions are counted
 where a driver reports one (Claude, Codex, OpenCode).
 
