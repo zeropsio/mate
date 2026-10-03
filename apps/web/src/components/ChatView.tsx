@@ -5498,13 +5498,16 @@ export default function ChatView(props: ChatViewProps) {
   );
   // A stand-up's builds that ran on after its call returned leave the band
   // once the store reads them done.
+  // Only while a turn runs: an operation of no turn never reads the project.
   const runningOperations = useMemo(
     () =>
-      displayedTimeline.entries.flatMap((entry) =>
-        entry.kind === "operation" && entry.operation.turnId === activeRunningTurnId
-          ? [entry.operation]
-          : [],
-      ),
+      activeRunningTurnId === null
+        ? []
+        : displayedTimeline.entries.flatMap((entry) =>
+            entry.kind === "operation" && entry.operation.turnId === activeRunningTurnId
+              ? [entry.operation]
+              : [],
+          ),
     [displayedTimeline.entries, activeRunningTurnId],
   );
   const standupsDone = useStandupsDone(runningOperations, activeThreadEnvironmentId);
