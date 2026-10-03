@@ -1029,6 +1029,7 @@ function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
       remembered: rememberedMenuCandidates(ORGANIZATION.id),
       current: true,
       graceOver: false,
+      whole: false,
     });
   }, [candidates, landed]);
   useEffect(() => {

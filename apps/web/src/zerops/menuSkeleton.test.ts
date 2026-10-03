@@ -15,8 +15,10 @@ import {
   MENU_SKELETON_STORAGE_KEY,
   MENU_SKELETON_VISIT_MS,
   menuRowsOf,
+  menuSkeletonSnapshot,
+  onMenuSkeletonChange,
+  menuWiring,
   projectOpenedIn,
-  rememberedMenuProjectOpenedIn,
   rememberedMenuCandidates,
   rememberMenuCandidates,
   skeletonRowOf,
@@ -89,6 +91,7 @@ interface DrawCase {
   readonly memory?: ReadonlyArray<CandidateRow> | null;
   readonly current?: boolean;
   readonly graceOver?: boolean;
+  readonly whole?: boolean;
   readonly rows: ReadonlyArray<CandidateRow>;
   readonly complete?: boolean;
   readonly fromMemory?: boolean;
@@ -391,6 +394,45 @@ describe("the rows the menu draws while it reads", () => {
       rows: [],
       fromMemory: false,
     },
+    // A failed read that will not run again on its own holds the tree for the grace, then gives
+    // way to its notice alone.
+    {
+      name: "its read failed for good, within its grace: the tree",
+      listing: { ...FAILED, retryAtMs: null },
+      rows: REMEMBERED,
+    },
+    {
+      name: "its read failed for good, past its grace: nothing, its notice speaks",
+      listing: { ...FAILED, retryAtMs: null },
+      graceOver: true,
+      rows: [],
+      fromMemory: false,
+    },
+    {
+      name: "its read failed and will retry, past any grace: the tree still",
+      listing: FAILED,
+      graceOver: true,
+      rows: REMEMBERED,
+    },
+    // Whole for this person though not complete — every project it lacks is one they can never
+    // see: remembered, and no project it lacks is filled from memory.
+    {
+      name: "known in part but whole for this person: its rows, remembered",
+      listing: known([NOVA], "partial"),
+      held: heldOf([NOVA], false),
+      whole: true,
+      rows: [NOVA],
+      fromMemory: false,
+      toRemember: [NOVA],
+    },
+    {
+      name: "whole for this person, a container not read yet: that row as remembered, remembered",
+      listing: known([NOVA, unknownKai], "partial"),
+      held: heldOf([NOVA, unknownKai], false),
+      whole: true,
+      rows: [NOVA, R_KAI],
+      toRemember: [NOVA, R_KAI],
+    },
   ];
 
   it.each(DRAWS)(
@@ -401,6 +443,7 @@ describe("the rows the menu draws while it reads", () => {
       memory = REMEMBERED,
       current = true,
       graceOver = false,
+      whole = false,
       rows,
       complete = false,
       fromMemory = true,
@@ -412,6 +455,7 @@ describe("the rows the menu draws while it reads", () => {
         remembered: memory ?? undefined,
         current,
         graceOver,
+        whole,
       });
       expect(drawn.rows).toEqual(rows);
       expect(drawn.complete).toBe(complete);
@@ -429,9 +473,94 @@ describe("the rows the menu draws while it reads", () => {
           remembered: REMEMBERED,
           current: true,
           graceOver: false,
+          whole: false,
         }).rows,
     );
     for (const rows of draws) expect(rows).toBe(REMEMBERED);
+  });
+});
+
+describe("the menu's wiring: which organization the listing is, and its grace", () => {
+  const known = { state: "known" } as const;
+  const failedForGood = { state: "failed", retryAtMs: null } as const;
+  it.each([
+    {
+      name: "the listing the organization's in view, known in part: its own grace",
+      session: ORG,
+      listingOf: ORG,
+      listing: known,
+      complete: false,
+      wiring: { current: true, rememberUnder: ORG, graceKey: `${ORG}:known` },
+    },
+    {
+      name: "known whole: no grace",
+      session: ORG,
+      listingOf: ORG,
+      listing: known,
+      complete: true,
+      wiring: { current: true, rememberUnder: ORG, graceKey: null },
+    },
+    {
+      name: "switched, the listing still the last organization's: not current, nothing kept",
+      session: OTHER_ORG,
+      listingOf: ORG,
+      listing: known,
+      complete: false,
+      wiring: { current: false, rememberUnder: null, graceKey: null },
+    },
+    {
+      name: "switched, its own listing known in part: a grace of its own",
+      session: OTHER_ORG,
+      listingOf: OTHER_ORG,
+      listing: known,
+      complete: false,
+      wiring: { current: true, rememberUnder: OTHER_ORG, graceKey: `${OTHER_ORG}:known` },
+    },
+    {
+      name: "a read failed for good: its grace",
+      session: ORG,
+      listingOf: ORG,
+      listing: failedForGood,
+      complete: false,
+      wiring: { current: true, rememberUnder: ORG, graceKey: `${ORG}:failed` },
+    },
+    {
+      name: "a read failed that will retry: no grace",
+      session: ORG,
+      listingOf: ORG,
+      listing: { state: "failed", retryAtMs: 5_000 },
+      complete: false,
+      wiring: { current: true, rememberUnder: ORG, graceKey: null },
+    },
+    {
+      name: "nobody's organization yet",
+      session: undefined,
+      listingOf: undefined,
+      listing: { state: "reading" },
+      complete: false,
+      wiring: { current: false, rememberUnder: null, graceKey: null },
+    },
+  ])("$name", ({ session, listingOf, listing, complete, wiring }) => {
+    expect(
+      menuWiring({
+        organizationId: session,
+        listingOrganizationId: listingOf,
+        listing: listing as Shown<ReadonlyArray<CandidateRow>>,
+        complete,
+      }),
+    ).toEqual(wiring);
+  });
+
+  // Two known listings in part, one organization after the other: the second starts its own
+  // grace, never the first's carried over.
+  it("gives each organization's partial listing its own grace across a switch", () => {
+    const partial = { state: "known" } as unknown as Shown<ReadonlyArray<CandidateRow>>;
+    const keys = [
+      { organizationId: ORG, listingOrganizationId: ORG },
+      { organizationId: OTHER_ORG, listingOrganizationId: ORG },
+      { organizationId: OTHER_ORG, listingOrganizationId: OTHER_ORG },
+    ].map((ids) => menuWiring({ ...ids, listing: partial, complete: false }).graceKey);
+    expect(keys).toEqual([`${ORG}:known`, null, `${OTHER_ORG}:known`]);
   });
 });
 
@@ -483,10 +612,9 @@ describe("the tree in this browser", () => {
   it("knows which remembered Mate an environment opened", () => {
     openAccountLifetime("user-ida");
     rememberMenuCandidates(ORG, [NOVA, KAI]);
-    expect(rememberedMenuProjectOpenedIn(ORG, EnvironmentId.make("env-nova"))).toBe("nova");
-    expect(rememberedMenuProjectOpenedIn(OTHER_ORG, EnvironmentId.make("env-nova"))).toBe(
-      undefined,
-    );
+    const skeleton = menuSkeletonSnapshot();
+    expect(projectOpenedIn(skeleton, ORG, EnvironmentId.make("env-nova"))).toBe("nova");
+    expect(projectOpenedIn(skeleton, OTHER_ORG, EnvironmentId.make("env-nova"))).toBeUndefined();
   });
 
   // Two tabs of one account, each in its own organization: neither writes the other's tree away.
@@ -530,6 +658,35 @@ describe("the tree in this browser", () => {
     stored.set(keyOf("user-ida"), "{not a tree");
     openAccountLifetime("user-ida");
     expect(rememberedMenuCandidates(ORG)).toBeUndefined();
+  });
+
+  it("writes every organization drawn within one settling moment", () => {
+    openAccountLifetime("user-ida");
+    rememberMenuCandidates(ORG, [NOVA]);
+    vi.advanceTimersByTime(200);
+    rememberMenuCandidates(OTHER_ORG, [KAI]);
+    vi.advanceTimersByTime(400);
+    const both = decodeMenuSkeleton(stored.get(keyOf("user-ida")) ?? null);
+    expect(Object.keys(both.organizations).toSorted()).toEqual([OTHER_ORG, ORG].toSorted());
+  });
+
+  // What reads the memory hears when it changes: the open row's highlight follows a write.
+  it("tells its readers of each change, with a new snapshot, and of none without one", () => {
+    openAccountLifetime("user-ida");
+    let heard = 0;
+    const stop = onMenuSkeletonChange(() => {
+      heard += 1;
+    });
+    const before = menuSkeletonSnapshot();
+    rememberMenuCandidates(ORG, [NOVA]);
+    const after = menuSkeletonSnapshot();
+    expect(after).not.toBe(before);
+    expect(heard).toBe(1);
+    expect(projectOpenedIn(after, ORG, EnvironmentId.make("env-nova"))).toBe("nova");
+    rememberMenuCandidates(ORG, [NOVA]);
+    expect(menuSkeletonSnapshot()).toBe(after);
+    expect(heard).toBe(1);
+    stop();
   });
 
   it("is gone when the account closes", () => {
