@@ -15,15 +15,16 @@ const hq = vi.hoisted(() => {
   const reads: Array<{
     readonly appId: string;
     readonly tier: RecipeTier;
+    readonly signal: AbortSignal;
     readonly resolve: (tier: RecipeTierResponse) => void;
     readonly reject: (cause: unknown) => void;
   }> = [];
   const official = {
     address: "https://hq.example.test",
     api: {
-      recipeTier: (appId: string, tier: RecipeTier) =>
+      recipeTier: (appId: string, tier: RecipeTier, signal: AbortSignal) =>
         new Promise<RecipeTierResponse>((resolve, reject) => {
-          reads.push({ appId, tier, resolve, reject });
+          reads.push({ appId, tier, signal, resolve, reject });
         }),
     },
   };
@@ -98,6 +99,36 @@ describe("useZeropsAppRecipes", () => {
       productionRepositories: new Map(),
     });
   });
+
+  it.each(["in flight", "settled"])(
+    "adopts the first known recipe revision while bootstrap is %s",
+    async (phase) => {
+      const tree = mount();
+      const signals = hq.reads.map(({ signal }) => signal);
+      if (phase === "settled") {
+        await answer("stage", STAGE);
+        await answer("production", null);
+      }
+      const pending = hq.reads.length;
+      act(() => {
+        tree.update(<Probe revision={"b".repeat(40)} />);
+      });
+      expect(hq.reads).toHaveLength(pending);
+      expect(signals.every((signal) => !signal.aborted)).toBe(true);
+      if (phase === "in flight") {
+        await answer("stage", STAGE);
+        await answer("production", null);
+      }
+      expect(seen()?.get("app-1")?.tiers).toEqual(["stage"]);
+      act(() => {
+        tree.update(<Probe revision={"c".repeat(40)} />);
+      });
+      expect(hq.reads).toHaveLength(2);
+      await answer("stage", STAGE);
+      await answer("production", STAGE);
+      expect(seen()?.get("app-1")?.tiers).toEqual(["stage", "production"]);
+    },
+  );
 
   it("reads again once a change of the recipe lands, and keeps what it read meanwhile", async () => {
     const tree = mount("b".repeat(40));
