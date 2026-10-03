@@ -90,8 +90,9 @@ through it would make the two directories import each other.
   person, in the crewmate's chat, which is the person's surface — unlike Claude, whose gate denies
   `AskUserQuestion` and sends the crewmate to `crew_report`.
 - **The capability.** An adapter that reads the policy declares `capabilities.threadProfile`
-  (`{ tools }`, `ThreadProfileSupport` in `threadToolPolicy.ts`): Claude `{ tools: true }`, Codex
-  `{ tools: false }`, Cursor, Grok, Antigravity and OpenCode `{ tools: true }`. The instance registry
+  (`{ tools, reportsSpend }`, `ThreadProfileSupport` in `threadToolPolicy.ts`): Claude and OpenCode
+  report their spend, Codex and Grok do not; Codex hosts no tools. Cursor and Antigravity declare
+  none until their gate is seen live (zcp pre-approves the Zerops tools in Cursor's project config). The instance registry
   stamps it on every snapshot (`ServerProvider.threadProfile`); owned code reads it through
   `ProviderInstances.agentOf`. A thread with a profile is never put on an adapter that declares none.
 - **The ACP and OpenCode seams.** `threadToolsMcp.ts` serves a profile's tools on a loopback port for

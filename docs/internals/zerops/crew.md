@@ -350,8 +350,8 @@ the copy or the tasks.
 
 **Logins and agents:** logins beyond the two defaults each have their own home under
 `~/.mate/logins/<id>` and their own signer (`ZeropsLogins.ts`). A crewmate runs on any login whose
-adapter declares `capabilities.threadProfile` (`ProviderAdapter.ts`; Claude, Codex, Cursor, Grok,
-Antigravity, OpenCode): Apply, a crewmate's own apply and turn admission refuse any other login,
+adapter declares `capabilities.threadProfile` (`ProviderAdapter.ts`; Claude, Codex, Grok, OpenCode — Cursor and Antigravity once their gate is
+seen live): Apply, a crewmate's own apply and turn admission refuse any other login,
 naming its agent, and a lead needs `threadProfile.tools` (`crewApply.ts` `requireCrewLogin`,
 `ZeropsTurnAdmission.ts`). Crew tools and memory follow `tools`; _Runs on_ names a login by its Mate
 label, else its provider's display name, and the editors offer every enabled, installed provider
@@ -359,7 +359,11 @@ whose snapshot carries `threadProfile` (`CrewEditors.logic.ts`). A Codex crewmat
 zcp tools, no crew tools and no memory, so its task completes by the person's _Add to Fen's code_.
 Codex wraps a command as `<shell> -lc "<command>"`; for zsh, bash or sh with `-lc` or `-c` the gate
 judges the command inside, and only the exact lane form passes (`codexThreadProfile.ts`, `spi.md`
-§1a). Run limits: spend counts Claude's and OpenCode's `totalCostUsd`; an ACP turn reports none.
+§1a). Run limits: spend counts the `totalCostUsd` of the agents whose adapter declares
+`threadProfile.reportsSpend` (Claude, OpenCode); a dollar budget is refused at Start and Keep going
+while any crewmate's agent reports none (Codex, Grok), and so is Apply of such a login while a run
+that is not over keeps one ("Grok doesn't report what it spends, so this crew can't keep a budget";
+the run dialog says the same beside the budget).
 Rotation reads Claude's terminal reasons and an ACP turn's `max_tokens`; compactions are counted
 where a driver reports one (Claude, Codex, OpenCode).
 
