@@ -262,6 +262,8 @@ function sameReplaces(left: ReleaseReplaces, right: ReleaseReplaces): boolean {
 export function releaseStageMarks(
   facts: Pick<ReleaseFacts, "contents">,
   stage: StageStandings | undefined,
+  /** Each repository's `main` head (`ZeropsProjectFlow.repos`): a stage on it runs every change. */
+  mainHeads?: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, StageMark> {
-  return stageMarks({ contents: facts.contents, stage });
+  return stageMarks({ contents: facts.contents, stage, mainHeads });
 }
