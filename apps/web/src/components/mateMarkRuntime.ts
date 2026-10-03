@@ -3,14 +3,21 @@
  *
  * One frame loop and one pointer listener serve every mark on the page, so a
  * sidebar mark and a hero mark cost one `requestAnimationFrame` between them,
- * not two. The loop starts with the first live mark and stops with the last —
- * a page with only still marks never schedules a frame at all.
+ * not two.
+ *
+ * A face at rest costs nothing: the loop runs frames only while some mark is
+ * moving — its eyes easing toward the pointer, the band opening or closing, a
+ * blink, a smile — and stops once every mark has landed on its pose. What
+ * starts motion again re-arms it: the pointer, a hover, a mark mounting or
+ * coming into view, and one timer for what is scheduled (the next blink or
+ * glance about, falling asleep). The idle bob and a waking Mate's swell are
+ * the stylesheet's (`MateMark.css`), never a frame of script.
  *
  * Nothing here touches React state: a mark updates by writing attributes on
- * nodes it already holds, so a 60 Hz animation never re-renders a component.
+ * nodes it already holds, and only those whose value changed.
  *
- * Off-screen marks fall back to 4 Hz rather than stopping, so one scrolling
- * back into view is already in the right pose instead of snapping into it.
+ * Off-screen marks do no work; one coming back into view takes its pose at
+ * once instead of easing into it where the person can see.
  */
 import {
   MATE_MARK,
@@ -44,15 +51,25 @@ const { cos30: COS30, sin30: SIN30, travel: TRAVEL } = MATE_MARK_LIVE.band;
 const PARALLAX = 2 / (88 / 50.48);
 const SLEEP_AFTER_MS = 45_000;
 const DEG = Math.PI / 180;
+/** The idle bob's angular speed, in radians a second — the stylesheet's period is 2π / this. */
+const BOB_SPEED = 1.1;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const smoothstep = (t: number) => {
   const c = clamp(t, 0, 1);
   return c * c * (3 - 2 * c);
 };
-/** Frame-rate independent approach, so the motion is the same at 60 and 120 Hz. */
-const lerpTo = (v: number, target: number, rate: number, dt: number) =>
-  v + (target - v) * (1 - Math.exp(-rate * dt));
+/** How near a value must come to its target to have landed: below what any write can show. */
+const LANDED = 1e-3;
+/**
+ * Frame-rate independent approach, so the motion is the same at 60 and 120 Hz — landing on the
+ * target once within `LANDED` of it, so a mark at rest holds still values the loop can see are
+ * settled.
+ */
+const lerpTo = (v: number, target: number, rate: number, dt: number) => {
+  const next = v + (target - v) * (1 - Math.exp(-rate * dt));
+  return Math.abs(next - target) < LANDED ? target : next;
+};
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
 interface MarkRuntime {
@@ -60,8 +77,12 @@ interface MarkRuntime {
   readonly parts: LiveMarkParts;
   readonly forced: MateMarkState | undefined;
   readonly seed: number;
+  /** The last value written per node and attribute, so a frame writes only what changed. */
+  readonly written: Map<object, Map<string, string>>;
   hovered: boolean;
   visible: boolean;
+  /** Back in view after a while out of it: the next frame takes the pose at once. */
+  returning: boolean;
   rect: DOMRect | null;
   rectAt: number;
   band: number;
@@ -80,8 +101,16 @@ interface MarkRuntime {
   smileUntil: number;
   effective: MateMarkState;
   effectiveAt: number;
-  offscreenAt: number;
 }
+
+/** What one frame left of a mark: whether it still moves, and when it next will if not. */
+interface MarkStep {
+  readonly moving: boolean;
+  /** The next scheduled change (a blink, a glance, a smile ending), or `Infinity`. */
+  readonly due: number;
+}
+
+const AT_REST: MarkStep = { moving: false, due: Number.POSITIVE_INFINITY };
 
 /**
  * What the loop needs from the page: a clock, frames, timers and the viewport. The page's own is
@@ -119,21 +148,64 @@ export interface MarkLoop {
 
 export function createMarkLoop(host: MarkLoopHost): MarkLoop {
   const marks = new Set<MarkRuntime>();
-  const pointer = { x: 0, y: 0, on: false, activeAt: host.now(), asleep: false };
+  const pointer: Pointer = { x: 0, y: 0, on: false, activeAt: host.now(), asleep: false };
   let frame: number | undefined;
-  let lastFrameAt = 0;
+  let timer: unknown;
+  /** When the last frame ran; `undefined` when the loop starts again after resting. */
+  let lastFrameAt: number | undefined;
+
+  const clearTimer = () => {
+    if (timer === undefined) return;
+    host.clearTimer(timer);
+    timer = undefined;
+  };
+
+  /** Something may move: run frames until everything has landed again. */
+  const arm = () => {
+    if (frame !== undefined || marks.size === 0) return;
+    clearTimer();
+    lastFrameAt = undefined;
+    frame = host.requestFrame(runFrame);
+  };
 
   const wake = () => {
     pointer.activeAt = host.now();
+    arm();
   };
 
   const runFrame = (now: number) => {
-    const dt = clamp((now - lastFrameAt) / 1000 || 0.016, 0.001, 0.05);
+    frame = undefined;
+    const dt =
+      lastFrameAt === undefined ? 0.016 : clamp((now - lastFrameAt) / 1000 || 0.016, 0.001, 0.05);
     lastFrameAt = now;
     const reduced = host.reducedMotion();
     pointer.asleep = !reduced && now - pointer.activeAt > SLEEP_AFTER_MS;
-    for (const mark of marks) tick(mark, pointer, host, now, dt, reduced);
-    frame = marks.size > 0 ? host.requestFrame(runFrame) : undefined;
+    let moving = false;
+    let due = Number.POSITIVE_INFINITY;
+    let sleeps = false;
+    for (const mark of marks) {
+      if (!mark.visible) continue;
+      const step = tick(mark, pointer, host, now, dt, reduced);
+      moving ||= step.moving;
+      due = Math.min(due, step.due);
+      sleeps ||= mark.forced === undefined;
+    }
+    if (moving) {
+      frame = host.requestFrame(runFrame);
+      return;
+    }
+    // At rest: wait for the pointer, or for the next thing scheduled — falling asleep included.
+    if (sleeps && !reduced && !pointer.asleep) {
+      due = Math.min(due, pointer.activeAt + SLEEP_AFTER_MS + 1);
+    }
+    if (due === Number.POSITIVE_INFINITY) return;
+    timer = host.setTimer(
+      () => {
+        timer = undefined;
+        arm();
+      },
+      Math.max(0, due - host.now()),
+    );
   };
 
   return {
@@ -145,8 +217,10 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
         parts,
         forced,
         seed: host.random() * Math.PI * 2,
+        written: new Map(),
         hovered: false,
         visible: true,
+        returning: false,
         rect: null,
         rectAt: -1,
         // Reduced motion opens the mark at once and never animates it shut; so does a mark that
@@ -167,7 +241,6 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
         smileUntil: 0,
         effective: "idle",
         effectiveAt: now,
-        offscreenAt: now,
       };
 
       const enter = () => {
@@ -180,24 +253,22 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
           mark.smileUntil = host.now() + 700;
         }
         mark.hovered = false;
+        arm();
       };
       root.addEventListener("pointerenter", enter);
       root.addEventListener("pointerleave", leave);
-      if (marks.size === 0) wake();
+      if (marks.size === 0) pointer.activeAt = now;
       marks.add(mark);
-      if (frame === undefined) {
-        lastFrameAt = now;
-        frame = host.requestFrame(runFrame);
-      }
+      arm();
 
       return () => {
         root.removeEventListener("pointerenter", enter);
         root.removeEventListener("pointerleave", leave);
         marks.delete(mark);
-        if (marks.size === 0) {
-          if (frame !== undefined) host.cancelFrame(frame);
-          frame = undefined;
-        }
+        if (marks.size > 0) return;
+        if (frame !== undefined) host.cancelFrame(frame);
+        frame = undefined;
+        clearTimer();
       };
     },
     pointerMove(x, y) {
@@ -208,6 +279,7 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     },
     pointerOut() {
       pointer.on = false;
+      arm();
     },
     wake,
     invalidateRects() {
@@ -215,7 +287,12 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
       wake();
     },
     setVisible(root, visible) {
-      for (const mark of marks) if (mark.root === root) mark.visible = visible;
+      for (const mark of marks) {
+        if (mark.root !== root || mark.visible === visible) continue;
+        mark.visible = visible;
+        mark.returning = visible;
+      }
+      if (visible) arm();
     },
     size: () => marks.size,
   };
@@ -229,19 +306,16 @@ interface Pointer {
   asleep: boolean;
 }
 
-/** A waking Mate's breath: one swell and settle every three seconds, a fifth of the band out. */
-const BREATH_SECONDS = 3;
-const BREATH_DEPTH = 0.2;
+/** How far a waking Mate's band swells out, once every three seconds (`mate-mark-swell`). */
+export const MARK_BREATH_DEPTH = 0.2;
 
 /**
- * Where the band sits for a pose, at a moment in seconds: in when asleep, out when awake — and
- * waking (`matePose`), in with a slow low swell, still under reduced motion.
+ * Where the band sits for a pose: in when asleep or waking, out otherwise. A waking Mate's slow
+ * swell (`matePose`) rides on top of it in the stylesheet (`mate-mark-swell`), so the loop has
+ * nothing to move while it waits.
  */
-export function markBandTarget(state: MateMarkState, seconds: number, reduced: boolean): number {
-  if (state === "sleep") return 0;
-  if (state !== "waking") return 1;
-  if (reduced) return 0;
-  return (BREATH_DEPTH * (1 - Math.cos((2 * Math.PI * seconds) / BREATH_SECONDS))) / 2;
+export function markBandTarget(state: MateMarkState): number {
+  return state === "sleep" || state === "waking" ? 0 : 1;
 }
 
 function effectiveState(mark: MarkRuntime, pointer: Pointer, now: number): MateMarkState {
@@ -252,6 +326,32 @@ function effectiveState(mark: MarkRuntime, pointer: Pointer, now: number): MateM
   return "idle";
 }
 
+/** Writes an attribute only when it differs from the last value this mark wrote there. */
+function put(mark: MarkRuntime, node: Element | null | undefined, name: string, value: string) {
+  if (!node) return;
+  let written = mark.written.get(node);
+  if (!written) {
+    written = new Map();
+    mark.written.set(node, written);
+  }
+  if (written.get(name) === value) return;
+  written.set(name, value);
+  node.setAttribute(name, value);
+}
+
+/** The same for a property of the node's inline style. */
+function putStyle(mark: MarkRuntime, node: SVGSVGElement, name: string, value: string) {
+  let written = mark.written.get(node.style);
+  if (!written) {
+    written = new Map();
+    mark.written.set(node.style, written);
+  }
+  if (written.get(name) === value) return;
+  written.set(name, value);
+  if (name === "transform") node.style.transform = value;
+  else node.style.setProperty(name, value);
+}
+
 function tick(
   mark: MarkRuntime,
   pointer: Pointer,
@@ -259,19 +359,20 @@ function tick(
   now: number,
   delta: number,
   reduced: boolean,
-) {
-  let dt = delta;
-  if (!mark.visible) {
-    if (now - mark.offscreenAt < 250) return;
-    dt = Math.min(0.3, (now - mark.offscreenAt) / 1000);
-    mark.offscreenAt = now;
+): MarkStep {
+  // Back in view: take the pose at once rather than easing into it in sight, and let a blink
+  // that fell due while it was away wait its turn.
+  const dt = mark.returning ? 1 : delta;
+  if (mark.returning) {
+    mark.returning = false;
+    if (mark.nextBlink <= now) mark.nextBlink = now + 2500 + host.random() * 4000;
   }
   if (mark.rectAt < 0 || now - mark.rectAt > 400) {
     mark.rect = mark.root.getBoundingClientRect();
     mark.rectAt = now;
   }
   const rect = mark.rect;
-  if (!rect || !rect.width) return;
+  if (!rect || !rect.width) return AT_REST;
 
   const state = effectiveState(mark, pointer, now);
   if (state !== mark.effective) {
@@ -279,23 +380,26 @@ function tick(
     mark.effectiveAt = now;
   }
   const since = (now - mark.effectiveAt) / 1000;
+  let moving = false;
+  let due = Number.POSITIVE_INFINITY;
 
   // The band: in when asleep or waking, out otherwise. The eyes reveal as it clears.
-  const target = markBandTarget(state, now / 1000, reduced);
+  const target = markBandTarget(state);
   mark.band = lerpTo(mark.band, target, target < 0.5 ? 7 : 9, dt);
+  moving ||= mark.band !== target;
   const open = mark.band;
   const reveal = smoothstep((open - 0.3) / 0.6);
   const awake = open > 0.6;
 
   if (mark.parts.band) {
     if (open < 0.998) {
-      mark.parts.band.setAttribute("visibility", "visible");
+      put(mark, mark.parts.band, "visibility", "visible");
       const dx = round(open * TRAVEL * COS30);
       const dy = round(open * TRAVEL * SIN30);
-      mark.parts.bandLeft?.setAttribute("transform", `translate(${-dx},${dy})`);
-      mark.parts.bandRight?.setAttribute("transform", `translate(${dx},${-dy})`);
+      put(mark, mark.parts.bandLeft, "transform", `translate(${-dx},${dy})`);
+      put(mark, mark.parts.bandRight, "transform", `translate(${dx},${-dy})`);
     } else {
-      mark.parts.band.setAttribute("visibility", "hidden");
+      put(mark, mark.parts.band, "visibility", "hidden");
     }
   }
 
@@ -313,18 +417,25 @@ function tick(
   } else if (!awake || pointer.asleep || reduced) {
     mark.targetX = 0;
     mark.targetY = 0;
-  } else if (now >= mark.wanderAt) {
-    mark.wanderAt = now + 2400 + host.random() * 2600;
-    const centre = host.random() < 0.35;
-    mark.targetX = centre ? 0 : host.random() * 1.4 - 0.7;
-    mark.targetY = centre ? 0 : host.random() * 1 - 0.5;
+  } else {
+    if (now >= mark.wanderAt) {
+      mark.wanderAt = now + 2400 + host.random() * 2600;
+      const centre = host.random() < 0.35;
+      mark.targetX = centre ? 0 : host.random() * 1.4 - 0.7;
+      mark.targetY = centre ? 0 : host.random() * 1 - 0.5;
+    }
+    due = Math.min(due, mark.wanderAt);
   }
   mark.gazeX = lerpTo(mark.gazeX, mark.targetX, 11, dt);
   mark.gazeY = lerpTo(mark.gazeY, mark.targetY, 11, dt);
+  moving ||= mark.gazeX !== mark.targetX || mark.gazeY !== mark.targetY;
 
   const tilt = following ? MATE_MARK_LIVE.tilt : 0;
-  mark.rotX = lerpTo(mark.rotX, -mark.gazeY * tilt, 5.5, dt);
-  mark.rotY = lerpTo(mark.rotY, mark.gazeX * tilt, 5.5, dt);
+  const rotXTarget = -mark.gazeY * tilt;
+  const rotYTarget = mark.gazeX * tilt;
+  mark.rotX = lerpTo(mark.rotX, rotXTarget, 5.5, dt);
+  mark.rotY = lerpTo(mark.rotY, rotYTarget, 5.5, dt);
+  moving ||= mark.rotX !== rotXTarget || mark.rotY !== rotYTarget;
 
   // Lids, with a blink folded in while idle.
   let [targetOpen, targetWide, targetLift] = MATE_MARK_LIDS[state] ?? MATE_MARK_LIDS.idle;
@@ -337,10 +448,13 @@ function tick(
         mark.nextBlink = now + 2500 + host.random() * 4000;
       }
     }
+    if (mark.blinkAt >= 0) moving = true;
+    else due = Math.min(due, mark.nextBlink);
   }
   mark.openness = lerpTo(mark.openness, targetOpen, 26, dt);
   mark.width = lerpTo(mark.width, targetWide, 14, dt);
   mark.lift = lerpTo(mark.lift, targetLift, 14, dt);
+  moving ||= mark.openness !== targetOpen || mark.width !== targetWide || mark.lift !== targetLift;
 
   const sinY = Math.sin(mark.rotY * DEG);
   const sinX = Math.sin(mark.rotX * DEG);
@@ -348,16 +462,18 @@ function tick(
   const offsetY = 0.22 * U * mark.gazeY - PARALLAX * sinX;
   const happy = state === "done";
 
-  mark.parts.eyes?.setAttribute("visibility", reveal > 0.01 ? "visible" : "hidden");
+  put(mark, mark.parts.eyes, "visibility", reveal > 0.01 ? "visible" : "hidden");
   const eyeSlots = [
     [mark.parts.eyeLeft, mark.parts.happyLeft, MATE_MARK_LIVE.eyeCentres[0] + offsetX],
     [mark.parts.eyeRight, mark.parts.happyRight, MATE_MARK_LIVE.eyeCentres[1] + offsetX],
   ] as const;
   for (const [rect_, arc, cx] of eyeSlots) {
-    rect_?.setAttribute("visibility", happy ? "hidden" : "visible");
-    arc?.setAttribute("visibility", happy ? "visible" : "hidden");
+    put(mark, rect_, "visibility", happy ? "hidden" : "visible");
+    put(mark, arc, "visibility", happy ? "visible" : "hidden");
     if (happy) {
-      arc?.setAttribute(
+      put(
+        mark,
+        arc,
         "transform",
         `translate(${round(cx)},${round(MATE_MARK_LIVE.eyeCentreY + offsetY + 0.05 * U)})`,
       );
@@ -366,11 +482,11 @@ function tick(
     const w = EYE_W * mark.width + (1 - Math.min(1, mark.openness)) * 0.15 * U;
     const h = Math.max(0.22 * U, EYE_H * mark.openness) * reveal;
     const cy = MATE_MARK_LIVE.eyeCentreY + offsetY + mark.lift * U;
-    rect_?.setAttribute("x", String(round(cx - w / 2)));
-    rect_?.setAttribute("y", String(round(cy - h / 2)));
-    rect_?.setAttribute("width", String(round(w)));
-    rect_?.setAttribute("height", String(round(h)));
-    rect_?.setAttribute("rx", String(round(Math.min(w, h) / 2)));
+    put(mark, rect_, "x", String(round(cx - w / 2)));
+    put(mark, rect_, "y", String(round(cy - h / 2)));
+    put(mark, rect_, "width", String(round(w)));
+    put(mark, rect_, "height", String(round(h)));
+    put(mark, rect_, "rx", String(round(Math.min(w, h) / 2)));
   }
 
   const showO = (state === "needs" || state === "surprise") && awake;
@@ -382,15 +498,18 @@ function tick(
           : since < 0.26
             ? 1.1 - 0.1 * ((since - 0.12) / 0.14)
             : 1;
-      mark.parts.mouth.setAttribute("visibility", "visible");
-      mark.parts.mouth.setAttribute(
+      moving ||= since < 0.26;
+      put(mark, mark.parts.mouth, "visibility", "visible");
+      put(
+        mark,
+        mark.parts.mouth,
         "transform",
         `translate(${round(21.59 + offsetX * 0.6)},${round(MATE_MARK_LIVE.mouth.y + offsetY * 0.6)}) scale(${round(pop)})`,
       );
-      mark.parts.mouthO?.setAttribute("visibility", showO ? "inherit" : "hidden");
-      mark.parts.mouthSmile?.setAttribute("visibility", happy ? "inherit" : "hidden");
+      put(mark, mark.parts.mouthO, "visibility", showO ? "inherit" : "hidden");
+      put(mark, mark.parts.mouthSmile, "visibility", happy ? "inherit" : "hidden");
     } else {
-      mark.parts.mouth.setAttribute("visibility", "hidden");
+      put(mark, mark.parts.mouth, "visibility", "hidden");
     }
   }
 
@@ -402,27 +521,45 @@ function tick(
     const stepX = (-MATE_MARK_LIVE.depth / count) * sinY;
     const stepY = (MATE_MARK_LIVE.depth / count) * sinX;
     for (let i = 0; i < count; i += 1) {
-      layers[i]?.setAttribute(
+      put(
+        mark,
+        layers[i],
         "transform",
         `translate(${round((i + 1) * stepX)},${round((i + 1) * stepY)})`,
       );
     }
-    mark.parts.sides?.setAttribute("opacity", String(round(clamp(magnitude / 0.2, 0, 1))));
+    put(mark, mark.parts.sides, "opacity", String(round(clamp(magnitude / 0.2, 0, 1))));
   }
 
   if (mark.parts.svg) {
-    mark.parts.svg.style.transform =
+    putStyle(
+      mark,
+      mark.parts.svg,
+      "transform",
       Math.abs(mark.rotX) + Math.abs(mark.rotY) > 0.02
         ? `perspective(${Math.round(rect.width * 3.2)}px) rotateX(${round(mark.rotX)}deg) rotateY(${round(mark.rotY)}deg)`
-        : "";
+        : "",
+    );
+    // The idle bob is the stylesheet's (`mate-mark-bob`), started in step with where the sine
+    // `sin(1.1 t + seed)` stands now: its keyframes begin at the trough.
+    const bobbing = state === "idle" && awake && !reduced;
+    if (bobbing && mark.written.get(mark.parts.svg)?.get("data-mate-mark-bob") !== "on") {
+      const phase = ((now / 1000) * BOB_SPEED + mark.seed + Math.PI / 2) % (2 * Math.PI);
+      putStyle(mark, mark.parts.svg, "--mate-mark-bob-delay", `${-round(phase / BOB_SPEED)}s`);
+    }
+    put(mark, mark.parts.svg, "data-mate-mark-bob", bobbing ? "on" : "off");
   }
 
-  const bobY = happy
-    ? -Math.abs(Math.sin(since * 5)) * 1.6 * Math.max(0, 1 - since / 1.8)
-    : state === "idle" && awake && !reduced
-      ? Math.sin((now / 1000) * 1.1 + mark.seed) * 0.3
-      : 0;
-  mark.parts.bob?.setAttribute("transform", `translate(0,${round(bobY)})`);
+  // Done, it hops: the one bob left to the loop, and it ends.
+  const hopping = happy && since < 1.8;
+  moving ||= hopping;
+  const bobY = hopping ? -Math.abs(Math.sin(since * 5)) * 1.6 * (1 - since / 1.8) : 0;
+  put(mark, mark.parts.bob, "transform", `translate(0,${round(bobY)})`);
+
+  if (mark.forced === undefined && !mark.hovered && now < mark.smileUntil) {
+    due = Math.min(due, mark.smileUntil);
+  }
+  return { moving, due };
 }
 
 const browserHost: MarkLoopHost = {

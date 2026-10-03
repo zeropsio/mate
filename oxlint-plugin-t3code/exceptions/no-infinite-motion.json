@@ -216,6 +216,22 @@
     "expires": "never"
   },
   {
+    "path": "apps/web/src/components/MateMark.css",
+    "kind": "css-declaration",
+    "fingerprint": ".mate-mark[data-mate-mark-bob=\"on\"]{animation:mate-mark-bob 5.712s cubic-bezier(0.37, 0, 0.63, 1) infinite}",
+    "owner": "ales",
+    "reason": "The live mark's idle bob, moved out of the script frame loop so a resting mark runs no frame: one composited box, translate-only, only while idle and awake (it falls asleep after 45 s without the pointer), stopped by reduced motion; the lead's call on the owner's delegation (2026-10-03)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/MateMark.css",
+    "kind": "css-declaration",
+    "fingerprint": ".mate-mark[data-mate-mark-state=\"waking\"] [data-mate-mark-band]{animation:mate-mark-swell 3s cubic-bezier(0.37, 0, 0.63, 1) infinite}",
+    "owner": "ales",
+    "reason": "A waking live mark's band swell (matePose), moved out of the script frame loop: translate-only on the band's two halves, only while the mark is held waking, stopped by reduced motion; the lead's call on the owner's delegation (2026-10-03)",
+    "expires": "never"
+  },
+  {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-run-shimmer]{animation:run-shimmer 2s linear infinite}",

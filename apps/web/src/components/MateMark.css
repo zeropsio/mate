@@ -28,6 +28,52 @@
 }
 
 /*
+ * The two motions a live mark makes while it otherwise rests are the
+ * stylesheet's, so a page of resting marks runs no script frame at all
+ * (`mateMarkRuntime.ts`):
+ *
+ * - idle and awake, the whole mark bobs — `sin(1.1 t)` of 0.3 of its 52-unit
+ *   height, so a period of 2π / 1.1 s; the driver turns it on
+ *   (`data-mate-mark-bob`) and sets its phase. One box the compositor carries.
+ * - waking, the band swells a fifth of the way out and back once every three
+ *   seconds (`matePose`), each half along its own track (`--mate-mark-swell`,
+ *   set by `MateMark`).
+ *
+ * The easing is the sine's own half (`easeInOutSine`), so each is the curve
+ * the driver drew before. Reduced motion stills both, as it stills the driver.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .mate-mark[data-mate-mark-bob="on"] {
+    animation: mate-mark-bob 5.712s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+    animation-delay: var(--mate-mark-bob-delay, 0s);
+  }
+
+  .mate-mark[data-mate-mark-state="waking"] [data-mate-mark-band] {
+    animation: mate-mark-swell 3s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+  }
+}
+
+@keyframes mate-mark-bob {
+  0%,
+  100% {
+    translate: 0 -0.577%;
+  }
+  50% {
+    translate: 0 0.577%;
+  }
+}
+
+@keyframes mate-mark-swell {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: var(--mate-mark-swell);
+  }
+}
+
+/*
  * Reduced motion: the driver already holds the mark open, still and forward —
  * it never starts the band, the gaze, the tilt or the blink. This only stops
  * the browser from interpolating the transform the driver leaves behind.
