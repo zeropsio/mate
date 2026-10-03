@@ -23,6 +23,7 @@ import type {
   MateTintId,
   ServiceStatusToneId,
 } from "@t3tools/shared/brand";
+import { matePose, type MateLife } from "@t3tools/client-runtime/zerops";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -65,6 +66,10 @@ export interface JumpMate {
   readonly reviewWaits?: boolean;
   /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
   readonly mine: boolean;
+  /** Where it is in its life (`matePose`): up where absent. */
+  readonly life?: MateLife | undefined;
+  /** Somebody signed its agent in (`mateOwnerRecords`): taken as so where absent. */
+  readonly signedIn?: boolean | undefined;
 }
 
 export interface JumpProject {
@@ -128,7 +133,7 @@ export type JumpActivity = Pick<
 
 /**
  * A Mate as the box lists it, from what its row knows: the face its row
- * wears (`mateFaceOf`, its review waiting included), and what it is on only while its container is
+ * wears (`mateFaceOf`, its review waiting included; waking on its way up, `matePose`), and what it is on only while its container is
  * connected — the row's own rule, so the two never say two things.
  */
 export function jumpMateOf(input: {
@@ -143,18 +148,25 @@ export function jumpMateOf(input: {
   readonly activity: JumpActivity | undefined;
   readonly reviewWaits?: boolean | undefined;
   readonly mine: boolean;
+  readonly life?: MateLife | undefined;
+  readonly signedIn?: boolean | undefined;
 }): JumpMate {
   const live = input.connected ? input.activity : undefined;
+  const signedIn = input.signedIn !== false;
   return {
     projectId: input.projectId,
     name: input.name,
     tint: input.tint,
     shape: input.shape,
-    face: mateFaceOf({
-      connected: input.connected,
-      activity: input.activity,
-      reviewWaits: input.reviewWaits === true,
-      mine: input.mine,
+    face: matePose({
+      life: input.life ?? "up",
+      answered: signedIn || live?.subject !== undefined,
+      face: mateFaceOf({
+        connected: input.connected,
+        activity: input.activity,
+        reviewWaits: input.reviewWaits === true,
+        mine: input.mine,
+      }),
     }),
     projectName: input.projectName,
     subject: live?.subject,
@@ -166,6 +178,8 @@ export function jumpMateOf(input: {
     pausedUntil: live?.pausedUntil,
     mine: input.mine,
     ...(input.reviewWaits === true ? { reviewWaits: true } : {}),
+    ...(input.life === undefined ? {} : { life: input.life }),
+    ...(signedIn ? {} : { signedIn: false }),
   };
 }
 

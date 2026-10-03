@@ -182,7 +182,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen stands up development on Acme Docs.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     },
     {
@@ -223,7 +223,7 @@ describe("ZeropsMateEmptyState", () => {
       headline: "Sign Fen in to start.",
       sentence:
         "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     },
     {
@@ -235,7 +235,7 @@ describe("ZeropsMateEmptyState", () => {
       headline: "Sign Fen in to start.",
       sentence:
         "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     },
     {
@@ -245,7 +245,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Nobody has signed Fen in yet. Sign it in with your own account and it's yours.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     },
     {
@@ -255,7 +255,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     },
     {
@@ -264,7 +264,7 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     },
     {
@@ -332,7 +332,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     );
   const progress = <ol data-coming-progress />;
 
-  it("says it is coming up, asleep, how long is left, its steps in the slot", () => {
+  it("says it is coming up, waking, how long is left, its steps in the slot", () => {
     const html = view({
       coming: {
         kind: "coming",
@@ -343,7 +343,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     expect(stage(html)).toMatchObject({
       headline: "Fen is coming up on Acme Docs.",
       sentence: "About two minutes.",
-      face: "sleep",
+      face: "waking",
       signIn: false,
     });
     expect(html).toMatch(/data-arrival-slot="coming".*data-coming-progress/u);
@@ -369,7 +369,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     });
     expect(stage(html)).toMatchObject({
       headline: "Sign Fen in to start.",
-      face: "idle",
+      face: "waking",
       signIn: true,
     });
     expect(html).not.toContain("data-coming-progress");

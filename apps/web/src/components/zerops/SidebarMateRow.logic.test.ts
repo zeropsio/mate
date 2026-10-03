@@ -23,6 +23,7 @@ import {
   mateRowSentAsk,
   mateRowDraft,
   mateRowReading,
+  mateRowFace,
   mateRowView,
   ownerMark,
   mateRowOffersMenu,
@@ -980,18 +981,20 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
   const view = mateRowView(undefined, "sleep");
   it.each([
     {
-      case: "coming up: asleep, no time, no dot",
+      case: "coming up: waking, no time, no dot",
       coming: { kind: "coming", line: "Coming up. A few minutes." },
+      face: "waking",
       dot: undefined,
     },
     {
       case: "not created: asleep, the red dot of something broken",
       coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
+      face: "sleep",
       dot: "failed",
     },
-  ] as const)("$case", ({ coming, dot }) => {
+  ] as const)("$case", ({ coming, face, dot }) => {
     expect(mateComingRowView(view, coming)).toMatchObject({
-      face: "sleep",
+      face,
       slot: { kind: "none" },
       dot,
       strongName: false,
@@ -999,6 +1002,80 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
       reply: undefined,
       coming,
     });
+  });
+});
+
+// The pose its face wears in the row (`matePose`): waking from its press until its agent answers,
+// asleep once it did not come or while it goes, its conversation's own once signed in (run 6).
+describe("mateRowFace — the pose a Mate's row wears", () => {
+  const asked = (face: "idle" | "sleep" | "working") =>
+    ({ ...mateRowView(undefined, face), ask: "Speed up the photo gallery" }) as const;
+  it.each([
+    {
+      case: "coming up",
+      view: mateComingRowView(mateRowView(undefined, "sleep"), {
+        kind: "coming",
+        line: "Coming up.",
+      }),
+      deleting: false,
+      signedIn: false,
+      face: "waking",
+    },
+    {
+      case: "did not come",
+      view: mateComingRowView(mateRowView(undefined, "sleep"), {
+        kind: "failed",
+        line: "Could not be created.",
+        verb: "remove",
+      }),
+      deleting: false,
+      signedIn: false,
+      face: "sleep",
+    },
+    {
+      case: "waiting for its sign-in, up",
+      view: mateRowView(undefined, "idle"),
+      deleting: false,
+      signedIn: false,
+      face: "waking",
+    },
+    {
+      case: "signed in, at rest",
+      view: mateRowView(undefined, "idle"),
+      deleting: false,
+      signedIn: true,
+      face: "idle",
+    },
+    {
+      case: "no sign-in tag but talked to",
+      view: asked("idle"),
+      deleting: false,
+      signedIn: false,
+      face: "idle",
+    },
+    {
+      case: "signed in, at work",
+      view: asked("working"),
+      deleting: false,
+      signedIn: true,
+      face: "working",
+    },
+    {
+      case: "never signed in, not running",
+      view: mateRowView(undefined, "sleep"),
+      deleting: false,
+      signedIn: false,
+      face: "sleep",
+    },
+    {
+      case: "deleting",
+      view: mateDeletingView(asked("working")),
+      deleting: true,
+      signedIn: true,
+      face: "sleep",
+    },
+  ] as const)("$case: $face", ({ view, deleting, signedIn, face }) => {
+    expect(mateRowFace({ view, deleting, signedIn })).toBe(face);
   });
 });
 

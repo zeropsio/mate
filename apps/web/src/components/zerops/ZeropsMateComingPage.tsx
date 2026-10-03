@@ -54,6 +54,7 @@ import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { MateMarkState } from "@t3tools/shared/brand";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 
@@ -77,7 +78,12 @@ import {
 } from "~/zerops/mateComing";
 import { zeropsMateIdentityOf, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
-import { arrivalSteps, comingSentence, inFirstSeenOrder } from "~/zerops/mateArrival";
+import {
+  arrivalHeaderFace,
+  arrivalSteps,
+  comingSentence,
+  inFirstSeenOrder,
+} from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { useNewMate } from "~/zerops/newMate";
 import {
@@ -654,6 +660,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       header={
         <MateComingHeader
           arriving={shown !== undefined && !handingArrival}
+          face={
+            view === null || shown === undefined || handingArrival
+              ? undefined
+              : arrivalHeaderFace({
+                  kind: view.kind,
+                  over: view.over === true,
+                  signInRequired: empty.signInRequired,
+                  connected: environmentId !== null,
+                })
+          }
           mate={{ ...mate, connected: environmentId !== null }}
           standsIn={standsInComposer || handingArrival ? { subject: standInSubject } : null}
         />
@@ -717,9 +733,12 @@ export function MateComingHeader({
   mate,
   standsIn = null,
   arriving = false,
+  face,
 }: {
   /** A new Mate coming up: its face and name only. */
   readonly arriving?: boolean;
+  /** The pose the stage under it wears (`arrivalHeaderFace`); else at rest once connected. */
+  readonly face?: MateMarkState | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape" | "connected"> & {
     readonly projectUrl: string | undefined;
   };
@@ -739,7 +758,7 @@ export function MateComingHeader({
           name: mate.name,
           tint: mate.tint,
           shape: mate.shape,
-          face: mate.connected ? "idle" : "sleep",
+          face: face ?? (mate.connected ? "idle" : "sleep"),
           open: true,
           threadId: null,
           tooltip: standsIn?.subject ?? null,

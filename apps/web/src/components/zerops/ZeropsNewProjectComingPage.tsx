@@ -16,6 +16,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
 
+import { arrivalHeaderFace } from "~/zerops/mateArrival";
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
   newProjectComing,
@@ -115,7 +116,19 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         };
 
   return (
-    <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
+    <MateComingFrame
+      header={
+        <MateComingHeader
+          face={arrivalHeaderFace({
+            kind: view.kind,
+            over: false,
+            signInRequired: true,
+            connected: false,
+          })}
+          mate={{ ...mate, projectUrl: undefined }}
+        />
+      }
+    >
       <MateEmptyStateView
         coming={view}
         mate={mate}
