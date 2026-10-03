@@ -23,12 +23,15 @@ import {
   nextHqStanding,
   readBundledCore,
   useAccountHq,
+  useOfficialHq,
   type AccountHq,
   type HqStanding,
 } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { keepHqVerdict, keepNoHqVerdict, NO_HQ_RECHECK_MS } from "./hqVerdict";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
+import { ZeropsSessionContext } from "./sessionContext";
+import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
 describe("nextHqStanding", () => {
   const healthy = { kind: "healthy", build: "b1" } as const;
@@ -201,6 +204,59 @@ describe("useAccountHq — the official HQ this browser keeps", () => {
     });
     return { reads: () => reads, last: () => seen.at(-1)! };
   }
+
+  it("keeps the official HQ effect identity when the anchor still names the same address and API", async () => {
+    const owner = { account: scope.account, clientId: "org-stable" };
+    const endpoint = { projectId: "P_STABLE", address: "https://stable.example.test" };
+    const cells = await makeMemberCells({
+      scope,
+      organization: organizationRef(owner.clientId),
+      members: async () => [anchor(endpoint.projectId, endpoint.address)],
+    });
+    const data = {
+      runtime: { scope, cells },
+      organizationRef,
+    } as unknown as ZeropsDataContextValue;
+    const session = {
+      client: { accountEpoch: "stable-account" },
+      activeOrganization: { id: owner.clientId },
+    } as unknown as ZeropsSessionValue;
+    const seen: Array<ReturnType<typeof useOfficialHq>> = [];
+    function Probe() {
+      seen.push(useOfficialHq());
+      return null;
+    }
+    let tree: ReturnType<typeof create> | undefined;
+    await act(async () => {
+      tree = create(
+        createElement(
+          RegistryContext.Provider,
+          { value: AtomRegistry.make() },
+          createElement(
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(ZeropsSessionContext.Provider, { value: session }, createElement(Probe)),
+          ),
+        ),
+      );
+    });
+    const first = seen.find((hq) => hq !== null);
+    expect(first).toBeDefined();
+    expect(seen.filter((hq) => hq !== null).every((hq) => hq === first)).toBe(true);
+    await act(async () => {
+      keepHqVerdict(owner, { ...endpoint });
+    });
+    expect(seen.at(-1)?.api).toBe(first?.api);
+    expect(seen.at(-1)).toBe(first);
+    await act(async () => {
+      keepHqVerdict(owner, { ...endpoint, address: "https://moved.example.test" });
+    });
+    expect(seen.at(-1)?.address).toBe("https://moved.example.test");
+    expect(seen.at(-1)?.api).not.toBe(first?.api);
+    await act(async () => {
+      tree?.unmount();
+    });
+  });
 
   it("a load with a kept verdict reads no member list", async () => {
     keepHqVerdict(
