@@ -2,8 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   findHeldMateKey,
-  mateHardenableBy,
-  mateNeedsHarden,
   newestMateKey,
   makeTokenWriteLock,
   planMateKey,
@@ -245,77 +243,5 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
         "p-1",
       )?.id,
     ).toBe("k-new");
-  });
-});
-
-// A Mate not hardened yet — a pool-claimed one whose harden never ran, an older one — is read off
-// the platform's own token list, so any browser, after a reload too, knows it (pass 28 review).
-describe("mateNeedsHarden — a Mate's key still ADMIN on its own project", () => {
-  const key = (roleCode: "ADMIN" | "BASIC_USER") => ({
-    id: "k-1",
-    name: "zcp-acme",
-    projects: [
-      { projectId: "p-1", roleCode },
-      { projectId: "p-stage", roleCode: "READ_ONLY" as const },
-    ],
-  });
-  it.each([
-    { case: "a key at ADMIN", tokens: [key("ADMIN")], want: true },
-    { case: "a key lowered", tokens: [key("BASIC_USER")], want: false },
-    { case: "no key of its", tokens: [], want: false },
-    {
-      case: "another project's ADMIN key",
-      tokens: [{ ...key("ADMIN"), projects: [{ projectId: "p-2", roleCode: "ADMIN" as const }] }],
-      want: false,
-    },
-    // A leftover ADMIN key beside a lowered one: the container's may well be the lowered one, and
-    // an older Mate is not held for a key it may not use (pass 28 review).
-    {
-      case: "an ADMIN key beside a lowered one",
-      tokens: [key("ADMIN"), { ...key("BASIC_USER"), id: "k-2" }],
-      want: false,
-    },
-  ])("$case: $want", ({ tokens, want }) => {
-    expect(mateNeedsHarden(tokens, "p-1")).toBe(want);
-  });
-});
-
-// Only who may write the key may harden it: an org owner, or the key's creator (pass 28 review).
-describe("mateHardenableBy", () => {
-  const admin = (createdByUser: string) => ({
-    id: "k-1",
-    name: "zcp-acme",
-    createdByUser,
-    projects: [{ projectId: "p-1", roleCode: "ADMIN" as const }],
-  });
-  it.each([
-    {
-      case: "an org owner",
-      tokens: [admin("u-eva")],
-      viewer: { userId: "u-zoe", roleCode: "OWNER" },
-      want: true,
-    },
-    {
-      case: "the key's creator",
-      tokens: [admin("u-ada")],
-      viewer: { userId: "u-ada", roleCode: "BASIC_USER" },
-      want: true,
-    },
-    {
-      case: "an admin who did not create it",
-      tokens: [admin("u-eva")],
-      viewer: { userId: "u-ada", roleCode: "ADMIN" },
-      want: false,
-    },
-    {
-      case: "anybody, where nothing needs it",
-      tokens: [
-        { ...admin("u-ada"), projects: [{ projectId: "p-1", roleCode: "BASIC_USER" as const }] },
-      ],
-      viewer: { userId: "u-ada", roleCode: "OWNER" },
-      want: false,
-    },
-  ])("$case: $want", ({ tokens, viewer, want }) => {
-    expect(mateHardenableBy(tokens, "p-1", viewer)).toBe(want);
   });
 });

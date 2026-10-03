@@ -838,8 +838,8 @@ async function pressRun(
  * The press's steps on a Mate whose project exists: its container with its key — nothing written
  * where it has one — its project closed off, its registration. A New project's first Mate goes on
  * with them once the platform took its project; *Finish setup* runs them on a half-made Mate, in
- * any browser — for one made before this pass, the close-off also lowers a key still at `ADMIN`
- * and moves it off the project's variables (`hardenMate`).
+ * any browser — for one it adopts, which HQ holds no record of, the close-off also lowers a key
+ * still at `ADMIN` and moves it off the project's variables (`hardenMate`).
  */
 export async function finishMateSetup(input: {
   readonly inputs: PressInputs;
@@ -857,8 +857,8 @@ export async function finishMateSetup(input: {
   readonly hq: HqEndpoint | null;
   readonly isCurrent: () => boolean;
   /**
-   * A Mate made before the press: its key lowered from `ADMIN`, its delegations dropped and its
-   * key moved off the project's variables (`hardenMate`) before the steps run.
+   * A Mate adopted — one HQ holds no record of: its key lowered from `ADMIN`, its delegations
+   * dropped and its key moved off the project's variables (`hardenMate`) before the steps run.
    */
   readonly harden?: boolean;
   /** Each step's state as the press moves, for a dialog that stays on it. */

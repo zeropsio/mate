@@ -45,19 +45,11 @@ import {
   canWriteRegistry,
   finishMateSetupScope,
   finishMateSetupVerb,
-  mateHardenableBy,
-  mateNeedsHarden,
   resolveMateRegistration,
-  type ZeropsIntegrationToken,
   type ZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
-import {
-  selectTokenGrants,
-  ZeropsServiceId,
-  type TokensCellRequest,
-  type ZeropsIntegrationTokenGrantMetadata,
-} from "@t3tools/client-runtime/zerops/data";
+import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
@@ -140,7 +132,7 @@ import {
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { sessionOfferViewer } from "./offerViewer";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
-import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
+import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
@@ -166,20 +158,6 @@ interface DialogPress {
 }
 
 const UNPRESSED: DialogPress = { pending: false, error: null };
-
-/** The token list's credential-free grants, in the shape the harden predicates read. */
-function integrationTokensFromGrantMetadata(
-  metadata: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>,
-): ReadonlyArray<ZeropsIntegrationToken> {
-  return metadata.map((token) => ({
-    id: token.tokenId,
-    name: token.name,
-    projects: token.grants,
-    ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
-    ...(token.created === undefined ? {} : { created: token.created }),
-    ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
-  }));
-}
 
 /** The Mate's name, as its row says it. */
 function mateName(candidate: ZeropsCandidatePresentation): string {
@@ -245,28 +223,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  // The organization's token list, as the platform holds it: a Mate whose keys are all still
-  // ADMIN on its own project needs its harden (`mateNeedsHarden`), which an org owner or the
-  // keys' creator may run (`mateHardenableBy`).
-  const tokensRequest = useMemo<TokensCellRequest | null>(
-    () =>
-      activeOrganization === null
-        ? null
-        : {
-            kind: "tokens",
-            account: runtime.scope,
-            organization: organizationRef(activeOrganization.id),
-          },
-    [activeOrganization, organizationRef, runtime.scope],
-  );
-  const tokenGrants = selectTokenGrants(
-    useKnown(tokensRequest === null ? null : runtime.cells.known(tokensRequest)),
-  );
-  const grantList = tokenGrants.status === "known" ? tokenGrants.grants : null;
-  const listedTokens = useMemo(
-    () => (grantList === null ? [] : integrationTokensFromGrantMetadata(grantList)),
-    [grantList],
-  );
   const router = useRouter();
   const openMate = useOpenMate();
   const { linkTarget } = useEnvironmentLinks();
@@ -565,8 +521,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /**
    * *Finish setup* — the press's own steps on a half-made Mate (`finishMateSetupVerb`): what a
    * colleague's Mate waits on, what a press a closed tab cut short left, a container that never
-   * came. Every step is safe to ask again; for a Mate made before the press, its close-off also
-   * lowers a key still at `ADMIN` (`hardenMate`).
+   * came. Every step is safe to ask again; for a Mate it adopts, which HQ holds no record of, its
+   * close-off also lowers a key still at `ADMIN` (`hardenMate`).
    */
   /** HQ holds no record of this Mate, as its structure says once it is known. */
   const recordMissing = useCallback(
@@ -598,10 +554,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           grouped && mateContainerMissing(candidate, press !== undefined, Date.now()),
         closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
         pressStopped: press?.state.kind === "failed",
-        needsHarden: mateHardenableBy(listedTokens, candidate.project.id, {
-          userId: user?.id,
-          roleCode: activeOrganization?.roleCode,
-        }),
         pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
         viewerIsAdder: mateAddedBy(candidate.project, user?.id),
         hasContainer: candidate.service !== undefined,
@@ -614,7 +566,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       activeOrganization,
       groupTree.groups,
       interrupted,
-      listedTokens,
       mayCreateRecord,
       presses,
       recordMissing,
@@ -630,16 +581,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const projectId = candidate.project.id;
       const press = readMatePress(projectId);
       const pressStopped = press?.state.kind === "failed";
-      // An owner or an admin finishes all of it; the Mate's own adder, its close-off. The harden
-      // runs where it may: never on keys this viewer may not write.
+      // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
       const whole =
         finishMateSetupScope(canWriteRegistry(sessionOfferViewer(user, activeOrganization))) ===
         "whole";
-      const hardenable = mateHardenableBy(listedTokens, projectId, {
-        userId: user?.id,
-        roleCode: activeOrganization.roleCode,
-      });
-      const harden = hardenable || (whole && !mateNeedsHarden(listedTokens, projectId));
+      // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
+      // the harden itself, which reads its key as it runs; never from a token list read on a load
+      // (step A, A11).
+      const adopting = recordMissing(candidate) && mayCreateRecord(candidate);
       // What it registers, by the rule Set up Mate registers by: in the application HQ or the
       // press this tab holds places it in, under that name and face; a new Mate in no application
       // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
@@ -656,7 +605,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         random: (bytes) => crypto.getRandomValues(bytes),
       });
       // A close-off alone has nothing to finish on a Mate with no container.
-      if (!whole && !hardenable && registration === null && candidate.service === undefined) {
+      if (!whole && !adopting && registration === null && candidate.service === undefined) {
         return;
       }
       // A container only where its project has none and no press elsewhere may still be importing
@@ -687,8 +636,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             projectId,
             projectName: candidate.project.name,
             container,
-            // A Mate made before the press: its key lowered from ADMIN.
-            harden,
+            harden: adopting,
             registration,
             hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),
@@ -705,10 +653,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       client,
       hqKnown,
       interrupted,
-      listedTokens,
       mayCreateRecord,
       organizationRef,
       projectRef,
+      recordMissing,
       refresh,
       registry,
       runtime,

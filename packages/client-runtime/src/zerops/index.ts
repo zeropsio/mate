@@ -232,8 +232,6 @@ export {
 export {
   findHeldMateKey,
   mateAdminKeys,
-  mateHardenableBy,
-  mateNeedsHarden,
   newestMateKey,
   MATE_SELF_PROJECT_ROLE,
   makeTokenWriteLock,

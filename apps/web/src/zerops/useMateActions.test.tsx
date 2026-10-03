@@ -53,6 +53,10 @@ const mock = vi.hoisted(() => ({
   assignDialog: { current: null as AssignDialogProps | null },
   /** What the hook asked the account's bus to read again. */
   invalidated: [] as Array<unknown>,
+  /** The kinds of the account's cells the hook asked for. */
+  asked: [] as Array<string>,
+  /** The organization's token list, as the platform would answer it were it read. */
+  tokens: [] as Array<unknown>,
 }));
 
 vi.mock("./accountInvalidations", () => ({
@@ -82,12 +86,26 @@ vi.mock("./zeropsDataContext", () => ({
     runtime: {
       commands: { setProjectMemberRole: mock.setProjectMemberRole },
       reads: { setupMarker: () => null },
-      cells: { known: () => null },
+      cells: {
+        known: (request: { readonly kind: string }) => {
+          mock.asked.push(request.kind);
+          return request;
+        },
+      },
     },
   }),
   runZeropsCommand: (command: Promise<unknown>) => command,
-  // The organization's token list, not read: no key here reads as unhardened.
-  useKnown: () => ({ state: "unread" }),
+  // The organization's token list as the platform answers it, where it is read; nothing else is.
+  useKnown: (cell: { readonly kind: string } | null) =>
+    cell?.kind === "tokens"
+      ? {
+          state: "known",
+          value: mock.tokens,
+          asOf: { ordinal: 1, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "settled" },
+        }
+      : { state: "unread" },
   // The press's marker on each container, as the case states it: absent unless it says.
   useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) =>
     new Map(selections.map(([serviceId]) => [serviceId, mock.markers.get(serviceId) ?? false])),
@@ -197,6 +215,8 @@ beforeEach(() => {
   mock.assignDialog.current = null;
   mock.setProjectMemberRole.mockReset();
   mock.invalidated = [];
+  mock.asked = [];
+  mock.tokens = [];
   mock.updateMate.mockReset();
   mock.finishMateSetup.mockReset();
   seen.length = 0;
@@ -533,6 +553,25 @@ describe("useMateActions — Finish setup on a Mate its press left open", () => 
     mount();
     expect(offered(candidate)).toBe(false);
   });
+
+  // Step A, A11: the organization's token list is not read on a load; a key still ADMIN is
+  // lowered when a person finishes setting the Mate up, never offered from that list.
+  it("offers no harden from a token read on load", () => {
+    mock.roleCode = "BASIC_USER";
+    const candidate = left({ by: "user-ada" });
+    // Were the list read: the Mate's key still ADMIN on its project, made by the viewer.
+    mock.tokens = [
+      {
+        tokenId: "tok-ivo",
+        name: `zcp-${candidate.project.name}`,
+        grants: [{ projectId: candidate.project.id, roleCode: "ADMIN" }],
+        createdByUser: "user-ada",
+      },
+    ];
+    listing(candidate);
+    mount();
+    expect([offered(candidate), mock.asked.includes("tokens")]).toEqual([false, false]);
+  });
 });
 
 // A Mate HQ holds no record of — claimed from the pool, or its record lost — is finished by whoever
@@ -617,6 +656,8 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
         birth: { standUp: false },
       },
       hq: { kind: "official", projectId: "p-hq" },
+      // Adopted: its key lowered from ADMIN, as the harden finds it.
+      harden: true,
     });
   });
 });
@@ -788,6 +829,8 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
         groupId: "acme",
         mate: { name: "Ivo", face: { tint: "coral", shape: "gem" } },
       },
+      // A Mate HQ holds is not adopted: its key is not touched.
+      harden: false,
     });
   });
 });

@@ -147,41 +147,9 @@ export function findHeldMateKey(
   return newestFirst(keys.filter((key) => createdMs(key) <= container))[0];
 }
 
-/**
- * A Mate not hardened yet, as the platform's token list says it: it has keys, and none is below
- * `ADMIN` on its own project — so the key its container holds surely is. A leftover `ADMIN` key
- * beside a lowered one says nothing of the container's.
- */
-export function mateNeedsHarden(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-): boolean {
-  const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
-  return keys.length > 0 && keys.every((key) => selfRoleOf(key, projectId) === "ADMIN");
-}
-
 /** A key's role on its Mate's own project. */
 function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | undefined {
   return (token.projects ?? []).find((grant) => grant.projectId === projectId)?.roleCode;
-}
-
-/**
- * Whether this viewer may harden the Mate: it needs it (`mateNeedsHarden`), and the viewer may
- * write its key — an org owner, or the key's creator.
- */
-export function mateHardenableBy(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-  viewer: { readonly userId: string | undefined; readonly roleCode: string | undefined },
-): boolean {
-  if (!mateNeedsHarden(tokens, projectId)) return false;
-  if (viewer.roleCode === "OWNER") return true;
-  return tokens.some(
-    (token) =>
-      isMateKeyOf(token, projectId) &&
-      viewer.userId !== undefined &&
-      token.createdByUser === viewer.userId,
-  );
 }
 
 /** Every key of a Mate still `ADMIN` on its own project: what a harden lowers. */
