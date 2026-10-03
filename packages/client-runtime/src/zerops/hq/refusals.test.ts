@@ -20,6 +20,11 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
 
   it.each([
     ["app_name_taken", "conflict", "Another project already has this name."],
+    [
+      "app_not_empty",
+      "conflict",
+      "This project is no longer empty: a Mate, an environment or a change is in it now.",
+    ],
     ["held_changed", "conflict", "Somebody changed this project in HQ meanwhile. Try again."],
     ["name_length", "invalid", "A name has 1 to 100 characters."],
     ["change_not_found", "change_not_found", "HQ has no such change."],

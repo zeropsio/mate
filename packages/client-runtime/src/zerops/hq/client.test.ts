@@ -530,6 +530,12 @@ describe("makeHqApi — application name and a project's application", () => {
       (api) => api.renameApp("app-1", "Acme CRM"),
       { method: "PATCH", path: "/api/apps/app-1", body: { name: "Acme CRM" } },
     ],
+    // E2E 2026-10-03 (F5): an application a stopped New project left, holding nothing.
+    [
+      "deletes an application",
+      (api) => api.deleteApp("app-1"),
+      { method: "DELETE", path: "/api/apps/app-1" },
+    ],
     [
       "moves a project into another application",
       (api) => api.moveProject("p1", { appId: "app-2", kind: "mate" }),

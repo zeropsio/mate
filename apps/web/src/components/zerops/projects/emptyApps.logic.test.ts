@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { HqStructureView } from "~/state/zerops";
 
-import { emptyApplications, groupIsEmpty } from "./emptyApps.logic";
+import { deleteOffered, emptyApplications, groupIsEmpty } from "./emptyApps.logic";
 
 const view = (organizationId: string): HqStructureView => ({
   organizationId,
@@ -95,5 +95,22 @@ describe("a group with nothing in it", () => {
         pending: Array.from({ length: pending }, () => ({}) as never),
       }),
     ).toBe(empty);
+  });
+});
+
+// The lead, 2026-10-03: an empty application is deleted from its heading's menu — offered only on
+// one with nothing in it, and only to whoever writes the structure (`delete_app`).
+describe("Delete, on a project's menu", () => {
+  const group = (environments: number, pending: number) => ({
+    environments: Array.from({ length: environments }, () => ({}) as never),
+    pending: Array.from({ length: pending }, () => ({}) as never),
+  });
+  it.each([
+    { name: "empty, to a writer: offered", group: group(0, 0), mayDelete: true, offered: true },
+    { name: "empty, to anyone else: not", group: group(0, 0), mayDelete: false, offered: false },
+    { name: "holding a Mate: not", group: group(1, 0), mayDelete: true, offered: false },
+    { name: "a Mate coming: not", group: group(0, 1), mayDelete: true, offered: false },
+  ])("$name", ({ group: given, mayDelete, offered }) => {
+    expect(deleteOffered(given, mayDelete)).toBe(offered);
   });
 });

@@ -92,6 +92,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   nothing_to_change: "There is nothing to change.",
   app_name_taken: "Another project already has this name.",
   app_not_found: "That project is gone from HQ.",
+  app_not_empty:
+    "This project is no longer empty: a Mate, an environment or a change is in it now.",
   mate_not_found: "HQ has no such Mate.",
   placed_or_production_taken:
     "This Zerops project is in a project already, or that project has its production.",
