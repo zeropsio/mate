@@ -312,6 +312,19 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
     });
 
+    it("a long re-check of the processes while the build runs starts no grace: its end does", () => {
+      const { platform, clock, store } = clocked();
+      // The processes listing is read again for 30 s; the build still runs, then ends.
+      platform.publishProcesses(STAGE, processesRead([], { coverage: { kind: "none" } }));
+      expect(platform.armed()).toEqual([]);
+      clock.ms += 30_000;
+      platform.publishProcesses(STAGE, building());
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        value: { kind: "deploying" },
+      });
+      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS]);
+    });
+
     it("a re-check of the whole listing keeps the grace's timer armed", () => {
       const { platform, clock, store } = clocked();
       platform.publishProcesses(STAGE, building());

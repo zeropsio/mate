@@ -47,7 +47,7 @@ import {
   type GroupRowTone,
   type MainHeadStatuses,
 } from "./groupRows.ts";
-import { STATUS_RECHECK_LADDER_MS, VERDICT_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
+import { STATUS_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
 import { COMING_UP_WINDOW_MS } from "./stopComing.ts";
 
 /** One runtime service of one Zerops project, as the reads need it. */
@@ -195,6 +195,21 @@ export function firstDeployHeadKey(read: Pick<FirstDeployHeadRead, "projectId" |
 }
 
 /**
+ * A stage the broker deploys `main`'s head to as it is declared: on push, fed by `main` alone. One
+ * deployed on request waits for nobody's ask, and one fed by another branch, or a mixed one
+ * deployed from its own merge commit, does not run `main`'s head.
+ */
+function deploysMainHead(declaration: GroupEnvironment): boolean {
+  return (
+    declaration.tier === "stage" &&
+    declaration.deploy !== "on-request" &&
+    declaration.sources !== "release" &&
+    declaration.sources.length === 1 &&
+    declaration.sources[0] === "main"
+  );
+}
+
+/**
  * Which `main` heads a stage's first deploy has to read (run 5): each service's repository, as its
  * tier's `buildFromGit` names it, of a declared stage none of whose services runs a deployed
  * commit yet — the broker deploys `main` there as the stage is declared, and a job that fails
@@ -212,7 +227,7 @@ export function planFirstDeployHeadReads(input: {
 }): ReadonlyArray<FirstDeployHeadRead> {
   const reads: Array<FirstDeployHeadRead> = [];
   for (const declaration of input.declarations) {
-    if (declaration.tier !== "stage") continue;
+    if (!deploysMainHead(declaration)) continue;
     const own = input.services.filter((service) => service.projectId === declaration.project);
     const runs = own.some(
       (service) => deployedCommit(input.versions.get(service.serviceId)) !== undefined,
@@ -257,29 +272,65 @@ export function firstDeployHeadSettled(
 export const FIRST_DEPLOY_PATIENCE_MS = COMING_UP_WINDOW_MS + 20 * 60_000;
 
 /**
- * How often a first-deploy head's statuses are read again while it waits, from the later of the
- * stage's making and the head's newest status: on the pending back-off (15 s, 30 s, then a minute —
- * one read a minute on the reader's clock) within the coming-up window, or for a head not read
- * before; on the verdict back-off (to one read every five minutes) until
+ * How often a first-deploy head's statuses are read again while it waits, on a clock from the latest
+ * of the stage's making (its ask), when this head was first seen (`MainHeadStatuses.firstSeenAtMs`),
+ * and the statuses that say a job moved (`firstDeployHeadMoved`): on the pending back-off (15 s,
+ * 30 s, then a minute — one read a minute on the reader's clock) within the coming-up window, or for
+ * a head not read before; one read every five minutes ({@link FIRST_DEPLOY_QUIET_LADDER_MS}) until
  * {@link FIRST_DEPLOY_PATIENCE_MS}; then not at all (`undefined`) until a push makes a new head.
+ *
+ * The broker's own retries — a new "dispatched" every ~20 minutes, a refusal on every 5-minute
+ * pass — do not move the clock, so the stop is hard: at most 15 + 4 reads a head. A failure that
+ * lands after it is not read, and pass 34's words stand; that takes a runner gone for over 35
+ * minutes, when the runner's own line is what the stage says.
  */
 export function firstDeployHeadLadder(
   previous: MainHeadStatuses | undefined,
+  read: Pick<FirstDeployHeadRead, "environment" | "hostname">,
   sha: string,
   askedAt: string | undefined,
   nowMs: number,
 ): ReadonlyArray<number> | undefined {
   if (previous === undefined || previous.sha !== sha) return STATUS_RECHECK_LADDER_MS;
   let latest = askedAt === undefined ? Number.NaN : Date.parse(askedAt);
+  const later = (at: number | undefined) => {
+    if (at !== undefined && !Number.isNaN(at) && !(at <= latest)) latest = at;
+  };
+  later(previous.firstSeenAtMs);
   for (const status of previous.statuses) {
-    const at = status.created_at === undefined ? Number.NaN : Date.parse(status.created_at);
-    if (!Number.isNaN(at) && !(at <= latest)) latest = at;
+    if (!firstDeployHeadMoved(read, status)) continue;
+    later(status.created_at === undefined ? Number.NaN : Date.parse(status.created_at));
   }
   // Nothing says when anything happened there: read no more until a push.
   if (Number.isNaN(latest)) return undefined;
   const quiet = nowMs - latest;
   if (quiet < COMING_UP_WINDOW_MS) return STATUS_RECHECK_LADDER_MS;
-  return quiet < FIRST_DEPLOY_PATIENCE_MS ? VERDICT_RECHECK_LADDER_MS : undefined;
+  return quiet < FIRST_DEPLOY_PATIENCE_MS ? FIRST_DEPLOY_QUIET_LADDER_MS : undefined;
+}
+
+/**
+ * A quiet head is read every five minutes flat: a broker retry changing what it answers starts no
+ * quicker rung, so the quiet stretch costs four reads at most.
+ */
+export const FIRST_DEPLOY_QUIET_LADDER_MS: ReadonlyArray<number> = [300_000];
+
+/**
+ * Whether a status on a first deploy's head says a job moved: any of the group's workflow's own,
+ * and the broker's grant ("deploying"), its job's own report ("failed: ") or its deploy — never its
+ * retries ("dispatched", a refusal) nor another environment's.
+ */
+export function firstDeployHeadMoved(
+  read: Pick<FirstDeployHeadRead, "environment" | "hostname">,
+  status: GiteaCommitStatus,
+): boolean {
+  if (!status.context.startsWith("mate/")) return true;
+  if (status.context !== deployStatusContext(read.environment, read.hostname)) return false;
+  const words = status.description?.trim() ?? "";
+  return (
+    status.state === "success" ||
+    (status.state === "pending" && words.startsWith("deploying")) ||
+    ((status.state === "failure" || status.state === "error") && words.startsWith("failed: "))
+  );
 }
 
 /** What one environment's row is built from, before the row itself. */

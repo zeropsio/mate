@@ -1108,6 +1108,7 @@ describe("a stage's first deploy on main's head", () => {
     readVersion: () => Promise<string | undefined>,
     minutes: number,
     between: (minute: number) => void = () => undefined,
+    group: ZeropsDeployGroup = GROUP,
   ) {
     const reads = createForgeReads();
     let held: ZeropsGroupDeployState | undefined;
@@ -1118,7 +1119,7 @@ describe("a stage's first deploy on main's head", () => {
       held = (
         await readGroupDeploys({
           client,
-          group: GROUP,
+          group,
           scope: "group",
           readVersion,
           held,
@@ -1226,27 +1227,70 @@ describe("a stage's first deploy on main's head", () => {
     expect(calls.filter((call) => call.startsWith("statuses appdev"))).toHaveLength(1);
   });
 
-  it("reads no more past the broker's patience, and again from a push", async () => {
+  /** The group of {@link GROUP}, its stage made `minutes` before the clock's start. */
+  const madeBefore = (minutes: number): ZeropsDeployGroup => ({
+    ...GROUP,
+    projects: GROUP.projects.map((project) => ({
+      ...project,
+      createdAt: new Date(Date.parse("2026-10-02T22:10:00Z") - minutes * 60_000).toISOString(),
+    })),
+  });
+
+  it("reads no more past the broker's patience, and a late fix's head until its job posts", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
     const { client, calls, head } = stageRepo();
     head.statuses = [posted(BROKER, "pending", "dispatched")];
     const reads = () => calls.filter((call) => call.startsWith("statuses appdev")).length;
     let rested = 0;
-    await everyMinute(
+    const rows = await everyMinute(
       client,
       async () => undefined,
       60,
       (minute) => {
         if (minute === 40) rested = reads();
-        if (minute === 55) head.push("5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b");
+        // A fix merged late: Gitea posts nothing on its head for three minutes, then the failure.
+        if (minute === 50) head.push("5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b");
+        if (minute === 53) head.statuses = [posted(PUSH, "failure", "Failing after 9s")];
       },
+      madeBefore(40),
     );
-    // Nothing between 40 and 55 minutes, then the new head from the push.
-    expect(calls.filter((call) => call === "statuses appdev@5a6b7c8").length).toBeGreaterThan(0);
     expect(
       reads() - rested - calls.filter((call) => call === "statuses appdev@5a6b7c8").length,
     ).toBe(0);
+    expect(failureOf(rows[49])).toBeUndefined();
+    expect(failureOf(rows[53])).toEqual({ reason: undefined });
+  });
+
+  it.each([
+    {
+      retry: "re-dispatches every 22 minutes",
+      every: 22,
+      status: () => posted(BROKER, "pending", "dispatched"),
+    },
+    {
+      retry: "refuses every 5 minutes",
+      every: 5,
+      status: () => posted(BROKER, "failure", "the runner is busy"),
+    },
+  ])("stops for good on a head the broker $retry", async ({ every, status }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-02T22:10:00Z"));
+    const { client, calls, head } = stageRepo();
+    head.statuses = [status()];
+    await everyMinute(
+      client,
+      async () => undefined,
+      180,
+      (minute) => {
+        if (minute > 0 && minute % every === 0) head.statuses = [status(), ...head.statuses];
+      },
+      madeBefore(0),
+    );
+    // 15 reads a minute in the window, 4 on the verdict back-off, then none for three hours.
+    expect(calls.filter((call) => call.startsWith("statuses appdev")).length).toBeLessThanOrEqual(
+      15 + 4,
+    );
   });
 
   it("re-reads a stage's head as a merge into its repository lands", async () => {

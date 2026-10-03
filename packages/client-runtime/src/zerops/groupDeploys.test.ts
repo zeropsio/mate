@@ -1,7 +1,7 @@
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { STATUS_RECHECK_LADDER_MS, VERDICT_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
+import { STATUS_RECHECK_LADDER_MS } from "./forge/statusMemo.ts";
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import {
   buildGroupEnvironmentRowInputs,
@@ -10,6 +10,7 @@ import {
   deployWord,
   planDeployStatusReads,
   planDeployedVersionReads,
+  FIRST_DEPLOY_QUIET_LADDER_MS,
   firstDeployHeadLadder,
   firstDeployHeadSettled,
   planFirstDeployHeadReads,
@@ -427,6 +428,24 @@ describe("what a stage's first deploy has to read", () => {
       reads: [],
     },
     { case: "nothing declared: nothing", declarations: [], versions: NOTHING, reads: [] },
+    {
+      case: "a stage deployed on request: nothing — nobody asked for its deploy",
+      declarations: [{ ...stage, deploy: "on-request" as const }],
+      versions: NOTHING,
+      reads: [],
+    },
+    {
+      case: "a stage fed by another branch: nothing — main is not what it deploys",
+      declarations: [{ ...stage, sources: ["develop"] }],
+      versions: NOTHING,
+      reads: [],
+    },
+    {
+      case: "a mixed stage, deployed from its own merge commit: nothing",
+      declarations: [{ ...stage, sources: ["main", "feature"] }],
+      versions: NOTHING,
+      reads: [],
+    },
   ])("$case", ({ declarations, versions, reads }) => {
     expect(
       planFirstDeployHeadReads({ declarations, services, versions, repositories }).map(
@@ -449,20 +468,26 @@ describe("what a stage's first deploy has to read", () => {
 
 describe("how often a first deploy's head is read again", () => {
   const NOW = Date.parse("2026-10-02T22:30:00Z");
-  const head = (minutesAgo: number | undefined) => ({
-    sha: API,
-    statuses: [
-      {
-        context: "mate/deploy/stage/api",
-        state: "pending" as const,
-        ...(minutesAgo === undefined
-          ? {}
-          : { created_at: DateTime.formatIso(DateTime.makeUnsafe(NOW - minutesAgo * 60_000)) }),
-      },
-    ],
+  const ago = (minutes: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - minutes * 60_000));
+  const madeAgo = ago;
+  const posted = (
+    context: string,
+    state: GiteaCommitStatus["state"],
+    minutes: number | undefined,
+    description?: string,
+  ) => ({
+    context,
+    state,
+    ...(minutes === undefined ? {} : { created_at: ago(minutes) }),
+    ...(description === undefined ? {} : { description }),
   });
-  const madeAgo = (minutes: number) =>
-    DateTime.formatIso(DateTime.makeUnsafe(NOW - minutes * 60_000));
+  const BROKER = "mate/deploy/stage/api";
+  const PUSH = "Zerops deploy / deploy (push)";
+  const head = (statuses: ReadonlyArray<GiteaCommitStatus>, firstSeen?: number) => ({
+    sha: API,
+    statuses,
+    ...(firstSeen === undefined ? {} : { firstSeenAtMs: NOW - firstSeen * 60_000 }),
+  });
   it.each([
     {
       case: "a head not read before",
@@ -473,53 +498,85 @@ describe("how often a first deploy's head is read again", () => {
     },
     {
       case: "a new head on main",
-      previous: head(60),
+      previous: head([posted(PUSH, "failure", 60)], 60),
       sha: WEB,
       asked: madeAgo(60),
       ladder: "busy",
     },
     {
       case: "a head whose job posted a minute ago",
-      previous: head(1),
+      previous: head([posted(PUSH, "pending", 1)], 50),
       sha: API,
-      asked: undefined,
+      asked: madeAgo(50),
       ladder: "busy",
     },
     {
       // H1: the push job failed long before; the stage made a moment ago asks for its deploy now.
       case: "an old head, the stage just made",
-      previous: head(50),
+      previous: head([posted(PUSH, "failure", 50)], 1),
       sha: API,
       asked: madeAgo(1),
       ladder: "busy",
     },
     {
-      case: "a head quiet past the window",
-      previous: head(15),
+      // A fix merged late: Gitea has posted nothing on its head yet.
+      case: "the same head, nothing posted, first seen a minute ago, the stage long made",
+      previous: head([], 1),
       sha: API,
-      asked: undefined,
+      asked: madeAgo(40),
+      ladder: "busy",
+    },
+    {
+      case: "the broker's grant a minute ago",
+      previous: head([posted(BROKER, "pending", 1, "deploying 3f9c1b2")], 50),
+      sha: API,
+      asked: madeAgo(50),
+      ladder: "busy",
+    },
+    {
+      // The broker's own retries do not move the clock: a hard stop.
+      case: "the broker re-dispatching a minute ago, all else quiet past its patience",
+      previous: head([posted(BROKER, "pending", 1, "dispatched"), posted(PUSH, "failure", 40)], 40),
+      sha: API,
+      asked: madeAgo(50),
+      ladder: "resting",
+    },
+    {
+      case: "the broker refusing a minute ago, all else quiet past its patience",
+      previous: head([posted(BROKER, "failure", 1, "the runner is busy")], 40),
+      sha: API,
+      asked: madeAgo(50),
+      ladder: "resting",
+    },
+    {
+      case: "a head quiet past the window",
+      previous: head([posted(PUSH, "pending", 15)], 20),
+      sha: API,
+      asked: madeAgo(20),
       ladder: "quiet",
     },
     {
       case: "a head quiet past the broker's patience: no more reads",
-      previous: head(35),
+      previous: head([posted(PUSH, "pending", 35)], 40),
       sha: API,
       asked: madeAgo(40),
       ladder: "resting",
     },
     {
       case: "a head that says not when, its ask unknown: no more reads",
-      previous: head(undefined),
+      previous: head([posted(PUSH, "pending", undefined)]),
       sha: API,
       asked: undefined,
       ladder: "resting",
     },
   ])("$case", ({ previous, sha, asked, ladder }) => {
-    expect(firstDeployHeadLadder(previous, sha, asked, NOW)).toBe(
+    expect(
+      firstDeployHeadLadder(previous, { environment: "stage", hostname: "api" }, sha, asked, NOW),
+    ).toBe(
       ladder === "busy"
         ? STATUS_RECHECK_LADDER_MS
         : ladder === "quiet"
-          ? VERDICT_RECHECK_LADDER_MS
+          ? FIRST_DEPLOY_QUIET_LADDER_MS
           : undefined,
     );
   });
