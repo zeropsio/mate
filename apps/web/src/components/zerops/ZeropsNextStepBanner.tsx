@@ -193,9 +193,8 @@ export function ZeropsNextStepStrip({
         data-composer-top="review"
       >
         <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
-        <p className="col-span-2 truncate font-medium text-foreground text-line leading-4.5">
-          {strip.title}
-        </p>
+        <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
+        {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
         {lines.map((line) => (
           <div
             className="col-start-2 col-end-4 grid grid-cols-subgrid items-center"
@@ -248,24 +247,37 @@ export function ZeropsNextStepStrip({
       >
         Review
       </button>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              aria-label="Dismiss"
-              className="composer-top-dismiss"
-              onClick={(event) => {
-                onDismiss?.(strip.target, event.currentTarget);
-              }}
-              type="button"
-            >
-              <XIcon aria-hidden="true" />
-            </button>
-          }
-        />
-        <TooltipPopup side="top">Hide until another change waits</TooltipPopup>
-      </Tooltip>
+      {dismissButton(strip.target, onDismiss)}
     </section>
+  );
+}
+
+/** The strip's ×, on one change or several: puts it away until another change waits. */
+function dismissButton(
+  target: ZeropsNextStepStripModel["target"],
+  onDismiss: ((target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void) | undefined,
+  className?: string,
+) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-label="Dismiss"
+            className={
+              className === undefined ? "composer-top-dismiss" : `composer-top-dismiss ${className}`
+            }
+            onClick={(event) => {
+              onDismiss?.(target, event.currentTarget);
+            }}
+            type="button"
+          >
+            <XIcon aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipPopup side="top">Hide until another change waits</TooltipPopup>
+    </Tooltip>
   );
 }
 

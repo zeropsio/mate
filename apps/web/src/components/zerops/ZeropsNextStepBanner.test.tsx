@@ -267,6 +267,14 @@ describe("zeropsComposerTop", () => {
       },
     },
     {
+      case: "two waiting, dismissed: the strip stays away while they wait",
+      memory: { "env-nova:thread-1": { ...REMEMBERED_TWO, dismissed: true } },
+      threadKey: "env-nova:thread-1",
+      answers: [UNANSWERED, WAITING_TWO],
+      shown: [null, null],
+      remembered: { ...REMEMBERED_TWO, dismissed: true },
+    },
+    {
       case: "dismissed, then nothing waits: forgotten",
       memory: { "env-nova:thread-1": DISMISSED },
       threadKey: "env-nova:thread-1",
@@ -419,8 +427,10 @@ describe("ZeropsNextStepStrip", () => {
       if (element.type === "button") buttons.push(element);
       return false;
     });
-    expect(buttons).toHaveLength(2);
-    const second = buttons[1];
+    expect(buttons).toHaveLength(3);
+    const reviews = buttons.filter((button) => button.props["aria-label"] !== "Dismiss");
+    expect(reviews).toHaveLength(2);
+    const second = reviews[1];
     if (second === undefined) throw new Error("the second change has no Review");
     const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
     (second.props.onClick as (event: { currentTarget: HTMLElement }) => void)({
@@ -453,6 +463,26 @@ describe("ZeropsNextStepStrip", () => {
       { kind: "change", groupId: "g-1", repository: "app", number: 2 },
       pressed,
     );
+  });
+
+  it("puts a strip of several changes away from its dismiss button too", () => {
+    const onDismiss = vi.fn();
+    const tree = ZeropsNextStepStrip({
+      onReview: () => {},
+      onDismiss,
+      strip: SHOWN_TWO,
+    }) as ReactElement;
+    const button = visitElements(
+      tree,
+      (element) => element.type === "button" && element.props["aria-label"] === "Dismiss",
+    );
+    if (button === null) throw new Error("the strip of several changes has no dismiss button");
+    const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
+    (button.props.onClick as (event: { currentTarget: HTMLElement }) => void)({
+      currentTarget: pressed,
+    });
+
+    expect(onDismiss).toHaveBeenCalledWith(SHOWN_TWO.target, pressed);
   });
 
   // Nothing merges from the composer any more (R1): the strip and the hook
