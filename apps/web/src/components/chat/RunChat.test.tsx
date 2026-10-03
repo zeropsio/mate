@@ -1566,7 +1566,9 @@ describe("RunChat, as the person uses it", () => {
   // A control that goes once pressed hands the focus on: the thought's way to
   // the rest to its "Show less" and back, the last "Show N earlier" to the
   // lines it drew — never to the page's body.
-  it("keeps the focus on the thought's toggle as it opens and closes", () => {
+  // The focus moves without scrolling: a scroll it made would read as the
+  // person's move, and a toggle on the card's foot would follow again.
+  it("keeps the focus on the thought's toggle as it opens and closes, scrolling nothing", () => {
     // The opened thought is markdown, which reads the page's own storage.
     const savedWindow = (globalThis as { window?: unknown }).window;
     (globalThis as { window?: unknown }).window = {
@@ -1591,11 +1593,11 @@ describe("RunChat, as the person uses it", () => {
             createNodeMock: (element) =>
               element.type === "button"
                 ? {
-                    focus: () =>
+                    focus: (options?: FocusOptions) =>
                       focused.push(
-                        String(
+                        `${String(
                           (element.props as { "aria-label"?: string })["aria-label"] ?? "Show less",
-                        ),
+                        )}${options?.preventScroll === true ? "" : " (scrolled)"}`,
                       ),
                     closest: () => null,
                     isConnected: true,

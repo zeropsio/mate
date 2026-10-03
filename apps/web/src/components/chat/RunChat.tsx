@@ -1071,13 +1071,14 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
   const [open, setOpen] = useState(false);
   const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS * 2);
   // Opening swaps the thought's button for "Show less", and closing swaps it
-  // back: the focus goes with the person's press to the one that stands.
+  // back: the focus goes with the person's press to the one that stands —
+  // scrolling nothing, or the card would read it as their move.
   const toggleRef = useRef<HTMLButtonElement>(null);
   const handOnRef = useRef(false);
   useLayoutEffect(() => {
     if (!handOnRef.current) return;
     handOnRef.current = false;
-    toggleRef.current?.focus();
+    toggleRef.current?.focus({ preventScroll: true });
   });
   const toggle = (next: boolean) => {
     handOnRef.current = true;
