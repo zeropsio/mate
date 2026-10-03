@@ -1,4 +1,5 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -7,6 +8,7 @@ import {
   crewResumeDraft,
   crewResumeLimit,
   crewRunDraft,
+  crewSpendBlocker,
   crewStartCommand,
 } from "./CrewRunDialog.logic";
 
@@ -206,7 +208,50 @@ describe("crewStartCommand", () => {
       command: null,
     },
   ] as const)("$name", ({ draft, hasLead, command }) => {
-    expect(crewStartCommand(draft, hasLead)).toEqual(command);
+    expect(crewStartCommand(draft, hasLead, false)).toEqual(command);
+  });
+
+  it("a dollar budget a crewmate's agent can't keep starts nothing; No limit starts", () => {
+    expect(crewStartCommand(draft, true, true)).toBeNull();
+    expect(crewStartCommand({ ...draft, budget: "unlimited" }, true, true)).toMatchObject({
+      _tag: "start",
+      budgetUsd: "unlimited",
+    });
+  });
+});
+
+describe("crewSpendBlocker", () => {
+  const provider = (instanceId: string, displayName: string, reportsSpend: boolean | null) =>
+    ({
+      instanceId,
+      displayName,
+      ...(reportsSpend === null ? {} : { threadProfile: { tools: true, reportsSpend } }),
+    }) as unknown as ServerProvider;
+  const providers = [
+    provider("claudeAgent", "Claude", true),
+    provider("grok", "Grok", false),
+    provider("cursor", "Cursor", null),
+  ];
+  it.each([
+    { name: "every agent reports its spend", logins: ["claudeAgent"], blocker: null },
+    {
+      name: "an agent that doesn't, named",
+      logins: ["claudeAgent", "grok"],
+      blocker: "Grok doesn't report what it spends, so this crew can't keep a budget.",
+    },
+    {
+      name: "an agent that carries no crew at all",
+      logins: ["cursor"],
+      blocker: "Cursor doesn't report what it spends, so this crew can't keep a budget.",
+    },
+    {
+      name: "a login the catalog doesn't list yet: the server decides",
+      logins: ["gone"],
+      blocker: null,
+    },
+  ])("$name", ({ logins, blocker }) => {
+    expect(crewSpendBlocker(logins, providers)).toBe(blocker);
+    expect(crewSpendBlocker(logins, undefined)).toBeNull();
   });
 });
 

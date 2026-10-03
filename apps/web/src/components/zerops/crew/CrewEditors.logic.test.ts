@@ -80,7 +80,7 @@ const claude = provider({
   instanceId: "claudeAgent" as ServerProvider["instanceId"],
   driver: "claudeAgent" as ServerProvider["driver"],
   displayName: "Claude",
-  threadProfile: { tools: true },
+  threadProfile: { tools: true, reportsSpend: true },
   models: [
     {
       slug: "claude-opus-5-5",
@@ -107,7 +107,7 @@ const codex = provider({
   instanceId: "codex" as ServerProvider["instanceId"],
   driver: "codex" as ServerProvider["driver"],
   displayName: "Codex",
-  threadProfile: { tools: false },
+  threadProfile: { tools: false, reportsSpend: false },
   models: [
     {
       slug: "gpt-5",
@@ -135,13 +135,13 @@ const grok = provider({
   instanceId: "grok" as ServerProvider["instanceId"],
   driver: "grok" as ServerProvider["driver"],
   displayName: "Grok",
-  threadProfile: { tools: true },
+  threadProfile: { tools: true, reportsSpend: true },
 });
 const claudeWork = provider({
   instanceId: "claudeAgent_work" as ServerProvider["instanceId"],
   driver: "claudeAgent" as ServerProvider["driver"],
   displayName: "Claude Code · work",
-  threadProfile: { tools: true },
+  threadProfile: { tools: true, reportsSpend: true },
 });
 const uninstalledGrok = {
   ...grok,
