@@ -361,7 +361,7 @@ describe("projectActivityPayload", () => {
 describe("superseded tool.updated snapshot dedup", () => {
   function makeToolLifecycleActivity(
     id: string,
-    kind: "tool.updated" | "tool.completed",
+    kind: "tool.started" | "tool.updated" | "tool.completed",
     options: {
       readonly turn?: string;
       readonly title?: string;
@@ -398,34 +398,58 @@ describe("superseded tool.updated snapshot dedup", () => {
   }
 
   it("drops updates a later completion supersedes in the same turn", () => {
+    const started = makeToolLifecycleActivity("start-1", "tool.started");
     const update1 = makeToolLifecycleActivity("upd-1", "tool.updated");
     const update2 = makeToolLifecycleActivity("upd-2", "tool.updated");
     const completed = makeToolLifecycleActivity("done-1", "tool.completed");
 
-    expect(projectedIds([update1, update2, completed])).toEqual([completed.id]);
+    expect(projectedIds([started, update1, update2, completed])).toEqual([
+      started.id,
+      completed.id,
+    ]);
+  });
+
+  // An ACP call sends no start: its first update is where the live run stood
+  // its step, so a reload keeps that one and drops only the later updates.
+  it("keeps a call's first sight when no start precedes it", () => {
+    const update1 = makeToolLifecycleActivity("upd-1", "tool.updated");
+    const update2 = makeToolLifecycleActivity("upd-2", "tool.updated");
+    const completed = makeToolLifecycleActivity("done-1", "tool.completed");
+
+    expect(projectedIds([update1, update2, completed])).toEqual([update1.id, completed.id]);
   });
 
   it("matches on toolCallId when the adapter emits one", () => {
     const otherCall = makeToolLifecycleActivity("upd-other", "tool.updated", {
       toolCallId: "call-b",
     });
+    const started = makeToolLifecycleActivity("start-a", "tool.started", { toolCallId: "call-a" });
     const update = makeToolLifecycleActivity("upd-a", "tool.updated", { toolCallId: "call-a" });
     const completed = makeToolLifecycleActivity("done-a", "tool.completed", {
       toolCallId: "call-a",
     });
 
     // Same itemType/title, different call: only call-a's update is superseded.
-    expect(projectedIds([otherCall, update, completed])).toEqual([otherCall.id, completed.id]);
+    expect(projectedIds([otherCall, started, update, completed])).toEqual([
+      otherCall.id,
+      started.id,
+      completed.id,
+    ]);
   });
 
   it("keeps updates with no matching completion", () => {
     const inFlight = makeToolLifecycleActivity("upd-live", "tool.updated", { title: "Running" });
+    const started = makeToolLifecycleActivity("start-other", "tool.started", { title: "Reading" });
     const other = makeToolLifecycleActivity("upd-other", "tool.updated", { title: "Reading" });
     const completed = makeToolLifecycleActivity("done-other", "tool.completed", {
       title: "Reading",
     });
 
-    expect(projectedIds([inFlight, other, completed])).toEqual([inFlight.id, completed.id]);
+    expect(projectedIds([inFlight, started, other, completed])).toEqual([
+      inFlight.id,
+      started.id,
+      completed.id,
+    ]);
   });
 
   it("drops interleaved superseded updates even when a parallel call separates them", () => {
@@ -435,6 +459,8 @@ describe("superseded tool.updated snapshot dedup", () => {
     // snapshot omits it. Its final state still shows via the retained
     // completion (1.5% of dropped rows on real data; see the projection's doc
     // comment).
+    const startedA = makeToolLifecycleActivity("start-a", "tool.started", { toolCallId: "call-a" });
+    const startedB = makeToolLifecycleActivity("start-b", "tool.started", { toolCallId: "call-b" });
     const updateA = makeToolLifecycleActivity("upd-a", "tool.updated", { toolCallId: "call-a" });
     const updateB = makeToolLifecycleActivity("upd-b", "tool.updated", { toolCallId: "call-b" });
     const completedA = makeToolLifecycleActivity("done-a", "tool.completed", {
@@ -444,7 +470,9 @@ describe("superseded tool.updated snapshot dedup", () => {
       toolCallId: "call-b",
     });
 
-    expect(projectedIds([updateA, updateB, completedA, completedB])).toEqual([
+    expect(projectedIds([startedA, startedB, updateA, updateB, completedA, completedB])).toEqual([
+      startedA.id,
+      startedB.id,
       completedA.id,
       completedB.id,
     ]);
