@@ -129,6 +129,11 @@ class FakeTransport implements BuildLogTransport {
     this.followers[index]?.request.callbacks.onLines(lines, rejectedItems);
   }
 
+  /** The stream's handshake is done: the backend answered the socket's open. */
+  handshake(index: number): void {
+    this.followers[index]?.request.callbacks.onOpen();
+  }
+
   closeFromServer(index: number): void {
     this.followers[index]?.request.callbacks.onClose();
   }
@@ -244,6 +249,81 @@ describe("shared build log registry", () => {
     expect(passive.session.getSnapshot().status).toBe("ended");
     passive.release();
     follower.release();
+  });
+
+  // A running build's room says it waits for the first line only once its
+  // stream is known to stand: not while the socket only exists (a stream that
+  // never handshook said "waiting" through a whole build), and not in the
+  // moment between the handshake and the first frame, which replays the lines
+  // written since the backfill (they would flash the words, then replace them).
+  it.each([
+    {
+      name: "the socket exists, no handshake",
+      handshake: false,
+      frame: false,
+      settle: false,
+      status: "loading",
+      lines: [],
+    },
+    {
+      name: "handshake, not yet a moment",
+      handshake: true,
+      frame: false,
+      settle: false,
+      status: "loading",
+      lines: [],
+    },
+    {
+      name: "handshake, then a moment with no frame",
+      handshake: true,
+      frame: false,
+      settle: true,
+      status: "live",
+      lines: [],
+    },
+    {
+      name: "handshake, then a frame with lines",
+      handshake: true,
+      frame: true,
+      settle: false,
+      status: "live",
+      lines: ["l2"],
+    },
+  ] as const)("a followed build's stream is live: $name", async (row) => {
+    const { registry, transport, timers } = harness();
+    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const published: Array<{ status: string; lines: number }> = [];
+    lease.session.subscribe(() => {
+      const snapshot = lease.session.getSnapshot();
+      published.push({ status: snapshot.status, lines: snapshot.lines.length });
+    });
+    await registry.drain();
+    expect(transport.followRequests).toHaveLength(1);
+
+    if (row.handshake) transport.handshake(0);
+    if (row.frame) {
+      transport.emit(0, [line("l2")]);
+      timers.flushOne();
+    }
+    if (row.settle) timers.flushOne();
+
+    const snapshot = lease.session.getSnapshot();
+    expect(snapshot.status).toBe(row.status);
+    expect(snapshot.lines.map(({ id }) => id)).toEqual(row.lines);
+    // Never a live stream without its lines while the frame carrying them is on its way.
+    if (row.frame) expect(published).not.toContainEqual({ status: "live", lines: 0 });
+    lease.release();
+  });
+
+  // A stream that stops being followed before its handshake has ended too.
+  it("a stream let go before its handshake ends", async () => {
+    const { registry, transport } = harness();
+    const lease = registry.acquire(project(), QUERY, { follow: true });
+    await registry.drain();
+    lease.setFollow(false);
+    expect(transport.followers[0]?.closed).toBe(true);
+    expect(lease.session.getSnapshot().status).toBe("ended");
+    lease.release();
   });
 
   // A card that draws a build's log hands it to the next one drawn for it (a

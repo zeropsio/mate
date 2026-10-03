@@ -42,7 +42,7 @@ export type BuildLogFetch = (url: string, signal: AbortSignal) => Promise<Minima
 
 export interface BuildLogSocket {
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
-  addEventListener(type: "error" | "close", listener: () => void): void;
+  addEventListener(type: "open" | "error" | "close", listener: () => void): void;
   close(): void;
 }
 
@@ -63,6 +63,8 @@ export interface BuildLogTransportPage {
 }
 
 export interface BuildLogFollowCallbacks {
+  /** The stream's handshake is done: the backend accepted it (a socket that only exists has not). */
+  readonly onOpen: () => void;
   readonly onLines: (lines: ReadonlyArray<BuildLogLine>, rejectedItems: number) => void;
   readonly onMalformedFrame: () => void;
   readonly onError: () => void;
@@ -266,6 +268,11 @@ export function makeBuildLogTransport(options: BuildLogTransportOptions): BuildL
         }
         if (decoded.lines.length > 0 || decoded.rejectedItems > 0) {
           request.callbacks.onLines(decoded.lines, decoded.rejectedItems);
+        }
+      });
+      socket.addEventListener("open", () => {
+        if (!locallyClosed && !closed && generation === expectedGeneration) {
+          request.callbacks.onOpen();
         }
       });
       socket.addEventListener("error", () => {

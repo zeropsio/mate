@@ -26,6 +26,7 @@ class FakeSocket implements BuildLogSocket {
   readonly url: string;
   closed = false;
   #message: ((event: { readonly data: unknown }) => void) | undefined;
+  #open: (() => void) | undefined;
   #error: (() => void) | undefined;
   #close: (() => void) | undefined;
 
@@ -35,14 +36,19 @@ class FakeSocket implements BuildLogSocket {
   }
 
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
-  addEventListener(type: "error" | "close", listener: () => void): void;
+  addEventListener(type: "open" | "error" | "close", listener: () => void): void;
   addEventListener(
-    type: "message" | "error" | "close",
+    type: "message" | "open" | "error" | "close",
     listener: ((event: { readonly data: unknown }) => void) | (() => void),
   ): void {
     if (type === "message") this.#message = listener as (event: { readonly data: unknown }) => void;
+    if (type === "open") this.#open = listener as () => void;
     if (type === "error") this.#error = listener as () => void;
     if (type === "close") this.#close = listener as () => void;
+  }
+
+  handshake(): void {
+    this.#open?.();
   }
 
   emit(data: unknown): void {
@@ -65,20 +71,24 @@ class FakeSocket implements BuildLogSocket {
 }
 
 function callbacks(): BuildLogFollowCallbacks & {
+  readonly opens: ReturnType<typeof vi.fn>;
   readonly lines: ReturnType<typeof vi.fn>;
   readonly malformed: ReturnType<typeof vi.fn>;
   readonly errors: ReturnType<typeof vi.fn>;
   readonly closes: ReturnType<typeof vi.fn>;
 } {
+  const opens = vi.fn();
   const lines = vi.fn();
   const malformed = vi.fn();
   const errors = vi.fn();
   const closes = vi.fn();
   return {
+    opens,
     lines,
     malformed,
     errors,
     closes,
+    onOpen: opens,
     onLines: lines,
     onMalformedFrame: malformed,
     onError: errors,
@@ -204,6 +214,11 @@ describe("build log transport", () => {
     });
     const socket = FakeSocket.instances[0]!;
 
+    // The socket exists before the backend accepted it; its handshake says so.
+    expect(events.opens).not.toHaveBeenCalled();
+    socket.handshake();
+    expect(events.opens).toHaveBeenCalledOnce();
+
     socket.emit(
       JSON.stringify({
         items: [
@@ -221,11 +236,13 @@ describe("build log transport", () => {
     expect(events.malformed).toHaveBeenCalledOnce();
 
     handle.close();
+    socket.handshake();
     socket.emit(JSON.stringify({ items: [] }));
     socket.fail();
     socket.serverClose();
     expect(events.errors).not.toHaveBeenCalled();
     expect(events.closes).not.toHaveBeenCalled();
+    expect(events.opens).toHaveBeenCalledOnce();
   });
 
   it("fences a late grant after shutdown before constructing a socket", async () => {
