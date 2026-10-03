@@ -437,6 +437,7 @@ class StreamSocket implements BuildLogSocket {
   static opened: StreamSocket[] = [];
   readonly url: string;
   #message: ((event: { readonly data: unknown }) => void) | undefined;
+  #open: (() => void) | undefined;
 
   constructor(url: string) {
     this.url = url;
@@ -444,12 +445,18 @@ class StreamSocket implements BuildLogSocket {
   }
 
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
-  addEventListener(type: "error" | "close", listener: () => void): void;
+  addEventListener(type: "open" | "error" | "close", listener: () => void): void;
   addEventListener(
-    type: "message" | "error" | "close",
+    type: "message" | "open" | "error" | "close",
     listener: ((event: { readonly data: unknown }) => void) | (() => void),
   ): void {
     if (type === "message") this.#message = listener as (event: { readonly data: unknown }) => void;
+    if (type === "open") this.#open = listener as () => void;
+  }
+
+  /** The backend accepted the stream. */
+  handshake() {
+    this.#open?.();
   }
 
   answer(
@@ -508,13 +515,15 @@ describe("useBuildLog over the account's own log registry", () => {
     const managed = { logs, scope } as unknown as ManagedZeropsDataRuntime;
     const running: BuildLogQuery = { ...QUERY, fromIso: "2026-10-03T10:00:00.000Z" };
     const seen: Record<string, ReadonlyArray<string>> = {};
+    const statuses: string[] = [];
     const record = (where: string, lines: ReadonlyArray<BuildLogLine>) => {
       seen[where] = lines.map(({ text }) => text);
     };
 
     function Line({ where, live }: { readonly where: string; readonly live: boolean }) {
-      const { lines } = useBuildLog({ projectId: "project-1", query: running, live });
+      const { lines, status } = useBuildLog({ projectId: "project-1", query: running, live });
       useEffect(() => record(where, lines), [where, lines]);
+      useEffect(() => void statuses.push(status), [status]);
       return null;
     }
     const draw = (where: string, live: boolean) => (
@@ -534,13 +543,20 @@ describe("useBuildLog over the account's own log registry", () => {
       expect(StreamSocket.opened).toHaveLength(1);
       expect(new URL(StreamSocket.opened[0]!.url).searchParams.get("from")).toBeNull();
 
+      // Its socket stands, the backend has not accepted it: not live — a
+      // stream that never handshook said "waiting" through a whole build.
+      await act(() => new Promise((resolve) => setTimeout(resolve, 5)));
+      expect(statuses.at(-1)).toBe("loading");
+
       await act(async () => {
+        StreamSocket.opened[0]!.handshake();
         StreamSocket.opened[0]!.answer([
           { id: "b1", timestamp: "2026-10-03T10:00:14.000Z", message: "Installing dependencies" },
         ]);
         await new Promise((resolve) => setTimeout(resolve, 5));
       });
       expect(seen.slot).toEqual(["Installing dependencies"]);
+      expect(statuses.at(-1)).toBe("live");
 
       // Its call settled: the line plops from the slot into the history.
       await act(() => root.render(draw("history", false)));

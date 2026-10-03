@@ -44,6 +44,11 @@ export interface ZeropsDataPolicy {
   readonly retainedLogBytesPerSession: number;
   readonly activeLogSessionsPerAccount: number;
   readonly logPublicationCoalescingMs: number;
+  /**
+   * How long a build log's stream stands open with no frame before it counts
+   * as live: its first frame replays what was written since the backfill.
+   */
+  readonly logStreamSettleMs: number;
   readonly desiredInterestsPerReceiver: number;
   readonly activeInterestsPerAccount: number;
   readonly activeRegistrationsPerAccount: number;
@@ -107,6 +112,7 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   retainedLogBytesPerSession: 5 * 1_024 * 1_024,
   activeLogSessionsPerAccount: 32,
   logPublicationCoalescingMs: 100,
+  logStreamSettleMs: 1_000,
   desiredInterestsPerReceiver: 128,
   activeInterestsPerAccount: 512,
   activeRegistrationsPerAccount: 2_048,

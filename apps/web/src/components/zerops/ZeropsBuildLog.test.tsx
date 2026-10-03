@@ -33,9 +33,16 @@ const LINES: ReadonlyArray<ZeropsBuildLogLine> = [
 const render = (
   lines: ReadonlyArray<ZeropsBuildLogLine>,
   status: "loading" | "live" | "ended" = "live",
+  waiting = false,
 ) =>
   renderToStaticMarkup(
-    <ZeropsBuildLog lines={lines} onToggle={vi.fn()} open={false} status={status} />,
+    <ZeropsBuildLog
+      lines={lines}
+      onToggle={vi.fn()}
+      open={false}
+      status={status}
+      waiting={waiting}
+    />,
   );
 
 const rowsOf = (html: string) =>
@@ -97,23 +104,16 @@ describe("ZeropsBuildLog", () => {
 
   // Its room stands from the first draw while the build runs, so the card's
   // height is final when it opens; the way to the log is there but not open
-  // to anyone until the first line (pass 36). Until then the room says the
-  // build has written nothing yet, never stands empty (pass 37) — once its
-  // log answered: a log still being read may already hold lines.
+  // to anyone until the first line (pass 36). The room says it waits for the
+  // first line when its caller reads so (`buildLogWaitsForFirstLine`, pass 37),
+  // and a line, once there, is what it shows.
   it.each([
-    { name: "no line yet", lines: [], status: "live", rows: 0, openable: false, waits: true },
-    { name: "being read", lines: [], status: "loading", rows: 0, openable: false, waits: false },
-    {
-      name: "its first lines",
-      lines: LINES,
-      status: "live",
-      rows: 2,
-      openable: true,
-      waits: false,
-    },
+    { name: "no line, waiting", lines: [], waiting: true, rows: 0, openable: false, waits: true },
+    { name: "no line, silent", lines: [], waiting: false, rows: 0, openable: false, waits: false },
+    { name: "its first lines", lines: LINES, waiting: true, rows: 2, openable: true, waits: false },
   ] as const)("while it runs, its newest lines' room stands: $name", (row) => {
-    const { lines, status, rows, openable, waits } = row;
-    const html = render(lines, status);
+    const { lines, waiting, rows, openable, waits } = row;
+    const html = render(lines, "live", waiting);
     const glance = html.match(/<ol[^>]*data-zerops-build-log-glance[\s\S]*?<\/ol>/)?.[0] ?? "";
     expect(glance).not.toBe("");
     expect(rowsOf(html)).toHaveLength(rows);
