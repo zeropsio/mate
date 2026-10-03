@@ -8,11 +8,18 @@
  * the client deletes its throwaway; the token's id goes with the caller so that it opens one
  * session only (`sessions.ts`).
  *
+ * A door answers within {@link DOOR_BUDGET}: one whose reads of Zerops take longer is unavailable
+ * (`503` with `Retry-After`), inside the 45 s the client waits for it, so the client asks again
+ * rather than abandoning it mid-way. The org read it gave up on goes on, and lands for the door
+ * asked again.
+ *
  * @module door
  */
 import { type DoorVerdict, checkDoorToken, checkDoorTokenShape } from "@t3tools/shared/zeropsDoor";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
@@ -43,6 +50,9 @@ const failWith = (verdict: Exclude<DoorVerdict, { readonly kind: "admitted" }>) 
     ? new DoorRefused({ rule: verdict.rule })
     : new ZeropsUnavailable({ operation: "door", message: verdict.reason });
 
+/** How long a door may take: under the 45 s the client waits for it, with room for its answer. */
+export const DOOR_BUDGET = Duration.seconds(35);
+
 export const doorLayer = (options: {
   readonly hqProjectId: string;
 }): Layer.Layer<Door, never, ZeropsApi | Roles> =>
@@ -51,6 +61,7 @@ export const doorLayer = (options: {
     Effect.gen(function* () {
       const api = yield* ZeropsApi;
       const roles = yield* Roles;
+      const scope = yield* Effect.scope;
       return Door.of({
         admit: (presented) =>
           Effect.gen(function* () {
@@ -70,8 +81,10 @@ export const doorLayer = (options: {
             };
             const shape = checkDoorTokenShape(facts);
             if (shape !== undefined) return yield* failWith(shape);
-            // HQ's own reads failing is HQ's trouble, never the caller's verdict.
-            const view = yield* roles.recent.pipe(
+            // HQ's own reads failing is HQ's trouble, never the caller's verdict. The read outlives
+            // a door that gives up on it: what it reads is the next door's.
+            const reading = yield* Effect.forkIn(roles.recent, scope);
+            const view = yield* Fiber.join(reading).pipe(
               Effect.catchTag("ZeropsRefused", () =>
                 Effect.fail(
                   new ZeropsUnavailable({ operation: "door", message: "own credential" }),
@@ -81,7 +94,18 @@ export const doorLayer = (options: {
             const verdict = checkDoorToken({ ...facts, orgId: view.orgId, members: view.members });
             if (verdict.kind !== "admitted") return yield* failWith(verdict);
             return { userId: verdict.userId, orgId: view.orgId, doorTokenId: token.id };
-          }),
+          }).pipe(
+            Effect.timeoutOrElse({
+              duration: DOOR_BUDGET,
+              orElse: () =>
+                Effect.fail(
+                  new ZeropsUnavailable({
+                    operation: "door",
+                    message: "Zerops did not answer within the door's budget.",
+                  }),
+                ),
+            }),
+          ),
       });
     }),
   );
