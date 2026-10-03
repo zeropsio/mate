@@ -778,6 +778,31 @@ describe("the access grant inside the data runtime", () => {
       ),
   );
 
+  // F11: a hand over writes a project's grants; the grant reads them again at once, while a
+  // person's retry on a granted grant keeps the renewal's schedule.
+  it.effect("grants this account wrote, on the bus, start a round on a granted grant at once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const opened = yield* grantedTab(healthy());
+        const bus = yield* makeInvalidationBus({ signals: Stream.never, shown: () => true });
+        yield* opened.runtime.access.listen(bus);
+        const before = opened.platform.rounds.length;
+
+        yield* bus
+          .invalidate({ topic: "access", change: "renew-now" })
+          .pipe(Effect.provideService(Clock.Clock, opened.clock));
+        yield* opened.pass(INVALIDATION_COALESCE_MS);
+        expect(opened.platform.rounds).toHaveLength(before);
+
+        yield* bus
+          .invalidate({ topic: "access", change: "grants-written" })
+          .pipe(Effect.provideService(Clock.Clock, opened.clock));
+        yield* opened.pass(INVALIDATION_COALESCE_MS);
+        expect(opened.platform.rounds).toHaveLength(before + 1);
+      }),
+    ),
+  );
+
   it.effect.each([
     ["a fresh lapse", 1500, false, [0, 3 * SECOND, 9 * SECOND]],
     ["a lapse on its 60 s cadence", 3 * MINUTE, false, [0, 3 * SECOND, 9 * SECOND]],

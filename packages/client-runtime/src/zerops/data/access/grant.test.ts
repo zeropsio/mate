@@ -1113,6 +1113,44 @@ describe("access grant reducer", () => {
   });
 });
 
+// F11 (e2e, 2026-10-03): a hand over writes a project's grants, which only a round reads. The
+// person who just handed a Mate over sees its new owner at once: a round now, never on the
+// renewal's schedule — and right after the round in flight, which may have read before the write.
+describe("access grant: grants this account wrote", () => {
+  it("starts a round at once on a granted grant whose renewal waits", () => {
+    const sim = grantedSim();
+    sim.elapse(MINUTE);
+    sim.send({ type: "TICK" });
+    expect(grantRoundInFlight(sim.state)).toBeNull();
+    sim.send({ type: "GRANTS_WRITTEN" });
+    expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
+  });
+
+  it("starts another round as soon as the one in flight completes", () => {
+    const sim = grantedSim();
+    sim.elapse(12 * MINUTE);
+    sim.send({ type: "TICK" });
+    const inFlight = sim.round();
+    sim.send({ type: "GRANTS_WRITTEN" });
+    expect(sim.round()).toBe(inFlight);
+    sim.elapse(2 * SECOND);
+    sim.answerRound([
+      [A, verified(A)],
+      [B, verified(B)],
+    ]);
+    expect(sim.round()).not.toBe(inFlight);
+    expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
+  });
+
+  it("asks nothing of a grant not granted yet", () => {
+    const sim = new GrantSim();
+    sim.send({ type: "START" });
+    const first = sim.round();
+    sim.send({ type: "GRANTS_WRITTEN" });
+    expect(sim.round()).toBe(first);
+  });
+});
+
 describe("access grant invariants over enumerated event sequences", () => {
   interface GrantNode {
     readonly state: GrantMachine;
@@ -1183,6 +1221,7 @@ describe("access grant invariants over enumerated event sequences", () => {
       { now, event: { type: "VISIBILITY", hidden: state.signals.hiddenSince === null } },
       { now, event: state.signals.online ? { type: "OFFLINE" } : { type: "ONLINE" } },
       { now, event: { type: "USER_RETRY" } },
+      { now, event: { type: "GRANTS_WRITTEN" } },
       // Someone else creates C: the organization's live list names it before any round does.
       { now, event: { type: "PROJECTS_LISTED", projects: PROJECTS } },
     ];

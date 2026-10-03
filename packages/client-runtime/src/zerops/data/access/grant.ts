@@ -120,7 +120,15 @@ export interface GrantRound {
 
 export type Renewal =
   | { readonly status: "idle"; readonly dueAt: Instant }
-  | { readonly status: "running"; readonly round: GrantRound }
+  | {
+      readonly status: "running";
+      readonly round: GrantRound;
+      /**
+       * This account wrote a project's grants while the round ran, which may have read them
+       * before the write: another round follows it at once (`GRANTS_WRITTEN`).
+       */
+      readonly again?: true;
+    }
   | {
       readonly status: "backoff";
       readonly failure: GrantFailure;
@@ -211,6 +219,11 @@ export type GrantEvent =
   | { readonly type: "ONLINE" }
   | { readonly type: "OFFLINE" }
   | { readonly type: "USER_RETRY" }
+  /**
+   * This account wrote a project's grants (a hand over): what the grant holds of every project's
+   * grants is read again at once, not on the renewal's schedule.
+   */
+  | { readonly type: "GRANTS_WRITTEN" }
   /** `fetchUser` and every organization list answered; `projects` are the round's reads. */
   | {
       readonly type: "ROUND_ACCOUNT";
@@ -465,7 +478,14 @@ const withRound = (machine: GrantMachine, round: GrantRound): GrantMachine => {
   const phase = machine.phase;
   if (phase.phase === "verifying") return { ...machine, phase: { ...phase, round } };
   if (phase.phase === "granted" || phase.phase === "lapsed") {
-    return { ...machine, phase: { ...phase, renewal: { status: "running", round } } };
+    const again = phase.renewal.status === "running" && phase.renewal.again === true;
+    return {
+      ...machine,
+      phase: {
+        ...phase,
+        renewal: { status: "running", round, ...(again ? { again: true as const } : {}) },
+      },
+    };
   }
   return machine;
 };
@@ -750,10 +770,39 @@ const completeRound = (
     phase: {
       phase: "granted",
       evidence,
-      renewal: { status: "idle", dueAt: after(round.startedAt, ctx.policy.windowMs - lead) },
+      renewal: {
+        status: "idle",
+        // Grants this account wrote while it ran may have been read before the write.
+        dueAt: wroteDuring(machine) ? ctx.now : after(round.startedAt, ctx.policy.windowMs - lead),
+      },
       failure: null,
     },
   };
+};
+
+/** Whether this account wrote a project's grants while the renewal in flight ran. */
+const wroteDuring = (machine: GrantMachine): boolean => {
+  const phase = machine.phase;
+  return (
+    (phase.phase === "granted" || phase.phase === "lapsed") &&
+    phase.renewal.status === "running" &&
+    phase.renewal.again === true
+  );
+};
+
+/**
+ * Grants this account wrote: a granted grant reads every project again — at once where its renewal
+ * waits, right after the round in flight otherwise. A grant not granted yet reads them with its
+ * first round; one retrying after a failure, with its next.
+ */
+const grantsWritten = (machine: GrantMachine, ctx: GrantContext): GrantMachine => {
+  const phase = machine.phase;
+  if (phase.phase !== "granted" && phase.phase !== "lapsed") return machine;
+  const renewal = phase.renewal;
+  if (renewal.status === "running") return withRenewal(machine, { ...renewal, again: true });
+  return renewal.status === "idle"
+    ? withRenewal(machine, { status: "idle", dueAt: ctx.now })
+    : machine;
 };
 
 const roundComplete = (round: GrantRound): boolean =>
@@ -906,6 +955,8 @@ const apply = (
     case "USER_RETRY":
       // A retry during a round joins it (G7).
       return grantRoundInFlight(machine) === null ? wake(machine, ctx, out) : machine;
+    case "GRANTS_WRITTEN":
+      return grantsWritten(machine, ctx);
     case "ROUND_ACCOUNT": {
       const round = grantRoundInFlight(machine);
       if (round === null || round.id !== event.round || round.targets !== null) return machine;

@@ -48,7 +48,11 @@ export type TargetKey = typeof TargetKey.Type;
 export const Invalidation = Schema.Union([
   Schema.Struct({
     topic: Schema.Literal("access"),
-    change: Schema.Literals(["granted", "lapsed", "renew-now"]),
+    /**
+     * `granted`, `lapsed`: the grant's own. `renew-now`: a person's retry. `grants-written`: this
+     * account wrote a project's grants (a hand over), which the grant reads again at once.
+     */
+    change: Schema.Literals(["granted", "lapsed", "renew-now", "grants-written"]),
   }),
   Schema.Struct({
     topic: Schema.Literal("inventory"),
