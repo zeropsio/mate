@@ -412,6 +412,8 @@ describe("HQ API", () => {
           yield* untilHealth(call, "active");
           const session = yield* sessionFor(call, "door-owner");
           fake.members.set("ORG", []);
+          // Past the age a door may admit by (the harness's view TTL): it reads the org again.
+          yield* Effect.sleep(Duration.millis(400));
           const answers = yield* Effect.all([
             call("POST", "/api/apps", { session, body: { name: "Two" } }),
             call("POST", "/api/door", { body: { token: "door-dev" } }),

@@ -2,9 +2,11 @@
  * HQ's door for a person: the rules of `@t3tools/shared/zeropsDoor`, over facts read here. The
  * presented throwaway reads only itself — `/user/info` and its own token record, with the API's
  * `Date` header — and is judged on that first (`checkDoorTokenShape`), so a token that cannot pass
- * spends nothing of HQ's own credential. Only then does HQ read its org and members, fresh
- * (`roles.ts`), for the whole check. HQ deletes nothing: the client deletes its throwaway; the
- * token's id goes with the caller so that it opens one session only (`sessions.ts`).
+ * spends nothing of HQ's own credential. Only then does HQ check its org and members, as read at
+ * most 30 s ago (`roles.ts`'s `recent`): a reload's door after another waits on Zerops only once,
+ * and one whose read fails is unavailable — never admitted by an older view. HQ deletes nothing:
+ * the client deletes its throwaway; the token's id goes with the caller so that it opens one
+ * session only (`sessions.ts`).
  *
  * @module door
  */
@@ -69,7 +71,7 @@ export const doorLayer = (options: {
             const shape = checkDoorTokenShape(facts);
             if (shape !== undefined) return yield* failWith(shape);
             // HQ's own reads failing is HQ's trouble, never the caller's verdict.
-            const view = yield* roles.fresh.pipe(
+            const view = yield* roles.recent.pipe(
               Effect.catchTag("ZeropsRefused", () =>
                 Effect.fail(
                   new ZeropsUnavailable({ operation: "door", message: "own credential" }),

@@ -10,6 +10,10 @@
  * write never (E2E 2026-10-03: KRLS's member list missing HQ's 10 s answered every read of a new
  * application `503` for a minute). Past the five minutes a read fails as a write does.
  *
+ * `recent` is the view at most 30 s old, read now past that, and never the last good one: what
+ * HQ's door admits by, so a reload's door after another waits on Zerops only once (t11,
+ * 2026-10-03: doors re-entered behind a fresh read of KRLS's slow member list hung 55 s and 77 s).
+ *
  * @module roles
  */
 import type { Facts, Freshness } from "@t3tools/shared/zeropsPermissions";
@@ -48,6 +52,8 @@ export class Roles extends Context.Service<
     readonly view: Effect.Effect<OrgView<"cached">, ZeropsError>;
     /** The org's view read now, for a write. */
     readonly fresh: Effect.Effect<OrgView<"fresh">, ZeropsError>;
+    /** The org's view at most 30 s old, read now past that — never the last good one served. */
+    readonly recent: Effect.Effect<OrgView<"cached">, ZeropsError>;
     /**
      * Whether Zerops still has a project, read by its id: a `not_found` refusal is gone, any other
      * failure no answer.
@@ -146,6 +152,9 @@ export const rolesLayer = (options: {
       const fresh = Effect.flatMap(Clock.currentTimeMillis, (now) => readSince(now, now)).pipe(
         Effect.map((read): OrgView<"fresh"> => ({ ...read, freshness: "fresh" })),
       );
+      const recent = Effect.flatMap(Clock.currentTimeMillis, (now) =>
+        readSince(now - ttl + 1, now),
+      ).pipe(Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })));
       const view = Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
         const since = now - ttl + 1;
@@ -178,6 +187,6 @@ export const rolesLayer = (options: {
           ),
         );
       }).pipe(Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })));
-      return Roles.of({ view, fresh, exists });
+      return Roles.of({ view, fresh, recent, exists });
     }),
   );
