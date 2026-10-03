@@ -10,7 +10,7 @@
  *   half a second, then the tests; `stale` a call whose completion never
  *   comes; `band` a stand-up whose builds run on after its call returned;
  *   `long` thirty steps, so the card fills its height, its commands
- *   two lines each; `edits` two edits in
+ *   two lines each, the first with what it printed to open; `edits` two edits in
  *   a row, the second folding into the first as it lands; `cards` three calls
  *   at once, the first returning first, then a new batch;
  * - `?speed=<x>` plays faster or slower, `?at=<s>` starts that far in;
@@ -277,6 +277,13 @@ const LONG: Run = {
           words: `Check route ${index}`,
           // Two lines: the block fits its cap, so nothing in it fades.
           code: `npm test -- route-${index}\nnpm run lint -- route-${index}`,
+          // The first says what it printed: a call to open while the card
+          // is still below its height.
+          ...(index === 2
+            ? {
+                output: Array.from({ length: 6 }, (_, n) => `  ✓ route-2 case ${n + 1}`).join("\n"),
+              }
+            : {}),
         }
       : {
           id: `r${index}`,
