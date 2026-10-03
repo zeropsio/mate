@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
@@ -15,10 +16,12 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { LOCK_KEY, Leader, type LeaderStatus, NotLeader, leaderLayer } from "./leader.ts";
 import { type Migration, MIGRATIONS_TABLE } from "./migrations.ts";
-import { Official } from "./official.ts";
+import { Official, officialLayer } from "./official.ts";
 import { treeMigrations } from "./migrationFiles.ts";
+import { ZeropsApi } from "./zerops/api.ts";
 
 const FAST = {
   heartbeat: Duration.millis(100),
@@ -43,6 +46,8 @@ const startInstance = (
         official: ok ? "ok" : "anchor_missing",
         allowed: ok,
       })),
+      lastOk: Effect.undefined,
+      inherit: () => Effect.void,
     });
     const context = yield* Layer.buildWithScope(
       leaderLayer({ databaseUrl, migrations, ...FAST }).pipe(
@@ -53,6 +58,74 @@ const startInstance = (
     );
     return {
       leader: Context.get(context, Leader),
+      sql: Context.get(context, SqlClient.SqlClient),
+      stop: Scope.close(scope, Exit.void),
+    };
+  });
+
+/** HQ project P1 as Zerops tells it: its anchor, and Core's fitting credential `org-token`. */
+const anchoredWorld = () => {
+  const world = emptyWorld();
+  world.tokens.set("org-token", {
+    id: "T1",
+    name: "mate-hq-org:P1",
+    orgId: "ORG",
+    roleCode: "READ_ONLY",
+    canCreateProjects: false,
+    canViewFinances: false,
+    canEditFinances: false,
+    projects: [],
+    createdMs: 0,
+    createdByUser: null,
+  });
+  world.members.set(
+    "ORG",
+    ["mate-hq-org:P1", "mate-hq:P1:https://p1zone.prg1-zerops.zone"].map((name) => ({
+      name,
+      kind: "token" as const,
+      roleCode: name.startsWith("mate-hq:") ? "ADMIN" : "READ_ONLY",
+      status: "ACTIVE",
+      userId: `U-${name}`,
+      clientUserId: `C-${name}`,
+      canCreateProjects: false,
+    })),
+  );
+  world.projects.push({
+    id: "P1",
+    orgId: "ORG",
+    name: "mate-rig-hq",
+    status: "ACTIVE",
+    tags: [],
+    userRoles: [],
+    publicZone: "p1zone.prg1-zerops.zone",
+  });
+  return world;
+};
+
+/**
+ * One Core instance's leader over `url` whose official verdict is read from `world` as HQ project
+ * `projectId`, at boot and then only hourly: an answer it lacks at boot it lacks for the test.
+ */
+const startReading = (url: string, world: FakeWorld, projectId = "P1") =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const databaseUrl = Redacted.make(url);
+    const context = yield* Layer.buildWithScope(
+      leaderLayer({ databaseUrl, migrations: treeMigrations(), ...FAST }).pipe(
+        Layer.provideMerge(PgClient.layer({ url: databaseUrl })),
+        Layer.provideMerge(
+          officialLayer({
+            projectId,
+            credential: Option.some(Redacted.make("org-token")),
+            recheck: Duration.hours(1),
+          }).pipe(Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world)))),
+        ),
+      ),
+      scope,
+    );
+    return {
+      leader: Context.get(context, Leader),
+      official: Context.get(context, Official),
       sql: Context.get(context, SqlClient.SqlClient),
       stop: Scope.close(scope, Exit.void),
     };
@@ -283,6 +356,63 @@ describe("leaderLayer", () => {
           yield* core.stop;
         }),
     );
+    // F18: a takeover while Zerops does not answer the next Core, whose own verdict is read only at
+    // boot here. Only the ok the leader recorded in `hq_leader` (`official.ts` `inherit`) lets it
+    // lead — the project's own, younger than the grace; a verdict of its own that refuses still
+    // stops it.
+    it.effect.each<{
+      readonly name: string;
+      /** The next Core's HQ project, P1 unless given. */
+      readonly projectId?: string;
+      /** Zerops answers the next Core `anchor_elsewhere` at boot, then nothing. */
+      readonly answered?: true;
+      /** The recorded ok is as old as the grace when the next Core reads it. */
+      readonly aged?: true;
+      readonly leads: boolean;
+    }>([
+      { name: "Zerops silent: leads", leads: true },
+      { name: "another project's: waits", projectId: "P2", leads: false },
+      { name: "as old as the grace: waits", aged: true, leads: false },
+      { name: "its own anchor_elsewhere: waits", answered: true, leads: false },
+    ])("a takeover with the leader's recorded ok, $name", ({ projectId, answered, aged, leads }) =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const old = yield* startReading(url, anchoredWorld());
+        yield* statusWhere(old.leader, (status) => status.state === "active");
+        // Read whether or not the schema has the column yet.
+        yield* old.sql<{ readonly at: string | null }>`
+          SELECT to_jsonb(hq_leader) ->> 'official_ok_at' AS at FROM hq_leader`.pipe(
+          Effect.filterOrFail(([row]) => row?.at !== null && row?.at !== undefined),
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
+        );
+        if (aged) {
+          yield* old.sql`UPDATE hq_leader SET official_ok_at = now() - interval '10 minutes'`;
+        }
+        const world = anchoredWorld();
+        if (answered) {
+          world.members.get("ORG")!.push({
+            ...world.members.get("ORG")![1]!,
+            name: "mate-hq:P2:https://decoy.invalid",
+          });
+        } else {
+          world.down = true;
+        }
+        const next = yield* startReading(url, world, projectId);
+        yield* statusWhere(next.leader, (status) => status.state === "standby");
+        yield* old.stop;
+        if (leads) {
+          const status = yield* statusWhere(next.leader, (status) => status.state === "active");
+          assert.deepStrictEqual(status, { state: "active", epoch: 2 });
+        } else {
+          yield* Effect.sleep(Duration.seconds(1));
+          assert.deepStrictEqual(yield* statesSeen(next.leader), ["standby"]);
+        }
+        assert.strictEqual((yield* next.official.status).allowed, leads);
+        yield* next.stop;
+      }),
+    );
+
     it.effect("releases the lead on shutdown at once, and never takes it again", () =>
       Effect.gen(function* () {
         const url = yield* (yield* TempPostgres).createDatabase;

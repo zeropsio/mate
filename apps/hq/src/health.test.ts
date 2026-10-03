@@ -42,6 +42,8 @@ const getHealth = (
           }),
           Layer.succeed(Official, {
             status: Effect.succeed({ official, allowed: official === "ok" }),
+            lastOk: Effect.undefined,
+            inherit: () => Effect.void,
           }),
           Layer.succeed(Backup, { take: Effect.die("no sets"), status: Effect.succeed(backup) }),
           PgClient.layer({ url: Redacted.make(databaseUrl), connectTimeout: Duration.seconds(1) }),

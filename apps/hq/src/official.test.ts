@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -228,6 +229,78 @@ describe("officialLayer", () => {
           allowed: false,
         });
       }
+    }),
+  );
+
+  // F18: a Core with no answer of its own yet — a takeover while Zerops is slow — takes the ok the
+  // Core that led before read, as `hq_leader` records it (`leader.ts`), under the same grace.
+  it.effect.each<{
+    readonly name: string;
+    readonly inherited: { readonly secondsAgo: number; readonly projectId: string };
+    /** Its own answer came first: `anchor_elsewhere`, a decoy standing; then Zerops went quiet. */
+    readonly answered?: true;
+    readonly allowed: boolean;
+  }>([
+    {
+      name: "its project's ok, 20 s old",
+      inherited: { secondsAgo: 20, projectId: "P1" },
+      allowed: true,
+    },
+    // A database restored into another project carries its HQ's ok, which is not this one's.
+    {
+      name: "another project's ok",
+      inherited: { secondsAgo: 20, projectId: "P2" },
+      allowed: false,
+    },
+    {
+      name: "its project's ok, as old as the grace",
+      inherited: { secondsAgo: 600, projectId: "P1" },
+      allowed: false,
+    },
+    // Its own answer rules from then on, as an `ok` of its own would.
+    {
+      name: "its project's ok, once it answered",
+      inherited: { secondsAgo: 20, projectId: "P1" },
+      answered: true,
+      allowed: false,
+    },
+  ])(
+    "with no answer of its own, takes the predecessor's ok: $name",
+    ({ inherited, answered, allowed }) =>
+      Effect.gen(function* () {
+        const fake = world();
+        fake.members.get("ORG")!.push(token(OWN));
+        if (answered) fake.members.get("ORG")!.push(token("mate-hq:P2:https://decoy.invalid"));
+        fake.down = answered === undefined;
+        const service = yield* official(fake);
+        yield* Effect.yieldNow;
+        fake.down = true;
+        yield* after("10 minutes");
+        yield* service.inherit({
+          at: (yield* Clock.currentTimeMillis) - inherited.secondsAgo * 1000,
+          projectId: inherited.projectId,
+        });
+        assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed });
+      }),
+  );
+
+  // What the leader records for its successor (`leader.ts`): the newest ok, its own or inherited.
+  it.effect("tells its newest ok, its own or inherited, and none after a refusal", () =>
+    Effect.gen(function* () {
+      const fake = world();
+      fake.members.get("ORG")!.push(token(OWN));
+      fake.down = true;
+      const service = yield* official(fake);
+      yield* Effect.yieldNow;
+      assert.strictEqual(yield* service.lastOk, undefined);
+      yield* service.inherit({ at: -5000, projectId: "P1" });
+      assert.deepStrictEqual(yield* service.lastOk, { at: -5000, projectId: "P1" });
+      fake.down = false;
+      yield* after("30 seconds");
+      assert.deepStrictEqual(yield* service.lastOk, { at: 30_000, projectId: "P1" });
+      fake.members.get("ORG")!.pop();
+      yield* after("30 seconds");
+      assert.strictEqual(yield* service.lastOk, undefined);
     }),
   );
 

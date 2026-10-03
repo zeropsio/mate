@@ -9,6 +9,10 @@
  * the official one; any failure ends the session — the connection closes, the lock is released,
  * the instance is a standby again and tries anew.
  *
+ * The leader records its newest `ok` of that verdict in `hq_leader`, and a waiting instance that
+ * Zerops has not answered yet takes it as its own (`Official.inherit`): a deploy's new container
+ * leads within a heartbeat of the old one's release, however slow Zerops is to answer it (F18).
+ *
  * @module leader
  */
 import * as PgConnection from "@effect/sql-pg/PgConnection";
@@ -19,6 +23,7 @@ import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
+import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -181,6 +186,42 @@ export const leaderLayer = (
           return yield* Deferred.await(answer).pipe(Effect.timeout(heartbeatTimeout));
         });
 
+      /**
+       * The ok the Core that led before recorded, taken by this one while Zerops has not answered
+       * it (`official.ts` `inherit`). Before a leader recorded one — a first boot, a schema without
+       * the columns yet — there is none.
+       */
+      const inheritRecorded = sql<{
+        readonly at: number | null;
+        readonly project: string | null;
+      }>`
+        SELECT (extract(epoch FROM official_ok_at) * 1000)::float8 AS at,
+               official_ok_project AS project
+        FROM hq_leader WHERE id = 1`.pipe(
+        Effect.flatMap(([row]) =>
+          row?.at === null || row?.at === undefined || row.project === null
+            ? Effect.void
+            : official.inherit({ at: Number(row.at), projectId: row.project }),
+        ),
+        Effect.ignore,
+      );
+
+      /**
+       * The newest ok this Core holds, recorded under its epoch for the next Core whenever it is
+       * newer than the one recorded last.
+       */
+      const recordOk = (epoch: number, recorded: Ref.Ref<number | undefined>) =>
+        Effect.gen(function* () {
+          const ok = yield* official.lastOk;
+          if (ok === undefined || ok.at === (yield* Ref.get(recorded))) return;
+          yield* sql`
+            UPDATE hq_leader
+            SET official_ok_at = to_timestamp(${ok.at / 1000}::float8),
+                official_ok_project = ${ok.projectId}
+            WHERE id = 1 AND epoch = ${epoch}`;
+          yield* Ref.set(recorded, ok.at);
+        }).pipe(Effect.catch((error) => Effect.logWarning("official ok not recorded", error)));
+
       const readEpoch = (connection: PgConnection.PgConnection, statement: string) =>
         connection
           .query(statement)
@@ -195,7 +236,7 @@ export const leaderLayer = (
           discard: true,
         });
         yield* SubscriptionRef.update(status, reached);
-        yield* allowed.pipe(
+        yield* Effect.andThen(inheritRecorded, allowed).pipe(
           Effect.repeat({ schedule: Schedule.spaced(heartbeat), until: (ok) => ok }),
         );
         yield* connection.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
@@ -226,10 +267,13 @@ export const leaderLayer = (
         const check = withinTimeout(
           readEpoch(connection, "SELECT epoch FROM hq_leader WHERE id = 1"),
         );
+        const recorded = yield* Ref.make<number | undefined>(undefined);
         return yield* Effect.andThen(
           Effect.sleep(heartbeat),
           Effect.flatMap(check, (current): Effect.Effect<void, Lost | NotOfficial> =>
-            current === epoch ? stillOfficial : Effect.fail(new Lost()),
+            current === epoch
+              ? Effect.andThen(stillOfficial, recordOk(epoch, recorded))
+              : Effect.fail(new Lost()),
           ),
         ).pipe(Effect.forever);
       }).pipe(
