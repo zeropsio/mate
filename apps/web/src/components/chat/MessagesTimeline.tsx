@@ -21,6 +21,7 @@ const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   classifyTimelineScroll,
+  nextTimelineReading,
   nextPersonScrollSession,
   PERSON_SCROLL_IDLE,
   personIsScrolling,
@@ -856,7 +857,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             personScrolling,
           })
         : { byPerson: false, direction: null };
-      lastReadingRef.current = reading;
+      lastReadingRef.current = reading && nextTimelineReading(lastReadingRef.current, reading);
       notePersonSession({ type: "scrolled", at: performance.now(), byPerson: scroll.byPerson });
       const state = listRef.current?.getState?.();
       if (restoringReadingPosition || state?.data !== rows) return;
