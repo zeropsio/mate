@@ -2233,46 +2233,56 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
   });
 });
 
+// E2E F7: `PUT /project/{id}` with `userRoles` replaces the project's whole list, can't name a token
+// (`400 userNotFound`), and a people-only list drops the Mate key's own grant (measured 2026-10-03,
+// f7-handover-probe.json). One person's own role list is the write that moves nobody else.
 describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
   const project = {
     id: "p1",
     name: "Fen",
     status: "ACTIVE",
     clientId: "org-1",
-    description: "the Mate",
-    tagList: ["mate", "person:own"],
-    userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
+    userRoles: [{ clientUserId: "cu-key", roleCode: "BASIC_USER" }],
   };
+  const answering = (held: ReadonlyArray<{ projectId: string; roleCode: string }>) =>
+    recordingFetch((request) =>
+      request.url.includes("/client-user/")
+        ? jsonResponse(200, { projectRoleList: held.map((role) => ({ id: "r", ...role })) })
+        : jsonResponse(200, project),
+    );
+  const sent = (stub: ReturnType<typeof answering>) =>
+    stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`);
 
-  it("sends the whole record with one person's role changed", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, project));
+  it("writes the person's own role list with this project's role in it, and never the project", async () => {
+    const stub = answering([{ projectId: "p-other", roleCode: "READ_ONLY" }]);
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.setProjectMemberRole({
+    const after = await client.setProjectMemberRole({
       projectId: "p1",
       clientUserId: "cu-eva",
       roleCode: "OWNER",
     });
 
-    // Read, then write: `PUT /project/{id}` replaces whatever it is sent.
-    expect(stub.requests.map((request) => request.method)).toEqual(["GET", "PUT"]);
+    // Read, then write: the person's list is replaced by whatever it is sent.
+    expect(sent(stub)).toEqual([
+      "GET /client-user/cu-eva/roles",
+      "PUT /client-user/cu-eva/roles",
+      "GET /project/p1",
+    ]);
     expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
-      name: "Fen",
-      description: "the Mate",
-      // The tags survive the write — this is a role change, not a re-tag.
-      tagList: ["mate", "person:own"],
-      userRoles: [
-        { clientUserId: "cu-jan", roleCode: "OWNER" },
-        { clientUserId: "cu-eva", roleCode: "OWNER" },
+      projectRoleList: [
+        { projectId: "p-other", roleCode: "READ_ONLY" },
+        { projectId: "p1", roleCode: "OWNER" },
       ],
     });
+    // The project as the platform holds it after the write: the key's own grant untouched.
+    expect(after.userRoles).toEqual(project.userRoles);
   });
 
-  // Overrides are measured in both directions: the same call, lowered, takes
-  // a Mate away.
+  // Overrides are measured in both directions: the same call, lowered, takes a Mate away.
   it("takes a Mate away when it lowers its owner", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, project));
+    const stub = answering([{ projectId: "p1", roleCode: "OWNER" }]);
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
@@ -2282,8 +2292,8 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
       roleCode: "READ_ONLY",
     });
 
-    expect(JSON.parse(stub.requests[1]?.body ?? "{}").userRoles).toEqual([
-      { clientUserId: "cu-jan", roleCode: "READ_ONLY" },
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}").projectRoleList).toEqual([
+      { projectId: "p1", roleCode: "READ_ONLY" },
     ]);
   });
 });

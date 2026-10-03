@@ -2228,7 +2228,7 @@ export interface ZeropsDataCommands {
   ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
   /**
    * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one
-   * command that writes a project's `userRoles`.
+   * command that writes a role override, on the person's own role list.
    */
   readonly setProjectMemberRole: (
     project: ProjectRef,

@@ -389,25 +389,25 @@ describe("handOverCandidates — whom a Mate may be handed to", () => {
 });
 
 describe("withMateProjectRole — handing a Mate over", () => {
-  it("raises one person and leaves everybody else's override alone", () => {
+  it("sets this project's role and leaves the person's other projects alone", () => {
     expect(
       withMateProjectRole(
         [
-          { clientUserId: "cu-jan", roleCode: "OWNER" },
-          { clientUserId: "cu-eva", roleCode: "BASIC_USER" },
+          { projectId: "p-other", roleCode: "READ_ONLY" },
+          { projectId: "p-fen", roleCode: "BASIC_USER" },
         ],
-        "cu-eva",
+        "p-fen",
         "OWNER",
       ),
     ).toEqual([
-      { clientUserId: "cu-jan", roleCode: "OWNER" },
-      { clientUserId: "cu-eva", roleCode: "OWNER" },
+      { projectId: "p-other", roleCode: "READ_ONLY" },
+      { projectId: "p-fen", roleCode: "OWNER" },
     ]);
   });
 
-  it("adds an override to a project that had none", () => {
-    expect(withMateProjectRole(undefined, "cu-eva", "OWNER")).toEqual([
-      { clientUserId: "cu-eva", roleCode: "OWNER" },
+  it("adds an override for a person who had none", () => {
+    expect(withMateProjectRole(undefined, "p-fen", "OWNER")).toEqual([
+      { projectId: "p-fen", roleCode: "OWNER" },
     ]);
   });
 
@@ -415,7 +415,7 @@ describe("withMateProjectRole — handing a Mate over", () => {
   // both directions.
   it("takes a Mate away when it lowers somebody", () => {
     expect(
-      withMateProjectRole([{ clientUserId: "cu-jan", roleCode: "OWNER" }], "cu-jan", "READ_ONLY"),
-    ).toEqual([{ clientUserId: "cu-jan", roleCode: "READ_ONLY" }]);
+      withMateProjectRole([{ projectId: "p-fen", roleCode: "OWNER" }], "p-fen", "READ_ONLY"),
+    ).toEqual([{ projectId: "p-fen", roleCode: "READ_ONLY" }]);
   });
 });

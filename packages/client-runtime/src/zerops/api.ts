@@ -1284,12 +1284,13 @@ export class ZeropsApiClient {
    * are, which for a plain member is `READ_ONLY` — they see the Mate and never
    * open it.
    *
-   * **The one write in this client that carries `userRoles`.** Every other
-   * project write sends `name`, `description` and `tagList` and must not name
-   * roles at all; `PUT /project/{id}` replaces whatever it is sent, so a tag
-   * write that carried a stale `userRoles` would silently rewrite who may open
-   * the Mate. This one sends the whole list with one entry changed, for the
-   * same reason in reverse.
+   * It is written on the person, `PUT /client-user/{id}/roles`, never on the
+   * project: `PUT /project/{id}` with `userRoles` replaces the project's whole
+   * list, refuses to name an integration token (`400 userNotFound`), and a
+   * list of people only drops the Mate key's own grant (measured 2026-10-03,
+   * `f7-handover-probe.json`). The person's list is read and sent back whole
+   * with this project's role set, so their other projects keep theirs. What
+   * it answers is the project as the platform holds it after the write.
    */
   async setProjectMemberRole(
     input: {
@@ -1303,18 +1304,25 @@ export class ZeropsApiClient {
   ): Promise<ZeropsProject> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
-    const project = await this.fetchProject(input.projectId, signal);
+    const roles = `/client-user/${input.clientUserId}/roles`;
+    const held = await this.#request<{
+      readonly projectRoleList?: ReadonlyArray<{
+        readonly projectId: string;
+        readonly roleCode: string;
+      }>;
+    }>(roles, { signal: signal ?? null }, { operationKind: "read" });
     this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(
-      `/project/${input.projectId}`,
+    await this.#request(
+      roles,
       {
         method: "PUT",
         signal: signal ?? null,
         body: JSON.stringify({
-          name: project.name,
-          description: project.description ?? "",
-          tagList: project.tagList ?? [],
-          userRoles: withMateProjectRole(project.userRoles, input.clientUserId, input.roleCode),
+          projectRoleList: withMateProjectRole(
+            held.projectRoleList,
+            input.projectId,
+            input.roleCode,
+          ),
         }),
       },
       {
@@ -1322,6 +1330,8 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+    this.#assertGeneration(generation);
+    return this.fetchProject(input.projectId, signal);
   }
 
   /**

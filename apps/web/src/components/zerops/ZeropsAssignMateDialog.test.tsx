@@ -31,6 +31,8 @@ function form(props: Partial<FormProps> = {}): ReactElement {
         members={[TOKEN, ADA]}
         onCancel={() => {}}
         onSubmit={() => {}}
+        pending={false}
+        error={null}
         projectName="Acme Docs"
         {...props}
       />
@@ -45,6 +47,18 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toContain("Ada Lovelace");
     expect(html).not.toContain("cu-token");
     expect(html).not.toContain("zcp-laravel-showcase-agent");
+  });
+
+  // E2E F7: a refused hand-over closed its dialog and said nothing.
+  it("says the platform's refusal in the dialog", () => {
+    const html = renderToStaticMarkup(form({ error: "Zerops refused the hand-over." }));
+    expect(html).toMatch(/role="alert"[^>]*>Zerops refused the hand-over\.</u);
+  });
+
+  it("holds its verbs while the platform answers", () => {
+    const html = renderToStaticMarkup(form({ pending: true }));
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Cancel/u);
+    expect(html).toMatch(/<button type="submit"[^>]*aria-busy="true"/u);
   });
 
   it("picks nobody: the hand-over waits on the person's own pick", () => {
