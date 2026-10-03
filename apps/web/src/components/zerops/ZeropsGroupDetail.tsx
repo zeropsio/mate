@@ -72,6 +72,7 @@ import {
   stopTone,
   stopVerdict,
   stopView,
+  runningVersion,
   type Deployment,
   type StopServiceRow,
   type StopVerdict,
@@ -1979,6 +1980,25 @@ function MateLine({
   );
 }
 
+/** A stop's version column while nothing has said what runs there yet. */
+const STOP_LINE_CHECKING = "Checking";
+
+/**
+ * A stop's version column: what runs there, named by the rule its page names it with
+ * (`runningVersion`); "none" only once the platform's complete answer says nothing runs, and
+ * "Checking" until something answers. A version not read yet was "none" here while the page said
+ * it was checking (F13, 2026-10-03).
+ */
+function stopLineVersion(deployment: Shown<Deployment> | undefined, row: EnvironmentRow): string {
+  if (deployment?.state === "known") {
+    const { value } = deployment;
+    if (value.kind === "running") return runningVersion(value.version, row)?.label ?? "none";
+    if (value.kind === "deploying") return value.version.label ?? row.version.label ?? "none";
+    if (deployment.coverage === "complete") return row.version.label ?? "none";
+  }
+  return row.version.label ?? STOP_LINE_CHECKING;
+}
+
 function StopLine({
   environment,
   firstDeploy,
@@ -2001,7 +2021,8 @@ function StopLine({
   const navigate = useNavigate();
   const deployments = useZeropsProjectFlowOptional()?.deployments;
   // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
-  const tone = stopTone(deployments?.get(environment.projectId), environment);
+  const deployment = deployments?.get(environment.projectId);
+  const tone = stopTone(deployment, environment);
   // No word for what runs and a first deploy asked for: the line its cell and its page say.
   const said = deployWord(tone);
   const firstWord = said === undefined ? firstDeployLine(firstDeploy) : undefined;
@@ -2035,7 +2056,7 @@ function StopLine({
           {environmentNameUnderGroup(groupName, environment.name)}
         </span>
         <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
-          {environment.version.label ?? "none"}
+          {stopLineVersion(deployment, environment)}
         </span>
         {/* Never a wordless dot on its own: a colour that has to be learnt is
             a colour nobody reads, and a screen reader gets nothing from it. */}

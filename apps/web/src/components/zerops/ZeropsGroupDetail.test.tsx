@@ -26,6 +26,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
+import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 
 import { ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
@@ -100,8 +101,10 @@ function render(
     environments: [environment("stage", "stage"), environment("prod", "production")],
   },
   waiting: ReleaseContentsSummary = releaseContentsSummary([], 20),
+  /** The page's flow; absent, it holds none. */
+  flow?: ZeropsProjectFlowValue,
 ) {
-  return renderToStaticMarkup(
+  const pane = (
     <ZeropsGroupPane
       attention={[]}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
@@ -126,9 +129,17 @@ function render(
       repo={undefined}
       tags={new Map()}
       waiting={waiting}
-    />,
+    />
+  );
+  if (flow === undefined) return renderToStaticMarkup(pane);
+  return renderToStaticMarkup(
+    <ZeropsProjectFlowContext.Provider value={flow}>{pane}</ZeropsProjectFlowContext.Provider>,
   );
 }
+
+/** A page's flow that holds only what the platform answered of each stop. */
+const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) =>
+  ({ deployments }) as unknown as ZeropsProjectFlowValue;
 
 describe("ZeropsGroupPane", () => {
   it("draws every line's content", () => {
@@ -181,6 +192,45 @@ describe("ZeropsGroupPane", () => {
       firstDeployOf: (projectId) => (projectId === "stage" ? { kind: "on-its-way" } : undefined),
     });
     expect(markup).toContain("First deploy on its way");
+  });
+
+  // F13, 2026-10-03: a stage whose version was still being read wrote "none" in its version column,
+  // while its page said it was checking.
+  describe("names what a stop runs in its version column, as its page does", () => {
+    const unnamed = {
+      ...environment("stage", "stage"),
+      version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
+      tone: "neutral",
+    } as EnvironmentRow;
+    const running = (name: string): Shown<Deployment> => ({
+      state: "known",
+      value: { kind: "running", activatedAt: null, version: deployedVersion(name) },
+      asOf: { ordinal: 1, atMs: NOW },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    });
+    /** The stage's line: the cell between its name and its state. */
+    const cell = (markup: string) =>
+      /<span class="truncate text-end font-mono[^"]*">([^<]*)<\/span>/u.exec(markup)?.[1];
+
+    it.each([
+      { name: "checking while nothing has answered", deployment: undefined, expected: "Checking" },
+      { name: "checking while what runs is read", deployment: UNREAD, expected: "Checking" },
+      {
+        name: "the version the platform names before the row does",
+        deployment: running("main 6aeae99"),
+        expected: "6aeae99",
+      },
+      { name: "none once the platform says nothing runs", deployment: NONE, expected: "none" },
+    ])("$name", ({ deployment, expected }) => {
+      const markup = render(
+        undefined,
+        { environments: [unnamed] },
+        undefined,
+        flowOf(new Map(deployment === undefined ? [] : [["stage", deployment]])),
+      );
+      expect(cell(markup)).toBe(expected);
+    });
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
