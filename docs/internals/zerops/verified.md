@@ -7332,3 +7332,36 @@ command not found`).
   (run 4: 16). Gitea's org listings ran once a minute per group, and the pull watch added none.
 - **Production blinked twice** — Larder's production answered `unreachable: timeout` for about 20 s
   at +872 s and again at +1318 s, then 200. Nothing deployed there at either moment.
+
+## Run 6 as measured — 2026-10-03
+
+- **Pass 35's fixes, re-checked live** — mate 0.11.88, zcp v9.189.1 and gitea-mate #8, two windows
+  on mate.zerops.io as the test account, 33 minutes.
+  - A New project "Quill" with its Mate went through a stage whose first deploy failed, then its fix.
+  - Larder took a new Mate that stood up development from the group repo on its own.
+  - The pull request's workflow set up Node (`actions/setup-node@v4`, node 24) before its Test step.
+  - The stage line read "making the project" (+846 s), "adding the app" (+876 s), then "awaits the
+    runner" (+888 s): the import before the runner, on the menu and the card alike.
+  - The push job failed at Test at +952 s. The first status read that carried it (+972.7 s) turned
+    the projects page cell to "First deploy failed" (+972.9 s) and the menu to "Stage didn't come up ·
+    its first deploy failed" (+972.8 s; +976.7 s in the other window).
+  - After the fix's merge (+1663 s): "first deploy on its way" (+1665 s), "building the app"
+    (+1684 s), "Stage is up" (+1745 s), with no step back at the build's end.
+  - Each coming-up Mate read the same words in the other window: "Coming up", "Waiting for your
+    sign-in", "Nothing asked yet". Its row wore the asleep face until the sign-in.
+  - The other group's projects, watched read-only, ran nothing; one stage build failed on a
+    `deployFiles` path its Mate then fixed.
+- **A group's runner, timed** — imported one second after the merge that queued its first job,
+  built in 118.5 s.
+- **Idle cost** — 22.2 and 20.3 HTTP requests a minute in the two windows (run 5: 16–18). 13.4 a
+  minute are each Gitea org's repository list once a minute, so the idle cost grows with the
+  account's orgs.
+- **An empty project's Mate asked the person for GitHub** — asked to make "the deploy workflow's
+  Test step" run the tests and open a pull request, the Mate (Opus 5.5, medium) looked for GitHub
+  credentials for two minutes and asked for a GitHub repository and a token; zcp told an agent on an
+  empty project nothing about where the code lives (zcp MB-38 since).
+- **A running deploy in 0.11.88's live slot** — one line, five grey dots and a clock: the slot's row
+  read only the call's placeholder steps, with nothing to open.
+- **The live card's bottom fade** — a row landing from the slot moves by a `translate`, which the
+  browser counts as scroll height; its own scroll adjustment read as the person scrolling up, and the
+  bottom fade stayed after the motion (408 of 1505 sampled frames in the harness).
