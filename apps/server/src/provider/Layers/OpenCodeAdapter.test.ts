@@ -2334,6 +2334,74 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  it.effect("reports the session's total cost on a completed turn", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-total-cost");
+      const sessionID = "http://127.0.0.1:9999/session";
+      const busy = promiseWithResolvers<unknown>();
+      const answer = promiseWithResolvers<unknown>();
+      const answered = promiseWithResolvers<unknown>();
+      const idle = promiseWithResolvers<unknown>();
+      runtimeMock.state.subscribedEvents = [
+        busy.promise,
+        answer.promise,
+        answered.promise,
+        idle.promise,
+      ];
+      runtimeMock.state.sessionStatusImplementation = async () => ({ data: {} });
+      const completed = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "turn.completed"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "What does it cost?",
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("opencode"),
+          "opencode/kimi-k3",
+        ),
+      });
+      busy.resolve({
+        id: "evt-cost-busy",
+        type: "session.status",
+        properties: { sessionID, status: { type: "busy" } },
+      });
+      // One assistant message, updated as it streams: its last cost counts once.
+      for (const [event, cost] of [
+        [answer, 0.02],
+        [answered, 0.05],
+      ] as const) {
+        event.resolve({
+          id: `evt-cost-${cost}`,
+          type: "message.updated",
+          properties: {
+            sessionID,
+            info: { id: "msg-assistant-cost", sessionID, role: "assistant", cost },
+          },
+        });
+      }
+      idle.resolve({
+        id: "evt-cost-idle",
+        type: "session.status",
+        properties: { sessionID, status: { type: "idle" } },
+      });
+      yield* advanceTestClock(1_000);
+      const event = Option.getOrUndefined(yield* Fiber.join(completed));
+      NodeAssert.equal(
+        event?.type === "turn.completed" ? event.payload.totalCostUsd : undefined,
+        0.05,
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("uses polled busy status to admit output after a stopped turn", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;

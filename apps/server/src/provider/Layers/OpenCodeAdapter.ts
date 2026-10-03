@@ -335,6 +335,8 @@ type OpenCodeTextPartState = Pick<OpenCodeTextPart, "id" | "messageID" | "type" 
 
 interface OpenCodeSessionContext {
   session: ProviderSession;
+  /** Each assistant message's cost as last reported: the session's total is their sum. */
+  readonly costByMessageId: Map<string, number>;
   readonly client: OpencodeClient;
   readonly server: OpenCodeServerConnection;
   readonly directory: string;
@@ -1085,6 +1087,15 @@ export function makeOpenCodeAdapter(
         type: "turn.completed",
         payload: {
           state: "completed",
+          // The session's total so far, as Claude reports its own.
+          ...(context.costByMessageId.size > 0
+            ? {
+                totalCostUsd: [...context.costByMessageId.values()].reduce(
+                  (total, cost) => total + cost,
+                  0,
+                ),
+              }
+            : {}),
         },
       });
     });
@@ -2248,6 +2259,12 @@ export function makeOpenCodeAdapter(
             }
           }
           context.messageRoleById.set(event.properties.info.id, event.properties.info.role);
+          if (
+            event.properties.info.role === "assistant" &&
+            typeof event.properties.info.cost === "number"
+          ) {
+            context.costByMessageId.set(event.properties.info.id, event.properties.info.cost);
+          }
           if (event.properties.info.role === "user") {
             context.textPartsByMessageId.delete(event.properties.info.id);
           }
@@ -2850,6 +2867,7 @@ export function makeOpenCodeAdapter(
           pendingQuestions: new Map(),
           textPartsByMessageId: new Map(),
           messageRoleById: new Map(),
+          costByMessageId: new Map(),
           activeTurnId: undefined,
           activeAgent: undefined,
           activeVariant: undefined,
