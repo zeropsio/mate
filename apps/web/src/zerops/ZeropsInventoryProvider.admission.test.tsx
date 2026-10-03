@@ -176,6 +176,74 @@ describe("ZeropsInventoryProvider grants", () => {
     expect(tab.text()).toContain(`grants ${JSON.stringify([["p1", grants]])}`);
   });
 
+  // F12, F11 for the real Developer (e2e, 2026-10-03): NO_ACCESS in the organization, they are
+  // refused its project list and read it through `/project/search`, whose rows carry only their
+  // own grant; each project's own read names everyone's. Cyd's merge, comment and close are
+  // offered to them by their OWNER grant, and Cyd's row names them its OWNER.
+  it("offers the Developer, refused the organization's list, a change of a project they own", async () => {
+    const developer: ZeropsUser = {
+      id: "user-dev",
+      email: "developer@example.test",
+      clientUserList: [{ id: "cu-dev", clientId: "org-1", roleCode: "NO_ACCESS" }],
+    };
+    const grants = [
+      { clientUserId: "cu-mate", roleCode: "BASIC_USER" },
+      { clientUserId: "cu-dev", roleCode: "OWNER" },
+    ];
+    const harness = makeAccountHarness({
+      people: [{ user: developer, password: "secret" }],
+      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: grants }],
+      signedIn: "user-dev",
+    });
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      page: async () => {
+        const { AccountProduct } = await import("./__fixtures__/accountProduct");
+        const { useContext } = await import("react");
+        const { useAtomValue } = await import("@effect/atom-react");
+        const { changeOffers, offerAsker } = await import("@t3tools/client-runtime/zerops");
+        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
+        const { candidateRowsAtom } = await import("../state/zerops");
+        const { InventoryContext } = await import("./inventoryContext");
+        const { sessionOfferViewer } = await import("./offerViewer");
+        const { useZeropsSessionOptional } = await import("./sessionContext");
+        const placements = new Map([
+          ["p1", { appId: "app-c", appName: "C", kind: "mate" as const, mate: null }],
+        ]);
+        function Developer() {
+          const inventory = useContext(InventoryContext);
+          const session = useZeropsSessionOptional();
+          const rows = heldCandidates(useAtomValue(candidateRowsAtom)).rows;
+          if (inventory === null || inventory.isLoading) return "reading";
+          const viewer = sessionOfferViewer(session?.user, session?.activeOrganization ?? null);
+          const { comment, merge, close } = changeOffers(
+            offerAsker(viewer, inventory.projects),
+            placements,
+            "app-c",
+          );
+          const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
+          return `offers ${JSON.stringify({ comment, merge, close })} owner ${owner?.clientUserId ?? "none"}`;
+        }
+        return (
+          <AccountProduct datastream={harness.datastream}>
+            <Developer />
+          </AccountProduct>
+        );
+      },
+    });
+    await settle();
+
+    expect(harness.rest.requests().map(({ route }) => route)).toEqual(
+      expect.arrayContaining([
+        "GET /client/org-1/project",
+        "POST /project/search",
+        "GET /project/p1",
+      ]),
+    );
+    expect(tab.text()).toContain(
+      `offers ${JSON.stringify({ comment: true, merge: true, close: true })} owner cu-dev`,
+    );
+  });
+
   // F11 (e2e, 2026-10-03): after Hand over, a Mate's owner is its OWNER grant (#12), which the
   // menu's rows read — never only whoever signed its agent in.
   it("carries them onto the menu's rows, where a Mate's owner is read", async () => {
