@@ -35,6 +35,18 @@ const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
   '[data-slot="autocomplete-popup"]:is([data-open],[data-ending-style])',
 ].join(",");
 
+/**
+ * Whether the person holds the focus where it stays — a field other than `own`, or an open layer:
+ * a composer that shows late (`composerOpenFocus`) does not take it from there.
+ */
+export function focusHeldElsewhere(own: Element | null): boolean {
+  const active = document.activeElement;
+  if (active !== null && active !== own && active.closest(TYPE_TO_FOCUS_EDITABLE_SELECTOR)) {
+    return true;
+  }
+  return document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR) !== null;
+}
+
 function eventPathContainsSelector(event: Event, selector: string): boolean {
   const path = event.composedPath();
   if (path.length === 0 && event.target) {

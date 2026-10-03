@@ -17,13 +17,14 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import { composerOpenFocus } from "../ChatView.logic";
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "../ComposerPromptEditor";
 import type { ComposerControlLook } from "./composerControlMemory";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { heldDraftRuns } from "./ComposerRoom.logic";
 import { ComposerModelControlStill } from "./ProviderModelPicker";
 import { ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
-import { shouldTypeToFocusComposer } from "./typeToFocus";
+import { focusHeldElsewhere, shouldTypeToFocusComposer } from "./typeToFocus";
 
 const nothing = () => undefined;
 
@@ -57,7 +58,17 @@ export function ComposerStandIn({
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const field = fieldRef.current;
-      if (field === null) return;
+      // It arrives once its room was held: where the person put the focus meanwhile, it stays.
+      if (
+        field === null ||
+        !composerOpenFocus({
+          composerShown: true,
+          late: true,
+          focusElsewhere: focusHeldElsewhere(field),
+        })
+      ) {
+        return;
+      }
       const end = field.value.length;
       field.focus({ preventScroll: true });
       field.setSelectionRange(end, end);
