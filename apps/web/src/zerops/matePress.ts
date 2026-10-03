@@ -28,12 +28,14 @@ import {
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   formatMateFace,
+  type RandomBytes,
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsApiClient,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { attachToApp, type HqEndpoint, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
@@ -61,6 +63,7 @@ import {
   pressThrough,
   type PressStepView,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import { setUpMateRecord } from "../components/zerops/ZeropsProjectRow.logic";
 import { useNewMate } from "./newMate";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import {
@@ -291,6 +294,54 @@ export const pressesInFlight = {
 /** The press this tab holds for a project, read outside a render. */
 export function readMatePress(projectId: string): MatePress | undefined {
   return usePressStore.getState().presses[projectId];
+}
+
+/**
+ * Where a Mate's press placed it — its application, its name and its face — as the press knew it
+ * when it began; undefined for a press of a stage or a production, or one that placed nothing.
+ */
+export function matePressPlacement(press: MatePress | undefined): BirthPlacement | undefined {
+  return press?.placement?.kind === "mate" ? press.placement : undefined;
+}
+
+/**
+ * A Mate HQ holds no record of, finished into the application its press placed it in, under the
+ * name and the face it was made with — never a new Mate in none (F6b, 2026-10-03). Closed off by
+ * the close-off before its registration.
+ */
+export function placedMateRegistration(
+  hq: HqEndpoint,
+  placement: BirthPlacement,
+): Extract<PressRegistration, { readonly kind: "mate" }> {
+  return {
+    hq,
+    groupId: placement.groupId,
+    kind: "mate",
+    mate: { name: placement.botName ?? placement.displayName, face: placement.face },
+    birth: { standUp: false, closedOff: true },
+  };
+}
+
+/**
+ * What *Set up Mate* registers for a Mate project with no container: into the application the
+ * press this tab still holds placed it in, where it did; else, where HQ holds no record of it, a
+ * new Mate in no application (`setUpMateRecord`); else nothing, its record standing.
+ */
+export function setUpMateRegistration(input: {
+  readonly hq: HqEndpoint;
+  readonly press: MatePress | undefined;
+  readonly project: ZeropsCandidate["project"];
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  readonly taken: ReadonlyArray<string>;
+  readonly random: RandomBytes;
+}): PressRegistration | null {
+  if (input.project.hq?.mate != null) return null;
+  const placed = matePressPlacement(input.press);
+  if (placed !== undefined) return placedMateRegistration(input.hq, placed);
+  const record = setUpMateRecord(input);
+  return record === undefined
+    ? null
+    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: false, closedOff: true } };
 }
 
 /** The project is gone: nothing more is said of it. */

@@ -574,6 +574,105 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
   });
 });
 
+// F6b (e2e, 2026-10-03): Dan's press, for the application mate-rig-e2e-d, stopped before his
+// container and before HQ's record — his project tagged `mate`, in no application, with no container.
+// The press this tab still holds knows his application, his name and his face; Finish setup wrote a
+// new Mate, "Asha", in no application, instead of finishing Dan into his.
+describe("useMateActions — Finish setup on a Mate whose press here stopped before its container", () => {
+  const FACE = { tint: "coral", shape: "gem" } as const;
+  const startedAt = Date.now() - 2 * 60 * 60 * 1000;
+  const DAN = {
+    key: "dan-project:zcp",
+    group: "ready",
+    presence: "known",
+    environmentId: EnvironmentId.make("env-dan"),
+    project: {
+      id: "dan-project",
+      name: "mate-rig-e2e-d - Dan",
+      status: "ACTIVE",
+      clientId: "org-acme",
+      tagList: ["mate"],
+      created: new Date(startedAt).toISOString(),
+    },
+  } as ZeropsCandidatePresentation;
+  /** HQ's structure of the organization, known: Dan's application, holding nothing yet. */
+  const known = () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
+    registry.set(hqStructureAtom, {
+      organizationId: "org-acme",
+      structure: { ungrouped: [], apps: [] },
+      changes: null,
+      readAt: 1_000,
+      current: true,
+      unavailableSince: null,
+    });
+    return registry;
+  };
+  // His membership as HQ places him: nowhere.
+  const finishVerb = () =>
+    actions()
+      .actionsFor(DAN, { mate: true } as never)
+      .filter((entry): entry is ZeropsMenuAction => !("separator" in entry))
+      .find((verb) => verb.id === "finish-setup");
+
+  beforeEach(async () => {
+    const press = await vi.importActual<typeof import("./matePress")>("./matePress");
+    press.beginPress({
+      projectId: "dan-project",
+      organizationId: "org-acme",
+      startedAt,
+      placement: {
+        groupId: "app-d",
+        groupName: "mate-rig-e2e-d",
+        kind: "mate",
+        displayName: "mate-rig-e2e-d - Dan",
+        botName: "Dan",
+        face: FACE,
+      },
+      container: true,
+    });
+    mock.listing.current = {
+      state: "known",
+      value: [DAN],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+  });
+  afterEach(async () => {
+    (await vi.importActual<typeof import("./matePress")>("./matePress")).forgetPress("dan-project");
+  });
+
+  it("is offered to an owner", () => {
+    mount(known());
+    expect(finishVerb()?.label).toBe("Finish setup");
+  });
+
+  it("finishes Dan into his application, under his name and face, and writes no new Mate", async () => {
+    mock.finishMateSetup.mockResolvedValue({ ok: true });
+    mount(known());
+    await act(async () => {
+      finishVerb()!.onSelect();
+    });
+    expect(mock.finishMateSetup).toHaveBeenCalledTimes(1);
+    const handed = mock.finishMateSetup.mock.calls[0]![0];
+    expect(handed).toMatchObject({
+      projectId: "dan-project",
+      container: { agents: [] },
+      registration: {
+        kind: "mate",
+        groupId: "app-d",
+        mate: { name: "Dan", face: FACE },
+      },
+    });
+  });
+});
+
 describe("useMateActions — a Mate's own verbs, where its door opens for this person", () => {
   const STOPPED = {
     ...FEN,

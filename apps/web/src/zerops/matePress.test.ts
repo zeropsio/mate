@@ -1,5 +1,6 @@
 import {
   PRESS_STEP_ATTEMPTS,
+  type RandomBytes,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -27,6 +28,7 @@ import {
   readMatePress,
   runPress,
   settlePress,
+  setUpMateRegistration,
   STOPPED_SHOWN_MS,
   whilePressing,
   withPressTries,
@@ -680,6 +682,87 @@ describe("finishMateSetup — the harden path", () => {
 });
 
 // A press or a harden this tab runs holds its Mate back from auto-connect (pass 28 review).
+// F6b (e2e, 2026-10-03): *Set up Mate* on Dan — a Mate project its press for mate-rig-e2e-d left
+// with no container and no record, that press still held here — wrote "Asha" in no application.
+describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of", () => {
+  const HQ = { kind: "official", projectId: "p-hq", address: "https://hq.example.test" } as const;
+  const FACE = { tint: "coral", shape: "gem" } as const;
+  const DAN = {
+    id: "dan-project",
+    name: "mate-rig-e2e-d - Dan",
+    status: "ACTIVE",
+    tagList: ["mate"],
+  } as const;
+  const pressOf = (container: boolean, kind: "mate" | "stage"): MatePress => ({
+    projectId: DAN.id,
+    organizationId: "org-acme",
+    startedAt: 0,
+    container,
+    placement: {
+      groupId: "app-d",
+      groupName: "mate-rig-e2e-d",
+      kind,
+      displayName: "mate-rig-e2e-d - Dan",
+      botName: "Dan",
+      face: FACE,
+    },
+    state: { kind: "pressing" },
+  });
+  // Bytes that pick the first free name.
+  const first: RandomBytes = (bytes) => bytes.fill(0);
+
+  it.each([
+    {
+      name: "into the application its press here placed it in, under its name and face",
+      press: pressOf(true, "mate"),
+      project: DAN,
+      expected: {
+        kind: "mate",
+        groupId: "app-d",
+        mate: { name: "Dan", face: FACE },
+        birth: { standUp: false, closedOff: true },
+      },
+    },
+    {
+      name: "as a new Mate in no application where no press here placed it",
+      press: undefined,
+      project: DAN,
+      expected: { kind: "mate-record", birth: { standUp: false, closedOff: true } },
+    },
+    {
+      name: "as a new Mate in no application where the press here made a stage",
+      press: pressOf(false, "stage"),
+      project: DAN,
+      expected: { kind: "mate-record" },
+    },
+    {
+      name: "not at all where HQ holds the Mate already",
+      press: pressOf(true, "mate"),
+      project: {
+        ...DAN,
+        hq: {
+          appId: "app-d",
+          appName: "mate-rig-e2e-d",
+          kind: "mate",
+          mate: { name: "Dan", face: "coral:gem" },
+        },
+      },
+      expected: null,
+    },
+  ] as const)("registers it $name", ({ press, project, expected }) => {
+    const registration = setUpMateRegistration({
+      hq: HQ,
+      press,
+      project: project as never,
+      candidates: [],
+      taken: [],
+      random: first,
+    });
+    if (expected === null) expect(registration).toBeNull();
+    else expect(registration).toMatchObject({ hq: HQ, ...expected });
+  });
+});
+
 describe("pressingProjects", () => {
   it("names the projects whose press runs, and says when that changes", () => {
     let heard = 0;
