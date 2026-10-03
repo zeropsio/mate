@@ -113,9 +113,12 @@ const LOG_LINES = ["> npm ci", "added 212 packages", "> npm run build"].map((tex
   severity: 6,
 }));
 
-/** The deploy's process as the platform states it: building, or as it ended. */
+/**
+ * The deploy's process as the platform states it: making its build container,
+ * building, deploying what it built, or as it ended.
+ */
 function process(
-  phase: "building" | "finished",
+  phase: "container" | "building" | "deploying" | "finished",
   overrides: { serviceId?: string; appVersionId?: string; minute?: number } = {},
 ): ActivityProcess {
   const appVersionId = overrides.appVersionId ?? "av-41";
@@ -124,18 +127,19 @@ function process(
     id: `proc-${appVersionId}`,
     projectId: "proj-7",
     serviceStackIds: [overrides.serviceId ?? "svc-app"],
-    status: phase === "building" ? "RUNNING" : "FINISHED",
+    status: phase === "finished" ? "FINISHED" : "RUNNING",
     actionName: "stack.build",
     created: fixtureAt(minute),
     started: fixtureAt(minute),
     ...(phase === "finished" ? { finished: fixtureAt(minute + 1) } : {}),
     appVersion: {
       id: appVersionId,
-      status: phase === "building" ? "BUILDING" : "ACTIVE",
+      status: phase === "finished" ? "ACTIVE" : phase === "deploying" ? "DEPLOYING" : "BUILDING",
       build: {
         serviceStackId: "svc-builder",
         pipelineStart: fixtureAt(minute),
-        startDate: fixtureAt(minute, 4),
+        ...(phase === "container" ? {} : { startDate: fixtureAt(minute, 4) }),
+        ...(phase === "deploying" ? { endDate: fixtureAt(minute, 20) } : {}),
         ...(phase === "finished"
           ? { endDate: fixtureAt(minute, 40), pipelineFinish: fixtureAt(minute + 1) }
           : {}),
@@ -378,6 +382,25 @@ describe("RunChat — an operation's card, read from the account store", () => {
     redraw(renderer, inSlot(deploy("running")));
     expect([glance(), count(renderer).log]).toEqual([1, 2]);
   });
+
+  // The words say what the card knows: the build step itself runs and its
+  // stream stands with no line. Not before the build step (its container is
+  // still made), and not after it — a build step that ended with no line
+  // received keeps its room, silent, so the card does not move.
+  it.each([
+    { phase: "container", words: 0 },
+    { phase: "building", words: 1 },
+    { phase: "deploying", words: 0 },
+  ] as const)(
+    "its room waits for the first line only while it builds: $phase",
+    ({ phase, words }) => {
+      store.logLines = [];
+      store.processes = [process(phase)];
+      const renderer = mount(inSlot(deploy("running")));
+      expect(nodes(renderer, "data-zerops-build-log-glance")).toHaveLength(1);
+      expect(nodes(renderer, "data-zerops-build-log-waiting")).toHaveLength(words);
+    },
+  );
 
   it("says only its line while the store holds nothing of it", () => {
     store.processes = [];

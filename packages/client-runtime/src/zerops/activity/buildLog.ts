@@ -28,6 +28,8 @@
  * frame (identical top-level `{items:[…]}` shape).
  */
 
+import type { PipelineStepStatus } from "./pipelineState.ts";
+
 export interface BuildLogQuery {
   readonly buildServiceStackId: string;
   readonly appVersionId: string;
@@ -448,4 +450,21 @@ export function foldBuildLogLines(
     });
   }
   return runs.map(({ id, text, severity, count }) => ({ id, text, severity, count }));
+}
+
+/**
+ * Whether a running build's room says it waits for the build's first line —
+ * only while that is what the client knows: the pipeline's build step itself
+ * runs (not the container before it, not the deploy after it), the log's
+ * stream is open and has stood a moment (`live`: the session publishes it
+ * after the handshake and a settle, or with its first frame's lines), and no
+ * line has come. A build step that ended with no line received says nothing:
+ * the stream may have missed what the build wrote.
+ */
+export function buildLogWaitsForFirstLine(input: {
+  readonly buildStep: PipelineStepStatus | undefined;
+  readonly status: "idle" | "loading" | "live" | "ended" | "error";
+  readonly lineCount: number;
+}): boolean {
+  return input.buildStep === "running" && input.status === "live" && input.lineCount === 0;
 }

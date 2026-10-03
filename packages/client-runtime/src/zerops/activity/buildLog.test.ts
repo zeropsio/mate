@@ -4,6 +4,7 @@ import {
   buildLogLineBytes,
   buildOlderLogUrl,
   buildLogUrls,
+  buildLogWaitsForFirstLine,
   decodeBuildLogItems,
   foldBuildLogLines,
   mergeBoundedBuildLogLines,
@@ -427,5 +428,56 @@ describe("foldBuildLogLines — consecutive lines that differ only in a package 
       lines(["get a@1.0.0 now", "get b@1.0.0 now", "get c@1.0.0 now"]),
     );
     expect(folded).toEqual([{ id: "l1", text: "get c@1.0.0 now", severity: 6, count: 3 }]);
+  });
+});
+
+/**
+ * A running build's room says it waits for the first line only for as long as
+ * that is what the client knows: the pipeline's build step itself runs, the
+ * stream is open and has stood a moment (`live`), and no line has come.
+ */
+describe("buildLogWaitsForFirstLine", () => {
+  it.each([
+    {
+      name: "the build step runs, the stream stood open, no line",
+      step: "running",
+      status: "live",
+      lines: 0,
+      waits: true,
+    },
+    {
+      name: "the build step finished with no line",
+      step: "finished",
+      status: "live",
+      lines: 0,
+      waits: false,
+    },
+    {
+      name: "the build step failed with no line",
+      step: "failed",
+      status: "live",
+      lines: 0,
+      waits: false,
+    },
+    {
+      name: "the build container is still made",
+      step: "waiting",
+      status: "live",
+      lines: 0,
+      waits: false,
+    },
+    { name: "no build step known", step: undefined, status: "live", lines: 0, waits: false },
+    { name: "the stream not yet open", step: "running", status: "loading", lines: 0, waits: false },
+    { name: "the log's read failed", step: "running", status: "error", lines: 0, waits: false },
+    {
+      name: "the log no longer followed",
+      step: "running",
+      status: "ended",
+      lines: 0,
+      waits: false,
+    },
+    { name: "a line came", step: "running", status: "live", lines: 1, waits: false },
+  ] as const)("$name", ({ step, status, lines, waits }) => {
+    expect(buildLogWaitsForFirstLine({ buildStep: step, status, lineCount: lines })).toBe(waits);
   });
 });

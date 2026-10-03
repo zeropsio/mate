@@ -47,6 +47,12 @@ export interface ZeropsBuildLogProps {
   readonly subject?: string | undefined;
   /** A settled build's: the way to its log stands before its lines are read. */
   readonly stands?: boolean;
+  /**
+   * A running build's room says it waits for the build's first line — the
+   * caller's reading (`buildLogWaitsForFirstLine`): only while the build step
+   * itself runs and the stream stands open with no line.
+   */
+  readonly waiting?: boolean;
 }
 
 /** zcp's `mapSeverityToNumeric`: 0 (emergency) through 3 (error) are the tones worth flagging red. */
@@ -85,6 +91,7 @@ export function ZeropsBuildLog({
   stands = false,
   status,
   subject,
+  waiting = false,
 }: ZeropsBuildLogProps): JSX.Element | null {
   // While the build runs its newest lines' room stands from the first draw,
   // so the card's height is final when it opens; once it ended, no glance.
@@ -95,8 +102,6 @@ export function ZeropsBuildLog({
   const openable = stands || lines.length > 0;
   const count = lineCount(lines.length);
   const glance = glancing ? foldBuildLogLines(lines).slice(-GLANCE_ROWS) : [];
-  // Its room never stands empty once the log answered: the build has written nothing yet.
-  const waiting = glancing && lines.length === 0 && status === "live";
   return (
     <div className="mt-1" data-zerops-build-log data-zerops-build-log-status={status}>
       {glancing ? (
@@ -105,7 +110,9 @@ export function ZeropsBuildLog({
           className="h-10 font-mono text-muted-foreground text-xs leading-5"
           data-zerops-build-log-glance
         >
-          {waiting ? <li data-zerops-build-log-waiting>{WAITING_WORDS}</li> : null}
+          {waiting && glance.length === 0 ? (
+            <li data-zerops-build-log-waiting>{WAITING_WORDS}</li>
+          ) : null}
           {glance.map((row) => (
             <li
               className={cn(
