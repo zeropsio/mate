@@ -11,11 +11,9 @@ import type {
   UsageProviderKind,
 } from "@t3tools/contracts";
 import {
-  collectLimitsGroups,
   elapsedShare,
   formatDuration,
   formatResetsIn,
-  keepPlaced,
   LIMITS_READ_DEADLINE_MS,
   limitsNotice,
   limitsPage,
@@ -23,7 +21,7 @@ import {
   providerLimitsLabel,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
@@ -391,29 +389,26 @@ export function UsageLimitsSection(props: {
   const { now } = props;
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const listed = useAtomValue(environmentCatalog.catalogValueAtom).isReady;
-  // Painted once, when every environment has answered or the deadline passed (`limitsPage`, as
-  // the web's); then each group stands where it was painted, a late one joining at the end.
+  // Painted once, when every environment has answered or the deadline passed, least quota left
+  // first; then everything stands where it was painted, a late one joining at the very end
+  // (`limitsPage`, as the web's).
   const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
-  const painted = useRef<{
-    readonly accounts: readonly string[];
-    readonly groups: readonly string[];
-  }>({ accounts: [], groups: [] });
-  const { state, reading, shown, sources, placed } = limitsPage({
+  // What was painted, kept for the next read: once painted it never waits again, nothing moves.
+  const [kept, setKept] = useState<{
+    readonly painted: boolean;
+    readonly placed: readonly string[];
+  }>({ painted: false, placed: [] });
+  const page = limitsPage({
     listed,
     presentations,
     deadlinePassed,
-    placed: painted.current.accounts,
+    painted: kept.painted,
+    placed: kept.placed,
   });
-  // Mobile draws a group per environment: the groups keep their painted order as the cards do.
-  const groups = keepPlaced(painted.current.groups, collectLimitsGroups(shown), (group) =>
-    String(group.environmentId),
-  );
-  useLayoutEffect(() => {
-    painted.current = {
-      accounts: placed,
-      groups: groups.map((group) => String(group.environmentId)),
-    };
-  });
+  const { state, reading, entries, tellApart } = page;
+  if (page.painted !== kept.painted || page.placed.join("\n") !== kept.placed.join("\n")) {
+    setKept({ painted: page.painted, placed: page.placed });
+  }
   const readingLine = useReadingLine(reading);
 
   if (state === "wait") {
@@ -439,46 +434,61 @@ export function UsageLimitsSection(props: {
           </Text>
         </View>
       ) : null}
-      {groups.map((group) => (
-        <SettingsSection
-          key={group.environmentId}
-          title={group.environmentLabel ?? "Providers"}
-          card
-        >
-          {group.providers.map((provider, index) => (
-            <ProviderLimits
-              key={provider.instanceId}
-              provider={provider}
-              environmentId={group.environmentId}
-              now={now}
-              first={index === 0}
-            />
-          ))}
-        </SettingsSection>
-      ))}
-      {sources.map((source) => (
-        <SettingsSection key={source.key} card>
-          {source.error ? (
-            <Text className="p-4 text-sm text-foreground-muted">{source.error}</Text>
-          ) : source.accounts.length === 0 ? (
-            <Text className="p-4 text-sm text-foreground-muted">
-              {source.hiddenAccountCount > 0
-                ? "All accounts are shown by connected providers."
-                : "No accounts reported."}
-            </Text>
-          ) : (
-            source.accounts.map((account, index) => (
-              <SourceAccountLimits
-                key={account.id}
-                account={account}
-                source={source}
+      {entries.map((entry) => {
+        if (entry.kind === "account") {
+          const { account } = entry;
+          return (
+            <SettingsSection
+              key={entry.key}
+              card
+              {...(tellApart
+                ? { title: presentations.get(account.environmentId)?.entry.target.label }
+                : {})}
+            >
+              <ProviderLimits
+                provider={account.provider}
+                environmentId={account.environmentId}
                 now={now}
-                first={index === 0}
+                first
               />
-            ))
-          )}
-        </SettingsSection>
-      ))}
+            </SettingsSection>
+          );
+        }
+        if (entry.kind === "notice") {
+          const { notice } = entry;
+          return (
+            <View key={entry.key} className="rounded-[16px] border-continuous bg-card px-4 py-3">
+              <Text className="text-sm text-foreground-muted">
+                {`${DRIVER_LABEL[notice.driver] ?? String(notice.driver)}: ${notice.notice}`}
+              </Text>
+            </View>
+          );
+        }
+        const { source } = entry;
+        return (
+          <SettingsSection key={entry.key} card>
+            {source.error ? (
+              <Text className="p-4 text-sm text-foreground-muted">{source.error}</Text>
+            ) : source.accounts.length === 0 ? (
+              <Text className="p-4 text-sm text-foreground-muted">
+                {source.hiddenAccountCount > 0
+                  ? "All accounts are shown by connected providers."
+                  : "No accounts reported."}
+              </Text>
+            ) : (
+              source.accounts.map((account, index) => (
+                <SourceAccountLimits
+                  key={account.id}
+                  account={account}
+                  source={source}
+                  now={now}
+                  first={index === 0}
+                />
+              ))
+            )}
+          </SettingsSection>
+        );
+      })}
       {reading ? readingLine : null}
     </>
   );
