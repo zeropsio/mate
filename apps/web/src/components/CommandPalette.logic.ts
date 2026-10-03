@@ -6,7 +6,9 @@ import {
   THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
 import { filterFilesystemBrowseEntries } from "@t3tools/client-runtime/state/filesystem";
-import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
+import { hasMate } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import { toneIdForKind, viewerThreadKind, type ThreadStatus } from "@t3tools/shared/threadStatus";
 import type { SidebarThreadSortOrder } from "@t3tools/contracts/settings";
@@ -232,6 +234,24 @@ export interface CommandPaletteHqThreads {
   /** The Mate's name, by its project. */
   readonly mateName: (projectId: string) => string | undefined;
   readonly renderStatus: (status: ThreadStatus) => ReactNode;
+}
+
+/**
+ * Each Mate's name by its project, for the chats HQ lists: its project's name in Zerops (D3), as
+ * this client's listing reads it, else as HQ's structure relays it — which may arrive first.
+ */
+export function hqChatMateNames(
+  listed: ReadonlyArray<ZeropsCandidate>,
+  structure: HqStructure | null,
+): ReadonlyMap<string, string> {
+  const relayed = [
+    ...(structure?.ungrouped ?? []),
+    ...(structure?.apps ?? []).flatMap((app) => app.projects.filter(({ mate }) => mate !== null)),
+  ];
+  return new Map([
+    ...relayed.flatMap(({ projectId, name }) => (name === "" ? [] : [[projectId, name] as const])),
+    ...listed.filter(hasMate).map((row) => [row.project.id, row.project.name] as const),
+  ]);
 }
 
 interface HqChat {

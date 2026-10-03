@@ -15,7 +15,6 @@ import {
 } from "@t3tools/client-runtime/operations/projects";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { hasMate } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
   canPreloadBrowsePath,
@@ -90,7 +89,7 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells, waitForProject } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
-import { hqMatesAtom } from "../state/zerops";
+import { hqMatesAtom, hqStructureAtom } from "../state/zerops";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -127,6 +126,7 @@ import {
   filterPinnedBrowseEntries,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
+  hqChatMateNames,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
@@ -1200,15 +1200,10 @@ function OpenCommandPaletteDialog(props: {
 
   const hqMates = useAtomValue(hqMatesAtom);
   const candidateListing = useAtomValue(candidateListingAtom);
-  // A Mate goes by its project's name in Zerops (D3).
+  const hqStructure = useAtomValue(hqStructureAtom);
   const mateNames = useMemo(
-    () =>
-      new Map(
-        heldCandidates(candidateListing)
-          .rows.filter(hasMate)
-          .map((row) => [row.project.id, row.project.name]),
-      ),
-    [candidateListing],
+    () => hqChatMateNames(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
+    [candidateListing, hqStructure],
   );
   const threadLastVisitedAtById = useUiStateStore((store) => store.threadLastVisitedAtById);
   // Every Mate's chats HQ lists, of those this browser holds no socket to: titles and status only.
