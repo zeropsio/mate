@@ -240,14 +240,14 @@ function PictureTile({
   readonly state: AssetUrlState;
   /** The pictures past the strip's last tile. */
   readonly more: number;
-  /** Opens the viewer here; null where nothing here can be opened. */
-  readonly onOpen: (() => void) | null;
+  /** Opens the viewer here — past its own picture where that is gone; null where nothing here can be opened. */
+  readonly onOpen: ((ownGone: boolean) => void) | null;
 }) {
   const status = state._tag === "Success" ? "ready" : state._tag === "Failure" ? "gone" : "loading";
   // A file that is gone opens onto nothing: it is no button, unless it stands for more.
   const open =
     onOpen !== null && opensOnto({ control: "picture", gone: status === "gone", more })
-      ? onOpen
+      ? () => onOpen(status === "gone")
       : null;
   const own = status === "gone" ? `${picture.label}, gone` : picture.label;
   const said = more > 0 ? `${own}, and ${more} more` : own;
@@ -313,7 +313,7 @@ function WorkspaceTile({
   readonly threadId: ThreadId;
   readonly picture: Extract<ResultPicture, { kind: "file" }>;
   readonly more: number;
-  readonly onOpen: (() => void) | null;
+  readonly onOpen: ((ownGone: boolean) => void) | null;
 }) {
   const state = useAssetUrlState(environmentId, {
     _tag: "workspace-file",
@@ -333,7 +333,7 @@ function FileTile({
   readonly source: FileSource;
   readonly picture: Extract<ResultPicture, { kind: "file" }>;
   readonly more: number;
-  readonly onOpen: (() => void) | null;
+  readonly onOpen: ((ownGone: boolean) => void) | null;
 }) {
   if (source.kind === "given") {
     const state = source.files.get(picture.path) ?? LOADING;
@@ -383,11 +383,16 @@ function PictureStrip({
   // Opens the viewer on the first picture it can show among those a tile
   // stands for: the last tile of a run with more still reaches the rest when
   // its own picture is gone.
-  const opener = (from: number, reach: number): (() => void) | null => {
-    const start = viewable.findIndex(({ at }) => at >= from && at < from + reach);
-    if (start < 0) return null;
-    return () =>
+  const opener = (from: number, reach: number): ((ownGone: boolean) => void) | null => {
+    const first = (skip: number) =>
+      viewable.findIndex(({ at }) => at >= from + skip && at < from + reach);
+    if (first(0) < 0) return null;
+    return (ownGone) => {
+      // An address given for a file whose read failed: the viewer starts past it.
+      const start = first(ownGone ? 1 : 0);
+      if (start < 0) return;
       onOpenImage({ images: viewable.map(({ src, name }) => ({ src, name })), index: start });
+    };
   };
   return (
     <div className="run-result-strip" data-result-strip>
