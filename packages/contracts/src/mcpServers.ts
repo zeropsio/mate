@@ -100,6 +100,8 @@ export const McpServerAddInput = Schema.Struct({
   env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** A URL's request headers (bearer tokens); http only. */
   headers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /** The conversation whose running agent the answering list asks for live state. */
+  threadId: Schema.optionalKey(ThreadId),
 });
 export type McpServerAddInput = typeof McpServerAddInput.Type;
 

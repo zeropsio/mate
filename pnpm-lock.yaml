@@ -456,6 +456,9 @@ importers:
       jpeg-js:
         specifier: 0.4.4
         version: 0.4.4
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
       msgpackr-extract:
         specifier: 3.0.4
         version: 3.0.4

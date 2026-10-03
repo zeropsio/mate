@@ -90,7 +90,7 @@ export function useMcpServers(input: {
           ? await runAtomCommand(
               registry,
               mcpServersEnvironment.add,
-              { environmentId, input: action.input },
+              { environmentId, input: { ...action.input, ...target } },
               options,
             )
           : action.kind === "remove"
@@ -117,14 +117,16 @@ export function useMcpServers(input: {
                   options,
                 );
       // A failed action is the action's to say, beside its control; the list it
-      // had still stands, so the failure does not become the tab's error.
+      // had still stands, so the failure does not become the tab's error. It is
+      // asked again: a change some agents took and one refused has landed in part.
       if (result._tag !== "Success") {
         dispatch({ kind: "dropped", seq });
+        if (action.kind !== "reconnect") refresh();
         return { ok: false, message: describeMcpFailure(squashAtomCommandFailure(result)) };
       }
       return settle(seq, result);
     },
-    [environmentId, registry, settle, threadId],
+    [environmentId, refresh, registry, settle, threadId],
   );
 
   useEffect(() => {

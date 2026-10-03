@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   cursorProjectDir,
+  McpConfigEditError,
+  McpConfigParseError,
   decodeMcpTransport,
   makeMcpAgentStores,
   type McpAgentPaths,
@@ -19,7 +21,7 @@ const PATHS: McpAgentPaths = {
   codexConfigs: ["/home/zerops/.codex/config.toml"],
   cursorHome: "/home/zerops/.cursor",
   grokConfig: "/home/zerops/.grok/config.toml",
-  antigravityConfig: "/home/zerops/.gemini/config/mcp_config.json",
+  antigravityConfigs: ["/home/zerops/.gemini/config/mcp_config.json"],
   openCodeConfig: "/home/zerops/.config/opencode/opencode.json",
 };
 
@@ -85,7 +87,7 @@ trust_level = "trusted"
     '[cli]\ntheme = "x"\n\n[mcp_servers.zerops]\ncommand = "zcp"\nargs = ["serve"]\nenabled = true\n',
   ],
   [
-    PATHS.antigravityConfig,
+    PATHS.antigravityConfigs[0]!,
     JSON.stringify({
       mcpServers: {
         zerops: {
@@ -219,7 +221,7 @@ describe("adding a server", () => {
     ],
     [
       "antigravity",
-      PATHS.antigravityConfig,
+      PATHS.antigravityConfigs[0]!,
       (doc: any) => doc.mcpServers.linear,
       { command: "npx", args: ["-y", "linear-mcp"], env: { LINEAR_KEY: "k" } },
     ],
@@ -256,7 +258,7 @@ describe("adding a server", () => {
     ],
     [
       "antigravity",
-      PATHS.antigravityConfig,
+      PATHS.antigravityConfigs[0]!,
       (doc: any) => doc.mcpServers.docs,
       { serverUrl: "https://docs.dev/mcp", headers: { Authorization: "Bearer t" } },
     ],
@@ -392,5 +394,98 @@ describe("a config it cannot parse", () => {
     const files = new Map([[path, text]]);
     expect(() => store(driver).read(files)).toThrow(path);
     expect(() => store(driver).add(files, STDIO)).toThrow(path);
+  });
+});
+
+describe("JSONC, as OpenCode allows it", () => {
+  const JSONC = `{
+  // my default model
+  "model": "anthropic/claude", /* keep me */
+  "mcp": {
+    "local": { "type": "local", "command": ["bunx", "thing"] },
+  },
+}
+`;
+  const JSONC_PATH = PATHS.openCodeConfig.replace(/\.json$/, ".jsonc");
+
+  it("adds, turns off and removes a server, keeping the comments", () => {
+    const files = new Map([[PATHS.openCodeConfig, JSONC]]);
+    const added = apply(files, store("opencode").add(files, STDIO));
+    const off = apply(added, store("opencode").setEnabled(added, "linear", false));
+    expect(summary("opencode", off)).toEqual(["local:on:user", "linear:off:user"]);
+    const removed = apply(off, store("opencode").remove(off, "linear"));
+    const text = removed.get(PATHS.openCodeConfig)!;
+    expect(text).toContain("// my default model");
+    expect(text).toContain("/* keep me */");
+    expect(summary("opencode", removed)).toEqual(["local:on:user"]);
+  });
+
+  it("writes the .jsonc file when it is the only one", () => {
+    const files = new Map([[JSONC_PATH, JSONC]]);
+    const edits = store("opencode").add(files, STDIO);
+    expect(edits.map((edit) => edit.path)).toEqual([JSONC_PATH]);
+    expect(summary("opencode", apply(files, edits))).toEqual(["local:on:user", "linear:on:user"]);
+  });
+});
+
+describe("Claude's local scope and its repo file", () => {
+  const LOCAL: McpFiles = new Map([
+    [
+      PATHS.claudeConfigs[0]!,
+      JSON.stringify({
+        mcpServers: { zerops: { command: "zcp", args: ["serve"] } },
+        projects: {
+          "/var/www": { mcpServers: { mine: { command: "mine", args: [] } } },
+          "/elsewhere": { mcpServers: { theirs: { command: "theirs", args: [] } } },
+        },
+      }),
+    ],
+  ]);
+
+  it("lists this project's local servers beside the user's", () => {
+    expect(summary("claudeAgent", LOCAL)).toEqual(["mine:on:user", "zerops:on:user"]);
+  });
+
+  it("turns a local server off and removes it where it lives", () => {
+    const off = apply(LOCAL, store("claudeAgent").setEnabled(LOCAL, "mine", false));
+    expect(summary("claudeAgent", off)).toEqual(["mine:off:user", "zerops:on:user"]);
+    const removed = apply(off, store("claudeAgent").remove(off, "mine"));
+    expect(summary("claudeAgent", removed)).toEqual(["zerops:on:user"]);
+    const doc = JSON.parse(removed.get(PATHS.claudeConfigs[0]!)!);
+    expect(doc.projects["/var/www"]).toEqual({ mcpServers: {}, disabledMcpServers: [] });
+    expect(doc.projects["/elsewhere"].mcpServers.theirs).toBeDefined();
+  });
+
+  it("keeps the user's servers and writes when the repo's .mcp.json is broken", () => {
+    const files = new Map(ZCP_FILES);
+    files.set("/var/www/.mcp.json", "{ broken");
+    expect(summary("claudeAgent", files)).toEqual(["zerops:on:user", "sentry:off:user"]);
+    expect(
+      store("claudeAgent")
+        .problems(files)
+        .map((problem) => problem.path),
+    ).toEqual(["/var/www/.mcp.json"]);
+    expect(store("claudeAgent").add(files, STDIO)).toHaveLength(2);
+  });
+});
+
+describe("a write that would not read back", () => {
+  it("is refused for that agent, naming the file", () => {
+    const files = new Map([[PATHS.codexConfigs[0]!, 'mcp_servers = "not a table"\n']]);
+    const refused = (() => {
+      try {
+        store("codex").add(files, STDIO);
+        return undefined;
+      } catch (cause) {
+        return cause;
+      }
+    })();
+    expect(refused).toBeInstanceOf(McpConfigEditError);
+    expect((refused as McpConfigEditError).path).toBe(PATHS.codexConfigs[0]);
+  });
+
+  it("is a parse error when the file does not parse", () => {
+    const files = new Map([[PATHS.codexConfigs[0]!, "[a]\nx = 1\n[a]\n"]]);
+    expect(() => store("codex").read(files)).toThrow(McpConfigParseError);
   });
 });

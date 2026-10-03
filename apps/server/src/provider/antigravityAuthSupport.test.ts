@@ -625,6 +625,24 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
       }),
   );
 
+  it.effect.skipIf(!symlinksSupported)(
+    "creates the user's Gemini config folder for the MCP link when it is missing",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+        const userHome = path.join(temporaryDirectory, "home");
+        const profileDirectory = path.join(temporaryDirectory, "profile");
+        yield* prepareAntigravityProfile({ profileDirectory, userHome });
+        // The folder is there, so a server the MCP tab writes later lands where the link points.
+        expect(yield* fs.exists(path.join(userHome, ".gemini", "config"))).toBe(true);
+        expect(yield* fs.readLink(path.join(profileDirectory, "config", "mcp_config.json"))).toBe(
+          path.join(userHome, ".gemini", "config", "mcp_config.json"),
+        );
+      }),
+  );
+
   it.effect("rewrites the GCP block on every launch and never stores the API key", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

@@ -276,6 +276,8 @@ const linkAntigravityUserSkills = Effect.fn("linkAntigravityUserSkills")(functio
         yield* fs.remove(link);
       }
       yield* fs.makeDirectory(path.dirname(link), { recursive: true });
+      // The MCP config's folder is made, so a server written there later is read through the link.
+      if (type === "file") yield* fs.makeDirectory(path.dirname(target), { recursive: true });
       yield* Effect.tryPromise(() => NodeFSP.symlink(target, link, type));
     }).pipe(
       // A non-symlink at the link path fails `readLink`; anything else is a

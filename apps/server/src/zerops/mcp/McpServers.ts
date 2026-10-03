@@ -5,13 +5,13 @@
  * A server is added for every agent installed here, into each agent's own
  * user-scope config (`mcpAgents.ts`), never the repo — secrets stay out of
  * git, and whichever agent a conversation runs on has the same tools. zcp's
- * `zerops` is shown and reconnected, never changed. A running session hears of
- * a change where its agent can (`spi/mcpLive.ts`); otherwise the next
- * conversation reads the new config.
+ * `zerops` is shown and reconnected, never changed. An agent whose config
+ * can't be changed safely is left alone and named; the others are written. A
+ * running session hears of a change where its agent can (`spi/mcpLive.ts`);
+ * otherwise the next conversation reads the new config.
  *
  * @module McpServers
  */
-import * as NodeCrypto from "node:crypto";
 import * as NodeOS from "node:os";
 
 import {
@@ -25,15 +25,11 @@ import {
   type McpServerSetEnabledInput,
   type McpServerTargetInput,
   type ProviderDriverKind,
-  type ProviderInstanceConfig,
-  type ServerSettings,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
@@ -41,9 +37,11 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import * as McpLiveModule from "../../spi/mcpLive.ts";
 import { McpLive, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
+import { resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import {
   MANAGED_MCP_SERVER,
   makeMcpAgentStores,
+  McpConfigEditError,
   McpConfigParseError,
   type McpAgentPaths,
   type McpAgentStore,
@@ -51,6 +49,7 @@ import {
   type McpFileEdit,
   type McpFiles,
 } from "./mcpAgents.ts";
+import { McpFileConflict, nodeFileStore, type McpFileStore } from "./mcpFileStore.ts";
 
 /** How each agent is named in a sentence the tab shows. */
 const AGENT_NAMES: Readonly<Record<string, string>> = {
@@ -64,77 +63,24 @@ const AGENT_NAMES: Readonly<Record<string, string>> = {
 
 const agentName = (driver: string): string => AGENT_NAMES[driver] ?? driver;
 
+/** "A", "A and B", "A, B and C". */
+const listed = (names: ReadonlyArray<string>): string =>
+  names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
 const isServerName = Schema.is(McpServerName);
 
-const expandHome = (value: string, homeDir: string): string =>
-  value === "~" ? homeDir : value.startsWith("~/") ? `${homeDir}${value.slice(1)}` : value;
-
-const configString = (config: unknown, field: string): string => {
-  if (typeof config !== "object" || config === null) return "";
-  const value = (config as Record<string, unknown>)[field];
-  return typeof value === "string" ? value.trim() : "";
-};
-
-const trimSlash = (value: string): string => (value.length > 1 ? value.replace(/\/+$/, "") : value);
-
-/**
- * Where the agents keep their config: every Claude and Codex home the
- * configured instances name (each login's own), the defaults first.
- */
-export function mcpAgentPaths(input: {
-  readonly homeDir: string;
-  readonly cwd: string;
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly settings: Pick<ServerSettings, "providers" | "providerInstances">;
-}): McpAgentPaths {
-  const { homeDir, env, settings } = input;
-  const instances: ReadonlyArray<ProviderInstanceConfig> = Object.values(
-    settings.providerInstances,
-  );
-  const homesOf = (driver: string, defaultHome: string, field: string, configured: string) => [
-    ...new Set(
-      [
-        defaultHome,
-        configured,
-        ...instances
-          .filter((instance) => instance.driver === driver)
-          .map((instance) => configString(instance.config, field)),
-      ]
-        .filter((home) => home.length > 0)
-        .map((home) => trimSlash(expandHome(home, homeDir))),
-    ),
-  ];
-  const claudeHomes = homesOf(
-    "claudeAgent",
-    homeDir,
-    "homePath",
-    settings.providers.claudeAgent.homePath,
-  );
-  const codexHomes = homesOf(
-    "codex",
-    `${homeDir}/.codex`,
-    "homePath",
-    settings.providers.codex.homePath,
-  );
-  const grokHome = env["GROK_HOME"]?.trim() || `${homeDir}/.grok`;
-  const configHome = env["XDG_CONFIG_HOME"]?.trim() || `${homeDir}/.config`;
-  return {
-    cwd: trimSlash(input.cwd),
-    // Claude reads `~/.claude.json` by default and `$CLAUDE_CONFIG_DIR/.claude.json` for a home.
-    claudeConfigs: claudeHomes.map((home) => `${home}/.claude.json`),
-    codexConfigs: codexHomes.map((home) => `${home}/config.toml`),
-    cursorHome: `${homeDir}/.cursor`,
-    grokConfig: `${trimSlash(grokHome)}/config.toml`,
-    // Mate's Antigravity profile links its `config/mcp_config.json` to this one.
-    antigravityConfig: `${homeDir}/.gemini/config/mcp_config.json`,
-    openCodeConfig: `${trimSlash(configHome)}/opencode/opencode.json`,
-  };
-}
-
-/** The files the service reads and writes; the layer's is atomic, a test's is a map. */
-export interface McpFileStore {
-  readonly read: (path: string) => Effect.Effect<string | undefined, McpServersError>;
-  readonly write: (path: string, text: string) => Effect.Effect<void, McpServersError>;
+/** Why one agent's config was left as it was, as a sentence the tab shows. */
+export function describeMcpConfigRefusal(driver: string, cause: unknown): string {
+  const agent = agentName(driver);
+  if (cause instanceof McpConfigParseError) {
+    return `${agent}'s config at ${cause.path} isn't valid (${cause.detail}), so Mate left it as it is.`;
+  }
+  if (cause instanceof McpConfigEditError) {
+    return `${agent}'s config at ${cause.path} is written in a way Mate can't change safely (${cause.reason}); change it there by hand.`;
+  }
+  return `${agent}'s config could not be changed.`;
 }
 
 /** The live side the service asks (`spi/mcpLive.ts`'s `McpLive`). */
@@ -164,6 +110,8 @@ export class McpServers extends Context.Service<
 >()("t3/zerops/mcp/McpServers") {}
 
 const NUDGE_TIMEOUT = "5 seconds";
+/** A file an agent changed while Mate planned its change: plan again, this many times. */
+const WRITE_ATTEMPTS = 3;
 
 interface AgentServers {
   readonly store: McpAgentStore;
@@ -223,6 +171,17 @@ export function mergeMcpServers(
     );
 }
 
+interface Loaded {
+  readonly stores: ReadonlyArray<McpAgentStore>;
+  readonly installed: ReadonlyArray<ProviderDriverKind>;
+  readonly files: McpFiles;
+}
+
+/** One agent's planned change, or why it was left alone. */
+type Planned =
+  | { readonly store: McpAgentStore; readonly edits: ReadonlyArray<McpFileEdit> }
+  | { readonly store: McpAgentStore; readonly refused: string };
+
 export const make = Effect.fn("McpServers.make")(function* (options: McpServersOptions) {
   const { files, live } = options;
   const writes = yield* Semaphore.make(1);
@@ -249,30 +208,36 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
         ),
       { concurrency: 8, discard: true },
     );
-    return { stores: chosen, installed, files: texts as McpFiles };
+    return { stores: chosen, installed, files: texts } satisfies Loaded;
   });
 
   /** A store's servers; a config it cannot parse is left out of the list and named in the log. */
-  const readAgents = (stores: ReadonlyArray<McpAgentStore>, texts: McpFiles) =>
-    Effect.forEach(stores, (store) =>
-      Effect.try({
-        try: () => ({ store, servers: store.read(texts) }),
-        catch: (cause) =>
-          fail("mcp.servers.list", `${agentName(store.driver)}'s config could not be read.`, cause),
-      }).pipe(
-        Effect.catch((cause) =>
-          Effect.logWarning("An agent's MCP config could not be read.", {
+  const readAgents = (loaded: Loaded) =>
+    Effect.forEach(loaded.stores, (store) =>
+      Effect.gen(function* () {
+        for (const problem of store.problems(loaded.files)) {
+          yield* Effect.logWarning("An MCP config next to an agent's could not be read.", {
             driver: store.driver,
-            cause,
-          }).pipe(Effect.as({ store, servers: [] as ReadonlyArray<McpConfigServer> })),
-        ),
-      ),
+            path: problem.path,
+            detail: problem.detail,
+          });
+        }
+        try {
+          return { store, servers: store.read(loaded.files) };
+        } catch (cause) {
+          yield* Effect.logWarning("An agent's MCP config could not be read.", {
+            driver: store.driver,
+            detail: describeMcpConfigRefusal(store.driver, cause),
+          });
+          return { store, servers: [] as ReadonlyArray<McpConfigServer> };
+        }
+      }),
     );
 
   const list = (operation: string, threadId: ThreadId | undefined) =>
     Effect.gen(function* () {
       const loaded = yield* loadStores;
-      const agents = yield* readAgents(loaded.stores, loaded.files);
+      const agents = yield* readAgents(loaded);
       const liveState = threadId === undefined ? undefined : yield* live.status(threadId);
       return {
         servers: mergeMcpServers(agents, liveState),
@@ -280,46 +245,93 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
       } satisfies McpServersList;
     }).pipe(Effect.withSpan(`McpServers.${operation}`));
 
-  /** Each store's edits, or the sentence that says which config could not be read. */
-  const planEdits = (
-    operation: string,
+  /** Each agent's edits, or the sentence that says why its config was left alone. */
+  const plan = (
     stores: ReadonlyArray<McpAgentStore>,
     edit: (store: McpAgentStore) => ReadonlyArray<McpFileEdit>,
-  ) =>
-    Effect.forEach(stores, (store) =>
-      Effect.try({
-        try: () => edit(store),
-        catch: (cause) =>
-          cause instanceof McpConfigParseError
-            ? fail(
-                operation,
-                `${agentName(store.driver)}'s config at ${cause.path} could not be read, so nothing was changed. Fix or remove that file and try again.`,
-                cause,
-              )
-            : fail(operation, `${agentName(store.driver)}'s config could not be changed.`, cause),
+  ): Planned[] =>
+    stores.map((store) => {
+      try {
+        return { store, edits: edit(store) };
+      } catch (cause) {
+        return { store, refused: describeMcpConfigRefusal(store.driver, cause) };
+      }
+    });
+
+  /**
+   * A change to every agent's config: planned from the files as they are,
+   * written under Claude Code's lock, and planned again when an agent wrote
+   * one of them meanwhile. The agents that refused are named after the ones
+   * that took it; none taking it is the change's failure.
+   */
+  const change = (input: {
+    readonly operation: string;
+    readonly name: string;
+    /** The past tense the sentence uses: "added", "removed", "turned off". */
+    readonly done: string;
+    /** Refusals before any file is read again, on the first attempt only. */
+    readonly check: (loaded: Loaded, attempt: number) => Effect.Effect<void, McpServersError>;
+    readonly edit: (store: McpAgentStore, loaded: Loaded) => ReadonlyArray<McpFileEdit>;
+    readonly nudge: (store: McpAgentStore) => McpConfigChange;
+    readonly threadId: ThreadId | undefined;
+  }) =>
+    writes.withPermits(1)(
+      Effect.gen(function* () {
+        const paths = yield* options.paths;
+        const attempt = (index: number): Effect.Effect<Planned[], McpServersError> =>
+          Effect.gen(function* () {
+            const loaded = yield* loadStores;
+            yield* input.check(loaded, index);
+            const planned = plan(loaded.stores, (store) => input.edit(store, loaded));
+            for (const entry of planned) {
+              if (!("edits" in entry)) continue;
+              for (const edit of entry.edits) {
+                yield* files.write(edit.path, edit.text, loaded.files.get(edit.path));
+              }
+            }
+            return planned;
+          }).pipe(
+            Effect.catchTag("McpFileConflict", (conflict: McpFileConflict) =>
+              index + 1 < WRITE_ATTEMPTS
+                ? attempt(index + 1)
+                : Effect.fail(
+                    fail(
+                      input.operation,
+                      `${conflict.path} kept changing while Mate wrote it. Try again in a moment.`,
+                    ),
+                  ),
+            ),
+          );
+        const planned = yield* files.locked(paths.claudeConfigs, attempt(0));
+        const took = planned.filter(
+          (entry): entry is Extract<Planned, { edits: unknown }> =>
+            "edits" in entry && entry.edits.length > 0,
+        );
+        yield* Effect.forEach(
+          took,
+          ({ store }) => live.configChanged(store.driver, input.nudge(store)),
+          { concurrency: "unbounded", discard: true },
+        ).pipe(Effect.timeout(NUDGE_TIMEOUT), Effect.ignore);
+        const refused = planned.flatMap((entry) => ("refused" in entry ? [entry.refused] : []));
+        if (refused.length > 0) {
+          const lead =
+            took.length > 0
+              ? `${input.name} was ${input.done} for ${listed(took.map(({ store }) => agentName(store.driver)))}, not for the rest. `
+              : "";
+          return yield* fail(input.operation, `${lead}${refused.join(" ")}`);
+        }
+        return yield* list(input.operation, input.threadId);
       }),
-    ).pipe(Effect.map((edits) => edits.flat()));
+    );
 
-  const writeAll = (edits: ReadonlyArray<McpFileEdit>) =>
-    Effect.forEach(edits, (edit) => files.write(edit.path, edit.text), { discard: true });
-
-  const nudge = (
-    stores: ReadonlyArray<McpAgentStore>,
-    change: (store: McpAgentStore) => McpConfigChange,
-  ) =>
-    Effect.forEach(stores, (store) => live.configChanged(store.driver, change(store)), {
-      concurrency: "unbounded",
-      discard: true,
-    }).pipe(Effect.timeout(NUDGE_TIMEOUT), Effect.ignore);
-
-  /** The servers the name refers to, refusing zcp's and one only the repo holds. */
-  const target = (operation: string, name: string) =>
+  /** The agents' servers of this name, refusing zcp's, an unknown one, and one only the repo holds. */
+  const target = (operation: string, name: string) => (loaded: Loaded, index: number) =>
     Effect.gen(function* () {
       if (name === MANAGED_MCP_SERVER) {
         return yield* fail(operation, "Zerops' own server can't be changed here.");
       }
-      const loaded = yield* loadStores;
-      const agents = yield* readAgents(loaded.stores, loaded.files);
+      if (index > 0) return;
+      const agents = yield* readAgents(loaded);
       const found = agents.flatMap(({ servers }) =>
         servers.filter((server) => server.name === name),
       );
@@ -332,81 +344,69 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
           `${name} is set up in the project's .mcp.json, so it is changed there, not here.`,
         );
       }
-      return loaded;
     });
 
-  const add: McpServers["Service"]["add"] = (input) =>
-    writes.withPermits(1)(
-      Effect.gen(function* () {
-        const operation = "mcp.servers.add";
-        if (input.name === MANAGED_MCP_SERVER) {
-          return yield* fail(operation, "Zerops' own server can't be changed here.");
-        }
-        const loaded = yield* loadStores;
-        if (loaded.stores.length === 0) {
-          return yield* fail(operation, "No agent is installed here to add the server to.");
-        }
-        const agents = yield* readAgents(loaded.stores, loaded.files);
-        if (agents.some(({ servers }) => servers.some((server) => server.name === input.name))) {
-          return yield* fail(operation, `A server named ${input.name} is already set up.`);
-        }
-        // A command takes an environment, a URL takes headers; never the other.
-        const server: McpServerAddInput =
-          input.transport.type === "stdio"
-            ? {
-                name: input.name,
-                transport: input.transport,
-                ...(input.env ? { env: input.env } : {}),
-              }
-            : {
-                name: input.name,
-                transport: input.transport,
-                ...(input.headers ? { headers: input.headers } : {}),
-              };
-        const edits = yield* planEdits(operation, loaded.stores, (store) =>
-          store.add(loaded.files, server),
-        );
-        yield* writeAll(edits);
-        yield* nudge(loaded.stores, (store) => ({
-          kind: "added",
-          name: server.name,
-          entry: store.entry(server),
-        }));
-        return yield* list(operation, undefined);
-      }),
-    );
+  const add: McpServers["Service"]["add"] = (input) => {
+    const operation = "mcp.servers.add";
+    // A command takes an environment, a URL takes headers; never the other.
+    const server: McpServerAddInput =
+      input.transport.type === "stdio"
+        ? {
+            name: input.name,
+            transport: input.transport,
+            ...(input.env ? { env: input.env } : {}),
+          }
+        : {
+            name: input.name,
+            transport: input.transport,
+            ...(input.headers ? { headers: input.headers } : {}),
+          };
+    return change({
+      operation,
+      name: input.name,
+      done: "added",
+      threadId: input.threadId,
+      check: (loaded, index) =>
+        Effect.gen(function* () {
+          if (input.name === MANAGED_MCP_SERVER) {
+            return yield* fail(operation, "Zerops' own server can't be changed here.");
+          }
+          if (loaded.stores.length === 0) {
+            return yield* fail(operation, "No agent is installed here to add the server to.");
+          }
+          // A later attempt finds the server its first one already wrote somewhere.
+          if (index > 0) return;
+          const agents = yield* readAgents(loaded);
+          if (agents.some(({ servers }) => servers.some((found) => found.name === input.name))) {
+            return yield* fail(operation, `A server named ${input.name} is already set up.`);
+          }
+        }),
+      edit: (store, loaded) => store.add(loaded.files, server),
+      nudge: (store) => ({ kind: "added", name: server.name, entry: store.entry(server) }),
+    });
+  };
 
   const remove: McpServers["Service"]["remove"] = (input) =>
-    writes.withPermits(1)(
-      Effect.gen(function* () {
-        const operation = "mcp.servers.remove";
-        const loaded = yield* target(operation, input.name);
-        const edits = yield* planEdits(operation, loaded.stores, (store) =>
-          store.remove(loaded.files, input.name),
-        );
-        yield* writeAll(edits);
-        yield* nudge(loaded.stores, () => ({ kind: "removed", name: input.name }));
-        return yield* list(operation, input.threadId);
-      }),
-    );
+    change({
+      operation: "mcp.servers.remove",
+      name: input.name,
+      done: "removed",
+      threadId: input.threadId,
+      check: target("mcp.servers.remove", input.name),
+      edit: (store, loaded) => store.remove(loaded.files, input.name),
+      nudge: () => ({ kind: "removed", name: input.name }),
+    });
 
   const setEnabled: McpServers["Service"]["setEnabled"] = (input) =>
-    writes.withPermits(1)(
-      Effect.gen(function* () {
-        const operation = "mcp.servers.setEnabled";
-        const loaded = yield* target(operation, input.name);
-        const edits = yield* planEdits(operation, loaded.stores, (store) =>
-          store.setEnabled(loaded.files, input.name, input.enabled),
-        );
-        yield* writeAll(edits);
-        yield* nudge(loaded.stores, () => ({
-          kind: "enabled",
-          name: input.name,
-          enabled: input.enabled,
-        }));
-        return yield* list(operation, input.threadId);
-      }),
-    );
+    change({
+      operation: "mcp.servers.setEnabled",
+      name: input.name,
+      done: input.enabled ? "turned on" : "turned off",
+      threadId: input.threadId,
+      check: target("mcp.servers.setEnabled", input.name),
+      edit: (store, loaded) => store.setEnabled(loaded.files, input.name, input.enabled),
+      nudge: () => ({ kind: "enabled", name: input.name, enabled: input.enabled }),
+    });
 
   const reconnect: McpServers["Service"]["reconnect"] = (input) =>
     Effect.gen(function* () {
@@ -432,52 +432,7 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
   } satisfies McpServers["Service"];
 });
 
-/**
- * The real files: a write lands whole (a temporary file beside it, then a
- * rename), through a symlink to the file it points at, keeping the file's
- * permissions — a new one is private to its owner, since it can hold keys.
- */
-export const nodeFileStore = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const read = (file: string) =>
-    fs.readFileString(file).pipe(
-      Effect.map((text): string | undefined => text),
-      Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined),
-      Effect.mapError(
-        (cause) =>
-          new McpServersError({
-            operation: "mcp.servers.read",
-            detail: `${file} could not be read.`,
-            cause,
-          }),
-      ),
-    );
-  const write = (file: string, text: string) =>
-    Effect.gen(function* () {
-      const target = yield* fs.realPath(file).pipe(Effect.catch(() => Effect.succeed(file)));
-      const mode = yield* fs.stat(target).pipe(
-        Effect.map((info) => info.mode & 0o777),
-        Effect.catch(() => Effect.succeed(0o600)),
-      );
-      yield* fs.makeDirectory(path.dirname(target), { recursive: true });
-      const temporary = `${target}.mate-${NodeCrypto.randomBytes(4).toString("hex")}.tmp`;
-      yield* fs.writeFileString(temporary, text, { mode });
-      yield* fs
-        .rename(temporary, target)
-        .pipe(Effect.tapError(() => fs.remove(temporary).pipe(Effect.ignore)));
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new McpServersError({
-            operation: "mcp.servers.write",
-            detail: `${file} could not be saved.`,
-            cause,
-          }),
-      ),
-    );
-  return { read, write } satisfies McpFileStore;
-});
+export { nodeFileStore };
 
 export const layer = Layer.effect(
   McpServers,
@@ -486,18 +441,12 @@ export const layer = Layer.effect(
     const settings = yield* ServerSettingsService;
     const live = yield* McpLive;
     const files = yield* nodeFileStore;
+    const resolve =
+      yield* Effect.context<Effect.Services<ReturnType<typeof resolveMcpAgentPaths>>>();
     return yield* make({
       files,
       live,
       paths: settings.getSettings.pipe(
-        Effect.map((current) =>
-          mcpAgentPaths({
-            homeDir: NodeOS.homedir(),
-            cwd: config.cwd,
-            env: process.env,
-            settings: current,
-          }),
-        ),
         Effect.mapError(
           (cause) =>
             new McpServersError({
@@ -506,6 +455,16 @@ export const layer = Layer.effect(
               cause,
             }),
         ),
+        Effect.flatMap((current) =>
+          resolveMcpAgentPaths({
+            homeDir: NodeOS.homedir(),
+            cwd: config.cwd,
+            stateDir: config.stateDir,
+            env: process.env,
+            settings: current,
+          }),
+        ),
+        Effect.provide(resolve),
       ),
     });
   }),

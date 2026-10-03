@@ -518,16 +518,6 @@ function appendBlock(text: string, block: string): string {
   return `${text}${separator}${block}`;
 }
 
-/** `text` with the server `name` added as a table at its end. */
-export function appendTomlServer(
-  text: string,
-  root: string,
-  name: string,
-  server: Readonly<Record<string, TomlPlain>>,
-): string {
-  return appendBlock(text, encodeServer(root, name, fromPlain(server)));
-}
-
 interface Span {
   readonly start: number;
   readonly end: number;
@@ -541,10 +531,7 @@ function serverSpans(items: ReadonlyArray<Item>, root: string, name: string): Sp
   for (const item of items) {
     if (item.kind === "header") {
       if (block !== undefined) spans.push(block);
-      block =
-        !item.array && startsWithPath(item.path, prefix)
-          ? { start: item.start, end: item.end }
-          : undefined;
+      block = startsWithPath(item.path, prefix) ? { start: item.start, end: item.end } : undefined;
       continue;
     }
     if (block !== undefined) {
@@ -573,9 +560,168 @@ function cut(text: string, spans: ReadonlyArray<Span>): string {
   return out;
 }
 
-/** `text` without the server `name`; unchanged when it is not there. */
+/** A key path as one string, for the sets {@link validateToml} keeps. */
+const pathId = (path: ReadonlyArray<string>): string => path.join("\u0000");
+
+/**
+ * Throws {@link TomlSyntaxError} where a TOML reader would refuse the file:
+ * a table or key defined twice, or a table or key added under a value that is
+ * already closed (an inline table, a dotted key's table, a plain value).
+ */
+export function validateToml(text: string): void {
+  const items = scan(text);
+  const explicitTables = new Set<string>();
+  const dottedTables = new Set<string>();
+  const closedValues = new Set<string>();
+  const keys = new Set<string>();
+  const arrayElements = new Map<string, number>();
+  let element: string | undefined;
+  const lineOf = (offset: number) => text.slice(0, offset).split("\n").length;
+  const refuse = (offset: number, detail: string): never => {
+    throw new TomlSyntaxError(lineOf(offset), detail);
+  };
+  const underClosed = (path: ReadonlyArray<string>) =>
+    path.some((_part, index) => closedValues.has(pathId(path.slice(0, index + 1))));
+  for (const item of items) {
+    if (item.kind === "header") {
+      const id = pathId(item.path);
+      if (underClosed(item.path)) refuse(item.start, "a table under a value already set");
+      if (item.array) {
+        const count = (arrayElements.get(id) ?? 0) + 1;
+        arrayElements.set(id, count);
+        element = `${id}#${count}`;
+        continue;
+      }
+      element = undefined;
+      if (explicitTables.has(id) || dottedTables.has(id)) {
+        refuse(item.start, "a table defined twice");
+      }
+      explicitTables.add(id);
+      continue;
+    }
+    if (element !== undefined) {
+      const id = `${element}\u0001${pathId(item.key)}`;
+      if (keys.has(id)) refuse(item.start, "a key defined twice");
+      keys.add(id);
+      continue;
+    }
+    const path = fullPath(item);
+    if (underClosed(path.slice(0, -1))) refuse(item.start, "a key under a value already set");
+    for (let length = item.table.length + 1; length < path.length; length += 1) {
+      const id = pathId(path.slice(0, length));
+      if (explicitTables.has(id)) refuse(item.start, "dotted keys into a table defined above");
+      dottedTables.add(id);
+    }
+    const id = pathId(path);
+    if (keys.has(id) || explicitTables.has(id) || dottedTables.has(id)) {
+      refuse(item.start, "a key defined twice");
+    }
+    keys.add(id);
+    closedValues.add(id);
+  }
+}
+
+/** An edit whose result would not be valid, or would not hold exactly the servers intended. */
+export class TomlEditError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "TomlEditError";
+  }
+}
+
+function sameValue(a: TomlPlain | undefined, b: TomlPlain | undefined): boolean {
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return a === b;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, index) => sameValue(item, b[index]))
+    );
+  }
+  const left = a as Record<string, TomlPlain>;
+  const right = b as Record<string, TomlPlain>;
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => key in right && sameValue(left[key], right[key]))
+  );
+}
+
+/**
+ * The edit's result, once it reads back as valid TOML holding exactly
+ * `expected` under `root` — never a file an agent would refuse, never a no-op
+ * reported as done.
+ */
+function checked(
+  result: string,
+  root: string,
+  expected: Readonly<Record<string, Readonly<Record<string, TomlPlain>>>>,
+): string {
+  try {
+    validateToml(result);
+  } catch (cause) {
+    throw new TomlEditError(
+      `the change would not be valid TOML (${cause instanceof Error ? cause.message : String(cause)})`,
+    );
+  }
+  if (!sameValue(readTomlServers(result, root), expected as TomlPlain)) {
+    throw new TomlEditError("the change would not hold exactly the servers intended");
+  }
+  return result;
+}
+
+/**
+ * `mcp_servers = { … }` at the top level, rewritten as one table per server:
+ * nothing can be added under an inline table, so every edit starts here.
+ */
+function expandInlineRoot(text: string, root: string): string {
+  const items = scan(text);
+  const inline = items.find(
+    (item): item is KeyValueItem =>
+      item.kind === "kv" &&
+      !item.inArrayTable &&
+      item.table.length === 0 &&
+      item.key.length === 1 &&
+      item.key[0] === root &&
+      item.value.kind === "table",
+  );
+  if (inline === undefined || inline.value.kind !== "table") return text;
+  let out = cut(text, [{ start: inline.start, end: inline.end }]);
+  for (const [name, server] of inline.value.entries) {
+    out = appendBlock(out, encodeServer(root, name, server));
+  }
+  return out;
+}
+
+/** The servers of a file about to be edited; refuses one a TOML reader would. */
+function serversBefore(text: string, root: string) {
+  validateToml(text);
+  return readTomlServers(text, root);
+}
+
+/** `text` with the server `name` added as a table at its end. */
+export function appendTomlServer(
+  text: string,
+  root: string,
+  name: string,
+  server: Readonly<Record<string, TomlPlain>>,
+): string {
+  const before = serversBefore(text, root);
+  const result = appendBlock(
+    expandInlineRoot(text, root),
+    encodeServer(root, name, fromPlain(server)),
+  );
+  return checked(result, root, { ...before, [name]: server });
+}
+
+/** `text` without the server `name` (its arrays of tables too); unchanged when it is not there. */
 export function removeTomlServer(text: string, root: string, name: string): string {
-  return cut(text, serverSpans(scan(text), root, name));
+  const before = serversBefore(text, root);
+  if (!(name in before)) return text;
+  const expanded = expandInlineRoot(text, root);
+  const { [name]: _removed, ...rest } = before;
+  return checked(cut(expanded, serverSpans(scan(expanded), root, name)), root, rest);
 }
 
 /**
@@ -590,9 +736,18 @@ export function setTomlServerBoolean(
   key: string,
   value: boolean,
 ): string {
+  const before = serversBefore(text, root);
+  const current = before[name];
+  if (current === undefined) return text;
+  return checked(setBoolean(expandInlineRoot(text, root), root, name, key, value), root, {
+    ...before,
+    [name]: { ...current, [key]: value },
+  });
+}
+
+function setBoolean(text: string, root: string, name: string, key: string, value: boolean): string {
   const items = scan(text);
-  const servers = serverValues(items, root);
-  const server = servers.get(name);
+  const server = serverValues(items, root).get(name);
   if (server?.kind !== "table") return text;
   const encoded = value ? "true" : "false";
   const headerIndex = items.findIndex(
@@ -611,11 +766,18 @@ export function setTomlServerBoolean(
       }
     }
     // A key of its own table defined elsewhere (dotted) would be a duplicate: rewrite instead.
-    const elsewhere = server.entries.has(key);
-    if (!elsewhere) {
+    if (!server.entries.has(key)) {
       const newline = text.slice(header.start, header.end).endsWith("\n") ? "" : "\n";
       return `${text.slice(0, header.end)}${newline}${encodeKey(key)} = ${encoded}\n${text.slice(header.end)}`;
     }
+  }
+  // A rewrite carries the server's keys and tables, not its arrays of tables.
+  if (
+    items.some(
+      (item) => item.kind === "header" && item.array && startsWithPath(item.path, [root, name]),
+    )
+  ) {
+    throw new TomlEditError("the server has arrays of tables Mate can't rewrite");
   }
   server.entries.set(key, { kind: "boolean", value });
   return appendBlock(cut(text, serverSpans(items, root, name)), encodeServer(root, name, server));
