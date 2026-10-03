@@ -1,6 +1,7 @@
 /**
- * Moving a project into a group, out of one, or into a new one: only the groups and roles HQ's
- * rule lets this person place it as are drawn (`moveChoices`).
+ * Moving a Mate into an application, out of one, or into a new one: only the applications and
+ * roles HQ's rule lets this person place it as are drawn (`moveChoices`). Its copy says "project"
+ * for an application, as the menus that open it do; the Mate is named, its Zerops project never.
  */
 import type { ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
 import { useId, useState } from "react";
@@ -8,7 +9,6 @@ import { useId, useState } from "react";
 import { Button } from "../ui/button";
 import {
   Dialog,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogPanel,
@@ -71,16 +71,13 @@ export function ZeropsMoveToGroupForm({
     >
       <DialogHeader>
         <DialogTitle>Move {name}</DialogTitle>
-        <DialogDescription>
-          A group is what you call the application; its environments are the projects in it.
-        </DialogDescription>
       </DialogHeader>
 
       <DialogPanel className="flex flex-col gap-5 space-y-0">
         <div className="space-y-2">
-          <span className="text-sm">Group</span>
+          <span className="text-sm">Project</span>
           <RadioGroup
-            aria-label="Group"
+            aria-label="Project"
             className="gap-2"
             onValueChange={(value) => {
               const next = String(value);
@@ -96,18 +93,18 @@ export function ZeropsMoveToGroupForm({
             ))}
             {choices.newApp.length > 0 ? (
               <Choice selected={target === "new"} value="new">
-                New group
+                New project
               </Choice>
             ) : null}
             {choices.none ? (
               <Choice selected={target === "none"} value="none">
-                No group
+                No project
               </Choice>
             ) : null}
           </RadioGroup>
           {target === "new" ? (
             <div className="space-y-1.5 pt-1">
-              <Label htmlFor={`${id}-group`}>Group name</Label>
+              <Label htmlFor={`${id}-group`}>Project name</Label>
               <Input
                 aria-invalid={showErrors && errors.newGroupName !== undefined ? true : undefined}
                 autoFocus
@@ -152,7 +149,7 @@ export function ZeropsMoveToGroupForm({
         <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
-        <Button type="submit">{target === "none" ? "Leave the group" : "Move"}</Button>
+        <Button type="submit">{target === "none" ? "Leave the project" : "Move"}</Button>
       </DialogFooter>
     </form>
   );
