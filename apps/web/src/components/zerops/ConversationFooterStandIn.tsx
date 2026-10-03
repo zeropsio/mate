@@ -31,8 +31,11 @@ export function standInFooter(conversation: ScopedThreadRef | null): Conversatio
 export function ConversationFooterStandIn({
   footer,
   composer,
+  draft = "",
 }: {
   readonly footer: ConversationFooter;
+  /** The conversation's draft, which the held room lays out at the composer's height. */
+  readonly draft?: string;
   /** The composer standing in (`ComposerStandIn`), drawn only where the footer is the viewer's. */
   readonly composer: ReactNode;
 }) {
@@ -53,7 +56,7 @@ export function ConversationFooterStandIn({
     case "held":
       return (
         <ComposerStandInDock held>
-          <ComposerRoomHeld />
+          <ComposerRoomHeld draft={draft} />
         </ComposerStandInDock>
       );
   }

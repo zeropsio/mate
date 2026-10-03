@@ -25,9 +25,11 @@ const remember = (key: string, patch: Parameters<typeof withStandIn>[2]) => {
 };
 
 export function RouteStandIn({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const draft = useComposerDraftStore((state) => state.getComposerDraft(threadRef)?.prompt ?? "");
   return (
     <ConversationFooterStandIn
       composer={<RouteComposerStandIn threadRef={threadRef} />}
+      draft={draft}
       footer={standInFooter(threadRef)}
     />
   );

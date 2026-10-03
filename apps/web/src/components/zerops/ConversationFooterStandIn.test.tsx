@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
+import { INLINE_PICTURE_PLACEHOLDER } from "~/lib/composerPictures";
 import { rememberWriter } from "~/zerops/writerMemory";
 import { ConversationFooterStandIn, standInFooter } from "./ConversationFooterStandIn";
 
@@ -32,6 +33,23 @@ describe("the footer of a conversation that is not open yet", () => {
       expect(html.replace(/<[^>]*>/g, "").trim()).toBe("");
     },
   );
+
+  // A draft of several lines, or with a picture in it, makes a taller composer: the room is its
+  // height, its words and pictures laid out unseen, and still nothing to type into or press.
+  it("holds the room at the height its draft will take", () => {
+    const html = renderToStaticMarkup(
+      <ConversationFooterStandIn
+        composer={COMPOSER}
+        draft={`First line\nsecond line${INLINE_PICTURE_PLACEHOLDER}`}
+        footer="held"
+      />,
+    );
+    expect(html).toContain("First line\nsecond line");
+    expect(html).toContain("composer-attachment-slot");
+    expect(html).toContain('data-room-held=""');
+    expect(html).not.toContain("<textarea");
+    expect(html).not.toContain("<button");
+  });
 
   it("paints someone else's strip at once where this browser remembers it as theirs", () => {
     const html = render("someone");

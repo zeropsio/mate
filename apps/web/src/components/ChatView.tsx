@@ -3924,6 +3924,10 @@ export default function ChatView(props: ChatViewProps) {
     readOnly: zeropsReadOnly,
   });
   const zeropsShownReadOnly = zeropsReadOnlyStrip?.readOnly ?? null;
+  // The draft the held room lays out, so the composer that takes its place is its height.
+  const zeropsHeldDraft = useComposerDraftStore((store) =>
+    zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
+  );
   const zeropsWriterKind = zeropsWriter.kind;
   const zeropsKnownWriter = rememberableWriter(zeropsWriter, zeropsAgentAuthRead);
   useEffect(() => {
@@ -8578,7 +8582,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                             />
                           ) : zeropsFooter === "held" ? (
-                            <ComposerRoomHeld />
+                            <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : (
                             <ChatComposer
                               composerRef={composerRef}
