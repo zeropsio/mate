@@ -281,6 +281,34 @@ describe("ChangeReviewView: an open change", () => {
   const open = merged({ state: "open", merged: false, mergedAt: undefined });
   const files = [changed("src/mail.ts")];
 
+  it("an empty review carries the header verdict into its footer, with only Close", () => {
+    const html = render(open, [], {
+      readout: {
+        kind: "read",
+        value: changeReadout({
+          change: {} as HqChange,
+          mainHead: MAIN,
+          mergeBase: MAIN,
+          mergeability: { kind: "empty" },
+          files: [],
+          filesTruncated: false,
+          commits: Array.from({ length: 20 }, (_, i) => ({
+            sha: String(i),
+            subject: "Already landed",
+            authorName: "Wren",
+            at: new Date(NOW).toISOString(),
+          })),
+          commitsTruncated: false,
+        }),
+      },
+    });
+    expect(textOf(html)).toContain("Nothing to merge main already has all of it");
+    expect(footOf(html)).toContain("Nothing to deliver: main already has this.");
+    expect(footOf(html)).not.toContain("Squash-merges");
+    expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
+    expect(footOf(html)).toContain(">Close without merging…</button>");
+  });
+
   it("that merges cleanly offers Merge, safe to press, and Close without merging beside it", () => {
     const html = render(open, files);
     expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);

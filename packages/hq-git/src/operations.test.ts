@@ -690,6 +690,20 @@ describe("a change's own history", () => {
       }),
   );
 
+  it.live("excludes the previous landed head from a later change's history", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { "base.txt": "base\n" }, null);
+      const landed = await branch(git, dir, main, { "a.txt": "a\n" });
+      await merge(git, main, 1, "First task", landed);
+      await native(dir, ["update-ref", "refs/heads/core/build", landed]);
+      const next = await write(git, { "b.txt": "b\n" }, landed, "refs/heads/core/build");
+      await native(dir, ["update-ref", "refs/heads/mate/alice/2", next]);
+      const log = await value(git.changeLog(repo, "alice", 2, { limit: 100, base: landed }));
+      expect(log.items.map((c) => c.sha)).toEqual([next]);
+      expect(log.truncated).toBe(false);
+    }),
+  );
+
   it.live(
     "reads the change's commits not on main, newest first with their dates, and its merge base",
     () =>

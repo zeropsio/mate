@@ -174,12 +174,20 @@ export const EnsureRepoRequest = Schema.Struct({ name: RepoName });
  * `POST /api/mate/changes`: the Mate's open change in the repository, or the next number opened
  * with `title`. An open change keeps its title: retitling it is zcp's call, by `PATCH`.
  */
-export const OpenChangeRequest = Schema.Struct({ repo: RepoName, title: ChangeTitle });
-export const OpenChangeResponse = Schema.Struct({
-  change: HqChange,
-  /** Whether this call opened it. */
-  created: Schema.Boolean,
+export const OpenChangeRequest = Schema.Struct({
+  repo: RepoName,
+  title: ChangeTitle,
+  /** Git's content hash of the candidate tree, before a change branch exists. */
+  tree: Schema.optionalKey(Sha),
 });
+export const OpenChangeResponse = Schema.Union([
+  Schema.Struct({ change: HqChange, created: Schema.Boolean }),
+  Schema.Struct({
+    change: Schema.Null,
+    created: Schema.Literal(false),
+    reason: Schema.Literal("nothing_to_deliver"),
+  }),
+]);
 export type OpenChangeResponse = typeof OpenChangeResponse.Type;
 
 /** `PATCH /api/mate/changes/:repo/:n`: the Mate's open change's title, description, or both. */

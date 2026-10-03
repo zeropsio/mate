@@ -45,6 +45,9 @@ application's **repositories** — one per codebase, and the recipe repository `
 holds every tier's import file. A Mate's work reaches `main` only as a **change**: HQ's record of
 its branch `mate/<projectId>/<n>`, one open per Mate and repository, which a person merges as a
 squash or closes. Core lands by itself a recipe change that only adds files.
+After a squash, zcp's next explicit delivery starts its change from current `main` and keeps the
+prior history under a recorded local ref; a background pass only records the landing. HQ decides
+whether the delivered tree differs from `main`, and equal trees open no change.
 
 **Core deploys.** When `main` moves, every stage that follows it gets the commit's archive, built
 with the stage tier's setup by the environment's own deploy token. A release — an annotated tag on

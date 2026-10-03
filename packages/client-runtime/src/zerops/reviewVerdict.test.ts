@@ -1213,3 +1213,20 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
     ).toBe("Merging waits until the conflict is resolved.");
   });
 });
+
+it.each([undefined, true, false])(
+  "an empty review offers only Close with merge permission %s",
+  (merge) => {
+    const model = changeReview(
+      change({
+        pull: pull({ mergeability: "empty" }),
+        commits: 20,
+        offered: merge === undefined ? undefined : { merge, close: true },
+      }),
+    );
+    expect(model.verdict.state).toBe("empty");
+    expect(model.consequence).toBe("Nothing to deliver: main already has this.");
+    expect(model.primary).toBeUndefined();
+    expect(model.secondary?.label).toBe(merge === undefined ? undefined : "Close without merging…");
+  },
+);

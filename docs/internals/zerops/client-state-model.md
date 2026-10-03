@@ -440,6 +440,10 @@ declare membership. `Deployment` is `none` (the deployment facet observed with n
 what ran when it started); an unresolved facet is `unread`, never "Nothing deployed yet". A change
 is `merged`, `closed`, or `open` with mergeability `checking`, `mergeable`, `conflicting` or
 `empty`, as HQ says it (`changeMergeability.ts`); `checking` until it has said. A release, a roll back, a stage added, a merge or a close comes back down HQ's stream.
+The review's header and footer read the same `changeReview` verdict: an `empty` change offers
+only Close where permitted, with no merge consequence or Merge action. HQ's detail excludes the
+Mate's preceding landed head from the change's commit list, so squash-landed work is not counted
+again. Desktop uses this web review; mobile has no HQ change-review surface.
 The stream snapshot carries each readable application's releases, repository heads and stage/production
 recipes; a `release-revision` message replaces only the moved application's value. The client folds
 these once (`hq/stream.ts`) and projects them without per-app bootstrap reads or recipe retry timers.

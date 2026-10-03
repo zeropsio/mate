@@ -735,6 +735,11 @@ export const makeOperations = (
       });
       return ancestor.code === 0;
     });
+  const treeId: HqGit["treeId"] = (repo, sha) =>
+    inRepo("treeId", repo, async (dir, signal) => {
+      if (!validSha(sha)) throw error("Invalid commit");
+      return text(dir, ["rev-parse", "--verify", `${sha}^{tree}`], signal);
+    });
   const mergeBase: HqGit["mergeBase"] = (repo, mateId, number) =>
     inRepo("mergeBase", repo, async (dir, signal) => {
       const head = await refHead(dir, changeRef(mateId, number), signal);
@@ -789,6 +794,7 @@ export const makeOperations = (
   const changeLog: HqGit["changeLog"] = (repo, mateId, number, opts) =>
     inRepo("changeLog", repo, async (dir, signal) => {
       const limit = bound(opts.limit, readLimits.log);
+      if (opts.base !== undefined && !validSha(opts.base)) throw error("Invalid change base");
       const head = await refHead(dir, changeRef(mateId, number), signal);
       if (!head) return { items: [], truncated: false };
       const main = await refHead(dir, "refs/heads/main", signal);
@@ -801,6 +807,7 @@ export const makeOperations = (
             `--max-count=${limit + 1}`,
             head,
             ...(main ? [`^${main}`] : []),
+            ...(opts.base === undefined ? [] : [`^${opts.base}`]),
             "--",
           ],
           signal,
@@ -1063,6 +1070,7 @@ export const makeOperations = (
     changeRefs,
     missingCommits,
     onMain,
+    treeId,
     mergeBase,
     range,
     changeLog,

@@ -33,6 +33,78 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0
 
 describe("a Mate's changes in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a delivery main already has opens nothing, even after a squash or beside an open change",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, credential, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+          yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+          const git = yield* gitClient;
+          yield* git.checked(["clone", remoteOf(origin, credential, appId, "appdev"), "delivery"]);
+          const work = NodePath.join(git.dir, "delivery");
+          const deliver = (tree: string) =>
+            call("POST", "/api/mate/changes", {
+              headers: auth,
+              body: { repo: "appdev", title: "The task", tree },
+            });
+          const nothing = { change: null, created: false, reason: "nothing_to_deliver" };
+          assert.deepStrictEqual(
+            (yield* deliver(yield* git.checked(["rev-parse", "HEAD^{tree}"], work))).body,
+            nothing,
+          );
+          NodeFS.writeFileSync(NodePath.join(work, "app.txt"), "app\n");
+          yield* git.checked(["add", "."], work);
+          yield* git.checked(["commit", "-m", "First task"], work);
+          const tree = yield* git.checked(["rev-parse", "HEAD^{tree}"], work);
+          const first = yield* deliver(tree);
+          assert.isTrue((first.body as { created: boolean }).created);
+          yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
+          const head = yield* git.checked(["rev-parse", "HEAD"], work);
+          yield* rowsWhere(
+            url,
+            "SELECT head FROM hq_change WHERE number = 1",
+            (rows) => rows[0]?.["head"] === head,
+          );
+          const landed = yield* call("POST", `/api/apps/${appId}/changes/appdev/1/merge`, {
+            session: owner,
+            body: { expectedHead: head },
+          });
+          assert.strictEqual(landed.status, 200);
+          assert.deepStrictEqual((yield* deliver(tree)).body, nothing);
+          // A local branch still holding the squashed commits: only its new task belongs to #2.
+          NodeFS.writeFileSync(NodePath.join(work, "next.txt"), "next\n");
+          yield* git.checked(["add", "."], work);
+          yield* git.checked(["commit", "-m", "Next task"], work);
+          const next = yield* git.checked(["rev-parse", "HEAD"], work);
+          assert.isTrue(
+            (
+              (yield* deliver(yield* git.checked(["rev-parse", "HEAD^{tree}"], work))).body as {
+                created: boolean;
+              }
+            ).created,
+          );
+          yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/2"], work);
+          yield* rowsWhere(
+            url,
+            "SELECT head FROM hq_change WHERE number = 2",
+            (rows) => rows[0]?.["head"] === next,
+          );
+          const detail = yield* call("GET", `/api/apps/${appId}/changes/appdev/2`, {
+            session: owner,
+          });
+          assert.deepStrictEqual(
+            (detail.body as { commits: { sha: string }[] }).commits.map((c) => c.sha),
+            [next],
+          );
+          assert.deepStrictEqual((yield* deliver(tree)).body, nothing);
+          const list = yield* call("GET", `/api/apps/${appId}/changes`, { session: owner });
+          assert.strictEqual((list.body as { changes: unknown[] }).changes.length, 2);
+        }),
+    );
+
     it.effect("a Mate makes its repository once, and main starts with one commit of HQ's", () =>
       Effect.gen(function* () {
         const { call, fake, origin } = yield* startCore(true);
