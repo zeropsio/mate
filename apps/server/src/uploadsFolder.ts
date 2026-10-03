@@ -23,11 +23,13 @@ const NAME_MAX_BYTES = 255;
 const EXTENSION_MAX_BYTES = 32;
 const KEEP_TIMEOUT_MS = 20_000;
 
-// C0 and C1 controls, and the marks, embeddings, overrides and isolates that
-// reorder text (a right-to-left override turns "txt.exe" into "exe.txt").
+// C0 and C1 controls, line and paragraph separators, the marks, embeddings,
+// overrides and isolates that reorder text (a right-to-left override turns
+// "txt.exe" into "exe.txt"), tag characters that hide words, and the brackets
+// that end or fake the agent's line.
 const UNSAFE_CHARACTERS =
   // oxlint-disable-next-line no-control-regex
-  /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\u{E0000}-\u{E007F}[\]]/gu;
 
 const byteLength = (text: string) => Buffer.byteLength(text, "utf8");
 

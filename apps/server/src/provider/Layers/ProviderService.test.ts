@@ -1900,7 +1900,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       const turnText = turnInput.input ?? "";
       assert.equal(turnText.startsWith("use this screenshot"), true);
       assert.include(turnText, '[Attached image "screenshot.png" is saved at: ');
-      assert.equal(turnText.endsWith(`${attachment.id}.png]`), true);
+      assert.equal(turnText.endsWith(`${attachment.id}.png"]`), true);
 
       // An attachment-only turn stays valid and the injected line becomes the
       // whole input text, so the agent still learns the path.
@@ -1928,7 +1928,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
       });
       const mixedInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
       assert.include(mixedInput.input ?? "", '[Attached file "report.pdf" is saved at: ');
-      assert.include(mixedInput.input ?? "", `${fileAttachment.id}.pdf]`);
+      assert.include(mixedInput.input ?? "", `${fileAttachment.id}.pdf"]`);
       // Every attachment reaches the adapter; each adapter decides what its
       // provider ingests natively.
       assert.deepEqual(mixedInput.attachments, [attachment, fileAttachment]);
