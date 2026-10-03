@@ -94,11 +94,14 @@ reconciliation, topology watcher, activity poller and feature-owned build-log
 session have no parallel fallback owner.
 
 Mate server connections have a separate lifetime from the platform receiver: each
-registered environment owns its authenticated socket and initial shell snapshot.
+registered environment owns its authenticated socket and initial shell snapshot while a
+lease holds it — the route, the Mate on screen, the one left last, an action, a Connect —
+and is parked with none: its socket closed, its registration, kept session and cached data
+kept (step A, A9). What draws a Mate this tab has not opened reads HQ's overview of it.
 One [environment machine](client-state-model.md#mate-environment-one-per-target-key)
 per Mate target, in the account runtime's post-grant stage, decides when an identity
-exchange runs: restore, auto-connect and repair are the same driver, single flight per
-origin, retried on the shared backoff policy and bounded by the tab's exchange budget.
+exchange runs: restore, repair and the leases are demand on the same driver, single flight
+per origin, retried on the shared backoff policy and bounded by the tab's exchange budget.
 Existing registrations are reused, and a newly published catalog entry is retained
 while its verified target identity is being recorded; routes still wait for that
 identity. Container health comes from one probe store, one fact per origin, that every

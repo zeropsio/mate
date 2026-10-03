@@ -47,7 +47,10 @@ every scope the client asks for now (`GET /api/auth/session`, 3 s). A session th
 short of a scope, is forgotten, and a throwaway opens a new one; a kept session spends no mint and
 waits on no mint pace. No kept session outlives its login: the account's close ends every one at
 its Mate however the account closes, a stored login the platform refuses ends every one the origin
-holds, and a session displaced from the store is ended too.
+holds, and a session displaced from the store is ended too. HQ's session is kept by the same store
+and rules, per account, organization and HQ (K7): a load presents a live one through no door, one
+HQ no longer takes is forgotten, and the account's close revokes each at its HQ
+(`DELETE /api/session`).
 
 One inventory supplies overview, sidebar and restore. Direct platform lists and permission-filtered
 search are paginated; malformed pages, changing totals and duplicate pages fail the read. Reads use

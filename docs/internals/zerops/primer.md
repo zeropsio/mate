@@ -135,8 +135,9 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
   no grants, no flags, at most five minutes old by the API's clock; deleted by the app right after
   - _Reaches:_ one Mate's door, or HQ's (`POST /api/door`, named for HQ's project); each reads its
     creator and the role fresh with its own key
-- **an HQ session** — answered at HQ's door, held in the tab's memory and sent as a bearer; HQ keeps
-  only its SHA-256, for 12 hours, and a throwaway opens one session
+- **an HQ session** — answered at HQ's door, kept per account, organization and HQ across loads
+  (K7) and sent as a bearer; HQ keeps only its SHA-256, for 12 hours, a throwaway opens one session,
+  and the account's close revokes every kept one at its HQ
   - _Reaches:_ HQ's API as that person, every verb decided by `can` over the org as HQ reads it
 - **HQ's anchor `mate-hq:{projectId}:{address}`** — an integration token minted at HQ's birth with
   the org role Admin, its value dropped at once

@@ -644,14 +644,15 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     held puts each row's number in its time slot, and ⌥1–9 opens that Mate; j and k move between
     rows, x arms a stop and a second x stops, e marks it read or unread. A Mate resting for more than a week, with nothing
     unread and not open, folds into its project's "3 quiet Mates". Its face and its words come from
-    one reading (`mateRowReading`): its conversation's while its socket is up or only reconnecting,
-    else this browser's memory, at rest — a line held for words still to come stays empty, never
-    dots under an asleep face. In its first minutes it says so in the projects page's words
+    one reading (`mateRowReading`): HQ's live overview of it, or its conversation's while its socket
+    is up or only reconnecting, else this browser's memory, at rest (step A, A4) — a line held for
+    words still to come stays empty, never dots under an asleep face. In its first minutes it says so in the projects page's words
     (`mateComing`), asleep in the face its person picked, the owner's seat empty, no menu, and a
     press opens its own view (`/mate/$projectId`)
   - _States:_ idle · working · needs you · finished, unread · stopped on an error (its face still) ·
-    paused (a usage limit: asleep) · asleep (not connected) · quiet (folded) · remembered (a reload,
-    until its socket opens: its lines as they stood, a reply to come held empty) · coming up
+    paused (a usage limit: asleep) · asleep (neither HQ nor a socket holds it live) · quiet (folded) ·
+    remembered (a reload, until HQ's view or its socket answers: its lines as they stood, a reply to
+    come held empty) · coming up
     ("Coming up. A few minutes.", "Almost there.", "Taking longer than usual.", or in red "Could not
     be created.") · deleting ("Deleting…" for its last line, asleep, no time, no dot, no menu; a
     press opens nothing)
