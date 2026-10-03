@@ -10,8 +10,12 @@ import type { Shown } from "../knowledge/known.ts";
 import {
   activeVersionOf,
   askedAbsent,
+  rereadTableRows,
+  rowHeard,
+  serviceVariableHeard,
   serviceVariableOf,
   serviceVariablesDelivered,
+  type EntityTableState,
 } from "./entityTable.ts";
 import type { ZeropsDataState } from "./state.ts";
 import type { IngestionStamp, RuntimeInterestDescriptor, ServiceRef } from "./types.ts";
@@ -120,13 +124,68 @@ export function selectDeployedVersion(
       return known({ activeId: deploy.id, source, name: deploy.name }, facet.stamp);
     return streamFailure(state, "organization-variables", service) ?? UNREAD;
   }
-  const name =
-    trimmed(started.content) === deploy.id
-      ? trimmed(
-          serviceVariableOf(state.table, organization, service.serviceId, "appVersionName").content,
-        )
-      : null;
+  if (trimmed(started.content) !== deploy.id) {
+    // Variables that may trail the service are being read again: what it runs is checked, not
+    // nameless (`wantStaleVariables`).
+    const trailing = trailingVariables(state.table, service.serviceId, {
+      id: deploy.id,
+      stamp: facet.stamp,
+    });
+    if (trailing !== null) return streamFailure(state, "organization-variables", service) ?? UNREAD;
+    return known({ activeId: deploy.id, source, name: null }, facet.stamp);
+  }
+  const name = trimmed(
+    serviceVariableOf(state.table, organization, service.serviceId, "appVersionName").content,
+  );
   return known({ activeId: deploy.id, source, name }, facet.stamp);
+}
+
+/**
+ * The service's variables that name another deploy than the one it runs, where they were heard
+ * before it moved there: they may only trail it, so they are read again by id. Heard after, they
+ * name a build started since (A11), and stand. `null` for none.
+ *
+ * It moved when the version it runs was heard active; the service's own push stands in only
+ * where that row is not held, as every push of the service moves its stamp, whatever it carries.
+ */
+function trailingVariables(
+  table: EntityTableState,
+  serviceId: string,
+  deploy: { readonly id: string; readonly stamp: IngestionStamp },
+): ReadonlyArray<string> | null {
+  const moved = rowHeard(table, "app-version", deploy.id) ?? deploy.stamp.receiptOrdinal;
+  const started = serviceVariableHeard(table, serviceId, "appVersionId");
+  if (started === null || started.asOf >= moved) return null;
+  const name = serviceVariableHeard(table, serviceId, "appVersionName");
+  return name === null ? [started.id] : [started.id, name.id];
+}
+
+/**
+ * Each service whose variables name another deploy than the one it runs, heard before it moved
+ * there, has them read again by id (F13, 2026-10-03): the platform rewrites them in
+ * place at a build's start, and no push of theirs is promised. Once read, they are newer than the
+ * service, so each move asks once, never in a loop.
+ */
+export function wantStaleVariables(
+  state: ZeropsDataState,
+  receipt: number,
+  nowMs: number,
+): ZeropsDataState {
+  let table = state.table;
+  for (const record of state.inventory.services.values()) {
+    const facet = record.deployment;
+    if (facet.knowledge !== "observed") continue;
+    const deploy = facet.fields.activeDeploy;
+    if (deploy == null || deploy.id === null) continue;
+    const organization = record.ref.project.organization;
+    const serviceId = record.ref.serviceId;
+    const started = serviceVariableOf(table, organization, serviceId, "appVersionId");
+    if (!started.known || trimmed(started.content) === deploy.id) continue;
+    const ids = trailingVariables(table, serviceId, { id: deploy.id, stamp: facet.stamp });
+    if (ids !== null)
+      table = rereadTableRows(table, "user-data", organization, ids, receipt, nowMs);
+  }
+  return table === state.table ? state : { ...state, table };
 }
 
 /**
