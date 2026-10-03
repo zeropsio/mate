@@ -572,7 +572,7 @@ describe("followAfter", () => {
   const at = (follows: boolean, stood: number): RunScrollFollow => ({
     follows,
     stood,
-    opened: 0,
+    opened: new Set(),
     resumes: false,
     reach: null,
   });
@@ -699,31 +699,46 @@ describe("followAfter", () => {
   });
 
   it("stops when the person opens something in it", () => {
-    expect(followAfter(at(true, 560), { kind: "opened" }).follows).toBe(false);
+    expect(followAfter(at(true, 560), { kind: "opened", key: "a" }).follows).toBe(false);
   });
 
   // The person opened a call to read it, and closed it again: what they
   // stopped it for is done.
+  // Each thing is counted once, by its own switch: a close of something they
+  // never opened (a command that opened itself in the slot, a switch that
+  // closes what was closed) is not theirs to count.
   it.each([
-    { name: "closing what they opened at its foot", steps: ["opened", "closed"], after: true },
+    { name: "closing what they opened at its foot", steps: ["open a", "close a"], after: true },
     {
       name: "closing the last of two",
-      steps: ["opened", "opened", "closed", "closed"],
+      steps: ["open a", "open b", "close a", "close b"],
       after: true,
     },
-    { name: "closing one of two", steps: ["opened", "opened", "closed"], after: false },
+    { name: "closing one of two", steps: ["open a", "open b", "close b"], after: false },
+    { name: "closing one twice", steps: ["open a", "open b", "close b", "close b"], after: false },
     {
-      name: "closing what they opened scrolled up",
-      steps: ["up", "opened", "closed"],
+      name: "closing one opened twice",
+      steps: ["open a", "open a", "open b", "close a"],
       after: false,
     },
-    { name: "closing it after moving up", steps: ["opened", "up", "closed"], after: false },
-    { name: "closing what was open before", steps: ["closed"], after: true },
-    { name: "closing, stopped, what was open before", steps: ["up", "closed"], after: false },
+    { name: "closing what opened itself", steps: ["open a", "close b"], after: false },
+    {
+      name: "closing what they opened scrolled up",
+      steps: ["up", "open a", "close a"],
+      after: false,
+    },
+    { name: "closing it after moving up", steps: ["open a", "up", "close a"], after: false },
+    { name: "closing what was open before", steps: ["close a"], after: true },
+    { name: "closing, stopped, what was open before", steps: ["up", "close a"], after: false },
     {
       name: "closing it after moving up and back down",
-      steps: ["opened", "up", "down", "closed"],
+      steps: ["open a", "up", "down", "close a"],
       after: true,
+    },
+    {
+      name: "closing what was opened before following again",
+      steps: ["open a", "up", "down", "open b", "close a"],
+      after: false,
     },
   ])("$name: follows $after", ({ steps, after }) => {
     let state = at(true, 560);
@@ -733,7 +748,8 @@ describe("followAfter", () => {
       } else if (step === "down") {
         state = followAfter(state, { kind: "scrolled", position: foot });
       } else {
-        state = followAfter(state, { kind: step as "opened" | "closed" });
+        const [verb, key = ""] = step.split(" ");
+        state = followAfter(state, { kind: verb === "open" ? "opened" : "closed", key });
       }
     }
     expect(state.follows).toBe(after);

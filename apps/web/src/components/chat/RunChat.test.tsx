@@ -1774,7 +1774,17 @@ describe("RunChat, as the person uses it", () => {
      * A live run's scroll with its first line, `height` tall, and its growth
      * heard: the card grows with it up to its `cap`, and scrolls past it.
      */
-    function liveScroll({ height = 600, cap = 440, code = "echo one" } = {}) {
+    function liveScroll({
+      height = 600,
+      cap = 440,
+      code = "echo one",
+      items = [step(command("w1", code))],
+    }: {
+      height?: number;
+      cap?: number;
+      code?: string;
+      items?: ReadonlyArray<RecordItem>;
+    } = {}) {
       const list = { lines: true };
       const heard: Array<() => void> = [];
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
@@ -1804,7 +1814,6 @@ describe("RunChat, as the person uses it", () => {
       };
       const node = (element: { type: unknown }) =>
         element.type === "ol" ? list : element.type === "div" ? box : {};
-      const items = [step(command("w1", code))];
       let renderer!: ReactTestRenderer;
       act(() => {
         renderer = mounted(
@@ -1820,6 +1829,18 @@ describe("RunChat, as the person uses it", () => {
         );
       return {
         box,
+        /** The run goes on: `shown` in its history, `now` in its live slot. */
+        show: (shown: ReadonlyArray<RecordItem>, now?: RecordRow["now"]) => {
+          act(() =>
+            renderer.update(
+              <Rows>
+                <RunChat
+                  row={record(shown, { live: true, status: status(), ...(now ? { now } : {}) })}
+                />
+              </Rows>,
+            ),
+          );
+        },
         /** What it holds grows by `by`, as an arrival does. */
         grow: (by: number) => {
           box.scrollHeight += by;
@@ -1987,6 +2008,38 @@ describe("RunChat, as the person uses it", () => {
       expect(run.fromFoot()).toBe(0);
       run.grow(65);
       expect(run.fromFoot()).toBe(0);
+    });
+
+    // A bare command opens itself in the slot and lands so: hiding it closes
+    // nothing the person opened, and the call they did open holds the card.
+    it("stays where the person reads when a command that opened itself is hidden", async () => {
+      vi.useFakeTimers();
+      try {
+        const call = step(
+          command("w1", "npm test", { callInput: { description: "Run the tests" }, detail: "ok" }),
+        );
+        const run = liveScroll({ items: [call] });
+        run.grow(400);
+        run.press("Run the tests");
+        const code = "echo one\necho two";
+        run.show([call], {
+          kind: "step",
+          step: stepOf(
+            command("w8", code, {
+              toolLifecycleStatus: "inProgress",
+              sourceActivityKind: "tool.started",
+            }),
+          ),
+        });
+        run.show([call, step(command("w8", code))]);
+        act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+        run.press("Show less");
+        await Promise.resolve();
+        run.grow(65);
+        expect(run.box.scrollTop).toBe(560);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("stays where the person scrolled after opening a call, once they close it", () => {

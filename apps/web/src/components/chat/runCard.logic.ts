@@ -86,13 +86,20 @@ function fromFoot(scroll: RunScrollPosition): number {
   return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
 }
 
+/** Nothing the person opened in a run's scroll. */
+export const NOTHING_OPENED: ReadonlySet<string> = new Set();
+
 /** Whether the run's scroll follows its foot, where its top last stood, and what the person opened in it. */
 export interface RunScrollFollow {
   readonly follows: boolean;
   /** Where its top last stood: where a move left it, or where the page last put it. */
   readonly stood: number;
-  /** How many things the person opened in it since it last followed, still open. */
-  readonly opened: number;
+  /**
+   * What the person opened in it since it last followed, still open: each by
+   * its own switch's key, so a close of something they never opened (a
+   * command that opened itself in the slot) is not theirs.
+   */
+  readonly opened: ReadonlySet<string>;
   /** Whether closing the last of them follows again: it followed as they opened the first, and they have not moved it up since. */
   readonly resumes: boolean;
   /**
@@ -109,10 +116,10 @@ export type RunScrollEvent =
   | { readonly kind: "scrolled"; readonly position: RunScrollPosition }
   /** The page put its top at `top` (read back as the browser took it). */
   | { readonly kind: "set"; readonly top: number }
-  /** The person opened something in it: theirs to read. */
-  | { readonly kind: "opened" }
-  /** The person closed something in it. */
-  | { readonly kind: "closed" }
+  /** The person opened something in it, by its switch `key`: theirs to read. */
+  | { readonly kind: "opened"; readonly key: string }
+  /** The person closed something in it, by its switch `key`. */
+  | { readonly kind: "closed"; readonly key: string }
   /** A move of the person's ended (the browser's `scrollend`). */
   | { readonly kind: "ended" };
 
@@ -133,23 +140,27 @@ export type RunScrollEvent =
  */
 export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunScrollFollow {
   switch (event.kind) {
-    case "opened":
+    case "opened": {
+      if (state.opened.has(event.key)) return state;
       return {
+        ...state,
         follows: false,
-        stood: state.stood,
-        opened: state.opened + 1,
-        resumes: state.opened === 0 ? state.follows : state.resumes,
+        opened: new Set(state.opened).add(event.key),
+        resumes: state.opened.size === 0 ? state.follows : state.resumes,
         reach: null,
       };
+    }
     case "closed": {
-      const opened = Math.max(0, state.opened - 1);
-      const back = state.opened > 0 && opened === 0 && state.resumes;
+      // Closing what they never opened here counts for nothing.
+      if (!state.opened.has(event.key)) return state;
+      const opened = new Set(state.opened);
+      opened.delete(event.key);
+      const back = opened.size === 0 && state.resumes;
       return {
+        ...state,
         follows: state.follows || back,
-        stood: state.stood,
         opened,
-        resumes: opened > 0 && state.resumes,
-        reach: state.reach,
+        resumes: opened.size > 0 && state.resumes,
       };
     }
     case "set":
@@ -167,7 +178,7 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
       if (top > state.stood + MOVED_PX) {
         const reach = state.reach ?? footTop(position);
         if (standsAtFoot(position) || top >= reach - FOLLOW_SLACK_PX) {
-          return { follows: true, stood: top, opened: 0, resumes: false, reach: null };
+          return { follows: true, stood: top, opened: NOTHING_OPENED, resumes: false, reach: null };
         }
         return { ...state, stood: top, reach };
       }

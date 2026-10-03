@@ -66,6 +66,7 @@ import {
   use,
   useEffect,
   useEffectEvent,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -142,6 +143,7 @@ import {
   cutEdges,
   earlierShown,
   followAfter,
+  NOTHING_OPENED,
   footTop,
   formatClock,
   laidOutPosition,
@@ -315,7 +317,7 @@ const ChatShownContext = createContext<{ readonly current: boolean } | null>(nul
  * scroll where it stands, rather than following its foot; closing the last of
  * it lets it follow again (`followAfter`).
  */
-const RunScrollHoldContext = createContext<((opens: boolean) => void) | null>(null);
+const RunScrollHoldContext = createContext<((key: string, opens: boolean) => void) | null>(null);
 
 /**
  * Whether a bubble stands in the live slot (pass 35): drawn as the row it
@@ -411,14 +413,19 @@ const HOLD_NOTHING = () => {};
  * What the person opened or closed is theirs to read (K12): the conversation
  * stops following its end, and so does the run's scroll it stands in, so the
  * line they clicked stays where it is and only what is under it moves. Drawn
- * outside a conversation, it holds nothing.
+ * outside a conversation, it holds nothing. The run's scroll counts each
+ * switch on its own: its `part` of the line keeps it one switch as the row
+ * lands from the slot, and a holder of several names each (`which`).
  */
-export function useHoldReading(): (opens: boolean) => void {
+export function useHoldReading(part?: string): (opens: boolean, which?: string) => void {
   const ctx = use(TimelineRowCtx) as TimelineRowSharedState | null;
   const holdScroll = use(RunScrollHoldContext);
+  const line = use(ChatLineContext);
+  const id = useId();
+  const key = line !== null && part !== undefined ? `${line}#${part}` : id;
   const holdPage = ctx?.onHoldReading ?? HOLD_NOTHING;
-  return (opens) => {
-    holdScroll?.(opens);
+  return (opens, which) => {
+    holdScroll?.(which === undefined ? key : `${key}#${which}`, opens);
     holdPage();
   };
 }
@@ -525,7 +532,7 @@ interface Fold {
  */
 function useFold(eligible: boolean, foldsLive = false): Fold {
   const arrived = useArrivedLive();
-  const hold = useHoldReading();
+  const hold = useHoldReading("folded");
   const [folded, setFolded] = useCarried("folded", () => eligible && (foldsLive || !arrived));
   const [opened, setOpened] = useCarried("opened", () => false);
   return {
@@ -634,11 +641,13 @@ function FoldToggle({
 
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
 function useDisclosure(initial = false, part = "open", follows = false) {
-  const hold = useHoldReading();
+  const hold = useHoldReading(part);
   const [open, setOpen] = useCarried(part, () => initial, follows);
   return {
     open,
     set: (next: boolean) => {
+      // Set as it stands, nothing opened or closed.
+      if (next === open) return;
       hold(next);
       setOpen(next);
     },
@@ -3704,7 +3713,7 @@ function RunScroll({
   const followRef = useRef<RunScrollFollow>({
     follows: true,
     stood: Number.POSITIVE_INFINITY,
-    opened: 0,
+    opened: NOTHING_OPENED,
     resumes: false,
     reach: null,
   });
@@ -3737,8 +3746,8 @@ function RunScroll({
       heard,
       putAt,
       keep,
-      hold: (opens: boolean) => {
-        heard({ kind: opens ? "opened" : "closed" });
+      hold: (key: string, opens: boolean) => {
+        heard({ kind: opens ? "opened" : "closed", key });
         if (opens || !followRef.current.follows) return;
         // Closing the last thing they opened, it catches up to its foot —
         // once the press has kept itself in place (`collapseInPlace`), so
