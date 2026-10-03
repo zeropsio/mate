@@ -259,9 +259,7 @@ describe("collectLimitAccounts", () => {
     );
   });
 
-  // Stable, never by arrival or by what each read says: a late read fills its own place and a
-  // card never moves under the eye (the loading pass, 2026-10-03).
-  it("lists the accounts in the environments' order, whatever quota each has left", () => {
+  it("lists the account with the least quota left in any window first", () => {
     const weekly = { ...window, id: "weekly", kind: "weekly", usedPercent: 95 } as const;
     const result = collectLimitAccounts(
       presentations(
@@ -278,9 +276,9 @@ describe("collectLimitAccounts", () => {
       ),
     );
     expect(result.accounts.map(({ key, urgency }) => [key, urgency])).toEqual([
-      ["claudeAgent:roomy@example.com", 80],
       ["claudeAgent:weekly@example.com", 5],
       ["claudeAgent:session@example.com", 30],
+      ["claudeAgent:roomy@example.com", 80],
     ]);
   });
 
@@ -792,7 +790,7 @@ describe("remainingPercent", () => {
   });
 });
 
-describe("limitsPage: unknown is not empty", () => {
+describe("limitsPage: painted once, least quota first, never none before it is known", () => {
   const claude = ProviderDriverKind.make("claudeAgent");
   const limited = (email: string, usedPercent = 40): ServerProvider =>
     provider({
@@ -820,122 +818,134 @@ describe("limitsPage: unknown is not empty", () => {
     serverConfig: providers === null ? null : { providers },
   });
   const page = (
-    listed: boolean,
+    options: {
+      readonly listed?: boolean;
+      readonly deadlinePassed?: boolean;
+      readonly placed?: readonly string[];
+    },
     ...environments: ReadonlyArray<readonly [string, ReturnType<typeof at>]>
   ) =>
     limitsPage({
-      listed,
+      listed: options.listed ?? true,
+      deadlinePassed: options.deadlinePassed ?? false,
+      placed: options.placed ?? [],
       presentations: new Map(environments.map(([id, entry]) => [EnvironmentId.make(id), entry])),
     });
   const seen = (result: ReturnType<typeof page>) => ({
     state: result.state,
     reading: result.reading,
-    accounts: result.accounts.map((account) => account.key),
+    accounts: result.accounts.map((account) => account.key.replace("claudeAgent:", "")),
     notices: result.notices.length,
   });
+  const roomy = limited("roomy@example.com", 20);
+  const tight = limited("tight@example.com", 90);
+  const middle = limited("middle@example.com", 50);
 
   it.each([
-    ["the environments not listed yet", page(false), "wait", true, [], 0],
-    ["no environment, the list read whole", page(true), "none", false, [], 0],
     [
-      "an environment on its first connect",
-      page(true, ["a", at("connecting")]),
-      "wait",
-      true,
-      [],
-      0,
-    ],
-    // A registered environment is connected at once: "available" is the frame before it starts.
-    ["an environment just registered", page(true, ["a", at("available")]), "wait", true, [], 0],
-    [
-      "an environment renewing its session",
-      page(true, ["a", at("reconnecting")]),
-      "wait",
-      true,
-      [],
-      0,
+      "every environment settled: the cards, least quota left first",
+      page({}, ["a", at("connected", [roomy])], ["b", at("connected", [tight])]),
+      { state: "shown", reading: false, accounts: ["tight@example.com", "roomy@example.com"] },
     ],
     [
-      "an environment whose connect failed: it will not answer this time",
-      page(true, ["a", at("reconnecting", null, "refused")]),
-      "none",
-      false,
-      [],
-      0,
-    ],
-    ["an environment blocked", page(true, ["a", at("error", null, "gone")]), "none", false, [], 0],
-    ["an environment offline", page(true, ["a", at("offline")]), "none", false, [], 0],
-    [
-      "every environment answered, none reports limits",
-      page(true, ["a", at("connected", [])], ["b", at("connected", [])]),
-      "none",
-      false,
-      [],
-      0,
-    ],
-    [
-      "the first answered, the second on its way: the first shows, the reading goes on",
-      page(true, ["a", at("connected", [limited("a@example.com")])], ["b", at("connecting")]),
-      "shown",
-      true,
-      ["claudeAgent:a@example.com"],
-      0,
-    ],
-    [
-      "the second answered first: it waits for the first, whose place is above it",
-      page(true, ["a", at("connecting")], ["b", at("connected", [limited("b@example.com")])]),
-      "wait",
-      true,
-      [],
-      0,
-    ],
-    [
-      "the first failed, the second answered: the second shows",
+      "a failed, a blocked and an offline environment are settled too",
       page(
-        true,
-        ["a", at("error", null, "gone")],
-        ["b", at("connected", [limited("b@example.com")])],
+        {},
+        ["a", at("reconnecting", null, "refused")],
+        ["b", at("error", null, "gone")],
+        ["c", at("offline")],
+        ["d", at("connected", [roomy])],
       ),
-      "shown",
-      false,
-      ["claudeAgent:b@example.com"],
-      0,
+      { state: "shown", reading: false, accounts: ["roomy@example.com"] },
     ],
     [
-      "an answer before the list is whole: shown, the reading goes on",
-      page(false, ["a", at("connected", [limited("a@example.com")])]),
-      "shown",
-      true,
-      ["claudeAgent:a@example.com"],
-      0,
+      "one still on its way before the deadline: the reading line alone",
+      page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]),
+      { state: "wait", reading: true, accounts: [] },
     ],
     [
-      "a notice waits for the reading to end: it stands under every card",
-      page(true, ["a", at("connected", [unreadable])], ["b", at("connecting")]),
-      "wait",
-      true,
-      [],
-      0,
+      "the list not whole before the deadline: the reading line alone",
+      page({ listed: false }, ["a", at("connected", [roomy])]),
+      { state: "wait", reading: true, accounts: [] },
     ],
     [
-      "a notice once every environment answered",
-      page(true, ["a", at("connected", [unreadable])], ["b", at("connected", [])]),
-      "shown",
-      false,
-      [],
-      1,
+      "one still on its way past the deadline: the others least quota first, the line under them",
+      page(
+        { deadlinePassed: true },
+        ["a", at("connected", [roomy])],
+        ["b", at("available")],
+        ["c", at("connected", [tight])],
+      ),
+      { state: "shown", reading: true, accounts: ["tight@example.com", "roomy@example.com"] },
     ],
-  ] as const)("%s", (_case, result, state, reading, accounts, notices) => {
-    expect(seen(result)).toEqual({ state, reading, accounts, notices });
+    [
+      "a late answer joins at the end, whatever it has left",
+      page(
+        {
+          deadlinePassed: true,
+          placed: ["claudeAgent:middle@example.com", "claudeAgent:roomy@example.com"],
+        },
+        ["a", at("connected", [roomy])],
+        ["b", at("connected", [tight])],
+        ["c", at("connected", [middle])],
+      ),
+      {
+        state: "shown",
+        reading: false,
+        accounts: ["middle@example.com", "roomy@example.com", "tight@example.com"],
+      },
+    ],
+    [
+      "painted once, a refreshed read moves nothing",
+      page(
+        { placed: ["claudeAgent:roomy@example.com", "claudeAgent:tight@example.com"] },
+        ["a", at("connected", [roomy])],
+        ["b", at("connected", [tight])],
+      ),
+      { state: "shown", reading: false, accounts: ["roomy@example.com", "tight@example.com"] },
+    ],
+    [
+      "every environment settled, none reports limits",
+      page({}, ["a", at("connected", [])], ["b", at("error", null, "gone")]),
+      { state: "none", reading: false, accounts: [] },
+    ],
+    [
+      "the deadline passed with nothing reporting",
+      page({ deadlinePassed: true }, ["a", at("connecting")]),
+      { state: "none", reading: true, accounts: [] },
+    ],
+    [
+      "no environment and the list not whole",
+      page({ listed: false }),
+      { state: "wait", reading: true, accounts: [] },
+    ],
+    ["no environment, the list whole", page({}), { state: "none", reading: false, accounts: [] }],
+  ] as const)("%s", (_case, result, expected) => {
+    const { notices: _notices, ...rest } = seen(result);
+    expect(rest).toEqual(expected);
+  });
+
+  it("says what could not be read once the cards are painted", () => {
+    const result = page({}, ["a", at("connected", [unreadable])], ["b", at("connected", [roomy])]);
+    expect(seen(result)).toEqual({
+      state: "shown",
+      reading: false,
+      accounts: ["roomy@example.com"],
+      notices: 1,
+    });
+  });
+
+  it("hands back the order it painted, for the next read to keep", () => {
+    const result = page({}, ["a", at("connected", [roomy])], ["b", at("connected", [tight])]);
+    expect(result.placed).toEqual([
+      "claudeAgent:tight@example.com",
+      "claudeAgent:roomy@example.com",
+    ]);
   });
 
   it("tells environments apart by the list, known up front, never by which reads are in", () => {
-    const one = page(false, ["a", at("connected", [limited("a@example.com")])]);
-    const two = page(
-      true,
-      ["a", at("connected", [limited("a@example.com")])],
-      ["b", at("connecting")],
-    );
+    const one = page({ listed: false }, ["a", at("connected", [roomy])]);
+    const two = page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]);
     expect([one.tellApart, two.tellApart]).toEqual([false, true]);
   });
 });

@@ -18,6 +18,7 @@ import {
   type LimitAccount,
   limitsNotice,
   limitsNoticeLine,
+  LIMITS_READ_DEADLINE_MS,
   limitsPage,
   type LimitPace,
   paceOf,
@@ -25,7 +26,7 @@ import {
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { environmentPresentations } from "../../state/presentation";
@@ -526,9 +527,11 @@ export const READING_LIMITS_LINE = "Reading subscription limits…";
 /**
  * Subscription quota windows from every connected environment's providers.
  * The page advances `now` on explicit refresh rather than ticking: a live
- * clock would repaint the page for no decision-changing gain. Until every
- * environment has answered it never says none (`limitsPage`): the wait line,
- * then the cards in the environments' order with the reading line under them.
+ * clock would repaint the page for no decision-changing gain. The cards are
+ * painted once (`limitsPage`): when every environment has answered, or
+ * `LIMITS_READ_DEADLINE_MS` after the section opened, least quota left first;
+ * then they stand as painted, a late answer joining at the end, the reading
+ * line under them while one is still on its way.
  */
 export function UsageLimitsSection({
   now,
@@ -541,9 +544,12 @@ export function UsageLimitsSection({
   readonly listed: boolean;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const { state, reading, accounts, notices, sources, tellApart } = limitsPage({
-    listed,
-    presentations,
+  const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
+  const placed = useRef<readonly string[]>([]);
+  const page = limitsPage({ listed, presentations, deadlinePassed, placed: placed.current });
+  const { state, reading, accounts, notices, sources, tellApart } = page;
+  useLayoutEffect(() => {
+    placed.current = page.placed;
   });
   // One beat from the section's mount for the whole reading, the page's line and the cards' alike.
   const readingLine = useWaitLine(reading ? READING_LIMITS_LINE : null, {
@@ -566,9 +572,12 @@ export function UsageLimitsSection({
   }
   if (state === "none") {
     return (
-      <p className="text-sm text-muted-foreground">
-        No provider on a connected environment reports subscription limits.
-      </p>
+      <div className="flex flex-col gap-8">
+        <p className="text-sm text-muted-foreground">
+          No provider on a connected environment reports subscription limits.
+        </p>
+        {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
+      </div>
     );
   }
   return (
@@ -597,8 +606,18 @@ export function UsageLimitsSection({
           ))}
         </div>
       ) : null}
-      {/* Under the cards while more are on their way: nothing above it moves. */}
+      {/* Under the cards while more are on their way: a late answer joins above it, at the end. */}
       {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
     </div>
   );
+}
+
+/** Whether `ms` has passed since this mounted: false, then true for good. */
+function useDeadlinePassed(ms: number): boolean {
+  const [passed, setPassed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setPassed(true), ms);
+    return () => clearTimeout(timer);
+  }, [ms]);
+  return passed;
 }

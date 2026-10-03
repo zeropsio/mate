@@ -114,7 +114,7 @@ export interface LimitNoticeGroup {
 }
 
 export interface LimitAccounts {
-  /** Accounts with bars to draw, in the order of the environments they are first signed in on. */
+  /** Accounts with bars to draw, the one with the least quota left first. */
   readonly accounts: readonly LimitAccount[];
   /** Accounts that could not be read, one entry per driver and notice. */
   readonly notices: readonly LimitNoticeGroup[];
@@ -183,6 +183,7 @@ export function collectLimitAccounts(
       environmentIds: [...new Set([...(group?.environmentIds ?? []), ...environmentIds])],
     });
   }
+  accounts.sort((a, b) => a.urgency - b.urgency);
   return { accounts, notices: [...notices.values()] };
 }
 
@@ -215,62 +216,101 @@ export function limitsReadOf(presentation: LimitsPresentation): LimitsRead {
   return "unread";
 }
 
+/**
+ * How long the limits wait for every environment before painting what answered: an environment
+ * still on its way after it — a slow Mate, one disconnected by hand — joins at the end.
+ */
+export const LIMITS_READ_DEADLINE_MS = 4_000;
+
 export interface LimitsPage<P> {
   /**
-   * `wait` while nothing can be shown yet and more is on its way, `shown` once something is,
-   * `none` only when the environments are listed whole, every one has answered or will not, and
-   * none reports limits.
+   * `wait` until the cards are painted — every environment settled, or the deadline passed —
+   * then `shown`, or `none` when the list is whole and settled (or the deadline passed) and nothing
+   * reports limits.
    */
   readonly state: "wait" | "shown" | "none";
-  /** More may come: the reading line stands under what is shown. */
+  /** An environment is still on its way, or the list is not whole: the reading line stands. */
   readonly reading: boolean;
-  /**
-   * The environments whose limits are shown: every one before the first still on its way, in the
-   * environments' order, so a late read fills its own place and moves nothing above it.
-   */
+  /** The environments whose limits are painted; empty until the cards are. */
   readonly shown: ReadonlyMap<EnvironmentId, P>;
+  /** Least quota left first as first painted; a later account joins at the end. */
   readonly accounts: readonly LimitAccount[];
-  /** The sources pooled by the shown environments: drawn under the cards once nothing reads. */
   readonly sources: ReturnType<typeof collectLimitSources>;
-  /** What could not be read: drawn under every card, so only once nothing is still reading. */
   readonly notices: readonly LimitNoticeGroup[];
   /** More than one environment is listed: each account names where it is signed in. */
   readonly tellApart: boolean;
+  /** The order painted, for the next read to keep (`placed`). */
+  readonly placed: readonly string[];
 }
 
 /**
- * The limits page before every environment has answered (unknown is not empty): no "none" until
- * the list is whole and every environment answered or will not, and the cards in the
- * environments' order — never their reads' arrival — so nothing moves while the rest come in.
+ * Keys in the order they stood (`placed`), those not placed yet after them in their own order:
+ * nothing painted ever moves, a newcomer joins at the end.
+ */
+export function keepPlaced<T>(
+  placed: readonly string[],
+  items: readonly T[],
+  keyOf: (item: T) => string,
+): readonly T[] {
+  const byKey = new Map(items.map((item) => [keyOf(item), item] as const));
+  const kept = placed.flatMap((key) => {
+    const item = byKey.get(key);
+    return item === undefined ? [] : [item];
+  });
+  const standing = new Set(placed);
+  return [...kept, ...items.filter((item) => !standing.has(keyOf(item)))];
+}
+
+/**
+ * The limits page (unknown is not empty): the cards are painted once — when every environment has
+ * settled, or `LIMITS_READ_DEADLINE_MS` after the page's first read — least quota left first, and
+ * then stand as painted (`placed`): a late answer joins at the end, under the cards above it.
+ * Until then the reading line; "none" only once nothing reports and nothing more is waited for.
  */
 export function limitsPage<P extends LimitsPresentation>(input: {
   /** The environments are listed whole: none is still to be registered. */
   readonly listed: boolean;
   readonly presentations: ReadonlyMap<EnvironmentId, P>;
+  /** `LIMITS_READ_DEADLINE_MS` has passed since the page's first read. */
+  readonly deadlinePassed: boolean;
+  /** The account keys as painted so far, in order; empty before the first paint. */
+  readonly placed: readonly string[];
 }): LimitsPage<P> {
   const shown = new Map<EnvironmentId, P>();
-  // An environment registered later joins the list's end: only one still reading holds back those
-  // after it.
-  let held = false;
+  let pending = false;
   for (const [environmentId, presentation] of input.presentations) {
     const read = limitsReadOf(presentation);
-    if (read === "reading") held = true;
-    if (held) continue;
+    if (read === "reading") pending = true;
     if (read === "read") shown.set(environmentId, presentation);
   }
-  const reading = held || !input.listed;
-  const { accounts, notices } = collectLimitAccounts(shown);
-  const sources = reading ? [] : collectLimitSources(shown);
-  const settled = reading ? [] : notices;
-  const any = accounts.length > 0 || settled.length > 0 || sources.length > 0;
+  const reading = pending || !input.listed;
+  const tellApart = input.presentations.size > 1;
+  const painted = !reading || input.deadlinePassed || input.placed.length > 0;
+  if (!painted) {
+    return {
+      state: "wait",
+      reading,
+      shown: new Map(),
+      accounts: [],
+      sources: [],
+      notices: [],
+      tellApart,
+      placed: [],
+    };
+  }
+  const collected = collectLimitAccounts(shown);
+  const accounts = keepPlaced(input.placed, collected.accounts, (account) => account.key);
+  const sources = collectLimitSources(shown);
+  const any = accounts.length > 0 || collected.notices.length > 0 || sources.length > 0;
   return {
-    state: any ? "shown" : reading ? "wait" : "none",
+    state: any ? "shown" : "none",
     reading,
     shown,
     accounts,
     sources,
-    notices: settled,
-    tellApart: input.presentations.size > 1,
+    notices: collected.notices,
+    tellApart,
+    placed: accounts.map((account) => account.key),
   };
 }
 
