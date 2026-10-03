@@ -16,6 +16,7 @@ import {
   driveHqStructure,
   HQ_OUTAGE_GRACE_MS,
   HQ_STREAM_SILENCE_MS,
+  hqOfficialOf,
   hqOutageLine,
 } from "./hqStructure";
 
@@ -565,5 +566,19 @@ describe("hqOutageLine", () => {
   it("says nothing while HQ answers, or before anything is known", () => {
     expect(hqOutageLine(view({ unavailableSince: null }), "24-hour", at(14, 20))).toBeNull();
     expect(hqOutageLine(null, "24-hour", at(14, 20))).toBeNull();
+  });
+});
+
+describe("hqOfficialOf: whether the organization has an official HQ, as decided", () => {
+  const OFFICIAL = { kind: "official", projectId: "p-hq", address: "hq.example:443" } as const;
+  it.each([
+    ["the kept verdict or the member list names one", "ready", OFFICIAL, true],
+    ["the member list names none", "ready", { kind: "none" }, false],
+    ["the member list's names are unclear", "ready", { kind: "unclear", projectIds: [] }, false],
+    ["the member list is being read", "loading", { kind: "none" }, null],
+    ["nothing has been read", "idle", { kind: "none" }, null],
+    ["the member list could not be read", "failed", { kind: "none" }, null],
+  ] as const)("%s", (_name, status, hq, expected) => {
+    expect(hqOfficialOf({ status, hq })).toBe(expected);
   });
 });

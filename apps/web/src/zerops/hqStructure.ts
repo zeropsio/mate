@@ -31,6 +31,7 @@ import { useContext, useEffect } from "react";
 
 import {
   hqMatesViewAtom,
+  hqOfficialAtom,
   hqPeopleViewAtom,
   hqStructureAtom,
   type HqMatesView,
@@ -38,7 +39,7 @@ import {
   type HqStructureView,
 } from "../state/zerops";
 import { formatDayAwareTimestamp } from "../timestampFormat";
-import { accountHqApi, useAccountHq } from "./accountHq";
+import { accountHqApi, useAccountHq, type AccountHq } from "./accountHq";
 import { menuMemory, rememberedMates, rememberMenu, withMates, withStructure } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -248,6 +249,14 @@ const sleep = (ms: number, signal: AbortSignal) =>
     });
   });
 
+/**
+ * Whether the organization has an official HQ, once its verdict is decided: kept, or read off its
+ * member list. Null before — no answer of HQ's is waited for where it is false.
+ */
+export function hqOfficialOf(accountHq: Pick<AccountHq, "status" | "hq">): boolean | null {
+  return accountHq.status === "ready" ? accountHq.hq.kind === "official" : null;
+}
+
 /** Holds the organization in view's structure stream for as long as the account is signed in. */
 export function ZeropsHqStructure(): null {
   const { activeOrganization, client, status } = useZeropsSession();
@@ -256,6 +265,11 @@ export function ZeropsHqStructure(): null {
   const accountHq = useAccountHq(organizationId);
   const hqProjectId = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
   const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  const official = organizationId === undefined ? null : hqOfficialOf(accountHq);
+
+  useEffect(() => {
+    registry.set(hqOfficialAtom, official);
+  }, [official, registry]);
 
   useEffect(() => {
     if (organizationId === undefined) {
