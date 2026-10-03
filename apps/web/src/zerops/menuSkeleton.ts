@@ -233,10 +233,16 @@ export interface MenuRowsInput<Row extends CandidateRow> {
    */
   readonly current: boolean;
   /**
-   * A known listing has not been whole and read since `STILL_READING_PATIENCE_MS`: what it holds
-   * is what there is — a project withheld for good, or one whose container is never read.
+   * The grace `menuWiring` keys has run out (`STILL_READING_PATIENCE_MS`): a known listing not
+   * whole and read holds what there is — a project withheld for good, or one whose container is
+   * never read — and a read failed for good says so alone.
    */
   readonly graceOver: boolean;
+  /**
+   * The listing lacks nothing still on its way for this person (`listingWholeForPerson`): every
+   * project it does not show is one they can never see or that can never be read.
+   */
+  readonly whole: boolean;
 }
 
 export interface MenuRows<Row> {
@@ -283,18 +289,16 @@ export function menuRowsOf<Row extends CandidateRow>(input: MenuRowsInput<Row>):
     const holds =
       listing.state === "unread" ||
       listing.state === "reading" ||
-      listing.state === "failed" ||
+      (listing.state === "failed" && (listing.retryAtMs !== null || !input.graceOver)) ||
       (listing.state === "withheld" && listing.reason === "access-unverified");
     return holds && remembered.length > 0 ? fromMemory : live;
   }
   const rememberedOf = (projectId: string) =>
     remembered.filter((row) => row.project.id === projectId);
-  const toRemember =
-    listing.coverage === "complete"
-      ? held.rows.flatMap((row) =>
-          row.presence === "known" ? [row] : rememberedOf(row.project.id),
-        )
-      : null;
+  const wholeList = listing.coverage === "complete" || input.whole;
+  const toRemember = wholeList
+    ? held.rows.flatMap((row) => (row.presence === "known" ? [row] : rememberedOf(row.project.id)))
+    : null;
   if (held.complete || input.graceOver || remembered.length === 0) return { ...live, toRemember };
   let kept = false;
   const rows = held.rows.flatMap((row) => {
@@ -304,7 +308,7 @@ export function menuRowsOf<Row extends CandidateRow>(input: MenuRowsInput<Row>):
     kept = true;
     return same;
   });
-  if (listing.coverage === "partial") {
+  if (!wholeList) {
     const listed = new Set(held.rows.map((row) => row.project.id));
     const unlisted = remembered.filter((row) => !listed.has(row.project.id));
     if (unlisted.length > 0) {
@@ -315,9 +319,67 @@ export function menuRowsOf<Row extends CandidateRow>(input: MenuRowsInput<Row>):
   return kept ? { rows, complete: false, fromMemory: true, toRemember } : { ...live, toRemember };
 }
 
+/** How the menu reads its listing against the organization in view (`menuWiring`). */
+export interface MenuWiring {
+  /** The listing is the organization's in view (`MenuRowsInput.current`). */
+  readonly current: boolean;
+  /** The organization what the menu draws is remembered under: the listing's, while current. */
+  readonly rememberUnder: string | null;
+  /**
+   * What the grace before a listing is taken as it is counts for — its organization and what it
+   * waits through — so a switch, or a wait of another kind, starts one of its own; null while
+   * nothing waits.
+   */
+  readonly graceKey: string | null;
+}
+
+/**
+ * Which organization the listing is — the inventory's, a commit behind the session's on a
+ * switch — and what its grace counts for: a known listing not whole and read, or a read failed
+ * for good.
+ */
+export function menuWiring(input: {
+  /** The organization in view (the session's). */
+  readonly organizationId: string | undefined;
+  /** The organization the listing is of (the inventory's). */
+  readonly listingOrganizationId: string | undefined;
+  readonly listing: Shown<ReadonlyArray<unknown>>;
+  /** The listing is whole and every row read (`HeldCandidates.complete`). */
+  readonly complete: boolean;
+}): MenuWiring {
+  const organization = input.organizationId;
+  const current = organization !== undefined && input.listingOrganizationId === organization;
+  if (!current) return { current: false, rememberUnder: null, graceKey: null };
+  const { listing } = input;
+  const waits =
+    listing.state === "known" && !input.complete
+      ? "known"
+      : listing.state === "failed" && listing.retryAtMs === null
+        ? "failed"
+        : null;
+  return {
+    current,
+    rememberUnder: organization,
+    graceKey: waits === null ? null : `${organization}:${waits}`,
+  };
+}
+
 // ── This browser's memory ───────────────────────────────────────────────────────────────────
 
 let held: { readonly account: string; skeleton: MenuSkeleton } | null = null;
+const listeners = new Set<() => void>();
+
+function changed(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Calls `listener` at every change to the memory; returns its removal. */
+export function onMenuSkeletonChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 /** Each organization's tree drawn since the last write, by organization, with when. */
 let pending = new Map<
   string,
@@ -334,8 +396,11 @@ function readStored(): MenuSkeleton {
   }
 }
 
-/** What this browser remembers for the account signed in now; nothing before one is. */
-function memory(): MenuSkeleton {
+/**
+ * What this browser remembers for the account signed in now; nothing before one is. The same
+ * object until it changes (`onMenuSkeletonChange`): what reads it follows its writes.
+ */
+export function menuSkeletonSnapshot(): MenuSkeleton {
   const account = typeof window === "undefined" ? null : currentAccountId();
   if (account === null) return EMPTY_MENU_SKELETON;
   if (held?.account !== account) held = { account, skeleton: readStored() };
@@ -346,8 +411,16 @@ function memory(): MenuSkeleton {
 export function rememberedMenuCandidates(
   organizationId: string | undefined,
 ): ReadonlyArray<CandidateRow> | undefined {
+  return rememberedCandidatesOf(menuSkeletonSnapshot(), organizationId);
+}
+
+/** An organization's remembered tree in a memory, as candidates — the same array for the same rows. */
+export function rememberedCandidatesOf(
+  skeleton: MenuSkeleton,
+  organizationId: string | undefined,
+): ReadonlyArray<CandidateRow> | undefined {
   if (organizationId === undefined) return undefined;
-  const rows = memory().organizations[organizationId]?.rows;
+  const rows = skeleton.organizations[organizationId]?.rows;
   if (rows === undefined) return undefined;
   let candidates = drawn.get(rows);
   if (candidates === undefined) {
@@ -355,16 +428,6 @@ export function rememberedMenuCandidates(
     drawn.set(rows, candidates);
   }
   return candidates;
-}
-
-/** The remembered Mate an environment's conversation opened in: the open row while it paints from memory. */
-export function rememberedMenuProjectOpenedIn(
-  organizationId: string | undefined,
-  environmentId: EnvironmentId,
-): string | undefined {
-  return organizationId === undefined
-    ? undefined
-    : projectOpenedIn(memory(), organizationId, environmentId);
 }
 
 /**
@@ -376,12 +439,13 @@ export function rememberMenuCandidates(
   organizationId: string,
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): void {
-  const before = memory();
+  const before = menuSkeletonSnapshot();
   if (held === null) return;
   const atMs = Date.now();
   const next = withOrganizationSkeleton(before, organizationId, candidates, atMs);
   if (next === before) return;
   held.skeleton = next;
+  changed();
   pending.set(organizationId, { candidates, atMs });
   if (writing !== null) clearTimeout(writing);
   writing = setTimeout(() => {
@@ -393,7 +457,10 @@ export function rememberMenuCandidates(
     for (const [id, { candidates: rows, atMs: at }] of drawnSince) {
       skeleton = withOrganizationSkeleton(skeleton, id, rows, at);
     }
-    held.skeleton = skeleton;
+    if (!same(held.skeleton, skeleton)) {
+      held.skeleton = skeleton;
+      changed();
+    }
     try {
       const encoded = encodeMenuSkeleton(skeleton);
       if (encoded === null) accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY);
@@ -410,6 +477,7 @@ onAccountLifetimeClose(() => {
   writing = null;
   pending = new Map();
   held = null;
+  changed();
   try {
     accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY);
   } catch {

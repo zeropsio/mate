@@ -69,6 +69,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -274,12 +275,15 @@ import {
 } from "../zerops/menuMemory";
 import {
   menuRowsOf,
-  rememberedMenuCandidates,
-  rememberedMenuProjectOpenedIn,
+  menuSkeletonSnapshot,
+  menuWiring,
+  onMenuSkeletonChange,
+  projectOpenedIn,
+  rememberedCandidatesOf,
   rememberMenuCandidates,
 } from "../zerops/menuSkeleton";
-import { useHeldFor } from "../zerops/useHeldFor";
-import { zeropsSessionAtom } from "../state/zerops";
+import { useHeldForKey } from "../zerops/useHeldFor";
+import { candidateListingWholeAtom, zeropsSessionAtom } from "../state/zerops";
 import {
   candidatesNotice,
   findCandidate,
@@ -1824,30 +1828,45 @@ export default function Sidebar() {
   const zeropsOrganizationId = zeropsSession.activeOrganization?.id;
   const zeropsListingOrganizationId =
     useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  const zeropsListingCurrent =
-    zeropsOrganizationId !== undefined && zeropsListingOrganizationId === zeropsOrganizationId;
-  // A listing known but not whole and read for this long is what there is: a project withheld
-  // for good, or one whose container is never read, is no longer painted from memory.
-  const zeropsGraceOver = useHeldFor(
-    zeropsListing.state === "known" && !zeropsHeld.complete,
-    STILL_READING_PATIENCE_MS,
+  const zeropsWiring = useMemo(
+    () =>
+      menuWiring({
+        organizationId: zeropsOrganizationId,
+        listingOrganizationId: zeropsListingOrganizationId,
+        listing: zeropsListing,
+        complete: zeropsHeld.complete,
+      }),
+    [zeropsHeld.complete, zeropsListing, zeropsListingOrganizationId, zeropsOrganizationId],
   );
+  // A listing known but not whole and read for this long, in this organization, is what there
+  // is — a project withheld for good, or one whose container is never read, is no longer painted
+  // from memory — and a read failed for good says so alone.
+  const zeropsGraceOver = useHeldForKey(zeropsWiring.graceKey, STILL_READING_PATIENCE_MS);
+  // Whether it lacks only projects this person can never see or that can never be read.
+  const zeropsListingWhole = useAtomValue(candidateListingWholeAtom);
+  // The memory as it stands: what reads it — the tree, the open row — follows its writes.
+  const zeropsSkeleton = useSyncExternalStore(onMenuSkeletonChange, menuSkeletonSnapshot);
   const zeropsMenu = useMemo(
     () =>
       menuRowsOf({
         listing: zeropsListing,
         held: zeropsHeld,
-        remembered: zeropsSignedIn ? rememberedMenuCandidates(zeropsOrganizationId) : undefined,
-        current: zeropsListingCurrent,
+        remembered: zeropsSignedIn
+          ? rememberedCandidatesOf(zeropsSkeleton, zeropsOrganizationId)
+          : undefined,
+        current: zeropsWiring.current,
         graceOver: zeropsGraceOver,
+        whole: zeropsListingWhole,
       }),
     [
       zeropsGraceOver,
       zeropsHeld,
       zeropsListing,
-      zeropsListingCurrent,
+      zeropsListingWhole,
       zeropsOrganizationId,
       zeropsSignedIn,
+      zeropsSkeleton,
+      zeropsWiring.current,
     ],
   );
   // The creations under way in the organization in view, drawn in their
@@ -2386,13 +2405,13 @@ export default function Sidebar() {
   // never a Mate on its way off Zerops.
   useEffect(() => {
     // Under the organization the listing is of, and only while it is the one in view.
-    if (zeropsMenu.toRemember === null || zeropsListingOrganizationId === undefined) return;
-    if (!zeropsListingCurrent) return;
+    const under = zeropsWiring.rememberUnder;
+    if (zeropsMenu.toRemember === null || under === null) return;
     rememberMenuCandidates(
-      zeropsListingOrganizationId,
+      under,
       zeropsMenu.toRemember.filter((candidate) => !mateDeleting(candidate.project, zeropsDeleting)),
     );
-  }, [zeropsDeleting, zeropsListingCurrent, zeropsListingOrganizationId, zeropsMenu]);
+  }, [zeropsDeleting, zeropsMenu, zeropsWiring.rememberUnder]);
   useEffect(() => {
     if (!zeropsHeld.complete) return;
     const rows: Record<string, RememberedRow> = {};
@@ -2470,7 +2489,8 @@ export default function Sidebar() {
     if (open.kind === "found") return open.row.project.id;
     // The Mate it opened in last time, as remembered: the open row keeps its highlight while the
     // menu paints from memory, and through the hand-over until its link is made again.
-    return rememberedMenuProjectOpenedIn(zeropsOrganizationId, environmentId) ?? null;
+    if (zeropsOrganizationId === undefined) return null;
+    return projectOpenedIn(zeropsSkeleton, zeropsOrganizationId, environmentId) ?? null;
   }, [
     comingMateRoute,
     newProjectRoute,
@@ -2478,6 +2498,7 @@ export default function Sidebar() {
     routeThreadRef?.environmentId,
     zeropsListing,
     zeropsOrganizationId,
+    zeropsSkeleton,
   ]);
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
