@@ -360,8 +360,15 @@ only on a read fact; a cap past its budget sets `overdue` on the current level a
 | `gone`                                               | P gone                                                     | —                                                                                                                             |
 
 Probes run from one pool of 4 per tab, 8 s each: every 2 s while booting, restarting or updating
-(then 10 s rising to 60 s once overdue); none while ready and connected; on wake, connect failure or
-an exchange want while ready without a socket; none after 60 s hidden. A Mate's birth is its press
+(then 10 s rising to 60 s once overdue), though a boot only guessed — the platform says `ACTIVE` and
+nothing has answered — is read at load, on a status push, a wake or a request, and polled only while
+the route or a lease waits on it; none while ready and connected; on wake, connect failure or an
+exchange want while ready without a socket; none after 60 s hidden. A Mate HQ holds online is not
+probed: HQ's word is the same proof a live socket is (step A, A10), and a Mate first seen before HQ
+answers waits for that word, 3 s at most (`HQ_WAIT_MS`). Under an official HQ's current word, a
+project it does not hold online — no Mate of HQ's there, or one it holds offline — is quiet: read
+only when the route, a lease or our verb waits on it, or someone asks. The route's container and one
+our verb waits on are read whatever HQ says. A Mate's birth is its press
 (`web/zerops/matePress.ts`, the steps in `cr/zerops/createEnvironment.ts`): the project made or
 imported, its container imported with its own key, the project closed off, the Mate registered in
 HQ, then a wait for it to answer — one press per project at a time under Web Lock
@@ -659,7 +666,7 @@ whose fact is now another owner's or no longer exists.
 | Mate commands need the Mate session only                                                          | 2.5, after S.0 is released                                                                                                      |
 | First mount on the first grant alone                                                              | Live                                                                                                                            |
 | Registration records, followed across tabs                                                        | Live; the legacy keys are no longer read                                                                                        |
-| Probe store, container machine, persisted intents                                                 | Live                                                                                                                            |
+| Probe store, container machine, persisted intents                                                 | Live; a Mate HQ holds online is not probed since A10 (`85be2642a1`)                                                             |
 | A Mate leaves the catalog only after a direct project-services read confirms its absence (C19)    | Live                                                                                                                            |
 | Descriptor index and full sweep; `replaced`                                                       | Live                                                                                                                            |
 | Environment store in the post-grant stage                                                         | Live                                                                                                                            |
