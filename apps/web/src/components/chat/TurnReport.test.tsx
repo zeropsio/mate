@@ -422,6 +422,26 @@ describe("TurnReport's pictures", () => {
     }
   });
 
+  // Gone, with nothing past it the viewer can show, the last tile is no
+  // button: it would open nothing (E16).
+  it("draws a gone last tile with nothing viewable past it as no button", () => {
+    workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
+    workspace.files.set("/var/www/app/.shots/map-landscape.png", { _tag: "Failure" });
+    workspace.addressed.set("/var/www/app/.shots/world-mobile.png", served("world-mobile.png"));
+    try {
+      const pictures = [
+        ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
+        filePicture("world-mobile.png"),
+        filePicture("map-landscape.png"),
+      ];
+      const last = tilesOf(renderPictures(pictures, { onOpenImage: vi.fn() })).at(-1)!;
+      expect([last.type, last.props["data-result-picture"]]).toEqual(["span", "gone"]);
+    } finally {
+      workspace.addressed.clear();
+      workspace.files.delete("/var/www/app/.shots/map-landscape.png");
+    }
+  });
+
   // Each tile takes its picture's shape at the strip's one height, from its
   // first frame (the owner, 2026-09-29: "why these has different ration
   // than the result?"): a check's from the check, a file's from the size the
