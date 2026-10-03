@@ -28,7 +28,7 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
-import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
+import { mateBirthTag, withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
   hasProjectBlock,
@@ -94,6 +94,11 @@ export interface EnvironmentCreationInput {
    * decides who may: an owner or an admin, or a member attaching their own new Mate.
    */
   readonly register?: boolean;
+  /**
+   * The birth intent HQ holds of the Mate (`recordBirth`), recorded before its project: the
+   * project is created tagged with its id (`mateBirthTag`).
+   */
+  readonly birth?: string;
 }
 
 export type EnvironmentCreationStep =
@@ -231,7 +236,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
 
   // Membership first, then the name: naming is not a membership write, and
   // routing it through one clears the group (`groups.ts`).
-  const tagList = taggedAtBirth(withAgent);
+  const tagList = taggedAtBirth(withAgent, input.birth);
 
   // A recipe that describes a whole project creates one in a single call. Not
   // taken when the caller placed the environment in a region: the project
@@ -337,11 +342,12 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
 }
 
 /**
- * The tags a new environment is created with: when it gets an agent, the `mate` marker. It is
- * written here, at birth, rather than after the container import, so a creation that fails
- * between the two still leaves a project that says what it was meant to be. Its application,
+ * The tags a new environment is created with: when it gets an agent, the `mate` marker, and the
+ * birth intent HQ holds of it (`mateBirthTag`). They are written here, at birth, rather than after
+ * the container import, so a creation that fails between the two still leaves a project that says
+ * what it was meant to be, and — through its intent, by id — where and as whom. Its application,
  * kind, name, face and birth are HQ's, written by the press's registration.
  */
-function taggedAtBirth(withAgent: boolean): ReadonlyArray<string> {
-  return withAgent ? withZeropsMateTag([]) : [];
+function taggedAtBirth(withAgent: boolean, birth: string | undefined): ReadonlyArray<string> {
+  return withAgent ? withZeropsMateTag(birth === undefined ? [] : [mateBirthTag(birth)]) : [];
 }

@@ -30,6 +30,7 @@ export {
   readHqHealth,
   type HqApi,
   type HqAttach,
+  type HqBirth,
   type HqMate,
   type HqEndpoint,
   type HqHealth,
@@ -39,6 +40,7 @@ export {
 } from "./client.ts";
 export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
 export {
+  birthIntentOf,
   placeListing,
   placeProject,
   placeProjects,

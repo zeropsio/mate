@@ -102,3 +102,19 @@ export function placeListing<
     }),
   };
 }
+
+/**
+ * Where a Mate born under intent `birthId` goes, and as whom (`HqBirth`): its application, its name
+ * and its face, while HQ holds the intent open — none once its attach closed it, or where HQ's
+ * structure is not known.
+ */
+export function birthIntentOf(
+  structure: HqStructure | null,
+  birthId: string,
+): { readonly appId: string; readonly name: string; readonly face: string } | undefined {
+  for (const app of structure?.apps ?? []) {
+    const birth = app.births?.find((entry) => entry.id === birthId);
+    if (birth !== undefined) return { appId: app.id, name: birth.name, face: birth.face };
+  }
+  return undefined;
+}

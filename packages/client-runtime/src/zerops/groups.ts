@@ -55,6 +55,18 @@ export const MATE_TAG_NAMESPACE = "mate";
 export const MATE_MARKER_TAG = MATE_TAG_NAMESPACE;
 
 /**
+ * The tag a Mate's project is created with naming the birth intent HQ holds of it
+ * (`mate:birth:<id>`): an id, never a name, so whoever finishes a Mate whose press was cut off
+ * before its attach attaches it where and as it was asked for (F6c).
+ */
+const MATE_BIRTH_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:birth:`;
+
+/** The tag naming birth intent `birthId` on its Mate's project. */
+export function mateBirthTag(birthId: string): string {
+  return `${MATE_BIRTH_TAG_PREFIX}${birthId}`;
+}
+
+/**
  * What an environment is for, as HQ places its project (`ROLE_OF_KIND`). Four values rather than
  * two so a group can say "this one is both my dev box and what I show people" without inventing a
  * fifth environment.
@@ -86,6 +98,8 @@ export interface ZeropsMembership {
   readonly madeBy?: string | undefined;
   /** The face its person picked; absent where HQ's record says nothing this client knows. */
   readonly face: ZeropsMateFaceTag | undefined;
+  /** The birth intent its project was created under (`mateBirthTag`), by id. */
+  readonly birth?: string | undefined;
 }
 
 const ROLE_OF_KIND: Readonly<Record<RoleProjectKind, ZeropsEnvironmentRole>> = {
@@ -120,6 +134,9 @@ export function readZeropsMembership(
     | undefined,
 ): ZeropsMembership {
   const marker = (project?.tagList ?? []).includes(MATE_MARKER_TAG);
+  const birth = project?.tagList
+    ?.find((tag) => tag.startsWith(MATE_BIRTH_TAG_PREFIX))
+    ?.slice(MATE_BIRTH_TAG_PREFIX.length);
   const placed = project?.hq;
   const asker = placed?.mate?.standupRequestedBy?.trim();
   const maker = placed?.mate?.madeBy?.trim();
@@ -138,6 +155,7 @@ export function readZeropsMembership(
     madeBy: maker === undefined || maker === "" ? undefined : maker,
     face:
       placed?.mate === null || placed === undefined ? undefined : readMateFace(placed.mate.face),
+    birth: birth === undefined || birth === "" ? undefined : birth,
   };
 }
 

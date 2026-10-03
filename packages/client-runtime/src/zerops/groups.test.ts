@@ -116,6 +116,16 @@ describe("readZeropsMembership", () => {
       expected: { mate: true, bot: "Ada", face: { tint: "sky", shape: "flower" } },
     },
     {
+      name: "reads the birth intent a Mate's project was created under, by its id",
+      input: { tagList: ["mate", "mate:birth:b-1"] },
+      expected: { mate: true, birth: "b-1" },
+    },
+    {
+      name: "takes a birth tag naming no intent for none",
+      input: { tagList: ["mate", "mate:birth:"] },
+      expected: { mate: true },
+    },
+    {
       name: "takes a blank Mate name for none",
       input: { hq: placed("abc", "mate", { mate: { name: "  ", face: "" } }) },
       expected: { mate: true, groupId: "abc", role: "dev" },

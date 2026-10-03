@@ -100,6 +100,8 @@ export interface HqStructure {
      * changes — none to one who only sees it; absent where HQ sent none this build can read.
      */
     readonly environments?: ReadonlyArray<HqEnvironment>;
+    /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
+    readonly births?: ReadonlyArray<HqBirth>;
   }>;
 }
 
@@ -110,6 +112,19 @@ export interface HqAttach {
   readonly mate?: HqMateRecord;
   /** A stage's or a production's environment name; HQ names it from its project without one. */
   readonly environment?: { readonly name: string };
+  /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
+  readonly birth?: string;
+}
+
+/**
+ * A Mate's birth intent at HQ: where it goes and as whom, recorded before its Zerops project exists
+ * — which is created tagged with its id (`mate:birth:<id>`) — until its attach closes it.
+ */
+export interface HqBirth {
+  readonly id: string;
+  readonly name: string;
+  /** Its face as its attach records it: empty where it wears its name's tint. */
+  readonly face: string;
 }
 
 export class HqError extends Error {
@@ -183,6 +198,12 @@ export interface HqApi {
   readonly recordStandUp: (projectId: string) => Promise<void>;
   readonly recordClosedOff: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
+  /** A Mate's birth intent in an application, before its project exists (`POST /api/births`). */
+  readonly recordBirth: (birth: {
+    readonly appId: string;
+    readonly name: string;
+    readonly face: string;
+  }) => Promise<HqBirth>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
    * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
@@ -689,6 +710,10 @@ export function makeHqApi(input: {
     },
     // An application has no name of HQ's to ask for before it is made: the one by this name is
     // taken for it.
+    recordBirth: async (birth) =>
+      json<HqBirth>(
+        await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, "once"),
+      ),
     createApp: (name) =>
       confirmed(
         async () =>

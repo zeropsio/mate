@@ -1,7 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { Known } from "../knowledge/known.ts";
-import { placeListing, placeProjects, placementsOf, type HqPlacement } from "./placement.ts";
+import {
+  birthIntentOf,
+  placeListing,
+  placeProjects,
+  placementsOf,
+  type HqPlacement,
+} from "./placement.ts";
 
 interface Listed {
   readonly id: string;
@@ -117,5 +123,30 @@ describe("placeListing", () => {
   it("leaves a listing that holds no rows as it is", () => {
     const unread: Known<ReadonlyArray<typeof vera>> = { state: "unread", waitingFor: null };
     expect(placeListing(unread, placements)).toBe(unread);
+  });
+});
+
+describe("birthIntentOf", () => {
+  it("finds an open birth intent by its id: the application it goes into, its name and face", () => {
+    const structure = {
+      ungrouped: [],
+      apps: [
+        { id: "app-1", name: "Acme", projects: [] },
+        {
+          id: "app-g",
+          name: "G",
+          projects: [],
+          births: [{ id: "b-1", name: "Gus", face: "rose:seal" }],
+        },
+      ],
+    };
+    expect(birthIntentOf(structure, "b-1")).toEqual({
+      appId: "app-g",
+      name: "Gus",
+      face: "rose:seal",
+    });
+    // Closed by its attach, or never HQ's: none.
+    expect(birthIntentOf(structure, "b-2")).toBeUndefined();
+    expect(birthIntentOf(null, "b-1")).toBeUndefined();
   });
 });
