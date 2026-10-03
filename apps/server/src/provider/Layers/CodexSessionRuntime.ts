@@ -2747,7 +2747,6 @@ export const makeCodexSessionRuntime = (
         const providerThreadId = yield* readProviderThreadId;
         return yield* client.request("mcpServerStatus/list", {
           threadId: providerThreadId,
-          detail: "toolsAndAuthOnly",
           limit: 100,
         });
       }),
