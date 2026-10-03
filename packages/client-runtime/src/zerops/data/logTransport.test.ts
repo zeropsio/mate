@@ -147,7 +147,8 @@ describe("build log transport", () => {
   /**
    * A running build's stream is opened before the build wrote its first line,
    * and is asked for as the Zerops GUI asks for it (`trlog.store.ts`
-   * `_openLogStream$`: `limit=100`, `desc=0`, a `from` only as a line's id).
+   * `_openLogStream$`: `limit=100`, `desc=0`, the project's id, a `from` only
+   * as a line's id).
    * The backfill's `from` is a time; a stream that carried it stood open
    * through a whole build and never answered a line.
    */
@@ -184,6 +185,7 @@ describe("build log transport", () => {
     expect(stream.get("desc")).toBe("0");
     expect(stream.get("limit")).toBe("100");
     expect(stream.get("tags")).toBe("zbuilder@version-1");
+    expect(stream.get("projectId")).toBe("project-1");
   });
 
   it("decodes frames, reports malformed/rejected input, and ignores callbacks after close", async () => {

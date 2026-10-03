@@ -1,4 +1,5 @@
 import {
+  buildLogStreamUrl,
   buildLogUrls,
   buildOlderLogUrl,
   decodeBuildLogItems,
@@ -224,7 +225,7 @@ export function makeBuildLogTransport(options: BuildLogTransportOptions): BuildL
     try {
       if (controller.signal.aborted) throw new BuildLogTransportError("closed");
       grantUrl = await acquire(request.project, expectedGeneration, controller.signal);
-      baseUrl = buildLogUrls({ url: grantUrl }, request.query).ws;
+      baseUrl = buildLogStreamUrl({ url: grantUrl }, request.query, request.project.projectId);
       grantUrl = "";
       socketUrl =
         request.fromLineId === undefined ? baseUrl : withStreamFrom(baseUrl, request.fromLineId);

@@ -89,6 +89,20 @@ export function buildLogUrls(
 }
 
 /**
+ * The build's stream url as the GUI opens it (`trlog.store.ts`
+ * `_openLogStream$`), which also names the project the log belongs to.
+ */
+export function buildLogStreamUrl(
+  access: { readonly url: string },
+  query: BuildLogQuery,
+  projectId: string,
+): string {
+  const url = new URL(buildLogUrls(access, query).ws);
+  url.searchParams.set("projectId", projectId);
+  return url.toString();
+}
+
+/**
  * Re-derives a stream url's `from` — used on reconnect, once the newest
  * already-loaded line's id is known (live-verified: the GUI's own reconnect
  * does the same, `trlog.store.ts`'s `_openLogStream$`: `from: data.items.at(-1).id`,
