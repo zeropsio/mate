@@ -44,6 +44,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
+import { Recomputes } from "./recomputes.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -112,6 +113,7 @@ export const structureMessages = <R>(
           > {
             const ends = yield* ending;
             if (ends !== undefined) return [{ type: "end" as const, ending: ends }];
+            yield* (yield* Recomputes).count;
             const view = yield* structure.read(userId);
             const readable = yield* changes.readable(userId);
             const now = {
