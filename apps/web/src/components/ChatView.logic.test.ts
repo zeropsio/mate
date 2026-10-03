@@ -1400,6 +1400,16 @@ describe("buildRunningThreadTurnInterruptInput", () => {
 });
 
 describe("deriveComposerSendState", () => {
+  it("a prompt of only files is no words, but something to send", () => {
+    const state = deriveComposerSendState({
+      prompt: "\uFFFA\n",
+      imageCount: 1,
+      terminalContexts: [],
+    });
+    expect(state.trimmedPrompt).toBe("");
+    expect(state.hasSendableContent).toBe(true);
+  });
+
   it("treats expired terminal pills as non-sendable content", () => {
     const state = deriveComposerSendState({
       prompt: "\uFFFC",
@@ -2262,6 +2272,24 @@ describe("restoreQueuedToComposer", () => {
       prompt: `Mine\n\nOne${P}\n\nTwo${P}`,
       images: ["a", "b"],
       overflow: [],
+      files: [],
+    });
+  });
+
+  it("brings the queued files back after the composer's own, each with its place", () => {
+    const F = "\uFFFA";
+    expect(
+      restoreQueuedToComposer({
+        prompt: `Mine${F}`,
+        imageCount: 0,
+        fileCount: 1,
+        messages: [{ prompt: `See${F}${F}${P}`, images: ["a"], files: ["x", "y"] }],
+      }),
+    ).toEqual({
+      prompt: `Mine${F}\n\nSee${F}${F}${P}`,
+      images: ["a"],
+      overflow: [],
+      files: ["x", "y"],
     });
   });
 
@@ -2273,7 +2301,12 @@ describe("restoreQueuedToComposer", () => {
         imageCount: PROVIDER_SEND_TURN_MAX_ATTACHMENTS - 1,
         messages,
       }),
-    ).toEqual({ prompt: `${held}\n\nOne${P}\n\nTwo`, images: ["a"], overflow: ["b"] });
+    ).toEqual({
+      prompt: `${held}\n\nOne${P}\n\nTwo`,
+      images: ["a"],
+      overflow: ["b"],
+      files: [],
+    });
   });
 });
 
