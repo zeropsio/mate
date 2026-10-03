@@ -1314,8 +1314,8 @@ In the order the owner ranked them, then the rest:
     Open: one screen, the browser's steps as the first row's sub-steps.
 48. **Pass 36's open ends** (mate 0.11.89). Mobile's feed reads the conversation's follow rule
     (`thread-feed-live-follow.ts`), unmeasured on a device: a simulator look before the next mobile
-    build. A batch deploy's per-service slot lines land as one history row. A settled deploy opened
-    after a reload shows an empty detail area until the store answers.
+    build. A settled deploy older than the project's last 100 processes shows only what its call
+    returned. A running build's reserved log room stands empty (about 60 px) until its first line.
 
 ## 8. Working on it
 
