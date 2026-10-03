@@ -216,3 +216,27 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
   }
   return { kind: "observing", observation, elapsedMs };
 }
+
+/**
+ * How long after its start a card reads its operation from the account store. A running one,
+ * and one whose call settled before its outcome was read, are watched up to the ceiling; a
+ * settled one its result named by id (`AttributionInput.exact`) is looked up by that id whatever
+ * its age, so the same row shows the same details in any window and after a reload.
+ */
+export function operationReadCeilingMs(
+  operation: { readonly running: boolean; readonly exact: boolean },
+  ceilingMs: number = DEFAULT_CEILING_MS,
+): number {
+  return !operation.running && operation.exact ? Number.POSITIVE_INFINITY : ceilingMs;
+}
+
+/**
+ * Whether a card keeps the account store reading its operation: until its outcome is read —
+ * after its call settled too, so a step read as running never stays running under the verdict —
+ * while the read can still answer. One only silent past its timeout keeps reading: it recovers
+ * only while somebody still wants it.
+ */
+export function readsOperation(state: ObservationState): boolean {
+  if (state.kind === "off") return state.reason === "stale-timeout";
+  return state.observation.outcome === undefined;
+}

@@ -83,11 +83,27 @@ export function projectActivitySnapshotFromRead(
   };
 }
 
-/** Demand-scoped activity/history projection. */
+/** Demand-scoped activity/history projection: the store reads it while this is drawn. */
 export function useProjectActivity(projectId: string | null): ProjectActivitySnapshot {
-  const { runtime } = useZeropsData();
+  useProjectActivityDemand(projectId);
+  return useProjectActivityRead(projectId);
+}
+
+function useProjectRef(projectId: string | null) {
   const inventory = useZeropsInventory();
-  const project = projectId === null ? null : findInventoryProjectRef(inventory, projectId);
+  return {
+    inventory,
+    project: projectId === null ? null : findInventoryProjectRef(inventory, projectId),
+  };
+}
+
+/**
+ * Asks the account store to read a project's activity and its process history
+ * (the newest 100) while it is drawn: what is running, streamed, and what ran,
+ * held by id.
+ */
+export function useProjectActivityDemand(projectId: string | null): void {
+  const { project } = useProjectRef(projectId);
   const activityDescriptor = useMemo<RuntimeInterestDescriptor | null>(
     () => (project === null ? null : { kind: "project-activity", project }),
     [project],
@@ -101,6 +117,15 @@ export function useProjectActivity(projectId: string | null): ProjectActivitySna
   );
   useZeropsDataInterest(activityDescriptor);
   useZeropsDataInterest(historyDescriptor);
+}
+
+/**
+ * What the account store holds of a project's activity, whoever asked it to
+ * read: it reads nothing of its own.
+ */
+export function useProjectActivityRead(projectId: string | null): ProjectActivitySnapshot {
+  const { runtime } = useZeropsData();
+  const { inventory, project } = useProjectRef(projectId);
   const activityAtom = useMemo(
     () => (project === null ? EMPTY_PROJECT_ACTIVITY_READ_ATOM : runtime.reads.activity(project)),
     [project, runtime],

@@ -136,7 +136,6 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
       NOW + 60_000,
     );
     expect(stopped.history).toEqual(running.history);
-    expect(stopped.wantsPoll).toBe(false);
   });
 
   it("does not overwrite history with an observation that has no pipeline", () => {
@@ -163,12 +162,63 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(result.wantsPoll).toBe(false);
   });
 
-  it("stops polling once the operation is no longer running", () => {
+  // Its call settled before its outcome was read: it keeps reading until the
+  // outcome is read, so a step read as running never stays running under the
+  // verdict; past the ceiling only a settled one its result named by id is
+  // still read — looked up by that id, as after a reload (pass 36).
+  it.each([
+    {
+      name: "settled, its outcome unread: keeps reading",
+      exact: undefined,
+      processes: [process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } })],
+      at: NOW + 5_000,
+      reads: true,
+      outcome: undefined,
+    },
+    {
+      name: "settled, its outcome read: stops",
+      exact: undefined,
+      processes: [process({ appVersion: { status: "ACTIVE" } })],
+      at: NOW + 5_000,
+      reads: false,
+      outcome: "finished",
+    },
+    {
+      name: "settled past the ceiling, nothing to know it by: stops",
+      exact: undefined,
+      processes: [],
+      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      reads: false,
+      outcome: undefined,
+    },
+    {
+      name: "settled past the ceiling, named by id and not held: read by it",
+      exact: { appVersionId: "av-7" },
+      processes: [],
+      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      reads: true,
+      outcome: undefined,
+    },
+    {
+      name: "settled past the ceiling, named by id and held: its outcome, read no further",
+      exact: { appVersionId: "av-7" },
+      processes: [process({ appVersion: { id: "av-7", status: "ACTIVE" } })],
+      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      reads: false,
+      outcome: "finished",
+    },
+  ])("$name", ({ exact, processes, at, reads, outcome }) => {
     const result = deriveOperationObservation(
-      baseInput({ target: target({ running: false }) }),
-      NOW,
+      baseInput({
+        target: target({ running: false, ...(exact === undefined ? {} : { exact }) }),
+        snapshot: snapshotOf(processes, NOW + 1_000),
+      }),
+      at,
     );
-    expect(result.wantsPoll).toBe(false);
+    expect(result.wantsPoll).toBe(reads);
+    expect(result.state.kind === "off" ? undefined : result.state.observation.outcome).toBe(
+      outcome,
+    );
   });
 
   it("stops polling past the ceiling", () => {

@@ -3,7 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ActivityProcess } from "./dto.ts";
 import type { AttributionResult } from "./attribution.ts";
-import { type ObservationInput, observe } from "./observe.ts";
+import {
+  type ObservationInput,
+  type ObservationState,
+  observe,
+  operationReadCeilingMs,
+  readsOperation,
+} from "./observe.ts";
 
 const NOW = Date.parse("2026-09-02T10:00:00.000Z");
 
@@ -285,5 +291,67 @@ describe("observe — the three-state observation layer", () => {
       buildServiceStackId: "build-svc-1",
       appVersionId: "av-1",
     });
+  });
+});
+
+// A card reads its operation from the account store until its outcome is
+// read: a step read as running stays running under "Deployed" otherwise, and
+// a settled row opened after a reload, or in another window, opens onto
+// nothing (pass 36).
+describe("operationReadCeilingMs — how long after its start a card reads its operation", () => {
+  const CEILING = 30 * 60 * 1000;
+  it.each([
+    { name: "a running one: up to the ceiling", running: true, exact: false, ms: CEILING },
+    { name: "a running one its result named: the same", running: true, exact: true, ms: CEILING },
+    {
+      name: "a settled one with nothing to know it by: up to the ceiling",
+      running: false,
+      exact: false,
+      ms: CEILING,
+    },
+    {
+      name: "a settled one its result named by id: looked up by it, whatever its age",
+      running: false,
+      exact: true,
+      ms: Number.POSITIVE_INFINITY,
+    },
+  ])("$name", ({ running, exact, ms }) => {
+    expect(operationReadCeilingMs({ running, exact })).toBe(ms);
+  });
+});
+
+describe("readsOperation — whether a card keeps the store reading its operation", () => {
+  const read = (outcome?: "finished" | "failed" | "cancelled") => ({
+    chips: [],
+    readAtMs: NOW,
+    ...(outcome === undefined ? {} : { outcome }),
+  });
+  it.each<{ name: string; state: ObservationState; reads: boolean }>([
+    {
+      name: "nothing read yet",
+      state: { kind: "observing", observation: read(), elapsedMs: 0 },
+      reads: true,
+    },
+    {
+      name: "read mid-run",
+      state: { kind: "observing", observation: read(), elapsedMs: 9_000 },
+      reads: true,
+    },
+    {
+      name: "its outcome read",
+      state: { kind: "observing", observation: read("finished"), elapsedMs: 9_000 },
+      reads: false,
+    },
+    { name: "stale", state: { kind: "stale", observation: read(), ageMs: 20_000 }, reads: true },
+    {
+      name: "silent past its timeout",
+      state: { kind: "off", reason: "stale-timeout" },
+      reads: true,
+    },
+    { name: "past the ceiling", state: { kind: "off", reason: "ceiling" }, reads: false },
+    { name: "the feed failed", state: { kind: "off", reason: "feed-error" }, reads: false },
+    { name: "signed out", state: { kind: "off", reason: "no-session" }, reads: false },
+  ])("$name", ({ state, reads }) => {
+    expect(readsOperation(state)).toBe(reads);
   });
 });

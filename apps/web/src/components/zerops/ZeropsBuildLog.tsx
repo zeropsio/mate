@@ -45,6 +45,8 @@ export interface ZeropsBuildLogProps {
   readonly onToggle: () => void;
   /** Whose build it is, for the dialog's title. */
   readonly subject?: string | undefined;
+  /** A settled build's: the way to its log stands before its lines are read. */
+  readonly stands?: boolean;
 }
 
 /** zcp's `mapSeverityToNumeric`: 0 (emergency) through 3 (error) are the tones worth flagging red. */
@@ -60,12 +62,13 @@ export function ZeropsBuildLog({
   lines,
   onToggle,
   open,
+  stands = false,
   status,
   subject,
 }: ZeropsBuildLogProps): JSX.Element | null {
-  // Nothing to open until the build writes its first line: before that the
-  // log is empty, and its container may not even run yet.
-  if (lines.length === 0) return null;
+  // Nothing to open until a running build writes its first line: before that
+  // the log is empty, and its container may not even run yet.
+  if (lines.length === 0 && !stands) return null;
   const count = lineCount(lines.length);
   const glance = status === "live" ? foldBuildLogLines(lines).slice(-GLANCE_ROWS) : [];
   return (

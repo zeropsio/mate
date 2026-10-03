@@ -94,7 +94,10 @@ import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { MateFace } from "../zerops/primitives";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
-import { useOperationCard } from "../../zerops/activity/useOperationCard";
+import {
+  useOperationCard,
+  type OperationCardRegions,
+} from "../../zerops/activity/useOperationCard";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
@@ -103,6 +106,7 @@ import {
   formatWorkDuration,
   operationLineWords,
   operationUnreturnedWords,
+  splitBatchDeploy,
   type BrowserStripModel,
   type IncidentModel,
   type OutcomeModel,
@@ -123,7 +127,15 @@ import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
-import { detailLines, liveOperationBar, settledOperationBar } from "./operationBar.logic";
+import {
+  detailLines,
+  liveOperationBar,
+  observedLinesOf,
+  settledOperationBar,
+  showsCardInSlot,
+  slotOpenDeployLine,
+  slotServiceLine,
+} from "./operationBar.logic";
 import { HELPER_LINE_CHARS, helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -350,6 +362,7 @@ function useCarried(
   part: string,
   initial: () => boolean,
   follows = false,
+  shut = false,
 ): [boolean, (next: boolean) => void] {
   const carried = use(CarriedOpenContext);
   const line = use(ChatLineContext);
@@ -364,7 +377,12 @@ function useCarried(
     if (key !== null) carried?.set(key, { value: first, own: false });
     return first;
   });
-  const shown = value ?? initial();
+  // Shut: it stands closed whatever it carried, and stays so after.
+  if (shut && value !== false) {
+    if (key !== null) carried?.set(key, { value: false, own: false });
+    setValue(false);
+  }
+  const shown = shut ? false : (value ?? initial());
   if (value === undefined && key !== null && carried?.get(key)?.value !== shown) {
     carried?.set(key, { value: shown, own: false });
   }
@@ -375,6 +393,23 @@ function useCarried(
       setValue(next);
     },
   ];
+}
+
+/**
+ * In the live slot, the line of the one deploy that stands open on its card:
+ * the newest running one — the others stay one line each, so the slot never
+ * outgrows its room.
+ */
+const SlotStandsOpenContext = createContext<string | null>(null);
+
+/** An operation whose call returned while it runs on: the band under the chat draws it. */
+function runsOnInBand(operation: ZeropsOperation): boolean {
+  return (
+    operation.kind !== "standup" &&
+    operation.phase === "running" &&
+    operation.returnedAt !== undefined &&
+    operation.openedAt === undefined
+  );
 }
 
 /** Whether the line lands by a plop from the live slot: then it never rises in on its own. */
@@ -633,17 +668,23 @@ function FoldToggle({
 // ---------------------------------------------------------------------------
 
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
-function useDisclosure(initial = false, part = "open", follows = false) {
+function useDisclosure(initial = false, part = "open", follows = false, shut = false) {
   const hold = useHoldReading();
-  const [open, setOpen] = useCarried(part, () => initial, follows);
+  const [open, setOpen] = useCarried(part, () => initial, follows, shut);
+  // Opened by the person here: only that open moves (a carried, a first or a
+  // landing one is simply there).
+  const [made, setMade] = useState(false);
   return {
     open,
+    made,
     set: (next: boolean) => {
       hold();
+      setMade(true);
       setOpen(next);
     },
     toggle: () => {
       hold();
+      setMade(true);
       setOpen(!open);
     },
   };
@@ -1527,12 +1568,15 @@ export function OperationDetail({
   environmentId,
   threadRef,
   turnRuns,
+  regions,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   /** Its turn runs: a stand-up's builds that ran on are read as they stand. */
   readonly turnRuns: boolean;
+  /** What its line already read of the platform: the card draws it, never reading it twice. */
+  readonly regions?: OperationCardRegions;
 }) {
   if (operation.kind === "standup") {
     return (
@@ -1541,6 +1585,11 @@ export function OperationDetail({
   }
   if (operation.kind === "import") {
     return <ImportDetail environmentId={environmentId} operation={operation} />;
+  }
+  if (regions !== undefined) {
+    return (
+      <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />
+    );
   }
   return (
     <ZeropsOperationDetail
@@ -1560,7 +1609,12 @@ function ZeropsOperationDetail({
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
 }) {
-  const regions = useOperationCard(operation, environmentId);
+  // The whole log's dialog is the line's: one opened in the live slot stays open as it lands.
+  const regions = useOperationCard(
+    operation,
+    environmentId,
+    useCarried("log", () => false),
+  );
   return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
 
@@ -1599,12 +1653,8 @@ function StandupBubble({
   );
 }
 
-function OperationBubble({
-  operation,
-  undone = false,
-  noResult,
-  lines = detailLines(operation, null),
-}: {
+/** What an operation's line takes: the operation, how it ended, how much it opens to. */
+interface OperationLineProps {
   readonly operation: ZeropsOperation;
   /** It failed, and a later one on the same service went through: quiet (K9). */
   readonly undone?: boolean;
@@ -1615,16 +1665,82 @@ function OperationBubble({
   readonly noResult?: "stale" | "closed" | undefined;
   /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
   readonly lines?: number;
+}
+
+/**
+ * An operation's line. In the live slot, a deploy — the one kind whose card
+ * draws a pipeline and a build log — reads the platform there, from its start
+ * to its plop: its bar follows its pipeline, and the newest running one stands
+ * open on its card (the pipeline's steps, the build's newest lines, the way to
+ * the whole log) once the store has read any of it (pass 36: "the running
+ * builds, their logs ... seem to be completely gone"). A batch deploy is a
+ * line per service there, each read as a deploy of its own.
+ */
+function OperationBubble(props: OperationLineProps) {
+  const inSlot = use(InSlotContext);
+  const line = use(ChatLineContext);
+  if (!inSlot || props.noResult !== undefined || props.operation.kind !== "deploy") {
+    return <OperationLine {...props} regions={null} />;
+  }
+  if (props.operation.batch !== true) return <WatchedOperationBubble {...props} />;
+  return splitBatchDeploy(props.operation).map((service) => {
+    const serviceLine = slotServiceLine(line, service);
+    return (
+      <ChatLineContext key={service.key} value={serviceLine}>
+        <WatchedOperationBubble {...props} operation={service} />
+      </ChatLineContext>
+    );
+  });
+}
+
+/** An operation in the live slot, with what its card reads of the platform. */
+function WatchedOperationBubble(props: OperationLineProps) {
+  const ctx = use(TimelineRowCtx);
+  const line = use(ChatLineContext);
+  const standsOpen = use(SlotStandsOpenContext);
+  // The whole log's dialog is the line's: one opened here stays open as it
+  // lands. A line that stands closed reads no build log.
+  const regions = useOperationCard(
+    props.operation,
+    ctx.activeThreadEnvironmentId,
+    useCarried("log", () => false),
+    line !== null && line === standsOpen,
+  );
+  return <OperationLine {...props} regions={regions} />;
+}
+
+function OperationLine({
+  operation,
+  undone = false,
+  noResult,
+  lines: given,
+  regions,
+}: OperationLineProps & {
+  /** What its card read of the platform: null where nothing reads it here. */
+  readonly regions: OperationCardRegions | null;
 }) {
+  const observed = observedLinesOf(regions?.observed);
+  const inSlot = use(InSlotContext);
+  const line = use(ChatLineContext);
+  const standsOpen = use(SlotStandsOpenContext);
   const ctx = use(TimelineRowCtx);
   const turnRuns = useTurnRuns(operation);
-  const disclosure = useDisclosure();
-  const inSlot = use(InSlotContext);
+  // Its call returned while it runs on: the band under the chat draws it, so
+  // its line here lands closed and opens onto nothing until it ends.
+  const inBand = !inSlot && turnRuns && runsOnInBand(operation);
+  const lines = inBand ? 0 : (given ?? detailLines(operation, null, observed));
+  // In the slot the newest running deploy stands open on what its card read, and lands so.
+  const disclosure = useDisclosure(
+    inSlot && line !== null && line === standsOpen && showsCardInSlot(observed),
+    "open",
+    true,
+    inBand,
+  );
   const failed = operation.phase === "failed";
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = noResult === undefined && operation.phase === "running";
   // Live in the slot, its pipeline as it goes and the step it is on.
-  const live = running && inSlot ? liveOperationBar(operation) : null;
+  const live = running && inSlot ? liveOperationBar(operation, regions?.observed?.pipeline) : null;
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
@@ -1693,12 +1809,21 @@ function OperationBubble({
         <div className={CALL_PAD}>{head}</div>
       )}
       {opens && disclosure.open && lines !== 0 ? (
-        <div className="animate-detail-in px-3 pb-2 motion-reduce:animate-none" data-chat-detail>
+        <div
+          className={cn(
+            "px-3 pb-2",
+            // Only an open the person made moves; a carried or a landing one is simply there.
+            disclosure.made && "animate-detail-in motion-reduce:animate-none",
+          )}
+          data-chat-detail
+          data-chat-detail-rises={disclosure.made ? "" : undefined}
+        >
           <OperationDetail
             environmentId={ctx.activeThreadEnvironmentId}
             operation={operation}
             threadRef={ctx.threadRef}
             turnRuns={turnRuns}
+            {...(regions === null ? {} : { regions })}
           />
         </div>
       ) : null}
@@ -3056,6 +3181,13 @@ function LiveSlot({
   });
   const drawn = shown.slice(0, SLOT_MAX_ROWS);
   const more = slotRunningPast(shown);
+  const standsOpen = slotOpenDeployLine(
+    drawn.flatMap(({ item }) =>
+      item.kind === "operation" && item.noResult === undefined
+        ? [{ key: item.key, operation: item.operation }]
+        : [],
+    ),
+  );
   const lines = drawn
     .flatMap(({ item }) => {
       const line = itemLine(item, undone);
@@ -3108,47 +3240,49 @@ function LiveSlot({
         />
       </span>
       <InSlotContext value>
-        <ChatShownContext value={shownRef}>
-          <ol ref={listRef} className="run-slot-list">
-            {lines.length === 0 ? (
-              <li key={`filler:${filler.kind}`} className="run-slot-filler">
-                <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
-                  <span className="flex h-[1lh] items-center" />
-                </span>
-                <span className="run-now-words">
-                  <SlotFillerWords filler={filler} />
-                </span>
-              </li>
-            ) : (
-              slotted.entries.map((entry) =>
-                "calls" in entry ? (
-                  <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
-                    <CallGroup>
-                      {entry.calls.map((line) => (
-                        <ChatLineContext key={line.key} value={line.key}>
-                          {line.bubble}
-                        </ChatLineContext>
-                      ))}
-                    </CallGroup>
-                  </ChatRow>
-                ) : (
-                  <ChatRow
-                    key={entry.key}
-                    across={entry.across === true}
-                    lineKey={entry.key}
-                    mark={entry.mark}
-                    markLine={entry.markLine}
-                    pairs={entry.pairs === true}
-                    theirs={entry.theirs === true}
-                  >
-                    {entry.bubble}
-                  </ChatRow>
-                ),
-              )
-            )}
-            {more > 0 ? <li className="run-slot-more">{`+${more} more running`}</li> : null}
-          </ol>
-        </ChatShownContext>
+        <SlotStandsOpenContext value={standsOpen}>
+          <ChatShownContext value={shownRef}>
+            <ol ref={listRef} className="run-slot-list">
+              {lines.length === 0 ? (
+                <li key={`filler:${filler.kind}`} className="run-slot-filler">
+                  <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
+                    <span className="flex h-[1lh] items-center" />
+                  </span>
+                  <span className="run-now-words">
+                    <SlotFillerWords filler={filler} />
+                  </span>
+                </li>
+              ) : (
+                slotted.entries.map((entry) =>
+                  "calls" in entry ? (
+                    <ChatRow key={entry.key} across={false} lineKey={entry.key} theirs={false}>
+                      <CallGroup>
+                        {entry.calls.map((line) => (
+                          <ChatLineContext key={line.key} value={line.key}>
+                            {line.bubble}
+                          </ChatLineContext>
+                        ))}
+                      </CallGroup>
+                    </ChatRow>
+                  ) : (
+                    <ChatRow
+                      key={entry.key}
+                      across={entry.across === true}
+                      lineKey={entry.key}
+                      mark={entry.mark}
+                      markLine={entry.markLine}
+                      pairs={entry.pairs === true}
+                      theirs={entry.theirs === true}
+                    >
+                      {entry.bubble}
+                    </ChatRow>
+                  ),
+                )
+              )}
+              {more > 0 ? <li className="run-slot-more">{`+${more} more running`}</li> : null}
+            </ol>
+          </ChatShownContext>
+        </SlotStandsOpenContext>
       </InSlotContext>
       <span className="run-slot-clock">
         <RunTicker status={status} />

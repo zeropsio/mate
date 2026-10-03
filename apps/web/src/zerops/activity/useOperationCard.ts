@@ -231,10 +231,11 @@ function readoutOf(
 
 /**
  * Pure: `(operation kind, phase, current state, remembered history, now) → region`.
- * A settled operation (`phase !== "running"`) always prefers its history —
- * the steps it last saw while running, kept under the result's verdict with
- * its build log in place — over whatever the current `state` happens to
- * compute, per the concept's "the result is the verdict" rule (§3). While
+ * A settled operation (`phase !== "running"`) draws its newest fresh read —
+ * the store reads it on until its outcome is read — else its history once
+ * that read the outcome; a remembered read from mid-run keeps its build log
+ * and its secondary processes but never its steps, which would run on under
+ * the result's verdict (§3, "the result is the verdict"). While
  * running, `state` drives the region once a read has produced a pipeline or
  * secondary processes; until then — and whenever the feed goes quiet or off
  * — the history holds what was already shown (steps, secondary processes,
@@ -273,7 +274,24 @@ export function deriveObservedStepsRegion(
   };
 
   if (phase !== "running") {
-    return history === undefined ? undefined : regionOf(history, "");
+    // Its call settled; the store reads on until the outcome is read. The
+    // newest fresh read is drawn; a remembered one only once it read the
+    // outcome — one from mid-run is never drawn as live under the verdict.
+    const fresh =
+      state.kind === "observing" && state.observation.pipeline !== undefined
+        ? state.observation
+        : undefined;
+    const source = fresh ?? history;
+    if (source === undefined) {
+      return undefined;
+    }
+    if (source === fresh || source.outcome !== undefined) {
+      return regionOf(source, "");
+    }
+    const { pipeline: _midRun, ...remembered } = source;
+    return remembered.chips.length === 0 && remembered.buildLog === undefined
+      ? undefined
+      : regionOf(remembered, "");
   }
 
   const current =
@@ -357,16 +375,34 @@ export interface OperationCardRegions {
   readonly liveFrame?: LiveBrowserFrame;
 }
 
+/** Whether a build log's dialog is open, and how to open or close it. */
+export type LogDialogState = readonly [open: boolean, set: (open: boolean) => void];
+
+/**
+ * `logDialog`: where the whole log's dialog keeps whether it is open — its
+ * line, so a dialog the person opened stays open as the line plops from the
+ * live slot into the history; the card's own state otherwise. `readsLog`:
+ * whether its build's log is read — not for a line in the live slot that
+ * stands closed.
+ */
 export function useOperationCard(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
+  logDialog?: LogDialogState,
+  readsLog = true,
 ): OperationCardRegions {
   const target = observationTargetFor(operation);
   const nowMs = useSecondsNowMs(operation.phase === "running");
-  const { state, history, buildLog } = useOperationObservation(target, environmentId, nowMs);
+  const { state, history, buildLog } = useOperationObservation(
+    target,
+    environmentId,
+    nowMs,
+    readsLog,
+  );
   const topology = useZeropsTopology(environmentId);
   // The whole log opens in a dialog, only when asked for.
-  const [logOpen, setLogOpen] = useState(false);
+  const ownLogDialog = useState(false);
+  const [logOpen, setLogOpen] = logDialog ?? ownLogDialog;
   const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
@@ -398,7 +434,11 @@ export function useOperationCard(
     provenance: region.provenance,
     ...(region.pipeline === undefined ? {} : { pipeline: region.pipeline }),
   };
-  if (region.buildLogQuery === undefined) {
+  // The way to the log is drawn once the build wrote a line, and for a
+  // settled build at once: its row stands before its lines are read, so the
+  // card's height is final as it lands.
+  const stands = operation.phase !== "running";
+  if (region.buildLogQuery === undefined || (!stands && buildLog.lines.length === 0)) {
     return { observed, ...fields };
   }
 
@@ -406,6 +446,7 @@ export function useOperationCard(
     lines: buildLog.lines,
     onToggle: () => setLogOpen(!logOpen),
     open: logOpen,
+    stands,
     status: buildLog.status,
     subject: operation.subject,
   });
