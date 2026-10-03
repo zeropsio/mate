@@ -159,8 +159,7 @@ import {
 } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
-import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
-import { useRenameGroup } from "~/zerops/useRenameGroup";
+import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
@@ -1191,9 +1190,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
     | null
   >(null);
-  // The same write the project's own page uses, so one rename means one
-  // thing wherever it is offered.
-  const renameGroup = useRenameGroup();
   // The same write an environment's own page uses, so one way to open a
   // service to the internet means one thing wherever it is offered.
   const route = useEnableRoute();
@@ -2588,7 +2584,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
-  const trouble = toolError ?? renameGroup.trouble ?? route.trouble ?? projectFlow.trouble;
+  const trouble = toolError ?? route.trouble ?? projectFlow.trouble;
   const ungroupedRows = withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
     item: candidate,
     action: deriveZeropsRowAction(rowInput(candidate)).kind,
@@ -2704,26 +2700,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       />
       {mateActions.dialogs}
       {rowDialog?.kind === "rename-group" ? (
-        <ZeropsRenameDialog
-          description="The name is written onto every environment in the project."
-          initialValue={rowDialog.group.nameSource === "id" ? "" : rowDialog.group.name}
+        <ZeropsRenameProjectDialog
+          group={rowDialog.group}
           key={`rename-group:${rowDialog.group.groupId}`}
-          label="Project name"
-          onCancel={() => {
+          onClose={() => {
             setRowDialog(null);
           }}
-          onOpenChange={(open) => {
-            if (!open) setRowDialog(null);
-          }}
-          onSubmit={(name) => {
-            const { group } = rowDialog;
-            setRowDialog(null);
-            void renameGroup.rename(group, name);
-          }}
-          open
-          submitLabel="Rename"
-          title={rowDialog.group.nameSource === "id" ? "Name this project" : "Rename the project"}
-          validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}
         />
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (

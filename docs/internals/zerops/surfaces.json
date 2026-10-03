@@ -852,6 +852,7 @@
         "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
         "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsRenameProjectDialog.tsx",
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.tsx",
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.tsx",
