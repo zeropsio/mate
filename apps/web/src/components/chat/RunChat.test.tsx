@@ -1491,11 +1491,12 @@ describe("RunChat, as the person uses it", () => {
     it("keeps a run open as it settles while the person reads its work, its line at the foot", () => {
       const renderer = mount(workOnly({ live: true, status: status() }));
       // They scrolled up in it to read.
-      act(() =>
+      act(() => {
+        scrollsOf(renderer)[0]!.props.onWheel();
         scrollsOf(renderer)[0]!.props.onScroll({
           currentTarget: { scrollTop: 0, scrollHeight: 900, clientHeight: 440 },
-        }),
-      );
+        });
+      });
       settle(renderer);
       expect(scrollsOf(renderer)).toHaveLength(1);
       const markup = text(renderer);
@@ -1757,11 +1758,121 @@ describe("RunChat, as the person uses it", () => {
       box.scrollHeight = 900;
       box.clientHeight = 440;
       heard[0]!();
-      expect(box.scrollTop).toBe(900);
+      expect(box.scrollTop).toBe(460);
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = saved;
       vi.useRealTimers();
     }
+  });
+
+  // While the run goes on, its scroll keeps its newest line in view through
+  // every arrival; only the person scrolling up in it stops that, and nothing
+  // that arrives then moves what they read, until they scroll back down.
+  describe("its scroll, as lines arrive", () => {
+    /** A live run's scroll with its first line, and its growth heard. */
+    function liveScroll() {
+      const list = { lines: true };
+      const heard: Array<() => void> = [];
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+        readonly callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe(target: unknown) {
+          if (target === list) heard.push(this.callback);
+        }
+        disconnect() {}
+      };
+      // A browser's scroll: it never stands past its foot.
+      let top = 0;
+      const box = {
+        get scrollTop() {
+          return top;
+        },
+        set scrollTop(next: number) {
+          top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        },
+        scrollHeight: 600,
+        clientHeight: 440,
+        toggleAttribute: () => undefined,
+      };
+      const node = (element: { type: unknown }) =>
+        element.type === "ol" ? list : element.type === "div" ? box : {};
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(
+          <Rows>
+            <RunChat
+              row={record([step(command("w1", "echo one"))], { live: true, status: status() })}
+            />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      const scroll = () =>
+        renderer.root.find(
+          (found) => found.type === "div" && found.props["data-run-scroll"] !== undefined,
+        );
+      return {
+        box,
+        /** What it holds grows by `by`, as an arrival does. */
+        grow: (by: number) => {
+          box.scrollHeight += by;
+          for (const callback of heard) callback();
+        },
+        /** It moves to `top`: by the person's wheel, or else by the page. */
+        scrolled: (top: number, byPerson: boolean) => {
+          box.scrollTop = top;
+          act(() => {
+            if (byPerson) scroll().props.onWheel?.();
+            scroll().props.onScroll({
+              currentTarget: {
+                scrollTop: box.scrollTop,
+                scrollHeight: box.scrollHeight,
+                clientHeight: box.clientHeight,
+              },
+            });
+          });
+        },
+        fromFoot: () => box.scrollHeight - box.scrollTop - box.clientHeight,
+      };
+    }
+
+    const saved = { resize: globalThis.ResizeObserver };
+    afterEach(() => {
+      globalThis.ResizeObserver = saved.resize;
+    });
+
+    it("keeps its foot in view through every arrival", () => {
+      const run = liveScroll();
+      for (const by of [65, 40, 120]) {
+        run.grow(by);
+        expect(run.fromFoot()).toBe(0);
+      }
+    });
+
+    it("keeps following through a scroll nobody made, read after the next arrival", () => {
+      const run = liveScroll();
+      run.grow(65);
+      // Its own move to the foot, heard once the next line already grew it.
+      run.box.scrollHeight += 40;
+      run.scrolled(run.box.scrollTop, false);
+      run.grow(0);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    it("holds what the person scrolled up to through three arrivals, then follows from the foot", () => {
+      const run = liveScroll();
+      run.grow(400);
+      run.scrolled(120, true);
+      for (const by of [65, 40, 120]) {
+        run.grow(by);
+        expect(run.box.scrollTop).toBe(120);
+      }
+      run.scrolled(run.box.scrollHeight - run.box.clientHeight - 2, true);
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
+    });
   });
 
   // A long run opens on its newest lines (a two-hour run froze the page as

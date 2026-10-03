@@ -8,10 +8,15 @@ import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeli
 import {
   CHAT_OPENS_WITH,
   chatOpensAt,
+  cutEdges,
   EARLIER_CHUNK,
   EARLIER_REACH_PX,
   earlierShown,
+  FOLLOW_SLACK_PX,
+  followsAfter,
+  footTop,
   forgetRunFolds,
+  laidOutPosition,
   formatClock,
   nowLineFace,
   nowLineOf,
@@ -549,6 +554,127 @@ describe("standsAtFoot", () => {
 
   it("stands at its foot while nothing overflows", () => {
     expect(standsAtFoot({ scrollTop: 0, scrollHeight: 300, clientHeight: 300 })).toBe(true);
+  });
+});
+
+// While the run goes on its scroll follows its newest line: every arrival
+// keeps the foot in view. Only the person scrolling away from the foot stops
+// it — growth, a plop, a resync, a re-measure or the browser clamping the
+// scroll never does — and scrolling back to the foot follows again.
+describe("followsAfter", () => {
+  const foot = { scrollTop: 560, scrollHeight: 1000, clientHeight: 440 };
+  const nearFoot = { ...foot, scrollTop: 560 - FOLLOW_SLACK_PX };
+  const up = { ...foot, scrollTop: 300 };
+  // The scroll as an arrival leaves it before it is followed: the foot moved on.
+  const grownUnder = { scrollTop: 560, scrollHeight: 1065, clientHeight: 440 };
+  it.each([
+    { name: "the person scrolls up", follows: true, byPerson: true, position: up, after: false },
+    {
+      name: "the person scrolls up a hair",
+      follows: true,
+      byPerson: true,
+      position: nearFoot,
+      after: true,
+    },
+    {
+      name: "the person scrolls back to the foot",
+      follows: false,
+      byPerson: true,
+      position: foot,
+      after: true,
+    },
+    {
+      name: "the person scrolls back near the foot",
+      follows: false,
+      byPerson: true,
+      position: nearFoot,
+      after: true,
+    },
+    {
+      name: "the person scrolls, still above",
+      follows: false,
+      byPerson: true,
+      position: up,
+      after: false,
+    },
+    {
+      name: "its own follow read after an arrival",
+      follows: true,
+      byPerson: false,
+      position: grownUnder,
+      after: true,
+    },
+    {
+      name: "a clamp away from the foot",
+      follows: true,
+      byPerson: false,
+      position: up,
+      after: true,
+    },
+    { name: "a clamp onto the foot", follows: false, byPerson: false, position: foot, after: true },
+    {
+      name: "a scroll nobody made, above",
+      follows: false,
+      byPerson: false,
+      position: up,
+      after: false,
+    },
+  ])("$name: $after", ({ follows, byPerson, position, after }) => {
+    expect(followsAfter(follows, { kind: "scrolled", byPerson, position })).toBe(after);
+  });
+
+  it.each([
+    { follows: true, after: true },
+    { follows: false, after: false },
+  ])("growth keeps it as it was ($follows)", ({ follows, after }) => {
+    expect(followsAfter(follows, { kind: "grew" })).toBe(after);
+  });
+
+  it("stops when the person opens something in it", () => {
+    expect(followsAfter(true, { kind: "held" })).toBe(false);
+  });
+});
+
+// A row travelling into its place (a plop from the live slot, a rise) paints
+// past the lines' own foot for a moment; that is no content: the scroll's foot
+// and its fades are read from the lines as laid out.
+describe("laidOutPosition", () => {
+  it.each([
+    { name: "a plop under the foot", scrollHeight: 549, laidHeight: 511, laid: 511 },
+    { name: "nothing travelling", scrollHeight: 511, laidHeight: 511, laid: 511 },
+    { name: "a fractional box", scrollHeight: 511, laidHeight: 511.4, laid: 511 },
+  ])("$name: $laid", ({ scrollHeight, laidHeight, laid }) => {
+    expect(laidOutPosition({ scrollTop: 18, scrollHeight, clientHeight: 493, laidHeight })).toEqual(
+      { scrollTop: 18, scrollHeight: laid, clientHeight: 493 },
+    );
+  });
+});
+
+describe("footTop", () => {
+  it.each([
+    { name: "overflowing", scrollHeight: 1000, clientHeight: 440, top: 560 },
+    { name: "fitting", scrollHeight: 300, clientHeight: 440, top: 0 },
+  ])("$name: $top", ({ scrollHeight, clientHeight, top }) => {
+    expect(footTop({ scrollTop: 0, scrollHeight, clientHeight })).toBe(top);
+  });
+});
+
+// A fade at an edge says lines are cut past it, and nothing else does.
+describe("cutEdges", () => {
+  it.each([
+    { name: "at the foot", scrollTop: 560, scrollHeight: 1000, above: true, below: false },
+    { name: "at the top", scrollTop: 0, scrollHeight: 1000, above: false, below: true },
+    { name: "between", scrollTop: 300, scrollHeight: 1000, above: true, below: true },
+    {
+      name: "a pixel short of the foot",
+      scrollTop: 559,
+      scrollHeight: 1000,
+      above: true,
+      below: false,
+    },
+    { name: "fitting", scrollTop: 0, scrollHeight: 440, above: false, below: false },
+  ])("$name", ({ scrollTop, scrollHeight, above, below }) => {
+    expect(cutEdges({ scrollTop, scrollHeight, clientHeight: 440 })).toEqual({ above, below });
   });
 });
 

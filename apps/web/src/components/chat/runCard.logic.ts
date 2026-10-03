@@ -74,6 +74,73 @@ export function standsAtFoot(scroll: RunScrollPosition): boolean {
   return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1;
 }
 
+/** How near its foot the person may leave the scroll and it still follows. */
+export const FOLLOW_SLACK_PX = 4;
+
+/** What happened to the run's scroll, for whether it follows its foot. */
+export type RunScrollEvent =
+  /** It moved: the person's wheel, touch, keys or bar, or else the page (its own follow, a clamp). */
+  | { readonly kind: "scrolled"; readonly byPerson: boolean; readonly position: RunScrollPosition }
+  /** What it holds grew: a line arriving, a plop, a resync, a re-measure. */
+  | { readonly kind: "grew" }
+  /** The person opened or closed something in it: theirs to read. */
+  | { readonly kind: "held" };
+
+/**
+ * Whether the run's scroll follows its foot after `event`: every arrival
+ * keeps its newest line in view while it does. Standing at its foot (a few
+ * pixels' slack) it follows; only the person moving it away from there, or
+ * opening something in it, stops it. A scroll nobody made — its own follow
+ * read after the next arrival, the browser clamping it — never does.
+ */
+export function followsAfter(follows: boolean, event: RunScrollEvent): boolean {
+  switch (event.kind) {
+    case "held":
+      return false;
+    case "grew":
+      return follows;
+    case "scrolled": {
+      const { position } = event;
+      const fromFoot = position.scrollHeight - position.scrollTop - position.clientHeight;
+      if (fromFoot <= FOLLOW_SLACK_PX) return true;
+      return follows && !event.byPerson;
+    }
+  }
+}
+
+/**
+ * The scroll as its lines are laid out: a row travelling into its place (a
+ * plop from the live slot, a rise) paints past their foot for a moment, and
+ * the browser counts that as more to scroll to. It is not: the foot is where
+ * the lines end.
+ */
+export function laidOutPosition(
+  scroll: RunScrollPosition & { readonly laidHeight: number },
+): RunScrollPosition {
+  return {
+    scrollTop: scroll.scrollTop,
+    scrollHeight: Math.min(scroll.scrollHeight, scroll.laidHeight),
+    clientHeight: scroll.clientHeight,
+  };
+}
+
+/** Where a scroll at its foot stands: its last line's end at its bottom edge. */
+export function footTop(scroll: RunScrollPosition): number {
+  return Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+}
+
+/** The edges lines are cut past: a fade says so there, and only there. */
+export function cutEdges(scroll: RunScrollPosition): {
+  readonly above: boolean;
+  readonly below: boolean;
+} {
+  const overflows = scroll.scrollHeight > scroll.clientHeight + 1;
+  return {
+    above: overflows && scroll.scrollTop > 1,
+    below: overflows && !standsAtFoot(scroll),
+  };
+}
+
 /** Whether the scroll nears its top with earlier lines still undrawn: then it draws them. */
 export function reachesEarlier(
   scroll: Pick<RunScrollPosition, "scrollTop">,
