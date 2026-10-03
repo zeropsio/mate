@@ -114,7 +114,7 @@ export interface LimitNoticeGroup {
 }
 
 export interface LimitAccounts {
-  /** Accounts with bars to draw, the one with the least quota left first. */
+  /** Accounts with bars to draw, in the order of the environments they are first signed in on. */
   readonly accounts: readonly LimitAccount[];
   /** Accounts that could not be read, one entry per driver and notice. */
   readonly notices: readonly LimitNoticeGroup[];
@@ -183,8 +183,95 @@ export function collectLimitAccounts(
       environmentIds: [...new Set([...(group?.environmentIds ?? []), ...environmentIds])],
     });
   }
-  accounts.sort((a, b) => a.urgency - b.urgency);
   return { accounts, notices: [...notices.values()] };
+}
+
+/** How far one environment's limits have come: in, on their way, or not coming this time. */
+export type LimitsRead = "read" | "reading" | "unread";
+
+interface LimitsPresentation {
+  readonly entry: { readonly target: { readonly label: string } };
+  readonly connection: {
+    readonly phase: "available" | "offline" | "connecting" | "reconnecting" | "connected" | "error";
+    readonly error: string | null;
+  };
+  readonly serverConfig: {
+    readonly providers: readonly ServerProvider[];
+    readonly usageLimitSources?: UsageLimitSourceSnapshots | undefined;
+  } | null;
+}
+
+/**
+ * An environment's limits are in once its config is; on their way while it connects — its first
+ * connect, a session renewing, or the frame between its registering and its connect starting (a
+ * registered environment is connected at once); not coming this time once a connect failed, it is
+ * blocked, or the network is down: its own retry brings it back as an answer.
+ */
+export function limitsReadOf(presentation: LimitsPresentation): LimitsRead {
+  if (presentation.serverConfig !== null) return "read";
+  const { phase, error } = presentation.connection;
+  if (phase === "connecting" || phase === "available") return "reading";
+  if (phase === "reconnecting" && error === null) return "reading";
+  return "unread";
+}
+
+export interface LimitsPage<P> {
+  /**
+   * `wait` while nothing can be shown yet and more is on its way, `shown` once something is,
+   * `none` only when the environments are listed whole, every one has answered or will not, and
+   * none reports limits.
+   */
+  readonly state: "wait" | "shown" | "none";
+  /** More may come: the reading line stands under what is shown. */
+  readonly reading: boolean;
+  /**
+   * The environments whose limits are shown: every one before the first still on its way, in the
+   * environments' order, so a late read fills its own place and moves nothing above it.
+   */
+  readonly shown: ReadonlyMap<EnvironmentId, P>;
+  readonly accounts: readonly LimitAccount[];
+  /** The sources pooled by the shown environments: drawn under the cards once nothing reads. */
+  readonly sources: ReturnType<typeof collectLimitSources>;
+  /** What could not be read: drawn under every card, so only once nothing is still reading. */
+  readonly notices: readonly LimitNoticeGroup[];
+  /** More than one environment is listed: each account names where it is signed in. */
+  readonly tellApart: boolean;
+}
+
+/**
+ * The limits page before every environment has answered (unknown is not empty): no "none" until
+ * the list is whole and every environment answered or will not, and the cards in the
+ * environments' order — never their reads' arrival — so nothing moves while the rest come in.
+ */
+export function limitsPage<P extends LimitsPresentation>(input: {
+  /** The environments are listed whole: none is still to be registered. */
+  readonly listed: boolean;
+  readonly presentations: ReadonlyMap<EnvironmentId, P>;
+}): LimitsPage<P> {
+  const shown = new Map<EnvironmentId, P>();
+  // An environment registered later joins the list's end: only one still reading holds back those
+  // after it.
+  let held = false;
+  for (const [environmentId, presentation] of input.presentations) {
+    const read = limitsReadOf(presentation);
+    if (read === "reading") held = true;
+    if (held) continue;
+    if (read === "read") shown.set(environmentId, presentation);
+  }
+  const reading = held || !input.listed;
+  const { accounts, notices } = collectLimitAccounts(shown);
+  const sources = reading ? [] : collectLimitSources(shown);
+  const settled = reading ? [] : notices;
+  const any = accounts.length > 0 || settled.length > 0 || sources.length > 0;
+  return {
+    state: any ? "shown" : reading ? "wait" : "none",
+    reading,
+    shown,
+    accounts,
+    sources,
+    notices: settled,
+    tellApart: input.presentations.size > 1,
+  };
 }
 
 function checkedAtMillis(limits: ServerProviderUsageLimits): number {

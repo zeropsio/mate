@@ -143,7 +143,7 @@ export function UsagePage({
   const [breakdownChoice, setBreakdown] = useState<UsageBreakdown | "auto">("auto");
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
-  const { identities, owners } = useUsageEnvironmentIdentities();
+  const { identities, owners, listed } = useUsageEnvironmentIdentities();
   const { person: scopePerson, project: scopeProject, mate: scopeMate } = scope;
   const include = useMemo(() => {
     const current = { person: scopePerson, project: scopeProject, mate: scopeMate };
@@ -436,7 +436,7 @@ export function UsagePage({
               </div>
             ) : null}
             {showingLimits ? (
-              <UsageLimitsSection now={limitsNow} identities={identities} />
+              <UsageLimitsSection now={limitsNow} identities={identities} listed={listed} />
             ) : settling ? (
               <>
                 {(isPending || isPartial) && environments.length > 1 ? (

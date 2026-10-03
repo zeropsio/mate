@@ -20,6 +20,7 @@ import {
   formatResetsIn,
   limitsNotice,
   limitsNoticeLine,
+  limitsPage,
   paceOf,
   providersWithLimits,
   remainingPercent,
@@ -258,7 +259,9 @@ describe("collectLimitAccounts", () => {
     );
   });
 
-  it("lists the account with the least quota left in any window first", () => {
+  // Stable, never by arrival or by what each read says: a late read fills its own place and a
+  // card never moves under the eye (the loading pass, 2026-10-03).
+  it("lists the accounts in the environments' order, whatever quota each has left", () => {
     const weekly = { ...window, id: "weekly", kind: "weekly", usedPercent: 95 } as const;
     const result = collectLimitAccounts(
       presentations(
@@ -275,9 +278,9 @@ describe("collectLimitAccounts", () => {
       ),
     );
     expect(result.accounts.map(({ key, urgency }) => [key, urgency])).toEqual([
+      ["claudeAgent:roomy@example.com", 80],
       ["claudeAgent:weekly@example.com", 5],
       ["claudeAgent:session@example.com", 30],
-      ["claudeAgent:roomy@example.com", 80],
     ]);
   });
 
@@ -786,5 +789,153 @@ describe("remainingPercent", () => {
     expect(remainingPercent({ ...window, usedPercent: 0 })).toBe(100);
     expect(remainingPercent({ ...window, usedPercent: 100 })).toBe(0);
     expect(remainingPercent({ ...window, usedPercent: 33.4 })).toBe(67);
+  });
+});
+
+describe("limitsPage: unknown is not empty", () => {
+  const claude = ProviderDriverKind.make("claudeAgent");
+  const limited = (email: string, usedPercent = 40): ServerProvider =>
+    provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claude"),
+      auth: { status: "authenticated", email },
+      usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [{ ...window, usedPercent }] },
+    });
+  const unreadable = provider({
+    usageLimits: {
+      checkedAt: "2026-09-03T11:00:00.000Z",
+      windows: [],
+      unavailable: { reason: "probeFailed" },
+    },
+  });
+  type Phase = "available" | "offline" | "connecting" | "reconnecting" | "connected" | "error";
+  /** One environment: its connection, and its config once it has answered. */
+  const at = (
+    phase: Phase,
+    providers: readonly ServerProvider[] | null = null,
+    error: string | null = null,
+  ) => ({
+    entry: { target: { label: "node-id-1.runtime.zcp.zerops" } },
+    connection: { phase, error },
+    serverConfig: providers === null ? null : { providers },
+  });
+  const page = (
+    listed: boolean,
+    ...environments: ReadonlyArray<readonly [string, ReturnType<typeof at>]>
+  ) =>
+    limitsPage({
+      listed,
+      presentations: new Map(environments.map(([id, entry]) => [EnvironmentId.make(id), entry])),
+    });
+  const seen = (result: ReturnType<typeof page>) => ({
+    state: result.state,
+    reading: result.reading,
+    accounts: result.accounts.map((account) => account.key),
+    notices: result.notices.length,
+  });
+
+  it.each([
+    ["the environments not listed yet", page(false), "wait", true, [], 0],
+    ["no environment, the list read whole", page(true), "none", false, [], 0],
+    [
+      "an environment on its first connect",
+      page(true, ["a", at("connecting")]),
+      "wait",
+      true,
+      [],
+      0,
+    ],
+    // A registered environment is connected at once: "available" is the frame before it starts.
+    ["an environment just registered", page(true, ["a", at("available")]), "wait", true, [], 0],
+    [
+      "an environment renewing its session",
+      page(true, ["a", at("reconnecting")]),
+      "wait",
+      true,
+      [],
+      0,
+    ],
+    [
+      "an environment whose connect failed: it will not answer this time",
+      page(true, ["a", at("reconnecting", null, "refused")]),
+      "none",
+      false,
+      [],
+      0,
+    ],
+    ["an environment blocked", page(true, ["a", at("error", null, "gone")]), "none", false, [], 0],
+    ["an environment offline", page(true, ["a", at("offline")]), "none", false, [], 0],
+    [
+      "every environment answered, none reports limits",
+      page(true, ["a", at("connected", [])], ["b", at("connected", [])]),
+      "none",
+      false,
+      [],
+      0,
+    ],
+    [
+      "the first answered, the second on its way: the first shows, the reading goes on",
+      page(true, ["a", at("connected", [limited("a@example.com")])], ["b", at("connecting")]),
+      "shown",
+      true,
+      ["claudeAgent:a@example.com"],
+      0,
+    ],
+    [
+      "the second answered first: it waits for the first, whose place is above it",
+      page(true, ["a", at("connecting")], ["b", at("connected", [limited("b@example.com")])]),
+      "wait",
+      true,
+      [],
+      0,
+    ],
+    [
+      "the first failed, the second answered: the second shows",
+      page(
+        true,
+        ["a", at("error", null, "gone")],
+        ["b", at("connected", [limited("b@example.com")])],
+      ),
+      "shown",
+      false,
+      ["claudeAgent:b@example.com"],
+      0,
+    ],
+    [
+      "an answer before the list is whole: shown, the reading goes on",
+      page(false, ["a", at("connected", [limited("a@example.com")])]),
+      "shown",
+      true,
+      ["claudeAgent:a@example.com"],
+      0,
+    ],
+    [
+      "a notice waits for the reading to end: it stands under every card",
+      page(true, ["a", at("connected", [unreadable])], ["b", at("connecting")]),
+      "wait",
+      true,
+      [],
+      0,
+    ],
+    [
+      "a notice once every environment answered",
+      page(true, ["a", at("connected", [unreadable])], ["b", at("connected", [])]),
+      "shown",
+      false,
+      [],
+      1,
+    ],
+  ] as const)("%s", (_case, result, state, reading, accounts, notices) => {
+    expect(seen(result)).toEqual({ state, reading, accounts, notices });
+  });
+
+  it("tells environments apart by the list, known up front, never by which reads are in", () => {
+    const one = page(false, ["a", at("connected", [limited("a@example.com")])]);
+    const two = page(
+      true,
+      ["a", at("connected", [limited("a@example.com")])],
+      ["b", at("connecting")],
+    );
+    expect([one.tellApart, two.tellApart]).toEqual([false, true]);
   });
 });
