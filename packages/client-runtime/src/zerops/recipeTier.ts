@@ -341,6 +341,18 @@ export function recipeTierServices(yaml: string): ReadonlyArray<RecipeTierServic
 }
 
 /**
+ * The hostnames of the tier's zcp services, by their own `type`: a Mate's tier declares none, its
+ * press bringing the one container a project holds (audit D2).
+ */
+export function recipeTierZcpServices(yaml: string): ReadonlyArray<string> {
+  return (parseTier(yaml)?.items ?? []).flatMap((item) =>
+    item.hostname !== undefined && ownScalar(item, "type")?.startsWith("zcp@") === true
+      ? [item.hostname]
+      : [],
+  );
+}
+
+/**
  * A Mate's tier as its two imports: the managed part, which goes in with the
  * project, and the runtimes, which go in once the project is closed off
  * (the module's header). `undefined` when the tier declares no services — a

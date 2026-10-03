@@ -1247,6 +1247,77 @@ describe("HQ API", () => {
         }),
     );
 
+    // One Mate per project (audit D2): a zcp enrolls naming its service, the one the Mate's record
+    // names — at its set-up where its client knows it, else the first that enrolls — and another
+    // service of the project is refused. An HQ that does not know a field a zcp names ignores it,
+    // as this one does.
+    it.effect("refuses a zcp service other than its Mate's with 409 not_this_projects_mate", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* setUpMate(call, "P_MATE");
+        fake.projects.push({
+          id: "P_NAMED",
+          orgId: "ORG",
+          name: "P_NAMED",
+          status: "ACTIVE",
+          tags: [],
+          userRoles: [],
+          publicZone: "P_NAMED.prg1-zerops.zone",
+        });
+        const named = yield* call("POST", "/api/mates", {
+          session,
+          body: { projectId: "P_NAMED", name: "Bo", face: "face-1", serviceId: "S4" },
+        });
+        assert.strictEqual(named.status, 201);
+        for (const [id, projectId] of [
+          ["S1", "P_MATE"],
+          ["S2", "P_MATE"],
+          ["S3", "P_NAMED"],
+          ["S4", "P_NAMED"],
+        ] as const) {
+          fake.services.push({
+            id,
+            projectId,
+            name: id.toLowerCase(),
+            status: "ACTIVE",
+            isSystem: false,
+            subdomainAccess: false,
+            http: false,
+            named: null,
+            activeVersionId: null,
+          });
+        }
+        const present = (projectId: string, body: Readonly<Record<string, string>>) =>
+          Effect.gen(function* () {
+            const { nonce } = (yield* call("POST", "/api/mate/challenge", {
+              body: { projectId },
+            })).body as { readonly nonce: string };
+            fake.env.set(projectId, [{ key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false }]);
+            const answer = yield* call("POST", "/api/mate/credential", {
+              body: { projectId, nonce, ...body },
+            });
+            return [answer.status, (answer.body as { readonly code?: string }).code];
+          });
+        assert.deepStrictEqual(
+          [
+            yield* present("P_MATE", { serviceId: "S1", futureField: "kept out" }),
+            yield* present("P_MATE", { serviceId: "S2" }),
+            yield* present("P_MATE", { serviceId: "S1" }),
+            yield* present("P_NAMED", { serviceId: "S3" }),
+            yield* present("P_NAMED", { serviceId: "S4" }),
+          ],
+          [
+            [200, undefined],
+            [409, "not_this_projects_mate"],
+            [200, undefined],
+            [409, "not_this_projects_mate"],
+            [200, undefined],
+          ],
+        );
+      }),
+    );
+
     // Audit K3 and the adoption's harden: a Mate names its own key's id — an id, never a value — at
     // its enrollment and again with its credential, and HQ tells it to whoever administers the
     // Mate's project, who adopts it or deletes it; nobody else.

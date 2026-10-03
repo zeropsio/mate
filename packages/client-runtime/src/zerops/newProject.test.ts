@@ -446,6 +446,24 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(writesOf(requests)).toEqual([]);
   });
 
+  // One Mate per project (audit D2): a project holding several zcp services is no one Mate's, and
+  // none of them is picked as its container.
+  it("refuses a project holding several zcp services, naming them, and writes nothing", async () => {
+    const zcp = (id: string, name: string) => ({
+      id,
+      name,
+      serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    });
+    const { client, requests } = platformClient({
+      services: [zcp("svc-1", "zcp"), zcp("svc-2", "zcp1")],
+    });
+
+    await expect(client.importDevelopmentContainer(INPUT)).rejects.toThrow(
+      "This project has more than one Zerops Control Plane (zcp, zcp1). A project holds one Mate: delete the others in Zerops, then try again.",
+    );
+    expect(writesOf(requests)).toEqual([]);
+  });
+
   it("reuses a key a stopped press minted: its value replaced, never a second key", async () => {
     const { client, requests } = platformClient({
       tokens: [

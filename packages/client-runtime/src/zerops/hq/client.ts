@@ -65,6 +65,14 @@ export interface HqNewMate extends HqMateRecord {
 }
 
 /**
+ * A Mate's record as a set-up on a project holding its zcp service already writes it: naming that
+ * service, the one Mate of its project (audit D2).
+ */
+export interface HqMateSetUp extends HqNewMate {
+  readonly serviceId?: string;
+}
+
+/**
  * A Mate as HQ reads it: its record, its birth, and — joined from HQ's overview of it, where the
  * reader may observe it (`hqMates.ts`) — its agents' logins.
  */
@@ -113,10 +121,11 @@ export interface HqAttach {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   /**
-   * The Mate's name, face and stand-up ask; with kind `mate`, and only with it. An attach that
-   * closes a birth intent takes the intent's ask instead.
+   * The Mate's name, face and stand-up ask, and its zcp service where its project holds it; with
+   * kind `mate`, and only with it. An attach that closes a birth intent takes the intent's ask
+   * instead.
    */
-  readonly mate?: HqNewMate;
+  readonly mate?: HqMateSetUp;
   /** A stage's or a production's environment name; HQ names it from its project without one. */
   readonly environment?: { readonly name: string };
   /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
@@ -205,7 +214,7 @@ export interface HqApi {
     to: { readonly appId: string | null; readonly kind: RoleProjectKind },
   ) => Promise<void>;
   /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
-  readonly createMate: (mate: { readonly projectId: string } & HqNewMate) => Promise<void>;
+  readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
   /**
    * That a Mate's project is closed off, as its project's owner or admin records it (`POST
    * /api/mates/{projectId}/closed-off`). HQ refuses it on a Mate it holds no record of

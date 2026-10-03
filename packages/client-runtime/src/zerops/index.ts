@@ -28,6 +28,9 @@ export {
 export {
   buildZeropsContainerUrl,
   isZcpService,
+  mateContainerOf,
+  severalMatesLine,
+  type MateContainer,
   zeropsRegionFromPublicZone,
 } from "./containerAddress.ts";
 

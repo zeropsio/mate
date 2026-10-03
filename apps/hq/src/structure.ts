@@ -99,7 +99,13 @@ export interface AttachInput {
    * A Mate's record. `standUp`: the caller asks for its stand-up, where no birth intent carries
    * the ask (`recordBirth`); recorded in the same write as the record (B3).
    */
-  readonly mate?: { readonly name: string; readonly face: string; readonly standUp?: boolean };
+  readonly mate?: {
+    readonly name: string;
+    readonly face: string;
+    readonly standUp?: boolean;
+    /** Its zcp service, where its project holds one already: one Mate per project (audit D2). */
+    readonly serviceId?: string;
+  };
   /** A stage's or a production's environment, named as given; else named from its project. */
   readonly environment?: { readonly name: string };
   /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
@@ -174,6 +180,8 @@ export interface MateRecord {
 /** A Mate's record as it is set up: the caller may ask for its stand-up in the same write (B3). */
 export interface NewMateRecord extends MateRecord {
   readonly standUp?: boolean;
+  /** Its zcp service, where its project holds one already: one Mate per project (audit D2). */
+  readonly serviceId?: string;
 }
 
 /**
@@ -793,14 +801,16 @@ export const structureLayer = (options: {
                   // write (B3). One with no intent carries its own ask.
                   if (input.mate !== undefined) {
                     yield* sql`
-                      INSERT INTO hq_mate (project_id, name, face, made_by, standup_requested_by)
+                      INSERT INTO hq_mate
+                        (project_id, name, face, made_by, standup_requested_by, service_id)
                       SELECT ${input.projectId}, ${input.mate.name}, ${input.mate.face},
                         COALESCE(intent.made_by, ${userId}),
                         CASE
                           WHEN intent.made_by IS NOT NULL THEN
                             CASE WHEN intent.standup THEN intent.made_by END
                           WHEN ${input.mate.standUp === true} THEN ${userId}
-                        END
+                        END,
+                        ${input.mate.serviceId ?? null}
                       FROM (SELECT 1) AS one
                       LEFT JOIN hq_birth_intent AS intent
                         ON intent.id::text = ${input.birth ?? null} AND intent.app_id::text = ${appId}
@@ -982,9 +992,10 @@ export const structureLayer = (options: {
                     view,
                   );
                   yield* sql`
-                    INSERT INTO hq_mate (project_id, name, face, made_by, standup_requested_by)
+                    INSERT INTO hq_mate
+                      (project_id, name, face, made_by, standup_requested_by, service_id)
                     VALUES (${mate.projectId}, ${name}, ${mate.face}, ${userId},
-                      ${mate.standUp === true ? userId : null})`;
+                      ${mate.standUp === true ? userId : null}, ${mate.serviceId ?? null})`;
                 }),
               ),
               "mate_record_exists",

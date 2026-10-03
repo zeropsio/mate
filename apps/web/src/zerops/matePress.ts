@@ -35,8 +35,11 @@ import {
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
   heldOf,
+  mateContainerOf,
   readMateFace,
   readZeropsMembership,
+  severalMatesLine,
+  type MateContainer,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
@@ -629,20 +632,25 @@ export type PressRegistration = {
 
 /**
  * The `register` step: a Mate's record in HQ — attached to its application, or in none — with its
- * stand-up ask in the same write; for a stage or a production, `addGroupEnvironment` — the attachment
- * and its deploy key. Each write reads what is there first, so asking again writes nothing twice.
+ * stand-up ask in the same write, naming `serviceId`, its zcp service, where its project holds it
+ * already (one Mate per project, audit D2); for a stage or a production, `addGroupEnvironment` —
+ * the attachment and its deploy key. Each write reads what is there first, so asking again writes
+ * nothing twice.
  */
 export function pressRegistration(
   inputs: PressInputs,
   registration: PressRegistration,
+  serviceId?: string,
 ): (projectId: string) => Promise<void> {
   const hq = accountHqApi(inputs.client, inputs.organizationId, registration.hq);
+  const service = serviceId === undefined ? {} : { serviceId };
   return async (projectId) => {
     if (registration.kind === "mate-record") {
       await createMateRecord(hq, {
         projectId,
         ...registration.record,
         standUp: registration.standUp,
+        ...service,
       });
       return;
     }
@@ -655,6 +663,7 @@ export function pressRegistration(
           // Empty where none was picked: the Mate wears its name's tint.
           face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
           standUp: registration.standUp,
+          ...service,
         },
         ...(registration.intent === undefined ? {} : { birth: registration.intent }),
       });
@@ -886,7 +895,9 @@ async function pressRun(
  * where it has one — its project closed off, its registration. A New project's first Mate goes on
  * with them once the platform took its project; *Finish setup* runs them on a half-made Mate, in
  * any browser — for one it adopts, which HQ holds no record of, the close-off also lowers a key
- * still at `ADMIN` and moves it off the project's variables (`hardenMate`).
+ * still at `ADMIN` and moves it off the project's variables (`hardenMate`). A project holds one
+ * Mate (audit D2): one holding several zcp services stops before anything is written, naming them,
+ * and the one it holds is the service its record names.
  */
 export async function finishMateSetup(input: {
   readonly inputs: PressInputs;
@@ -975,9 +986,71 @@ async function mateKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promis
   }
 }
 
+/**
+ * The Mate's zcp service of the project, one Mate per project (audit D2): its id where the project
+ * holds one, none where it holds none yet; a project holding several is refused, naming them.
+ */
+async function mateServiceOf(
+  input: Parameters<typeof finishMateSetup>[0],
+): Promise<
+  | { readonly ok: true; readonly serviceId: string | undefined }
+  | { readonly ok: false; readonly error: string }
+> {
+  const read: { container?: MateContainer } = {};
+  const listed = await withPressTries(async () => {
+    read.container = mateContainerOf(
+      await input.inputs.client.listProjectServices(input.projectId),
+    );
+  }, input.sleep);
+  if (!listed.ok) return listed;
+  const container = read.container ?? { kind: "none" };
+  if (container.kind === "several") return { ok: false, error: severalMatesLine(container.names) };
+  return { ok: true, serviceId: container.kind === "one" ? container.service.id : undefined };
+}
+
+/** A Finish setup stopped at `failedStep` before its steps ran, with Try again: it runs again, whole. */
+function finishStopped(
+  input: Parameters<typeof finishMateSetup>[0],
+  failedStep: EnvironmentCreationStep,
+  error: string,
+): EnvironmentCreationOutcome {
+  if (input.isCurrent()) {
+    settlePress(input.projectId, {
+      kind: "failed",
+      step: failedStep.kind,
+      reason: error,
+      retry: async () => {
+        settlePress(input.projectId, { kind: "pressing" });
+        await finishMateSetup(input);
+      },
+    });
+  }
+  return { ok: false, projectId: input.projectId, failedStep, error };
+}
+
 async function finishLocked(
   input: Parameters<typeof finishMateSetup>[0],
 ): Promise<EnvironmentCreationOutcome> {
+  const steps: ReadonlyArray<EnvironmentCreationStep> = [
+    // Its record in its application before its container (F6b, 2026-10-03): a Finish setup that
+    // stops after leaves a Mate HQ holds there. A registration that failed — refused, or failing
+    // after its tries — stops nothing: the container and the close-off still run, and the Mate
+    // stays in no application until a Finish setup attaches it where its birth intent says.
+    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
+    ...(input.container === null
+      ? []
+      : [{ kind: "import-container", agents: input.container.agents } as const]),
+    // Isolated a moment ago by the harden, which the close-off trusts where no container comes
+    // after it.
+    input.harden === true && input.container === null
+      ? { kind: "close-off", isolated: true }
+      : { kind: "close-off" },
+    { kind: "await-ready", withAgent: true },
+  ];
+  // Read before anything is written: a project holding several zcp services is no one Mate's, and
+  // the one it holds is the Mate its record names.
+  const service = await mateServiceOf(input);
+  if (!service.ok) return finishStopped(input, steps[0]!, service.error);
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
     // The key its Mate named to HQ by its id, hardened by it alone (audit K3); matched on the token
@@ -999,49 +1072,17 @@ async function finishLocked(
     if (hardened.ok && keyNotLowered !== null && input.isCurrent()) {
       noteKeyNotLowered(input.projectId, keyNotLowered);
     }
-    if (!hardened.ok) {
-      if (input.isCurrent()) {
-        settlePress(input.projectId, {
-          kind: "failed",
-          step: "close-off",
-          reason: hardened.error,
-          // The harden is safe to ask again: Finish setup runs again, whole.
-          retry: async () => {
-            settlePress(input.projectId, { kind: "pressing" });
-            await finishMateSetup(input);
-          },
-        });
-      }
-      return {
-        ok: false,
-        projectId: input.projectId,
-        failedStep: { kind: "close-off" },
-        error: hardened.error,
-      };
-    }
+    // The harden is safe to ask again: Finish setup runs again, whole.
+    if (!hardened.ok) return finishStopped(input, { kind: "close-off" }, hardened.error);
   }
-  const steps: ReadonlyArray<EnvironmentCreationStep> = [
-    // Its record in its application before its container (F6b, 2026-10-03): a Finish setup that
-    // stops after leaves a Mate HQ holds there. A registration that failed — refused, or failing
-    // after its tries — stops nothing: the container and the close-off still run, and the Mate
-    // stays in no application until a Finish setup attaches it where its birth intent says.
-    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
-    ...(input.container === null
-      ? []
-      : [{ kind: "import-container", agents: input.container.agents } as const]),
-    // Isolated a moment ago by the harden, which the close-off trusts where no container comes
-    // after it.
-    input.harden === true && input.container === null
-      ? { kind: "close-off", isolated: true }
-      : { kind: "close-off" },
-    { kind: "await-ready", withAgent: true },
-  ];
   return runPress({
     organizationId: input.inputs.organizationId,
     steps,
     platform: pressPlatform(input.inputs, {
       register:
-        input.registration === null ? null : pressRegistration(input.inputs, input.registration),
+        input.registration === null
+          ? null
+          : pressRegistration(input.inputs, input.registration, service.serviceId),
       hq: input.hq,
       readObservedServices: async () => [],
     }),

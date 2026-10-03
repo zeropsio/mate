@@ -16,6 +16,8 @@ import { isThrowawayName } from "../authorization/zeropsThrowaway.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
+  mateContainerOf,
+  severalMatesLine,
   zeropsRegionFromPublicZone,
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
@@ -1769,7 +1771,8 @@ export class ZeropsApiClient {
    *
    * Every write is safe to make again, so a press tried again finishes what
    * the first one started:
-   * - a project that has its container already makes no write at all;
+   * - a project that has its container already makes no write at all, and one holding several zcp
+   *   services is refused, naming them: a project holds one Mate (audit D2);
    * - a key an earlier press minted, its container never imported, is reused
    *   — its own grant set again where it is not `BASIC_USER` (`planMateKey`),
    *   and its value regenerated, because the value is shown once and nothing
@@ -1793,8 +1796,9 @@ export class ZeropsApiClient {
     beforeWrite?: () => Promise<void>,
   ): Promise<{ readonly serviceName: string; readonly imported: boolean }> {
     const services = await this.listProjectServices(input.projectId, signal);
-    const container = services.find(isZcpService);
-    if (container !== undefined) return { serviceName: container.name, imported: false };
+    const container = mateContainerOf(services);
+    if (container.kind === "several") throw new Error(severalMatesLine(container.names));
+    if (container.kind === "one") return { serviceName: container.service.name, imported: false };
 
     const generation = this.#generation;
     const grants: ReadonlyArray<ZeropsProjectGrant> = [

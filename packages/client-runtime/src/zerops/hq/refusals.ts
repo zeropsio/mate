@@ -130,7 +130,7 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
 /**
  * Why HQ did not enroll a Mate (`MateRefused` in `apps/hq/src/mateCredentials.ts`; zcp's
  * `~/.zcp/hq/outcome.json`), in words: what stands, and what the person can do — or that zcp tries
- * again on its own, which it always does.
+ * again on its own, which it does for every refusal but `not_this_projects_mate`.
  */
 const ENROLLMENT_WORDS: Readonly<Record<string, string>> = {
   // Its record comes with its press: one that stopped before it wrote it, Finish setup writes it.
@@ -141,6 +141,9 @@ const ENROLLMENT_WORDS: Readonly<Record<string, string>> = {
   env_mismatch: "HQ could not check its Zerops project yet. It tries again on its own.",
   expired: "HQ could not check its Zerops project yet. It tries again on its own.",
   unknown_nonce: "HQ could not check its Zerops project yet. It tries again on its own.",
+  // One Mate per project (audit D2): zcp stops asking once HQ names another as its project's Mate.
+  not_this_projects_mate:
+    "Another Zerops Control Plane in its project is the project's Mate, and a project holds one. Delete this one in Zerops, or delete the other and restart this one.",
 };
 
 /** HQ's refusal of a Mate's enrollment, in words; a code this build has none for is named. */

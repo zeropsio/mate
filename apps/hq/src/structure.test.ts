@@ -797,6 +797,44 @@ describe("structure", () => {
         ),
     );
 
+    // One Mate per project (audit D2): a client that sets up a Mate on a project holding its zcp
+    // service names it, and the record keeps it; a Mate born before its container names none.
+    it.effect("records the zcp service a Mate's client names, at its set-up and its attach", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const team = yield* structure.createApp("owner", "Team");
+          yield* structure.createMate("owner", {
+            projectId: "P_OWN",
+            name: "Ada",
+            face: "face-3",
+            serviceId: "S_OWN",
+          });
+          yield* structure.attachProject("owner", team.id, {
+            projectId: "P_TEAM",
+            kind: "mate",
+            mate: { name: "Bo", face: "face-1", serviceId: "S_TEAM" },
+          });
+          yield* structure.attachProject("owner", team.id, {
+            projectId: "P_DEV",
+            kind: "mate",
+            mate: { name: "Cy", face: "face-2" },
+          });
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{ readonly project_id: string; readonly service_id: string }>`
+            SELECT project_id, service_id FROM hq_mate ORDER BY project_id`;
+          assert.deepStrictEqual(
+            rows.map((row) => [row.project_id, row.service_id]),
+            [
+              ["P_DEV", null],
+              ["P_OWN", "S_OWN"],
+              ["P_TEAM", "S_TEAM"],
+            ],
+          );
+        }),
+      ),
+    );
+
     // A Mate HQ recorded before births were was set up whole, as clients did then: 0007 records it
     // closed off, or the client's close-off gate would hold it for good. A Mate recorded after
     // reads as not closed off until its press marks it.
