@@ -115,6 +115,24 @@ export function endedSince(
   return [...before].filter((key) => !running.has(key) && ended.has(key));
 }
 
+/** What the band drew running, and the endings it holds. */
+export interface BandSeen {
+  readonly running: ReadonlySet<string>;
+  readonly held: ReadonlySet<string>;
+}
+
+/**
+ * The band after a new dock: what it no longer runs, and the band drew
+ * running, is held — unless a resync brought it, which nobody watched end.
+ */
+export function bandSeenNext(seen: BandSeen, dock: DockModel | null, syncing: boolean): BandSeen {
+  const ended = syncing ? [] : endedSince(seen.running, dock);
+  return {
+    running: bandKeys(dock),
+    held: ended.length === 0 ? seen.held : new Set([...seen.held, ...ended]),
+  };
+}
+
 /**
  * The dock as the band draws it, with the endings `held` drawn as they ended
  * (`BAND_ENDING_MS`), beside what runs: a deploy that finished shows it

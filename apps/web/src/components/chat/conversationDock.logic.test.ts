@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { assistant, at, operation, tool, user } from "./conversationFixtures";
 import {
   bandKeys,
+  bandSeenNext,
   deriveDock,
   endedSince,
   withEndingsHeld,
@@ -491,5 +492,44 @@ describe("latestUsagePause", () => {
     ["nothing yet", [], false],
   ])("%s", (_label, entries, paused) => {
     expect(latestUsagePause(entries) !== null).toBe(paused);
+  });
+});
+
+// A resync brings what ended while nobody watched: the band lets it go
+// without holding its ending (pass 35).
+describe("bandSeenNext", () => {
+  const base = {
+    timelineEntries: [],
+    isWorking: true,
+    runningTurnId: "t1",
+    agentPanelModel: emptyAgentPanelModel(),
+    plan: null,
+    pause: null,
+  };
+  const runningDock = () =>
+    deriveDock({
+      ...base,
+      timelineEntries: [],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+      ]),
+    });
+  const endedDock = () =>
+    deriveDock({
+      ...base,
+      timelineEntries: [],
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Smoke tests" }),
+        task("task.completed", "b1", 3, { status: "failed" }),
+      ]),
+    });
+  it.each([
+    { name: "watched: the ending is held", syncing: false, held: ["task:b1"] },
+    { name: "a resync: nothing is held", syncing: true, held: [] },
+  ])("$name", ({ syncing, held }) => {
+    const before = { running: bandKeys(runningDock()), held: new Set<string>() };
+    const next = bandSeenNext(before, endedDock(), syncing);
+    expect([...next.held]).toEqual(held);
+    expect([...next.running]).toEqual([]);
   });
 });

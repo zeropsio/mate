@@ -2950,6 +2950,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     live: slotted ? model.live.map((item) => item.key) : NO_KEYS,
     record: recordKeys,
     final: !slotted,
+    syncing: ctx.syncing,
     onChange: (from, to) => {
       const after = slotHolds(to);
       const leaving = [...slotHolds(from)].filter((key) => !after.has(key));

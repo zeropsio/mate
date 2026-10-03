@@ -7,18 +7,31 @@
  */
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 
-import { slotDue, slotOffer, slotSettle, slotStart, type LiveSlot } from "./liveSlot.logic";
+import {
+  slotDue,
+  slotOffer,
+  slotResync,
+  slotSettle,
+  slotStart,
+  type LiveSlot,
+} from "./liveSlot.logic";
 
 export function useLiveSlot({
   live,
   record,
   final,
+  syncing = false,
   onChange,
 }: {
   readonly live: ReadonlyArray<string>;
   readonly record: ReadonlyArray<string>;
   /** The run is over: everything is history at once. */
   readonly final: boolean;
+  /**
+   * The thread catches up after a reload or a reconnect: what it brings is
+   * history at once, never an arrival that stands or plops (`slotResync`).
+   */
+  readonly syncing?: boolean;
   readonly onChange?: (from: LiveSlot, to: LiveSlot) => void;
 }): LiveSlot {
   const [slot, setSlot] = useState(() => slotStart({ live, record, at: Date.now() }));
@@ -30,9 +43,17 @@ export function useLiveSlot({
     slotRef.current = next;
     setSlot(next);
   };
-  const offer = useEffectEvent(() =>
-    move(slotOffer(slotRef.current, { live, record, at: Date.now(), final })),
-  );
+  const offer = useEffectEvent(() => {
+    if (syncing && !final) {
+      // Nobody watched it: no landing to draw.
+      const next = slotResync(slotRef.current, { live, record, at: Date.now() });
+      if (next === slotRef.current) return;
+      slotRef.current = next;
+      setSlot(next);
+      return;
+    }
+    move(slotOffer(slotRef.current, { live, record, at: Date.now(), final }));
+  });
   const settle = useEffectEvent(() => move(slotSettle(slotRef.current, Date.now())));
   // Offered on every draw: an offer that changes nothing returns the slot it was given.
   useLayoutEffect(() => offer());
