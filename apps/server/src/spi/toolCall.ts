@@ -46,6 +46,7 @@
  *
  * @module toolCall
  */
+import { mcpToolOfTitle } from "./mcpToolTitle.ts";
 import {
   isToolLifecycleItemType,
   type CanonicalItemType,
@@ -306,14 +307,26 @@ const readCodexToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =>
 };
 
 /**
- * OpenCode's native tools whose names hold an underscore: no MCP call. Every
+ * OpenCode's own tools whose names hold an underscore: no MCP call. Every
  * other underscored name is an MCP tool, `<server>_<tool>` (`zerops_zerops_deploy`).
  */
-const OPENCODE_NATIVE_UNDERSCORED: ReadonlySet<string> = new Set(["apply_patch"]);
+const OPENCODE_NATIVE_UNDERSCORED: ReadonlySet<string> = new Set([
+  "apply_patch",
+  "plan_exit",
+  "plan_enter",
+]);
+
+/** OpenCode's own language-server tools: `lsp_diagnostics`, `lsp_hover`, ... */
+const OPENCODE_NATIVE_PREFIX = "lsp_";
 
 const splitOpenCodeName = (raw: string): { readonly name: string; readonly server?: string } => {
   const split = raw.indexOf("_");
-  if (split <= 0 || split === raw.length - 1 || OPENCODE_NATIVE_UNDERSCORED.has(raw)) {
+  if (
+    split <= 0 ||
+    split === raw.length - 1 ||
+    OPENCODE_NATIVE_UNDERSCORED.has(raw) ||
+    raw.startsWith(OPENCODE_NATIVE_PREFIX)
+  ) {
     return { name: raw };
   }
   return { name: raw.slice(split + 1), server: raw.slice(0, split) };
@@ -380,40 +393,68 @@ const readOpenCodeToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult
   return { kind: "toolCall", call: base };
 };
 
-/** Claude's spelling of an MCP tool in a title: `mcp__<server>__<tool>`. */
-const TITLE_MCP_PATTERN = /mcp__([A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*?)__([A-Za-z0-9_-]+)/;
-
-/**
- * A Zerops tool in a title, whatever an agent puts around it — `Running
- * zerops_deploy` (Antigravity), `zerops-zerops_deploy`, `zerops: zerops_deploy`,
- * `zerops_zerops_deploy`: the server's name before it, where one stands.
- */
-const TITLE_ZEROPS_PATTERN = /(?:^|[^A-Za-z0-9_])(?:(zerops)[\s:./_-]+)?(zerops_[A-Za-z0-9_]+)/;
-
-/** A title that is a tool's name alone (Grok's `enter_plan_mode`), or one being run. */
-const TITLE_NAME_PATTERN = /^(?:Running |Run )?([A-Za-z][A-Za-z0-9_.-]*)\??$/;
-
-/** A title's words that are no tool's name: what ACP agents call a call they did not name. */
+/** A bare title's words that are no tool's name: what ACP agents call a call they did not name. */
 const UNNAMED_TITLES: ReadonlySet<string> = new Set(["tool", "terminal", "command"]);
 
-const nameFromTitle = (
-  title: string | undefined,
-): { readonly name: string; readonly server?: string } | undefined => {
-  if (title === undefined) {
+interface AcpNamed {
+  readonly name: string;
+  readonly server?: string;
+  readonly arguments?: unknown;
+}
+
+/** The MCP tool an input names with its server: `{server, toolName | tool | name, arguments?}`. */
+const mcpToolOfInput = (rawInput: unknown): AcpNamed | undefined => {
+  if (!isRecord(rawInput)) return undefined;
+  const server = readString(rawInput.server) ?? readString(rawInput.serverName);
+  const tool =
+    readString(rawInput.toolName) ?? readString(rawInput.tool) ?? readString(rawInput.name);
+  if (server === undefined || tool === undefined || server.length === 0 || tool.length === 0) {
     return undefined;
   }
-  const mcp = TITLE_MCP_PATTERN.exec(title);
-  if (mcp !== null) {
-    return { name: mcp[2]!, server: mcp[1]! };
+  return {
+    name: tool,
+    server,
+    ...(rawInput.arguments !== undefined ? { arguments: rawInput.arguments } : {}),
+  };
+};
+
+/**
+ * The MCP tool a call names, by the whole-name rule the crew's gate reads a
+ * title by (`mcpToolTitle.ts`). A call of a native kind is that kind's — its
+ * title is often its presentation, a path or a command — unless its title
+ * says for certain it is an MCP tool (Claude's `mcp__` spelling, a crew or
+ * Zerops name) or its input names its server and tool.
+ */
+const mcpToolOfAcpCall = (
+  title: string | undefined,
+  rawInput: unknown,
+  native: boolean,
+): AcpNamed | undefined => {
+  const byInput = mcpToolOfInput(rawInput);
+  if (byInput !== undefined) return byInput;
+  const titled = mcpToolOfTitle(title);
+  if (titled === undefined) return undefined;
+  if (native && !titled.certain) return undefined;
+  if (titled.server === undefined && UNNAMED_TITLES.has(titled.tool.toLowerCase())) {
+    return undefined;
   }
-  const zerops = TITLE_ZEROPS_PATTERN.exec(title);
-  if (zerops !== null) {
-    const server = zerops[1];
-    return server === undefined ? { name: zerops[2]! } : { name: zerops[2]!, server };
-  }
-  const named = TITLE_NAME_PATTERN.exec(title.trim());
-  const name = named?.[1];
-  return name === undefined || UNNAMED_TITLES.has(name.toLowerCase()) ? undefined : { name };
+  return titled.server === undefined
+    ? { name: titled.tool }
+    : { name: titled.tool, server: titled.server };
+};
+
+/**
+ * A search for words with nowhere to look is a search of the web (Gemini's
+ * and Antigravity's `google_web_search`); a search for a pattern, or in a
+ * folder, searches the code.
+ */
+const acpKindName = (kind: string, rawInput: unknown): string => {
+  if (kind !== "search" || !isRecord(rawInput)) return kind;
+  const words = readString(rawInput.query);
+  const inCode = ["pattern", "path", "glob", "include"].some(
+    (key) => readString(rawInput[key]) !== undefined,
+  );
+  return words !== undefined && !inCode ? "websearch" : kind;
 };
 
 /** ACP's text of a call's own content: `[{type: "content", content: {type: "text", text}}]`. */
@@ -478,19 +519,25 @@ const readAcpToolCallData = (
     return shapeMismatch(itemType, isToolItem, "payload.data is not an object");
   }
   const kind = readString(data.kind);
-  // A native kind's title is its presentation ("Ran command", "Read file"):
-  // only a call of no kind of its own is named by its title — a command that
-  // greps for `zerops_deploy` is no Zerops call.
-  const titled = kind === undefined || kind === "other" ? nameFromTitle(title) : undefined;
-  const named = titled ?? (kind !== undefined && kind.length > 0 ? { name: kind } : undefined);
+  const native = kind !== undefined && kind.length > 0 && kind !== "other";
+  // The agent's own title (`AcpRuntimeModel.ts` keeps it at `data.title`);
+  // the payload's is its presentation for a native kind ("Ran command").
+  const agentTitle = readString(data.title) ?? title;
+  const mcp = mcpToolOfAcpCall(agentTitle, data.rawInput, native);
+  const named =
+    mcp ??
+    (kind !== undefined && kind.length > 0
+      ? { name: acpKindName(kind, data.rawInput) }
+      : undefined);
   if (named === undefined) {
     return shapeMismatch(itemType, isToolItem, "neither a title nor a kind names the call");
   }
+  const callArguments = named.arguments ?? data.rawInput;
   const base: SpiToolCall = {
     name: named.name,
-    rawName: titled !== undefined && title !== undefined ? title : named.name,
+    rawName: mcp !== undefined && agentTitle !== undefined ? agentTitle : named.name,
     ...(named.server !== undefined ? { server: named.server } : {}),
-    ...(data.rawInput !== undefined ? { arguments: data.rawInput } : {}),
+    ...(callArguments !== undefined ? { arguments: callArguments } : {}),
   };
   if (status !== "completed" && status !== "failed") {
     return { kind: "toolCall", call: base };

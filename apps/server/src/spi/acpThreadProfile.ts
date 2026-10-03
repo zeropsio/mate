@@ -34,9 +34,7 @@ import {
   type ToolDecision,
 } from "./threadToolPolicy.ts";
 import { serveThreadTools } from "./threadToolsMcp.ts";
-
-/** The MCP server a profile's tools are served as, so calls read `mcp__crew__<tool>`. */
-export const THREAD_TOOLS_SERVER = "crew";
+import { mcpToolOfTitle, THREAD_TOOLS_SERVER } from "./mcpToolTitle.ts";
 
 /** One call the crew's gate judges, shaped as Claude's tools so it applies unchanged. */
 export interface AcpGateCall {
@@ -136,23 +134,11 @@ const pathsOf = (toolCall: AcpToolCall, cwd: string): ReadonlyArray<string> => {
   return [...paths];
 };
 
-/** `mcp__server__tool`, `server: tool`, `server/tool`, or a bare `crew_*` / `zerops_*` name. */
-const MCP_TITLE =
-  /^(?:mcp__([A-Za-z0-9_-]+?)__|([A-Za-z0-9_-]+)\s*[:/]\s*)?([A-Za-z][A-Za-z0-9_-]*)$/u;
-
-/**
- * The MCP tool a call of no kind of its own names in its title, as Claude
- * spells it. A crew or Zerops tool is known by its name's prefix whatever
- * server the agent says it came from.
- */
+/** The MCP tool a call of no kind of its own names in its title, as Claude spells it. */
 const mcpToolName = (title: string | null | undefined): string | undefined => {
-  const match = MCP_TITLE.exec((title ?? "").trim().replace(/^(?:Running |Run )/u, ""));
-  if (match === null) return undefined;
-  const tool = match[3]!;
-  if (tool.startsWith("crew_")) return `mcp__${THREAD_TOOLS_SERVER}__${tool}`;
-  if (tool.startsWith("zerops_")) return `mcp__zerops__${tool}`;
-  const server = match[1] ?? match[2];
-  return server === undefined ? tool : `mcp__${server}__${tool}`;
+  const named = mcpToolOfTitle(title);
+  if (named === undefined) return undefined;
+  return named.server === undefined ? named.tool : `mcp__${named.server}__${named.tool}`;
 };
 
 /**
