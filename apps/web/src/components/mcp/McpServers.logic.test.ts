@@ -264,7 +264,7 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
     {
       name: "zerops",
       driver: CLAUDE,
-      actions: { reconnect: true, toggle: "off", remove: false },
+      actions: { reconnect: true, toggle: null, remove: false },
     },
     {
       name: "playwright",
@@ -315,11 +315,12 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       actions: { reconnect: true, toggle: null, remove: false },
     },
     {
+      // The Mate runs on Zerops' tools: shown and reconnected, never turned off here.
       case: "Zerops' own",
       scope: undefined,
       managed: true,
       origin: "builtin",
-      actions: { reconnect: true, toggle: "off", remove: false },
+      actions: { reconnect: true, toggle: null, remove: false },
     },
   ])("$case: where it comes from and what may change it", ({ scope, managed, origin, actions }) => {
     const list: McpServersList = {

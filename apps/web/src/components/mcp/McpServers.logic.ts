@@ -362,7 +362,9 @@ function buildRow(
     actions: {
       // Reconnecting asks the conversation's agent: there must be one with it on.
       reconnect: state !== "disabled" && state !== "absent",
-      toggle: origin === "repo" ? null : enabled ? "off" : "on",
+      // Only the Mate's own servers turn off here: the repo's are edited in
+      // its .mcp.json, and the Mate runs on Zerops' tools.
+      toggle: origin === "mate" ? (enabled ? "off" : "on") : null,
       remove: origin === "mate",
     },
   };
