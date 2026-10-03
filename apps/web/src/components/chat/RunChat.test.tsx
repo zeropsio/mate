@@ -100,6 +100,12 @@ function command(id: string, text: string, extra: Partial<WorkLogEntry> = {}): W
   };
 }
 
+/** A call that says no command: an edit, or a command whose input has not streamed in yet. */
+function withoutCommand(entry: WorkLogEntry): WorkLogEntry {
+  const { command: _command, ...rest } = entry;
+  return rest;
+}
+
 const LONG = Array.from({ length: 12 }, (_, index) => `Line ${index + 1} of what it thought.`).join(
   "\n",
 );
@@ -987,11 +993,12 @@ describe("RunChat, as the person uses it", () => {
           now: {
             kind: "step",
             step: stepOf(
-              command("w8", text ?? "", {
-                ...(text === undefined ? { command: undefined } : {}),
-                toolLifecycleStatus: "inProgress",
-                sourceActivityKind: "tool.started",
-              }),
+              (text === undefined ? withoutCommand : (entry: WorkLogEntry) => entry)(
+                command("w8", text ?? "", {
+                  toolLifecycleStatus: "inProgress",
+                  sourceActivityKind: "tool.started",
+                }),
+              ),
             ),
           },
         });
@@ -1031,15 +1038,16 @@ describe("RunChat, as the person uses it", () => {
     vi.useFakeTimers();
     try {
       const edit = (id: string, running: boolean) =>
-        command(id, "", {
-          command: undefined,
-          itemType: "file_change",
-          label: "File change",
-          detail: `Edit: {"file_path":"/srv/app/${id}.ts"}`,
-          ...(running
-            ? { toolLifecycleStatus: "inProgress", sourceActivityKind: "tool.started" }
-            : {}),
-        });
+        withoutCommand(
+          command(id, "", {
+            itemType: "file_change",
+            label: "File change",
+            detail: `Edit: {"file_path":"/srv/app/${id}.ts"}`,
+            ...(running
+              ? { toolLifecycleStatus: "inProgress", sourceActivityKind: "tool.started" }
+              : {}),
+          }),
+        );
       const first = step(edit("e1", false));
       const renderer = mount(
         record([first], {
