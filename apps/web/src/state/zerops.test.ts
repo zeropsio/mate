@@ -12,6 +12,8 @@ import {
 import { candidateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -27,12 +29,15 @@ import {
 import type { InventoryProjection } from "../zerops/inventoryContext";
 import {
   candidateRowsAtom,
+  hqMatesViewAtom,
   hqStructureAtom,
   takenBotNamesAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   zeropsSessionAtom,
 } from "./zerops";
+
+const mateLiveView = Schema.decodeUnknownSync(MateLiveView);
 
 const owner = project();
 const PROJECT: ZeropsProject = {
@@ -206,6 +211,32 @@ describe("the candidate rows", () => {
       kind: "mate",
       mate: { name: "Ada", face: "" },
     });
+
+    // Who signed Ada's agent in, as HQ's overview of her says it: on her row, which stays the
+    // same row while what she does moves and her logins do not.
+    const logins = { "claude-code": { signedInBy: "u-jan", present: true, token: false } };
+    const told = (moved: boolean) =>
+      mateLiveView({
+        presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "live" },
+        logins,
+        ...(moved ? { crew: { status: "none" } } : {}),
+      });
+    // Read as the menu reads it: kept, not built afresh for each look.
+    const unsubscribe = registry.subscribe(candidateRowsAtom, () => undefined);
+    registry.set(hqMatesViewAtom, {
+      organizationId: organization.organizationId,
+      mates: new Map([[PROJECT.id, told(false)]]),
+      current: true,
+    });
+    const row = heldCandidates(registry.get(candidateRowsAtom)).rows[0];
+    expect(row?.project.hq?.mate).toEqual({ name: "Ada", face: "", logins });
+    registry.set(hqMatesViewAtom, {
+      organizationId: organization.organizationId,
+      mates: new Map([[PROJECT.id, told(true)]]),
+      current: true,
+    });
+    expect(heldCandidates(registry.get(candidateRowsAtom)).rows[0]).toBe(row);
+    unsubscribe();
   });
 });
 

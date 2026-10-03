@@ -764,9 +764,10 @@ describe("HQ API", () => {
             yield* owner.next("change"),
             shopWith({ name: "Ada", face: "sky:flower" }),
           );
-          // Its maker is named beside the structure, by the name Zerops gives them.
+          // Its maker is named beside the structure, by the name Zerops gives them, with the member
+          // id a project's OWNER entry would name them by.
           assert.deepStrictEqual(yield* owner.next("people"), {
-            people: { owner: { name: "owner" } },
+            people: { owner: { name: "owner", clientUserId: "C-owner" } },
           });
           yield* call("PATCH", "/api/mates/P_MATE", { session, body: { name: "Ada 2" } });
           assert.deepStrictEqual(

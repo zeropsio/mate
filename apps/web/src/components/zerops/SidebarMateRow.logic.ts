@@ -177,14 +177,14 @@ export function ownerBadge(seat: OwnerSeat, isViewer: boolean): BadgeSeat | null
  * owner's badge (the owner, 2026-09-30: "the not yours should have the avatar
  * bigger and maybe some other small visual diff also"): a colleague's, and
  * nobody's until somebody signs it in. Known from the first paint: the owner
- * the member list names, or before the list has named them, the signer HQ's
- * summary names against the viewer's own id; a Mate that may be the viewer's
- * reads as theirs.
+ * HQ's people name, or before they have named them, the signer HQ's overview
+ * names against the viewer's own id; a Mate that may be the viewer's reads as
+ * theirs.
  */
 export function mateNotYours(input: {
   readonly seat: OwnerSeat;
   readonly isViewer: boolean;
-  /** The user id its signer is, as HQ's summary names them (`mateOwnerRecords`). */
+  /** The user id its signer is, as HQ's overview names them (`mateOwnerRecords`). */
   readonly signer: string | undefined;
   readonly viewer: string | undefined;
 }): boolean {

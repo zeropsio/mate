@@ -257,6 +257,40 @@ describe("the structure stream", () => {
     ),
   );
 
+  it.effect(
+    "names whoever an OWNER entry names on the reader's projects, by member id, no token",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sent, version, view } = yield* streamFor("owner");
+          // Handed over to the reader (F23): the project's OWNER entry names them by member id.
+          yield* Ref.set(
+            view,
+            org([
+              { clientUserId: "C-dev", roleCode: "BASIC_USER" },
+              { clientUserId: "C-reader", roleCode: "OWNER" },
+              { clientUserId: "C-T-zcp", roleCode: "OWNER" },
+            ]),
+          );
+          yield* SubscriptionRef.update(version, (tick) => tick + 1);
+          yield* TestClock.adjust("1 millis");
+          assert.deepStrictEqual(
+            sent.filter((message) => message.type === "people"),
+            [
+              {
+                type: "people",
+                people: {
+                  owner: { name: "Person owner", clientUserId: "C-owner" },
+                  dev: { name: "Person dev", clientUserId: "C-dev" },
+                  reader: { name: "Person reader", clientUserId: "C-reader" },
+                },
+              },
+            ],
+          );
+        }),
+      ),
+  );
+
   it.effect("names the people the view names and no token", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -278,19 +312,19 @@ describe("the structure stream", () => {
           (sent[0] as unknown as { readonly people: unknown }).people;
         // Its maker and its stand-up's asker from its record; its signers from its overview.
         assert.deepStrictEqual(peopleOf((yield* streamFor("owner", opened)).sent), {
-          owner: { name: "Person owner" },
-          dev: { name: "Person dev" },
+          owner: { name: "Person owner", clientUserId: "C-owner" },
+          dev: { name: "Person dev", clientUserId: "C-dev" },
         });
         // A reader is named only what the record says.
         assert.deepStrictEqual(peopleOf((yield* streamFor("reader", opened)).sent), {
-          owner: { name: "Person owner" },
-          dev: { name: "Person dev" },
+          owner: { name: "Person owner", clientUserId: "C-owner" },
+          dev: { name: "Person dev", clientUserId: "C-dev" },
         });
         // A signer who appears later is named when the overview names them.
         const { sent, overviews } = yield* streamFor("owner");
         assert.deepStrictEqual(peopleOf(sent), {
-          owner: { name: "Person owner" },
-          dev: { name: "Person dev" },
+          owner: { name: "Person owner", clientUserId: "C-owner" },
+          dev: { name: "Person dev", clientUserId: "C-dev" },
         });
         const link = yield* overviews.connect("P_MATE");
         yield* overviews.report("P_MATE", link, {
@@ -307,9 +341,9 @@ describe("the structure stream", () => {
             {
               type: "people",
               people: {
-                owner: { name: "Person owner" },
-                dev: { name: "Person dev" },
-                reader: { name: "Person reader" },
+                owner: { name: "Person owner", clientUserId: "C-owner" },
+                dev: { name: "Person dev", clientUserId: "C-dev" },
+                reader: { name: "Person reader", clientUserId: "C-reader" },
               },
             },
           ],

@@ -1,7 +1,7 @@
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
+import type { HqPeople } from "@t3tools/shared/hqMates";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -14,42 +14,25 @@ const LENA = EnvironmentId.make("env-lena");
 const OTTO = EnvironmentId.make("env-otto");
 const FEN = EnvironmentId.make("env-fen");
 
-const JAN: ZeropsOrganizationMember = {
-  id: "member-jan",
-  user: {
-    id: "user-jan",
-    fullName: "Jan Novak",
-    avatar: { smallAvatarUrl: "https://avatars.example/jan.png" },
-  },
+/** The people HQ names for the view: each by user id, with the member id an OWNER entry names. */
+const PEOPLE: HqPeople = {
+  "user-jan": { name: "Jan Novak", clientUserId: "member-jan" },
+  "user-eva": { name: "Eva Dvorak", clientUserId: "member-eva" },
 };
-const EVA: ZeropsOrganizationMember = {
-  id: "member-eva",
-  user: { id: "user-eva", firstName: "Eva", lastName: "Dvorak" },
-};
-const JAN_OWNER = {
-  id: "user-jan",
-  name: "Jan Novak",
-  initials: "JN",
-  avatarUrl: "https://avatars.example/jan.png",
-};
+// HQ keeps no picture: an owner wears their initials.
+const JAN_OWNER = { id: "user-jan", name: "Jan Novak", initials: "JN", avatarUrl: null };
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
 
 /**
- * A Mate HQ places in application `appId`, named `appName`, as `name`; its summary names who
- * signed Claude in where `signer` is given.
+ * A Mate HQ places in application `appId`, named `appName`, as `name`; its logins name who signed
+ * Claude in where `signer` is given.
  */
 function placedMate(appId: string, appName: string, name: string, signer?: string): HqPlacement {
-  const live =
+  const logins =
     signer === undefined
       ? {}
-      : {
-          live: {
-            online: true,
-            at: "2026-10-02T10:00:00.000Z",
-            summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": signer } },
-          },
-        };
-  return { appId, appName, kind: "mate", mate: { name, face: "", ...live } };
+      : { logins: { "claude-code": { signedInBy: signer, present: true, token: false } } };
+  return { appId, appName, kind: "mate", mate: { name, face: "", ...logins } };
 }
 
 const titan = (name: string) => placedMate("titan", "Imperial Titan", name);
@@ -86,7 +69,7 @@ describe("usageEnvironmentIdentities", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly candidates: ReadonlyArray<ZeropsCandidate>;
-    readonly members?: ReadonlyArray<ZeropsOrganizationMember>;
+    readonly people?: HqPeople;
     readonly viewerUserId?: string | null;
     readonly registeredOrigins?: ReadonlyMap<string, EnvironmentId>;
     readonly expected: ReadonlyArray<readonly [EnvironmentId, UsageEnvironmentIdentity]>;
@@ -116,7 +99,7 @@ describe("usageEnvironmentIdentities", () => {
           ownerMemberId: "member-eva",
         }),
       ],
-      members: [JAN, EVA],
+      people: PEOPLE,
       viewerUserId: "user-eva",
       expected: [
         [
@@ -174,8 +157,8 @@ describe("usageEnvironmentIdentities", () => {
       expected: [[LENA, { mateName: "Lena", projectName: "Imperial Titan", owner: null }]],
     },
     {
-      // In no project, so HQ records no name for either: each goes by its project's.
-      name: "an owner the member list does not have, or who names no person, is nobody",
+      // In no project, so HQ records no name for it: it goes by its project's.
+      name: "an owner HQ does not name is nobody",
       candidates: [
         candidate({
           id: "gone-dev",
@@ -183,48 +166,10 @@ describe("usageEnvironmentIdentities", () => {
           environmentId: LENA,
           ownerMemberId: "member-left",
         }),
-        candidate({
-          id: "faceless-dev",
-          tags: ["mate"],
-          environmentId: OTTO,
-          ownerMemberId: "member-faceless",
-        }),
       ],
-      members: [JAN, { id: "member-faceless" }],
+      people: PEOPLE,
       viewerUserId: "user-jan",
-      expected: [
-        [LENA, { mateName: "gone-dev", projectName: null, owner: null }],
-        [OTTO, { mateName: "faceless-dev", projectName: null, owner: null }],
-      ],
-    },
-    {
-      name: "a member whose user carries no id is keyed by the member id",
-      candidates: [
-        candidate({
-          id: "titan-dev",
-          tags: ["mate"],
-          environmentId: LENA,
-          ownerMemberId: "member-anon",
-        }),
-      ],
-      members: [{ id: "member-anon", user: { email: "anon@example.com" } }],
-      viewerUserId: "user-jan",
-      expected: [
-        [
-          LENA,
-          {
-            mateName: "titan-dev",
-            projectName: null,
-            owner: {
-              id: "member-anon",
-              name: "anon@example.com",
-              initials: "A",
-              avatarUrl: null,
-              isViewer: false,
-            },
-          },
-        ],
-      ],
+      expected: [[LENA, { mateName: "gone-dev", projectName: null, owner: null }]],
     },
     {
       name: "two people's Mates across two projects, an owner named by the agent's signer",
@@ -250,7 +195,7 @@ describe("usageEnvironmentIdentities", () => {
           environmentId: FEN,
         }),
       ],
-      members: [JAN, EVA],
+      people: PEOPLE,
       viewerUserId: "user-jan",
       expected: [
         [
@@ -278,7 +223,7 @@ describe("usageEnvironmentIdentities", () => {
       const identities = usageEnvironmentIdentities({
         candidates: entry.candidates,
         registeredOrigins: entry.registeredOrigins ?? NO_ORIGINS,
-        members: entry.members ?? [],
+        people: entry.people ?? null,
         viewerUserId: entry.viewerUserId ?? null,
       });
       expect([...identities]).toEqual(entry.expected);
@@ -290,43 +235,43 @@ describe("usageOwnersStatus", () => {
   const signedIn = {
     session: "signed-in",
     organization: "selected",
-    members: "ready",
+    people: "ready",
     listing: "known",
   } as const;
   it.each([
     {
-      name: "resolved once members and the listing are known",
+      name: "resolved once HQ's people and the listing are known",
       input: signedIn,
       expected: "resolved",
     },
     {
       name: "resolving while the session restores",
-      input: { ...signedIn, session: "loading", members: "idle", listing: "unread" },
+      input: { ...signedIn, session: "loading", people: "idle", listing: "unread" },
       expected: "resolving",
     },
     {
       name: "unavailable when signed out",
-      input: { ...signedIn, session: "signed-out", members: "idle", listing: "unread" },
+      input: { ...signedIn, session: "signed-out", people: "idle", listing: "unread" },
       expected: "unavailable",
     },
     {
       name: "resolving while the organization is being chosen",
-      input: { ...signedIn, organization: "loading", members: "idle", listing: "unread" },
+      input: { ...signedIn, organization: "loading", people: "idle", listing: "unread" },
       expected: "resolving",
     },
     {
       name: "unavailable when no organization is selected",
-      input: { ...signedIn, organization: "needs-selection", members: "idle", listing: "unread" },
+      input: { ...signedIn, organization: "needs-selection", people: "idle", listing: "unread" },
       expected: "unavailable",
     },
     {
-      name: "resolving while members are read",
-      input: { ...signedIn, members: "loading" },
+      name: "resolving while HQ's people are on their way",
+      input: { ...signedIn, people: "loading" },
       expected: "resolving",
     },
     {
-      name: "unavailable when the member read failed",
-      input: { ...signedIn, members: "failed" },
+      name: "unavailable when HQ names nobody: one from before the overviews",
+      input: { ...signedIn, people: "failed" },
       expected: "unavailable",
     },
     {

@@ -55,7 +55,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   mateIsViewers,
-  resolveMateOwner,
+  resolveMateOwnerPerson,
   resolveMateVerbs,
   resolveMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -96,7 +96,7 @@ import {
 } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
-import { hqPlacementsAtom, hqStructureAtom } from "../state/zerops";
+import { hqPeopleAtom, hqPlacementsAtom, hqStructureAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -116,7 +116,7 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
+import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
 import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import {
   beginPress,
@@ -247,6 +247,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqPlacements = useAtomValue(hqPlacementsAtom);
   const hqStructure = useAtomValue(hqStructureAtom);
+  const people = useAtomValue(hqPeopleAtom);
   const hqKnown = hqPlacements !== null && hqStructure?.current === true;
   const presses = useMatePresses();
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
@@ -671,13 +672,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
   const colleagueOf = useCallback(
     (candidate: ZeropsCandidatePresentation): string | undefined => {
-      const owner = zeropsMateOwner(
-        resolveMateOwner({ project: candidate.project, members }),
-        user?.id,
-      );
-      return owner === undefined || owner.isViewer ? undefined : owner.name;
+      const owner = resolveMateOwnerPerson({ project: candidate.project, people });
+      return owner === undefined || owner.userId === user?.id ? undefined : owner.name;
     },
-    [members, user?.id],
+    [people, user?.id],
   );
 
   /**

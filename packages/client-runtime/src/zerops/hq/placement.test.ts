@@ -44,6 +44,14 @@ const STRUCTURE = {
 };
 
 describe("placementsOf", () => {
+  it("joins each Mate's logins, as HQ's overview of it says them, onto its record", () => {
+    const logins = { "claude-code": { signedInBy: "u-jan", present: true, token: false } };
+    const placed = placementsOf(STRUCTURE, new Map([["p-vera", logins]]));
+    expect(placed.get("p-vera")?.mate).toEqual({ name: "Vera", face: "rose:seal", logins });
+    // HQ holds no overview of Ada: her record alone.
+    expect(placed.get("p-ada")?.mate).toEqual({ name: "Ada", face: "sky:flower" });
+  });
+
   it("is where HQ places each project: its application, its kind, its Mate", () => {
     expect([...placementsOf(STRUCTURE)]).toEqual([
       [

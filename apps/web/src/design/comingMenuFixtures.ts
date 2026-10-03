@@ -47,13 +47,9 @@ const acme = (name: string, face: string, record: Partial<HqMate>): HqPlacement 
   kind: "mate",
   mate: { name, face, ...record },
 });
-/** Signed in by the harness's person, as the Mate's summary at HQ names them. */
+/** Signed in by the harness's person, as HQ's overview of the Mate names them. */
 const SIGNED: Partial<HqMate> = {
-  live: {
-    online: true,
-    at: "2026-10-02T10:00:00.000Z",
-    summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": "u-harness" } },
-  },
+  logins: { "claude-code": { signedInBy: "u-harness", present: true, token: false } },
 };
 
 function mate(

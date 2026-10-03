@@ -10,6 +10,7 @@
  *
  * @module hq/placement
  */
+import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { Known } from "../knowledge/known.ts";
@@ -38,8 +39,19 @@ const PROJECT_KINDS: Readonly<Record<RoleProjectKind, true>> = {
 export const isRoleProjectKind = (kind: string): kind is RoleProjectKind =>
   Object.hasOwn(PROJECT_KINDS, kind);
 
-/** Each project HQ places, by its id; a kind this build does not know places nothing. */
-export function placementsOf(structure: HqStructure): ReadonlyMap<string, HqPlacement> {
+/**
+ * Each project HQ places, by its id; a kind this build does not know places nothing. Each Mate's
+ * record carries its logins as HQ's overview of it says them (`logins`, by project), where HQ
+ * holds one for the reader.
+ */
+export function placementsOf(
+  structure: HqStructure,
+  logins: ReadonlyMap<string, OverviewLogins> = new Map(),
+): ReadonlyMap<string, HqPlacement> {
+  const withLogins = (projectId: string, mate: HqMate): HqMate => {
+    const told = logins.get(projectId);
+    return told === undefined ? mate : { ...mate, logins: told };
+  };
   const placements = new Map<string, HqPlacement>();
   for (const app of structure.apps) {
     for (const project of app.projects) {
@@ -49,12 +61,17 @@ export function placementsOf(structure: HqStructure): ReadonlyMap<string, HqPlac
         appId: app.id,
         appName: app.name,
         kind,
-        mate: project.mate,
+        mate: project.mate === null ? null : withLogins(project.projectId, project.mate),
       });
     }
   }
   for (const { projectId, mate } of structure.ungrouped) {
-    placements.set(projectId, { appId: null, appName: null, kind: "mate", mate });
+    placements.set(projectId, {
+      appId: null,
+      appName: null,
+      kind: "mate",
+      mate: withLogins(projectId, mate),
+    });
   }
   return placements;
 }

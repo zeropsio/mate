@@ -15,7 +15,9 @@
  *   Mates in no application;
  * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
  *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
- * - `{ type: "people", people }` — the people the view names, whenever they differ;
+ * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
+ *   makers and stand-up askers, their logins' signers, and whoever an `OWNER` entry names on its
+ *   projects, each by user id with their member id — never a token;
  * - `{ type: "ping" }` every 20 s, so the Zerops L7 (which cuts an idle connection at 60 s) never
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
@@ -61,7 +63,7 @@ import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { type MateOverviewEntry, MateOverviews } from "./mateOverviews.ts";
 import { Recomputes } from "./recomputes.ts";
-import { Roles } from "./roles.ts";
+import { type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import type { ZeropsError, ZeropsMember } from "./zerops/api.ts";
 
@@ -114,13 +116,39 @@ const matesIn = (view: StructureRead) => [
   ),
 ];
 
-/** The people of `userIds` among the members HQ last read: never a token. */
+/**
+ * The people of `userIds` among the members HQ last read, each with their member id — what a
+ * project's `OWNER` entry names them by: never a token.
+ */
 const peopleOf = (userIds: ReadonlySet<string>, members: ReadonlyArray<ZeropsMember>): HqPeople =>
   Object.fromEntries(
     members
       .filter((member) => member.kind === "person" && userIds.has(member.userId))
-      .map((member) => [member.userId, { name: member.name }]),
+      .map((member) => [member.userId, { name: member.name, clientUserId: member.clientUserId }]),
   );
+
+/**
+ * Whoever an `OWNER` entry names on the projects of `view` — a hand-over's owner (F23) — by their
+ * Zerops user id, as the members HQ last read have them.
+ */
+const ownersIn = (view: StructureRead, facts: OrgView): ReadonlyArray<string> => {
+  const listed = new Set([
+    ...view.ungrouped.map(({ projectId }) => projectId),
+    ...view.apps.flatMap((app) => app.projects.map(({ projectId }) => projectId)),
+  ]);
+  const owners = new Set(
+    facts.projects
+      .filter((project) => listed.has(project.id))
+      .flatMap((project) =>
+        project.userRoles.flatMap((entry) =>
+          entry.roleCode === "OWNER" ? [entry.clientUserId] : [],
+        ),
+      ),
+  );
+  return facts.members.flatMap((member) =>
+    owners.has(member.clientUserId) ? [member.userId] : [],
+  );
+};
 
 /** What a caller was last sent. */
 interface Sent {
@@ -184,7 +212,7 @@ export const structureMessages = <R>(
               value: Object.fromEntries(moved.map((part) => [part, parts[part]])) as MateLiveChange,
             };
       };
-      /** The people a view names: its records' and its observed Mates' signers. */
+      /** The people a view names: its records' and owners, and its observed Mates' signers. */
       const namedBy = (named: ReadonlySet<string>, mates: ReadonlyMap<string, MateOverviewEntry>) =>
         new Set([
           ...named,
@@ -223,11 +251,12 @@ export const structureMessages = <R>(
             .map(({ projectId }) => projectId),
         );
         const mates = observed(observable, yield* overviews.all);
-        const named = new Set(
-          listed.flatMap(({ mate }) =>
+        const named = new Set([
+          ...listed.flatMap(({ mate }) =>
             [mate.madeBy, mate.standupRequestedBy].flatMap((id) => (id === null ? [] : [id])),
           ),
-        );
+          ...ownersIn(view, facts),
+        ]);
         const people = peopleOf(namedBy(named, mates), facts.members);
         const now: Sent = {
           structure: new Map([

@@ -1821,10 +1821,7 @@ export default function Sidebar() {
     [zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
   );
   // Whose each Mate is, for the badge on the corner of its face.
-  const zeropsMateOwner = useZeropsMateOwners({
-    candidates: zeropsCandidates,
-    enabled: zeropsSignedIn,
-  });
+  const zeropsMateOwner = useZeropsMateOwners();
   // Each container's health, as the container store holds it — the tree's
   // "some Mate in the group is up" part of *Add production*'s gate.
   const { health: zeropsHealth } = useZeropsContainers();

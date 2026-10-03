@@ -182,7 +182,7 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
   // owner: it wears no needs face here, though its change can still be reviewed and merged.
   describe("waits on you only when it is yours", () => {
     const VIEWER = "u-petra";
-    /** The Mate as HQ places it, its summary naming who signed its agents in. */
+    /** The Mate as HQ places it, its logins naming who signed its agents in. */
     const signed = (...users: ReadonlyArray<string>) => ({
       appId: null,
       appName: null,
@@ -190,18 +190,12 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
       mate: {
         name: "Sana",
         face: "",
-        live: {
-          online: true,
-          at: "2026-10-02T10:00:00.000Z",
-          summary: {
-            main: null,
-            running: 0,
-            waiting: 0,
-            signers: Object.fromEntries(
-              users.map((user, index) => [index === 0 ? "claude-code" : "codex", user]),
-            ),
-          },
-        },
+        logins: Object.fromEntries(
+          users.map((user, index) => [
+            index === 0 ? "claude-code" : "codex",
+            { signedInBy: user, present: true, token: false },
+          ]),
+        ),
       },
     });
     it.each([

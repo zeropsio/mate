@@ -6,8 +6,7 @@ import {
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
-  resolveMateOwner,
-  resolveMateOwnerName,
+  resolveMateOwnerPerson,
   resolveMateVerbs,
   resolveMateVisibility,
   withMateProjectRole,
@@ -92,50 +91,26 @@ describe("mateOnlyOwnerOpensIt", () => {
   }
 });
 
-describe("resolveMateOwnerName", () => {
-  const members = [
-    { id: "cu-jan", user: { fullName: "Jan Novák", email: "jan@example.com" } },
-    { id: "cu-eva", user: { firstName: "Eva", lastName: "Dvořák" } },
-    { id: "cu-quiet", user: { email: "quiet@example.com" } },
-    { id: "cu-blank", user: {} },
-  ];
-
-  for (const [name, clientUserId, expected] of [
-    ["a full name", "cu-jan", "Jan Novák"],
-    ["first and last when there is no full name", "cu-eva", "Eva Dvořák"],
-    ["an e-mail rather than a blank", "cu-quiet", "quiet@example.com"],
-    ["nothing at all when the member has no name", "cu-blank", undefined],
-    ["nothing when the member list does not have them", "cu-gone", undefined],
-  ] as const) {
-    it(`reads ${name}`, () => {
-      expect(
-        resolveMateOwnerName({
-          project: { id: PROJECT, clientId: ORG, userRoles: [{ clientUserId, roleCode: "OWNER" }] },
-          members,
-        }),
-      ).toBe(expected);
-    });
-  }
-
-  it("names nobody when the project raised nobody to OWNER", () => {
-    expect(
-      resolveMateOwnerName({
-        project: {
-          id: PROJECT,
-          clientId: ORG,
-          userRoles: [{ clientUserId: ME, roleCode: "ADMIN" }],
-        },
-        members,
-      }),
-    ).toBeUndefined();
-  });
-
-  it("prefers a full name over an e-mail it also has", () => {
-    expect(mateMemberName(members[0]!)).toBe("Jan Novák");
+describe("mateMemberName", () => {
+  it.each([
+    [
+      "a full name over an e-mail it also has",
+      { fullName: "Jan Novák", email: "jan@example.com" },
+      "Jan Novák",
+    ],
+    [
+      "first and last when there is no full name",
+      { firstName: "Eva", lastName: "Dvořák" },
+      "Eva Dvořák",
+    ],
+    ["an e-mail rather than a blank", { email: "quiet@example.com" }, "quiet@example.com"],
+    ["nothing at all when the member has no name", {}, undefined],
+  ] as const)("reads %s", (_name, user, expected) => {
+    expect(mateMemberName({ id: "cu-x", user })).toBe(expected);
   });
 });
 
-/** A Mate HQ places in no application, its summary naming who signed each login in. */
+/** A Mate HQ places in no application, its overview's logins naming who signed each in. */
 const placedWith = (signers: Readonly<Record<string, string>>): HqPlacement => ({
   appId: null,
   appName: null,
@@ -143,151 +118,91 @@ const placedWith = (signers: Readonly<Record<string, string>>): HqPlacement => (
   mate: {
     name: "Ada",
     face: "",
-    live: {
-      online: true,
-      at: "2026-10-02T10:00:00.000Z",
-      summary: { main: null, running: 0, waiting: 0, signers },
-    },
+    logins: Object.fromEntries(
+      Object.entries(signers).map(([key, userId]) => [
+        key,
+        { signedInBy: userId === "" ? null : userId, present: true, token: false },
+      ]),
+    ),
   },
 });
 
-describe("resolveMateOwner", () => {
-  const jan = {
-    id: "cu-jan",
-    user: {
-      fullName: "Jan Novák",
-      avatar: { smallAvatarUrl: "https://example.com/jan.png" },
-    },
-  };
-  const owned = (userRoles: ReadonlyArray<{ clientUserId: string; roleCode: string }>) => ({
+// A7: the owner named from HQ's people (`hqMates.ts`), never a member list read — HQ names exactly
+// the people the reader's view names, a token never.
+describe("resolveMateOwnerPerson — a Mate's owner, named from HQ's people", () => {
+  const signedIn = (signers: Readonly<Record<string, string>>, userRoles = [] as const) => ({
     id: PROJECT,
     clientId: ORG,
     userRoles,
-  });
-
-  // The whole member row, picture included: the menu wears the owner's face,
-  // not just their name.
-  it("is the member the project raised to OWNER, picture and all", () => {
-    expect(
-      resolveMateOwner({
-        project: owned([
-          { clientUserId: ME, roleCode: "ADMIN" },
-          { clientUserId: "cu-jan", roleCode: "OWNER" },
-        ]),
-        members: [jan],
-      }),
-    ).toBe(jan);
-  });
-
-  // What an org owner's Mate looked like on the wire under main (measured
-  // 2026-09-24): the only per-project roles were the broker's and the
-  // container's token users, and the person was named only by the agent they
-  // signed in.
-  const eva = { id: "cu-eva", user: { id: "u-eva", fullName: "Eva Dvořák" } };
-  const services = [
-    { clientUserId: "cu-broker", roleCode: "BASIC_USER" },
-    { clientUserId: "cu-zcp", roleCode: "BASIC_USER" },
-  ];
-  const signedIn = (signers: Readonly<Record<string, string>>) => ({
-    ...owned(services),
     hq: placedWith(signers),
   });
+  const PEOPLE = { "u-eva": { name: "Eva Dvořák" }, "u-jan": { name: "Jan Novák" } };
 
-  it("is whoever signed the agent in, when the project raised nobody to OWNER", () => {
+  it("names a Mate's signer from HQ's people", () => {
     expect(
-      resolveMateOwner({ project: signedIn({ "claude-code": "u-eva" }), members: [jan, eva] }),
-    ).toBe(eva);
+      resolveMateOwnerPerson({ project: signedIn({ "claude-code": "u-eva" }), people: PEOPLE }),
+    ).toEqual({ userId: "u-eva", name: "Eva Dvořák" });
   });
 
-  it("is Claude Code's signer when two agents were signed in", () => {
+  it("names Claude Code's signer where two agents were signed in", () => {
     expect(
-      resolveMateOwner({
+      resolveMateOwnerPerson({
         project: signedIn({ codex: "u-jan", "claude-code": "u-eva" }),
-        members: [{ ...jan, user: { ...jan.user, id: "u-jan" } }, eva],
+        people: PEOPLE,
       }),
-    ).toBe(eva);
+    ).toEqual({ userId: "u-eva", name: "Eva Dvořák" });
   });
 
-  // A login someone added for their crew says who uses it, not whose Mate it is.
-  it("is an agent's signer, never the signer of a login added beside it", () => {
-    expect(
-      resolveMateOwner({
-        project: signedIn({ "claudeAgent-work": "u-jan", codex: "u-eva" }),
-        members: [{ ...jan, user: { ...jan.user, id: "u-jan" } }, eva],
-      }),
-    ).toBe(eva);
-  });
-
-  it("lets a hand-over's OWNER outrank the signer", () => {
-    expect(
-      resolveMateOwner({
-        project: {
-          ...owned([{ clientUserId: "cu-jan", roleCode: "OWNER" }]),
-          hq: placedWith({ "claude-code": "u-eva" }),
-        },
-        members: [jan, eva],
-      }),
-    ).toBe(jan);
-  });
-
-  // F23 (e2e, 2026-10-03): a hand over before the transfer left two OWNERs — Fin read Karlos's and
-  // Krls's — and a Mate's menu must name one of them, never fall back on whoever signed it in.
-  describe("two OWNERs, as a hand over before the transfer left them", () => {
-    const karlos = { id: "cu-karlos", user: { id: "u-karlos", fullName: "Karlos" } };
-    const krls = { id: "cu-krls", user: { id: "u-krls", fullName: "Krls" } };
-    const legacy = (first: string, second: string) => ({
-      ...owned([
+  // F23: a hand-over raises its person to OWNER, by member id, and that outranks the signer.
+  describe("a hand-over's OWNER", () => {
+    const handed = (...owners: ReadonlyArray<string>) => ({
+      id: PROJECT,
+      clientId: ORG,
+      userRoles: [
         { clientUserId: "cu-key", roleCode: "BASIC_USER" },
-        { clientUserId: first, roleCode: "OWNER" },
-        { clientUserId: second, roleCode: "OWNER" },
-      ]),
+        ...owners.map((clientUserId) => ({ clientUserId, roleCode: "OWNER" })),
+      ],
       hq: placedWith({ "claude-code": "u-eva" }),
     });
+    const NAMED = {
+      "u-eva": { name: "Eva Dvořák", clientUserId: "cu-eva" },
+      "u-karlos": { name: "Karlos", clientUserId: "cu-karlos" },
+      "u-krls": { name: "Krls", clientUserId: "cu-krls" },
+    };
 
     it.each([
       {
-        name: "the first the project lists",
-        first: "cu-karlos",
-        members: [karlos, krls, eva],
-        want: karlos,
+        name: "the person it names, over the signer",
+        owners: ["cu-karlos"],
+        want: { userId: "u-karlos", name: "Karlos" },
       },
       {
-        name: "the other where the member list lacks the first",
-        first: "cu-gone",
-        members: [karlos, krls, eva],
-        want: karlos,
+        name: "of two a hand-over before the transfer left, the first HQ names",
+        owners: ["cu-gone", "cu-krls"],
+        want: { userId: "u-krls", name: "Krls" },
       },
       {
-        name: "nobody where the member list has neither, never the signer",
-        first: "cu-gone",
-        members: [eva],
+        name: "nobody where HQ names none of them, never the signer",
+        owners: ["cu-gone"],
         want: undefined,
       },
-    ])("is $name", ({ first, members, want }) => {
-      const second = first === "cu-karlos" ? "cu-krls" : "cu-karlos";
-      expect(resolveMateOwner({ project: legacy(first, second), members })).toBe(want);
+    ])("is $name", ({ owners, want }) => {
+      expect(resolveMateOwnerPerson({ project: handed(...owners), people: NAMED })).toEqual(want);
     });
   });
 
-  it("is nobody when the signer is not in the member list", () => {
+  it.each([
+    { name: "HQ names nobody yet", people: null },
+    { name: "HQ's people leave the signer out", people: { "u-jan": { name: "Jan Novák" } } },
+  ])("names nobody where $name", ({ people }) => {
     expect(
-      resolveMateOwner({ project: signedIn({ "claude-code": "u-gone" }), members: [jan, eva] }),
+      resolveMateOwnerPerson({ project: signedIn({ "claude-code": "u-eva" }), people }),
     ).toBeUndefined();
   });
-
-  for (const [name, userRoles] of [
-    ["the project names no OWNER", [{ clientUserId: "cu-jan", roleCode: "ADMIN" }]],
-    ["the member list does not have them", [{ clientUserId: "cu-gone", roleCode: "OWNER" }]],
-    ["the project names nobody at all", []],
-  ] as const) {
-    it(`is nobody when ${name} and no agent was signed in`, () => {
-      expect(resolveMateOwner({ project: owned(userRoles), members: [jan] })).toBeUndefined();
-    });
-  }
 });
 
-// What the menu knows of a Mate's person before the member list is read: whether its records
-// name anybody, and whether anybody signed its agent in — as HQ relays the Mate's signers.
+// What the menu knows of a Mate's person before anybody is named: whether its records
+// name anybody, and whether anybody signed its agent in — as HQ's overview names its logins.
 describe("mateOwnerRecords — what a Mate's own records say of its person", () => {
   const OWNER = { clientUserId: "cu-jan", roleCode: "OWNER" };
   const SERVICE = { clientUserId: "cu-zcp", roleCode: "BASIC_USER" };

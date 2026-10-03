@@ -157,7 +157,7 @@ function candidate(
   } = {},
 ): ZeropsCandidate {
   const { connected = true, container = true, routes: theRoutes } = options;
-  // Every Mate here has its agent signed in (D6), as its summary at HQ names them — by the
+  // Every Mate here has its agent signed in (D6), as HQ's overview of it names them — by the
   // viewer, or by a colleague where its owner is not the viewer; the plan set's Hollin holds the
   // ones nobody has.
   const signer = COLLEAGUES_MATES.has(id) ? "u-colleague" : "u-harness";
@@ -168,11 +168,7 @@ function candidate(
           ...hq,
           mate: {
             ...hq.mate,
-            live: {
-              online: true,
-              at: hoursAgo(1),
-              summary: { main: null, running: 0, waiting: 0, signers: { "claude-code": signer } },
-            },
+            logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
           },
         };
   const tagList = hq.kind === "mate" ? ["mate"] : [];

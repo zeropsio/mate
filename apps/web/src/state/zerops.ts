@@ -48,6 +48,7 @@ import {
 import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
+import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
@@ -134,7 +135,7 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
   const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
   return view === null || view.organizationId !== organizationId || view.structure === null
     ? null
-    : placementsOf(view.structure);
+    : placementsOf(view.structure, get(hqLoginsAtom));
 }).pipe(Atom.withLabel("zerops:hq-placements"));
 
 /**
@@ -201,6 +202,31 @@ export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
   const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
   return view === null || view.organizationId !== organizationId ? null : view;
 }).pipe(Atom.withLabel("zerops:hq-mates"));
+
+/** The people HQ named for the organization in view, by Zerops user id; null while none are. */
+export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
+  const view = get(hqPeopleViewAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId ? null : view.people;
+}).pipe(Atom.withLabel("zerops:hq-people"));
+
+const sameLogins = (
+  left: ReadonlyMap<string, OverviewLogins>,
+  right: ReadonlyMap<string, OverviewLogins>,
+) => JSON.stringify([...left]) === JSON.stringify([...right]);
+
+/**
+ * Each Mate's logins, as HQ's overview of it says them, by project (`placementsOf` joins them onto
+ * its record): the same map while none of them moves, so a Mate at work redraws no listing.
+ */
+export const hqLoginsAtom = Atom.make(
+  (get): ReadonlyMap<string, OverviewLogins> =>
+    new Map(
+      [...(get(hqMatesAtom)?.mates ?? new Map())].flatMap(([projectId, mate]) =>
+        mate.logins === undefined ? [] : [[projectId, mate.logins] as const],
+      ),
+    ),
+).pipe(Atom.withEquality(sameLogins), Atom.withLabel("zerops:hq-logins"));
 
 const NO_PLACEMENTS: ReadonlyMap<string, HqPlacement> = new Map();
 
