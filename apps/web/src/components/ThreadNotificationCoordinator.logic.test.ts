@@ -29,7 +29,7 @@ const mate = (env: string, list: ReadonlyArray<ThreadDigest>): MateLiveView => (
   main: null,
   threads: { list, omitted: 0 },
   logins: {},
-  crew: null,
+  crew: { status: "off" },
 });
 
 const mates = (entries: ReadonlyArray<readonly [string, MateLiveView]>): HqMates =>
@@ -154,6 +154,7 @@ describe("watchMates", () => {
     const crewed = (threadKind: "idle" | "approval"): MateLiveView => ({
       ...mate("env-ada", [digest("t1")]),
       crew: {
+        status: "applied",
         crewmates: [
           {
             handle: "backend",
