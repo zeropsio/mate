@@ -17,11 +17,11 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { gitClient } from "../test/harness/gitClient.ts";
-import { addProject, mateInApp, remoteOf } from "../test/harness/mates.ts";
+import { addProject, mateInApp, remoteOf, rowsWhere } from "../test/harness/mates.ts";
 import { groupCheckout, propose, stateBecomes } from "../test/harness/recipe.ts";
 import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { GitHost, gitHostLayer } from "./gitHost.ts";
+import { GitHost, gitHostLayer, mainOf } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { ReleaseRefused, Releases, releasesLayer } from "./releases.ts";
 import { Roles } from "./roles.ts";
@@ -639,6 +639,141 @@ describe("an application's releases over HQ's API", () => {
             [403, { code: "forbidden", reason: "app_not_seen" }],
           );
         }),
+    );
+
+    // F22 (2026-10-03): a release whose client gave up at 20 s. Production's deploy is the deploy
+    // pass's, never the release's: a release, its rollback and a redeploy answer while a build runs.
+    it.effect(
+      "answers a release, a rollback and a redeploy within 5 s while production's build runs",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url, gitHost } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, credential, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+          addProject(fake, "P_PROD");
+          yield* call("POST", `/api/apps/${appId}/projects`, {
+            session: owner,
+            body: { projectId: "P_PROD", kind: "production", environment: { name: "production" } },
+          });
+          fake.tokens.set("key-prod", {
+            id: "T_PROD",
+            name: "deploy-production",
+            orgId: "ORG",
+            roleCode: "NO_ACCESS",
+            canCreateProjects: false,
+            canViewFinances: false,
+            canEditFinances: false,
+            projects: [{ projectId: "P_PROD", roleCode: "BASIC_USER" }],
+            createdMs: 0,
+            createdByUser: "owner",
+          });
+          const kept = yield* call(
+            "PUT",
+            `/api/apps/${appId}/environments/production/deploy-token`,
+            { session: owner, body: { token: "key-prod" } },
+          );
+          assert.strictEqual(kept.status, 204);
+          fake.services.push({
+            id: "S-app-prod",
+            projectId: "P_PROD",
+            name: "app",
+            status: "ACTIVE",
+            isSystem: false,
+            subdomainAccess: false,
+            http: true,
+            named: { id: "V0-app", name: "" },
+            activeVersionId: "V0-app",
+          });
+          // The service's repository, buildable, and the recipe's production tier built from it.
+          yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+          const git = yield* gitHost.git;
+          const appdev = { appId, id: "appdev" };
+          const built = yield* git.commitFiles(appdev, "refs/heads/main", {
+            files: {
+              "zerops.yaml": "zerops:\n  - setup: app\n    run:\n      start: node index.js\n",
+            },
+            expectedHead: yield* mainOf(git, appdev),
+            message: "Build it",
+            author: AUTHOR,
+          });
+          const app = "sha" in built ? built.sha : "";
+          const number = yield* propose(call, auth);
+          const group = yield* groupCheckout(yield* gitClient, origin, credential, appId, "group");
+          yield* group.write(
+            {
+              "4 — Small Production/import.yaml": [
+                "services:",
+                "  - hostname: app",
+                "    type: nodejs@22",
+                `    buildFromGit: ${origin}/git/${appId}/appdev.git`,
+                "    zeropsSetup: app",
+                "",
+              ].join("\n"),
+            },
+            "The production's",
+          );
+          yield* group.push("P_MATE", number);
+          yield* stateBecomes(call, owner, appId, number, "merged");
+          const groupHead = yield* group.main;
+          // Production's builds never end here.
+          fake.outcome = () => "BUILDING";
+          const timed = (path: string, body: unknown) =>
+            Effect.map(
+              Effect.timed(call("POST", `/api/apps/${appId}${path}`, { session: owner, body })),
+              ([took, answer]) => ({
+                status: answer.status,
+                inTime: Duration.toMillis(took) < 5000,
+              }),
+            );
+          const tags = Effect.map(
+            call("GET", `/api/apps/${appId}/releases`, { session: owner }),
+            (answer) =>
+              (answer.body as { readonly releases: ReadonlyArray<Release> }).releases.map(
+                (release) => release.tag,
+              ),
+          );
+
+          const first = yield* timed("/releases", {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "app", sha: app }],
+          });
+          assert.deepStrictEqual([first, yield* tags], [{ status: 201, inTime: true }, ["v0.1.0"]]);
+          yield* Effect.sync(() => fake.calls.includes("buildAndDeploy:key-prod")).pipe(
+            Effect.filterOrFail((building) => building),
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout(Duration.seconds(10)),
+          );
+          // A failed deploy of production's, for a person's "Run again".
+          const failed = "a".repeat(40);
+          yield* rowsWhere(
+            url,
+            `INSERT INTO hq_deploy (project_id, service, sha, repo, state, failure, message)
+             VALUES ('P_PROD', 'app', '${failed}', 'appdev', 'failed', 'job', 'failed: Build failed')
+             RETURNING 1`,
+            (rows) => rows.length === 1,
+          );
+          assert.deepStrictEqual(
+            [
+              yield* timed("/releases", {
+                tag: "v0.2.0",
+                groupHead,
+                entries: [{ service: "app", sha: app }],
+              }),
+              yield* timed("/releases/v0.1.0/rollback", { groupHead }),
+              yield* timed("/environments/production/redeploy", { service: "app", sha: failed }),
+              yield* tags,
+            ],
+            [
+              { status: 201, inTime: true },
+              { status: 201, inTime: true },
+              { status: 202, inTime: true },
+              ["v0.2.1", "v0.2.0", "v0.1.0"],
+            ],
+          );
+        }),
+      { timeout: 60_000 },
     );
   });
 });
