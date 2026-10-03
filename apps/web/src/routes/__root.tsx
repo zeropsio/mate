@@ -69,6 +69,7 @@ import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
+import { candidateListingWholeAtom } from "../state/zerops";
 import {
   primaryServerConfigAtom,
   primaryServerConfigEventAtom,
@@ -96,7 +97,11 @@ import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { rememberLastConversation } from "~/zerops/lastConversationMemory";
-import { rememberedMateIdentity, rememberMateIdentities } from "~/zerops/mateIdentityMemory";
+import {
+  mateDirectoryWhole,
+  rememberedMateIdentity,
+  rememberMateIdentities,
+} from "~/zerops/mateIdentityMemory";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
@@ -181,10 +186,15 @@ function SignedInRootRouteView() {
   const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
   // Who lives where, remembered for the next reload's first frame (`mateIdentityMemory`).
   const mateDirectory = useZeropsMateDirectory();
-  // Whole only once the listing is complete and every environment is registered: a Mate the
-  // directory then lacks has left, and is forgotten.
+  // Whole once the listing is complete, or whole for the person looking, and every environment
+  // is registered: a Mate the directory then lacks has left, and is forgotten.
   const { listing: mateListing } = useZeropsCandidates();
-  const directoryWhole = heldCandidates(mateListing).complete && environmentsReady;
+  const listingWholeForPerson = useAtomValue(candidateListingWholeAtom);
+  const directoryWhole = mateDirectoryWhole({
+    listingComplete: heldCandidates(mateListing).complete,
+    wholeForPerson: listingWholeForPerson,
+    environmentsReady,
+  });
   useEffect(() => {
     rememberMateIdentities(mateDirectory, { complete: directoryWhole });
   }, [directoryWhole, mateDirectory]);
