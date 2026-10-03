@@ -136,6 +136,7 @@ const withReleases = <A, E>(
           Layer.succeed(Roles, {
             view: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
             fresh: Effect.succeed({ ...ORG_VIEW, freshness: "fresh" as const }),
+            recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
             exists: () => Effect.succeed(true),
           }),
         ),

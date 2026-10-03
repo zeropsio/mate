@@ -52,6 +52,7 @@ const withMovingMain = (moves: number) =>
     const roles = Layer.succeed(Roles, {
       view: Effect.succeed({ ...org, freshness: "cached" as const }),
       fresh: Effect.succeed({ ...org, freshness: "fresh" as const }),
+      recent: Effect.succeed({ ...org, freshness: "cached" as const }),
       exists: () => Effect.succeed(true),
     });
     const left = { moves };

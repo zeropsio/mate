@@ -113,6 +113,7 @@ const withStructure = <A, E, B = never>(
     const roles = Layer.succeed(Roles, {
       view: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
       fresh: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "fresh" as const })),
+      recent: Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
       exists: (projectId) =>
         Effect.flatMap(Ref.get(down), (isDown) =>
           isDown
