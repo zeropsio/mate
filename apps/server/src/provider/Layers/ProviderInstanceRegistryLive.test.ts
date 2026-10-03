@@ -781,7 +781,7 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
         [grokDriverKind, grok!.adapter.capabilities.threadProfile],
         [openCodeDriverKind, openCode!.adapter.capabilities.threadProfile],
       ]);
-      expect(claudeSnapshot.threadProfile).toEqual({ tools: true });
+      expect(claudeSnapshot.threadProfile).toEqual({ tools: true, reportsSpend: true });
     }).pipe(Effect.provide(testLayer)),
   );
 });
