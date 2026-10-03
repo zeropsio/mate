@@ -65,45 +65,58 @@ export interface RunScrollPosition {
   readonly clientHeight: number;
 }
 
+/** How near its foot the scroll may stand and still count as at it: it follows from there. */
+export const FOLLOW_SLACK_PX = 4;
+
+/** How far up a move must go to be one: a re-read of where it stood can settle a fraction. */
+const MOVED_UP_PX = 0.5;
+
 /**
- * Whether the scroll stands at its foot, a pixel's slack for a fractional
- * zoom: there, it follows what arrives; scrolled up, it stays where the
- * person put it.
+ * Whether the scroll stands at its foot, a few pixels' slack: there, it
+ * follows what arrives; scrolled up, it stays where the person put it.
  */
 export function standsAtFoot(scroll: RunScrollPosition): boolean {
-  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1;
+  return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= FOLLOW_SLACK_PX;
 }
 
-/** How near its foot the person may leave the scroll and it still follows. */
-export const FOLLOW_SLACK_PX = 4;
+/** Whether the run's scroll follows its foot, and where its top last stood. */
+export interface RunScrollFollow {
+  readonly follows: boolean;
+  /** Where its top last stood: where it was last read, or where the page last put it. */
+  readonly stood: number;
+}
 
 /** What happened to the run's scroll, for whether it follows its foot. */
 export type RunScrollEvent =
-  /** It moved: the person's wheel, touch, keys or bar, or else the page (its own follow, a clamp). */
-  | { readonly kind: "scrolled"; readonly byPerson: boolean; readonly position: RunScrollPosition }
-  /** What it holds grew: a line arriving, a plop, a resync, a re-measure. */
-  | { readonly kind: "grew" }
+  /** It was read where it stands now: after a scroll, or as what it holds grew. */
+  | { readonly kind: "scrolled"; readonly position: RunScrollPosition }
+  /** The page put its top at `top` (read back as the browser took it). */
+  | { readonly kind: "set"; readonly top: number }
   /** The person opened or closed something in it: theirs to read. */
   | { readonly kind: "held" };
 
 /**
  * Whether the run's scroll follows its foot after `event`: every arrival
- * keeps its newest line in view while it does. Standing at its foot (a few
- * pixels' slack) it follows; only the person moving it away from there, or
- * opening something in it, stops it. A scroll nobody made — its own follow
- * read after the next arrival, the browser clamping it — never does.
+ * keeps its newest line in view while it does. At its foot (a few pixels'
+ * slack) it follows. Away from it, a top that moved up from where it last
+ * stood is the person's — a wheel, keys, a find, a drag-select, focus moving
+ * into it, whatever made it — and stops it; opening something in it stops it
+ * too. Nothing else does: an arrival grows it under its top, the page's own
+ * move goes down, and a clamp — a row's travel ending, a resize — lands on
+ * the foot.
  */
-export function followsAfter(follows: boolean, event: RunScrollEvent): boolean {
+export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunScrollFollow {
   switch (event.kind) {
     case "held":
-      return false;
-    case "grew":
-      return follows;
+      return { follows: false, stood: state.stood };
+    case "set":
+      return { follows: state.follows, stood: event.top };
     case "scrolled": {
-      const { position } = event;
-      const fromFoot = position.scrollHeight - position.scrollTop - position.clientHeight;
-      if (fromFoot <= FOLLOW_SLACK_PX) return true;
-      return follows && !event.byPerson;
+      const top = event.position.scrollTop;
+      if (standsAtFoot(event.position)) return { follows: true, stood: top };
+      if (top < state.stood - MOVED_UP_PX) return { follows: false, stood: top };
+      // A fraction up is kept from where it stood, so a slow drag adds up.
+      return { follows: state.follows, stood: Math.max(top, state.stood) };
     }
   }
 }

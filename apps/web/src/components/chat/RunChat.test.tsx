@@ -1491,12 +1491,11 @@ describe("RunChat, as the person uses it", () => {
     it("keeps a run open as it settles while the person reads its work, its line at the foot", () => {
       const renderer = mount(workOnly({ live: true, status: status() }));
       // They scrolled up in it to read.
-      act(() => {
-        scrollsOf(renderer)[0]!.props.onWheel();
+      act(() =>
         scrollsOf(renderer)[0]!.props.onScroll({
           currentTarget: { scrollTop: 0, scrollHeight: 900, clientHeight: 440 },
-        });
-      });
+        }),
+      );
       settle(renderer);
       expect(scrollsOf(renderer)).toHaveLength(1);
       const markup = text(renderer);
@@ -1820,11 +1819,29 @@ describe("RunChat, as the person uses it", () => {
           box.scrollHeight += by;
           for (const callback of heard) callback();
         },
-        /** It moves to `top`: by the person's wheel, or else by the page. */
-        scrolled: (top: number, byPerson: boolean) => {
+        /** The person's wheel or finger on it, moving it or not. */
+        touched: () => {
+          act(() => {
+            scroll().props.onWheel?.();
+            scroll().props.onTouchStart?.();
+          });
+        },
+        /** Its scroll heard where it stands. */
+        heard: () => {
+          act(() => {
+            scroll().props.onScroll({
+              currentTarget: {
+                scrollTop: box.scrollTop,
+                scrollHeight: box.scrollHeight,
+                clientHeight: box.clientHeight,
+              },
+            });
+          });
+        },
+        /** It moves to `top` — whatever moved it: a wheel, keys, a find, focus — and is heard. */
+        scrolled: (top: number) => {
           box.scrollTop = top;
           act(() => {
-            if (byPerson) scroll().props.onWheel?.();
             scroll().props.onScroll({
               currentTarget: {
                 scrollTop: box.scrollTop,
@@ -1856,23 +1873,123 @@ describe("RunChat, as the person uses it", () => {
       run.grow(65);
       // Its own move to the foot, heard once the next line already grew it.
       run.box.scrollHeight += 40;
-      run.scrolled(run.box.scrollTop, false);
+      run.heard();
       run.grow(0);
       expect(run.fromFoot()).toBe(0);
     });
 
-    it("holds what the person scrolled up to through three arrivals, then follows from the foot", () => {
+    // The wheel chains on to the conversation from a card at its foot, and a
+    // finger rests on a phone's card: neither moved it, and it still follows.
+    it("keeps following through a wheel or a touch over it that did not move it", () => {
+      const run = liveScroll();
+      run.grow(65);
+      run.touched();
+      run.grow(40);
+      // Its own move to the foot, heard once the next line already grew it.
+      run.box.scrollHeight += 40;
+      run.heard();
+      run.grow(0);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    // A find, a drag-select, middle-click autoscroll, focus moving into it:
+    // the person moved it up with no wheel, key or touch on it.
+    it("holds what the person scrolled up to with no wheel, key or touch, through three arrivals", () => {
       const run = liveScroll();
       run.grow(400);
-      run.scrolled(120, true);
+      run.scrolled(120);
       for (const by of [65, 40, 120]) {
         run.grow(by);
         expect(run.box.scrollTop).toBe(120);
       }
-      run.scrolled(run.box.scrollHeight - run.box.clientHeight - 2, true);
+      run.scrolled(run.box.scrollHeight - run.box.clientHeight - 2);
       run.grow(65);
       expect(run.fromFoot()).toBe(0);
     });
+
+    // What it holds shrank (a line closed) and the browser clamped it onto its
+    // new foot; the clamp is heard only after the next line grew it again.
+    it("keeps following through a clamp onto a shorter foot", () => {
+      const run = liveScroll();
+      run.grow(400);
+      run.touched();
+      run.box.scrollHeight -= 100;
+      // The browser clamps it onto its new foot.
+      run.box.scrollTop = Number.POSITIVE_INFINITY;
+      run.grow(0);
+      run.box.scrollHeight += 65;
+      run.heard();
+      run.grow(0);
+      expect(run.fromFoot()).toBe(0);
+    });
+  });
+
+  // A row travelling into its place paints past the lines' foot for a moment;
+  // the browser counts that as more to scroll to. Nothing is below the last
+  // line: no fade at the bottom.
+  it("fades no bottom while a landing row's travel overhangs its last line", () => {
+    const saved = {
+      resize: (globalThis as { ResizeObserver?: unknown }).ResizeObserver,
+      style: (globalThis as { getComputedStyle?: unknown }).getComputedStyle,
+    };
+    const list = { offsetHeight: 600 };
+    const heard: Array<() => void> = [];
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      readonly callback: () => void;
+      constructor(callback: () => void) {
+        this.callback = callback;
+      }
+      observe(target: unknown) {
+        if (target === list) heard.push(this.callback);
+      }
+      disconnect() {}
+    };
+    (globalThis as { getComputedStyle?: unknown }).getComputedStyle = () => ({
+      paddingTop: "0px",
+      paddingBottom: "0px",
+    });
+    try {
+      const marks = new Set<string>();
+      let top = 0;
+      const box = {
+        get scrollTop() {
+          return top;
+        },
+        set scrollTop(next: number) {
+          top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        },
+        scrollHeight: 600,
+        clientHeight: 440,
+        firstElementChild: list,
+        toggleAttribute: (name: string, on: boolean) => {
+          if (on) marks.add(name);
+          else marks.delete(name);
+        },
+      };
+      const node = (element: { type: unknown }) =>
+        element.type === "ol" ? list : element.type === "div" ? box : {};
+      act(() => {
+        mounted(
+          <Rows>
+            <RunChat
+              row={record([step(command("w1", "echo one"))], { live: true, status: status() })}
+            />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      expect(marks.has("data-more-below")).toBe(false);
+      // A line lands: its travel overhangs the last line by 80px.
+      list.offsetHeight += 65;
+      box.scrollHeight += 65 + 80;
+      for (const callback of heard) callback();
+      expect(box.scrollHeight - box.scrollTop - box.clientHeight).toBe(80);
+      expect(marks.has("data-more-below")).toBe(false);
+      expect(marks.has("data-more-above")).toBe(true);
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = saved.resize;
+      (globalThis as { getComputedStyle?: unknown }).getComputedStyle = saved.style;
+    }
   });
 
   // A long run opens on its newest lines (a two-hour run froze the page as

@@ -13,7 +13,7 @@ import {
   EARLIER_REACH_PX,
   earlierShown,
   FOLLOW_SLACK_PX,
-  followsAfter,
+  followAfter,
   footTop,
   forgetRunFolds,
   laidOutPosition,
@@ -546,6 +546,8 @@ describe("standsAtFoot", () => {
   it.each([
     { name: "at its foot", scrollTop: 560, foot: true },
     { name: "a pixel short of it", scrollTop: 559, foot: true },
+    { name: "its slack short of it", scrollTop: 560 - FOLLOW_SLACK_PX, foot: true },
+    { name: "past its slack", scrollTop: 559 - FOLLOW_SLACK_PX, foot: false },
     { name: "scrolled up a line", scrollTop: 520, foot: false },
     { name: "at its top", scrollTop: 0, foot: false },
   ])("$name: $foot", ({ scrollTop, foot }) => {
@@ -558,80 +560,86 @@ describe("standsAtFoot", () => {
 });
 
 // While the run goes on its scroll follows its newest line: every arrival
-// keeps the foot in view. Only the person scrolling away from the foot stops
-// it — growth, a plop, a resync, a re-measure or the browser clamping the
-// scroll never does — and scrolling back to the foot follows again.
-describe("followsAfter", () => {
+// keeps the foot in view. Only the person moving it up, away from the foot,
+// stops it — told by the move itself, whatever made it (a wheel, keys, a
+// find, a drag-select, focus); growth, a plop, a resync, a re-measure, its
+// own follow or the browser clamping it never does — and back at the foot it
+// follows again.
+describe("followAfter", () => {
   const foot = { scrollTop: 560, scrollHeight: 1000, clientHeight: 440 };
   const nearFoot = { ...foot, scrollTop: 560 - FOLLOW_SLACK_PX };
   const up = { ...foot, scrollTop: 300 };
-  // The scroll as an arrival leaves it before it is followed: the foot moved on.
+  // An arrival grew it under where it stood: the foot moved on, it did not.
   const grownUnder = { scrollTop: 560, scrollHeight: 1065, clientHeight: 440 };
+  // A row's travel ended: the browser clamped it onto the shorter foot.
+  const clamped = { scrollTop: 500, scrollHeight: 940, clientHeight: 440 };
   it.each([
-    { name: "the person scrolls up", follows: true, byPerson: true, position: up, after: false },
+    { name: "moved up, away from the foot", follows: true, stood: 560, position: up, after: false },
+    { name: "moved up a hair", follows: true, stood: 560, position: nearFoot, after: true },
+    { name: "moved back to the foot", follows: false, stood: 300, position: foot, after: true },
+    { name: "moved back near it", follows: false, stood: 300, position: nearFoot, after: true },
+    { name: "moved down, still above", follows: false, stood: 120, position: up, after: false },
+    { name: "moved further up", follows: false, stood: 400, position: up, after: false },
+    { name: "an arrival under it", follows: true, stood: 560, position: grownUnder, after: true },
     {
-      name: "the person scrolls up a hair",
+      name: "a wheel that did not move it",
       follows: true,
-      byPerson: true,
-      position: nearFoot,
-      after: true,
-    },
-    {
-      name: "the person scrolls back to the foot",
-      follows: false,
-      byPerson: true,
-      position: foot,
-      after: true,
-    },
-    {
-      name: "the person scrolls back near the foot",
-      follows: false,
-      byPerson: true,
-      position: nearFoot,
-      after: true,
-    },
-    {
-      name: "the person scrolls, still above",
-      follows: false,
-      byPerson: true,
-      position: up,
-      after: false,
-    },
-    {
-      name: "its own follow read after an arrival",
-      follows: true,
-      byPerson: false,
+      stood: 560,
       position: grownUnder,
       after: true,
     },
     {
-      name: "a clamp away from the foot",
+      name: "its own follow, read late",
       follows: true,
-      byPerson: false,
-      position: up,
+      stood: 500,
+      position: grownUnder,
       after: true,
     },
-    { name: "a clamp onto the foot", follows: false, byPerson: false, position: foot, after: true },
     {
-      name: "a scroll nobody made, above",
-      follows: false,
-      byPerson: false,
-      position: up,
-      after: false,
+      name: "a clamp onto a shorter foot",
+      follows: true,
+      stood: 560,
+      position: clamped,
+      after: true,
     },
-  ])("$name: $after", ({ follows, byPerson, position, after }) => {
-    expect(followsAfter(follows, { kind: "scrolled", byPerson, position })).toBe(after);
+    { name: "moved down, while following", follows: true, stood: 120, position: up, after: true },
+    { name: "a sub-pixel settle", follows: true, stood: 300.4, position: up, after: true },
+  ])("$name: $after", ({ follows, stood, position, after }) => {
+    expect(followAfter({ follows, stood }, { kind: "scrolled", position }).follows).toBe(after);
+  });
+
+  it.each([
+    { name: "a move it heard", stood: 560, position: up, at: 300 },
+    { name: "a move down", stood: 120, position: up, at: 300 },
+    // Read again from where it stood, so a slow drag adds up to a move.
+    { name: "less than a pixel up", stood: 300.4, position: up, at: 300.4 },
+  ])("stands where $name left it", ({ stood, position, at }) => {
+    expect(followAfter({ follows: true, stood }, { kind: "scrolled", position }).stood).toBe(at);
+  });
+
+  it("creeping up a fraction of a pixel at a time stops following once it adds up", () => {
+    let state = { follows: true, stood: 300 };
+    for (const scrollTop of [299.8, 299.6, 299.4]) {
+      state = followAfter(state, { kind: "scrolled", position: { ...foot, scrollTop } });
+    }
+    expect(state.follows).toBe(false);
   });
 
   it.each([
     { follows: true, after: true },
     { follows: false, after: false },
-  ])("growth keeps it as it was ($follows)", ({ follows, after }) => {
-    expect(followsAfter(follows, { kind: "grew" })).toBe(after);
+  ])("its own move keeps it as it was ($follows)", ({ follows, after }) => {
+    expect(followAfter({ follows, stood: 0 }, { kind: "set", top: 460 })).toEqual({
+      follows: after,
+      stood: 460,
+    });
   });
 
   it("stops when the person opens something in it", () => {
-    expect(followsAfter(true, { kind: "held" })).toBe(false);
+    expect(followAfter({ follows: true, stood: 560 }, { kind: "held" })).toEqual({
+      follows: false,
+      stood: 560,
+    });
   });
 });
 
