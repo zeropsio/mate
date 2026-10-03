@@ -6,11 +6,13 @@ import {
   type McpServersList,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 
 import { ProviderMcpError, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
 import { type McpAgentPaths } from "./mcpAgents.ts";
-import { make, mcpAgentPaths, type McpLiveAccess } from "./McpServers.ts";
+import { make, mcpAgentPaths, nodeFileStore, type McpLiveAccess } from "./McpServers.ts";
 
 const HOME = "/home/zerops";
 const PATHS: McpAgentPaths = mcpAgentPaths({
@@ -347,4 +349,35 @@ describe("mcpAgentPaths", () => {
       openCodeConfig: "/xdg/opencode/opencode.json",
     });
   });
+});
+
+it.layer(NodeServices.layer)("nodeFileStore", (it) => {
+  it.effect("writes a config whole, through a link, keeping its permissions", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped();
+      const store = yield* nodeFileStore;
+
+      // A new file is private to its owner: it can hold keys.
+      yield* store.write(`${dir}/new/.claude.json`, "{}\n");
+      expect(yield* store.read(`${dir}/new/.claude.json`)).toBe("{}\n");
+      expect((yield* fs.stat(`${dir}/new/.claude.json`)).mode & 0o777).toBe(0o600);
+
+      // A shadow home's link keeps pointing at the shared file the write replaced.
+      yield* fs.writeFileString(`${dir}/shared.toml`, "a = 1\n", { mode: 0o640 });
+      yield* fs.chmod(`${dir}/shared.toml`, 0o640);
+      yield* fs.symlink(`${dir}/shared.toml`, `${dir}/link.toml`);
+      yield* store.write(`${dir}/link.toml`, "a = 2\n");
+      expect(yield* fs.readLink(`${dir}/link.toml`)).toBe(`${dir}/shared.toml`);
+      expect(yield* fs.readFileString(`${dir}/shared.toml`)).toBe("a = 2\n");
+      expect((yield* fs.stat(`${dir}/shared.toml`)).mode & 0o777).toBe(0o640);
+
+      expect(yield* store.read(`${dir}/missing.json`)).toBeUndefined();
+      expect((yield* fs.readDirectory(dir)).toSorted()).toEqual([
+        "link.toml",
+        "new",
+        "shared.toml",
+      ]);
+    }),
+  );
 });
