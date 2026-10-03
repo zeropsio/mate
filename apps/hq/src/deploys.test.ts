@@ -1086,20 +1086,96 @@ describe("deploys", () => {
     );
 
     // Main B38: a deploy still running past its patience is deployed again by the next pass.
-    it.effect("deploys again a deploy still running past its patience", () =>
+    // Audit H6: Zerops takes no idempotency key, so a build HQ submitted is never submitted again
+    // while it runs, however long it takes: each pass reads where it stands.
+    it.effect("never submits again a deploy still building past its patience", () =>
       withDeploys(({ appId, world, tiers, commit, until }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
           world.outcome = () => "BUILDING";
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("deploying"));
-          yield* (yield* Deploys).catchUp;
-          assert.lengthOf(versions(world), 1);
           yield* Effect.sleep(FAST.patience ?? Duration.zero);
+          yield* (yield* Deploys).catchUp;
+          yield* Effect.sleep(FAST.patience ?? Duration.zero);
+          assert.lengthOf(versions(world), 1);
           world.outcome = () => "ACTIVE";
           yield* (yield* Deploys).catchUp;
           yield* until(settled("live"));
-          assert.lengthOf(versions(world), 2);
+          assert.lengthOf(versions(world), 1);
+        }),
+      ),
+    );
+
+    // Audit H6: a build whose answer was lost may be running: HQ reads its version in Zerops, and
+    // never submits the commit again while it builds.
+    it.effect("never submits again a build whose answer was lost, and reads where it stands", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.outcome = () => "BUILDING";
+          world.lost.add("buildAndDeploy");
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.state !== "pending"));
+          yield* (yield* Deploys).catchUp;
+          yield* Effect.sleep(FAST.patience ?? Duration.zero);
+          assert.lengthOf(versions(world), 1);
+          world.outcome = () => "ACTIVE";
+          yield* (yield* Deploys).catchUp;
+          yield* until(settled("live"));
+          assert.lengthOf(versions(world), 1);
+        }),
+      ),
+    );
+
+    // A Zerops that does not answer says nothing of a build HQ submitted: it is read again once it
+    // answers, never submitted again.
+    it.effect("never submits again a build while Zerops does not answer about it", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.outcome = () => "BUILDING";
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("deploying"));
+          const reads = () => world.calls.filter((call) => call === "services:key-stage").length;
+          const before = reads();
+          world.unanswered.add("services");
+          yield* (yield* Deploys).catchUp;
+          // Once a pass asked for the services, and went unanswered.
+          yield* Effect.sync(reads).pipe(
+            Effect.filterOrFail(
+              (now) => now > before,
+              () => "not yet",
+            ),
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout(Duration.seconds(10)),
+            Effect.orDie,
+          );
+          yield* Effect.sleep(Duration.millis(100));
+          world.unanswered.clear();
+          world.outcome = () => "ACTIVE";
+          yield* (yield* Deploys).catchUp;
+          yield* until(settled("live"));
+          assert.lengthOf(versions(world), 1);
+        }),
+      ),
+    );
+
+    // A version whose upload went unanswered and whose build HQ never asked for still waits for its
+    // archive: never submitted, so the commit is deployed anew.
+    it.effect("deploys anew a commit whose version never had its build submitted", () =>
+      withDeploys(({ appId, world, tiers, commit, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.lost.add("upload");
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((rows) => rows.some((row) => row.state !== "pending"));
+          yield* (yield* Deploys).catchUp;
+          yield* until(settled("live"));
+          assert.deepStrictEqual(
+            [...world.appVersions.values()].map((version) => version.status),
+            ["UPLOADING", "ACTIVE"],
+          );
         }),
       ),
     );

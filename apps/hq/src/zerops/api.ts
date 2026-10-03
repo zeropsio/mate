@@ -156,6 +156,12 @@ export class ZeropsDeploy extends Context.Service<
     ) => Write<{ readonly processId: string }>;
     /** `GET /process/{id}`. */
     readonly process: (processId: string) => Read<ZeropsProcess>;
+    /**
+     * `GET /app-version/{id}`: where a version stands, by its `status` — `UPLOADING` until its build
+     * is submitted, then building and deploying, `ACTIVE` once it runs (the one before goes
+     * `BACKUP`), or one of the failures (measured 2026-09-16; the vocabulary is the SDK's).
+     */
+    readonly appVersion: (appVersionId: string) => Read<{ readonly status: string }>;
     /** `PUT /service-stack/{id}/enable-subdomain-access`: its job. */
     readonly enableSubdomainAccess: (serviceId: string) => Write<{ readonly processId: string }>;
     /**
