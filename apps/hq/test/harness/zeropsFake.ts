@@ -159,6 +159,17 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
             ),
         ),
       ),
+    tokenProjects: (orgId, tokenId) => (credential) =>
+      inOrg("tokenProjects", credential, orgId).pipe(
+        Effect.flatMap(() => {
+          const token = [...world.tokens.values()].find(
+            (candidate) => candidate.id === tokenId && candidate.orgId === orgId,
+          );
+          return token === undefined
+            ? Effect.fail(notFound("tokenProjects", "integrationTokenNotFound"))
+            : Effect.succeed(token.projects);
+        }),
+      ),
     ownToken: (credential) =>
       Effect.zipWith(caller("ownToken", credential), Clock.currentTimeMillis, (token, now) => ({
         ...token,

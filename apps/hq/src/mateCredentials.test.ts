@@ -108,6 +108,21 @@ const isMateRefused = Schema.is(MateRefused);
 const refusalOf = <A, E extends { readonly _tag: string }, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.map(Effect.flip(effect), (error) => (isMateRefused(error) ? error.code : error._tag));
 
+/** A Mate's key on the platform, by its id, granting `projectIds` (no value is ever read). */
+const keyOn = (fake: FakeWorld, id: string, ...projectIds: ReadonlyArray<string>) =>
+  fake.tokens.set(`value-of-${id}`, {
+    id,
+    name: "zerops-zcp-zcp",
+    orgId: "ORG",
+    roleCode: "NO_ACCESS",
+    canCreateProjects: false,
+    canViewFinances: false,
+    canEditFinances: false,
+    projects: projectIds.map((projectId) => ({ projectId, roleCode: "ADMIN" })),
+    createdMs: 0,
+    createdByUser: "owner",
+  });
+
 /** What zcp does with its own key: writes the nonce into its project's env, unmarked. */
 const writeChallenge = (fake: FakeWorld, projectId: string, value: string, sensitive = false) =>
   fake.env.set(projectId, [{ key: CHALLENGE_ENV, value, sensitive }]);
@@ -219,6 +234,7 @@ describe("mate credentials", () => {
     it.effect("keeps the key id a Mate names, at its enrollment and with its credential", () =>
       withMates((fake) =>
         Effect.gen(function* () {
+          for (const id of ["tok-key-1", "tok-key-2", "tok-key-3"]) keyOn(fake, id, "P_MATE");
           const mates = yield* MateCredentials;
           const enroll = (keyTokenId?: string) =>
             Effect.gen(function* () {
@@ -240,6 +256,33 @@ describe("mate credentials", () => {
           );
           yield* mates.keepKey(second, "tok-key-3");
           assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-key-3");
+        }),
+      ),
+    );
+
+    // An org Read only token reads a token by its id (measured on KRLS 2026-10-03: 200, with its
+    // projects, role and creator): HQ keeps an id only where that token's one grant is the Mate's
+    // own project — never a deploy key, a person's token, or another Mate's key.
+    it.effect("keeps a key id only where its token's one grant is the Mate's project", () =>
+      withMates((fake) =>
+        Effect.gen(function* () {
+          keyOn(fake, "tok-own", "P_MATE");
+          keyOn(fake, "tok-wide", "P_MATE", "P_STAGE");
+          keyOn(fake, "tok-other", "P_STAGE");
+          const mates = yield* MateCredentials;
+          const { nonce } = yield* mates.challenge("P_MATE");
+          writeChallenge(fake, "P_MATE", nonce);
+          const { credential } = yield* mates.issue("P_MATE", nonce, "tok-wide");
+          assert.isNull(yield* mates.keyOf("P_MATE"));
+          assert.deepStrictEqual(
+            [
+              yield* refusalOf(mates.keepKey(credential, "tok-other")),
+              yield* refusalOf(mates.keepKey(credential, "tok-gone")),
+            ],
+            ["key_not_its_own", "key_not_its_own"],
+          );
+          yield* mates.keepKey(credential, "tok-own");
+          assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-own");
         }),
       ),
     );

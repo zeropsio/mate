@@ -193,6 +193,7 @@ const MATE_STATUS = {
   project_gone: 404,
   not_a_mate: 403,
   mate_credential_required: 401,
+  key_not_its_own: 409,
 } as const;
 
 const CHANGE_STATUS = {
