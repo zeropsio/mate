@@ -5,7 +5,9 @@
  *
  * Two reads per application, its stage's tier and its production's: when it is first shown, and
  * again once a change of its recipe lands (`revision`). A read that fails says nothing of the
- * recipe: what was read before stands, and the next landing reads it again. Until one answers, the
+ * recipe: what was read before stands, and it is asked again a minute later ({@link
+ * RECIPES_RETRY_MS}) — HQ refuses while a Core takes over or the door's budget is spent, and a page
+ * left without a recipe offered no production for its whole life (F20). Until one answers, the
  * application has no recipe here, and nothing asks for a tier it may not offer.
  */
 import { appRecipeOf, type AppRecipe } from "@t3tools/client-runtime/zerops";
@@ -13,6 +15,9 @@ import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { useEffect, useRef, useState } from "react";
 
 import { useOfficialHq } from "./accountHq";
+
+/** How long a recipe HQ did not answer waits before it is asked again. */
+export const RECIPES_RETRY_MS = 60_000;
 
 /** A tier's import file as `main` holds it; `null` where it holds none. */
 const fileOf = (read: RecipeTierResponse): string | null =>
@@ -29,6 +34,9 @@ export function useZeropsAppRecipes(input: {
   const reading = useRef(
     new Map<string, { readonly key: string; readonly stop: AbortController }>(),
   );
+  // Each application's attempt, moved on a minute after its read failed: the read is due again.
+  const [attempts, setAttempts] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const retries = useRef(new Set<ReturnType<typeof setTimeout>>());
   const apps = JSON.stringify([...input.apps]);
 
   useEffect(() => {
@@ -36,7 +44,7 @@ export function useZeropsAppRecipes(input: {
     for (const [appId, revision] of JSON.parse(apps) as ReadonlyArray<
       readonly [string, string | null]
     >) {
-      const key = `${hq.address}|${revision ?? ""}`;
+      const key = `${hq.address}|${revision ?? ""}|${String(attempts.get(appId) ?? 0)}`;
       const out = reading.current.get(appId);
       if (out?.key === key) continue;
       out?.stop.abort();
@@ -52,18 +60,27 @@ export function useZeropsAppRecipes(input: {
           const recipe = appRecipeOf({ stage: fileOf(stage), production: fileOf(production) });
           setRecipes((current) => new Map(current).set(appId, recipe));
         } catch {
-          // Not read: the key goes, so the application is read again on the next pass.
-          if (reading.current.get(appId)?.stop === stop) reading.current.delete(appId);
+          // Not read: the key goes, and a minute later its next attempt reads the application again.
+          if (reading.current.get(appId)?.stop !== stop) return;
+          reading.current.delete(appId);
+          const timer = setTimeout(() => {
+            retries.current.delete(timer);
+            setAttempts((current) => new Map(current).set(appId, (current.get(appId) ?? 0) + 1));
+          }, RECIPES_RETRY_MS);
+          retries.current.add(timer);
         }
       })();
     }
-  }, [apps, hq, input.enabled]);
+  }, [apps, attempts, hq, input.enabled]);
 
   useEffect(() => {
     const out = reading.current;
+    const timers = retries.current;
     return () => {
       for (const { stop } of out.values()) stop.abort();
       out.clear();
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
     };
   }, []);
 
