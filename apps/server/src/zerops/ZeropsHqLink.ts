@@ -20,9 +20,9 @@
  *
  * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
  * where it answers there ({@link HQ_LINK_ADDRESS_ORDER}): the Zerops L7 cuts a WebSocket on a
- * project's shared IPv4 at 120 s, and not one on its IPv6. A link that stays open is replaced before
- * that cut all the same ({@link MATE_LINK_ROTATE_MS}): its successor opens beside it, and the old one
- * closes only once HQ answered on the new one, so HQ never holds the Mate without a link.
+ * project's shared IPv4 at 120 s, and not one on its IPv6. A link that went over anything but IPv6
+ * is replaced before that cut ({@link MATE_LINK_ROTATE_MS}): its successor opens beside it, and the
+ * old one closes only once HQ answered on the new one, so HQ never holds the Mate without a link.
  *
  * @module ZeropsHqLink
  */
@@ -77,6 +77,11 @@ import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 export interface LinkSocket {
   send(data: string): void;
   close(): void;
+  /**
+   * The address family it went over, once open. Unknown is taken as a path the L7 may cut at 120 s
+   * ({@link MATE_LINK_ROTATE_MS}).
+   */
+  family?(): "IPv4" | "IPv6" | undefined;
   addEventListener(type: "open" | "close" | "error", listener: () => void): void;
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
 }
@@ -151,9 +156,25 @@ export const preferringIpv6 =
     lookup(hostname, { ...options, order: HQ_LINK_ADDRESS_ORDER }, callback);
 
 /**
- * How long a link is kept before its successor opens. The Zerops L7 closes every WebSocket 120 s
- * after it opened, with no close frame, whatever passes over it (measured on KRLS's HQ, F26,
- * 2026-10-03): 100 s leaves the successor 20 s to open and be answered.
+ * The link's socket (`ws`): HQ resolved {@link HQ_LINK_ADDRESS_ORDER}, and the family it went over
+ * said once it opened.
+ */
+export const connectLinkSocket: ConnectLinkSocket = (url) => {
+  const socket = new NodeWS.WebSocket(url, { lookup: preferringIpv6(NodeDns.lookup) });
+  let family: string | undefined;
+  socket.once("upgrade", (response) => {
+    family = response.socket.remoteFamily;
+  });
+  return Object.assign(socket, {
+    family: () => (family === "IPv4" || family === "IPv6" ? family : undefined),
+  }) as unknown as LinkSocket;
+};
+
+/**
+ * How long a link that did not go over IPv6 is kept before its successor opens. The Zerops L7
+ * closes a WebSocket on a project's shared IPv4 120 s after it opened, with no close frame,
+ * whatever passes over it (measured on KRLS's HQ, F26, 2026-10-03): 100 s leaves the successor
+ * 20 s to open and be answered.
  */
 export const MATE_LINK_ROTATE_MS = 100_000;
 
@@ -254,6 +275,7 @@ export const makeZeropsHqLink = (
         }
 
         const openedAt = yield* Clock.currentTimeMillis;
+        const family = socket.family?.();
         const answered = yield* Deferred.make<void>();
         const dirty = yield* Ref.make(true);
         // What this link sent of each section, as JSON: a new link starts with nothing sent.
@@ -305,6 +327,7 @@ export const makeZeropsHqLink = (
         );
         return Option.some({
           openedAt,
+          family,
           answered,
           closed: Fiber.join(relayed),
           stop: Fiber.interrupt(relayed),
@@ -323,6 +346,11 @@ export const makeZeropsHqLink = (
           if (Option.isNone(opened)) return false;
           let current = opened.value;
           for (;;) {
+            // Only the shared IPv4 is cut at 120 s: a link over IPv6 is kept as it is.
+            if (current.family === "IPv6") {
+              yield* current.closed;
+              return true;
+            }
             const rotateAt = current.openedAt + MATE_LINK_ROTATE_MS;
             const successor = Effect.gen(function* () {
               yield* Effect.sleep(Duration.millis(rotateAt - (yield* Clock.currentTimeMillis)));
@@ -505,10 +533,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         readOutcome: fs
           .readFileString(paths.join(paths.dirname(path), "outcome.json"))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
-        connect: (url) =>
-          new NodeWS.WebSocket(url, {
-            lookup: preferringIpv6(NodeDns.lookup),
-          }) as unknown as LinkSocket,
+        connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
         ...feed,
       });

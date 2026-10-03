@@ -40,6 +40,11 @@ class FakeSocket implements LinkSocket {
   readonly sent: Array<Sent> = [];
   readonly listeners = new Map<string, Array<(event: { readonly data: unknown }) => void>>();
   closed = false;
+  /** The address family it went over; unknown unless a test says. */
+  over: "IPv4" | "IPv6" | undefined = undefined;
+  family() {
+    return this.over;
+  }
   constructor(url: string) {
     this.url = url;
   }
@@ -416,6 +421,21 @@ describe("ZeropsHqLink", () => {
         yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
         yield* opened(sockets, 2);
         assert.strictEqual(sockets.length, 3);
+      }),
+    ),
+  );
+
+  // Only the shared IPv4 is cut at 120 s: a link that went over IPv6 is kept as it is.
+  it.effect("never rotates a link that went over IPv6", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig({ enrolled: true });
+        yield* TestClock.adjust(Duration.zero);
+        sockets[0]!.over = "IPv6";
+        const first = yield* opened(sockets, 0);
+        yield* TestClock.adjust(Duration.millis(3 * MATE_LINK_ROTATE_MS));
+        assert.strictEqual(sockets.length, 1);
+        assert.isFalse(first.closed);
       }),
     ),
   );
