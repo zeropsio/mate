@@ -49,13 +49,48 @@ const gitea = vi.hoisted(() => ({
   slowPulls: false,
   /** Every commit whose statuses were read, as `repo@sha`. */
   statusReads: [] as Array<string>,
+  /**
+   * While set, the person's whole account is listed too: each org's one `app` repository with
+   * this many pull requests open. Every listing is recorded, as `account` or the org's name.
+   */
+  orgs: undefined as Record<string, number> | undefined,
+  requests: [] as Array<string>,
 }));
+
+/** An org's one repository as the account listing and the org's own name it, from `gitea.orgs`. */
+const appOf = (owner: string, at: number, open: number) => ({
+  id: at + 1,
+  name: "app",
+  full_name: `${owner}/app`,
+  owner: { login: owner },
+  updated_at: open > 0 ? "2026-10-01T08:30:00Z" : "2026-10-01T08:00:00Z",
+  open_pr_counter: open,
+});
+const listedOrgs = () => Object.entries(gitea.orgs ?? {});
 
 vi.mock("./accountGiteaSessions", () => ({
   giteaClientFor: (_origin: string, onUnauthorized?: () => void) =>
     gitea.readable
       ? {
-          listOrganizationRepositories: async () => {
+          ...(gitea.orgs === undefined
+            ? {}
+            : {
+                currentUser: async () => ({ id: 9, login: "u-person" }),
+                listAccountRepositories: async () => {
+                  gitea.requests.push("account");
+                  const repositories = listedOrgs().map(([owner, open], at) =>
+                    appOf(owner, at, open),
+                  );
+                  return { repositories, counts: [repositories.length] };
+                },
+              }),
+          listOrganizationRepositories: async (owner: string) => {
+            if (gitea.orgs !== undefined) {
+              gitea.requests.push(owner);
+              return listedOrgs().flatMap(([listed, open], at) =>
+                listed === owner ? [appOf(owner, at, open)] : [],
+              );
+            }
             gitea.listings += 1;
             if (gitea.loseTokenOnRead) {
               gitea.readable = false;
@@ -82,10 +117,11 @@ vi.mock("./accountGiteaSessions", () => ({
               },
             ];
           },
-          listPullRequests: async (_owner: string, _repo: string, query: { state: string }) => {
+          listPullRequests: async (owner: string, _repo: string, query: { state: string }) => {
             gitea.pullReads += 1;
             if (gitea.slowPulls) await new Promise((resolve) => setTimeout(resolve, 1_000));
-            return query.state === "open" && gitea.open
+            const open = gitea.orgs === undefined ? gitea.open : (gitea.orgs[owner] ?? 0) > 0;
+            return query.state === "open" && open
               ? [{ number: 7, title: "Stage follows main", head: { sha: "abc" } }]
               : [];
           },
@@ -220,6 +256,37 @@ describe("readForge", () => {
   // Live, 2026-10-02: a project made a moment ago is read at once now, before the broker has made
   // its group's org (its `404` is "not made yet", `ForgeReads.organizations`) — nothing to read
   // there, and nothing failed.
+  it.each([
+    { name: "cuts the group's part from the account listing", account: "answers", own: [] },
+    {
+      name: "lists the org on its own when the account listing fails",
+      account: "fails",
+      own: ["repos harbor"],
+    },
+  ])("$name, and reads its pull requests", async ({ account, own }) => {
+    const { client: base, calls } = forge();
+    const client = {
+      ...base,
+      currentUser: async () => ({ id: 9, login: "u-person" }),
+      listAccountRepositories: async () => {
+        calls.push("account");
+        if (account === "fails") throw new Error("Gitea did not answer");
+        const repositories = [
+          { id: 1, name: "appdev", full_name: "harbor/appdev" },
+          { id: 2, name: "apidev", full_name: "harbor/apidev" },
+          { id: 3, name: "group", full_name: "quay/group" },
+        ];
+        return { repositories, counts: [repositories.length] };
+      },
+    } as unknown as GiteaClient;
+    const state = await readAll(client);
+    expect(state.pullRequests.map((row) => row.number).toSorted()).toEqual([4, 7]);
+    expect(calls.filter((call) => call === "account" || call.startsWith("repos "))).toEqual([
+      "account",
+      ...own,
+    ]);
+  });
+
   it("reads a group whose org the broker has not made yet as nothing yet, never a failure", async () => {
     const client = {
       listOrganizationRepositories: async () => {
@@ -693,6 +760,8 @@ describe("useZeropsGroupForge", () => {
     gitea.pullReads = 0;
     gitea.slowPulls = false;
     gitea.statusReads = [];
+    gitea.orgs = undefined;
+    gitea.requests = [];
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -804,7 +873,8 @@ describe("useZeropsGroupForge", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
     });
-    // One listing a watch tick, the minute's pass answered from them.
+    // The watch's look every tick; the minute's tick lists the org once more, or shares the
+    // watch's listing of that moment.
     expect(gitea.listings).toBe(1 + GROUP_FORGE_REFRESH_MS / PULL_WATCH_MS);
     expect(seen.at(-1)?.forges.get("g1")?.pullRequests).toHaveLength(1);
 
@@ -821,6 +891,52 @@ describe("useZeropsGroupForge", () => {
       await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS);
     });
     expect(gitea.listings - before).toBeLessThanOrEqual(1);
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("lists the account once on the minute's tick, and shows a pull request opened after the watch looked", async () => {
+    vi.useFakeTimers();
+    installTestDom();
+    gitea.orgs = { harbor: 1, beta: 0 };
+    const groups = [
+      { groupId: "g1", slug: "harbor" },
+      { groupId: "g2", slug: "beta" },
+    ];
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsGroupForge> = [];
+    function Probe() {
+      seen.push(
+        useZeropsGroupForge({
+          giteaOrigin: "https://gitea.example.test",
+          groups,
+          enabled: true,
+          readable: true,
+          reads: useForgeReads("https://gitea.example.test"),
+        }),
+      );
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(gitea.requests).toEqual(["account"]);
+    // The watch looks at harbor at 15, 30 and 45 s, on its own listing.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3 * PULL_WATCH_MS + 5_000);
+    });
+    expect(gitea.requests).toEqual(["account", "harbor", "harbor", "harbor"]);
+    gitea.requests = [];
+    gitea.orgs = { harbor: 1, beta: 1 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_FORGE_REFRESH_MS - 3 * PULL_WATCH_MS - 5_000);
+    });
+    expect(seen.at(-1)?.forges.get("g2")?.pullRequests).toHaveLength(1);
+    // The minute's tick: one listing of the account for both orgs, the watch's look sharing it.
+    expect(gitea.requests.filter((request) => request !== "harbor")).toEqual(["account"]);
     await act(async () => {
       root.unmount();
     });
