@@ -162,63 +162,74 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(result.wantsPoll).toBe(false);
   });
 
-  // Its call settled before its outcome was read: it keeps reading until the
-  // outcome is read, so a step read as running never stays running under the
-  // verdict; past the ceiling only a settled one its result named by id is
-  // still read — looked up by that id, as after a reload (pass 36).
+  // A settled one — a deploy its result named by id — is read once per open:
+  // one read of the project's history; past it, only one found mid-run, until
+  // its outcome and inside the ceiling; never after a failed read (pass 36).
+  const BUILDING = process({
+    appVersion: { id: "av-7", status: "BUILDING", build: { pipelineStart: "t1" } },
+  });
+  const PAST = NOW + OPERATION_OBSERVATION_CEILING_MS + 1;
   it.each([
+    { name: "its one read pending", history: "reading", processes: [], at: PAST, reads: true },
     {
-      name: "settled, its outcome unread: keeps reading",
-      exact: undefined,
-      processes: [process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } })],
-      at: NOW + 5_000,
-      reads: true,
-      outcome: undefined,
-    },
-    {
-      name: "settled, its outcome read: stops",
-      exact: undefined,
-      processes: [process({ appVersion: { status: "ACTIVE" } })],
+      name: "read, not in the window",
+      history: "read",
+      processes: [],
       at: NOW + 5_000,
       reads: false,
-      outcome: "finished",
     },
     {
-      name: "settled past the ceiling, nothing to know it by: stops",
-      exact: undefined,
-      processes: [],
-      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
-      reads: false,
-      outcome: undefined,
-    },
-    {
-      name: "settled past the ceiling, named by id and not held: read by it",
-      exact: { appVersionId: "av-7" },
-      processes: [],
-      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      name: "read mid-run inside the ceiling",
+      history: "read",
+      processes: [BUILDING],
+      at: NOW + 5_000,
       reads: true,
-      outcome: undefined,
     },
     {
-      name: "settled past the ceiling, named by id and held: its outcome, read no further",
-      exact: { appVersionId: "av-7" },
+      name: "read mid-run past the ceiling",
+      history: "read",
+      processes: [BUILDING],
+      at: PAST,
+      reads: false,
+    },
+    {
+      name: "read with its outcome",
+      history: "read",
       processes: [process({ appVersion: { id: "av-7", status: "ACTIVE" } })],
-      at: NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+      at: PAST,
       reads: false,
-      outcome: "finished",
     },
-  ])("$name", ({ exact, processes, at, reads, outcome }) => {
+    { name: "its read failed", history: "failed", processes: [], at: NOW + 5_000, reads: false },
+  ] as const)("settled: $name", ({ history, processes, at, reads }) => {
     const result = deriveOperationObservation(
       baseInput({
-        target: target({ running: false, ...(exact === undefined ? {} : { exact }) }),
-        snapshot: snapshotOf(processes, NOW + 1_000),
+        target: target({ running: false, exact: { appVersionId: "av-7" } }),
+        snapshot: { ...snapshotOf(processes, NOW + 1_000), processHistory: history },
       }),
       at,
     );
     expect(result.wantsPoll).toBe(reads);
-    expect(result.state.kind === "off" ? undefined : result.state.observation.outcome).toBe(
-      outcome,
+  });
+
+  it("settled: a failed read stays failed once it is no longer said", () => {
+    const settled = target({ running: false, exact: { appVersionId: "av-7" } });
+    const failed = deriveOperationObservation(
+      baseInput({ target: settled, snapshot: { ...EMPTY_SNAPSHOT, processHistory: "failed" } }),
+      NOW,
     );
+    const after = deriveOperationObservation(
+      baseInput({
+        target: settled,
+        snapshot: { ...EMPTY_SNAPSHOT, processHistory: "unread" },
+        previousSettledRead: failed.settledRead,
+      }),
+      NOW + 1_000,
+    );
+    expect([failed.settledRead, after.settledRead, after.wantsPoll]).toEqual([
+      "failed",
+      "failed",
+      false,
+    ]);
   });
 
   it("stops polling past the ceiling", () => {

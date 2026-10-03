@@ -22,6 +22,7 @@ vi.mock("react", async (importOriginal) => {
   const { reactHookHarness } = await import("../../test/reactHookHarness");
   return {
     ...actual,
+    useEffect: reactHookHarness.useEffect,
     useRef: reactHookHarness.useRef,
     useState: reactHookHarness.useState,
   };
@@ -117,30 +118,31 @@ describe("observationTargetFor — building the ObservationTarget from an operat
     expect(target?.hostnames).toEqual(["weatherdash", "mariadb"]);
   });
 
-  it("a settled operation carries running: false", () => {
-    const target = observationTargetFor(operation({ phase: "done" }));
+  it("a settled deploy its result named carries running: false and those ids", () => {
+    const target = observationTargetFor(
+      operation({ phase: "done", version: { id: "av-1", name: "abc123" } }),
+    );
     expect(target?.running).toBe(false);
+    expect(target?.exact).toEqual({ appVersionId: "av-1" });
   });
 
+  // A settled operation is read only by the ids its result named, and only a
+  // deploy: a guess by time and service took a later deploy's pipeline (pass 36).
   it.each([
-    { name: "nothing named yet", fields: {}, exact: undefined },
-    {
-      name: "the version a deploy shipped",
-      fields: { version: { id: "av-1", name: "abc123" } },
-      exact: { appVersionId: "av-1" },
-    },
-    {
-      name: "a version name alone pins nothing",
-      fields: { version: { name: "abc123" } },
-      exact: undefined,
-    },
-    {
-      name: "the processes an import started",
-      fields: { kind: "import" as const, processIds: ["p-1", "p-2"] },
-      exact: { processIds: ["p-1", "p-2"] },
-    },
-  ])("the result's own ids pin the observation: $name", ({ fields, exact }) => {
-    expect(observationTargetFor(operation({ phase: "done", ...fields }))?.exact).toEqual(exact);
+    { name: "a deploy that named nothing", fields: {} },
+    { name: "a deploy that named only its version's name", fields: { version: { name: "abc" } } },
+    { name: "a failed deploy that named nothing", fields: { phase: "failed" as const } },
+    { name: "an import, named or not", fields: { kind: "import" as const, processIds: ["p-1"] } },
+    { name: "a subdomain toggle", fields: { kind: "subdomain" as const, processIds: ["p-1"] } },
+    { name: "a scale", fields: { kind: "scale" as const } },
+  ])("a settled one with no read: $name", ({ fields }) => {
+    expect(observationTargetFor(operation({ phase: "done", ...fields }))).toBeNull();
+  });
+
+  it("a running one is read by its services, whatever its result named", () => {
+    expect(
+      observationTargetFor(operation({ kind: "import", processIds: ["p-1", "p-2"] }))?.exact,
+    ).toEqual({ processIds: ["p-1", "p-2"] });
   });
 
   it("a batch deploy has no target: its per-target rows stand from birth to settle", () => {

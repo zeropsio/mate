@@ -11,7 +11,7 @@
  * one piece of state this layer needs that isn't derivable from props), and
  * attaches the `ZeropsBuildLog` node when there is a build to show one for.
  */
-import { createElement, useRef, useState, type ReactElement } from "react";
+import { createElement, useEffect, useRef, useState, type ReactElement } from "react";
 
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
@@ -72,10 +72,15 @@ function hostnamesFor(operation: ZeropsOperation): ReadonlyArray<string> {
 }
 
 /**
- * `null` for a kind the Observation layer has no attribution rules for
- * (bootstrap, mount, verify, env, error) — those never get a region — and
- * for a batch deploy, whose per-target rows are its steps from birth to
- * settle.
+ * What a card reads of its operation in the account store. `null` for a kind
+ * the Observation layer has no attribution rules for (bootstrap, mount,
+ * verify, env, error) and for a batch deploy, whose per-target rows are its
+ * steps from birth to settle. A running one is read by its services and its
+ * start; a settled one only when it is a deploy whose result named its app
+ * version or processes, and then only by those — never guessed by time and
+ * service, which is how a failed deploy that named nothing took on a later
+ * deploy's pipeline and log. Without them its card shows what its call
+ * returned.
  */
 export function observationTargetFor(operation: ZeropsOperation): ObservationTarget | null {
   if (!isObservedKind(operation.kind) || operation.batch === true) {
@@ -83,12 +88,19 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
   }
   const appVersionId = operation.version?.id;
   const processIds = operation.processIds ?? [];
+  const running = operation.phase === "running";
+  if (
+    !running &&
+    (operation.kind !== "deploy" || (appVersionId === undefined && processIds.length === 0))
+  ) {
+    return null;
+  }
   return {
     key: operation.key,
     kind: operation.kind,
     hostnames: hostnamesFor(operation),
     startedAtMs: Date.parse(operation.anchorAt),
-    running: operation.phase === "running",
+    running,
     ...(appVersionId === undefined && processIds.length === 0
       ? {}
       : {
@@ -306,6 +318,13 @@ export function deriveObservedStepsRegion(
   return regionOf(source, provenanceFor(state, source, nowMs));
 }
 
+/** A settled operation whose one read failed: it says so, over what its call returned. */
+const UNREAD_REGION: ObservedStepsRegion = {
+  steps: [],
+  chips: [],
+  provenance: "Couldn't read its build from Zerops",
+};
+
 /** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
 export function browserScreenshotFor(operation: ZeropsOperation): BrowserScreenshot | undefined {
   return operation.kind === "browser" ? operation.screenshot : undefined;
@@ -392,13 +411,18 @@ export function useOperationCard(
   readsLog = true,
 ): OperationCardRegions {
   const target = observationTargetFor(operation);
-  const nowMs = useSecondsNowMs(operation.phase === "running");
-  const { state, history, buildLog } = useOperationObservation(
+  const running = operation.phase === "running";
+  // A settled one still read moves on the clock too: its read ends at the ceiling.
+  const [settledReading, setSettledReading] = useState(false);
+  const nowMs = useSecondsNowMs(running || settledReading);
+  const { state, history, buildLog, wantsPoll, settledRead } = useOperationObservation(
     target,
     environmentId,
     nowMs,
     readsLog,
   );
+  const reading = !running && wantsPoll;
+  useEffect(() => setSettledReading(reading), [reading]);
   const topology = useZeropsTopology(environmentId);
   // The whole log opens in a dialog, only when asked for.
   const ownLogDialog = useState(false);
@@ -417,14 +441,15 @@ export function useOperationCard(
       : {}),
   };
 
-  const region = deriveObservedStepsRegion(
-    operation.kind,
-    operation.phase,
-    state,
-    history,
-    nowMs,
-    pipelineServiceFor(operation, topology),
-  );
+  const region =
+    deriveObservedStepsRegion(
+      operation.kind,
+      operation.phase,
+      state,
+      history,
+      nowMs,
+      pipelineServiceFor(operation, topology),
+    ) ?? (target !== null && !running && settledRead === "failed" ? UNREAD_REGION : undefined);
   if (region === undefined) {
     return fields;
   }

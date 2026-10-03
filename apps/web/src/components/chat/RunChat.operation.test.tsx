@@ -28,6 +28,10 @@ const store = vi.hoisted(() => ({
   logLines: [] as ReadonlyArray<{ id: string; at: string; text: string; severity: number }>,
   /** The builds whose log a card asks for, as of the last draw. */
   logReads: new Set<string>(),
+  /** Where the project's newest process history read stands. */
+  history: "read" as "unread" | "reading" | "read" | "failed",
+  /** Why the store's read of the project failed, if it did. */
+  failure: undefined as string | undefined,
 }));
 
 vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
@@ -35,7 +39,13 @@ vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
   const read = (projectId: string | null) =>
     projectId === null
       ? actual.EMPTY_PROJECT_ACTIVITY_SNAPSHOT
-      : { processes: store.processes, atMs: Date.now(), live: true };
+      : {
+          processes: store.processes,
+          atMs: Date.now(),
+          live: true,
+          processHistory: store.history,
+          ...(store.failure === undefined ? {} : { unavailableReason: store.failure }),
+        };
   const demand = (projectId: string | null) => {
     if (projectId !== null) store.reading = true;
   };
@@ -104,30 +114,31 @@ const LOG_LINES = ["> npm ci", "added 212 packages", "> npm run build"].map((tex
 /** The deploy's process as the platform states it: building, or as it ended. */
 function process(
   phase: "building" | "finished",
-  overrides: { serviceId?: string; appVersionId?: string } = {},
+  overrides: { serviceId?: string; appVersionId?: string; minute?: number } = {},
 ): ActivityProcess {
   const appVersionId = overrides.appVersionId ?? "av-41";
+  const minute = overrides.minute ?? 1;
   return {
     id: `proc-${appVersionId}`,
     projectId: "proj-7",
     serviceStackIds: [overrides.serviceId ?? "svc-app"],
     status: phase === "building" ? "RUNNING" : "FINISHED",
     actionName: "stack.build",
-    created: fixtureAt(1),
-    started: fixtureAt(1),
-    ...(phase === "finished" ? { finished: fixtureAt(2) } : {}),
+    created: fixtureAt(minute),
+    started: fixtureAt(minute),
+    ...(phase === "finished" ? { finished: fixtureAt(minute + 1) } : {}),
     appVersion: {
       id: appVersionId,
       status: phase === "building" ? "BUILDING" : "ACTIVE",
       build: {
         serviceStackId: "svc-builder",
-        pipelineStart: fixtureAt(1),
-        startDate: fixtureAt(1, 4),
+        pipelineStart: fixtureAt(minute),
+        startDate: fixtureAt(minute, 4),
         ...(phase === "finished"
-          ? { endDate: fixtureAt(1, 40), pipelineFinish: fixtureAt(2) }
+          ? { endDate: fixtureAt(minute, 40), pipelineFinish: fixtureAt(minute + 1) }
           : {}),
       },
-      ...(phase === "finished" ? { activationDate: fixtureAt(2) } : {}),
+      ...(phase === "finished" ? { activationDate: fixtureAt(minute + 1) } : {}),
     },
   };
 }
@@ -273,6 +284,8 @@ describe("RunChat — an operation's card, read from the account store", () => {
     store.reading = false;
     store.logReads = new Set();
     store.logLines = LOG_LINES;
+    store.history = "read";
+    store.failure = undefined;
   });
   afterEach(() => {
     act(() => {
@@ -411,20 +424,100 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(nodes(fresh, "data-chat-detail-rises")).toHaveLength(1);
   });
 
+  const settledRow = (op: ZeropsOperation) => inRecord(op, { live: false, status: null });
+  /** A row of the history, opened by the person. */
+  const openSettled = (op: ZeropsOperation) => {
+    const renderer = mount(settledRow(op));
+    act(() => opener(renderer)[0]!.props.onClick());
+    return renderer;
+  };
+
   it("opened after a reload, a settled deploy reads its details from the store by its id", () => {
+    // Its own build, and a later deploy of the same service beside it.
     store.processes = [];
-    const renderer = mount(
-      inRecord(deploy("done", { key: "op:d9" }), { live: false, status: null }),
-    );
+    store.history = "unread";
+    const settled = deploy("done", { key: "op:d9" });
+    const renderer = mount(settledRow(settled));
     expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
     act(() => opener(renderer)[0]!.props.onClick());
     // Not held yet: the store is asked to read it.
     expect(store.reading).toBe(true);
-    store.processes = [process("finished")];
-    redraw(renderer, inRecord(deploy("done", { key: "op:d9" }), { live: false, status: null }));
+    store.processes = [
+      process("finished"),
+      process("building", { appVersionId: "av-50", minute: 5 }),
+    ];
+    store.history = "read";
+    store.logReads = new Set();
+    redraw(renderer, settledRow(settled));
     expect(count(renderer).steps).toBeGreaterThan(0);
     expect(count(renderer).whole).toBe(1);
+    expect([...store.logReads]).toEqual(["av-41"]);
     // Read: the store is asked no further.
+    expect(store.reading).toBe(false);
+  });
+
+  it("a failed deploy that named nothing never takes on a later deploy of its service", () => {
+    // It failed at once; a later deploy of the same service is building.
+    store.processes = [process("building", { appVersionId: "av-50", minute: 5 })];
+    vi.setSystemTime(fixtureAt(6));
+    const failed = deploy("done", {
+      key: "op:d3",
+      phase: "failed",
+      statusWord: "Failed",
+      explanation: { reason: "The build failed" },
+      steps: [],
+    });
+    const { version: _named, ...unnamed } = failed;
+    const renderer = openSettled(unnamed);
+    expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
+    expect(store.logReads.size).toBe(0);
+    expect(store.reading).toBe(false);
+  });
+
+  it.each([
+    { kind: "subdomain" as const },
+    { kind: "scale" as const },
+    { kind: "manage" as const },
+    { kind: "delete" as const },
+  ])("a settled $kind opened in the history asks the store to read nothing", ({ kind }) => {
+    openSettled(deploy("done", { key: `op:${kind}`, kind, processIds: ["proc-av-41"] }));
+    expect(store.reading).toBe(false);
+  });
+
+  it("a settled deploy found mid-run is read until its outcome, and no further than the ceiling", () => {
+    // Its call returned while the platform still says it builds.
+    const settled = deploy("done", { key: "op:d4" });
+    const renderer = openSettled(settled);
+    expect(store.reading).toBe(true);
+    redraw(renderer, settledRow(settled));
+    expect(store.reading).toBe(true);
+    // Its clock moves on its own: past the ceiling the store is asked no further.
+    vi.setSystemTime(fixtureAt(1, 30 * 60 + 1));
+    act(() => vi.advanceTimersByTime(1_000));
+    redraw(renderer, settledRow(settled));
+    expect(store.reading).toBe(false);
+    expect(count(renderer).steps).toBeGreaterThan(0);
+  });
+
+  it.each([
+    { name: "its history read", fail: () => (store.history = "failed") },
+    { name: "the store's read of the project", fail: () => (store.failure = "network") },
+  ])("a settled deploy whose read failed ($name) says so and asks no more", ({ fail }) => {
+    store.processes = [];
+    store.history = "reading";
+    const settled = settledRow(deploy("done", { key: "op:d5" }));
+    const renderer = mount(settled);
+    act(() => opener(renderer)[0]!.props.onClick());
+    expect(store.reading).toBe(true);
+    fail();
+    redraw(renderer, settled);
+    expect(store.reading).toBe(false);
+    expect(nodes(renderer, "data-zerops-operation-provenance")).toHaveLength(1);
+    // Let go, the failure is no longer said: the read is not asked for again.
+    store.history = "unread";
+    store.failure = undefined;
+    redraw(renderer, settled);
+    redraw(renderer, settled);
     expect(store.reading).toBe(false);
   });
 
