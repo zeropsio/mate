@@ -6381,6 +6381,58 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   );
 
   it.effect(
+    "routes websocket rpc subscribeServerConfig leaves out the slash commands a Mate cannot use",
+    () =>
+      Effect.gen(function* () {
+        const claude = {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: true,
+          installed: true,
+          version: "1.0.0",
+          status: "ready" as const,
+          auth: { status: "authenticated" as const },
+          checkedAt: "2026-04-11T00:00:00.000Z",
+          models: [],
+          slashCommands: [{ name: "clear" }, { name: "compact" }],
+          skills: [],
+        };
+        yield* buildAppUnderTest({
+          layers: {
+            keybindings: {
+              loadConfigState: Effect.succeed({ keybindings: [], issues: [] }),
+              streamChanges: Stream.empty,
+            },
+            providerRegistry: {
+              getProviders: Effect.succeed([claude]),
+              streamChanges: Stream.succeed([{ ...claude, version: "1.0.1" }]),
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const events = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+          ),
+        );
+
+        const [first, second] = Array.from(events);
+        const commandNames = (
+          providers: ReadonlyArray<{ slashCommands: ReadonlyArray<{ name: string }> }>,
+        ) => providers.flatMap((provider) => provider.slashCommands.map((command) => command.name));
+        assert.equal(first?.type, "snapshot");
+        if (first?.type === "snapshot") {
+          assert.deepEqual(commandNames(first.config.providers), ["compact"]);
+        }
+        assert.equal(second?.type, "providerStatuses");
+        if (second?.type === "providerStatuses") {
+          assert.deepEqual(commandNames(second.payload.providers), ["compact"]);
+        }
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
     "routes websocket rpc subscribeServerConfig republishes commands when only a limits source changes",
     () =>
       Effect.gen(function* () {
