@@ -2743,6 +2743,8 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
  * a row each, three at most, then "+N more running". Nothing standing in it,
  * it says what the Mate does between things: "Thinking", "Writing", a wait.
  */
+const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
+
 function LiveSlot({
   ref,
   slot,
@@ -2777,7 +2779,23 @@ function LiveSlot({
     effort: null,
   });
   const face = nowLineFace(latest, status);
+  // What each entry last showed live: one that ended with no line of its own
+  // in the record yet stands its minimum as it last showed, never a gap.
+  const [lastLive, setLastLive] = useState<ReadonlyMap<string, RecordItem>>(NO_ITEMS);
+  if (live.some((item) => lastLive.get(item.key) !== item)) {
+    const standing = new Set(slot.entries.map((entry) => entry.key));
+    setLastLive(
+      new Map([
+        ...[...lastLive].filter(([key]) => standing.has(key)),
+        ...live.map((item) => [item.key, item] as const),
+      ]),
+    );
+  }
   const byKey = new Map<string, RecordItem>();
+  for (const [key, item] of lastLive) {
+    // A check the record drew into the row of the one before it is drawn there.
+    if (item.kind !== "strip") byKey.set(key, item);
+  }
   for (const item of items) byKey.set(item.key, item);
   for (const item of live) byKey.set(item.key, item);
   const shown = slot.entries.flatMap((entry) => {

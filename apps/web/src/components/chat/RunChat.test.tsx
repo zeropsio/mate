@@ -1207,6 +1207,41 @@ describe("RunChat, as the person uses it", () => {
     }
   });
 
+  // An entry that ended with no line of its own in the record yet — a call
+  // the record folds or files elsewhere — stands its minimum as it last
+  // showed, never a gap that blocks what comes next (pass 35).
+  it("draws a slot entry that ended with no record line as it last showed", () => {
+    vi.useFakeTimers();
+    try {
+      const running = stepOf(
+        command("w1", "pnpm build", {
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      );
+      const renderer = mount(
+        record([], { live: true, status: status(), now: { kind: "step", step: running } }),
+      );
+      const commands = () =>
+        renderer.root.findAll(
+          (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+        );
+      expect(commands()).toHaveLength(1);
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={record([], { live: true, status: status(), now: null })} />
+          </Rows>,
+        ),
+      );
+      expect(commands()).toHaveLength(1);
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      expect(commands()).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // A live run's chat starts empty: its scroll must follow its foot from the
   // first line on, once the lines outgrow it (Nova, 2026-09-29: a run
   // mounted with nothing drew no box, the watch on its foot was never set,
