@@ -100,17 +100,21 @@ import {
   type ComposerTaskStep,
   type ComposerTasksProgress,
 } from "./ComposerTasksBadge";
-import { compressImageForStash, isHeicImageFile } from "../../lib/imageCompression";
+import { compressImageForStash } from "../../lib/imageCompression";
+import { type ComposerFileAttachment, composerAttachmentRoute } from "../../lib/composerFiles";
 import {
   attachmentUploadKeys,
   releaseAttachmentUpload,
   startAttachmentUpload,
+  startFileUpload,
   useAttachmentUploadStore,
 } from "../../lib/attachmentUploadQueue";
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
 import { picturesBlockReason } from "../../lib/composerPictures";
 import type { ComposerPictureView } from "./ComposerPicture";
 import { useComposerPictures } from "./useComposerPictures";
+import type { ComposerFileView } from "./ComposerFile";
+import { useComposerFiles } from "./useComposerFiles";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
 import { resolveShortcutCommand } from "../../keybindings";
@@ -341,6 +345,7 @@ const extendReplacementRangeForTrailingSpace = (
 };
 
 const NO_PICTURES: ReadonlyArray<ComposerPictureView> = [];
+const NO_FILES: ReadonlyArray<ComposerFileView> = [];
 
 /** A draft's image as its save for a reload reads it: each file once. */
 const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
@@ -459,6 +464,7 @@ export interface ChatComposerHandle {
   getSendContext: () => {
     prompt: string;
     images: ComposerImageAttachment[];
+    files: ComposerFileAttachment[];
     terminalContexts: TerminalContextDraft[];
     reviewComments: ReviewCommentContext[];
     selectedPromptEffort: string | null;
@@ -742,6 +748,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerDraft = useComposerThreadDraft(composerDraftTarget);
   const prompt = composerDraft.prompt;
   const composerImages = composerDraft.images;
+  const composerFiles = composerDraft.files;
   const composerTerminalContexts = composerDraft.terminalContexts;
   const composerReviewComments = composerDraft.reviewComments;
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
@@ -751,6 +758,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (supportsAttachmentUploads
       ? attachmentUploadBlockReason({
           imageIds: composerImages.flatMap(attachmentUploadKeys),
+          fileIds: composerFiles.map((file) => file.id),
           uploadsByImageId,
           environmentId,
         })
@@ -795,7 +803,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (image.picture?.preparing) continue;
       startAttachmentUpload({ environmentId, image });
     }
-  }, [attachmentUploadsCapabilityKnown, composerImages, environmentId, supportsAttachmentUploads]);
+    // A file uploads as soon as it is added.
+    for (const file of composerFiles) startFileUpload({ environmentId, file });
+  }, [
+    attachmentUploadsCapabilityKnown,
+    composerFiles,
+    composerImages,
+    environmentId,
+    supportsAttachmentUploads,
+  ]);
 
   // ------------------------------------------------------------------
   // Model state
@@ -1220,6 +1236,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onError: (message) => setThreadError(activeThreadId, message),
   });
 
+  // Files that are not pictures sit in the text the same way, as chips.
+  const composerFileList = useComposerFiles({
+    draftTarget: composerDraftTarget,
+    environmentId,
+    files: composerFiles,
+    uploadsByImageId,
+    editorRef: composerEditorRef,
+    promptRef,
+    onPromptWritten: (_nextPrompt, nextCursor) => {
+      setComposerCursor(nextCursor);
+      setComposerTrigger(null);
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCursor);
+      });
+    },
+    refusal: () =>
+      pendingUserInputs.length > 0
+        ? "Attach files after answering pending questions."
+        : attachmentUploadsCapabilityKnown && !supportsAttachmentUploads
+          ? "This Mate cannot take files yet: attach pictures, or paste the text."
+          : null,
+    onError: (message) => setThreadError(activeThreadId, message),
+  });
+
   // ------------------------------------------------------------------
   // Derived: composer send state
   // ------------------------------------------------------------------
@@ -1227,11 +1267,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () =>
       deriveComposerSendState({
         prompt,
-        imageCount: composerImages.length,
+        imageCount: composerImages.length + composerFiles.length,
         terminalContexts: composerTerminalContexts,
         elementContextCount: composerReviewComments.length,
       }),
-    [composerImages.length, composerReviewComments.length, composerTerminalContexts, prompt],
+    [
+      composerFiles.length,
+      composerImages.length,
+      composerReviewComments.length,
+      composerTerminalContexts,
+      prompt,
+    ],
   );
   // ------------------------------------------------------------------
   // Derived: composer trigger / menu
@@ -1264,6 +1310,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     !compactThreadUnavailable &&
     prompt.slice(composerTrigger.rangeEnd).trim() === "" &&
     composerImages.length === 0 &&
+    composerFiles.length === 0 &&
     composerDraft.persistedAttachments.length === 0 &&
     composerTerminalContexts.length === 0 &&
     composerReviewComments.length === 0;
@@ -1779,6 +1826,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       cursorAdjacentToMention: boolean,
       terminalContextIds: string[],
       pictureIds: string[],
+      fileIds: string[] = [],
     ) => {
       if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
         if (activePendingProgress.activeQuestion.allowCustomAnswer === false) return;
@@ -1796,7 +1844,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       // The draft's pictures follow the text; a place whose picture is gone leaves it.
-      const healedPrompt = composerPictures.sync(pictureIds, nextPrompt);
+      const picturesHealed = composerPictures.sync(pictureIds, nextPrompt);
+      // So do its files, each matched to its own place.
+      const filesHealed = composerFileList.sync(fileIds, picturesHealed ?? nextPrompt);
+      const healedPrompt = filesHealed ?? picturesHealed;
       if (healedPrompt !== null) {
         promptRef.current = healedPrompt;
         setPrompt(healedPrompt);
@@ -1830,6 +1881,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setPrompt,
       setComposerTrigger,
       composerDraftTarget,
+      composerFileList,
       composerPictures,
       composerTerminalContexts,
       setComposerDraftTerminalContexts,
@@ -1908,8 +1960,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
       terminalContextIds: composerTerminalContexts.map((context) => context.id),
       pictureIds: composerImages.map((image) => image.id),
+      fileIds: composerFiles.map((file) => file.id),
     };
-  }, [composerCursor, composerImages, composerTerminalContexts, promptRef]);
+  }, [composerCursor, composerFiles, composerImages, composerTerminalContexts, promptRef]);
 
   /**
    * Attaches a context at the caret: the same inline-placeholder insertion the
@@ -1925,6 +1978,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
         terminalContextIds: composerTerminalContexts.map((context) => context.id),
         pictureIds: composerImages.map((image) => image.id),
+        fileIds: composerFiles.map((file) => file.id),
       };
       const insertion = insertInlineTerminalContextPlaceholder(
         snapshot.value,
@@ -2973,15 +3027,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: paste / drag
   // ------------------------------------------------------------------
+  /**
+   * Pasted or dropped files: a picture Claude can look at goes to the
+   * pictures, anything else to the files, and what cannot go says why.
+   */
+  const addComposerAttachments = (files: ReadonlyArray<File>) => {
+    if (!activeThreadId || files.length === 0) return;
+    const pictures: File[] = [];
+    const others: File[] = [];
+    for (const file of files) {
+      const route = composerAttachmentRoute(file);
+      if (route.kind === "picture") pictures.push(file);
+      else if (route.kind === "file") others.push(file);
+      else setThreadError(activeThreadId, route.message);
+    }
+    // Files land at once; pictures are read first, and land after them.
+    composerFileList.add(others);
+    void addComposerImages(pictures);
+  };
+
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const files = Array.from(event.clipboardData.files);
     if (files.length === 0) return;
-    const imageFiles = files.filter(
-      (file) => file.type.startsWith("image/") || isHeicImageFile(file),
-    );
-    if (imageFiles.length === 0) return;
     event.preventDefault();
-    void addComposerImages(imageFiles);
+    addComposerAttachments(files);
   };
 
   const insertComposerTextAtEnd = (
@@ -3107,7 +3176,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         composerEditorRef.current?.focusAt(cursor);
       },
       addDroppedFiles: (files: File[]) => {
-        void addComposerImages(files);
+        addComposerAttachments(files);
         focusComposer();
       },
       insertTextAtEnd: insertComposerTextAtEnd,
@@ -3162,6 +3231,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       getSendContext: () => ({
         prompt: promptRef.current,
         images: composerImagesRef.current,
+        files: getComposerDraft(composerDraftTarget)?.files ?? [],
         terminalContexts: composerTerminalContextsRef.current,
         reviewComments: composerReviewComments,
         selectedPromptEffort,
@@ -3556,6 +3626,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         ? composerPictures.paste
                         : undefined
                     }
+                    files={
+                      !isComposerApprovalState && pendingUserInputs.length === 0
+                        ? composerFileList.chips
+                        : NO_FILES
+                    }
+                    onRemoveFile={composerFileList.remove}
+                    onRetryFile={composerFileList.retry}
                     {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
                     onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                     onChange={onPromptChange}

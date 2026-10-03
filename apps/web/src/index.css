@@ -5977,6 +5977,159 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   max-height: 160px;
 }
 
+/* A file in the composer's text: a quiet card as tall as a picture, so a row
+   of pictures and files reads as one gallery. Its icon, its name cut in the
+   middle, and its size (or how far its upload is). */
+.composer-file {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 168px;
+  max-width: 100%;
+  height: 80px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 14%, transparent);
+  color: var(--color-foreground);
+  line-height: normal;
+  outline: none;
+  cursor: default;
+  transition: box-shadow 120ms ease;
+}
+
+.composer-file:focus-visible,
+.composer-file-slot[data-composer-chip-selected] .composer-file {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+/* An upload that did not go through: amber, with its way to try again. */
+.composer-file[data-status="failed"] {
+  box-shadow: 0 0 0 2px var(--color-warning);
+}
+
+.composer-file .attached-file-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.composer-file .attached-file-name {
+  overflow: hidden;
+  font: 500 13px/18px var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-file .attached-file-detail {
+  margin-top: -6px;
+  color: var(--color-muted-foreground);
+  font: 400 12px/16px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-file[data-status="failed"] .attached-file-detail {
+  color: var(--color-warning-foreground);
+}
+
+.composer-file-action {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-popover);
+  color: var(--color-muted-foreground);
+  box-shadow: var(--picture-remove-shadow);
+  cursor: pointer;
+}
+
+.composer-file-action svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+}
+
+.composer-file-remove {
+  top: -8px;
+  right: -8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.composer-file:hover .composer-file-remove,
+.composer-file:focus-within .composer-file-remove,
+.composer-file-remove:focus-visible {
+  opacity: 1;
+}
+
+.composer-file-remove:hover {
+  color: var(--color-foreground);
+}
+
+.composer-file-retry {
+  right: 8px;
+  bottom: 8px;
+  color: var(--color-warning-foreground);
+}
+
+@media (pointer: coarse) {
+  .composer-file-remove {
+    opacity: 1;
+  }
+}
+
+/* A file in a sent message: its icon, name and size on one quiet line, a link
+   that downloads it once its address is known. */
+.message-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 12%, transparent);
+  color: inherit;
+  text-decoration: none;
+}
+
+a.message-file:hover {
+  background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+}
+
+a.message-file:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.message-file .attached-file-name {
+  overflow: hidden;
+  font: 500 13px/18px var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-file .attached-file-detail {
+  flex-shrink: 0;
+  color: var(--color-muted-foreground);
+  font: 400 12px/16px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.message-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 /* ==== end of composer pictures ==== */
 
 /* ==== Pass 16 · review ==== */

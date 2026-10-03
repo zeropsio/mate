@@ -74,6 +74,7 @@ import {
   splitPromptIntoEditorSegments,
 } from "~/composer-editor-mentions";
 import { INLINE_PICTURE_PLACEHOLDER } from "~/lib/composerPictures";
+import { INLINE_FILE_PLACEHOLDER } from "~/lib/composerFiles";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -94,6 +95,12 @@ import {
   type ComposerPicturesValue,
   type ComposerPictureView,
 } from "./chat/ComposerPicture";
+import {
+  ComposerFile,
+  ComposerFilesContext,
+  type ComposerFilesValue,
+  type ComposerFileView,
+} from "./chat/ComposerFile";
 import { FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
@@ -162,6 +169,15 @@ type SerializedComposerPictureNode = Spread<
   {
     imageId: string;
     type: "composer-picture";
+    version: 1;
+  },
+  SerializedLexicalNode
+>;
+
+type SerializedComposerFileNode = Spread<
+  {
+    fileId: string;
+    type: "composer-file";
     version: 1;
   },
   SerializedLexicalNode
@@ -619,12 +635,74 @@ function $createComposerPictureNode(imageId: string): ComposerPictureNode {
   return $applyNodeReplacement(new ComposerPictureNode(imageId));
 }
 
+/**
+ * A file's place in the text: it holds the file's id, is written as the file
+ * placeholder, and draws the file's chip. Its slot carries the class every
+ * attachment's slot does, so a run of them can share a row.
+ */
+class ComposerFileNode extends DecoratorNode<React.ReactElement> {
+  __fileId: string;
+
+  static override getType(): string {
+    return "composer-file";
+  }
+
+  static override clone(node: ComposerFileNode): ComposerFileNode {
+    return new ComposerFileNode(node.__fileId, node.__key);
+  }
+
+  static override importJSON(serializedNode: SerializedComposerFileNode): ComposerFileNode {
+    return $createComposerFileNode(serializedNode.fileId).updateFromJSON(serializedNode);
+  }
+
+  constructor(fileId: string, key?: NodeKey) {
+    super(key);
+    this.__fileId = fileId;
+  }
+
+  override exportJSON(): SerializedComposerFileNode {
+    return {
+      ...super.exportJSON(),
+      fileId: this.__fileId,
+      type: "composer-file",
+      version: 1,
+    };
+  }
+
+  override createDOM(): HTMLElement {
+    const dom = document.createElement("span");
+    dom.className = "composer-file-slot composer-attachment-slot";
+    return dom;
+  }
+
+  override updateDOM(): false {
+    return false;
+  }
+
+  override getTextContent(): string {
+    return INLINE_FILE_PLACEHOLDER;
+  }
+
+  override isInline(): true {
+    return true;
+  }
+
+  override decorate(): React.ReactElement {
+    return <ComposerFile id={this.__fileId} />;
+  }
+}
+
+function $createComposerFileNode(fileId: string): ComposerFileNode {
+  return $applyNodeReplacement(new ComposerFileNode(fileId));
+}
+
 type ComposerInlineTokenNode =
   | ComposerMentionNode
   | ComposerCrewmateNode
   | ComposerSkillNode
   | ComposerTerminalContextNode
-  | ComposerPictureNode;
+  | ComposerPictureNode
+  | ComposerFileNode;
 
 function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInlineTokenNode {
   return (
@@ -632,7 +710,8 @@ function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInl
     candidate instanceof ComposerCrewmateNode ||
     candidate instanceof ComposerSkillNode ||
     candidate instanceof ComposerTerminalContextNode ||
-    candidate instanceof ComposerPictureNode
+    candidate instanceof ComposerPictureNode ||
+    candidate instanceof ComposerFileNode
   );
 }
 
@@ -660,6 +739,7 @@ function terminalContextSignature(contexts: ReadonlyArray<TerminalContextDraft>)
 const NO_CREWMATES: ReadonlyArray<ComposerCrewmateChip> = [];
 const NO_PICTURES: ReadonlyArray<ComposerPictureView> = [];
 const IGNORE_PICTURE = () => {};
+const NO_FILE_VIEWS: ReadonlyArray<ComposerFileView> = [];
 const PLACE_NO_PICTURES = (ids: ReadonlyArray<string>): ReadonlyArray<string | null> =>
   ids.map(() => null);
 
@@ -1029,10 +1109,20 @@ function $composerPromptNodes(
   skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
   crewmates: ReadonlyArray<ComposerCrewmateChip>,
   pictureIds: ReadonlyArray<string>,
+  fileIds: ReadonlyArray<string>,
 ): LexicalNode[] {
-  const segments = splitPromptIntoEditorSegments(prompt, terminalContexts, crewmates, pictureIds);
+  const segments = splitPromptIntoEditorSegments(
+    prompt,
+    terminalContexts,
+    crewmates,
+    pictureIds,
+    fileIds,
+  );
   return segments.flatMap((segment): LexicalNode[] => {
     switch (segment.type) {
+      case "file":
+        // A place whose file is gone draws nothing, and so drops out of the text.
+        return segment.fileId === null ? [] : [$createComposerFileNode(segment.fileId)];
       case "picture":
         // A place whose picture is gone draws nothing, and so drops out of the text.
         return segment.imageId === null ? [] : [$createComposerPictureNode(segment.imageId)];
@@ -1064,13 +1154,21 @@ function $setComposerEditorPrompt(
   skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
   crewmates: ReadonlyArray<ComposerCrewmateChip>,
   pictureIds: ReadonlyArray<string>,
+  fileIds: ReadonlyArray<string>,
 ): void {
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
   root.append(paragraph);
   paragraph.append(
-    ...$composerPromptNodes(prompt, terminalContexts, skillMetadata, crewmates, pictureIds),
+    ...$composerPromptNodes(
+      prompt,
+      terminalContexts,
+      skillMetadata,
+      crewmates,
+      pictureIds,
+      fileIds,
+    ),
   );
 }
 
@@ -1095,12 +1193,24 @@ function collectPictureIds(node: LexicalNode): string[] {
   return [];
 }
 
+/** The files the text holds, in the order they sit. */
+function collectFileIds(node: LexicalNode): string[] {
+  if (node instanceof ComposerFileNode) {
+    return [node.__fileId];
+  }
+  if ($isElementNode(node)) {
+    return node.getChildren().flatMap((child) => collectFileIds(child));
+  }
+  return [];
+}
+
 export interface ComposerEditorSnapshot {
   readonly value: string;
   readonly cursor: number;
   readonly expandedCursor: number;
   readonly terminalContextIds: ReadonlyArray<string>;
   readonly pictureIds: ReadonlyArray<string>;
+  readonly fileIds: ReadonlyArray<string>;
 }
 
 /**
@@ -1128,6 +1238,7 @@ function $readComposerEditorSnapshot(previous: ComposerEditorSnapshot): Composer
     ),
     terminalContextIds: collectTerminalContextIds($getRoot()),
     pictureIds: collectPictureIds($getRoot()),
+    fileIds: collectFileIds($getRoot()),
   };
 }
 
@@ -1143,7 +1254,8 @@ function composerSnapshotsAgree(
     one.cursor === other.cursor &&
     one.expandedCursor === other.expandedCursor &&
     sameIds(one.terminalContextIds, other.terminalContextIds) &&
-    sameIds(one.pictureIds, other.pictureIds)
+    sameIds(one.pictureIds, other.pictureIds) &&
+    sameIds(one.fileIds, other.fileIds)
   );
 }
 
@@ -1179,6 +1291,10 @@ interface ComposerPromptEditorProps {
    * cannot place again (its words still come).
    */
   onPastePictures?: ((ids: ReadonlyArray<string>) => ReadonlyArray<string | null>) | undefined;
+  /** The draft's files in the order they sit, matched by order to the prompt's file places. */
+  files?: ReadonlyArray<ComposerFileView> | undefined;
+  onRemoveFile?: ((id: string) => void) | undefined;
+  onRetryFile?: ((id: string) => void) | undefined;
   disabled: boolean;
   placeholder: string;
   className?: string;
@@ -1190,6 +1306,7 @@ interface ComposerPromptEditorProps {
     cursorAdjacentToMention: boolean,
     terminalContextIds: string[],
     pictureIds: string[],
+    fileIds: string[],
   ) => void;
   onCommandKeyDown?: (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab" | "Escape",
@@ -1788,10 +1905,13 @@ interface CopiedComposerText {
 const withoutPlaces = (text: string): string =>
   text
     .replaceAll(INLINE_PICTURE_PLACEHOLDER, "")
+    .replaceAll(INLINE_FILE_PLACEHOLDER, "")
     .replaceAll(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, "");
 
 const holdsPlaces = (text: string): boolean =>
-  text.includes(INLINE_PICTURE_PLACEHOLDER) || text.includes(INLINE_TERMINAL_CONTEXT_PLACEHOLDER);
+  text.includes(INLINE_PICTURE_PLACEHOLDER) ||
+  text.includes(INLINE_FILE_PLACEHOLDER) ||
+  text.includes(INLINE_TERMINAL_CONTEXT_PLACEHOLDER);
 
 function readCopiedComposerText(raw: string): CopiedComposerText | null {
   if (raw.length === 0) return null;
@@ -1840,7 +1960,10 @@ function ComposerClipboardPlugin(props: {
       data.setData(
         COMPOSER_CLIPBOARD_TYPE,
         JSON.stringify({
-          text: text.replaceAll(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, ""),
+          // A file stays where it is, as a terminal context does: its words go.
+          text: text
+            .replaceAll(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, "")
+            .replaceAll(INLINE_FILE_PLACEHOLDER, ""),
           pictures,
         } satisfies CopiedComposerText),
       );
@@ -1870,7 +1993,7 @@ function ComposerClipboardPlugin(props: {
           .join("");
         const ids = placed.filter((id): id is string => id !== null);
         selection.insertNodes(
-          $composerPromptNodes(text, [], skillMetadataRef.current, crewmatesRef.current, ids),
+          $composerPromptNodes(text, [], skillMetadataRef.current, crewmatesRef.current, ids, []),
         );
         return true;
       }
@@ -1906,10 +2029,12 @@ function ComposerSurroundSelectionPlugin(props: {
   skills: ReadonlyArray<ServerProviderSkill>;
   crewmates: ReadonlyArray<ComposerCrewmateChip>;
   pictureIds: ReadonlyArray<string>;
+  fileIds: ReadonlyArray<string>;
 }) {
   const [editor] = useLexicalComposerContext();
   const terminalContextsRef = useRef(props.terminalContexts);
   const pictureIdsRef = useRef(props.pictureIds);
+  const fileIdsRef = useRef(props.fileIds);
   const skillMetadataRef = useRef(skillMetadataByName(props.skills));
   const crewmatesRef = useRef(props.crewmates);
   const pendingSurroundSelectionRef = useRef<{
@@ -1938,6 +2063,10 @@ function ComposerSurroundSelectionPlugin(props: {
   useEffect(() => {
     pictureIdsRef.current = props.pictureIds;
   }, [props.pictureIds]);
+
+  useEffect(() => {
+    fileIdsRef.current = props.fileIds;
+  }, [props.fileIds]);
 
   const applySurroundInsertion = useEffectEvent((inputData: string): boolean => {
     const surroundCloseSymbol = SURROUND_SYMBOLS_MAP.get(inputData);
@@ -1989,6 +2118,7 @@ function ComposerSurroundSelectionPlugin(props: {
         skillMetadataRef.current,
         crewmatesRef.current,
         pictureIdsRef.current,
+        fileIdsRef.current,
       );
       const selectionStart = collapseExpandedComposerCursor(
         nextValue,
@@ -2196,6 +2326,9 @@ function ComposerPromptEditorInner({
   onRemovePicture = IGNORE_PICTURE,
   onRetryPicture = IGNORE_PICTURE,
   onPastePictures = PLACE_NO_PICTURES,
+  files = NO_FILE_VIEWS,
+  onRemoveFile = IGNORE_PICTURE,
+  onRetryFile = IGNORE_PICTURE,
   disabled,
   placeholder,
   className,
@@ -2227,6 +2360,22 @@ function ComposerPromptEditorInner({
     [pictureIdsSignature],
   );
   const pictureIdsRef = useRef(pictureIds);
+  // The files' order, as the pictures': what the text is rebuilt from.
+  const fileIdsSignature = files.map((file) => file.id).join("\u001f");
+  const fileIdsSignatureRef = useRef(fileIdsSignature);
+  const fileIds = useMemo(
+    () => (fileIdsSignature.length > 0 ? fileIdsSignature.split("\u001f") : []),
+    [fileIdsSignature],
+  );
+  const fileIdsRef = useRef(fileIds);
+  const filesValue = useMemo<ComposerFilesValue>(
+    () => ({
+      files: new Map(files.map((file) => [file.id, file])),
+      onRemoveFile,
+      onRetryFile,
+    }),
+    [files, onRemoveFile, onRetryFile],
+  );
   const picturesValue = useMemo<ComposerPicturesValue>(
     () => ({
       pictures: new Map(pictures.map((picture) => [picture.id, picture])),
@@ -2247,6 +2396,7 @@ function ComposerPromptEditorInner({
     expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
     terminalContextIds: terminalContexts.map((context) => context.id),
     pictureIds,
+    fileIds,
   });
   const terminalContextActions = useMemo(
     () => ({ onRemoveTerminalContext }),
@@ -2262,7 +2412,8 @@ function ComposerPromptEditorInner({
     terminalContextsRef.current = terminalContexts;
     crewmatesRef.current = crewmates;
     pictureIdsRef.current = pictureIds;
-  }, [crewmates, pictureIds, skills, terminalContexts]);
+    fileIdsRef.current = fileIds;
+  }, [crewmates, fileIds, pictureIds, skills, terminalContexts]);
 
   useEffect(() => {
     editor.setEditable(!disabled);
@@ -2273,7 +2424,8 @@ function ComposerPromptEditorInner({
     const previousSnapshot = snapshotRef.current;
     const contextsChanged =
       terminalContextsSignatureRef.current !== terminalContextsSignature ||
-      pictureIdsSignatureRef.current !== pictureIdsSignature;
+      pictureIdsSignatureRef.current !== pictureIdsSignature ||
+      fileIdsSignatureRef.current !== fileIdsSignature;
     const chipsChanged =
       skillsSignatureRef.current !== skillsSignature ||
       crewmatesSignatureRef.current !== crewmatesSignature;
@@ -2293,9 +2445,11 @@ function ComposerPromptEditorInner({
       expandedCursor: expandCollapsedComposerCursor(value, normalizedCursor),
       terminalContextIds: contexts.map((context) => context.id),
       pictureIds: pictureIdsRef.current,
+      fileIds: fileIdsRef.current,
     };
     terminalContextsSignatureRef.current = terminalContextsSignature;
     pictureIdsSignatureRef.current = pictureIdsSignature;
+    fileIdsSignatureRef.current = fileIdsSignature;
     skillsSignatureRef.current = skillsSignature;
     crewmatesSignatureRef.current = crewmatesSignature;
 
@@ -2315,6 +2469,7 @@ function ComposerPromptEditorInner({
           skillMetadataRef.current,
           crewmatesRef.current,
           pictureIdsRef.current,
+          fileIdsRef.current,
         );
       }
       if (shouldRewriteEditorState || isFocused) {
@@ -2334,6 +2489,7 @@ function ComposerPromptEditorInner({
     cursor,
     crewmatesSignature,
     editor,
+    fileIdsSignature,
     pictureIdsSignature,
     skillsSignature,
     terminalContextsSignature,
@@ -2358,6 +2514,7 @@ function ComposerPromptEditorInner({
         false,
         [...snapshot.terminalContextIds],
         [...snapshot.pictureIds],
+        [...snapshot.fileIds],
       );
     },
     [editor],
@@ -2442,6 +2599,7 @@ function ComposerPromptEditorInner({
         cursorAdjacentToMention,
         [...snapshot.terminalContextIds],
         [...snapshot.pictureIds],
+        [...snapshot.fileIds],
       );
     });
   }, []);
@@ -2449,52 +2607,55 @@ function ComposerPromptEditorInner({
   return (
     <ComposerTerminalContextActionsContext value={terminalContextActions}>
       <ComposerPicturesContext value={picturesValue}>
-        <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
-          <PlainTextPlugin
-            contentEditable={
-              <ContentEditable
-                className={cn(
-                  // The wrapper owns the appearance preference; keep everything else here.
-                  "block max-h-50 min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none",
-                  className,
-                )}
-                data-testid="composer-editor"
-                aria-placeholder={placeholder}
-                placeholder={<span />}
-                onPaste={onPaste}
-              />
-            }
-            placeholder={
-              terminalContexts.length > 0 || pictures.length > 0 ? null : (
-                <div className="pointer-events-none absolute inset-0 leading-relaxed text-placeholder">
-                  {placeholder}
-                </div>
-              )
-            }
-            ErrorBoundary={LexicalErrorBoundary}
-          />
-          <OnChangePlugin onChange={handleEditorChange} />
-          <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
-          <ComposerSurroundSelectionPlugin
-            crewmates={crewmates}
-            pictureIds={pictureIds}
-            skills={skills}
-            terminalContexts={terminalContexts}
-          />
-          <ComposerHomeEndKeyPlugin />
-          <ComposerInlineTokenArrowPlugin />
-          <ComposerInlineTokenSelectionNormalizePlugin />
-          <ComposerInlineTokenBackspacePlugin />
-          <ComposerInlineTokenPastePlugin />
-          <ComposerClipboardPlugin
-            onPastePictures={onPastePictures}
-            skillMetadataRef={skillMetadataRef}
-            crewmatesRef={crewmatesRef}
-          />
-          <ComposerPictureDragPlugin />
-          <ComposerChipSelectionPlugin />
-          <HistoryPlugin />
-        </div>
+        <ComposerFilesContext value={filesValue}>
+          <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
+            <PlainTextPlugin
+              contentEditable={
+                <ContentEditable
+                  className={cn(
+                    // The wrapper owns the appearance preference; keep everything else here.
+                    "block max-h-50 min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none",
+                    className,
+                  )}
+                  data-testid="composer-editor"
+                  aria-placeholder={placeholder}
+                  placeholder={<span />}
+                  onPaste={onPaste}
+                />
+              }
+              placeholder={
+                terminalContexts.length > 0 || pictures.length > 0 || files.length > 0 ? null : (
+                  <div className="pointer-events-none absolute inset-0 leading-relaxed text-placeholder">
+                    {placeholder}
+                  </div>
+                )
+              }
+              ErrorBoundary={LexicalErrorBoundary}
+            />
+            <OnChangePlugin onChange={handleEditorChange} />
+            <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
+            <ComposerSurroundSelectionPlugin
+              crewmates={crewmates}
+              pictureIds={pictureIds}
+              fileIds={fileIds}
+              skills={skills}
+              terminalContexts={terminalContexts}
+            />
+            <ComposerHomeEndKeyPlugin />
+            <ComposerInlineTokenArrowPlugin />
+            <ComposerInlineTokenSelectionNormalizePlugin />
+            <ComposerInlineTokenBackspacePlugin />
+            <ComposerInlineTokenPastePlugin />
+            <ComposerClipboardPlugin
+              onPastePictures={onPastePictures}
+              skillMetadataRef={skillMetadataRef}
+              crewmatesRef={crewmatesRef}
+            />
+            <ComposerPictureDragPlugin />
+            <ComposerChipSelectionPlugin />
+            <HistoryPlugin />
+          </div>
+        </ComposerFilesContext>
       </ComposerPicturesContext>
     </ComposerTerminalContextActionsContext>
   );
@@ -2511,6 +2672,9 @@ export function ComposerPromptEditor({
   onRemovePicture,
   onRetryPicture,
   onPastePictures,
+  files = NO_FILE_VIEWS,
+  onRemoveFile,
+  onRetryFile,
   disabled,
   placeholder,
   className,
@@ -2525,6 +2689,7 @@ export function ComposerPromptEditor({
   const initialSkillMetadataRef = useRef(skillMetadataByName(skills));
   const initialCrewmatesRef = useRef(crewmates);
   const initialPictureIdsRef = useRef(pictures.map((picture) => picture.id));
+  const initialFileIdsRef = useRef(files.map((file) => file.id));
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
       namespace: "t3tools-composer-editor",
@@ -2535,6 +2700,7 @@ export function ComposerPromptEditor({
         ComposerSkillNode,
         ComposerTerminalContextNode,
         ComposerPictureNode,
+        ComposerFileNode,
       ],
       editorState: () => {
         $setComposerEditorPrompt(
@@ -2543,6 +2709,7 @@ export function ComposerPromptEditor({
           initialSkillMetadataRef.current,
           initialCrewmatesRef.current,
           initialPictureIdsRef.current,
+          initialFileIdsRef.current,
         );
       },
       onError: (error) => {
@@ -2565,6 +2732,9 @@ export function ComposerPromptEditor({
         onRemovePicture={onRemovePicture}
         onRetryPicture={onRetryPicture}
         onPastePictures={onPastePictures}
+        files={files}
+        onRemoveFile={onRemoveFile}
+        onRetryFile={onRetryFile}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}
