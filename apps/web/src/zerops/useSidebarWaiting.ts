@@ -31,6 +31,7 @@ import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
  */
 export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   readonly candidates: ReadonlyArray<T>;
+  /** What its row reads (`useMateRowActivity`): HQ's word, or its socket's. */
   readonly activityOf: (candidate: T) => ZeropsAgentActivity | undefined;
   /** Its own change waits for the person's review (`mateReviewWaits`). */
   readonly reviewWaits: (candidate: T) => boolean;
@@ -47,11 +48,11 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   return input.candidates
     .flatMap((candidate): ReadonlyArray<WaitingMate> => {
       if (!hasMate(candidate) || !input.shown(candidate)) return [];
-      // The face its row wears (`mateFaceOf`): asking, or its change waiting for your review.
-      const connected = candidate.group === "connected";
+      // The face its row wears (`mateFaceOf`): asking, or its change waiting for your review —
+      // read from HQ or its socket, as the row reads it; a word at rest asks nothing now.
       const face = mateFaceOf({
-        connected,
-        activity: connected ? input.activityOf(candidate) : undefined,
+        connected: candidate.group === "connected",
+        activity: input.activityOf(candidate),
         reviewWaits: input.reviewWaits(candidate),
         mine: mateIsViewers(candidate.project, input.viewer),
       });

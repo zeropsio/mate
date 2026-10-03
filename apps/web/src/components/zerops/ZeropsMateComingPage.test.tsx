@@ -73,11 +73,11 @@ const app = vi.hoisted(() => ({
   listing: { state: "unread", waitingFor: null } as unknown,
   threads: [] as Array<unknown>,
   projects: [] as Array<unknown>,
-  remembered: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
+  told: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
   creations: {} as Record<string, unknown>,
   processes: [] as Array<unknown>,
 }));
-vi.mock("~/zerops/menuMemory", () => ({ rememberedActivity: () => app.remembered }));
+vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
@@ -225,7 +225,7 @@ beforeEach(() => {
   app.threads = [];
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
-  app.remembered = undefined;
+  app.told = undefined;
   app.creations = {};
   app.processes = [];
 });
@@ -456,7 +456,7 @@ describe("the composer in a Mate's own view, its conversation known from the men
     const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
     const threadKey = `${ENV_QUINN}:${MAIN.id}`;
     useComposerDraftStore.getState().setPrompt(conversation, "Check the logs");
-    app.remembered = { subject: "Check the logs", threadKey };
+    app.told = { subject: "Check the logs", threadKey };
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
     openView();
     const field = () =>
@@ -493,7 +493,7 @@ describe("the composer in a Mate's own view, the menu naming an older conversati
     const { takeHandedOverCaret } = await import("~/zerops/mateHandOver");
     const older = { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-older") };
     const conversation = { environmentId: ENV_QUINN, threadId: MAIN.id };
-    app.remembered = { subject: "Earlier", threadKey: `${ENV_QUINN}:thread-older` };
+    app.told = { subject: "Earlier", threadKey: `${ENV_QUINN}:thread-older` };
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
     openView();
     act(() =>
@@ -521,7 +521,7 @@ describe("the composer in a Mate's own view, the menu naming an older conversati
 describe("the header in a Mate's own view", () => {
   it("says what an existing Mate is on, as its menu row does, while its link is made", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
-    app.remembered = { subject: "Rename the orders column" };
+    app.told = { subject: "Rename the orders column" };
     openView();
     expect(said()).toContain("Rename the orders column");
   });

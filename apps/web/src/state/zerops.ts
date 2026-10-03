@@ -33,6 +33,7 @@ import {
   placementsOf,
   type HqChanges,
   type HqEnvironment,
+  type HqMates,
   type HqPlacement,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -46,6 +47,7 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { HqPeople } from "@t3tools/shared/hqMates";
 import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
@@ -163,6 +165,42 @@ export const hqChangesAtom = Atom.make((get): HqChanges | null => {
   const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
   return view === null || view.organizationId !== organizationId ? null : view.changes;
 }).pipe(Atom.withLabel("zerops:hq-changes"));
+
+/**
+ * The Mates the reader may observe, as HQ last told this tab beside the structure (`hq/mates.ts`):
+ * each by its project, its presence and its overview's sections.
+ */
+export interface HqMatesView {
+  readonly organizationId: string;
+  /** Null while nothing is known: HQ sent none — one from before the overviews — or not yet. */
+  readonly mates: HqMates | null;
+  /** `mates` is HQ's answer now; else what was last known of them, and none of them is live. */
+  readonly current: boolean;
+}
+
+export const hqMatesViewAtom = Atom.make<HqMatesView | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-mates-view"),
+);
+
+/** The people HQ last named for the reader's view, by their Zerops user id. */
+export interface HqPeopleView {
+  readonly organizationId: string;
+  /** Null while nothing is known: HQ named none — one from before the overviews — or not yet. */
+  readonly people: HqPeople | null;
+}
+
+export const hqPeopleViewAtom = Atom.make<HqPeopleView | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-people-view"),
+);
+
+/** The Mates of the organization in view, as HQ last told them; null while none is known. */
+export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
+  const view = get(hqMatesViewAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId ? null : view;
+}).pipe(Atom.withLabel("zerops:hq-mates"));
 
 const NO_PLACEMENTS: ReadonlyMap<string, HqPlacement> = new Map();
 

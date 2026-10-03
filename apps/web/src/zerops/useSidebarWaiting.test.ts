@@ -61,7 +61,8 @@ describe("waitingMatesOf — the faces the header stacks", () => {
     ["kai", face("needs")],
     ["nova", face("working")],
     ["juno", face("needs")],
-    ["zed", face("needs")],
+    // Its last word, at rest: no socket to it, and HQ holds no live link of it.
+    ["zed", { ...face("needs"), remembered: true } as ZeropsAgentActivity],
   ]);
   const derive = (
     shown: (candidate: ZeropsCandidate) => boolean = () => true,
@@ -93,10 +94,25 @@ describe("waitingMatesOf — the faces the header stacks", () => {
     expect(derive().map((waiting) => waiting.name)).toEqual(["Juno", "Kai"]);
   });
 
-  it("leaves out a Mate the menu does not show (Mine), and one nobody is connected to", () => {
+  it("leaves out a Mate the menu does not show (Mine), and one with no live word of it", () => {
     expect(
       derive((candidate) => candidate.project.id !== "juno").map((waiting) => waiting.name),
     ).toEqual(["Kai"]);
+  });
+
+  it("an unopened Mate waiting on its signer is in the stack", () => {
+    // No socket to it: HQ's live word of it says it asks.
+    const lone = mate("lone", "Lone", "ready");
+    const stacked = waitingMatesOf({
+      candidates: [lone],
+      activityOf: () => face("needs"),
+      reviewWaits: () => false,
+      viewer: VIEWER,
+      tints: new Map(),
+      order: [],
+      shown: () => true,
+    });
+    expect(stacked.map((waiting) => waiting.name)).toEqual(["Lone"]);
   });
 
   it("wears each Mate's own colour, and its face", () => {

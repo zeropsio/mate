@@ -1,17 +1,30 @@
 import {
   makeHqApi,
   type HqApi,
+  type HqMates,
   type HqStructure,
   type HqStructureEvent,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { HqChange } from "@t3tools/shared/hqChanges";
+import { MateLiveView, type HqPeople } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { HqStructureView } from "../state/zerops";
+import type { HqMatesView, HqPeopleView, HqStructureView } from "../state/zerops";
 import { driveHqStructure, hqOutageLine } from "./hqStructure";
 
 const ACME: HqStructure = { ungrouped: [], apps: [{ id: "app-1", name: "Acme", projects: [] }] };
 const BETA = { id: "app-2", name: "Beta", projects: [] };
+
+/** Vera as a reader observes her: online, nothing running. */
+const VERA = Schema.decodeUnknownSync(MateLiveView)({
+  presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "live" },
+  identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
+  main: null,
+  threads: { list: [], omitted: 0 },
+  logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
+  crew: null,
+});
 
 /** HQ's ping, this long after what came before it. */
 type Ping = { readonly pingAfterMs: number; readonly tick: (ms: number) => void };
@@ -48,17 +61,26 @@ function streamingApi(attempts: ReadonlyArray<Attempt>) {
 
 function harness(remembered?: { readonly structure: HqStructure; readonly readAt: number }) {
   const views: Array<HqStructureView> = [];
+  const mates: Array<HqMatesView> = [];
+  const people: Array<HqPeopleView> = [];
   const kept: Array<[HqStructure, number]> = [];
+  const keptMates: Array<[HqMates, HqPeople | null]> = [];
   let now = 10_000;
   return {
     views,
+    mates,
+    people,
     kept,
+    keptMates,
     tick: (ms: number) => (now += ms),
     deps: {
       organizationId: "org-1",
       remembered,
       publish: (view: HqStructureView) => views.push(view),
+      publishMates: (view: HqMatesView) => mates.push(view),
+      publishPeople: (view: HqPeopleView) => people.push(view),
       remember: (structure: HqStructure, readAt: number) => kept.push([structure, readAt]),
+      rememberMates: (mates: HqMates, told: HqPeople | null) => keptMates.push([mates, told]),
       now: () => now,
       sleep: async (ms: number) => {
         now += ms;
@@ -154,6 +176,74 @@ describe("driveHqStructure", () => {
     // Every structure HQ sent is remembered, the last one last.
     expect(new Set(h.kept.map(([structure]) => structure.apps.length))).toEqual(new Set([1, 2]));
     expect(h.kept.at(-1)?.[0].apps).toHaveLength(2);
+  });
+
+  it("keeps the Mates and the people to their own views, and republishes no structure for them", async () => {
+    const renamed = { "u-ada": { name: "Ada King" } };
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: null,
+            mates: new Map([["p1", VERA]]),
+            people: { "u-ada": { name: "Ada Lovelace" } },
+          },
+          { kind: "mate", projectId: "p1", value: { crew: null, main: null } },
+          { kind: "mate", projectId: "p2", value: VERA },
+          { kind: "people", people: renamed },
+        ],
+        end: "hang",
+      },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(h.people.at(-1)?.people).toBe(renamed));
+    stop.abort();
+    await driving;
+
+    // The structure as remembered, then HQ's snapshot of it: nothing for a Mate's message.
+    expect(h.views).toHaveLength(2);
+    expect(h.mates.at(-1)).toEqual({
+      organizationId: "org-1",
+      mates: new Map([
+        ["p1", VERA],
+        ["p2", VERA],
+      ]),
+      current: true,
+    });
+    expect(h.people.at(-1)).toEqual({ organizationId: "org-1", people: renamed });
+  });
+
+  it("remembers the Mates at their snapshot, then at most every ten seconds while they move", async () => {
+    const h = harness();
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: null,
+            mates: new Map([["p1", VERA]]),
+            people: null,
+          },
+          { kind: "mate", projectId: "p2", value: VERA },
+          { pingAfterMs: 5_000, tick: h.tick },
+          { kind: "mate", projectId: "p3", value: VERA },
+          { pingAfterMs: 6_000, tick: h.tick },
+        ],
+        end: "hang",
+      },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(h.keptMates).toHaveLength(2));
+    stop.abort();
+    await driving;
+
+    expect(h.keptMates.map(([mates]) => [...mates.keys()])).toEqual([["p1"], ["p1", "p2", "p3"]]);
   });
 
   it("says since when HQ is unavailable, keeps the last structure, and starts over from a fresh snapshot", async () => {

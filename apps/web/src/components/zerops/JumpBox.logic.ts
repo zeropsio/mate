@@ -116,13 +116,14 @@ export const EMPTY_JUMP_INDEX: SidebarJumpIndex = {
 /** What the menu's row of a Mate says of its conversation (`agentActivity.ts`). */
 export type JumpActivity = Pick<
   ZeropsAgentActivity,
-  "threadId" | "kind" | "face" | "subject" | "snippet" | "pausedUntil"
+  "threadId" | "kind" | "face" | "subject" | "snippet" | "pausedUntil" | "remembered"
 >;
 
 /**
  * A Mate as the box lists it, from what its row knows: the face its row
- * wears (`mateFaceOf`, its review waiting included), and what it is on only while its container is
- * connected — the row's own rule, so the two never say two things.
+ * wears (`mateFaceOf`, its review waiting included), and what it is on only while a word of now
+ * says it — HQ's live word, or its connected container's — the row's own rule, so the two never
+ * say two things. Its conversation is offered to write to only through its connected container.
  */
 export function jumpMateOf(input: {
   readonly projectId: string;
@@ -137,7 +138,7 @@ export function jumpMateOf(input: {
   readonly reviewWaits?: boolean | undefined;
   readonly mine: boolean;
 }): JumpMate {
-  const live = input.connected ? input.activity : undefined;
+  const live = input.activity?.remembered === true ? undefined : input.activity;
   return {
     projectId: input.projectId,
     name: input.name,
@@ -154,7 +155,10 @@ export function jumpMateOf(input: {
     snippet: live?.snippet,
     environmentId: input.environmentId,
     connected: input.connected,
-    conversation: live === undefined ? undefined : { threadId: live.threadId, kind: live.kind },
+    conversation:
+      live === undefined || !input.connected
+        ? undefined
+        : { threadId: live.threadId, kind: live.kind },
     owner: input.owner,
     pausedUntil: live?.pausedUntil,
     mine: input.mine,
@@ -169,16 +173,11 @@ export function jumpMateOf(input: {
  */
 export function withLiveMates(
   index: SidebarJumpIndex,
-  activityOf: (environmentId: string) => JumpActivity | undefined,
+  activityOf: (mate: JumpMate) => JumpActivity | undefined,
 ): SidebarJumpIndex {
   return {
     ...index,
-    mates: index.mates.map((mate) =>
-      jumpMateOf({
-        ...mate,
-        activity: mate.environmentId === undefined ? undefined : activityOf(mate.environmentId),
-      }),
-    ),
+    mates: index.mates.map((mate) => jumpMateOf({ ...mate, activity: activityOf(mate) })),
   };
 }
 

@@ -266,13 +266,10 @@ import {
   menuMemory,
   rememberedChangeOf,
   rememberedChanges,
-  rememberedRowOf,
   rememberMenu,
   withChanges,
-  withRows,
   withChips,
   withCrews,
-  type RememberedRow,
 } from "../zerops/menuMemory";
 import {
   candidatesNotice,
@@ -2332,28 +2329,27 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops" });
   }, [isMobile, router, setOpenMobile]);
 
-  // What each connected agent is doing — the one derivation the projects
-  // screen reads too (`agentActivity.ts`), so a Mate says the same thing in
-  // both places.
+  // What each Mate is doing, as HQ or its socket tells it — the one
+  // derivation the projects screen reads too (`agentActivity.ts`), so a Mate
+  // says the same thing in both places.
   const zeropsAgentActivity = useZeropsAgentActivity();
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
-  // What a Mate's row says: its conversation's while its socket is up or only
-  // blinking, and until then what this browser remembers it saying
-  // (`menuMemory.ts`) — a reload paints whole rows, not names that grow as
-  // each Mate connects, and a Mate at work never falls asleep for a blink.
+  // What a Mate's row says: HQ's word of it, or its socket's reading, live
+  // while either stands and at rest otherwise (`useMateRowActivity`) — a
+  // reload paints whole rows from HQ's last word, and a Mate at work never
+  // falls asleep for a blink.
   const zeropsRowActivity = useMateRowActivity(zeropsAgentActivity);
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const zeropsConversationsRead = useMateConversationsRead();
   // Whether a Mate is still in its first minutes, as the projects page says it.
   const zeropsComing = useMateComingOf(zeropsCandidates);
-  // Remember each connected Mate's row as its conversation says it, and
-  // forget whatever the listing no longer holds — and a Mate on its way off
-  // Zerops, which a reload must not paint as it stood.
+  // Forget whatever the listing no longer holds — and a Mate on its way off
+  // Zerops, which a reload must not paint as it stood. The Mates' rows are
+  // remembered as HQ tells them (`hqStructure.ts`).
   const zeropsDeleting = useDeletingMates();
   useEffect(() => {
     if (!zeropsHeld.complete) return;
-    const rows: Record<string, RememberedRow> = {};
     const listed = new Set<string>();
     const groups = new Set<string>();
     for (const candidate of zeropsCandidates) {
@@ -2361,18 +2357,11 @@ export default function Sidebar() {
       if (groupId !== undefined) groups.add(groupId);
       if (mateDeleting(candidate.project, zeropsDeleting)) continue;
       listed.add(candidate.project.id);
-      if (candidate.group !== "connected" || candidate.environmentId === undefined) continue;
-      const live = zeropsAgentActivity.get(candidate.environmentId);
-      if (live !== undefined) rows[candidate.project.id] = rememberedRowOf(live);
     }
     rememberMenu((memory) =>
-      withCrews(
-        withChips(withChanges(withRows(memory, rows, listed), {}, groups), {}, groups),
-        {},
-        listed,
-      ),
+      withCrews(withChips(withChanges(memory, {}, groups), {}, groups), {}, listed),
     );
-  }, [zeropsAgentActivity, zeropsCandidates, zeropsDeleting, zeropsHeld.complete]);
+  }, [zeropsCandidates, zeropsDeleting, zeropsHeld.complete]);
   // The change rows and the chips the tree drew of what it read, for
   // the next reload to paint while HQ and the platform answer again.
   const zeropsRemembered = useMemo<SidebarRemembered>(
@@ -2400,15 +2389,6 @@ export default function Sidebar() {
   }, []);
   // "Ask <your Mate> to fix it" from the production chip's menu (S6).
   const askMateToFix = useAskMateToFix();
-  // The Mates waiting on the viewer, for the header's faces and ⌥↓.
-  const zeropsActivityOf = useCallback(
-    (candidate: (typeof zeropsCandidates)[number]) =>
-      candidate.environmentId === undefined
-        ? undefined
-        : zeropsAgentActivity.get(candidate.environmentId),
-    [zeropsAgentActivity],
-  );
-
   // A Mate still coming up is open in its own view (`/mate/$projectId`) — a New
   // project's first Mate, before its project exists, by the creation's id.
   const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
@@ -2445,9 +2425,10 @@ export default function Sidebar() {
       ),
     [activeZeropsProjectId, zeropsMateOwner, zeropsMateScope],
   );
+  // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
     candidates: zeropsCandidates,
-    activityOf: zeropsActivityOf,
+    activityOf: zeropsRowActivity,
     shown: zeropsShown,
     activeProjectId: activeZeropsProjectId,
     beforeReveal: isMobile

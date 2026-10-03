@@ -46,6 +46,7 @@ import { askNewProject } from "~/zerops/newProjectAsk";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useMateReadOnly, useMatesReadOnly } from "~/zerops/useMateReadOnly";
 import { useOpenMate } from "~/zerops/useOpenMate";
+import { useMateActivityByProject } from "~/zerops/useMenuMateReadings";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useZeropsChangeLandedEvents } from "~/zerops/useZeropsChangeLandedEvents";
 
@@ -100,12 +101,21 @@ export function SidebarJumpBox({
   readonly onCommands: (value: string) => void;
 }) {
   const state = useJumpBoxState();
-  // What each Mate is doing now, over what the menu last drew: a phone's
-  // menu is put away while the box is open.
-  const activity = useZeropsAgentActivity();
+  // What each Mate is doing now, as its row reads it — HQ's word, or its
+  // socket's — over what the menu last drew: a phone's menu is put away while
+  // the box is open.
+  const activityOf = useMateActivityByProject(useZeropsAgentActivity());
   const index = useMemo(
-    () => withLiveMates(drawn, (environmentId) => activity.get(EnvironmentId.make(environmentId))),
-    [activity, drawn],
+    () =>
+      withLiveMates(drawn, (mate) =>
+        activityOf(
+          mate.projectId,
+          mate.connected && mate.environmentId !== undefined
+            ? EnvironmentId.make(mate.environmentId)
+            : undefined,
+        ),
+      ),
+    [activityOf, drawn],
   );
   // Whose Mates the viewer may not write to (D6), read as the box opens.
   const shells = useThreadShells();

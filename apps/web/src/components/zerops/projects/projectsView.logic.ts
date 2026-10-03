@@ -56,7 +56,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { activityOfNow, mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { creatableRoles } from "../ZeropsGroupTree.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
 
@@ -604,10 +604,11 @@ export type GroupMemberCandidate = ZeropsCandidate & {
  * A group's members as `groupFlowInputOf` reads them, from the group tree's
  * environments — the projects page and the left menu hand it the same
  * candidates, so they cannot disagree about who is in a group or what a
- * Mate is doing. `activityOf` is the agent's activity (`agentActivity.ts`),
- * read only while its container is connected; `conversationsRead` is whether
- * its container's conversations have arrived, so that no activity is known to
- * mean nobody has spoken to it.
+ * Mate is doing. `activityOf` is the agent's activity (`agentActivity.ts`):
+ * HQ's word or its socket's, read only while it is of now — its container
+ * connected, or HQ holding it live — and never at rest; `conversationsRead` is
+ * whether its container's conversations have arrived, so that no activity is
+ * known to mean nobody has spoken to it.
  */
 export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   environments: ReadonlyArray<{
@@ -621,8 +622,9 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
 ): ReadonlyArray<GroupMemberFacts> {
   return environments.map(({ item, role }) => {
     const tags = readZeropsMembership(item.project);
-    const connected = item.group === "connected" && item.environmentId !== undefined;
-    const activity = activityOf(item);
+    const activity = activityOfNow(activityOf(item));
+    const connected =
+      (item.group === "connected" && item.environmentId !== undefined) || activity !== undefined;
     return {
       projectId: item.project.id,
       role,

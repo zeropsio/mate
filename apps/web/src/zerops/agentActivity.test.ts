@@ -9,7 +9,9 @@ import {
   type ThreadLiveStep,
 } from "@t3tools/contracts";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
+import { MateLiveView } from "@t3tools/shared/hqMates";
 import { SECRET_MASK } from "@t3tools/shared/messagePreview";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -22,6 +24,7 @@ import {
   mateFaceFor,
   mateFaceOf,
   mateReviewWaits,
+  overviewAgentActivity,
   threadAgentActivity,
 } from "./agentActivity";
 
@@ -138,11 +141,36 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
       review: false,
       shown: "sleep",
     },
-  ] as const)("$case", ({ connected, face, review, shown }) => {
+    {
+      case: "not connected, HQ's live word says it asks",
+      connected: false,
+      face: "needs",
+      review: false,
+      shown: "needs",
+    },
+    {
+      case: "not connected, only a word at rest",
+      connected: false,
+      face: "needs",
+      atRest: true,
+      review: false,
+      shown: "sleep",
+    },
+    {
+      case: "connected, only a word at rest",
+      connected: true,
+      face: "working",
+      atRest: true,
+      review: false,
+      shown: "idle",
+    },
+  ] as const)("$case", (row) => {
+    const { connected, face, review, shown } = row;
+    const atRest = "atRest" in row ? { remembered: true as const } : {};
     expect(
       mateFaceOf({
         connected,
-        activity: face === undefined ? undefined : { face },
+        activity: face === undefined ? undefined : { face, ...atRest },
         reviewWaits: review,
         mine: true,
       }),
@@ -864,5 +892,40 @@ describe("the question a needs-you row says", () => {
     },
   ])("$name", ({ thread, question }) => {
     expect(threadAgentActivity(thread, undefined).question).toBe(question);
+  });
+});
+
+const mateLiveView = Schema.decodeUnknownSync(MateLiveView);
+
+describe("overviewAgentActivity", () => {
+  const told = (main: unknown) =>
+    mateLiveView({
+      presence: { online: false, since: "2026-10-03T09:00:00.000Z", overview: "stored" },
+      identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
+      main,
+    });
+
+  it("keys the main chat HQ names under its environment — its draft's key — where it names one", () => {
+    const main = {
+      id: "t1",
+      title: "Add a login page",
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+      interactionMode: "default",
+      backgroundLiveness: null,
+      session: null,
+      latestTurn: null,
+      latestUserMessageAt: null,
+      updatedAt: "2026-10-03T09:00:00.000Z",
+      latestUserMessagePreview: null,
+      latestMessagePreview: null,
+      planProgress: null,
+      pendingQuestion: null,
+      usagePause: null,
+      liveStep: null,
+    };
+    expect(overviewAgentActivity(told(main), false, {})?.threadKey).toBe("env-vera:t1");
+    expect(overviewAgentActivity(told(null), false, {})).toBeUndefined();
   });
 });

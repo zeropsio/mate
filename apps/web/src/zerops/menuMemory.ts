@@ -4,7 +4,8 @@
  * connects, change rows that arrive when HQ answers, a stop named twice,
  * and *Mine* showing everyone until the members are read (the owner,
  * 2026-09-27). Each piece stands until its own live read replaces it:
- * - a Mate's row: what was asked, its last words, when, and whether unread;
+ * - an organization's Mates as its HQ last told them, and the people it named — each row reads
+ *   them at rest until HQ answers;
  * - a project's change rows, drawn without their verbs;
  * - a project's chips, production's and the stages', as they last said it;
  * - a Mate's crew, its faces, so its line keeps its place;
@@ -17,30 +18,15 @@
  * (`maskSecrets`), but still what was said.
  */
 import type { FlowPullRequest, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
-import { ThreadId } from "@t3tools/contracts";
+import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
+import { HqMatesSnapshot, type HqPeople } from "@t3tools/shared/hqMates";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { mateRowView } from "~/components/zerops/SidebarMateRow.logic";
-
 import { accountLocalStorage, currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
-import type { ZeropsAgentActivity } from "./agentActivity";
 
 export const MENU_MEMORY_STORAGE_KEY = "mate:zerops:menu-memory";
-
-const RowSchema = Schema.Struct({
-  subject: Schema.optionalKey(Schema.String),
-  snippet: Schema.optionalKey(Schema.String),
-  /** The row held its third line with no words to keep (drawn again as `MateReplyPending`). */
-  awaitingWords: Schema.optionalKey(Schema.Boolean),
-  task: Schema.optionalKey(Schema.String),
-  at: Schema.String,
-  unread: Schema.Boolean,
-  threadId: Schema.String,
-  threadKey: Schema.String,
-});
 
 const ChangeSchema = Schema.Struct({
   repository: Schema.String,
@@ -157,7 +143,6 @@ const StructureSchema = Schema.Struct({
 });
 
 const MenuMemorySchema = Schema.Struct({
-  rows: Schema.Record(Schema.String, RowSchema),
   changes: Schema.Record(Schema.String, Schema.Array(ChangeSchema)),
   // Absent from a memory written before the production chip: none remembered
   // yet, and the rest of that memory still reads.
@@ -173,9 +158,13 @@ const MenuMemorySchema = Schema.Struct({
   structures: Schema.Record(Schema.String, StructureSchema).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  // An organization's Mates as its HQ last told them; a memory from before reads with none, and
+  // the rows it quoted from shells are passed by.
+  mates: Schema.Record(Schema.String, HqMatesSnapshot).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
 });
 
-export type RememberedRow = typeof RowSchema.Type;
 export type RememberedChange = typeof ChangeSchema.Type;
 /** A remembered change as this build writes it: always a Mate's. */
 export type RememberedMateChange = RememberedChange & { readonly mateProjectId: string };
@@ -191,59 +180,13 @@ export type RememberedStructure = typeof StructureSchema.Type;
 export type MenuMemory = typeof MenuMemorySchema.Type;
 
 export const EMPTY_MENU_MEMORY: MenuMemory = {
-  rows: {},
   changes: {},
   chips: {},
   crews: {},
   members: {},
   structures: {},
+  mates: {},
 };
-
-/**
- * A row's words as a Mate's activity last said them — and whether it held a
- * third line with no words to keep, which is the row's height: a reload draws
- * the line again rather than growing it when the socket answers.
- */
-export function rememberedRowOf(activity: ZeropsAgentActivity): RememberedRow {
-  // The row's third line stood without words to keep — words still to come,
-  // the step it was on, the question it asked, the error it stopped on before
-  // saying anything: a reload holds the line with the dots (`mateRowView`).
-  const awaiting =
-    activity.snippet === undefined && mateRowView(activity, activity.face).reply !== undefined;
-  return {
-    ...(activity.subject === undefined ? {} : { subject: activity.subject }),
-    ...(activity.snippet === undefined ? {} : { snippet: activity.snippet }),
-    ...(awaiting ? { awaitingWords: true } : {}),
-    ...(activity.task === undefined ? {} : { task: activity.task }),
-    at: activity.at,
-    unread: activity.unread,
-    threadId: activity.threadId,
-    threadKey: activity.threadKey,
-  };
-}
-
-/**
- * A remembered row as an activity to draw: its words and its time, and
- * nothing that is only true now — at rest, no status, no plan, no pause —
- * so no clock ticks and no *Stop* is offered from memory.
- */
-export function activityFromMemory(row: RememberedRow): ZeropsAgentActivity {
-  return {
-    threadId: ThreadId.make(row.threadId),
-    kind: "idle",
-    status: null,
-    face: "idle",
-    subject: row.subject,
-    at: row.at,
-    snippet: row.snippet,
-    ...(row.awaitingWords === true ? { awaitingWords: true as const } : {}),
-    unread: row.unread,
-    pausedUntil: undefined,
-    threadKey: row.threadKey,
-    task: row.task,
-    remembered: true,
-  };
-}
 
 /** What a change row needs of a pull request to be drawn again. */
 export function rememberedChangeOf(pull: FlowPullRequest): RememberedMateChange {
@@ -285,7 +228,7 @@ export function changeFromMemory(change: RememberedMateChange): FlowPullRequest 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** `memory` with each entry of `entries` in `part`, and none `keep` does not hold. */
-function withPart<K extends "rows" | "changes" | "members">(
+function withPart<K extends "changes" | "members">(
   memory: MenuMemory,
   part: K,
   entries: Readonly<Record<string, MenuMemory[K][string]>>,
@@ -297,15 +240,6 @@ function withPart<K extends "rows" | "changes" | "members">(
   }
   Object.assign(next, entries);
   return same(next, memory[part]) ? memory : ({ ...memory, [part]: next } as MenuMemory);
-}
-
-/** The Mates' rows as their activity reads now, and — given the listing — none for a Mate gone. */
-export function withRows(
-  memory: MenuMemory,
-  rows: Readonly<Record<string, RememberedRow>>,
-  listed?: ReadonlySet<string>,
-): MenuMemory {
-  return withPart(memory, "rows", rows, listed);
 }
 
 /** Each project's change rows as drawn once HQ answered, and — given the listing — none for a project gone. */
@@ -381,15 +315,20 @@ export function withCrews(
 }
 
 /**
- * The memory with nothing of a Mate its person deleted — its row and its crew — at once, not
- * when the listing lets it go: until then a reload would paint a Mate that is on its way off
+ * The memory with nothing of a Mate its person deleted — HQ's word of it and its crew — at once,
+ * not when the listing lets it go: until then a reload would paint a Mate that is on its way off
  * Zerops as it last stood.
  */
 export function withoutMate(memory: MenuMemory, projectId: string): MenuMemory {
-  if (!(projectId in memory.rows) && !(projectId in memory.crews)) return memory;
-  const { [projectId]: _row, ...rows } = memory.rows;
+  const told = Object.entries(memory.mates).filter(([, view]) => projectId in view.mates);
+  if (told.length === 0 && !(projectId in memory.crews)) return memory;
   const { [projectId]: _crew, ...crews } = memory.crews;
-  return { ...memory, rows, crews };
+  const mates = { ...memory.mates };
+  for (const [clientId, view] of told) {
+    const { [projectId]: _mate, ...others } = view.mates;
+    mates[clientId] = { ...view, mates: others };
+  }
+  return { ...memory, crews, mates };
 }
 
 /** An organization's members as last read, what they carry beyond a member's record dropped. */
@@ -416,6 +355,19 @@ export function withStructure(
   return same(memory.structures[clientId], kept)
     ? memory
     : { ...memory, structures: { ...memory.structures, [clientId]: kept } };
+}
+
+/** An organization's Mates as its HQ told them, and the people it named. */
+export function withMates(
+  memory: MenuMemory,
+  clientId: string,
+  mates: HqMates,
+  people: HqPeople | null,
+): MenuMemory {
+  const kept = { mates: Object.fromEntries(mates), people: people ?? {} };
+  return same(memory.mates[clientId], kept)
+    ? memory
+    : { ...memory, mates: { ...memory.mates, [clientId]: kept } };
 }
 
 const decodeMember = Schema.decodeUnknownOption(MemberSchema);
@@ -450,19 +402,16 @@ export function menuMemory(): MenuMemory {
   return held.memory;
 }
 
-const activities = new WeakMap<RememberedRow, ZeropsAgentActivity>();
 const pulls = new WeakMap<ReadonlyArray<RememberedChange>, ReadonlyArray<FlowPullRequest>>();
 
-/** The row this browser remembers for a Mate, as an activity to draw — the same object each draw. */
-export function rememberedActivity(projectId: string): ZeropsAgentActivity | undefined {
-  const row = menuMemory().rows[projectId];
-  if (row === undefined) return undefined;
-  let activity = activities.get(row);
-  if (activity === undefined) {
-    activity = activityFromMemory(row);
-    activities.set(row, activity);
-  }
-  return activity;
+/** An organization's Mates as this browser remembers HQ telling them, and the people it named. */
+export function rememberedMates(
+  clientId: string,
+): { readonly mates: HqMates; readonly people: HqPeople } | undefined {
+  const kept = menuMemory().mates[clientId];
+  return kept === undefined
+    ? undefined
+    : { mates: new Map(Object.entries(kept.mates)), people: kept.people };
 }
 
 /** The change rows this browser remembers drawing for a project. */

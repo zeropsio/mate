@@ -10,7 +10,7 @@
  * - `ready`: up, nobody has signed in yet;
  * - `working`: at its first job;
  * - `blinking`: at work while its socket reconnects — its face still works;
- * - `remembered`: its row from this browser's memory, its socket not open yet.
+ * - `remembered`: its row from HQ's last word of it, stored while it slept, its socket not open yet.
  *
  * Fixtures only: nothing here ships, and no route imports this module.
  */
@@ -18,10 +18,11 @@ import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
 
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { overviewAgentActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { mateComing, type MateComing } from "~/zerops/mateComing";
-import { activityFromMemory } from "~/zerops/menuMemory";
 
 export const COMING_PHASES = [
   "pending",
@@ -139,6 +140,37 @@ const QUINN_AT_WORK = words("acme-quinn", {
   liveStep: { words: "Setting up the project", code: undefined },
 });
 
+/** Quinn as HQ last told it, stored while it slept: its first job asked, no words back yet. */
+const QUINN_STORED = Schema.decodeUnknownSync(MateLiveView)({
+  presence: { online: false, since: minutesAgo(1), overview: "stored" },
+  identity: { environmentId: "env-acme-quinn", serverVersion: "0.11.90", update: null },
+  main: {
+    id: "thread-acme-quinn",
+    title: "Stand up development of the project.",
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default",
+    backgroundLiveness: null,
+    session: { status: "running", lastError: null },
+    latestTurn: {
+      turnId: "turn-acme-quinn",
+      state: "running",
+      requestedAt: minutesAgo(1),
+      startedAt: minutesAgo(1),
+      completedAt: null,
+    },
+    latestUserMessageAt: minutesAgo(1),
+    updatedAt: minutesAgo(1),
+    latestUserMessagePreview: { text: "Stand up development of the project." },
+    latestMessagePreview: { role: "user", text: "Stand up development of the project." },
+    planProgress: null,
+    pendingQuestion: null,
+    usagePause: null,
+    liveStep: null,
+  },
+});
+
 const BORN_AT = Date.now() - 90_000;
 
 /** Quinn's birth, as this browser holds it. */
@@ -210,15 +242,7 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
     phase === "working" || phase === "blinking"
       ? QUINN_AT_WORK
       : phase === "remembered"
-        ? activityFromMemory({
-            subject: "Stand up development of the project.",
-            task: "Stand up development of the project.",
-            awaitingWords: true,
-            at: minutesAgo(1),
-            unread: false,
-            threadId: "thread-acme-quinn",
-            threadKey: "env-acme-quinn:thread-acme-quinn",
-          })
+        ? overviewAgentActivity(QUINN_STORED, false, {})
         : undefined;
   return {
     candidates: [FEN, ADA, ...(quinn === undefined ? [] : [quinn])],
