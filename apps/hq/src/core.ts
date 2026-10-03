@@ -31,6 +31,7 @@ import { importsLayer } from "./importJob.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { loopWatchLayer } from "./loopWatch.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
+import { mateAccessLayer } from "./mateAccess.ts";
 import { mateOverviewsLayer } from "./mateOverviews.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
@@ -117,6 +118,7 @@ const services = (options: CoreOptions) => {
     mateLinkTicketsLayer,
     writesLayer,
     liveSocketsLayer,
+    mateAccessLayer,
     loopWatchLayer,
     recomputesLayer,
     Layer.mergeAll(

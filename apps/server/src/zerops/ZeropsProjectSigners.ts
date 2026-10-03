@@ -38,6 +38,7 @@ import type {
   ZeropsAgentLoginState,
   ZeropsLoginState,
 } from "@t3tools/contracts";
+import { opensForOf, readProjectRoles } from "@t3tools/shared/mateAccess";
 import {
   classifyZeropsAgentAuth,
   type ZeropsAgentAuthFields,
@@ -53,7 +54,6 @@ import * as Ref from "effect/Ref";
 import * as ServerConfig from "../config.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
-import { opensForOf, readProjectRoles } from "./ZeropsMembershipWatch.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
 /**

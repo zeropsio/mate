@@ -139,6 +139,7 @@ const withStructure = <A, E, B = never>(
                 current.projects.some((candidate) => candidate.id === projectId),
               ),
         ),
+      views: Stream.never,
     });
     const context = yield* Layer.build(
       structureLayer({ hqProjectId: "HQ" }).pipe(

@@ -42,6 +42,8 @@ import * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import {
   ZeropsApi,
@@ -65,6 +67,12 @@ export interface OrgView<F extends Freshness = Freshness> extends Facts<F> {
 
 type OrgRead = Omit<OrgView, "freshness">;
 
+/** A view as Zerops answered it, and when (wall ms). */
+export interface OrgSeen {
+  readonly view: OrgRead;
+  readonly answered: number;
+}
+
 export class Roles extends Context.Service<
   Roles,
   {
@@ -84,6 +92,12 @@ export class Roles extends Context.Service<
      * failure no answer.
      */
     readonly exists: (projectId: string) => Effect.Effect<boolean, ZeropsError>;
+    /**
+     * Every view Zerops answers, as it lands, starting with the last good one: what HQ relays to
+     * its Mates (`mateAccess.ts`). It reads nothing itself — the views are those its readers and
+     * the official check (every minute) ask for.
+     */
+    readonly views: Stream.Stream<OrgSeen>;
   }
 >()("@t3tools/hq/roles") {}
 
@@ -149,7 +163,7 @@ export const rolesLayer = (options: {
     Effect.gen(function* () {
       const api = yield* ZeropsApi;
       /** The last good view: when its read began (`at`), and when Zerops answered it. */
-      const cached = yield* Ref.make<
+      const cached = yield* SubscriptionRef.make<
         { readonly view: OrgRead; readonly at: number; readonly answered: number } | undefined
       >(undefined);
       /** When the read under way began; none while no read is. */
@@ -206,7 +220,7 @@ export const rolesLayer = (options: {
         asked: number,
       ) =>
         Effect.gen(function* () {
-          const hit = yield* Ref.get(cached);
+          const hit = yield* SubscriptionRef.get(cached);
           if (hit !== undefined && fits(hit)) return hit.view;
           const failure = yield* Ref.get(failed);
           if (failure !== undefined && failure.at >= asked) return yield* failure.error;
@@ -222,7 +236,11 @@ export const rolesLayer = (options: {
             ),
             Effect.ensuring(Ref.set(underWay, undefined)),
           );
-          yield* Ref.set(cached, { view, at, answered: yield* Clock.currentTimeMillis });
+          yield* SubscriptionRef.set(cached, {
+            view,
+            at,
+            answered: yield* Clock.currentTimeMillis,
+          });
           return view;
         });
       /** A read begun no earlier than `asked`: what a write is decided over. */
@@ -239,7 +257,7 @@ export const rolesLayer = (options: {
       );
       /** The last good view, while Zerops answered it within five minutes. */
       const lastGood = Effect.gen(function* () {
-        const good = yield* Ref.get(cached);
+        const good = yield* SubscriptionRef.get(cached);
         const now = yield* Clock.currentTimeMillis;
         return good !== undefined && now - good.answered <= Duration.toMillis(VIEW_GRACE)
           ? good.view
@@ -293,7 +311,7 @@ export const rolesLayer = (options: {
       });
       const view = Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
-        const good = yield* Ref.get(cached);
+        const good = yield* SubscriptionRef.get(cached);
         if (good !== undefined && answeredWithin(now)(good)) return good.view;
         const kept =
           good !== undefined && now - good.answered <= Duration.toMillis(VIEW_GRACE)
@@ -321,6 +339,10 @@ export const rolesLayer = (options: {
         // In the layer's scope: a read that took the last good view leaves its own to land.
         return yield* keptAfterWait(yield* Effect.forkIn(recentAt(now), scope));
       }).pipe(Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })));
-      return Roles.of({ view, forWrite, recent, exists });
+      const views = SubscriptionRef.changes(cached).pipe(
+        Stream.filter((seen) => seen !== undefined),
+        Stream.map((seen): OrgSeen => ({ view: seen.view, answered: seen.answered })),
+      );
+      return Roles.of({ view, forWrite, recent, exists, views });
     }),
   );

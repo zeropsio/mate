@@ -8,6 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
@@ -54,6 +55,7 @@ const withMovingMain = (moves: number) =>
       forWrite: Effect.succeed({ ...org, freshness: "recent" as const }),
       recent: Effect.succeed({ ...org, freshness: "cached" as const }),
       exists: () => Effect.succeed(true),
+      views: Stream.never,
     });
     const left = { moves };
     const squashes = { count: 0 };

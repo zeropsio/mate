@@ -10,7 +10,9 @@
  *   characters, titles to {@link MATE_TITLE_MAX}, a frame to {@link MATE_LINK_FRAME_MAX} bytes.
  *   An older Mate's `summary` is a type this build does not know.
  * - **Down**, the Mate's own state in HQ: its record, its birth (who asked for its stand-up,
- *   whether its project is closed off), and its changes with their outcome (`hqChanges.ts`).
+ *   whether its project is closed off), and its changes with their outcome (`hqChanges.ts`); and
+ *   its access (`access`): who its project opens for and whom it lists, by the door's own rule over
+ *   the org's view HQ reads (`mateAccess.ts`), whole after every view, with how old that view is.
  *
  * HQ pings every 20 s and the Mate answers; either side reconnects or closes on silence. A frame
  * whose type this build does not know is passed by (`readLinkUp`), so a newer side never closes an
@@ -36,6 +38,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { MateChanges } from "./hqChanges.ts";
+import { MateAccessMember } from "./mateAccess.ts";
 
 export const MATE_LINK_TEXT_MAX = 280;
 /** A frame's bound in UTF-8 bytes (`linkFrameBytes`), which the sender checks before it sends. */
@@ -278,6 +281,12 @@ export type MateLinkUp = typeof MateLinkUp.Type;
 export const MateLinkDown = Schema.Union([
   Schema.Struct({ type: Schema.Literal("ping") }),
   Schema.Struct({ type: Schema.Literal("state"), mate: MateState }),
+  Schema.Struct({
+    type: Schema.Literal("access"),
+    /** How long before it was sent Zerops answered the view it was computed from. */
+    ageMs: Count,
+    members: Schema.Array(MateAccessMember),
+  }),
 ]);
 export type MateLinkDown = typeof MateLinkDown.Type;
 

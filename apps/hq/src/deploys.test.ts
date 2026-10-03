@@ -201,6 +201,7 @@ const withDeploys = <A, E>(
             forWrite: Effect.succeed({ ...ORG_VIEW, freshness: "recent" as const }),
             recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
             exists: () => Effect.succeed(true),
+            views: Stream.never,
           }),
         ),
         Layer.provide(

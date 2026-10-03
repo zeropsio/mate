@@ -13,6 +13,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
@@ -138,6 +139,7 @@ const withReleases = <A, E>(
             forWrite: Effect.succeed({ ...ORG_VIEW, freshness: "recent" as const }),
             recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
             exists: () => Effect.succeed(true),
+            views: Stream.never,
           }),
         ),
         Layer.provide(

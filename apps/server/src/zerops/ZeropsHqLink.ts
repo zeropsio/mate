@@ -239,9 +239,15 @@ export const makeZeropsHqLink = (
             if (event._tag !== "message") return Effect.void;
             const message = decodeDown(event.raw);
             if (Option.isNone(message)) return Effect.void;
-            return message.value.type === "ping"
-              ? send({ type: "pong" })
-              : SubscriptionRef.set(state, Option.some(message.value.mate));
+            switch (message.value.type) {
+              case "ping":
+                return send({ type: "pong" });
+              case "state":
+                return SubscriptionRef.set(state, Option.some(message.value.mate));
+              case "access":
+                // The Mate's access is read off its own read of Zerops by this build.
+                return Effect.void;
+            }
           }),
         );
         yield* Effect.raceFirst(relay, Effect.all([overviews, heard], { concurrency: 2 }));

@@ -3,7 +3,8 @@
  * ticket minted for its Mate credential (`POST /api/mate/link-ticket`) and keeps it open:
  *
  * - **down**, the Mate's state (`state`) at once and after every change of its record, its birth or
- *   its changes (`changes.ts`), and `ping` every 20 s;
+ *   its changes (`changes.ts`); its access (`access`, `mateAccess.ts`) at once and after every view
+ *   of the org HQ reads; and `ping` every 20 s;
  * - **up**, `pong`, and its overview (`overview`): the whole of it first, then the sections that
  *   changed, kept by `mateOverviews.ts` for whoever may observe the Mate on their structure socket.
  *   A frame whose type HQ does not know is passed by — an older Mate's `summary` among them.
@@ -32,6 +33,7 @@ import * as Socket from "effect/unstable/socket/Socket";
 
 import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
+import { MateAccess } from "./mateAccess.ts";
 import { MateCredentials } from "./mateCredentials.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
@@ -65,6 +67,7 @@ export const serveMateLink = (
       const changes = yield* Changes;
       const credentials = yield* MateCredentials;
       const leader = yield* Leader;
+      const access = yield* MateAccess;
       const pingEvery = options.pingEvery ?? Duration.seconds(20);
       const { close, heardClose, ending } = yield* socketEnding(writer);
       yield* (yield* LiveSockets).track(close);
@@ -127,7 +130,12 @@ export const serveMateLink = (
         }
       }).pipe(Effect.ignore);
 
-      yield* Effect.raceAll([listen, ping, states, recheck]);
+      // Never the first to end: the views go on for as long as HQ runs.
+      const accessFrames = Stream.runForEach(access.frames(projectId), (frame) =>
+        writer.write(frame),
+      ).pipe(Effect.ignore, Effect.andThen(Effect.never));
+
+      yield* Effect.raceAll([listen, ping, states, recheck, accessFrames]);
       return yield* ending;
     }),
   );

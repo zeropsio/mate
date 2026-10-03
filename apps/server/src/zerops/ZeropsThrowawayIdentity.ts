@@ -64,12 +64,11 @@
  * @module ZeropsThrowawayIdentity
  */
 import {
-  effectiveProjectRole,
-  zeropsRoleAnswer,
-  ZEROPS_ACTIVE_MEMBER_STATUS,
-  type RoleMateVisibility,
-  type ZeropsOrgRole,
-} from "@t3tools/shared/zeropsRoles";
+  readOrgMembers,
+  resolveDoorVisibility,
+  type ZeropsOrgMember,
+} from "@t3tools/shared/mateAccess";
+import { ZEROPS_ACTIVE_MEMBER_STATUS, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -226,93 +225,12 @@ export function readIntegrationTokenRecord(body: unknown): IntegrationTokenRecor
   };
 }
 
-export interface ZeropsOrgMember {
-  /** The `clientUser` id — what a project's `userRoles` names. */
-  readonly clientUserId: string;
-  readonly userId: string;
-  readonly orgRole: string;
-  readonly status: string;
-  readonly canCreateProjects: boolean;
-}
-
-/** Every usable row of a member-list body, in the order the platform sent them. */
-export function readOrgMembers(entries: ReadonlyArray<unknown>): ReadonlyArray<ZeropsOrgMember> {
-  const members: Array<ZeropsOrgMember> = [];
-  for (const entry of entries) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const record = entry as Record<string, unknown>;
-    const userId = record["userId"];
-    if (typeof userId !== "string" || userId.length === 0) continue;
-    members.push({
-      clientUserId: typeof record["id"] === "string" ? record["id"] : "",
-      userId,
-      orgRole: typeof record["roleCode"] === "string" ? record["roleCode"] : "",
-      status: typeof record["status"] === "string" ? record["status"] : "",
-      canCreateProjects: record["canCreateProjects"] === true,
-    });
-  }
-  return members;
-}
-
 /** Pulls the one member row a user id names out of a member-list body. */
 export function findOrgMember(
   entries: ReadonlyArray<unknown>,
   userId: string,
 ): ZeropsOrgMember | null {
   return readOrgMembers(entries).find((member) => member.userId === userId) ?? null;
-}
-
-const KNOWN_ROLES: ReadonlyArray<ZeropsOrgRole> = [
-  "NO_ACCESS",
-  "READ_ONLY",
-  "BASIC_USER",
-  "ADMIN",
-  "OWNER",
-];
-
-const asOrgRole = (value: string): ZeropsOrgRole | undefined =>
-  KNOWN_ROLES.find((role) => role === value);
-
-/**
- * The effective role and the visibility it earns, from the shared role
- * function. The registry handed in is this one project: the door decides about
- * itself and nothing else, and `zeropsRoleAnswer` answers for every Mate in
- * whatever registry it is given.
- */
-export function resolveDoorVisibility(input: {
-  readonly projectId: string;
-  readonly member: ZeropsOrgMember;
-  readonly override: string | undefined;
-}): { readonly role: ZeropsOrgRole; readonly visibility: RoleMateVisibility } {
-  // A role neither side recognises is not a role: it reads as `NO_ACCESS`, so
-  // an override the platform grew that this build has never heard of shuts the
-  // door rather than opening it.
-  const orgRole = asOrgRole(input.member.orgRole) ?? "NO_ACCESS";
-  const override =
-    input.override === undefined ? undefined : (asOrgRole(input.override) ?? "NO_ACCESS");
-  const roleInput = {
-    person: {
-      id: input.member.userId,
-      orgRole,
-      status: input.member.status,
-      canCreateProjects: input.member.canCreateProjects,
-    },
-    overrides: override === undefined ? {} : { [input.projectId]: override },
-    registry: {
-      groups: [
-        {
-          id: input.projectId,
-          slug: input.projectId,
-          projects: [{ id: input.projectId, kind: "mate" as const }],
-        },
-      ],
-    },
-  };
-  const answer = zeropsRoleAnswer(roleInput);
-  return {
-    role: effectiveProjectRole(roleInput, input.projectId),
-    visibility: answer.mates[input.projectId] ?? "hidden",
-  };
 }
 
 /** A member-list answer worth asking again: no key to read with, or a status that is no verdict. */
