@@ -1,8 +1,12 @@
+import type { EnvironmentId } from "@t3tools/contracts";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
 
-import { sidebarMateVerbs } from "./useSidebarMateMenus";
+import type { ZeropsAgentActivity } from "./agentActivity";
+import { mateMenuTarget, sidebarMateVerbs } from "./useSidebarMateMenus";
 
 const entry = (id: string, label: string): ZeropsMenuEntry => ({ id, label, onSelect: () => {} });
 
@@ -45,5 +49,61 @@ describe("sidebarMateVerbs — the shared verbs a Mate's own menu carries", () =
 
   it("keeps Start in place of Restart where the Mate is stopped", () => {
     expect(sidebarMateVerbs([entry("start", "Start")]).map((verb) => verb.id)).toEqual(["start"]);
+  });
+});
+
+const AT = "2026-10-03T09:00:00.000Z";
+const DONE = "2026-10-03T09:05:00.000Z";
+
+/** Vera as HQ tells her: her main chat finished a turn. */
+const VERA = Schema.decodeUnknownSync(MateLiveView)({
+  presence: { online: true, since: AT, overview: "live" },
+  identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
+  main: {
+    id: "t1",
+    title: "Add a login page",
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default",
+    backgroundLiveness: null,
+    session: null,
+    latestTurn: {
+      turnId: "turn-1",
+      state: "completed",
+      requestedAt: AT,
+      startedAt: AT,
+      completedAt: DONE,
+    },
+    latestUserMessageAt: AT,
+    updatedAt: DONE,
+    latestUserMessagePreview: null,
+    latestMessagePreview: null,
+    planProgress: null,
+    pendingQuestion: null,
+    usagePause: null,
+    liveStep: null,
+  },
+});
+
+describe("mateMenuTarget — where a Mate's own menu acts", () => {
+  const activity = { threadId: "t1", threadKey: "env-vera:t1" } as ZeropsAgentActivity;
+
+  it("acts on an unopened Mate's main chat by HQ's word of it", () => {
+    expect(
+      mateMenuTarget({ environmentId: undefined, told: VERA, activity, completedAt: new Map() }),
+    ).toEqual({ environmentId: "env-vera", finished: DONE });
+  });
+
+  it("takes this page's own shell of the chat over HQ's word", () => {
+    const shell = "2026-10-03T09:06:00.000Z";
+    expect(
+      mateMenuTarget({
+        environmentId: "env-vera" as EnvironmentId,
+        told: VERA,
+        activity,
+        completedAt: new Map([["env-vera:t1", shell]]),
+      }),
+    ).toEqual({ environmentId: "env-vera", finished: shell });
   });
 });

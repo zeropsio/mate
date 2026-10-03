@@ -11,9 +11,13 @@
  * — which the server leaves open to every member, a colleague having to be
  * able to stop an agent they may not start.
  *
+ * A Mate this page holds no socket to is acted on by HQ's word of it (`mateMenuTarget`): its
+ * environment and its main chat's last finished turn. Stopping a run goes through the socket.
+ *
  * The group registry is read only once somebody opens a Mate's menu: it is
  * what *Finish setup* needs to know a Mate unregistered, and the menu is on every screen.
  */
+import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { botDisplayName, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import {
@@ -21,6 +25,8 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { EnvironmentId } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 
@@ -29,6 +35,7 @@ import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
 import { toastManager } from "~/components/ui/toast";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { threadEnvironment } from "~/state/threads";
+import { hqMatesAtom } from "~/state/zerops";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
@@ -61,6 +68,33 @@ export function sidebarMateVerbs(
   });
 }
 
+/**
+ * Where a Mate's menu acts: its environment — its socket's, else the one HQ names — and when the
+ * chat its row reads last finished, for *Mark as unread*: this page's shell of it, else HQ's word.
+ */
+export function mateMenuTarget(input: {
+  /** Its socket's environment, where this page holds one. */
+  readonly environmentId: EnvironmentId | undefined;
+  /** HQ's word of it, where HQ holds one. */
+  readonly told: MateLiveView | undefined;
+  readonly activity: ZeropsAgentActivity | undefined;
+  /** Each chat's last finished turn as this page's shells hold it, by thread key. */
+  readonly completedAt: ReadonlyMap<string, string>;
+}): { readonly environmentId: EnvironmentId | undefined; readonly finished: string | undefined } {
+  const { activity, told } = input;
+  const toldFinished =
+    activity !== undefined && told?.main?.id === activity.threadId
+      ? (told.main.latestTurn?.completedAt ?? undefined)
+      : undefined;
+  return {
+    environmentId: input.environmentId ?? told?.identity?.environmentId,
+    finished:
+      activity === undefined
+        ? undefined
+        : (input.completedAt.get(activity.threadKey) ?? toldFinished),
+  };
+}
+
 export function useSidebarMateMenus(input: {
   /** Every conversation's shell: what *Mark as unread* marks is its last finished turn. */
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -79,6 +113,7 @@ export function useSidebarMateMenus(input: {
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
   const interrupt = useAtomCommand(threadEnvironment.interruptTurn, { reportFailure: false });
   const router = useRouter();
+  const hq = useAtomValue(hqMatesAtom);
   const { copyToClipboard } = useCopyToClipboard<{ readonly name: string }>({
     onCopy: ({ name }) => {
       toastManager.add({ type: "success", title: `Link to ${name} copied` });
@@ -113,14 +148,19 @@ export function useSidebarMateMenus(input: {
       candidate: ZeropsCandidatePresentation,
       activity: ZeropsAgentActivity | undefined,
     ): MateRowActions | undefined => {
-      const environmentId = candidate.environmentId;
+      const socket = candidate.environmentId;
+      const { environmentId, finished } = mateMenuTarget({
+        environmentId: socket,
+        told: hq?.mates?.get(candidate.project.id),
+        activity,
+        completedAt,
+      });
       const tags = readZeropsMembership(candidate.project);
       const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
       const threadRef =
         environmentId === undefined || activity === undefined
           ? undefined
           : scopeThreadRef(environmentId, activity.threadId);
-      const finished = activity === undefined ? undefined : completedAt.get(activity.threadKey);
       return {
         muted: environmentId !== undefined && muted.includes(environmentId),
         toggleMute:
@@ -150,11 +190,11 @@ export function useSidebarMateMenus(input: {
         rename: mateActions.renameInPlace(candidate),
         changeFace: mateActions.changeFace(candidate),
         stop:
-          environmentId === undefined || activity === undefined || activity.face !== "working"
+          socket === undefined || activity === undefined || activity.face !== "working"
             ? undefined
             : () => {
                 void interrupt({
-                  environmentId,
+                  environmentId: socket,
                   input: { threadId: activity.threadId },
                 }).then((result) => {
                   if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -173,6 +213,7 @@ export function useSidebarMateMenus(input: {
     [
       completedAt,
       copyToClipboard,
+      hq,
       interrupt,
       markThreadUnread,
       markThreadVisited,
