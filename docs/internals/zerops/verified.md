@@ -7434,6 +7434,12 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   200 with `id` equal to the id the mint returned; its one `clientUserList` row (KRLS, NO_ACCESS)
   carried `userId` equal to that id; `user/list` held exactly one entry with that `userId`
   (`ACTIVE/NO_ACCESS`); the token list's row has the same `id`. Deleted at once (200).
+- **An org READ_ONLY token reads the token list, but not all of it** — a `mate-probe-*` token
+  with org role `READ_ONLY` and no grant, minted on KRLS at 12:19Z: `GET
+/client/{id}/integration-token/list` answered 200 with 180 tokens where the owner's read, moments
+  later, listed 193; `user/list` answered 200 with 195 entries. The 13 missing showed no role or
+  grant pattern: 8 `mate-door:…`, one `mate-hq-deploy:…` with a `BASIC_USER` grant, 4 NO_ACCESS
+  without grants. Deleted at once (200).
 - **Door throwaways outlive their door** — at 12:07Z KRLS listed 8 `mate-door:…` tokens,
   `NO_ACCESS` with no grant, all naming KRLS's HQ project, all minted by one user between 08:34:47Z
   and 08:35:08Z; none was deleted. A sampler polling every ~55 s saw KRLS's project list, member
