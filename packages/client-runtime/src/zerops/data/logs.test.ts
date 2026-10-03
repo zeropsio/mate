@@ -427,6 +427,29 @@ describe("shared build log registry", () => {
     expect(transport.followers[0]?.closeCalls).toBe(1);
   });
 
+  // A log kept only for its grace never holds a seat another build asks for:
+  // at capacity it closes at once, and the one asked for opens (pass 36).
+  it.each([
+    { name: "one only kept for its grace gives way", held: false, opens: true },
+    { name: "one still held does not", held: true, opens: false },
+  ])("at capacity, a build's log asked for: $name", async ({ held, opens }) => {
+    const { registry, transport } = harness(undefined, { activeLogSessionsPerAccount: 1 });
+    transport.pages.push({ lines: [], rejectedItems: 0 }, { lines: [], rejectedItems: 0 });
+    const first = registry.acquire(project(), QUERY);
+    await registry.drain();
+    if (!held) first.release();
+    const other = { ...QUERY, appVersionId: "version-2" };
+    if (!opens) {
+      expect(() => registry.acquire(project(), other)).toThrow(BuildLogRegistryError);
+      return;
+    }
+    const next = registry.acquire(project(), other);
+    await registry.drain();
+    expect(next.session === first.session).toBe(false);
+    expect(registry.diagnostics()).toMatchObject({ activeSessions: 1, leases: 1 });
+    expect(transport.pageRequests).toHaveLength(2);
+  });
+
   it("rejects foreign accounts and session over-capacity with sanitized errors", async () => {
     const { registry, transport } = harness(undefined, { activeLogSessionsPerAccount: 1 });
     transport.pages.push({ lines: [], rejectedItems: 0 });
