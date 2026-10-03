@@ -24,6 +24,7 @@ export {
 } from "./birth.ts";
 export {
   attachToApp,
+  HQ_WRITE_UNCERTAIN,
   HqError,
   makeHqApi,
   readHqHealth,

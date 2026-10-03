@@ -9,7 +9,8 @@
  *
  * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or is not
  * serving (`503 not_active`, a standby or an HQ that is not the official one), `refused` when it
- * answered no — with HQ's own code and words.
+ * answered no — with HQ's own code and words — and `uncertain` when a write's answer was lost and
+ * what HQ holds, read back at once, does not show it made.
  *
  * @module hq/client
  */
@@ -38,7 +39,7 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { FetchImplementation } from "../api.ts";
+import { parseRetryAfterMs, type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords } from "./refusals.ts";
 import { structureEventOf, type HqStructureEvent } from "./stream.ts";
@@ -112,7 +113,11 @@ export interface HqAttach {
 }
 
 export class HqError extends Error {
-  readonly kind: "unavailable" | "refused";
+  /**
+   * `unavailable` when HQ could not be reached or is not serving; `refused` when it answered no;
+   * `uncertain` when a write was sent and its answer lost — HQ may have made it.
+   */
+  readonly kind: "unavailable" | "refused" | "uncertain";
   /** HQ's code (`forbidden`, `conflict`, `not_active`, …), or `network`. */
   readonly code: string;
   readonly status: number | undefined;
@@ -264,13 +269,32 @@ const SOCKET_CLOSE = {
 
 const PONG = JSON.stringify({ type: "pong" });
 
+/** How long a read waits for HQ's answer. */
 const CALL_TIMEOUT_MS = 20_000;
 /**
- * The door reads the org fresh from Zerops (`apps/hq/src/door.ts`), which took tens of seconds on
- * a slow Zerops (measured 2026-10-03): a door given up at the calls' 20 s threw HQ's answer away,
- * and the next caller minted another throwaway for a door queued behind the first.
+ * How long the door and every write wait for HQ's answer. HQ reads the org from Zerops for each,
+ * which took tens of seconds on a slow Zerops (measured 2026-10-03): a door given up at 20 s threw
+ * HQ's answer away, and the next caller minted another throwaway for a door queued behind the
+ * first; a release given up at 20 s told the person "HQ could not be reached." of a release under
+ * way (F22).
  */
-const DOOR_TIMEOUT_MS = 45_000;
+const WRITE_TIMEOUT_MS = 45_000;
+
+/**
+ * A call that changes what HQ holds: one HQ makes again the same if asked twice
+ * (`idempotent` — it sets a value), or one it would make twice (`once`).
+ */
+type Write = "once" | "idempotent";
+
+/**
+ * What a write whose answer was lost says, when HQ holds nothing of it either: main's words for an
+ * attempt that may have landed (`docs/internals/zerops/client-state-model.md`, command attempts).
+ */
+export const HQ_WRITE_UNCERTAIN =
+  "HQ could not confirm whether this finished. Check the project before trying again.";
+
+const uncertain = () =>
+  new HqError({ kind: "uncertain", code: "uncertain", message: HQ_WRITE_UNCERTAIN });
 
 /** HQ's code and reason in an answer's body; a body that is not HQ's JSON names neither. */
 function said(text: string): { readonly code?: unknown; readonly reason?: unknown } {
@@ -310,12 +334,53 @@ const stopped = (cause: unknown, signal: AbortSignal | null | undefined) =>
   (cause instanceof DOMException && (cause.name === "AbortError" || cause.name === "TimeoutError"));
 
 /**
- * One call to HQ: its answer, or an {@link HqError}. A connection that drops under the call is
+ * One call to HQ: its answer, or an {@link HqError}. A read whose connection drops under it is
  * tried once more — a kept-alive connection is cut as HQ's Core is redeployed (measured on the rig,
  * 2026-10-02) — and HQ's own answer never is.
+ *
+ * A write HQ would make twice is never sent twice: one whose answer was lost — its deadline passed,
+ * its connection dropped, or HQ failed it on its way (`5xx`, but `not_active`) — is `uncertain`,
+ * for what HQ holds to decide. A write that sets a value HQ answered `503` with a `Retry-After` is
+ * asked once more after it, a wait of 45 s at most (F22: HQ could not read Zerops in time).
  */
-async function send(fetch: FetchImplementation, url: string, init: RequestInit): Promise<Response> {
-  const signal = init.signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS);
+async function send(
+  fetch: FetchImplementation,
+  url: string,
+  init: RequestInit,
+  write?: Write,
+): Promise<Response> {
+  const response = await sendOnce(fetch, url, init, write);
+  if (write !== "idempotent" || response.status !== 503) return answered(response, write);
+  // @effect-diagnostics-next-line globalDate:off -- an HTTP date is read against the wall clock it names.
+  const wait = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
+  if (wait === null) return answered(response, write);
+  // @effect-diagnostics-next-line globalTimers:off -- plain promises: the wait HQ asked for.
+  await new Promise((resolve) => setTimeout(resolve, Math.min(wait, WRITE_TIMEOUT_MS)));
+  return answered(await sendOnce(fetch, url, init, write), write);
+}
+
+/**
+ * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
+ * for a Core that does not lead (`not_active`), which writes nothing.
+ */
+async function answered(response: Response, write: Write | undefined): Promise<Response> {
+  if (response.ok) return response;
+  const error = await errorOf(response);
+  if (write === "once" && response.status >= 500 && error.code !== "not_active") {
+    throw uncertain();
+  }
+  throw error;
+}
+
+/** The call sent, with its deadline, and HQ's answer whatever it says. */
+async function sendOnce(
+  fetch: FetchImplementation,
+  url: string,
+  init: RequestInit,
+  write: Write | undefined,
+): Promise<Response> {
+  const signal =
+    init.signal ?? AbortSignal.timeout(write === undefined ? CALL_TIMEOUT_MS : WRITE_TIMEOUT_MS);
   const headers = {
     Accept: "application/json",
     ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
@@ -326,6 +391,7 @@ async function send(fetch: FetchImplementation, url: string, init: RequestInit):
     try {
       response = await fetch(url, { ...init, signal, headers });
     } catch (cause) {
+      if (write !== undefined) throw uncertain();
       if (attempt === 0 && !stopped(cause, signal)) continue;
       throw new HqError({
         kind: "unavailable",
@@ -333,7 +399,6 @@ async function send(fetch: FetchImplementation, url: string, init: RequestInit):
         message: "HQ could not be reached.",
       });
     }
-    if (!response.ok) throw await errorOf(response);
     return response;
   }
 }
@@ -449,7 +514,7 @@ export function makeHqApi(input: {
           await send(input.fetch, `${origin}/api/door`, {
             method: "POST",
             body: JSON.stringify({ token }),
-            signal: AbortSignal.timeout(DOOR_TIMEOUT_MS),
+            signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
           }),
         ),
       )
@@ -463,15 +528,21 @@ export function makeHqApi(input: {
   };
 
   /** A call as the session's holder; a session HQ no longer takes is replaced once. */
-  const authorized = async (path: string, init: RequestInit = {}): Promise<Response> => {
+  const authorized = async (
+    path: string,
+    init: RequestInit = {},
+    write?: Write,
+  ): Promise<Response> => {
     for (let attempt = 0; ; attempt += 1) {
       const held = session ?? enter();
       const token = await held;
       try {
-        return await send(input.fetch, `${origin}${path}`, {
-          ...init,
-          headers: { ...init.headers, Authorization: `Bearer ${token}` },
-        });
+        return await send(
+          input.fetch,
+          `${origin}${path}`,
+          { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
+          write,
+        );
       } catch (cause) {
         const stale = cause instanceof HqError && cause.code === "session_required";
         if (!stale || attempt > 0) throw cause;
@@ -480,9 +551,70 @@ export function makeHqApi(input: {
     }
   };
 
+  /**
+   * A write whose answer was lost, decided by what HQ holds now: `holds` reads it back — what the
+   * write would have answered, or `undefined` while HQ holds nothing of it. Nothing held, or no
+   * answer to the read either, leaves it uncertain.
+   */
+  const confirmed = async <T>(
+    write: () => Promise<T>,
+    holds: () => Promise<T | undefined>,
+  ): Promise<T> => {
+    try {
+      return await write();
+    } catch (cause) {
+      if (!(cause instanceof HqError && cause.kind === "uncertain")) throw cause;
+      let held: T | undefined;
+      try {
+        held = await holds();
+      } catch {
+        // No answer to the read either: the write stays as uncertain as it was.
+        throw cause;
+      }
+      if (held === undefined) throw cause;
+      return held;
+    }
+  };
+
+  /** {@link confirmed} for a write that answers nothing: `holds` says whether HQ holds it made. */
+  const confirmedDone = async (
+    write: () => Promise<unknown>,
+    holds: () => Promise<boolean>,
+  ): Promise<void> => {
+    await confirmed(
+      async () => {
+        await write();
+        return true;
+      },
+      async () => ((await holds()) ? true : undefined),
+    );
+  };
+
+  const structureOf = async (signal?: AbortSignal) =>
+    json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal }));
+  const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
+  const releasesOf = async (appId: string, signal?: AbortSignal) =>
+    (
+      await readReleases(
+        await authorized(releasesPath(appId), signal === undefined ? {} : { signal }),
+      )
+    ).releases;
+  const changeOf = async (link: ChangeLink, signal?: AbortSignal) =>
+    readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal }));
+  const commentsOf = async (link: ChangeLink, signal?: AbortSignal) =>
+    (
+      await readComments(
+        await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
+      )
+    ).comments;
+  /** The change as HQ holds it, if it is in `state`. */
+  const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
+    const { change } = await changeOf(link);
+    return change.state === state ? change : undefined;
+  };
+
   return {
-    structure: async (signal) =>
-      json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal })),
+    structure: structureOf,
     streamStructure: async (handlers, signal) => {
       const { ticket } = await json<{ readonly ticket: string }>(
         await authorized("/api/stream-ticket", { method: "POST", signal }),
@@ -531,73 +663,105 @@ export function makeHqApi(input: {
       });
     },
     createApp: async (name) =>
-      json(await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) })),
-    attachProject: async (appId, attach) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}/projects`, {
-        method: "POST",
-        body: JSON.stringify(attach),
-      });
-    },
+      json(
+        await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, "once"),
+      ),
+    attachProject: (appId, attach) =>
+      confirmedDone(
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}/projects`,
+            { method: "POST", body: JSON.stringify(attach) },
+            "once",
+          ),
+        async () =>
+          (await appOf(appId))?.projects.some(
+            (project) => project.projectId === attach.projectId && project.kind === attach.kind,
+          ) === true,
+      ),
     keepDeployToken: async (appId, environment, token) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/deploy-token`,
         { method: "PUT", body: JSON.stringify({ token }) },
+        "idempotent",
       );
     },
     redeploy: async (appId, environment, deploy) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}/redeploy`,
         { method: "POST", body: JSON.stringify(deploy) },
+        "once",
       );
     },
     updateMate: async (projectId, change) => {
-      await authorized(`/api/mates/${encodeURIComponent(projectId)}`, {
-        method: "PATCH",
-        body: JSON.stringify(change),
-      });
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}`,
+        { method: "PATCH", body: JSON.stringify(change) },
+        "idempotent",
+      );
     },
-    renameApp: async (appId, name) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name }),
-      });
-    },
-    deleteApp: async (appId) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" });
-    },
+    renameApp: (appId, name) =>
+      confirmedDone(
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}`,
+            { method: "PATCH", body: JSON.stringify({ name }) },
+            "idempotent",
+          ),
+        async () => (await appOf(appId))?.name === name,
+      ),
+    deleteApp: (appId) =>
+      confirmedDone(
+        () => authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, "once"),
+        async () => (await appOf(appId)) === undefined,
+      ),
     moveProject: async (projectId, to) => {
-      await authorized(`/api/projects/${encodeURIComponent(projectId)}/app`, {
-        method: "PUT",
-        body: JSON.stringify(to),
-      });
+      await authorized(
+        `/api/projects/${encodeURIComponent(projectId)}/app`,
+        { method: "PUT", body: JSON.stringify(to) },
+        "idempotent",
+      );
     },
     createMate: async (mate) => {
-      await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) });
+      await authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, "once");
     },
-    change: async (link, signal) =>
-      readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal })),
-    changeComments: async (link, signal) =>
-      (
-        await readComments(
-          await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
-        )
-      ).comments,
-    commentOnChange: async (link, body) =>
-      readComment(
-        await authorized(`${changePath(link)}/comments`, {
-          method: "POST",
-          body: JSON.stringify({ body }),
-        }),
+    change: changeOf,
+    changeComments: commentsOf,
+    // A comment has no name of its own: the newest said on the change, in the very words, is taken
+    // for it.
+    commentOnChange: (link, body) =>
+      confirmed(
+        async () =>
+          readComment(
+            await authorized(
+              `${changePath(link)}/comments`,
+              { method: "POST", body: JSON.stringify({ body }) },
+              "once",
+            ),
+          ),
+        async () => {
+          const newest = (await commentsOf(link)).at(-1);
+          return newest?.body === body ? newest : undefined;
+        },
       ),
-    mergeChange: async (link, expectedHead) =>
-      readChange(
-        await authorized(`${changePath(link)}/merge`, {
-          method: "POST",
-          body: JSON.stringify({ expectedHead }),
-        }),
+    mergeChange: (link, expectedHead) =>
+      confirmed(
+        async () =>
+          readChange(
+            await authorized(
+              `${changePath(link)}/merge`,
+              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              "once",
+            ),
+          ),
+        () => changeIn(link, "merged"),
       ),
-    closeChange: async (link) =>
-      readChange(await authorized(`${changePath(link)}/close`, { method: "POST" })),
+    closeChange: (link) =>
+      confirmed(
+        async () =>
+          readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, "once")),
+        () => changeIn(link, "closed"),
+      ),
     changeAttachment: async (link, signal) =>
       (
         await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {
@@ -618,22 +782,38 @@ export function makeHqApi(input: {
       readCompare(
         await authorized(comparePath(appId, repo, query), signal === undefined ? {} : { signal }),
       ),
-    releases: async (appId, signal) =>
-      (
-        await readReleases(
-          await authorized(releasesPath(appId), signal === undefined ? {} : { signal }),
-        )
-      ).releases,
-    release: async (appId, request) =>
-      readRelease(
-        await authorized(releasesPath(appId), { method: "POST", body: JSON.stringify(request) }),
+    releases: releasesOf,
+    // A release is named by its tag, which HQ gives no second one.
+    release: (appId, request) =>
+      confirmed(
+        async () =>
+          readRelease(
+            await authorized(
+              releasesPath(appId),
+              { method: "POST", body: JSON.stringify(request) },
+              "once",
+            ),
+          ),
+        async () => (await releasesOf(appId)).find((made) => made.tag === request.tag),
       ),
-    rollback: async (appId, tag, request) =>
-      readRelease(
-        await authorized(`${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`, {
-          method: "POST",
-          body: JSON.stringify(request),
-        }),
+    // A roll back is a new release HQ names: the newest, rolling back to `tag` at the same `main`,
+    // is taken for it.
+    rollback: (appId, tag, request) =>
+      confirmed(
+        async () =>
+          readRelease(
+            await authorized(
+              `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
+              { method: "POST", body: JSON.stringify(request) },
+              "once",
+            ),
+          ),
+        async () => {
+          const [newest] = await releasesOf(appId);
+          return newest?.rollbackOf === tag && newest.sha === request.groupHead
+            ? newest
+            : undefined;
+        },
       ),
     recipeTier: async (appId, tier, signal) =>
       readRecipeTier(
@@ -643,12 +823,18 @@ export function makeHqApi(input: {
         ),
       ),
     recordStandUp: async (projectId) => {
-      await authorized(`/api/mates/${encodeURIComponent(projectId)}/standup`, { method: "POST" });
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/standup`,
+        { method: "POST" },
+        "once",
+      );
     },
     recordClosedOff: async (projectId) => {
-      await authorized(`/api/mates/${encodeURIComponent(projectId)}/closed-off`, {
-        method: "POST",
-      });
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
+        { method: "POST" },
+        "once",
+      );
     },
   };
 }

@@ -3,6 +3,7 @@
  * on a service cannot be told — that it cannot, beside what does go out. A roll back's says what
  * leaves production and what comes back.
  */
+import { HQ_WRITE_UNCERTAIN } from "@t3tools/client-runtime/zerops/hq";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -45,6 +46,17 @@ describe("ReleaseReviewView", () => {
     const markup = render({ untold: ["web"] });
     expect(markup).toContain("What goes out");
     expect(markup).toContain("Can&#x27;t tell what web runs.");
+  });
+
+  // F22: a release whose answer was lost, and HQ holds none of it when asked again.
+  it("says to check the project, and offers Release again, when HQ could not confirm the release", () => {
+    const markup = render({ press: { kind: "refused", reason: HQ_WRITE_UNCERTAIN } });
+    expect(markup).toContain("Check the project before trying again.");
+    const button = /<button[^>]*>(?:(?!<\/button>).)*Release(?:(?!<\/button>).)*<\/button>/u.exec(
+      markup,
+    )?.[0];
+    expect(button).toBeDefined();
+    expect(button).not.toContain("disabled");
   });
 });
 
