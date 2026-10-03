@@ -60,6 +60,7 @@ import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmissi
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewEngine } from "../CrewEngine.ts";
 import { crewServicesLayer, makeCrewEngine, type CrewPolicyInstaller } from "../crewLayer.ts";
+import { DevServerPidFile } from "../CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
 import { CrewStore } from "../CrewStore.ts";
 import {
@@ -82,6 +83,11 @@ export const ZEROPS = resolveZeropsEnvironment({
 export interface CrewWorld {
   readonly root: string;
   readonly workspace: string;
+  /**
+   * zcp's dev-server pidfile as this world's engine reads it: the world's own, so no other run on
+   * the machine writes it under the engine.
+   */
+  readonly devServerPidFile: string;
   readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
   readonly admitted: Ref.Ref<
     ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
@@ -360,6 +366,7 @@ export const withCrewEngines = <E>(
     const world: CrewWorld = {
       root,
       workspace,
+      devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
       dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
       admitted: yield* Ref.make<
         ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
@@ -405,6 +412,7 @@ export const withCrewEngines = <E>(
           Layer.mergeAll(
             fakes(world, events, signIns),
             countingSsh(world.sshCalls, holds),
+            Layer.succeed(DevServerPidFile, world.devServerPidFile),
             ServerConfig.layer({
               cwd: workspace,
               zerops: ZEROPS,

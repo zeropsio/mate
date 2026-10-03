@@ -3452,7 +3452,9 @@ no-cache`.
   are, and nothing writes to them. The client keeps a project tagged `mate:tool:gitea` out of the
   applications and never writes to it (`tools.ts`). Retiring it is a separate decision, later.
   - _Why:_ accounts that ran it still have it, and HQ replaces it without taking it down
-- **2026-10-02** — **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
+- **2026-10-02** — **Superseded 2026-10-03 in part by "A Mate's key is lowered only when Finish
+  setup adopts it" below: the projects page lowers no key on its read.**
+  **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
   Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
   more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
   the projects page only lowers a key minted `ADMIN` — for the Mates HQ places in an application —
@@ -3464,3 +3466,12 @@ no-cache`.
   - _Why:_ a `READ_ONLY` grant on a production project reads its unmarked secrets — a database's
     connection string in clear — for anyone with the Mate's terminal, and grants are writes somebody
     must keep in step; HQ would need Admin rights to keep them
+- **2026-10-03** — **A Mate's key is lowered only when Finish setup adopts it** (step A, A11: a load
+  reads no token list). No page's read lowers a key; `useZeropsMateKeys` is gone. Finish setup
+  lowers the key of a Mate it adopts — one HQ holds no record of — for whoever may adopt it, and
+  the harden reads the key itself as it runs (`hardenMate`); a Mate HQ holds is never hardened. A
+  key the adopter may not write stays as it was, and Finish setup says so ("The Mate's key couldn't
+  be lowered: …; an owner can do it."). **Supersedes:** the projects page's lowering in the
+  2026-10-02 _A Mate's key reaches only its own project_ row; the key's reach there stands.
+  - _Why:_ the lowering read the organization's token list on every load, to find the keys only an
+    adoption leaves `ADMIN`

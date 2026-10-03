@@ -136,6 +136,15 @@ Claude CLI × Codex CLI × Effect version × fixture set) live in `compat.md`.
   - _Zerops path?:_ none — a Zerops environment is reached over its own public URL, not a
     device-local browser guest
   - _Decision:_ delete as one slice
+- The Mate's summary to HQ (`apps/server/src/zerops/zeropsHqSummary.ts`) and HQ's live merge of it
+  into the structure (`apps/hq/src/mateLive.ts`)
+  - _What it is:_ the link's first upstream message — a Mate's main chat, its running and waiting
+    counts and its signers — which HQ merged into every structure it streamed
+  - _Zerops path?:_ replaced by the Mate's overview (step A): the Mate sends it
+    (`zeropsHqOverview.ts`), HQ keeps it (`mateOverviews.ts`) and streams each Mate's view beside
+    the structure
+  - _Decision:_ deleted — `b04a59ac81` (A1), `61d9a5e9ba` (A2); the link's `summary` type and its
+    schemas with `dd4ea18dd3` (A12)
 
 ### 4.1 Names
 

@@ -39,7 +39,8 @@ of its own.
 
 Each person works in a **Mate**: a Zerops project with a `zcp` container running the Mate server and
 a coding agent, its dev/stage pairs one per codebase. zcp enrolls the Mate with its HQ, and the Mate
-server keeps a link to it: up goes its summary for the menu, down comes its record. HQ keeps each
+server keeps a link to it: up goes its overview for every surface that draws a Mate it has not
+opened, down comes its record. HQ keeps each
 application's **repositories** — one per codebase, and the recipe repository `group`, whose `main`
 holds every tier's import file. A Mate's work reaches `main` only as a **change**: HQ's record of
 its branch `mate/<projectId>/<n>`, one open per Mate and repository, which a person merges as a
@@ -164,7 +165,8 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
   hand-over and before every deploy. Its name sets it apart from main's `deploy-*` keys
   - _Reaches:_ that one project: Core deploys to it and opens its subdomains with it
 - **an agent's login** — each Mate; whose it is, the Mate server's own record
-  (`~/.mate/signed-in.json`), written at each sign-in it saw and relayed to HQ in its summary
+  (`~/.mate/signed-in.json`), written at each sign-in it saw and relayed to HQ in its overview's
+  logins
   - _Reaches:_ turns from the signer only; signed out when the signer leaves the org
 - **a deploy credential in CI, a runner or a repository** — none
 - **the old Gitea's tokens** — the broker's, the `deploy-*` keys on its service, each Mate's
@@ -187,7 +189,7 @@ ledger's _The HQ rebuild, as measured_):
    admin is told whom to ask (`hqGate.ts`).
 2. **A Mate joins HQ.** HQ holds the Mate's record from the client that made it; zcp finds the
    official HQ from the member list, writes its challenge into its project's env and enrolls
-   (`mate-rig-a - Gita`); the Mate server opens its link and sends its summary, and the menu draws
+   (`mate-rig-a - Gita`); the Mate server opens its link and sends its overview, and the menu draws
    the Mate from HQ's stream.
 3. **Delivery.** A deploy onto the pair's stage half delivers: zcp takes `main` in, opens the Mate's
    change once the checkout is ahead of it, and pushes the change's branch with the Mate credential.
@@ -282,7 +284,12 @@ still to come says so.
 - **T6b** — The Mate's link to HQ; a Mate's birth and its signer out of the project's tags
   - _State:_ live on the rig, 2026-10-02 (ledger entry pending). The Mate server holds one outbound
     socket, reads the enrollment again before every connect, and tries again after 1, 2, 5, 10, 30
-    s; the menu draws a Mate's running and waiting chats and its signers from that summary. Who
+    s. Up goes its overview (`zeropsHqOverview.ts`): its main chat as a menu row reads it, a digest
+    of its other chats, its logins and its crew — whole first on every link, then only the sections
+    that changed, on its own events. HQ keeps it, stored across a restart (`mateOverviews.ts`), and
+    hands each Mate's view to whoever may observe it on the structure socket; the menu, the rows,
+    notifications, the palette and the crew line draw from that, with no socket to the Mate (step
+    A, A0–A8, A12). Who
     asked for a Mate's stand-up and its close-off are HQ's record; whose a login is, the server's
     `~/.mate/signed-in.json`. No `mate:signer:`, `mate:standup:` or `mate:closed-off` tag is
     written; a Mate migrated from the release gets its sign-in record seeded from its signer tags by
