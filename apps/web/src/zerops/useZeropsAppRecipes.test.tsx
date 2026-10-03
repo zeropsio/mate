@@ -9,7 +9,7 @@ import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
+import { RECIPES_RETRY_MS, useZeropsAppRecipes } from "./useZeropsAppRecipes";
 
 const hq = vi.hoisted(() => {
   const reads: Array<{
@@ -61,6 +61,7 @@ afterEach(() => {
   hq.open = true;
   hq.reads.length = 0;
   renders.length = 0;
+  vi.useRealTimers();
 });
 
 function mount(revision?: string): ReactTestRenderer {
@@ -123,6 +124,36 @@ describe("useZeropsAppRecipes", () => {
     });
     expect(seen()?.get("app-1")?.tiers).toEqual(["stage"]);
   });
+
+  // F20 (e2e, 2026-10-03): the Developer's C read "Production · Not set up" with no Add production
+  // while its menu offered it — HQ had not answered the recipe once (a Core taking over, the door's
+  // budget spent), and nothing asked again, so production stayed a tier main does not offer.
+  it.each([
+    { name: "a Core taking over", cause: new Error("HQ is not the active one right now.") },
+    { name: "the door's budget spent", cause: new Error("Too many requests.") },
+  ])(
+    "asks again a minute after HQ did not answer ($name), though nothing else changed",
+    async ({ cause }) => {
+      vi.useFakeTimers();
+      mount();
+      await act(async () => {
+        hq.reads.shift()?.reject(cause);
+      });
+      // The pair's other read is left unanswered: the first refusal already failed the read.
+      hq.reads.length = 0;
+      expect(seen()?.has("app-1")).toBe(false);
+      act(() => {
+        vi.advanceTimersByTime(RECIPES_RETRY_MS - 1);
+      });
+      expect(hq.reads).toEqual([]);
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      await answer("stage", STAGE);
+      await answer("production", STAGE);
+      expect(seen()?.get("app-1")?.tiers).toEqual(["stage", "production"]);
+    },
+  );
 
   it("reads nothing while the organization's HQ is not open here", () => {
     hq.open = false;
