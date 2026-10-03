@@ -221,6 +221,30 @@ describe("Runs on", () => {
     ]);
     expect(crewEffortOptions([claude, codex], "claudeAgent", "claude-haiku")).toEqual([]);
     expect(crewEffortOptions([claude, codex], "claudeAgent", null)).toEqual([]);
+    const cursorWithReasoning = provider({
+      instanceId: "cursor" as ServerProvider["instanceId"],
+      driver: "cursor" as ServerProvider["driver"],
+      models: [
+        {
+          slug: "gpt-5.4",
+          name: "GPT-5.4",
+          isCustom: false,
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "reasoning",
+                label: "Reasoning",
+                type: "select",
+                options: [{ id: "high", label: "High" }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(crewEffortOptions([cursorWithReasoning], "cursor", "gpt-5.4")).toEqual([
+      { id: "high", label: "High" },
+    ]);
   });
 
   it.each([

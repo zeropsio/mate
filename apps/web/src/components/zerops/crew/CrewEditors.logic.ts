@@ -119,7 +119,19 @@ export function crewRunsOn(
   return { login: crewmate.login.label, model, effort };
 }
 
-/** A model's effort levels: its `effort` (Claude) or `reasoningEffort` (Codex) choices. */
+/**
+ * The model option each agent's effort is (the one a crewmate's effort sets
+ * on the server): Claude's `effort`, Codex's and Grok's `reasoningEffort`,
+ * Cursor's `reasoning`, OpenCode's `variant`.
+ */
+const EFFORT_OPTION_IDS: ReadonlySet<string> = new Set([
+  "effort",
+  "reasoningEffort",
+  "reasoning",
+  "variant",
+]);
+
+/** A model's effort levels: the choices of its effort option. */
 export function crewEffortOptions(
   providers: ReadonlyArray<ServerProvider>,
   loginId: string,
@@ -130,9 +142,7 @@ export function crewEffortOptions(
     .find((candidate) => candidate.instanceId === loginId)
     ?.models.find((candidate) => candidate.slug === modelSlug);
   const descriptor = model?.capabilities?.optionDescriptors?.find(
-    (candidate) =>
-      candidate.type === "select" &&
-      (candidate.id === "effort" || candidate.id === "reasoningEffort"),
+    (candidate) => candidate.type === "select" && EFFORT_OPTION_IDS.has(candidate.id),
   );
   return descriptor?.type === "select"
     ? descriptor.options.map((option) => ({ id: option.id, label: option.label }))
