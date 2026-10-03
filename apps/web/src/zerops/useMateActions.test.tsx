@@ -675,7 +675,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
         hq: { kind: "official", projectId: "p-hq" },
         kind: "mate-record",
         record: { name: expect.any(String), face: expect.any(String) },
-        birth: { standUp: false },
+        standUp: false,
       },
       hq: { kind: "official", projectId: "p-hq" },
       // Adopted: its key lowered from ADMIN, as the harden finds it.

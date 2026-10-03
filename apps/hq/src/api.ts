@@ -30,8 +30,8 @@
  *   project's admin;
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
  *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
- * - `POST /api/mates/:projectId/standup`, `POST /api/mates/:projectId/closed-off` → the Mate's state:
- *   its birth, recorded by the client that set it up (the caller asks for the stand-up).
+ * - `POST /api/mates/:projectId/closed-off` → the Mate's state: its project closed off, recorded by
+ *   the client that set it up. Its stand-up is asked in the write that records it (B3).
  * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
  *   `{ name }` → the repository; `POST /api/mate/changes` `{ repo, title }` → `{ change, created }`;
  *   `PATCH /api/mate/changes/:repo/:n` `{ title?, body? }` → the change; `POST
@@ -154,6 +154,7 @@ const NewMateBody = Schema.Struct({
   projectId: Schema.String,
   name: Schema.String,
   face: Schema.String,
+  standUp: Schema.optionalKey(Schema.Boolean),
 });
 const MateBody = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
@@ -162,12 +163,23 @@ const MateBody = Schema.Struct({
 const AttachBody = Schema.Struct({
   projectId: Schema.String,
   kind: Schema.Literals(["mate", "devstage", "stage", "production"]),
-  mate: Schema.optionalKey(Schema.Struct({ name: Schema.String, face: Schema.String })),
+  mate: Schema.optionalKey(
+    Schema.Struct({
+      name: Schema.String,
+      face: Schema.String,
+      standUp: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
   birth: Schema.optionalKey(Schema.String),
   created: Schema.optionalKey(Schema.Boolean),
 });
-const BirthBody = Schema.Struct({ appId: Schema.String, name: Schema.String, face: Schema.String });
+const BirthBody = Schema.Struct({
+  appId: Schema.String,
+  name: Schema.String,
+  face: Schema.String,
+  standUp: Schema.optionalKey(Schema.Boolean),
+});
 /**
  * A Zerops token as the platform spells one, at most 512 characters: one HQ sends on as a bearer
  * header, so a character no header may carry is refused here, never by the HTTP client later.
@@ -802,19 +814,16 @@ const routes = (
         }),
       ),
     ),
-    ...(["standup", "closed-off"] as const).map((path) =>
-      HttpRouter.add(
-        "POST",
-        `/api/mates/:projectId/${path}`,
-        handle(
-          outliving(
-            Effect.gen(function* () {
-              const { userId } = yield* principal;
-              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
-              const mark = path === "standup" ? "standup" : "closed_off";
-              return json(yield* (yield* Structure).markBirth(userId, projectId, mark), 200);
-            }),
-          ),
+    HttpRouter.add(
+      "POST",
+      "/api/mates/:projectId/closed-off",
+      handle(
+        outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+            return json(yield* (yield* Structure).markClosedOff(userId, projectId), 200);
+          }),
         ),
       ),
     ),

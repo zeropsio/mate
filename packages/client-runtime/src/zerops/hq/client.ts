@@ -57,6 +57,14 @@ export interface HqMateRecord {
 }
 
 /**
+ * A Mate's record as the write that makes it carries it: whether the person writing it asks for
+ * its stand-up rides with it, so the record and its ask never part (audit B3).
+ */
+export interface HqNewMate extends HqMateRecord {
+  readonly standUp?: boolean;
+}
+
+/**
  * A Mate as HQ reads it: its record, its birth, and — joined from HQ's overview of it, where the
  * reader may observe it (`hqMates.ts`) — its agents' logins.
  */
@@ -66,7 +74,7 @@ export interface HqMate extends HqMateRecord {
    * HQ says nothing.
    */
   readonly madeBy?: string | null;
-  /** Who asked for its stand-up (`recordStandUp`): nobody yet is null; an older HQ says nothing. */
+  /** Who asked for its stand-up, with its record: nobody is null; an older HQ says nothing. */
   readonly standupRequestedBy?: string | null;
   /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
   readonly closedOff?: boolean;
@@ -104,8 +112,11 @@ export interface HqStructure {
 export interface HqAttach {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
-  /** The Mate's name and face; with kind `mate`, and only with it. */
-  readonly mate?: HqMateRecord;
+  /**
+   * The Mate's name, face and stand-up ask; with kind `mate`, and only with it. An attach that
+   * closes a birth intent takes the intent's ask instead.
+   */
+  readonly mate?: HqNewMate;
   /** A stage's or a production's environment name; HQ names it from its project without one. */
   readonly environment?: { readonly name: string };
   /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
@@ -194,22 +205,19 @@ export interface HqApi {
     to: { readonly appId: string | null; readonly kind: RoleProjectKind },
   ) => Promise<void>;
   /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
-  readonly createMate: (mate: { readonly projectId: string } & HqMateRecord) => Promise<void>;
+  readonly createMate: (mate: { readonly projectId: string } & HqNewMate) => Promise<void>;
   /**
-   * The Mate's birth, as its project's owner or admin records it: who asks for its stand-up — the
-   * caller (`POST /api/mates/{projectId}/standup`) — and that its project is closed off (`POST
-   * /api/mates/{projectId}/closed-off`). HQ refuses either on a Mate it holds no record of
+   * That a Mate's project is closed off, as its project's owner or admin records it (`POST
+   * /api/mates/{projectId}/closed-off`). HQ refuses it on a Mate it holds no record of
    * (`mate_not_found`).
    */
-  readonly recordStandUp: (projectId: string) => Promise<void>;
   readonly recordClosedOff: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
-  /** A Mate's birth intent in an application, before its project exists (`POST /api/births`). */
-  readonly recordBirth: (birth: {
-    readonly appId: string;
-    readonly name: string;
-    readonly face: string;
-  }) => Promise<HqBirth>;
+  /**
+   * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
+   * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
+   */
+  readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
    * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
@@ -922,13 +930,6 @@ export function makeHqApi(input: {
           signal === undefined ? {} : { signal },
         ),
       ),
-    recordStandUp: async (projectId) => {
-      await authorized(
-        `/api/mates/${encodeURIComponent(projectId)}/standup`,
-        { method: "POST" },
-        "once",
-      );
-    },
     recordClosedOff: async (projectId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/closed-off`,

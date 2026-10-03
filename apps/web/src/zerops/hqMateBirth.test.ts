@@ -1,7 +1,7 @@
 import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createMateRecord, markClosedOffAtHq, recordMateBirth } from "./hqMateBirth";
+import { createMateRecord, markClosedOffAtHq } from "./hqMateBirth";
 
 /** An HQ that records each write, and refuses the ones `refuse` names with `code`. */
 const hqOf = (refuse: Partial<Record<keyof HqApi, string>> = {}) => {
@@ -16,25 +16,12 @@ const hqOf = (refuse: Partial<Record<keyof HqApi, string>> = {}) => {
   const api = {
     createMate: (mate: { readonly projectId: string }) =>
       write("createMate", `record ${mate.projectId}`)(),
-    recordStandUp: (projectId: string) => write("recordStandUp", `standup ${projectId}`)(),
     recordClosedOff: (projectId: string) => write("recordClosedOff", `closed-off ${projectId}`)(),
   } as unknown as HqApi;
   return { api, writes };
 };
 
 describe("a Mate's birth at HQ", () => {
-  // The record comes before the container (F6b), so its birth is the ask alone: the close-off is
-  // marked by the press's close-off step, after the isolation it marks — zcp imports the runtimes
-  // on the mark.
-  it.each([
-    { birth: { standUp: true }, writes: ["standup p1"] },
-    { birth: { standUp: false }, writes: [] },
-  ])("records the ask, as asked, and never the close-off: $birth", async ({ birth, writes }) => {
-    const hq = hqOf();
-    await recordMateBirth(hq.api, "p1", birth);
-    expect(hq.writes).toEqual(writes);
-  });
-
   // A Mate whose attach was refused has no record to mark: Finish setup, which writes its record
   // first, marks it at its own close-off.
   it("marks nothing where HQ holds no record of the Mate", async () => {

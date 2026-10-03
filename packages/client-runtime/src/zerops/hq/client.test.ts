@@ -572,6 +572,25 @@ describe("makeHqApi — a Mate's birth intent", () => {
       body: { appId: "app-1", name: "Gus", face: "rose:seal" },
     });
   });
+
+  // Audit B3: the ask rides in the intent, so the attach that closes it records the Mate and its
+  // ask in one write.
+  it("records a stand-up ask with the intent", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/births" ? json(201, { id: "b-1", name: "Gus", face: "" }) : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await api.recordBirth({ appId: "app-1", name: "Gus", face: "", standUp: true });
+    expect(hq.seen.at(-1)).toMatchObject({
+      path: "/api/births",
+      body: { appId: "app-1", name: "Gus", face: "", standUp: true },
+    });
+  });
 });
 
 describe("makeHqApi — application name and a project's application", () => {
@@ -606,10 +625,29 @@ describe("makeHqApi — application name and a project's application", () => {
         body: { projectId: "p1", name: "Ada", face: "sky:flower:named" },
       },
     ],
+    // Audit B3: the ask in the write that records the Mate, never a call of its own.
     [
-      "records who asks for a Mate's stand-up: the caller",
-      (api) => api.recordStandUp("p1"),
-      { method: "POST", path: "/api/mates/p1/standup" },
+      "sets a Mate up asking for its stand-up",
+      (api) => api.createMate({ projectId: "p1", name: "Ada", face: "", standUp: true }),
+      {
+        method: "POST",
+        path: "/api/mates",
+        body: { projectId: "p1", name: "Ada", face: "", standUp: true },
+      },
+    ],
+    [
+      "attaches a Mate asking for its stand-up",
+      (api) =>
+        api.attachProject("app-1", {
+          projectId: "p1",
+          kind: "mate",
+          mate: { name: "Ada", face: "", standUp: true },
+        }),
+      {
+        method: "POST",
+        path: "/api/apps/app-1/projects",
+        body: { projectId: "p1", kind: "mate", mate: { name: "Ada", face: "", standUp: true } },
+      },
     ],
     [
       "records that a Mate's project is closed off",

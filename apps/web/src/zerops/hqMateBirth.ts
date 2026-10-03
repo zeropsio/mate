@@ -1,29 +1,13 @@
 /**
  * A Mate's birth at HQ, as the press writes it: its record — in its application, before its
- * container (F6b) — and who asks for its stand-up, the person pressing; then, at the press's
- * close-off, that its project is closed off. HQ takes a mark only on a Mate it holds a record of
- * (`mate_not_found` otherwise), so the record comes first; the Mate's server stands it up once HQ
- * names who asked, and zcp imports its runtimes once HQ says it is closed off — which is why that
- * mark never rides with the record, written before the isolation it marks.
+ * container (F6b) — with whether the person pressing asks for its stand-up, in the one write
+ * (audit B3); then, at the press's close-off, that its project is closed off. HQ takes the mark
+ * only on a Mate it holds a record of (`mate_not_found` otherwise), so the record comes first —
+ * and the mark never rides with it, written before the isolation it marks.
  *
  * @module hqMateBirth
  */
 import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
-
-/** What a press records of a Mate's birth with its record. */
-export interface MateBirth {
-  /** The person pressing asks for its stand-up: a dev Mate with its agent. */
-  readonly standUp: boolean;
-}
-
-/** The ask, as the press made it; safe to write again. */
-export async function recordMateBirth(
-  api: HqApi,
-  projectId: string,
-  birth: MateBirth,
-): Promise<void> {
-  if (birth.standUp) await api.recordStandUp(projectId);
-}
 
 const refusedAs = (cause: unknown, code: string) =>
   cause instanceof HqError && cause.kind === "refused" && cause.code === code;
