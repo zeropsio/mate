@@ -43,6 +43,11 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A stream nothing came down for this long — three pings — is given up. */
 export const HQ_STREAM_SILENCE_MS = 60_000;
+/**
+ * How long HQ may go unanswered before the outage is said: a stream cut on its way and read again
+ * at once — measured every 120 s (F26) — is no outage, and HQ's last word stands meanwhile.
+ */
+export const HQ_OUTAGE_GRACE_MS = 10_000;
 /** How long a stream that failed waits before it is opened again, by failures in a row. */
 export const HQ_STREAM_RETRY_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 10_000, 30_000];
 /** How often at most the Mates are remembered while they move: a reload's first paint needs no more. */
@@ -94,6 +99,20 @@ export async function driveHqStructure(input: {
     matesView = next;
     input.publishMates(matesView);
   };
+
+  /** When HQ last stopped answering, while it has not answered since. */
+  let stoppedAt: number | null = null;
+  let sayOutage: ReturnType<typeof setTimeout> | undefined;
+  const stopped = () => {
+    if (stoppedAt !== null) return;
+    const since = input.now();
+    stoppedAt = since;
+    sayOutage = setTimeout(() => {
+      publish({ ...view, current: false, unavailableSince: since });
+      if (matesView.current) publishMates({ ...matesView, current: false });
+    }, HQ_OUTAGE_GRACE_MS);
+  };
+  input.signal.addEventListener("abort", () => clearTimeout(sayOutage), { once: true });
 
   let failures = 0;
   while (!input.signal.aborted) {
@@ -151,6 +170,8 @@ export async function driveHqStructure(input: {
             changes = applyChangesEvent(changes, event);
             if (streamed === null) return;
             failures = 0;
+            stoppedAt = null;
+            clearTimeout(sayOutage);
             const readAt = input.now();
             input.remember(streamed, readAt);
             publish({
@@ -174,15 +195,11 @@ export async function driveHqStructure(input: {
     }
     if (input.signal.aborted) return;
     // A stream that ended after its snapshot is HQ restarting: read again at once. One that broke
-    // or never answered is HQ not answering, since the first time it did not.
+    // or never answered is HQ not answering: read again a little later each time. Either way the
+    // outage is said once HQ has not answered for `HQ_OUTAGE_GRACE_MS`, since it stopped.
     const failed = broke || streamed === null;
     if (failed) failures += 1;
-    publish({
-      ...view,
-      current: false,
-      unavailableSince: failed ? (view.unavailableSince ?? input.now()) : view.unavailableSince,
-    });
-    if (matesView.current) publishMates({ ...matesView, current: false });
+    stopped();
     if (failed) {
       const wait = HQ_STREAM_RETRY_MS[Math.min(failures, HQ_STREAM_RETRY_MS.length) - 1]!;
       await input.sleep(wait, input.signal);
