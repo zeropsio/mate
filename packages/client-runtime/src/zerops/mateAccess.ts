@@ -242,12 +242,13 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
  * person who signed its agent in.
  *
  * The `OWNER` entry is there only where somebody put it — a creator below
- * `ADMIN` (verified.md, 2026-09-15) or an _Assign_ hand-over — and so wins. An
- * org owner or admin who creates a Mate gets no entry at all: the project's
- * roles are then only token users' — the container's key (measured 2026-09-24,
- * main's broker's beside it) — and the one record naming a person is D6's signer, as the
- * Mate's server saw them sign in and HQ relays it. With two agents signed in,
- * Claude Code's signer names the owner.
+ * `ADMIN` (verified.md, 2026-09-15) or a hand-over, which moves it (F23) — and
+ * so wins; of the two a hand-over before the transfer left, the first the
+ * member list has. An org owner or admin who creates a Mate gets no entry at
+ * all: the project's roles are then only token users' — the container's key
+ * (measured 2026-09-24, main's broker's beside it) — and the one record naming
+ * a person is D6's signer, as the Mate's server saw them sign in and HQ relays
+ * it. With two agents signed in, Claude Code's signer names the owner.
  *
  * `undefined` when neither names anybody the member list has. A row then says
  * the same thing without a name, and a face goes without the owner's beside it.
@@ -256,9 +257,13 @@ export function resolveMateOwner<M extends MateOwnerCandidate>(input: {
   readonly project: MateAccessProject;
   readonly members: ReadonlyArray<M>;
 }): M | undefined {
-  const ownerEntry = input.project.userRoles?.find((entry) => entry.roleCode === "OWNER");
-  if (ownerEntry !== undefined) {
-    return input.members.find((entry) => entry.id === ownerEntry.clientUserId);
+  // A hand over is a transfer, one OWNER (F23); one made before it left two, and the first the
+  // member list has is named — never the signer, whom an OWNER outranks.
+  const owners = (input.project.userRoles ?? []).filter((entry) => entry.roleCode === "OWNER");
+  if (owners.length > 0) {
+    return owners
+      .map((owner) => input.members.find((entry) => entry.id === owner.clientUserId))
+      .find((member) => member !== undefined);
   }
   const signer = mateOwnerSigner(input.project).signer;
   if (signer === undefined) return undefined;
@@ -356,22 +361,23 @@ export function handOverCandidates<
 
 /**
  * Handing a Mate over: one person's project role list with this project's
- * role set, and their every other project's untouched (guide 0.8, D11).
+ * role set — or, `null`, gone from it — and their every other project's
+ * untouched (guide 0.8, D11).
  *
  * `PUT /client-user/{id}/roles` replaces the person's list wholesale, so the
  * caller sends the whole thing; a blind write would drop the person's role on
- * every other project. Overrides are measured in both directions — the same
- * call, lowered, takes a Mate away.
+ * every other project. Measured both ways: the same call, lowered, takes a
+ * Mate away, and a list without the project drops it alone (F7, 2026-10-03).
  */
 export function withMateProjectRole(
   projectRoleList:
     | ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>
     | undefined,
   projectId: string,
-  roleCode: ZeropsOrgRole,
+  roleCode: ZeropsOrgRole | null,
 ): ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }> {
   const others = (projectRoleList ?? [])
     .filter((entry) => entry.projectId !== projectId)
     .map((entry) => ({ projectId: entry.projectId, roleCode: entry.roleCode }));
-  return [...others, { projectId, roleCode }];
+  return roleCode === null ? others : [...others, { projectId, roleCode }];
 }

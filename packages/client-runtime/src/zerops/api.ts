@@ -1276,15 +1276,17 @@ export class ZeropsApiClient {
    * list, refuses to name an integration token (`400 userNotFound`), and a
    * list of people only drops the Mate key's own grant (measured 2026-10-03,
    * `f7-handover-probe.json`). The person's list is read and sent back whole
-   * with this project's role set, so their other projects keep theirs. What
-   * it answers is the project as the platform holds it after the write.
+   * with this project's role set — or, `null`, without it: what a hand over
+   * takes from the Mate's previous owner (F23) — so their other projects keep
+   * theirs. What it answers is the project as the platform holds it after the
+   * write.
    */
   async setProjectMemberRole(
     input: {
       readonly projectId: string;
       /** The `clientUser` id — what a project's `userRoles` names. */
       readonly clientUserId: string;
-      readonly roleCode: ZeropsProjectRole;
+      readonly roleCode: ZeropsProjectRole | null;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
