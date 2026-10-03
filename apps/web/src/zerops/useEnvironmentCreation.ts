@@ -169,9 +169,9 @@ export function useEnvironmentCreation(): (
                 groupId: group.groupId,
                 kind: "mate",
                 mate: { name: choice.botName ?? name, face: choice.face },
-                // The person adding a dev Mate with its agent asks for its stand-up; the press
-                // closed its project off before it registers it (`planEnvironmentCreation`).
-                birth: { standUp: role === "dev" && withAgent, closedOff: withAgent },
+                // The person adding a dev Mate with its agent asks for its stand-up; the press's
+                // close-off marks it closed off, after its record (`planEnvironmentCreation`).
+                birth: { standUp: role === "dev" && withAgent },
               }
             : { hq, groupId: group.groupId, kind: tier },
         ),

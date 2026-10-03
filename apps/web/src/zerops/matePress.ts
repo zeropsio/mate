@@ -34,11 +34,14 @@ import {
   type ZeropsApiClient,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
+  heldOf,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { attachToApp, type HqEndpoint, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import type * as Effect from "effect/Effect";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
@@ -306,8 +309,7 @@ export function matePressPlacement(press: MatePress | undefined): BirthPlacement
 
 /**
  * A Mate HQ holds no record of, finished into the application its press placed it in, under the
- * name and the face it was made with — never a new Mate in none (F6b, 2026-10-03). Closed off by
- * the close-off before its registration.
+ * name and the face it was made with — never a new Mate in none (F6b, 2026-10-03).
  */
 export function placedMateRegistration(
   hq: HqEndpoint,
@@ -318,30 +320,63 @@ export function placedMateRegistration(
     groupId: placement.groupId,
     kind: "mate",
     mate: { name: placement.botName ?? placement.displayName, face: placement.face },
-    birth: { standUp: false, closedOff: true },
+    birth: { standUp: false },
   };
 }
 
 /**
- * What *Set up Mate* registers for a Mate project with no container: into the application the
- * press this tab still holds placed it in, where it did; else, where HQ holds no record of it, a
- * new Mate in no application (`setUpMateRecord`); else nothing, its record standing.
+ * What *Finish setup* and *Set up Mate* register for a Mate, by one rule, so neither mints a new
+ * Mate where HQ holds one or may yet (F6b, 2026-10-03):
+ *
+ * - HQ's structure not read: nothing — a project it places nowhere has no record only once it is;
+ * - HQ holds it in its application: there again, under HQ's name and face, by a registry writer —
+ *   an attach that finds it there writes nothing; nothing for anyone else;
+ * - HQ holds it in no application: nothing, its record standing;
+ * - HQ holds no record of it: into the application the press this tab still holds placed it in,
+ *   under its name and face; else, for whoever HQ's rule lets write one, a new Mate in no
+ *   application (`setUpMateRecord`) — what a refused attach leaves; else nothing.
  */
-export function setUpMateRegistration(input: {
+export function mateFinishRegistration(input: {
   readonly hq: HqEndpoint;
-  readonly press: MatePress | undefined;
+  /** HQ's structure is known: only then does a project it places nowhere have no record. */
+  readonly hqKnown: boolean;
   readonly project: ZeropsCandidate["project"];
+  readonly press: MatePress | undefined;
+  /** The viewer writes the registry: an owner or an admin (`canWriteRegistry`). */
+  readonly writer: boolean;
+  /** HQ's rule lets the viewer write the record of a Mate it holds none of (`create_mate_record`). */
+  readonly mayCreateRecord: boolean;
+  /** The stand-up a new record asks for. */
+  readonly standUp: boolean;
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly taken: ReadonlyArray<string>;
   readonly random: RandomBytes;
 }): PressRegistration | null {
-  if (input.project.hq?.mate != null) return null;
+  if (!input.hqKnown) return null;
+  if (heldOf(input.project) !== "none") {
+    const { groupId, bot, face } = readZeropsMembership(input.project);
+    if (groupId === undefined || !input.writer) return null;
+    return {
+      hq: input.hq,
+      groupId,
+      kind: "mate",
+      mate: {
+        name: bot ?? input.project.name,
+        face:
+          face?.tint === undefined || face.shape === undefined
+            ? undefined
+            : { tint: face.tint, shape: face.shape },
+      },
+      birth: { standUp: false },
+    };
+  }
   const placed = matePressPlacement(input.press);
   if (placed !== undefined) return placedMateRegistration(input.hq, placed);
+  if (!input.mayCreateRecord) return null;
   const record = setUpMateRecord(input);
   return record === undefined
     ? null
-    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: false, closedOff: true } };
+    : { hq: input.hq, kind: "mate-record", record, birth: { standUp: input.standUp } };
 }
 
 /** The project is gone: nothing more is said of it. */
@@ -589,7 +624,33 @@ export function pressRegistration(
   };
 }
 
-/** The press's platform calls, through the account's command layer. */
+/** How long one command of a press is given to answer before the try counts as failed. */
+export const PRESS_CALL_CAP_MS = 60_000;
+
+/** What a press's command that did not answer in time says, and the press with it once it stops. */
+export const PRESS_CALL_SILENT = "Zerops did not answer within a minute, so the setup stopped.";
+
+/**
+ * One command of a press, given {@link PRESS_CALL_CAP_MS} to answer: one that has not is ended
+ * where it stands — never sent where it had not been — and its try fails, to be tried again as
+ * the step's tries are. A command that never answered held Dan's press "pressing" for two hours,
+ * its workspace's clock running on (F6b, 2026-10-03).
+ */
+async function answered<Value, Failure>(
+  command: Effect.Effect<{ readonly value: Value }, Failure>,
+): Promise<Value> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), PRESS_CALL_CAP_MS);
+  try {
+    return await runZeropsCommand(command, stop.signal);
+  } catch (cause) {
+    throw stop.signal.aborted ? new Error(PRESS_CALL_SILENT) : cause;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The press's platform calls, through the account's command layer, each bounded (`answered`). */
 export function pressPlatform(
   inputs: PressInputs,
   options: {
@@ -608,11 +669,11 @@ export function pressPlatform(
   const projectOf = (projectId: string) => data.projectRef(organizationId, projectId);
   return {
     createProject: ({ clientId: _clientId, ...input }) =>
-      runZeropsCommand(data.runtime.commands.createProject({ organization, ...input })),
+      answered(data.runtime.commands.createProject({ organization, ...input })),
     // Reads, not writes: the platform's verdict on what the press made, waited on by the runner.
     readProjectCreation: (input) => client.readProjectCreation(input),
     importDevelopmentContainer: ({ projectId, projectName, agents, setupRuntimesYaml }) =>
-      runZeropsCommand(
+      answered(
         data.runtime.commands.importDevelopmentContainer({
           project: projectOf(projectId),
           projectName,
@@ -621,13 +682,13 @@ export function pressPlatform(
         }),
       ),
     importServices: (projectId, yaml) =>
-      runZeropsCommand(data.runtime.commands.importServices(projectOf(projectId), yaml)),
+      answered(data.runtime.commands.importServices(projectOf(projectId), yaml)),
     importProject: ({ clientId: _clientId, yaml }) =>
-      runZeropsCommand(data.runtime.commands.importProject(organization, yaml)),
+      answered(data.runtime.commands.importProject(organization, yaml)),
     // The same hardening a Mate made before this pass is finished with: for a key the press
     // minted it writes nothing to the key, and closes the project off.
     closeOff: async (projectId) => {
-      await runZeropsCommand(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
+      await answered(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
     },
     readIsolation: async (projectId) =>
       (await client.readProjectEnv(organizationId, projectId)).find(
@@ -889,6 +950,10 @@ async function finishLocked(
     }
   }
   const steps: ReadonlyArray<EnvironmentCreationStep> = [
+    // Its record in its application before its container (F6b, 2026-10-03): a Finish setup that
+    // stops after leaves a Mate HQ holds there. A refused one stops nothing: the container and
+    // the close-off still run, and the Mate stays bare, waiting for an owner.
+    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     ...(input.container === null
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
@@ -897,8 +962,6 @@ async function finishLocked(
     input.harden === true && input.container === null
       ? { kind: "close-off", isolated: true }
       : { kind: "close-off" },
-    // After the close-off: a refused registration leaves the Mate closed off and running.
-    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     { kind: "await-ready", withAgent: true },
   ];
   return runPress({

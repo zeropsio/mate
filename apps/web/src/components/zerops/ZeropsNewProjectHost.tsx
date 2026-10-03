@@ -301,8 +301,7 @@ function NewProjectDialog() {
               groupId: appId,
               kind: "mate",
               mate: { name: botName, face },
-              // Closed off by the close-off before its registration.
-              birth: { standUp: false, closedOff: true },
+              birth: { standUp: false },
             },
             hq,
             isCurrent,

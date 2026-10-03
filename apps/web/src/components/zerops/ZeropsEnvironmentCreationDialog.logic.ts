@@ -520,15 +520,16 @@ const PRESS_STEPS: ReadonlyArray<{
   readonly kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>;
 }> = [
   { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
+  { label: "Registered", kinds: ["register"] },
   { label: "Container", kinds: ["import-container"] },
   { label: "Closed off", kinds: ["close-off"] },
-  { label: "Registered", kinds: ["register"] },
 ];
 
 /**
- * The press as the Add dialog draws it: Project, Container, Closed off, Registered — what the
- * Mate needs before it needs no browser, and the registration a call or two after. The wait for
- * it comes after, the dialog gone. A step a press does not make is left out.
+ * The press as the Add dialog draws it, in the order it runs: Project, Registered — its record in
+ * its application before its container (F6b) — Container, Closed off: what the Mate needs before
+ * it needs no browser. The wait for it comes after, the dialog gone. A step a press does not make
+ * is left out.
  */
 export function pressSteps(
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,

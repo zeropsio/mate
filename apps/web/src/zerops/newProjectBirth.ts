@@ -482,8 +482,9 @@ export function newProjectPressSteps(
   return [
     own("Project registered", "registry"),
     own("Creating the project", "create"),
-    mate("Closed off", "close-off"),
+    // In the order its press runs: its record in its application before its close-off (F6b).
     mate("Mate registered", "register"),
+    mate("Closed off", "close-off"),
   ];
 }
 

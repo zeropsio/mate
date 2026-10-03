@@ -28,7 +28,10 @@ import {
   readMatePress,
   runPress,
   settlePress,
-  setUpMateRegistration,
+  mateFinishRegistration,
+  PRESS_CALL_CAP_MS,
+  PRESS_CALL_SILENT,
+  pressPlatform,
   STOPPED_SHOWN_MS,
   whilePressing,
   withPressTries,
@@ -43,6 +46,12 @@ vi.mock("./accountHq", () => ({
   accountHqApi: () => ({
     recordClosedOff: async () => {
       hq.calls?.push("mark");
+    },
+    attachProject: async (appId: string, attach: { readonly mate?: { readonly name: string } }) => {
+      hq.calls?.push(`attach ${appId} ${attach.mate?.name ?? ""}`);
+    },
+    recordStandUp: async () => {
+      hq.calls?.push("standup");
     },
   }),
 }));
@@ -120,10 +129,11 @@ describe("interruptedPresses", () => {
 // Finish setup drawn as the Add dialog draws a press, then a clear end (live, 2026-10-01: Hugo's
 // view went "could not be added", "isn't running", "coming up", and never said it was done).
 describe("finishSetupView — Finish setup on a Mate's own view", () => {
+  // As Finish setup runs (F6b): its record in its application before its container.
   const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "register" },
     { kind: "import-container", agents: [] },
     { kind: "close-off" },
-    { kind: "register" },
   ];
   const progress = (
     states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>,
@@ -156,21 +166,21 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: { done: false, line: "Finishing its setup…", steps: [] },
     },
     {
-      case: "its container being imported",
-      made: press({ kind: "pressing" }, { progress: progress(["running", "queued", "queued"]) }),
+      case: "registered, its container being imported",
+      made: press({ kind: "pressing" }, { progress: progress(["done", "running", "queued"]) }),
       want: {
         done: false,
         line: "Finishing its setup…",
-        steps: ["Container:active", "Closed off:waiting", "Registered:waiting"],
+        steps: ["Registered:done", "Container:active", "Closed off:waiting"],
       },
     },
     {
-      case: "closed off, being registered",
+      case: "being closed off",
       made: press({ kind: "pressing" }, { progress: progress(["done", "done", "running"]) }),
       want: {
         done: false,
         line: "Finishing its setup…",
-        steps: ["Container:done", "Closed off:done", "Registered:active"],
+        steps: ["Registered:done", "Container:done", "Closed off:active"],
       },
     },
     {
@@ -179,16 +189,16 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: true,
         line: "Its setup is finished. It comes up on its own now, with no browser needed.",
-        steps: ["Container:done", "Closed off:done", "Registered:done"],
+        steps: ["Registered:done", "Container:done", "Closed off:done"],
       },
     },
     {
       case: "through, its registration refused",
-      made: press({ kind: "pressed" }, { progress: progress(["done", "done", "failed"]) }),
+      made: press({ kind: "pressed" }, { progress: progress(["failed", "done", "done"]) }),
       want: {
         done: true,
         line: "Its setup is finished. It comes up on its own now, with no browser needed. It still needs an owner to register it.",
-        steps: ["Container:done", "Closed off:done", "Registered:failed"],
+        steps: ["Registered:failed", "Container:done", "Closed off:done"],
       },
     },
   ])("$case", ({ made, want }) => {
@@ -206,9 +216,9 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
     });
     progressPress("p-hugo", progress(["done", "running", "queued"]));
     expect(drawn(finishSetupView(readMatePress("p-hugo")!))?.steps).toEqual([
-      "Container:done",
-      "Closed off:active",
-      "Registered:waiting",
+      "Registered:done",
+      "Container:active",
+      "Closed off:waiting",
     ]);
     forgetPress("p-hugo");
     // A press nobody holds keeps nothing.
@@ -302,6 +312,101 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
 });
 
 // A pool-claimed Mate's harden ran once and was never tried again (pass 28 review).
+// F6b (e2e, 2026-10-03): Dan's press stood "pressing" for two hours, his workspace's clock running
+// on: a call of the press that never answered held it, and nothing bounded a try.
+describe("a press whose platform never answers", () => {
+  /** The account's command layer, whose container import never answers; whether it was ended. */
+  const silentImport = () => {
+    const seen = { interrupted: false };
+    const inputs = {
+      client: {} as never,
+      organizationId: "org-acme",
+      data: {
+        organizationRef: (organizationId: string) => ({ organizationId }),
+        projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
+        runtime: {
+          commands: {
+            importDevelopmentContainer: () =>
+              Effect.never.pipe(
+                Effect.onInterrupt(() =>
+                  Effect.sync(() => {
+                    seen.interrupted = true;
+                  }),
+                ),
+              ),
+          },
+        },
+      } as never,
+    };
+    return { inputs, seen };
+  };
+
+  it("gives a call a minute, then ends it where it stands and says it did not answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const { inputs, seen } = silentImport();
+      const platform = pressPlatform(inputs, {
+        register: null,
+        hq: null,
+        readObservedServices: async () => [],
+      });
+      const answer = platform
+        .importDevelopmentContainer({ projectId: "p-1", projectName: "Acme - Dan", agents: [] })
+        .then(
+          () => "answered",
+          (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
+        );
+      await vi.advanceTimersByTimeAsync(PRESS_CALL_CAP_MS - 1);
+      expect(seen.interrupted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await answer).toBe(PRESS_CALL_SILENT);
+      expect(seen.interrupted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the press at its container, for its view to say so and Finish setup to resume it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { inputs } = silentImport();
+      beginPress({
+        projectId: "p-1",
+        organizationId: "org-acme",
+        startedAt: 0,
+        placement: null,
+        container: true,
+      });
+      const outcome = runPress({
+        organizationId: "org-acme",
+        steps: [{ kind: "import-container", agents: [] }, { kind: "close-off" }],
+        platform: pressPlatform(inputs, {
+          register: null,
+          hq: null,
+          readObservedServices: async () => [],
+        }),
+        isCurrent: () => true,
+        resume: { from: 0, projectId: "p-1", projectName: "Acme - Dan" },
+        locks: undefined,
+      });
+      await vi.advanceTimersByTimeAsync(PRESS_STEP_ATTEMPTS * (PRESS_CALL_CAP_MS + 2_000));
+      expect(await outcome).toMatchObject({
+        ok: false,
+        failedStep: { kind: "import-container" },
+        error: PRESS_CALL_SILENT,
+      });
+      expect(readMatePress("p-1")?.state).toMatchObject({
+        kind: "failed",
+        step: "import-container",
+        reason: PRESS_CALL_SILENT,
+      });
+    } finally {
+      forgetPress("p-1");
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("withPressTries — the harden, tried again", () => {
   it("goes on once an attempt takes", async () => {
     let tries = 0;
@@ -336,19 +441,20 @@ describe("withPressTries — the harden, tried again", () => {
 // A press record ended only with the tab (pass 28 review): it ends at the mark — the Mate needs no
 // browser from then — or, for Finish setup, whose view says it is done, at its first connect.
 describe("a press's end", () => {
+  // As a Mate's press runs (F6b): its record in its application before its container.
   const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "register" },
     { kind: "import-container", agents: [] },
     { kind: "close-off" },
-    { kind: "register" },
   ];
   const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>) =>
     STEPS.map((step, index) => ({ step, state: states[index]! }));
 
   it.each([
-    { case: "before its mark", states: ["done", "running", "queued"], want: false },
-    { case: "marked, registering", states: ["done", "done", "running"], want: false },
-    { case: "marked and registered", states: ["done", "done", "done"], want: true },
-    { case: "marked, its registration refused", states: ["done", "done", "failed"], want: true },
+    { case: "registering", states: ["running", "queued", "queued"], want: false },
+    { case: "registered, before its mark", states: ["done", "done", "running"], want: false },
+    { case: "registered and marked", states: ["done", "done", "done"], want: true },
+    { case: "its registration refused, marked", states: ["failed", "done", "done"], want: true },
   ] as const)("$case: $want", ({ states, want }) => {
     expect(pressDoneAt(at(states))).toBe(want);
   });
@@ -598,6 +704,61 @@ describe("finishMateSetup — the harden path", () => {
       finishing: true,
     });
 
+  // F6b (2026-10-03): its record in its application before its container, so a Finish setup
+  // that stops after leaves a Mate HQ holds there; the close-off marked once, after the isolation
+  // it marks — never with the record, which comes before it.
+  it("writes its record in its application before its container, and marks it closed off after", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const withContainer = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            importDevelopmentContainer: () => {
+              calls.push("container");
+              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+            },
+          },
+        },
+      },
+    };
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: withContainer as never,
+        projectId: "p-old",
+        projectName: "mate-rig-e2e-d - Dan",
+        container: { agents: [] },
+        registration: {
+          hq: { projectId: "hq-project", address: "https://hq.test" },
+          groupId: "app-d",
+          kind: "mate",
+          mate: { name: "Dan", face: undefined },
+          birth: { standUp: false },
+        },
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      "attach app-d Dan",
+      "container",
+      "read isolation",
+      "read isolation",
+      "mark",
+    ]);
+    forgetPress("p-old");
+  });
+
   it("hardens, then marks it closed off without reading the isolation again", async () => {
     begin();
     const calls: Array<string> = [];
@@ -682,9 +843,10 @@ describe("finishMateSetup — the harden path", () => {
 });
 
 // A press or a harden this tab runs holds its Mate back from auto-connect (pass 28 review).
-// F6b (e2e, 2026-10-03): *Set up Mate* on Dan — a Mate project its press for mate-rig-e2e-d left
-// with no container and no record, that press still held here — wrote "Asha" in no application.
-describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of", () => {
+// F6b (e2e, 2026-10-03): *Set up Mate* and *Finish setup* on Dan — a Mate project its press for
+// mate-rig-e2e-d left with no container — wrote "Asha" in no application. Both verbs now register by
+// one rule, and neither mints a new Mate where HQ holds one, or may yet.
+describe("mateFinishRegistration — what Finish setup and Set up Mate register", () => {
   const HQ = { kind: "official", projectId: "p-hq", address: "https://hq.example.test" } as const;
   const FACE = { tint: "coral", shape: "gem" } as const;
   const DAN = {
@@ -693,11 +855,21 @@ describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of"
     status: "ACTIVE",
     tagList: ["mate"],
   } as const;
-  const pressOf = (container: boolean, kind: "mate" | "stage"): MatePress => ({
+  /** Dan as HQ holds him: in `appId`, or in no application. */
+  const held = (appId: string | null) => ({
+    ...DAN,
+    hq: {
+      appId,
+      appName: appId === null ? null : "mate-rig-e2e-d",
+      kind: "mate",
+      mate: { name: "Dan", face: "coral:gem" },
+    },
+  });
+  const pressOf = (kind: "mate" | "stage"): MatePress => ({
     projectId: DAN.id,
     organizationId: "org-acme",
     startedAt: 0,
-    container,
+    container: kind === "mate",
     placement: {
       groupId: "app-d",
       groupName: "mate-rig-e2e-d",
@@ -710,56 +882,61 @@ describe("setUpMateRegistration — Set up Mate on a Mate HQ holds no record of"
   });
   // Bytes that pick the first free name.
   const first: RandomBytes = (bytes) => bytes.fill(0);
+  const BASE = { hqKnown: true, writer: true, mayCreateRecord: true, press: undefined };
 
   it.each([
     {
-      name: "into the application its press here placed it in, under its name and face",
-      press: pressOf(true, "mate"),
-      project: DAN,
-      expected: {
-        kind: "mate",
-        groupId: "app-d",
-        mate: { name: "Dan", face: FACE },
-        birth: { standUp: false, closedOff: true },
-      },
+      name: "HQ holds it in its application: there, under HQ's name and face",
+      input: { ...BASE, project: held("app-d") },
+      expected: { kind: "mate", groupId: "app-d", mate: { name: "Dan", face: FACE } },
     },
     {
-      name: "as a new Mate in no application where no press here placed it",
-      press: undefined,
-      project: DAN,
-      expected: { kind: "mate-record", birth: { standUp: false, closedOff: true } },
+      name: "HQ holds it in its application, for someone who does not write the registry: nothing",
+      input: { ...BASE, writer: false, project: held("app-d") },
+      expected: null,
     },
     {
-      name: "as a new Mate in no application where the press here made a stage",
-      press: pressOf(false, "stage"),
-      project: DAN,
+      name: "HQ holds it in no application: nothing, its record standing",
+      input: { ...BASE, project: held(null) },
+      expected: null,
+    },
+    {
+      name: "HQ's structure not read yet: nothing, however recordless it looks",
+      input: { ...BASE, hqKnown: false, project: DAN },
+      expected: null,
+    },
+    {
+      name: "no record, a press here placed it: into that application, under its name and face",
+      input: { ...BASE, press: pressOf("mate"), project: DAN },
+      expected: { kind: "mate", groupId: "app-d", mate: { name: "Dan", face: FACE } },
+    },
+    {
+      name: "no record and no press here: a new Mate in no application, for who may write it",
+      input: { ...BASE, project: DAN },
       expected: { kind: "mate-record" },
     },
     {
-      name: "not at all where HQ holds the Mate already",
-      press: pressOf(true, "mate"),
-      project: {
-        ...DAN,
-        hq: {
-          appId: "app-d",
-          appName: "mate-rig-e2e-d",
-          kind: "mate",
-          mate: { name: "Dan", face: "coral:gem" },
-        },
-      },
+      name: "no record, the press here made a stage: a new Mate in no application",
+      input: { ...BASE, press: pressOf("stage"), project: DAN },
+      expected: { kind: "mate-record" },
+    },
+    {
+      name: "no record, for someone HQ's rule does not let write one: nothing",
+      input: { ...BASE, mayCreateRecord: false, project: DAN },
       expected: null,
     },
-  ] as const)("registers it $name", ({ press, project, expected }) => {
-    const registration = setUpMateRegistration({
+  ] as const)("$name", ({ input, expected }) => {
+    const registration = mateFinishRegistration({
+      ...input,
       hq: HQ,
-      press,
-      project: project as never,
+      project: input.project as never,
+      standUp: false,
       candidates: [],
       taken: [],
       random: first,
     });
     if (expected === null) expect(registration).toBeNull();
-    else expect(registration).toMatchObject({ hq: HQ, ...expected });
+    else expect(registration).toMatchObject({ hq: HQ, birth: { standUp: false }, ...expected });
   });
 });
 

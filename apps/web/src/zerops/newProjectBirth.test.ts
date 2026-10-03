@@ -539,7 +539,7 @@ describe("the tab holds a New project's creation until the platform takes it", (
 // a tab closed after a dialog that had left stranded a Mate with no container).
 describe("newProjectPressSteps — a New project's press, as its dialog draws it", () => {
   const press = (states: ReadonlyArray<"queued" | "running" | "done" | "failed">) =>
-    (["close-off", "register", "await-ready"] as const).map((kind, index) => ({
+    (["register", "close-off", "await-ready"] as const).map((kind, index) => ({
       step: kind === "await-ready" ? { kind, withAgent: true } : { kind },
       state: states[index]!,
     }));
@@ -554,8 +554,8 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
       want: [
         "Project registered:active",
         "Creating the project:waiting",
-        "Closed off:waiting",
         "Mate registered:waiting",
+        "Closed off:waiting",
       ],
     },
     {
@@ -565,19 +565,19 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
       want: [
         "Project registered:done",
         "Creating the project:active",
-        "Closed off:waiting",
         "Mate registered:waiting",
+        "Closed off:waiting",
       ],
     },
     {
-      case: "its Mate being closed off",
+      case: "its Mate being registered",
       made: birth({ step: "created", projectId: "p-1" }),
       progress: press(["running", "queued", "queued"]),
       want: [
         "Project registered:done",
         "Creating the project:done",
-        "Closed off:active",
-        "Mate registered:waiting",
+        "Mate registered:active",
+        "Closed off:waiting",
       ],
     },
     {
@@ -587,8 +587,8 @@ describe("newProjectPressSteps — a New project's press, as its dialog draws it
       want: [
         "Project registered:done",
         "Creating the project:failed",
-        "Closed off:waiting",
         "Mate registered:waiting",
+        "Closed off:waiting",
       ],
     },
   ])("draws $case", ({ made, progress, want }) => {

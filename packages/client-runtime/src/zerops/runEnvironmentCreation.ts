@@ -399,10 +399,10 @@ export async function runEnvironmentCreation(
         }
         case "register": {
           const target = requireProject(projectId);
-          // A Mate is closed off by now: a refused registration leaves it running, waiting for
-          // an owner to register it (*Finish setup*). A stage or a production has nothing else
-          // that makes it whole, and stops here.
-          const stopsHere = !input.steps.slice(0, index).some((made) => made.kind === "close-off");
+          // A Mate's press goes on past a refused registration — its container imported, its
+          // project closed off — and leaves it bare, waiting for an owner to register it (*Finish
+          // setup*). A stage or a production has nothing else that makes it whole, and stops here.
+          const stopsHere = !input.steps.some((planned) => planned.kind === "close-off");
           try {
             await withTries(() => input.platform.register(target));
           } catch (cause) {

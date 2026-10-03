@@ -28,7 +28,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { hqEnvironmentsAtom, hqStructureAtom } from "~/state/zerops";
+import { hqEnvironmentsAtom, hqPlacementsAtom, hqStructureAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -80,8 +80,8 @@ import {
   matePressPlacement,
   pressFailureLine,
   placedPressesIn,
+  mateFinishRegistration,
   readMatePress,
-  setUpMateRegistration,
   useMatePresses,
   type MatePress,
 } from "~/zerops/matePress";
@@ -137,6 +137,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsMembership,
+  canWriteRegistry,
   mayOffer,
   offerAsker,
   firstDeployLine,
@@ -940,6 +941,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // press — the same placing the left menu reads.
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(hqStructureAtom);
+  // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
+  const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure?.current === true;
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
@@ -965,9 +968,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
   // Whom HQ's rule is asked about for each row's verbs (`mateRowCan`): nobody where the session
   // names nobody, and nothing is then offered.
-  const asker = offerAsker(
-    sessionOfferViewer(user, activeOrganization),
-    candidates.map((candidate) => candidate.project),
+  const asker = useMemo(
+    () =>
+      offerAsker(
+        sessionOfferViewer(user, activeOrganization),
+        candidates.map((candidate) => candidate.project),
+      ),
+    [activeOrganization, candidates, user],
   );
   // Guide 0.8: a verb this person cannot finish is not offered. Every one of
   // them is a platform write the platform would refuse from the wrong role;
@@ -1094,14 +1101,18 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         if (!isCurrent()) return;
         const project = projectRef(activeOrganization.id, projectId);
         const hq = officialHq(accountHq);
-        // Its record in HQ, written by the press's registration after the close-off its birth
-        // records: into the application a press this tab still holds placed it in, under its name
-        // and face (F6b); else in no application until somebody moves it into one.
+        // What it registers, by the rule Finish setup registers by, before its container: in the
+        // application HQ or the press this tab holds places it in, under that name and face (F6b);
+        // a new Mate in no application only where neither does.
         const held = readMatePress(projectId);
-        const registration = setUpMateRegistration({
+        const registration = mateFinishRegistration({
           hq,
-          press: held,
+          hqKnown,
           project: candidate.project,
+          press: held,
+          writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+          mayCreateRecord: mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
+          standUp: false,
           candidates,
           taken: taken.names,
           random: (bytes) => crypto.getRandomValues(bytes),
@@ -1146,9 +1157,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [
       accountHq,
       activeOrganization,
+      asker,
       candidates,
       client,
       groupTree.groups,
+      hqKnown,
       organizationRef,
       projectRef,
       readGroupAgents,
@@ -1156,6 +1169,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       settingUpKey,
       runtime,
       taken.names,
+      user,
     ],
   );
 
