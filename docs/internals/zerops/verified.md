@@ -7391,3 +7391,28 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
 - **An idle window made 16 requests a minute** (per window, after the flows; run 3 measured 20 and 21).
 - **The build queue** — a new Mate's zcp build queued 27–46 s and ran 109–122 s. The service's
   address and user-data writes queued behind it for 128–156 s.
+
+## The HQ end-to-end on KRLS, as measured — 2026-10-03
+
+- **A deploy rewrites a service's `appVersionId` and `appVersionName` in place, at build start** —
+  on `mate-rig-e2e-c - stage`, service `app`, `POST /user-data/search` returned both as `SYSTEM`
+  rows created 04:49:13Z (the stage's import) with `lastUpdate` 05:13:05Z, the second build's start;
+  the row ids were unchanged. `appVersionId` equalled `activeAppVersion.id`, and `appVersionName`
+  read `main 6aeae99`, while `activeAppVersion` carried no `name`. Cyd's own `appstage` showed the
+  same pattern (created 23:04Z, updated 04:58Z). A production on its import's no-code version reads
+  source `NONE` with `appVersionName` `""`.
+- **KRLS's organization-wide reads stall for tens of seconds, intermittently** — 14 cold loads of
+  the local web client, as KRLS's owner, around 05:30Z. 12 showed a change's review 1.5–3.6 s after
+  navigation. In the other 2, `GET /client/{id}/project` took 10–17 s, `user/list` 18–35 s (one
+  answered 400), and `integration-token/list` 39–59 s before answering 400; the review showed at
+  55.0 s and 77.5 s. HQ answered no 503 in about 1,100 responses; the wait sat in the HQ door's
+  fresh member read, which the client cut at 20 s twice. A reopen inside the app took 3–28 ms.
+- **Token writes do not make the organization's token list slow** — five mint/delete pairs on KRLS
+  (mint about 30 ms, delete 47–118 ms, all 200): `GET integration-token/list` took about 1 s on the
+  first call, warm, after 5 s idle, right after each write and 5 s after, at 185 tokens. The 17 s
+  list read once on 2026-10-02 did not recur, and its cause is unknown. The list ignores `limit` and
+  `offset` and answers the whole set.
+- **Mate 0.11.0 cannot pass its door** — `localflow`'s container (Mate 0.11.0) failed every door
+  since 22:16Z at the member-list step: 308× "not in the expected shape" (it reads `items`; the
+  platform answers `clientUserList`) and 7× 400 `userNotFound`. Its own key read its project and
+  `user/info` fine.
