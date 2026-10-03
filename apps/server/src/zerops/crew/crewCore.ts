@@ -21,6 +21,7 @@ import {
   agentIdForDriverKind,
   agentIdForProviderInstance,
   CrewCommandError,
+  type ChatAttachment,
   type CrewApplyChoice,
   type CrewClaimState,
   type CrewRefusalReason,
@@ -33,6 +34,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -40,7 +42,12 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
+import { pendingUploadOf } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import {
+  claimMessageAttachments,
+  releaseClaimedAttachments,
+} from "../../orchestration/Normalizer.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../../spi/providerInstances.ts";
@@ -404,6 +411,45 @@ export const makeCrewCore = Effect.gen(function* () {
 
   const observer = yield* ZeropsWorkspaceObserver;
   const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const withFiles = <A, E>(
+    effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | ServerConfig>,
+  ) =>
+    effect.pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(ServerConfig, config),
+    );
+
+  /**
+   * A crew message's attachments, as a thread message's (`Normalizer.ts`):
+   * each must be a pending upload — an id the sender holds, never another
+   * message's stored attachment — and is claimed, copied under its thread's
+   * own id, as the turn goes.
+   */
+  const attachments = {
+    check: (sent: ReadonlyArray<ChatAttachment>) =>
+      Effect.forEach(sent, (attachment) => {
+        const pending = pendingUploadOf({
+          attachmentsDir: config.attachmentsDir,
+          attachmentId: attachment.id,
+        });
+        return pending.ok
+          ? Effect.void
+          : Effect.fail(
+              refuse(
+                "not-allowed",
+                `Attachment '${attachment.name}' cannot be sent: ${pending.reason}.`,
+              ),
+            );
+      }).pipe(Effect.asVoid),
+    claim: (threadId: string, sent: ReadonlyArray<ChatAttachment>) =>
+      withFiles(claimMessageAttachments(threadId, sent)).pipe(
+        Effect.mapError((error) => refuse("not-allowed", error.message)),
+      ),
+    release: (claimed: ReadonlyArray<ChatAttachment>) =>
+      withFiles(releaseClaimedAttachments(claimed)),
+  };
 
   /**
    * Verifies every writer's service this process has not verified yet — a
@@ -501,6 +547,7 @@ export const makeCrewCore = Effect.gen(function* () {
     projection: yield* ProjectionSnapshotQuery,
     admission: yield* ZeropsTurnAdmission,
     observer,
+    attachments,
     instances,
     logins,
     agentOf,

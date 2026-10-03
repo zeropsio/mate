@@ -407,6 +407,7 @@ export const withCrewEngines = <E>(
             countingSsh(world.sshCalls, holds),
             ServerConfig.layer({
               cwd: workspace,
+              attachmentsDir: NodePath.join(workspace, "attachments"),
               zerops: ZEROPS,
               zeropsCrew: true,
             } as ServerConfig.ServerConfig["Service"]),
