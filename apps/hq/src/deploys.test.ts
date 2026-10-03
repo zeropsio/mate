@@ -11,12 +11,14 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
+import { OTHER_KEY_SECRET, sealedFor, testKey } from "../test/harness/deployKeys.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import {
   type FakeService,
@@ -25,6 +27,7 @@ import {
   fakeZeropsApi,
   fakeZeropsDeploy,
 } from "../test/harness/zeropsFake.ts";
+import { type KeySecret, deployKeysLayer, keySecretOf } from "./deployKeys.ts";
 import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
@@ -141,6 +144,16 @@ const fakeService = (name: string, over: Partial<FakeService> = {}): FakeService
   ...over,
 });
 
+/** `value`, kept as the deploy token of `projectId`'s environment, sealed under the test key. */
+const keepToken = (projectId: string, value: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const { keyId, sealed } = sealedFor(projectId, value);
+    yield* sql`
+      INSERT INTO hq_deploy_token (project_id, key_id, sealed, kept_by)
+      VALUES (${projectId}, ${keyId}, ${sealed}, 'owner')`;
+  }).pipe(Effect.orDie);
+
 /** A commit's files: content, or null to delete one. */
 type Files = Readonly<Record<string, string | null>>;
 
@@ -174,11 +187,13 @@ interface Rig {
 /**
  * The deploy engine leading over a fresh database and git root: the application Shop with the
  * stage environment `shop-stage` (project P_STAGE, its deploy token kept), a Zerops whose P_STAGE
- * has the service `web`, and Shop's stage tier as `tiers` holds it.
+ * has the service `web`, and Shop's stage tier as `tiers` holds it. HQ's key is the test key, the
+ * token's too, unless `keySecret` gives HQ another.
  */
 const withDeploys = <A, E>(
   use: (rig: Rig) => Effect.Effect<A, E, Deploys | Releases | SqlClient.SqlClient>,
   options: DeploysOptions = FAST,
+  keySecret: KeySecret = testKey(),
 ) =>
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createDatabase;
@@ -191,6 +206,7 @@ const withDeploys = <A, E>(
     const context = yield* Layer.build(
       deploysLayer(options).pipe(
         Layer.provideMerge(releasesLayer),
+        Layer.provide(deployKeysLayer(keySecret)),
         Layer.provideMerge(gitHostLayer({ rootDir: root })),
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
@@ -226,8 +242,7 @@ const withDeploys = <A, E>(
     yield* sql`
       INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
       VALUES ('P_STAGE', ${appId}::uuid, 'stage', 'shop-stage', '{main}', 'owner')`;
-    yield* sql`
-      INSERT INTO hq_deploy_token (project_id, token, kept_by) VALUES ('P_STAGE', 'key-stage', 'owner')`;
+    yield* keepToken("P_STAGE", "key-stage").pipe(Effect.provideService(SqlClient.SqlClient, sql));
     world.projects.push({
       id: "P_STAGE",
       orgId: "ORG",
@@ -331,8 +346,7 @@ const withProduction = (appId: string, world: FakeWorld) =>
     yield* sql`
       INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
       VALUES ('P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner')`;
-    yield* sql`
-      INSERT INTO hq_deploy_token (project_id, token, kept_by) VALUES ('P_PROD', 'key-prod', 'owner')`;
+    yield* keepToken("P_PROD", "key-prod");
     world.projects.push({
       id: "P_PROD",
       orgId: "ORG",
@@ -461,12 +475,76 @@ describe("deploys", () => {
               ],
             );
             assert.deepStrictEqual(versions(world), []);
-            yield* sql`
-            INSERT INTO hq_deploy_token (project_id, token, kept_by) VALUES ('P_STAGE', 'key-stage', 'owner')`;
+            yield* keepToken("P_STAGE", "key-stage");
             yield* (yield* Deploys).catchUp;
             yield* until(settled("live"));
           }),
         ),
+    );
+
+    // Without HQ's key no deploy token opens (`deployKeys.ts`): every deploy is refused, saying so,
+    // and no key is marked — an admin minting a new one would not help.
+    it.effect.each<[string, string | undefined]>([
+      ["no key", undefined],
+      ["a key that is no key", "not-a-key"],
+    ])("refuses every deploy while HQ has %s, marking no environment's key", ([, raw]) =>
+      withDeploys(
+        ({ appId, world, tiers, commit, deploys, until }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("failed"));
+            assert.deepStrictEqual(
+              (yield* deploys).map(({ failure, message }) => [failure, message]),
+              [
+                [
+                  "refused",
+                  "HQ cannot open shop-stage's deploy token: HQ_KEY_SECRET is not set to a key",
+                ],
+              ],
+            );
+            assert.deepStrictEqual(versions(world), []);
+            const [token] = yield* sql<{ readonly invalid: boolean }>`
+              SELECT invalid_since IS NOT NULL AS invalid FROM hq_deploy_token`;
+            assert.isFalse(token?.invalid);
+          }),
+        FAST,
+        keySecretOf(raw === undefined ? Option.none() : Option.some(Redacted.make(raw))),
+      ),
+    );
+
+    // A token that does not open under HQ's key — sealed under another, as after a restore onto an
+    // HQ with another key, or copied from another environment's row — is HQ's own state: refused,
+    // saying so, and not marked; HQ deploys again once its key opens it.
+    it.effect.each<[string, string, string | undefined]>([
+      ["sealed under another key", "P_STAGE", OTHER_KEY_SECRET],
+      ["sealed for another environment", "P_PROD", undefined],
+    ])("refuses a deploy whose key does not open under HQ's: %s", ([, projectId, raw]) =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const elsewhere = sealedFor(projectId, "key-stage", raw);
+          yield* sql`
+            UPDATE hq_deploy_token SET key_id = ${elsewhere.keyId}, sealed = ${elsewhere.sealed}`;
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("failed"));
+          assert.deepStrictEqual(
+            (yield* deploys).map(({ failure, message }) => [failure, message]),
+            [
+              [
+                "refused",
+                "shop-stage's deploy token does not open with HQ's key: HQ deploys again once HQ_KEY_SECRET is the key it was sealed under, or once an admin who opens the projects page in Zerops Mate mints a new one",
+              ],
+            ],
+          );
+          assert.deepStrictEqual(versions(world), []);
+          const [token] = yield* sql<{ readonly invalid: boolean }>`
+            SELECT invalid_since IS NOT NULL AS invalid FROM hq_deploy_token`;
+          assert.isFalse(token?.invalid);
+        }),
+      ),
     );
 
     // A key is checked again at every hand-over: one that now reaches more than its project, or no
@@ -793,9 +871,7 @@ describe("deploys", () => {
           createdByUser: "owner",
         });
         const firstKey = Effect.andThen(
-          sql`
-            INSERT INTO hq_deploy_token (project_id, token, kept_by)
-            VALUES ('P_STAGE', 'key-stage', 'owner')`,
+          keepToken("P_STAGE", "key-stage"),
           (yield* Deploys).catchUp,
         );
         return { firstKey };
@@ -1199,9 +1275,7 @@ describe("deploys", () => {
           yield* sql`
             INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
             VALUES ('P_STAGE', ${appId}::uuid, 'production', 'shop', '{release}', 'owner')`;
-          yield* sql`
-            INSERT INTO hq_deploy_token (project_id, token, kept_by)
-            VALUES ('P_STAGE', 'key-stage', 'owner')`;
+          yield* keepToken("P_STAGE", "key-stage");
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
           tiers.set(`${appId}/production`, stageTier(appId, [{ hostname: "web" }]));
           yield* (yield* Deploys).catchUp;

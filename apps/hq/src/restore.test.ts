@@ -4,12 +4,15 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as Redacted from "effect/Redacted";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
 import { gitClient } from "../test/harness/gitClient.ts";
+import { OTHER_KEY_SECRET, TEST_KEY_SECRET, testKey } from "../test/harness/deployKeys.ts";
 import {
   addProject,
   mateInApp,
@@ -27,7 +30,9 @@ import {
 } from "../test/harness/runningCore.ts";
 import { tempDir } from "../test/harness/tempDir.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import type { FakeWorld } from "../test/harness/zeropsFake.ts";
 import { directoryStore } from "./backup.ts";
+import { mainOf } from "./gitHost.ts";
 import { restoreDatabase, restoreRepos, restoreSet } from "./restore.ts";
 
 /** A PNG's signature and a little more: what HQ checks a picture by. */
@@ -604,6 +609,156 @@ describe("a backup set, restored", () => {
             [["appdev"], ["appdev"]],
           );
         }),
+    );
+
+    // Audit D4: a set carries an environment's deploy token only sealed, and never HQ's key, which
+    // lives in HQ's env. Restored onto an HQ with the same key, the stage deploys with it; onto one
+    // with another key, its deploys are refused, named, and `/health` tells it.
+    it.effect(
+      "restores deploy tokens only sealed: they deploy under the same key, and are refused under another",
+      () =>
+        Effect.gen(function* () {
+          const VALUE = "key-stage-sealed-in-the-set";
+          const a = yield* startCore(true);
+          yield* untilHealth(a.call, "active");
+          const owner = yield* sessionFor(a.call, "door-owner");
+          const { appId, credential, auth } = yield* mateInApp(
+            a.call,
+            a.fake,
+            owner,
+            "P_MATE",
+            "Shop",
+          );
+          /** Zerops as each HQ meets it: the stage's project, its service `app`, the key. */
+          const stageIn = (fake: FakeWorld) => {
+            addProject(fake, "P_STAGE");
+            fake.services.push({
+              id: "S-app-stage",
+              projectId: "P_STAGE",
+              name: "app",
+              status: "ACTIVE",
+              isSystem: false,
+              subdomainAccess: false,
+              http: true,
+              named: { id: "V0-app", name: "" },
+              activeVersionId: "V0-app",
+            });
+            fake.tokens.set(VALUE, {
+              id: "T_STAGE",
+              name: "deploy-stage",
+              orgId: "ORG",
+              roleCode: "NO_ACCESS",
+              canCreateProjects: false,
+              canViewFinances: false,
+              canEditFinances: false,
+              projects: [{ projectId: "P_STAGE", roleCode: "BASIC_USER" }],
+              createdMs: 0,
+              createdByUser: "owner",
+            });
+          };
+          stageIn(a.fake);
+          const attached = yield* a.call("POST", `/api/apps/${appId}/projects`, {
+            session: owner,
+            body: { projectId: "P_STAGE", kind: "stage", environment: { name: "stage" } },
+          });
+          assert.strictEqual(attached.status, 201);
+          const kept = yield* a.call("PUT", `/api/apps/${appId}/environments/stage/deploy-token`, {
+            session: owner,
+            body: { token: VALUE },
+          });
+          assert.strictEqual(kept.status, 204);
+          // The stage's tier builds `app` from appdev, whose main carries no zerops.yaml yet.
+          yield* a.call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+          const number = yield* propose(a.call, auth);
+          const group = yield* groupCheckout(
+            yield* gitClient,
+            a.origin,
+            credential,
+            appId,
+            "group",
+          );
+          yield* group.write(
+            {
+              "3 — Stage/import.yaml": [
+                "services:",
+                "  - hostname: app",
+                "    type: nodejs@22",
+                `    buildFromGit: ${a.origin}/git/${appId}/appdev.git`,
+                "    zeropsSetup: app",
+                "",
+              ].join("\n"),
+            },
+            "The stage's",
+          );
+          yield* group.push("P_MATE", number);
+          yield* stateBecomes(a.call, owner, appId, number, "merged");
+          const manifest = yield* a.backup.take;
+          yield* a.stop;
+
+          // The set's dump, as SQL: neither the token nor HQ's key is in it.
+          const dump = NodeChildProcess.execFileSync(
+            "pg_restore",
+            ["--file=-", NodePath.join(a.storeDir, "sets", manifest.id, "db.dump")],
+            { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+          );
+          // pg_restore writes bytea in hex: the row is there under the key's id, its bytes no value.
+          assert.include(dump, testKey().id);
+          assert.notInclude(dump, VALUE);
+          assert.notInclude(dump, Buffer.from(VALUE, "utf8").toString("hex"));
+          assert.notInclude(dump, TEST_KEY_SECRET);
+
+          for (const [keySecret, keys, outcome] of [
+            [TEST_KEY_SECRET, "ok", ["live", null, null]],
+            [
+              OTHER_KEY_SECRET,
+              "other_secret",
+              [
+                "failed",
+                "refused",
+                "stage's deploy token does not open with HQ's key: HQ deploys again once HQ_KEY_SECRET is the key it was sealed under, or once an admin who opens the projects page in Zerops Mate mints a new one",
+              ],
+            ],
+          ] as const) {
+            const url = yield* (yield* TempPostgres).createDatabase;
+            const gitRoot = yield* tempDir("hq-restore-");
+            yield* restoreSet(directoryStore(a.storeDir), manifest.id, {
+              databaseUrl: Redacted.make(url),
+              gitRoot,
+              workDir: yield* tempDir("hq-restore-"),
+            });
+            const b = yield* startCore(true, { url, gitRoot, keySecret });
+            stageIn(b.fake);
+            const health = yield* untilHealth(b.call, "active");
+            assert.strictEqual((health.body as { readonly keys: string }).keys, keys);
+            // Main moves to a commit carrying the stage's setup: the stage deploys it, or is refused.
+            // Once its takeover is through and git open.
+            const git = yield* b.gitHost.git.pipe(
+              Effect.retry(Schedule.spaced(Duration.millis(50))),
+              Effect.timeout(Duration.seconds(10)),
+            );
+            const appdev = { appId, id: "appdev" };
+            yield* git.commitFiles(appdev, "refs/heads/main", {
+              files: {
+                "zerops.yaml": "zerops:\n  - setup: app\n    run:\n      start: node index.js\n",
+              },
+              expectedHead: yield* mainOf(git, appdev),
+              message: "Build it",
+              author: { name: "Ada", email: "ada@mate.test" },
+            });
+            const [deployed] = yield* rowsWhere(
+              url,
+              "SELECT state, failure, message FROM hq_deploy",
+              (rows) =>
+                rows.length === 1 && ["live", "failed"].includes(String(rows[0]?.["state"])),
+            );
+            assert.deepStrictEqual<ReadonlyArray<unknown>>(
+              [deployed?.["state"], deployed?.["failure"], deployed?.["message"]],
+              outcome,
+            );
+            yield* b.stop;
+          }
+        }),
+      { timeout: 180_000 },
     );
   });
 });

@@ -32,7 +32,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
-import * as Redacted from "effect/Redacted";
+import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -45,6 +45,7 @@ import {
   deriveEnvironmentName,
   environmentNameProblem,
 } from "./environments.ts";
+import { DeployKeys } from "./deployKeys.ts";
 import { reachesOnly } from "./deployTokens.ts";
 import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
@@ -86,6 +87,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "environment_not_found",
     "deploy_token_refused",
     "deploy_token_scope",
+    "no_key_secret",
     "birth_with_kind",
   ]),
 }) {}
@@ -390,7 +392,7 @@ export const structureLayer = (options: {
 }): Layer.Layer<
   Structure,
   never,
-  Leader | MateOverviews | Roles | SqlClient.SqlClient | ZeropsApi
+  DeployKeys | Leader | MateOverviews | Roles | SqlClient.SqlClient | ZeropsApi
 > =>
   Layer.effect(
     Structure,
@@ -399,6 +401,7 @@ export const structureLayer = (options: {
       const roles = yield* Roles;
       const overviews = yield* MateOverviews;
       const zerops = yield* ZeropsApi;
+      const keys = yield* DeployKeys;
       const sql = yield* SqlClient.SqlClient;
       const version = yield* SubscriptionRef.make(0);
       const changed = SubscriptionRef.update(version, (tick) => tick + 1);
@@ -566,6 +569,9 @@ export const structureLayer = (options: {
               return yield* refuse("environment_not_found", "environment_not_found");
             }
             yield* allowed(userId, "keep_deploy_token", { projectId }, view);
+            // Kept only sealed, under HQ's key: without one HQ keeps none (`deployKeys.ts`).
+            const sealed = keys.seal(projectId, token);
+            if (sealed === undefined) return yield* refuse("conflict", "no_key_secret");
             const own = yield* zerops
               .ownToken(token)
               .pipe(
@@ -577,15 +583,14 @@ export const structureLayer = (options: {
             const kept = yield* leader.write(
               Effect.gen(function* () {
                 yield* lockProject(sql, projectId);
-                // The token is this statement's parameter: it must never reach statement logging
-                // or a span's attributes.
                 return yield* sql`
-                  INSERT INTO hq_deploy_token (project_id, token, kept_by)
-                  SELECT project_id, ${Redacted.value(token)}, ${userId} FROM hq_environment
+                  INSERT INTO hq_deploy_token (project_id, key_id, sealed, kept_by)
+                  SELECT project_id, ${sealed.keyId}, ${sealed.sealed}, ${userId}
+                  FROM hq_environment
                   WHERE project_id = ${projectId} AND app_id::text = ${appId} AND name = ${name}
                   ON CONFLICT (project_id)
-                  DO UPDATE SET token = EXCLUDED.token, kept_by = EXCLUDED.kept_by, kept_at = now(),
-                    invalid_since = NULL
+                  DO UPDATE SET key_id = EXCLUDED.key_id, sealed = EXCLUDED.sealed,
+                    kept_by = EXCLUDED.kept_by, kept_at = now(), invalid_since = NULL
                   RETURNING 1`;
               }),
             );

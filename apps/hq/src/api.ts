@@ -17,7 +17,8 @@
  * - `PUT /api/projects/:projectId/app` `{ appId | null, kind }` → `{ projectId, appId, kind }`:
  *   moves a project into an application, or out of any.
  * - `PUT /api/apps/:appId/environments/:name/deploy-token` `{ token }` → `204`: the environment's
- *   deploy token, minted by the client of whoever attaches it; the structure says only `keyHeld`.
+ *   deploy token, minted by the client of whoever attaches it, kept sealed under HQ's key
+ *   (`deployKeys.ts`; without one `409 conflict` `no_key_secret`); the structure says only `keyHeld`.
  * - `POST /api/apps/:appId/environments/:name/redeploy` `{ service, sha }` → `202`: a person's "Run
  *   again" of the environment's newest deploy of that service, failed (`deploys.ts`).
  * - `POST /api/mates` `{ projectId, name, face }`, `PATCH /api/mates/:projectId` `{ name?, face? }`

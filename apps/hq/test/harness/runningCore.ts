@@ -35,6 +35,7 @@ import {
   type ZeropsMember,
   type ZeropsOwnToken,
 } from "../../src/zerops/api.ts";
+import { TEST_KEY_SECRET } from "./deployKeys.ts";
 import { tempDir } from "./tempDir.ts";
 import { TempPostgres } from "./tempPostgres.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi, fakeZeropsDeploy } from "./zeropsFake.ts";
@@ -163,6 +164,8 @@ export const startCore = (
     readonly backupCheck?: Duration.Duration;
     /** How often the official verdict is read again; 30 s. */
     readonly officialRecheck?: Duration.Duration;
+    /** `HQ_KEY_SECRET`; the test key by default, none with null. */
+    readonly keySecret?: string | null;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -186,6 +189,10 @@ export const startCore = (
       migrations: treeMigrations(),
       hqProjectId: HQ,
       credential: Option.some(Redacted.make("hq")),
+      keySecret:
+        given.keySecret === null
+          ? Option.none()
+          : Option.some(Redacted.make(given.keySecret ?? TEST_KEY_SECRET)),
       clientOrigins: [CLIENT, "http://localhost:4380"],
       build: "test",
       drainFor: Duration.millis(300),

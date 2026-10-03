@@ -45,7 +45,8 @@
  * The hostname names it; the service's id says whose it is (audit N6): a record made for a service
  * its hostname no longer names — deleted, another made under the same hostname — starts afresh for
  * the one there now, which a final failure of its predecessor's never holds back.
- * The deploy token never leaves Core: no record, log or error carries it.
+ * The deploy token never leaves Core: no record, log or error carries it. It is kept sealed under
+ * HQ's key (`deployKeys.ts`) and opened only as a pass hands its deploys over.
  *
  * @module deploys
  */
@@ -62,7 +63,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Redacted from "effect/Redacted";
+import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -70,7 +71,15 @@ import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
-import { deadDeployToken, noDeployToken, reachesOnly, widenedDeployToken } from "./deployTokens.ts";
+import { DeployKeys } from "./deployKeys.ts";
+import {
+  deadDeployToken,
+  noDeployToken,
+  noKeySecret,
+  reachesOnly,
+  unopenedDeployToken,
+  widenedDeployToken,
+} from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, deployedByHq, tierServices } from "./recipeDeltas.ts";
@@ -265,7 +274,15 @@ export const deploysLayer = (
 ): Layer.Layer<
   Deploys,
   never,
-  Leader | SqlClient.SqlClient | GitHost | Roles | ZeropsApi | ZeropsDeploy | RecipeTiers | Releases
+  | DeployKeys
+  | Leader
+  | SqlClient.SqlClient
+  | GitHost
+  | Roles
+  | ZeropsApi
+  | ZeropsDeploy
+  | RecipeTiers
+  | Releases
 > =>
   Layer.effect(
     Deploys,
@@ -278,6 +295,7 @@ export const deploysLayer = (
       const recipes = yield* RecipeTiers;
       const roles = yield* Roles;
       const releases = yield* Releases;
+      const keys = yield* DeployKeys;
       const catchUpEvery = options.catchUpEvery ?? Duration.minutes(5);
       const pollEvery = options.pollEvery ?? Duration.seconds(10);
       const patience = options.patience ?? Duration.minutes(20);
@@ -505,11 +523,12 @@ export const deploysLayer = (
               (rows) => rows.some((row) => row.repo === target.repo && row.sha === target.sha),
             );
 
-      const tokenOf = (projectId: string) =>
+      /** The environment's key as it is kept, sealed: none where none is kept. */
+      const keptOf = (projectId: string) =>
         Effect.map(
-          sql<{ readonly token: string }>`
-            SELECT token FROM hq_deploy_token WHERE project_id = ${projectId}`,
-          (rows) => (rows[0] === undefined ? undefined : Redacted.make(rows[0].token)),
+          sql<{ readonly key_id: string | null; readonly sealed: Uint8Array }>`
+            SELECT key_id, sealed FROM hq_deploy_token WHERE project_id = ${projectId}`,
+          (rows) => rows[0],
         );
 
       /**
@@ -667,15 +686,25 @@ export const deploysLayer = (
       const refuseUnsettled = (target: Target, ended: Ended) => record(target, ended, "unsettled");
 
       /**
-       * The environment's key, checked as each pass hands its deploys over: none, one that no longer
-       * answers or now reaches more than its project — marked invalid, logged once, for an admin
-       * must mint a new one — or one HQ may deploy with. A Zerops that does not answer says nothing
-       * of the key.
+       * The environment's key, opened under HQ's and checked as each pass hands its deploys over:
+       * none, HQ holding no key to open it with, one that does not open under HQ's — HQ's own state,
+       * neither marked nor fixed by a new one — one that no longer answers or now reaches more than
+       * its project — marked invalid, logged once, for an admin must mint a new one — or one HQ may
+       * deploy with. A Zerops that does not answer says nothing of the key.
        */
       const keyOf = (projectId: string, envName: string) =>
         Effect.gen(function* () {
-          const token = yield* tokenOf(projectId);
-          if (token === undefined) return refused(noDeployToken(envName));
+          if (keys.state !== "ok") return refused(noKeySecret(envName));
+          const kept = yield* keptOf(projectId);
+          if (kept === undefined) return refused(noDeployToken(envName));
+          const token = keys.open(projectId, { keyId: kept.key_id ?? "", sealed: kept.sealed });
+          if (token === undefined) {
+            yield* Effect.logWarning("deploy token does not open under HQ's key", {
+              environment: envName,
+              project: projectId,
+            });
+            return refused(unopenedDeployToken(envName));
+          }
           const checked = yield* Effect.gen(function* () {
             const own = yield* zerops.ownToken(token).pipe(
               Effect.map(Option.some),

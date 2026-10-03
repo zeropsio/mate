@@ -116,6 +116,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   environment_not_found: "HQ has no such environment.",
   deploy_token_refused: "Zerops did not accept this deploy key.",
   deploy_token_scope: "This deploy key reaches more than its own project.",
+  // HQ keeps a deploy key only sealed under its own key (`apps/hq/src/deployKeys.ts`).
+  no_key_secret:
+    "HQ has no key to keep deploy keys with yet. Whoever runs this HQ sets its HQ_KEY_SECRET.",
   // A deploy asked again ("Run again", `apps/hq/src/deploys.ts`).
   deploy_not_found: "HQ has no such deploy.",
   deploy_superseded: "A newer deploy took this one's place.",

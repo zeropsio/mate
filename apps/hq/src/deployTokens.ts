@@ -35,3 +35,14 @@ export const deadDeployToken = (environment: string) =>
 /** Why an environment's key that reaches more than its project deploys nothing (main E08). */
 export const widenedDeployToken = (environment: string) =>
   `${environment}'s deploy token reaches more than its project; an admin who opens the projects page in Zerops Mate mints a new one`;
+
+/** Why no environment deploys while HQ has no key to open deploy tokens with (`deployKeys.ts`). */
+export const noKeySecret = (environment: string) =>
+  `HQ cannot open ${environment}'s deploy token: HQ_KEY_SECRET is not set to a key`;
+
+/**
+ * Why an environment whose deploy token does not open under HQ's key deploys nothing: sealed under
+ * another key, as after a restore onto an HQ with another one, or changed since.
+ */
+export const unopenedDeployToken = (environment: string) =>
+  `${environment}'s deploy token does not open with HQ's key: HQ deploys again once HQ_KEY_SECRET is the key it was sealed under, or once an admin who opens the projects page in Zerops Mate mints a new one`;

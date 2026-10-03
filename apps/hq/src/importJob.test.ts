@@ -18,6 +18,7 @@ import {
   STAGE_TIER,
   syntheticBundle,
 } from "../test/harness/bundle.ts";
+import { sealedFor, sealedSql } from "../test/harness/deployKeys.ts";
 import { addProject, rowsWhere } from "../test/harness/mates.ts";
 import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -308,7 +309,8 @@ describe("the migration's import", () => {
         // An admin's first key: the pass that follows imports no service and deploys nothing.
         yield* rowsWhere(
           url,
-          "INSERT INTO hq_deploy_token (project_id, token, kept_by) VALUES ('P_STAGE', 'key-stage', 'owner') RETURNING 1",
+          `INSERT INTO hq_deploy_token (project_id, key_id, sealed, kept_by)
+           VALUES ('P_STAGE', ${sealedSql(sealedFor("P_STAGE", "key-stage"))}, 'owner') RETURNING 1`,
           (rows) => rows.length === 1,
         );
         fake.tokens.set("key-stage", {

@@ -6,14 +6,24 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Redacted from "effect/Redacted";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
+import {
+  OTHER_KEY_SECRET,
+  TEST_KEY_SECRET,
+  sealedFor,
+  sealedSql,
+  testKey,
+} from "../test/harness/deployKeys.ts";
+import { rowsWhere } from "../test/harness/mates.ts";
 import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Backup, type BackupStatus } from "./backup.ts";
+import { deployKeysLayer } from "./deployKeys.ts";
 import { GitHost, type GitState, type Quarantined } from "./gitHost.ts";
 import { healthRoute } from "./health.ts";
 import { LOCK_KEY, Leader, type LeaderStatus } from "./leader.ts";
@@ -81,7 +91,15 @@ const getHealth = (
               }),
             ),
           ),
-          PgClient.layer({ url: Redacted.make(databaseUrl), connectTimeout: Duration.seconds(1) }),
+          // A fresh database has no tokens table to read: the key as the env gives it.
+          deployKeysLayer(testKey()),
+        ).pipe(
+          Layer.provideMerge(
+            PgClient.layer({
+              url: Redacted.make(databaseUrl),
+              connectTimeout: Duration.seconds(1),
+            }),
+          ),
         ),
       ),
     );
@@ -193,6 +211,7 @@ describe("GET /health", () => {
               db: database,
               git: gitNow,
               backup: { state: "off" },
+              keys: "ok",
               loop: QUIET,
               recomputes: 0,
               epoch: leader.epoch,
@@ -223,6 +242,7 @@ describe("GET /health", () => {
               db: "up",
               git: "closed",
               backup: { state: "off" },
+              keys: "ok",
               loop: QUIET,
               recomputes: 0,
               epoch: null,
@@ -254,6 +274,7 @@ describe("GET /health", () => {
               db: "up",
               git: "open",
               backup,
+              keys: "ok",
               loop: QUIET,
               recomputes: 0,
               epoch: 3,
@@ -300,6 +321,7 @@ describe("GET /health", () => {
                 db: "up",
                 git: "open",
                 backup: { state: "off" },
+                keys: "ok",
                 loop,
                 recomputes: 480,
                 epoch: 3,
@@ -324,6 +346,53 @@ describe("GET /health", () => {
         yield* watching.close;
         assert.deepStrictEqual(Object.keys(health.loop), ["maxLagMs", "p99LagMs", "lastStall"]);
         assert.isAtLeast(health.recomputes, 1);
+      }),
+    );
+
+    // HQ's key is reported, never judged: a Core without one leads and deploys nothing
+    // (`deployKeys.ts`); a token sealed under another key opens nowhere here.
+    it.effect.each<[string, string | null, ReadonlyArray<string>, string]>([
+      ["no key", null, [], "no_secret"],
+      ["a key that is no key", "not-a-key", [], "bad_secret"],
+      ["its key and no token", TEST_KEY_SECRET, [], "ok"],
+      ["its key and a token sealed under it", TEST_KEY_SECRET, [TEST_KEY_SECRET], "ok"],
+      [
+        "its key and a token sealed under another",
+        TEST_KEY_SECRET,
+        [TEST_KEY_SECRET, OTHER_KEY_SECRET],
+        "other_secret",
+      ],
+    ])("tells HQ's key with %s, and still answers 200", ([, keySecret, sealedUnder, keys]) =>
+      Effect.gen(function* () {
+        const { call, url } = yield* startCore(true, { keySecret });
+        yield* untilHealth(call, "active");
+        for (const [n, raw] of sealedUnder.entries()) {
+          const projectId = `P_ENV${String(n)}`;
+          yield* rowsWhere(
+            url,
+            `WITH app AS (
+               INSERT INTO hq_app (name, created_by) VALUES ('App ${String(n)}', 'owner')
+               RETURNING id),
+             placed AS (
+               INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+               SELECT '${projectId}', id, 'stage', 'owner' FROM app RETURNING project_id, app_id),
+             environment AS (
+               INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
+               SELECT project_id, app_id, 'stage', 'stage', '{main}', 'owner' FROM placed
+               RETURNING project_id)
+             INSERT INTO hq_deploy_token (project_id, key_id, sealed, kept_by)
+             SELECT project_id, ${sealedSql(sealedFor(projectId, "a-token", raw))}, 'owner'
+             FROM environment RETURNING 1`,
+            (rows) => rows.length === 1,
+          );
+        }
+        // Active is ready once git is open: HQ's key never holds that back.
+        const health = yield* call("GET", "/health").pipe(
+          Effect.filterOrFail((response) => response.status === 200),
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
+        );
+        assert.strictEqual((health.body as { readonly keys: string }).keys, keys);
       }),
     );
 
@@ -353,6 +422,7 @@ describe("GET /health", () => {
               git: "open",
               quarantined,
               backup: { state: "off" },
+              keys: "ok",
               loop: QUIET,
               recomputes: 0,
               epoch: 3,
