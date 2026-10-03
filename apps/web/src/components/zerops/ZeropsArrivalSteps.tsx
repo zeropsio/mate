@@ -8,7 +8,6 @@ import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgr
 import { Fragment, useState, type ReactNode } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import {
   nextRuntimesLine,
@@ -113,22 +112,16 @@ function ArrivalSubsteps({ steps }: { readonly steps: ReadonlyArray<ArrivalSubst
             {/* Not finished, it waits on nobody here: the waiting mark, never a stop's. */}
             <ArrivalStepGlyph state={step.state === "unfinished" ? "waiting" : step.state} />
           </span>
-          {/* One line, whatever it says: a long reason is cut, whole on hover and to a reader. */}
-          {step.why === undefined ? (
-            <span className="arrival-substep-label">{step.label}</span>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger render={<span className="arrival-substep-label" />}>
-                {step.label}
-                {step.state === "unfinished" ? (
-                  `: ${step.why}`
-                ) : (
-                  <span className="arrival-step-why"> · {step.why}</span>
-                )}
-              </TooltipTrigger>
-              <TooltipPopup side="top">{step.why}</TooltipPopup>
-            </Tooltip>
-          )}
+          {/* One line, whatever it says: a long reason is cut here, and read whole under the
+              steps (`pressNote`) — and whole to a reader, from its label. */}
+          <span className="arrival-substep-label">
+            {step.label}
+            {step.why === undefined ? null : step.state === "unfinished" ? (
+              `: ${step.why}`
+            ) : (
+              <span className="arrival-step-why"> · {step.why}</span>
+            )}
+          </span>
         </li>
       ))}
     </ol>

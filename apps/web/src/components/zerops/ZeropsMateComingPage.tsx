@@ -951,10 +951,16 @@ export function ComingBelow({
         <Button render={projects}>Go to projects</Button>
       ) : null
     ) : null;
-  // A registration not finished while it comes up: what is not, why, and this person's own
-  // *Finish setup*, at once.
+  // What the steps leave to read whole, under them and over the way on — each step keeps one line:
+  // a stop's reason (one Zerops may have made says it in the sentence), or a registration not
+  // finished, with this person's own *Finish setup*, at once.
   const note = pressNote(progress?.press);
-  const left = note?.kind === "unfinished" ? note : null;
+  const read =
+    note === null ||
+    (note.kind === "stopped" && coming?.kind === "failed" && coming.verb === "go-to-projects")
+      ? null
+      : note;
+  const left = read?.kind === "unfinished" ? read : null;
   const finishVerb =
     left !== null && coming?.kind === "coming" && onFinishSetup !== undefined ? (
       <Button disabled={finishing} onClick={onFinishSetup}>
@@ -962,7 +968,7 @@ export function ComingBelow({
       </Button>
     ) : null;
   const acts = verb ?? finishVerb;
-  if (acts === null && left === null) {
+  if (acts === null && read === null) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
   // Under the steps, where nothing is read yet: a stop, and *Try again* taking it back, never move
@@ -976,9 +982,9 @@ export function ComingBelow({
     >
       {steps}
       <div className="arrival-acts-block">
-        {left === null ? null : (
+        {read === null ? null : (
           <p className="arrival-acts-note" data-press-note="">
-            {left.text}
+            {read.text}
           </p>
         )}
         {acts === null ? null : <div className="arrival-acts">{acts}</div>}

@@ -846,6 +846,59 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
   });
 });
 
+// Run 6's second review: a stop's whole reason lived in a hover tooltip on a span that took no
+// focus — on a phone, or by keyboard, it could not be read. Its step keeps one line; the reason is
+// read whole under the steps, over Try again.
+describe("ComingBelow — a stop's reason, whole, under the steps", () => {
+  const REASON =
+    "The organization has reached its limit of projects; remove one or ask an owner for room.";
+  const progress = {
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press: [
+      { id: "created", label: "Created", state: "failed", why: REASON },
+      { id: "container", label: "Container", state: "waiting" },
+    ],
+  } as const;
+  const render = (coming: Parameters<typeof ComingBelow>[0]["coming"]) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming,
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          onTryAgain: () => undefined,
+        }),
+      );
+    });
+    return rendered!;
+  };
+  const notes = (rendered: ReactTestRenderer) =>
+    rendered.root
+      .findAll((node) => node.props["data-press-note"] !== undefined)
+      .map((node) => node.children.join(""));
+
+  it("reads it whole over Try again, with no hover", () => {
+    const rendered = render({ kind: "failed", line: REASON, verb: "try-again" });
+    expect(notes(rendered)).toEqual([REASON]);
+    expect(rendered.root.findAllByType("button").map((button) => button.children)).toEqual([
+      ["Try again"],
+    ]);
+  });
+
+  it("leaves it to the sentence where Zerops may have made it", () => {
+    const rendered = render({ kind: "failed", line: REASON, verb: "go-to-projects" });
+    expect(notes(rendered)).toEqual([]);
+  });
+});
+
 // The stop's words come from what made the stop: a step this tab ran says why in its place, and
 // the sentence only that it did; anything else, the sentence says why.
 describe("comingSentenceOf — the sentence over a stop", () => {
