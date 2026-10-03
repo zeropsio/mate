@@ -757,13 +757,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const onWheel = (event: WheelEvent) => {
       const node = scrollNode();
       if (!node || event.ctrlKey || event.deltaY === 0) return;
-      // A wheel that scrolls a nested scroller (a run's own scroll, a code
-      // block) is not the list's, for the whole gesture it started.
+      // Whatever it scrolls, the wheel is the person's: should the browser
+      // hand the rest of a gesture to the list, the list's move is theirs.
+      notePersonSession({ type: "input", at: performance.now() });
+      // A wheel that started in a nested scroller (a run's own scroll, a code
+      // block) does not leave the end, for the whole gesture it started.
       wheelLatch = latchWheelGesture(wheelLatch, performance.now(), () =>
         isTimelineScrollTarget(event.target, node, event.deltaY),
       );
       if (wheelLatch.targetsList)
-        input({ kind: "wheel", direction: event.deltaY < 0 ? "up" : "down" });
+        onPersonInputRef.current({ kind: "wheel", direction: event.deltaY < 0 ? "up" : "down" });
     };
     const onTouchStart = () =>
       notePersonSession({ type: "hold", by: "touch", at: performance.now() });
