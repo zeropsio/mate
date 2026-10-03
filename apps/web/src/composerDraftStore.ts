@@ -668,7 +668,7 @@ interface ComposerDraftStoreState {
   clearComposerContent: (threadRef: ComposerThreadTarget) => void;
   /**
    * Clears only the prompt text and image attachments, preserving terminal /
-   * element contexts, preview annotations, and review comments. Used by the
+   * element contexts, files, preview annotations, and review comments. Used by the
    * prompt stash, which can only round-trip text + images: clearing the
    * session-bound contexts would destroy state nothing can restore.
    */
@@ -3688,11 +3688,14 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...current,
-              prompt: ensureInlineTerminalContextPlaceholders("", current.terminalContexts.length),
+              // Files stay, as contexts do: the stash cannot carry them.
+              prompt: reconcileInlineFilePlaceholders(
+                ensureInlineTerminalContextPlaceholders("", current.terminalContexts.length),
+                current.files.length,
+              ),
               images: [],
               nonPersistedImageIds: [],
               persistedAttachments: [],
-              files: [],
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {

@@ -514,6 +514,14 @@ describe("files in a draft", () => {
     expect(files() ?? []).toEqual([]);
   });
 
+  it("clearing words and pictures for the stash keeps the files in their places", () => {
+    const store = useComposerDraftStore.getState();
+    store.insertFile(threadRef, `words ${F}\n`, makeFile("one"), 0);
+    store.clearComposerPromptAndImages(threadRef);
+    expect(files()).toEqual(["one"]);
+    expect(draftFor(threadRef.threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(F);
+  });
+
   it("saves every file's place and only the uploaded files, never their bytes", () => {
     const store = useComposerDraftStore.getState();
     store.insertFile(threadRef, F, makeFile("one", { uploaded }), 0);

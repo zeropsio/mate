@@ -101,7 +101,11 @@ import {
   type ComposerTasksProgress,
 } from "./ComposerTasksBadge";
 import { compressImageForStash } from "../../lib/imageCompression";
-import { type ComposerFileAttachment, composerAttachmentRoute } from "../../lib/composerFiles";
+import {
+  type ComposerFileAttachment,
+  composerAttachmentRoute,
+  stripInlineFilePlaceholders,
+} from "../../lib/composerFiles";
 import {
   attachmentUploadKeys,
   releaseAttachmentUpload,
@@ -2708,7 +2712,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const stashCurrentPrompt = useCallback(async () => {
     // Terminal-context placeholders reference live sessions the stash can't
     // round-trip, so they are stripped from the stashed prompt.
-    const prompt = promptRef.current.split(INLINE_TERMINAL_CONTEXT_PLACEHOLDER).join("").trim();
+    // Files stay in the composer too: the stash keeps words and pictures.
+    const prompt = stripInlineFilePlaceholders(
+      promptRef.current.split(INLINE_TERMINAL_CONTEXT_PLACEHOLDER).join(""),
+    ).trim();
     const images = [...composerImagesRef.current];
     if (prompt.length === 0 && images.length === 0) {
       setIsStashMenuOpen((open) => !open);
