@@ -30,7 +30,7 @@ import { healthRoute } from "./health.ts";
 import { importsLayer } from "./importJob.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
-import { mateLiveLayer } from "./mateLive.ts";
+import { mateOverviewsLayer } from "./mateOverviews.ts";
 import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
 import { recipeTiersLayer } from "./recipeTiers.ts";
@@ -137,7 +137,7 @@ const services = (options: CoreOptions) => {
       ),
     ),
   ).pipe(
-    Layer.provideMerge(mateLiveLayer),
+    Layer.provideMerge(mateOverviewsLayer),
     // One set of buckets for the API's addresses and the door's people.
     Layer.provideMerge(doorRateLimitLayer),
     Layer.provideMerge(leader),

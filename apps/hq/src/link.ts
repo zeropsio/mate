@@ -4,9 +4,9 @@
  *
  * - **down**, the Mate's state (`state`) at once and after every change of its record, its birth or
  *   its changes (`changes.ts`), and `ping` every 20 s;
- * - **up**, `pong`, and its summary (`summary`), kept in memory (`mateLive.ts`) for whoever may
- *   operate the Mate to follow on their structure socket. A frame whose type HQ does not know is
- *   passed by.
+ * - **up**, `pong`, and its overview (`overview`): the whole of it first, then the sections that
+ *   changed, kept by `mateOverviews.ts` for whoever may observe the Mate on their structure socket.
+ *   A frame whose type HQ does not know is passed by, and so is an older Mate's `summary`.
  *
  * Closes with `4401` once the credential is revoked (enroll again), `1001` when this Core stops
  * leading or shuts down (reconnect: another Core leads), `4408` after three silent pings, `1007` for a
@@ -33,7 +33,7 @@ import * as Socket from "effect/unstable/socket/Socket";
 import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
 import { MateCredentials } from "./mateCredentials.ts";
-import { MateLive } from "./mateLive.ts";
+import { MateOverviews } from "./mateOverviews.ts";
 import { LiveSockets } from "./stream.ts";
 import { Structure } from "./structure.ts";
 
@@ -57,7 +57,7 @@ export const serveMateLink = (
     Effect.gen(function* () {
       const writer = yield* socket.writer;
       const pull = yield* Socket.readerString(socket);
-      const live = yield* MateLive;
+      const overviews = yield* MateOverviews;
       const structure = yield* Structure;
       const changes = yield* Changes;
       const credentials = yield* MateCredentials;
@@ -66,7 +66,7 @@ export const serveMateLink = (
       const close = (code: number, reason: string) =>
         writer.write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore);
       yield* (yield* LiveSockets).track(close);
-      yield* live.connect(projectId);
+      const link = yield* overviews.connect(projectId);
 
       const sent = yield* Ref.make<string | undefined>(undefined);
       /** The Mate's state now — its record and its changes — when it differs from the last sent. */
@@ -98,8 +98,8 @@ export const serveMateLink = (
             }
             const read = readLinkUp(frame);
             if (read.kind === "invalid") return yield* close(1007, "no link message");
-            if (read.kind === "message" && read.message.type === "summary") {
-              yield* live.report(projectId, read.message.summary);
+            if (read.kind === "message" && read.message.type === "overview") {
+              yield* overviews.report(projectId, link, read.message);
             }
           }
         }

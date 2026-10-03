@@ -3,21 +3,28 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", ungrouped, apps, changes }` — what `GET /api/structure` answers, and
- *   beside it the changes of every application the caller may read them of, by application id
- *   (`@t3tools/shared/hqChanges` `ChangesSnapshot`);
+ * - `{ type: "snapshot", ungrouped, apps, changes, mates, people }` — what `GET /api/structure`
+ *   answers; beside it the changes of every application the caller may read them of, by
+ *   application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`); and every Mate the caller may
+ *   observe (`observe_mate`) as HQ holds it, by project, with the people the view names
+ *   (`@t3tools/shared/hqMates`);
  * - `{ type: "changes", appId, changes }` — one application's changes as the caller now reads them
  *   (`changes: null` once they no longer may), sent before the structure's own changes of a tick;
  * - `{ type: "change", key, value }` — one application by id as the caller now sees it (`value:
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
+ * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
+ *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
+ * - `{ type: "people", people }` — the people the view names, whenever they differ;
  * - `{ type: "ping" }` every 20 s, so the Zerops L7 (which cuts an idle connection at 60 s) never
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
  *
  * The view is computed again after every change of the structure, of a change or of a deploy, and
  * every 30 s; with roles at most 30 s old (`roles.ts`), a role change reaches an open socket within
- * 60 s (SPEC §4). The socket closes
+ * 60 s (SPEC §4). A Mate's overview moving reads no structure: its Mates are sent from what HQ
+ * holds (`mateOverviews.ts`), to the callers whose last view lets them observe it, at most once per
+ * `MATES_BATCH`. The socket closes
  * with `4401` when the caller's session ends (sign in again), `1001` when this Core stops leading
  * or shuts down (reconnect: another Core leads), `1011` when the view cannot be read (reconnect).
  *
@@ -29,6 +36,13 @@
 import * as NodeCrypto from "node:crypto";
 
 import type { ChangesMessage, ChangesSnapshot } from "@t3tools/shared/hqChanges";
+import type {
+  HqMatesMessage,
+  HqMatesSnapshot,
+  HqPeople,
+  MateLiveChange,
+} from "@t3tools/shared/hqMates";
+import { can } from "@t3tools/shared/zeropsPermissions";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -38,14 +52,17 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
+import { type MateOverviewEntry, MateOverviews } from "./mateOverviews.ts";
+import { Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
-import type { ZeropsError } from "./zerops/api.ts";
+import type { ZeropsError, ZeropsMember } from "./zerops/api.ts";
 
 export interface StreamOptions {
   readonly recheck?: Duration.Duration;
@@ -58,12 +75,17 @@ export type Ending = "session" | "lead";
 type Outgoing = StructureMessage | { readonly type: "end"; readonly ending: Ending };
 
 export type StructureMessage =
-  | ({ readonly type: "snapshot"; readonly changes: ChangesSnapshot } & StructureRead)
+  | ({ readonly type: "snapshot"; readonly changes: ChangesSnapshot } & StructureRead &
+      HqMatesSnapshot)
   | ChangesMessage
-  | { readonly type: "change"; readonly key: string; readonly value: unknown };
+  | { readonly type: "change"; readonly key: string; readonly value: unknown }
+  | HqMatesMessage;
 
 /** The key of the Mates in no application; an application's key is its id, never this. */
 const UNGROUPED = "ungrouped";
+
+/** How long a caller's Mates' moves are gathered before they go out together. */
+export const MATES_BATCH = Duration.millis(500);
 
 const CLOSE = {
   session: [4401, "session ended"],
@@ -74,80 +96,238 @@ const CLOSE = {
 
 const toJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
+/** A Mate's parts as a caller is sent them: its presence, and its overview's sections. */
+const partsOf = (entry: MateOverviewEntry): Record<string, unknown> => ({
+  presence: entry.presence,
+  ...entry.overview,
+});
+
+const encodedParts = (entry: MateOverviewEntry) =>
+  new Map(Object.entries(partsOf(entry)).map(([part, value]) => [part, toJson(value)]));
+
+/** Every Mate the view lists, by project, with its record. */
+const matesIn = (view: StructureRead) => [
+  ...view.ungrouped.map(({ projectId, mate }) => ({ projectId, mate })),
+  ...view.apps.flatMap((app) =>
+    app.projects.flatMap(({ projectId, mate }) => (mate === null ? [] : [{ projectId, mate }])),
+  ),
+];
+
+/** The people of `userIds` among the members HQ last read: never a token. */
+const peopleOf = (userIds: ReadonlySet<string>, members: ReadonlyArray<ZeropsMember>): HqPeople =>
+  Object.fromEntries(
+    members
+      .filter((member) => member.kind === "person" && userIds.has(member.userId))
+      .map((member) => [member.userId, { name: member.name }]),
+  );
+
+/** What a caller was last sent. */
+interface Sent {
+  readonly structure: ReadonlyMap<string, string>;
+  readonly changes: ReadonlyMap<string, string>;
+  /** The Mates the caller's last view lets them observe. */
+  readonly observable: ReadonlySet<string>;
+  /** The people the last view's records name. */
+  readonly named: ReadonlySet<string>;
+  /** Each observed Mate's parts, encoded. */
+  readonly mates: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  readonly people: string;
+}
+
 /**
  * The messages of `userId`'s view until `ending` says why it ends. Every change of the structure
  * and every `recheck` computes the view again; what differs from the last one sent goes out by key.
+ * A Mate's overview moving goes out from what HQ holds of it, gathered for `batch`.
  */
 export const structureMessages = <R>(
   userId: string,
   ending: Effect.Effect<Ending | undefined, never, R>,
   recheck: Duration.Duration,
-): Stream.Stream<Outgoing, SqlError | ZeropsError, Structure | Changes | Deploys | R> =>
+  batch: Duration.Duration = MATES_BATCH,
+): Stream.Stream<
+  Outgoing,
+  SqlError | ZeropsError,
+  Structure | Changes | Deploys | MateOverviews | Roles | R
+> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const structure = yield* Structure;
       const changes = yield* Changes;
       const deploys = yield* Deploys;
-      const sent = yield* Ref.make<
-        | {
-            readonly structure: ReadonlyMap<string, string>;
-            readonly changes: ReadonlyMap<string, string>;
-          }
-        | undefined
-      >(undefined);
+      const overviews = yield* MateOverviews;
+      const roles = yield* Roles;
+      const person = { kind: "person", userId } as const;
+      const one = yield* Semaphore.make(1);
+      const sent = yield* Ref.make<Sent | undefined>(undefined);
       /** The keys whose value differs between what was sent and what is now. */
       const differing = (before: ReadonlyMap<string, string>, now: ReadonlyMap<string, string>) =>
         [...new Set([...before.keys(), ...now.keys()])].filter(
           (key) => before.get(key) !== now.get(key),
         );
-      return Stream.merge(
-        Stream.merge(structure.changes, changes.changes),
-        Stream.merge(deploys.changes, Stream.tick(recheck)),
-      ).pipe(
-        Stream.mapEffect(() =>
-          Effect.gen(function* (): Generator<
-            Effect.Effect<unknown, SqlError | ZeropsError, Structure | Changes | R>,
-            ReadonlyArray<Outgoing>,
-            unknown
-          > {
-            const ends = yield* ending;
-            if (ends !== undefined) return [{ type: "end" as const, ending: ends }];
-            const view = yield* structure.read(userId);
-            const readable = yield* changes.readable(userId);
-            const now = {
-              structure: new Map([
-                [UNGROUPED, toJson(view.ungrouped)],
-                ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
-              ]),
-              changes: new Map(
-                Object.entries(readable).map(([appId, list]): [string, string] => [
-                  appId,
-                  toJson(list),
-                ]),
-              ),
+      /** What changed of one Mate since `before`; none when nothing did. */
+      const mateMessage = (
+        projectId: string,
+        entry: MateOverviewEntry | undefined,
+        before: ReadonlyMap<string, string> | undefined,
+      ): Outgoing | undefined => {
+        if (entry === undefined) {
+          return before === undefined ? undefined : { type: "mate", projectId, value: null };
+        }
+        const parts = partsOf(entry);
+        const moved = differing(before ?? new Map(), encodedParts(entry));
+        return moved.length === 0
+          ? undefined
+          : {
+              type: "mate",
+              projectId,
+              value: Object.fromEntries(moved.map((part) => [part, parts[part]])) as MateLiveChange,
             };
-            const before = yield* Ref.getAndSet(sent, now);
-            if (before === undefined) {
-              return [{ type: "snapshot" as const, ...view, changes: readable }];
-            }
-            return [
-              ...differing(before.changes, now.changes).map((appId): Outgoing => ({
-                type: "changes",
-                appId,
-                changes: readable[appId] ?? null,
-              })),
-              ...differing(before.structure, now.structure).map((key): Outgoing => ({
-                type: "change",
-                key,
-                value:
-                  key === UNGROUPED
-                    ? view.ungrouped
-                    : (view.apps.find((app) => app.id === key) ?? null),
-              })),
-            ];
+      };
+      /** The people a view names: its records' and its observed Mates' signers. */
+      const namedBy = (named: ReadonlySet<string>, mates: ReadonlyMap<string, MateOverviewEntry>) =>
+        new Set([
+          ...named,
+          ...[...mates.values()].flatMap((entry) =>
+            Object.values(entry.overview?.logins ?? {}).flatMap((login) =>
+              login.signedInBy === null ? [] : [login.signedInBy],
+            ),
+          ),
+        ]);
+      const observed = (
+        observable: ReadonlySet<string>,
+        all: ReadonlyMap<string, MateOverviewEntry>,
+      ) =>
+        new Map(
+          [...observable].flatMap((projectId) => {
+            const entry = all.get(projectId);
+            return entry === undefined ? [] : [[projectId, entry] as const];
           }),
+        );
+
+      const structureTick = Effect.gen(function* (): Generator<
+        Effect.Effect<unknown, SqlError | ZeropsError, R>,
+        ReadonlyArray<Outgoing>,
+        unknown
+      > {
+        const ends = yield* ending;
+        if (ends !== undefined) return [{ type: "end" as const, ending: ends }];
+        const view = yield* structure.read(userId);
+        const readable = yield* changes.readable(userId);
+        const facts = yield* roles.view;
+        const listed = matesIn(view);
+        const observable = new Set(
+          listed
+            .filter(({ projectId }) => can(person, "observe_mate", { projectId }, facts).allow)
+            .map(({ projectId }) => projectId),
+        );
+        const mates = observed(observable, yield* overviews.all);
+        const named = new Set(
+          listed.flatMap(({ mate }) =>
+            [mate.madeBy, mate.standupRequestedBy].flatMap((id) => (id === null ? [] : [id])),
+          ),
+        );
+        const people = peopleOf(namedBy(named, mates), facts.members);
+        const now: Sent = {
+          structure: new Map([
+            [UNGROUPED, toJson(view.ungrouped)],
+            ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
+          ]),
+          changes: new Map(
+            Object.entries(readable).map(([appId, list]): [string, string] => [
+              appId,
+              toJson(list),
+            ]),
+          ),
+          observable,
+          named,
+          mates: new Map([...mates].map(([projectId, entry]) => [projectId, encodedParts(entry)])),
+          people: toJson(people),
+        };
+        const before = yield* Ref.getAndSet(sent, now);
+        if (before === undefined) {
+          return [
+            {
+              type: "snapshot" as const,
+              ...view,
+              changes: readable,
+              mates: Object.fromEntries(
+                [...mates].map(([projectId, entry]) => [projectId, partsOf(entry)]),
+              ) as HqMatesSnapshot["mates"],
+              people,
+            },
+          ];
+        }
+        return [
+          ...differing(before.changes, now.changes).map((appId): Outgoing => ({
+            type: "changes",
+            appId,
+            changes: readable[appId] ?? null,
+          })),
+          ...differing(before.structure, now.structure).map((key): Outgoing => ({
+            type: "change",
+            key,
+            value:
+              key === UNGROUPED
+                ? view.ungrouped
+                : (view.apps.find((app) => app.id === key) ?? null),
+          })),
+          ...[...new Set([...before.mates.keys(), ...mates.keys()])].flatMap((projectId) => {
+            const message = mateMessage(
+              projectId,
+              mates.get(projectId),
+              before.mates.get(projectId),
+            );
+            return message === undefined ? [] : [message];
+          }),
+          ...(now.people === before.people ? [] : [{ type: "people" as const, people }]),
+        ];
+      });
+
+      const matesTick = (projectIds: ReadonlyArray<string>) =>
+        Effect.gen(function* (): Generator<
+          Effect.Effect<unknown, ZeropsError, R>,
+          ReadonlyArray<Outgoing>,
+          unknown
+        > {
+          const before = yield* Ref.get(sent);
+          // Before the snapshot, nothing: the snapshot carries every Mate as it stands.
+          if (before === undefined) return [];
+          const ends = yield* ending;
+          if (ends !== undefined) return [{ type: "end" as const, ending: ends }];
+          const all = yield* overviews.all;
+          const touched = [...new Set(projectIds)].filter((projectId) =>
+            before.observable.has(projectId),
+          );
+          const mates = new Map(before.mates);
+          const messages: Array<Outgoing> = [];
+          for (const projectId of touched) {
+            const entry = all.get(projectId);
+            const message = mateMessage(projectId, entry, before.mates.get(projectId));
+            if (message !== undefined) messages.push(message);
+            if (entry === undefined) mates.delete(projectId);
+            else mates.set(projectId, encodedParts(entry));
+          }
+          const people = peopleOf(
+            namedBy(before.named, observed(before.observable, all)),
+            (yield* roles.view).members,
+          );
+          const encodedPeople = toJson(people);
+          if (encodedPeople !== before.people) messages.push({ type: "people", people });
+          yield* Ref.set(sent, { ...before, mates, people: encodedPeople });
+          return messages;
+        });
+
+      return Stream.merge(
+        Stream.merge(
+          Stream.merge(structure.changes, changes.changes),
+          Stream.merge(deploys.changes, Stream.tick(recheck)),
+        ).pipe(Stream.mapEffect(() => one.withPermits(1)(structureTick))),
+        overviews.changes.pipe(
+          Stream.groupedWithin(Number.MAX_SAFE_INTEGER, batch),
+          Stream.mapEffect((projectIds) => one.withPermits(1)(matesTick(projectIds))),
         ),
-        Stream.flatMap((batch) => Stream.fromIterable(batch)),
+      ).pipe(
+        Stream.flatMap((messages) => Stream.fromIterable(messages)),
         Stream.takeUntil((message) => message.type === "end"),
       );
     }),
