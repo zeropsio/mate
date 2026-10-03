@@ -58,7 +58,11 @@ vi.mock("./accountHq", () => ({
     attachProject: async (
       appId: string,
       attach: {
-        readonly mate?: { readonly name: string; readonly standUp?: boolean };
+        readonly mate?: {
+          readonly name: string;
+          readonly standUp?: boolean;
+          readonly serviceId?: string;
+        };
         readonly birth?: string;
       },
     ) => {
@@ -67,11 +71,17 @@ vi.mock("./accountHq", () => ({
         throw hq.attachFailure;
       }
       hq.calls?.push(
-        `attach ${appId} ${attach.mate?.name ?? ""}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
+        `attach ${appId} ${attach.mate?.name ?? ""}${attach.mate?.serviceId === undefined ? "" : ` as ${attach.mate.serviceId}`}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
       );
     },
-    createMate: async (mate: { readonly name: string; readonly standUp?: boolean }) => {
-      hq.calls?.push(`record ${mate.name}${mate.standUp === true ? " asking its stand-up" : ""}`);
+    createMate: async (mate: {
+      readonly name: string;
+      readonly standUp?: boolean;
+      readonly serviceId?: string;
+    }) => {
+      hq.calls?.push(
+        `record ${mate.name}${mate.serviceId === undefined ? "" : ` as ${mate.serviceId}`}${mate.standUp === true ? " asking its stand-up" : ""}`,
+      );
     },
     mateKey: async () => hq.key,
   }),
@@ -665,14 +675,27 @@ describe("finishSetupRowLine — Finish setup as its Mate's row says it, from an
 
 // Finish setup on an older Mate, or a pool-claimed one: its harden first, tried again; then its
 // close-off, which trusts the harden and reads nothing (pass 28 review).
+/** A zcp service of a project, as the platform lists it. */
+const zcp = (id: string, name: string) => ({
+  id,
+  name,
+  status: "ACTIVE",
+  serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+});
+
 describe("finishMateSetup — the harden path", () => {
-  const inputs = (harden: () => boolean, calls: Array<string>) =>
+  const inputs = (
+    harden: () => boolean,
+    calls: Array<string>,
+    services: ReadonlyArray<ReturnType<typeof zcp>> = [],
+  ) =>
     ({
       client: {
         readProjectEnv: async () => {
           calls.push("read isolation");
           return [{ key: "envIsolation", content: "service" }];
         },
+        listProjectServices: async () => services,
       },
       organizationId: "org-acme",
       data: {
@@ -1173,6 +1196,91 @@ describe("finishMateSetup — the harden path", () => {
     hq.key = null;
     expect(await finishOld()).toMatchObject({ ok: true });
     expect(asked).toEqual(["token-7", undefined]);
+    forgetPress("p-old");
+  });
+
+  // One Mate per project (audit D2): Set up Mate and Finish setup on a project holding several zcp
+  // services stop before anything is written, naming them; Try again reads the project again.
+  it("stops on a project holding several zcp services before anything is written, naming them", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const services = [zcp("svc-1", "zcp"), zcp("svc-2", "zcp1")];
+    hq.calls = calls;
+    const finishing = {
+      inputs: inputs(() => true, calls, services),
+      projectId: "p-old",
+      projectName: "Acme - Ada",
+      container: null,
+      registration: {
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        kind: "mate-record" as const,
+        record: { name: "Ada", face: "" },
+        standUp: false,
+      },
+      hq: { projectId: "hq-project", address: "https://hq.test" },
+      isCurrent: () => true,
+      harden: true,
+      locks: undefined,
+      sleep: async () => undefined,
+    };
+    const error =
+      "This project has more than one Zerops Control Plane (zcp, zcp1). A project holds one Mate: delete the others in Zerops, then try again.";
+    expect(await finishMateSetup(finishing)).toMatchObject({
+      ok: false,
+      failedStep: { kind: "register" },
+      error,
+    });
+    expect(calls).toEqual([]);
+    const stopped = readMatePress("p-old")?.state;
+    expect(stopped).toMatchObject({ kind: "failed", reason: error });
+    if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
+    services.pop();
+    await stopped.retry();
+    expect(calls).toEqual(["harden", "record Ada as svc-1", "mark"]);
+    forgetPress("p-old");
+  });
+
+  it.each([
+    {
+      case: "an attach",
+      registration: {
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        groupId: "app-d",
+        kind: "mate" as const,
+        mate: { name: "Dan", face: undefined },
+        standUp: false,
+      },
+      write: "attach app-d Dan as svc-1",
+    },
+    {
+      case: "a record in no application",
+      registration: {
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        kind: "mate-record" as const,
+        record: { name: "Dan", face: "" },
+        standUp: false,
+      },
+      write: "record Dan as svc-1",
+    },
+  ])("names the project's one zcp service in $case", async ({ registration, write }) => {
+    begin();
+    const calls: Array<string> = [];
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: inputs(() => true, calls, [zcp("svc-1", "zcp")]),
+        projectId: "p-old",
+        projectName: "mate-rig-e2e-d - Dan",
+        container: null,
+        registration,
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        harden: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual(["harden", write, "mark"]);
     forgetPress("p-old");
   });
 
