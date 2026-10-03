@@ -216,13 +216,20 @@ export function ProviderSettingsPanel(target: ProviderSettingsTarget) {
 function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
   const { environments, isReady } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  // Only the Mates the app is connected to: a tab never wakes one to read
+  // its agents.
   const options = useMemo(
-    () => buildProviderEnvironmentOptions(environments, primaryEnvironmentId),
+    () =>
+      buildProviderEnvironmentOptions(
+        environments.filter((environment) => environment.connection.phase === "connected"),
+        primaryEnvironmentId,
+      ),
     [environments, primaryEnvironmentId],
   );
   // Raw user intent; the effective selection is re-derived every render so a
-  // device that drops out of the catalog falls back without erasing the pick —
-  // if it reappears (e.g. after a reconnect) the selection is restored.
+  // device that drops out of the list (it leaves the catalog, or its socket
+  // closes) falls back without erasing the pick — if it reappears the
+  // selection is restored.
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(
     target.environmentId ?? primaryEnvironmentId,
   );
@@ -239,47 +246,52 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
     options.length === 1 && options[0]?.entry.target._tag === "PrimaryConnectionTarget";
   const deviceTabs =
     !onlyPrimaryDevice && options.length > 0 ? (
-      <ScrollArea radius="none" hideScrollbars scrollFade className="h-11 min-w-0">
-        <div
-          role="group"
-          aria-label="Devices"
-          className="flex h-full w-max min-w-full border-b border-border/70 px-3 sm:px-4"
-        >
-          {options.map((environment) => {
-            const Icon = providerEnvironmentIcon(environment);
-            const selected = environment.environmentId === effectiveEnvironmentId;
-            const detail = providerEnvironmentDetail(environment);
-            const statusText = connectionStatusText(environment.connection);
-            return (
-              <Tooltip key={environment.environmentId}>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      className={cn(providerSettingsTabClassName(selected), "gap-2 text-left")}
-                      onClick={() => setSelectedEnvironmentId(environment.environmentId)}
-                    >
-                      <Icon className="size-3.5 shrink-0" aria-hidden />
-                      <span className="max-w-40 truncate">{environment.label}</span>
-                      <ConnectionStatusDot
-                        dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
-                        pingClassName={connectionPhasePingClassName(environment.connection.phase)}
-                      />
-                      <span className="sr-only">
-                        {detail}, {statusText}
-                      </span>
-                    </button>
-                  }
-                />
-                <TooltipPopup side="top">
-                  {detail} · {statusText}
-                </TooltipPopup>
-              </Tooltip>
-            );
-          })}
-        </div>
-      </ScrollArea>
+      <>
+        <ScrollArea radius="none" hideScrollbars scrollFade className="h-11 min-w-0">
+          <div
+            role="group"
+            aria-label="Devices"
+            className="flex h-full w-max min-w-full border-b border-border/70 px-3 sm:px-4"
+          >
+            {options.map((environment) => {
+              const Icon = providerEnvironmentIcon(environment);
+              const selected = environment.environmentId === effectiveEnvironmentId;
+              const detail = providerEnvironmentDetail(environment);
+              const statusText = connectionStatusText(environment.connection);
+              return (
+                <Tooltip key={environment.environmentId}>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        className={cn(providerSettingsTabClassName(selected), "gap-2 text-left")}
+                        onClick={() => setSelectedEnvironmentId(environment.environmentId)}
+                      >
+                        <Icon className="size-3.5 shrink-0" aria-hidden />
+                        <span className="max-w-40 truncate">{environment.label}</span>
+                        <ConnectionStatusDot
+                          dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
+                          pingClassName={connectionPhasePingClassName(environment.connection.phase)}
+                        />
+                        <span className="sr-only">
+                          {detail}, {statusText}
+                        </span>
+                      </button>
+                    }
+                  />
+                  <TooltipPopup side="top">
+                    {detail} · {statusText}
+                  </TooltipPopup>
+                </Tooltip>
+              );
+            })}
+          </div>
+        </ScrollArea>
+        <p className="px-3 pt-2 text-xs text-muted-foreground sm:px-4">
+          Only Mates the app is connected to.
+        </p>
+      </>
     ) : null;
 
   return (
