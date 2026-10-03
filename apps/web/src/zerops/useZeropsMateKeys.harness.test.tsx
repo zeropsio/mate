@@ -113,6 +113,11 @@ describe("useZeropsMateKeys at the platform", () => {
     expect(tokenRoutes.filter((route) => route === TOKEN_LIST).length).toBeLessThanOrEqual(
       1 + writes.length,
     );
+    // The shared list read again after the first write replaces the repair that wrote it: that one
+    // stops where it stands, and reads no key the one after it reads.
+    expect(tokenRoutes.filter((route) => route.startsWith("GET ") && route !== TOKEN_LIST)).toEqual(
+      ["GET /client/org-1/integration-token/t1", "GET /client/org-1/integration-token/t2"],
+    );
     expect(harness.rest.integrationToken("org-1", "t2")?.projects).toEqual([
       { projectId: "p2", roleCode: "BASIC_USER" },
     ]);

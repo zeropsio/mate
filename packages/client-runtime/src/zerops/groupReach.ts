@@ -350,16 +350,22 @@ export async function writeTokenProjectsFresh(input: {
   readonly write: (write: MateKeyWrite) => Promise<void>;
   /** Serializes each token's read-then-write; without it, nothing else writes these tokens. */
   readonly hold?: TokenWriteHold;
+  /** Ends the run where it stands: no token is read, nor written, once it aborts. */
+  readonly signal?: AbortSignal;
 }): Promise<number> {
   const hold: TokenWriteHold = input.hold ?? ((_tokenId, run) => run());
+  const ended = () => input.signal?.aborted === true;
   let written = 0;
   /** Tokens whose write failed: the others are still written, and the run fails at its end. */
   const refused = new Map<string, unknown>();
   for (const planned of input.plan(input.tokens)) {
+    if (ended()) break;
     try {
       const wrote = await hold(planned.tokenId, async () => {
+        // It waited for the token's lock, and read it: the run may have ended meanwhile.
+        if (ended()) return false;
         const fresh = await input.readOne(planned.tokenId);
-        if (fresh === undefined) return false;
+        if (fresh === undefined || ended()) return false;
         const tokens = input.tokens.map((token) => (token.id === fresh.id ? fresh : token));
         const write = input.plan(tokens).find((next) => next.tokenId === planned.tokenId);
         if (write === undefined) return false;

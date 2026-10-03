@@ -280,6 +280,36 @@ describe("writeTokenProjectsFresh", () => {
   });
 });
 
+describe("writeTokenProjectsFresh once its signal aborts", () => {
+  it("reads and writes no token more: one waiting for its lock, nor one just read", async () => {
+    const abort = new AbortController();
+    const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
+      { id: "tok-a", name: "a", projects: [] },
+      { id: "tok-b", name: "b", projects: [] },
+    ];
+    const reads: string[] = [];
+    const writes: string[] = [];
+    await writeTokenProjectsFresh({
+      tokens,
+      readOne: async (tokenId) => {
+        reads.push(tokenId);
+        // The page left while the platform answered tok-a.
+        abort.abort();
+        return tokens.find((token) => token.id === tokenId);
+      },
+      plan: (listed) =>
+        listed
+          .filter((token) => (token.projects ?? []).length === 0)
+          .map((token) => ({ tokenId: token.id, name: token.name, projects: [] })),
+      write: async (write) => {
+        writes.push(write.tokenId);
+      },
+      signal: abort.signal,
+    });
+    expect([reads, writes]).toEqual([["tok-a"], []]);
+  });
+});
+
 describe("writeTokenProjectsFresh with a write the platform refuses", () => {
   it("still writes the other tokens, then fails so its caller backs off", async () => {
     const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
