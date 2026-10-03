@@ -212,7 +212,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-zerops-primitive=\"mate-face\"][data-mate-face-state=\"waking\"]{animation:mate-face-breathe 3s ease-in-out infinite}",
     "owner": "ales",
-    "reason": "A Mate on its way up breathes while it arrives (waking): one composited box, transform-only, at most 30 minutes from its creation, stopped by reduced motion; the owner left this call to the lead (2026-10-03)",
+    "reason": "A Mate on its way up breathes while it arrives (waking): transform-only (not composited: Chrome composites no animation on SVG, so a style recalc and a repaint per frame), at most 30 minutes from its creation, stopped by reduced motion; the owner left this call to the lead (2026-10-03)",
     "expires": "never"
   },
   {
@@ -220,7 +220,7 @@
     "kind": "css-declaration",
     "fingerprint": ".mate-mark[data-mate-mark-bob=\"on\"]{animation:mate-mark-bob 5.712s cubic-bezier(0.37, 0, 0.63, 1) infinite}",
     "owner": "ales",
-    "reason": "The live mark's idle bob, moved out of the script frame loop so a resting mark runs no frame: one composited box, translate-only, only while idle and awake (it falls asleep after 45 s without the pointer), stopped by reduced motion; the lead's call on the owner's delegation (2026-10-03)",
+    "reason": "The live mark's idle bob, moved out of the script frame loop so a resting mark runs no frame: translate-only, only on a mark 48 px tall or more while idle and awake (it falls asleep after 45 s without the pointer), stopped by reduced motion; not composited (SVG), so it costs a style recalc and a repaint of the mark a frame; the lead's call on the owner's delegation (2026-10-03)",
     "expires": "never"
   },
   {
