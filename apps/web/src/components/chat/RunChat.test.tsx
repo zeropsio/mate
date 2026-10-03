@@ -1573,7 +1573,9 @@ describe("RunChat, as the person uses it", () => {
   // A control that goes once pressed hands the focus on: the thought's way to
   // the rest to its "Show less" and back, the last "Show N earlier" to the
   // lines it drew — never to the page's body.
-  it("keeps the focus on the thought's toggle as it opens and closes", () => {
+  // The focus moves without scrolling: a scroll it made would read as the
+  // person's move, and a toggle on the card's foot would follow again.
+  it("keeps the focus on the thought's toggle as it opens and closes, scrolling nothing", () => {
     // The opened thought is markdown, which reads the page's own storage.
     const savedWindow = (globalThis as { window?: unknown }).window;
     (globalThis as { window?: unknown }).window = {
@@ -1598,11 +1600,11 @@ describe("RunChat, as the person uses it", () => {
             createNodeMock: (element) =>
               element.type === "button"
                 ? {
-                    focus: () =>
+                    focus: (options?: FocusOptions) =>
                       focused.push(
-                        String(
+                        `${String(
                           (element.props as { "aria-label"?: string })["aria-label"] ?? "Show less",
-                        ),
+                        )}${options?.preventScroll === true ? "" : " (scrolled)"}`,
                       ),
                     closest: () => null,
                     isConnected: true,
@@ -1775,8 +1777,21 @@ describe("RunChat, as the person uses it", () => {
   // every arrival; only the person scrolling up in it stops that, and nothing
   // that arrives then moves what they read, until they scroll back down.
   describe("its scroll, as lines arrive", () => {
-    /** A live run's scroll with its first line, and its growth heard. */
-    function liveScroll() {
+    /**
+     * A live run's scroll with its first line, `height` tall, and its growth
+     * heard: the card grows with it up to its `cap`, and scrolls past it.
+     */
+    function liveScroll({
+      height = 600,
+      cap = 440,
+      code = "echo one",
+      items = [step(command("w1", code))],
+    }: {
+      height?: number;
+      cap?: number;
+      code?: string;
+      items?: ReadonlyArray<RecordItem>;
+    } = {}) {
       const list = { lines: true };
       const heard: Array<() => void> = [];
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
@@ -1798,19 +1813,19 @@ describe("RunChat, as the person uses it", () => {
         set scrollTop(next: number) {
           top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
         },
-        scrollHeight: 600,
-        clientHeight: 440,
+        scrollHeight: height,
+        get clientHeight() {
+          return Math.min(this.scrollHeight, cap);
+        },
         toggleAttribute: () => undefined,
       };
       const node = (element: { type: unknown }) =>
-        element.type === "ol" ? list : element.type === "div" ? box : {};
+        element.type === "ol" ? list : element.type === "div" ? box : null;
       let renderer!: ReactTestRenderer;
       act(() => {
         renderer = mounted(
           <Rows>
-            <RunChat
-              row={record([step(command("w1", "echo one"))], { live: true, status: status() })}
-            />
+            <RunChat row={record(items, { live: true, status: status() })} />
           </Rows>,
           { createNodeMock: node },
         );
@@ -1821,18 +1836,58 @@ describe("RunChat, as the person uses it", () => {
         );
       return {
         box,
+        /** The run goes on: `shown` in its history, `now` in its live slot. */
+        show: (shown: ReadonlyArray<RecordItem>, now?: RecordRow["now"]) => {
+          act(() =>
+            renderer.update(
+              <Rows>
+                <RunChat
+                  row={record(shown, { live: true, status: status(), ...(now ? { now } : {}) })}
+                />
+              </Rows>,
+            ),
+          );
+        },
         /** What it holds grows by `by`, as an arrival does. */
         grow: (by: number) => {
           box.scrollHeight += by;
           for (const callback of heard) callback();
         },
-        /** The person's wheel or finger on it, moving it or not. */
-        touched: () => {
-          act(() => {
-            scroll().props.onWheel?.();
-            scroll().props.onTouchStart?.();
-          });
+        /**
+         * The person presses the button that says `words` in it; what it
+         * closes above it rises it by `rises`, and the scroll keeps it under
+         * their pointer (`keepInPlace`).
+         */
+        press: (words: string, rises = 0) => {
+          let reads = 0;
+          const pressed = {
+            closest: () => null,
+            isConnected: true,
+            parentElement: null,
+            ownerDocument: { scrollingElement: box },
+            getBoundingClientRect: () => {
+              const top = reads === 0 ? 0 : -rises;
+              reads += 1;
+              return { top, bottom: top };
+            },
+          };
+          act(() => button(renderer, words).props.onClick({ currentTarget: pressed }));
         },
+        /** The run settles. */
+        settle: () => {
+          act(() =>
+            renderer.update(
+              <Rows>
+                <RunChat row={record(items, { status: status() })} />
+              </Rows>,
+            ),
+          );
+        },
+        /** Whether its scroll stands: the run is open. */
+        open: () =>
+          renderer.root.findAll(
+            (found) => found.type === "div" && found.props["data-run-scroll"] !== undefined,
+          ).length === 1,
         /** Its scroll heard where it stands. */
         heard: () => {
           act(() => {
@@ -1885,20 +1940,6 @@ describe("RunChat, as the person uses it", () => {
       expect(run.fromFoot()).toBe(0);
     });
 
-    // The wheel chains on to the conversation from a card at its foot, and a
-    // finger rests on a phone's card: neither moved it, and it still follows.
-    it("keeps following through a wheel or a touch over it that did not move it", () => {
-      const run = liveScroll();
-      run.grow(65);
-      run.touched();
-      run.grow(40);
-      // Its own move to the foot, heard once the next line already grew it.
-      run.box.scrollHeight += 40;
-      run.heard();
-      run.grow(0);
-      expect(run.fromFoot()).toBe(0);
-    });
-
     // A find, a drag-select, middle-click autoscroll, focus moving into it:
     // the person moved it up with no wheel, key or touch on it.
     it("holds what the person scrolled up to with no wheel, key or touch, through three arrivals", () => {
@@ -1919,7 +1960,6 @@ describe("RunChat, as the person uses it", () => {
     it("keeps following through a clamp onto a shorter foot", () => {
       const run = liveScroll();
       run.grow(400);
-      run.touched();
       run.box.scrollHeight -= 100;
       // The browser clamps it onto its new foot.
       run.box.scrollTop = Number.POSITIVE_INFINITY;
@@ -1929,12 +1969,162 @@ describe("RunChat, as the person uses it", () => {
       run.grow(0);
       expect(run.fromFoot()).toBe(0);
     });
+
+    // A card below its cap cannot scroll: it stands at its foot whatever
+    // happens, and only the person's move down onto it follows again.
+    it("keeps a call opened in a card below its cap in view as it grows and settles", () => {
+      const run = liveScroll({ height: 300, cap: 560, code: SCRIPT });
+      run.press("Show all 16 lines");
+      // What it opened grows the card, still below its cap.
+      run.grow(120);
+      expect(run.box.scrollHeight).toBe(run.box.clientHeight);
+      // Arrivals take it past its cap.
+      run.grow(300);
+      expect(run.box.scrollTop).toBe(0);
+      run.settle();
+      expect(run.open()).toBe(true);
+    });
+
+    // End glides to the foot as it stood at the press; a line arrived as it
+    // glided.
+    it("follows again once a move down reaches the foot it set out for", () => {
+      const run = liveScroll();
+      run.grow(400);
+      run.scrolled(100);
+      run.scrolled(300);
+      run.grow(35);
+      run.scrolled(560);
+      expect(run.fromFoot()).toBe(0);
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    // A browser that never says a move ended (Safari before `scrollend`; no
+    // page here has one): the move ends once the scroll stands still a moment.
+    it("sets out anew once a move down paused, where nothing says it ended", () => {
+      vi.useFakeTimers();
+      try {
+        const run = liveScroll();
+        run.grow(400);
+        run.scrolled(100);
+        run.scrolled(300);
+        act(() => vi.advanceTimersByTime(200));
+        run.grow(35);
+        // Where the foot stood as it set out, short of the one it reads now.
+        run.scrolled(560);
+        run.grow(65);
+        expect(run.box.scrollTop).toBe(560);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // A slow drag up while a thought streams: each wrap moves the foot on
+    // between the person's moves, each a few pixels.
+    it("stops following on a slow drag up between arrivals", () => {
+      const run = liveScroll();
+      run.grow(400);
+      for (let wrap = 0; wrap < 5; wrap += 1) {
+        run.scrolled(run.box.scrollTop - 3);
+        run.grow(20);
+      }
+      expect(run.box.scrollTop).toBe(545);
+    });
+
+    // What they stopped it for is done: it follows again, and catches up.
+    it("follows again once the person closes the call they opened", async () => {
+      const run = liveScroll({ code: SCRIPT });
+      run.grow(400);
+      run.press("Show all 16 lines");
+      run.grow(200);
+      expect(run.box.scrollTop).toBe(560);
+      run.press("Show less");
+      // It catches up once the press is done.
+      await Promise.resolve();
+      expect(run.fromFoot()).toBe(0);
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    // A bare command opens itself in the slot and lands so: hiding it closes
+    // nothing the person opened, and the call they did open holds the card.
+    it("stays where the person reads when a command that opened itself is hidden", async () => {
+      vi.useFakeTimers();
+      try {
+        const call = step(
+          command("w1", "npm test", { callInput: { description: "Run the tests" }, detail: "ok" }),
+        );
+        const run = liveScroll({ items: [call] });
+        run.grow(400);
+        run.press("Run the tests");
+        const code = "echo one\necho two";
+        run.show([call], {
+          kind: "step",
+          step: stepOf(
+            command("w8", code, {
+              toolLifecycleStatus: "inProgress",
+              sourceActivityKind: "tool.started",
+            }),
+          ),
+        });
+        run.show([call, step(command("w8", code))]);
+        act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+        run.press("Show less");
+        await Promise.resolve();
+        run.grow(65);
+        expect(run.box.scrollTop).toBe(560);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // Folding what they opened inside the call keeps the press under the
+    // pointer: the scroll that keeping makes is the page's, not their move up.
+    it("follows again once the person closes their call, though a fold inside it kept its place", async () => {
+      const printed = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n");
+      const run = liveScroll({
+        items: [
+          step(
+            command("w1", "npm test", {
+              callInput: { description: "Run the tests" },
+              detail: printed,
+            }),
+          ),
+        ],
+      });
+      run.grow(400);
+      run.press("Run the tests");
+      run.grow(300);
+      run.press("Show all 40 lines");
+      run.grow(400);
+      run.box.scrollHeight -= 400;
+      run.press("Show less", 400);
+      await Promise.resolve();
+      run.grow(0);
+      run.heard();
+      run.press("Run the tests");
+      await Promise.resolve();
+      expect(run.fromFoot()).toBe(0);
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
+    });
+
+    it("stays where the person scrolled after opening a call, once they close it", () => {
+      const run = liveScroll({ code: SCRIPT });
+      run.grow(400);
+      run.press("Show all 16 lines");
+      run.scrolled(300);
+      run.grow(200);
+      run.press("Show less");
+      run.grow(65);
+      expect(run.box.scrollTop).toBe(300);
+    });
   });
 
   // A line landing from the live slot moves the history's scroll to where
-  // the landed line ends exactly when the scroll follows its foot: a few
-  // pixels short of it still follows; one the person stopped (they opened a
-  // call in it) stays where they read.
+  // the landed line ends exactly when the scroll follows its foot, read as
+  // it lands: one the person stopped (they opened a call in it, or moved it
+  // up) stays where they read.
   describe("its scroll, as a line lands from the slot", () => {
     const saved = { window: (globalThis as { window?: unknown }).window };
     afterEach(() => {
@@ -2025,19 +2215,6 @@ describe("RunChat, as the person uses it", () => {
           act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
           expect(landed()).toBe(true);
         },
-        /** It moved to `top`, and was heard. */
-        scrolled: (to: number) => {
-          box.scrollTop = to;
-          act(() =>
-            scroll().props.onScroll({
-              currentTarget: {
-                scrollTop: box.scrollTop,
-                scrollHeight: box.scrollHeight,
-                clientHeight: box.clientHeight,
-              },
-            }),
-          );
-        },
       };
     }
 
@@ -2050,11 +2227,18 @@ describe("RunChat, as the person uses it", () => {
       expect(run.box.scrollTop).toBe(160);
     });
 
-    it("moves a scroll that follows from a few pixels short of its foot to the landed line's end", () => {
+    it("moves a scroll that follows to the landed line's end", () => {
       const run = landingRun();
-      run.scrolled(157);
       run.land();
       expect(run.box.scrollTop).toBe(225);
+    });
+
+    // A find or focus moved it up just before; its scroll event has not come.
+    it("leaves a scroll moved up just before, its move not heard yet, where it was", () => {
+      const run = landingRun();
+      run.box.scrollTop = 120;
+      run.land();
+      expect(run.box.scrollTop).toBe(120);
     });
   });
 

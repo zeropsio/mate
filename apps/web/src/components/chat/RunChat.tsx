@@ -66,6 +66,7 @@ import {
   use,
   useEffect,
   useEffectEvent,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -154,6 +155,7 @@ import {
   cutEdges,
   earlierShown,
   followAfter,
+  NOTHING_OPENED,
   footTop,
   formatClock,
   laidOutPosition,
@@ -323,10 +325,11 @@ const CALL_SURFACE = "ring-1 ring-foreground/9";
 const ChatShownContext = createContext<{ readonly current: boolean } | null>(null);
 
 /**
- * The run's scroll, to the lines in it: what the person opens or closes there
- * holds the scroll where it stands, rather than following its foot.
+ * The run's scroll, to the lines in it: what the person opens there holds the
+ * scroll where it stands, rather than following its foot; closing the last of
+ * it lets it follow again (`followAfter`).
  */
-const RunScrollHoldContext = createContext<(() => void) | null>(null);
+const RunScrollHoldContext = createContext<((key: string, opens: boolean) => void) | null>(null);
 
 /**
  * Whether a bubble stands in the live slot (pass 35): drawn as the row it
@@ -445,15 +448,19 @@ const HOLD_NOTHING = () => {};
  * What the person opened or closed is theirs to read (K12): the conversation
  * stops following its end, and so does the run's scroll it stands in, so the
  * line they clicked stays where it is and only what is under it moves. Drawn
- * outside a conversation, it holds nothing.
+ * outside a conversation, it holds nothing. The run's scroll counts each
+ * switch on its own: its `part` of the line keeps it one switch as the row
+ * lands from the slot, and a holder of several names each (`which`).
  */
-export function useHoldReading(): () => void {
+export function useHoldReading(part?: string): (opens: boolean, which?: string) => void {
   const ctx = use(TimelineRowCtx) as TimelineRowSharedState | null;
   const holdScroll = use(RunScrollHoldContext);
+  const line = use(ChatLineContext);
+  const id = useId();
+  const key = line !== null && part !== undefined ? `${line}#${part}` : id;
   const holdPage = ctx?.onHoldReading ?? HOLD_NOTHING;
-  if (holdScroll === null) return holdPage;
-  return () => {
-    holdScroll();
+  return (opens, which) => {
+    holdScroll?.(which === undefined ? key : `${key}#${which}`, opens);
     holdPage();
   };
 }
@@ -560,7 +567,7 @@ interface Fold {
  */
 function useFold(eligible: boolean, foldsLive = false): Fold {
   const arrived = useArrivedLive();
-  const hold = useHoldReading();
+  const hold = useHoldReading("folded");
   const [folded, setFolded] = useCarried("folded", () => eligible && (foldsLive || !arrived));
   const [opened, setOpened] = useCarried("opened", () => false);
   return {
@@ -568,7 +575,7 @@ function useFold(eligible: boolean, foldsLive = false): Fold {
     folded: eligible && folded,
     offered: eligible && (folded || opened),
     toggle: () => {
-      hold();
+      hold(folded);
       setOpened(folded);
       setFolded(!folded);
     },
@@ -669,7 +676,7 @@ function FoldToggle({
 
 /** A bubble's detail: open or not, and its switch — the person's reading held while it opens. */
 function useDisclosure(initial = false, part = "open", follows = false, shut = false) {
-  const hold = useHoldReading();
+  const hold = useHoldReading(part);
   const [open, setOpen] = useCarried(part, () => initial, follows, shut);
   // Opened by the person here: only that open moves (a carried, a first or a
   // landing one is simply there).
@@ -678,12 +685,14 @@ function useDisclosure(initial = false, part = "open", follows = false, shut = f
     open,
     made,
     set: (next: boolean) => {
-      hold();
+      // Set as it stands, nothing opened or closed.
+      if (next === open) return;
+      hold(next);
       setMade(true);
       setOpen(next);
     },
     toggle: () => {
-      hold();
+      hold(!open);
       setMade(true);
       setOpen(!open);
     },
@@ -782,7 +791,7 @@ function OutputBlock({
       {taller ? (
         <MoreToggle
           onToggle={() => {
-            hold();
+            hold(!open);
             setOpen((value) => !value);
           }}
           open={open}
@@ -1112,17 +1121,18 @@ function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMess
   const [open, setOpen] = useState(false);
   const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS * 2);
   // Opening swaps the thought's button for "Show less", and closing swaps it
-  // back: the focus goes with the person's press to the one that stands.
+  // back: the focus goes with the person's press to the one that stands —
+  // scrolling nothing, or the card would read it as their move.
   const toggleRef = useRef<HTMLButtonElement>(null);
   const handOnRef = useRef(false);
   useLayoutEffect(() => {
     if (!handOnRef.current) return;
     handOnRef.current = false;
-    toggleRef.current?.focus();
+    toggleRef.current?.focus({ preventScroll: true });
   });
   const toggle = (next: boolean) => {
     handOnRef.current = true;
-    hold();
+    hold(next);
     setOpen(next);
   };
   if (text.trim().length === 0) return null;
@@ -2047,7 +2057,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
           aria-expanded={open}
           className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
           onClick={() => {
-            hold();
+            hold(!open);
             setOpen((value) => !value);
           }}
           type="button"
@@ -3313,6 +3323,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Whether the person reads the work this moment — scrolled up in it, or
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
+  // How the history's scroll keeps to its foot, for a line landing in it.
+  const keepScrollRef = useRef<(() => void) | null>(null);
   const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
@@ -3424,11 +3436,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       return;
     }
     const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
+    // A history that follows its foot follows it to where the landed line
+    // ends; a move up the person made just before is read first, and stops it.
+    keepScrollRef.current?.();
     const scroll = scrollIn(aboveRef.current);
-    // A history that follows its foot follows it to where the landed line ends.
-    if (scroll !== null && scroll.hasAttribute("data-follows")) {
-      scroll.scrollTop = footTop(positionOf(scroll));
-    }
     const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
     if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows, landing.slot);
     for (const [key, from] of landing.from) {
@@ -3500,6 +3511,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         label={`${ctx.speaker.name}'s work`}
         landing={landing?.from ?? null}
         lines={lines}
+        keepRef={keepScrollRef}
         {...(above ? { readingRef } : {})}
       />
     );
@@ -3544,7 +3556,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
                 <WorkToggle
                   onToggle={() => {
-                    hold();
+                    hold(folded);
                     // Watched to its end and still open over its line: it
                     // folds into the line as a run settling does.
                     if (fold === "watched") {
@@ -3791,6 +3803,9 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
   );
 }
 
+/** How long a scroll stands still before its move counts as ended, where the browser never says so. */
+const SCROLL_QUIET_MS = 150;
+
 /**
  * The run's one scroll (the owner, 2026-09-29: "open with scroll and all
  * events"): every line it said and did, in the order it happened, the newest
@@ -3806,12 +3821,15 @@ function RunScroll({
   label,
   lines,
   readingRef,
+  keepRef,
   landing = null,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
   /** Told whether the person reads the work: scrolled up in it, or something in it opened. */
   readonly readingRef?: { current: boolean };
+  /** Given how to keep it at its foot while it follows, read first (`keep`). */
+  readonly keepRef?: { current: (() => void) | null };
   /** The lines landing from the live slot this draw: they plop into place, never rise in. */
   readonly landing?: ReadonlyMap<string, number> | null;
 }) {
@@ -3826,27 +3844,73 @@ function RunScroll({
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   // It follows its foot until the person moves it up or opens something in
-  // it; where its top last stood tells their move from the page's. It opens
-  // at its foot.
-  const followRef = useRef<RunScrollFollow>({ follows: true, stood: Number.POSITIVE_INFINITY });
+  // it, and again once they move it down onto its foot or close what they
+  // opened; where its top last stood tells their move from the page's. It
+  // opens at its foot.
+  const followRef = useRef<RunScrollFollow>({
+    follows: true,
+    stood: Number.POSITIVE_INFINITY,
+    opened: NOTHING_OPENED,
+    resumes: false,
+    reach: null,
+    foot: null,
+  });
   const follow = useMemo(() => {
     const heard = (event: RunScrollEvent) => {
       followRef.current = followAfter(followRef.current, event);
       const { follows } = followRef.current;
-      // Said on it, for a landing to scroll exactly when it follows.
+      // Said on it, as its cut edges are, for what looks at the page.
       scrollRef.current?.toggleAttribute("data-follows", follows);
       if (event.kind !== "set" && readingRef !== undefined) readingRef.current = !follows;
     };
+    /** The page puts its top at `top`, and remembers where the browser took it. */
+    const putAt = (element: HTMLElement, top: number) => {
+      element.scrollTop = top;
+      heard({ kind: "set", top: element.scrollTop });
+    };
+    /**
+     * Read where it stands — a move up not heard yet (a scroll event comes a
+     * frame late) is the person's — and, while it follows, put it at its foot.
+     */
+    const keep = () => {
+      const element = scrollRef.current;
+      if (element === null) return;
+      const position = positionOf(element);
+      heard({ kind: "scrolled", position });
+      if (followRef.current.follows) putAt(element, footTop(position));
+      markEdges(element);
+    };
     return {
       heard,
-      /** The page puts its top at `top`, and remembers where the browser took it. */
-      putAt: (element: HTMLElement, top: number) => {
-        element.scrollTop = top;
-        heard({ kind: "set", top: element.scrollTop });
+      putAt,
+      keep,
+      hold: (key: string, opens: boolean) => {
+        const element = scrollRef.current;
+        // A move of theirs not heard yet is theirs, before the press counts.
+        if (element !== null) heard({ kind: "scrolled", position: positionOf(element) });
+        heard({ kind: opens ? "opened" : "closed", key });
+        if (opens) return;
+        // Once the press has kept itself in place (`collapseInPlace`), that
+        // keeping is the page's move, never read as their move up: closing
+        // the last thing they opened, it catches up to its foot; else it
+        // stands where the keeping put it.
+        queueMicrotask(() => {
+          const element = scrollRef.current;
+          if (element === null) return;
+          if (followRef.current.follows) putAt(element, footTop(positionOf(element)));
+          else heard({ kind: "set", top: element.scrollTop });
+          markEdges(element);
+        });
       },
-      hold: () => heard({ kind: "held" }),
     };
   }, [readingRef]);
+  useLayoutEffect(() => {
+    if (keepRef === undefined) return;
+    keepRef.current = follow.keep;
+    return () => {
+      keepRef.current = null;
+    };
+  }, [follow, keepRef]);
   // How far above its foot the scroll stood before earlier lines were drawn
   // over the ones in view.
   const keepFromFootRef = useRef<number | null>(null);
@@ -3881,18 +3945,28 @@ function RunScroll({
     const element = scrollRef.current;
     const list = listRef.current;
     if (element === null || list === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      // Read before it follows: a move up not heard yet (a scroll event comes
-      // a frame late) is the person's, and a clamp landed on the foot.
-      const position = positionOf(element);
-      follow.heard({ kind: "scrolled", position });
-      if (followRef.current.follows) follow.putAt(element, footTop(position));
-      markEdges(element);
-    });
+    const observer = new ResizeObserver(follow.keep);
     observer.observe(list);
     observer.observe(element);
     return () => observer.disconnect();
   }, [follow]);
+  // Where the browser never says a move ended (Safari before `scrollend`),
+  // it ended once the scroll stood still a moment.
+  const quietRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (quietRef.current !== null) clearTimeout(quietRef.current);
+    },
+    [],
+  );
+  const endsOnQuiet = () => {
+    if (typeof window !== "undefined" && "onscrollend" in window) return;
+    if (quietRef.current !== null) clearTimeout(quietRef.current);
+    quietRef.current = setTimeout(() => {
+      quietRef.current = null;
+      follow.heard({ kind: "ended" });
+    }, SCROLL_QUIET_MS);
+  };
   const shown = gatherCalls(
     (from > 0 ? lines.slice(from) : lines).map((line) =>
       plopsIn(landing, line.key) ? { ...line, plops: true } : line,
@@ -3908,10 +3982,19 @@ function RunScroll({
           data-run-scroll=""
           onScroll={(event) => {
             const position = positionOf(event.currentTarget);
+            const followed = followRef.current.follows;
             follow.heard({ kind: "scrolled", position });
-            if (scrollRef.current !== null) markEdges(scrollRef.current);
+            const element = scrollRef.current;
+            if (element !== null) {
+              // Brought back to the foot it set out for, it catches up to
+              // where the foot moved on since.
+              if (!followed && followRef.current.follows) follow.putAt(element, footTop(position));
+              markEdges(element);
+            }
             drawEarlier(position);
+            endsOnQuiet();
           }}
+          onScrollEnd={() => follow.heard({ kind: "ended" })}
           role="region"
           tabIndex={0}
         >
@@ -4216,7 +4299,7 @@ export function BackgroundLine({
           aria-label={`${words}, ${where}. ${open ? "Hide" : "Show"} what it reported`}
           className="group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-md px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset"
           onClick={() => {
-            hold();
+            hold(!open);
             setOpen((value) => !value);
           }}
           type="button"
