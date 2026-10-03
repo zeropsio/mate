@@ -87,17 +87,20 @@ function askedPastTheLine(entry: WorkLogEntry, kind: WorkStep["kind"]): string[]
   ].filter((line): line is string => line !== null);
 }
 
-/** Whether a helper's report says more than its line: its state word, its first line under it. */
-function helperReportAdds(report: string | null, state: string): boolean {
+/**
+ * Whether a helper's report says more than its line: its state word, its
+ * first line under it — cut short at the card's width (`previewCut`, measured).
+ */
+function helperReportAdds(report: string | null, state: string, previewCut: boolean): boolean {
   const said = report?.trim() ?? "";
   if (said.length === 0) return false;
   const lines = said.split("\n").filter((line) => line.trim().length > 0);
   if (lines.length > 1) return true;
   if (said.replace(/[.!]$/u, "").toLowerCase() === state.toLowerCase()) return false;
-  return said.length > HELPER_LINE_CHARS;
+  return previewCut;
 }
 
-/** How long a helper's one line of report stands whole under its title, at the card's width. */
+/** How long a helper's one line of report is guessed to stand whole, before it is measured. */
 export const HELPER_LINE_CHARS = 72;
 
 /**
@@ -136,8 +139,13 @@ export type Opener =
       /** Takes with a picture, a read of the page or a reason it failed. */
       readonly shown: number;
     }
-  /** A helper's report, under its title and state. */
-  | { readonly control: "helper"; readonly report: string | null; readonly state: string }
+  /** A helper's report, under its title and state; its first line cut short at the card's width. */
+  | {
+      readonly control: "helper";
+      readonly report: string | null;
+      readonly state: string;
+      readonly previewCut: boolean;
+    }
   /** A step: what it printed, past its code's four lines. */
   | { readonly control: "step"; readonly step: WorkStep; readonly codeCut: boolean }
   /** A thought: past its four lines. */
@@ -164,7 +172,7 @@ export function opensOnto(opener: Opener): boolean {
     case "checks":
       return opener.checks > 1 || opener.shown > 0;
     case "helper":
-      return helperReportAdds(opener.report, opener.state);
+      return helperReportAdds(opener.report, opener.state, opener.previewCut);
     case "step":
       return opener.codeCut || stepOutput(opener.step).length > 0;
     case "thought":

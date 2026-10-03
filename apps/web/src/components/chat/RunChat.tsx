@@ -123,7 +123,7 @@ import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { detailLines, liveOperationBar, settledOperationBar } from "./operationBar.logic";
-import { helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
+import { HELPER_LINE_CHARS, helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -1829,7 +1829,12 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   // Its report's first line under it, unless it says its state again; it
   // opens only onto more than that line says.
   const firstLine = helperReportPreview(said ?? null, word);
-  const opens = opensOnto({ control: "helper", report: said ?? null, state: word });
+  // Cut short at the card's width, as measured — a first frame guesses by its length.
+  const [previewCut, watchPreview] = useRunsPast(
+    (firstLine?.length ?? 0) > HELPER_LINE_CHARS,
+    true,
+  );
+  const opens = opensOnto({ control: "helper", report: said ?? null, state: word, previewCut });
   const line = (
     <span className={cn("flex min-w-0 items-baseline gap-3", META)}>
       <span
@@ -1857,14 +1862,18 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
         >
           {line}
           {open || firstLine === null ? null : (
-            <span className={cn("truncate text-muted-foreground", META)}>{firstLine}</span>
+            <span ref={watchPreview} className={cn("truncate text-muted-foreground", META)}>
+              {firstLine}
+            </span>
           )}
         </button>
       ) : (
         <div className="grid min-w-0 gap-0.5 px-1.5 py-1">
           {line}
           {firstLine === null ? null : (
-            <span className={cn("truncate text-muted-foreground", META)}>{firstLine}</span>
+            <span ref={watchPreview} className={cn("truncate text-muted-foreground", META)}>
+              {firstLine}
+            </span>
           )}
         </div>
       )}
