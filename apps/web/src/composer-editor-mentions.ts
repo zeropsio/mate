@@ -1,4 +1,5 @@
 import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
+import { INLINE_FILE_PLACEHOLDER } from "./lib/composerFiles";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -32,6 +33,11 @@ export type ComposerPromptSegment =
       /** A picture's place, matched by order to the draft's images. */
       type: "picture";
       imageId: string | null;
+    }
+  | {
+      /** A file's place, matched by order to the draft's files. */
+      type: "file";
+      fileId: string | null;
     };
 
 function rangeIncludesIndex(start: number, end: number, index: number): boolean {
@@ -58,7 +64,7 @@ function forEachPromptSegmentSlice(
           promptOffset: number;
         }
       | {
-          type: "terminal-context" | "picture";
+          type: "terminal-context" | "picture" | "file";
           promptOffset: number;
         },
   ) => boolean | void,
@@ -67,7 +73,11 @@ function forEachPromptSegmentSlice(
 
   for (let index = 0; index < prompt.length; index += 1) {
     const char = prompt[index];
-    if (char !== INLINE_TERMINAL_CONTEXT_PLACEHOLDER && char !== INLINE_PICTURE_PLACEHOLDER) {
+    if (
+      char !== INLINE_TERMINAL_CONTEXT_PLACEHOLDER &&
+      char !== INLINE_PICTURE_PLACEHOLDER &&
+      char !== INLINE_FILE_PLACEHOLDER
+    ) {
       continue;
     }
 
@@ -81,7 +91,12 @@ function forEachPromptSegmentSlice(
     ) {
       return true;
     }
-    const type = char === INLINE_PICTURE_PLACEHOLDER ? "picture" : "terminal-context";
+    const type =
+      char === INLINE_PICTURE_PLACEHOLDER
+        ? "picture"
+        : char === INLINE_FILE_PLACEHOLDER
+          ? "file"
+          : "terminal-context";
     if (visitor({ type, promptOffset: index }) === true) {
       return true;
     }
@@ -209,6 +224,7 @@ export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
   pictureIds: ReadonlyArray<string> = [],
+  fileIds: ReadonlyArray<string> = [],
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
@@ -217,6 +233,7 @@ export function splitPromptIntoComposerSegments(
   const segments: ComposerPromptSegment[] = [];
   let terminalContextIndex = 0;
   let pictureIndex = 0;
+  let fileIndex = 0;
   forEachPromptSegmentSlice(prompt, (slice) => {
     if (slice.type === "text") {
       segments.push(...splitPromptTextIntoComposerSegments(slice.text));
@@ -225,6 +242,11 @@ export function splitPromptIntoComposerSegments(
     if (slice.type === "picture") {
       segments.push({ type: "picture", imageId: pictureIds[pictureIndex] ?? null });
       pictureIndex += 1;
+      return false;
+    }
+    if (slice.type === "file") {
+      segments.push({ type: "file", fileId: fileIds[fileIndex] ?? null });
+      fileIndex += 1;
       return false;
     }
 
@@ -261,9 +283,11 @@ export function splitPromptIntoEditorSegments(
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
   crewmates: ReadonlyArray<{ readonly handle: string; readonly tint: MateTintId }>,
   pictureIds: ReadonlyArray<string> = [],
+  fileIds: ReadonlyArray<string> = [],
 ): ComposerEditorSegment[] {
   const tints = new Map(crewmates.map((mate) => [mate.handle, mate.tint]));
-  return splitPromptIntoComposerSegments(prompt, terminalContexts, pictureIds).map((segment) => {
+  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts, pictureIds, fileIds);
+  return segments.map((segment) => {
     const tint = segment.type === "mention" ? tints.get(segment.path) : undefined;
     return segment.type === "mention" && tint !== undefined && segment.source === `@${segment.path}`
       ? { type: "crewmate", handle: segment.path, tint, source: segment.source }
