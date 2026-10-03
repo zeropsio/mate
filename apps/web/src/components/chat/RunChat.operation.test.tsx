@@ -1,20 +1,15 @@
 import { EnvironmentId, TurnId } from "@t3tools/contracts";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
-import type {
-  PipelineReadout,
-  PipelineSpokenState,
-} from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { act, createElement, type ReactNode } from "react";
+import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { OperationCardRegions } from "../../zerops/activity/useOperationCard";
-import { ZeropsBuildLog } from "../zerops/ZeropsBuildLog";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { RunChat } from "./RunChat";
 import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
-import { operation } from "./conversationFixtures";
+import { at as fixtureAt, operation } from "./conversationFixtures";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -22,69 +17,114 @@ import {
   type TimelineRowSharedState,
 } from "./timelineContext";
 
-// What the account store reads of a deploy, as the card's hook hands it on:
-// its pipeline and its build's newest lines. The store itself is the hook's.
-const STEPS = [
-  ["INIT_BUILD_CONTAINER", "Build container"],
-  ["RUN_BUILD_COMMANDS", "Build"],
-  ["INIT_PREPARE_CONTAINER", "Prepare container"],
-  ["RUN_PREPARE_COMMANDS", "Prepare runtime"],
-  ["DEPLOY", "Deploy"],
-] as const;
+// The account store, faked where the card's hooks read it: what it holds of
+// the project's processes, whether a card asked it to read the project, which
+// builds' logs were read and their lines. Everything above it — the card's
+// hooks, the line, the slot, the plop — is the real path.
+const store = vi.hoisted(() => ({
+  processes: [] as ReadonlyArray<unknown>,
+  /** Whether a card asks the store to read the project, as of the last draw. */
+  reading: false,
+  logLines: [] as ReadonlyArray<{ id: string; at: string; text: string; severity: number }>,
+}));
 
-function pipeline(states: ReadonlyArray<PipelineSpokenState>): PipelineReadout {
-  const steps = states.map((state, index) => ({
-    id: STEPS[index]![0],
-    label: STEPS[index]![1],
-    state,
-    sentence: `${STEPS[index]![1]}: ${state}`,
-  }));
-  const current = steps.find((step) => step.state === "running");
-  return {
-    status: { tone: "running", word: "Running" },
-    calculating: false,
-    ...(current === undefined ? {} : { currentStepId: current.id }),
-    steps,
+vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../zerops/activity/useProjectActivity")>();
+  const read = (projectId: string | null) =>
+    projectId === null
+      ? actual.EMPTY_PROJECT_ACTIVITY_SNAPSHOT
+      : { processes: store.processes, atMs: Date.now(), live: true };
+  const demand = (projectId: string | null) => {
+    if (projectId !== null) store.reading = true;
   };
-}
+  return {
+    ...actual,
+    useProjectActivityRead: read,
+    useProjectActivityDemand: demand,
+    useProjectActivity: (projectId: string | null) => {
+      demand(projectId);
+      return read(projectId);
+    },
+  };
+});
+
+vi.mock("../../zerops/activity/useBuildLog", () => ({
+  useBuildLog: ({ query, live }: { query: unknown; live: boolean }) =>
+    query === null
+      ? { lines: [], status: "idle" }
+      : { lines: live ? store.logLines : [], status: live ? "live" : "ended" },
+}));
+
+vi.mock("../../zerops/useZeropsFeeds", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../zerops/useZeropsFeeds")>();
+  return {
+    ...actual,
+    useZeropsBrowserStream: () => undefined,
+    useZeropsTopology: () => ({
+      project: { id: "proj-7", name: "orchard" },
+      services: [
+        { hostname: "appdev", serviceId: "svc-app", typeName: "Node.js", routes: [] },
+        { hostname: "apidev", serviceId: "svc-api", typeName: "Go", routes: [] },
+      ],
+      warnings: [],
+      usageRead: true,
+    }),
+  };
+});
+
+vi.mock("../../zerops/sessionContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../zerops/sessionContext")>();
+  return { ...actual, useZeropsSessionOptional: () => ({ status: "signed-in" }) };
+});
+
+// The whole log's dialog, drawn in place: what is open is there to count.
+vi.mock("~/components/ui/dialog", () => {
+  const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
+  return {
+    Dialog: ({ open, children }: { open: boolean; children?: ReactNode }) =>
+      open ? <div data-dialog-open="">{children}</div> : null,
+    DialogDescription: Pass,
+    DialogHeader: Pass,
+    DialogPanel: Pass,
+    DialogPopup: Pass,
+    DialogTitle: Pass,
+  };
+});
 
 const LOG_LINES = ["> npm ci", "added 212 packages", "> npm run build"].map((text, index) => ({
   id: `line-${index}`,
-  at: `2026-09-27T10:01:0${index}.000Z`,
+  at: `2026-09-24T20:01:0${index}.000Z`,
   text,
   severity: 6,
 }));
 
-const read = vi.hoisted(() => ({ regions: null as null | ((op: ZeropsOperation) => unknown) }));
-
-vi.mock("../../zerops/activity/useOperationCard", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../zerops/activity/useOperationCard")>();
+/** The deploy's process as the platform states it: building, or as it ended. */
+function process(
+  phase: "building" | "finished",
+  overrides: { serviceId?: string; appVersionId?: string } = {},
+): ActivityProcess {
+  const appVersionId = overrides.appVersionId ?? "av-41";
   return {
-    ...actual,
-    useOperationCard: (op: ZeropsOperation) => read.regions?.(op) ?? {},
-  };
-});
-
-/** The card's regions while the store has read the deploy: running, or as it ended. */
-function regionsOf(op: ZeropsOperation): OperationCardRegions {
-  const running = op.phase === "running";
-  return {
-    observed: {
-      steps: [],
-      chips: [],
-      provenance: "",
-      pipeline: pipeline(
-        running
-          ? ["finished", "running", "waiting", "waiting", "waiting"]
-          : ["finished", "finished", "finished", "finished", "finished"],
-      ),
-      log: createElement(ZeropsBuildLog, {
-        lines: LOG_LINES,
-        onToggle: () => undefined,
-        open: false,
-        status: running ? "live" : "ended",
-        subject: op.subject,
-      }),
+    id: `proc-${appVersionId}`,
+    projectId: "proj-7",
+    serviceStackIds: [overrides.serviceId ?? "svc-app"],
+    status: phase === "building" ? "RUNNING" : "FINISHED",
+    actionName: "stack.build",
+    created: fixtureAt(1),
+    started: fixtureAt(1),
+    ...(phase === "finished" ? { finished: fixtureAt(2) } : {}),
+    appVersion: {
+      id: appVersionId,
+      status: phase === "building" ? "BUILDING" : "ACTIVE",
+      build: {
+        serviceStackId: "svc-builder",
+        pipelineStart: fixtureAt(1),
+        startDate: fixtureAt(1, 4),
+        ...(phase === "finished"
+          ? { endDate: fixtureAt(1, 40), pipelineFinish: fixtureAt(2) }
+          : {}),
+      },
+      ...(phase === "finished" ? { activationDate: fixtureAt(2) } : {}),
     },
   };
 }
@@ -165,20 +205,27 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
   };
 }
 
-/** A deploy of the dev service, as its call left it: running, or ended. */
-function deploy(phase: "running" | "done"): ZeropsOperation {
+const STEPS = ["Build", "Prepare", "Deploy"] as const;
+
+/** A deploy of the dev service, as its call left it: running, or ended naming its version. */
+function deploy(
+  phase: "running" | "done",
+  overrides: Partial<ZeropsOperation> = {},
+): ZeropsOperation {
   const entry = operation("d1", "turn-1", 1, {
     kind: "deploy",
     phase,
     subject: "appdev",
     voice: "Deploying appdev.",
     statusWord: phase === "running" ? "Deploying" : "Deployed",
-    steps: STEPS.map(([id, label]) => ({
-      id,
+    steps: STEPS.map((label) => ({
+      id: label,
       label,
       state: phase === "running" ? "queued" : "done",
       stateLabel: phase === "running" ? "Waiting" : "Done",
     })),
+    ...(phase === "done" ? { version: { id: "av-41" } } : {}),
+    ...overrides,
   });
   if (entry.kind !== "operation") throw new Error("an operation");
   if (phase === "done") return entry.operation;
@@ -186,12 +233,24 @@ function deploy(phase: "running" | "done"): ZeropsOperation {
   return taking;
 }
 
-const running = record([], { now: { kind: "operation", operation: deploy("running") } });
-const ended = record([
-  { kind: "operation", key: "operation:op:d1", at: at(60), operation: deploy("done") },
-]);
+/** A batch deploy of two services, the first building, the second waiting its turn. */
+function batch(): ZeropsOperation {
+  return deploy("running", {
+    batch: true,
+    subject: "2 services",
+    target: { hostname: "appdev" },
+    steps: [
+      { id: "appdev", label: "appdev", state: "running", stateLabel: "Building" },
+      { id: "apidev", label: "apidev", state: "queued", stateLabel: "Waiting" },
+    ],
+  });
+}
 
-describe("RunChat — a deploy's card while it runs and once it ended", () => {
+const inSlot = (op: ZeropsOperation) => record([], { now: { kind: "operation", operation: op } });
+const inRecord = (op: ZeropsOperation, overrides: Partial<RecordRow> = {}) =>
+  record([{ kind: "operation", key: `operation:${op.key}`, at: at(60), operation: op }], overrides);
+
+describe("RunChat — an operation's card, read from the account store", () => {
   const saved = { resize: globalThis.ResizeObserver, frame: globalThis.requestAnimationFrame };
   const drawn: ReactTestRenderer[] = [];
   beforeEach(() => {
@@ -204,7 +263,12 @@ describe("RunChat — a deploy's card while it runs and once it ended", () => {
       callback(0);
       return 0;
     }) as typeof requestAnimationFrame;
-    read.regions = regionsOf;
+    // The page's clock stands where the deploy runs: half a minute in.
+    vi.useFakeTimers();
+    vi.setSystemTime(fixtureAt(1, 30));
+    store.processes = [process("building")];
+    store.reading = false;
+    store.logLines = LOG_LINES;
   });
   afterEach(() => {
     act(() => {
@@ -212,7 +276,7 @@ describe("RunChat — a deploy's card while it runs and once it ended", () => {
     });
     globalThis.ResizeObserver = saved.resize;
     globalThis.requestAnimationFrame = saved.frame;
-    read.regions = null;
+    vi.useRealTimers();
   });
 
   const mount = (row: RecordRow) => {
@@ -227,7 +291,8 @@ describe("RunChat — a deploy's card while it runs and once it ended", () => {
     drawn.push(renderer);
     return renderer;
   };
-  const redraw = (renderer: ReactTestRenderer, row: RecordRow) =>
+  const redraw = (renderer: ReactTestRenderer, row: RecordRow) => {
+    store.reading = false;
     act(() =>
       renderer.update(
         <Rows>
@@ -235,51 +300,131 @@ describe("RunChat — a deploy's card while it runs and once it ended", () => {
         </Rows>,
       ),
     );
-  /** How many of what the card draws: its pipeline's steps, its build's lines, the way to the whole log. */
-  const count = (renderer: ReactTestRenderer) => {
-    const all = (attribute: string) =>
-      renderer.root.findAll((node) => typeof node.type === "string" && attribute in node.props)
-        .length;
-    return {
-      steps: all("data-zerops-pipeline-step"),
-      log: all("data-zerops-build-log-line"),
-      whole: all("data-zerops-build-log-toggle"),
-    };
   };
-
-  it("stands open in the live slot on its pipeline and its build's newest lines", () => {
-    const renderer = mount(running);
-    expect(count(renderer)).toEqual({ steps: 5, log: 2, whole: 1 });
-    // The line says the step it is on, as the pipeline reads it.
-    expect(JSON.stringify(renderer.toJSON())).toContain('"Build"');
+  const nodes = (renderer: ReactTestRenderer, attribute: string) =>
+    renderer.root.findAll(
+      (node) => typeof node.type === "string" && node.props[attribute] !== undefined,
+    );
+  /** How many of what the card draws: its pipeline's steps, its build's lines, the way to the whole log. */
+  const count = (renderer: ReactTestRenderer) => ({
+    steps: nodes(renderer, "data-zerops-pipeline-step").length,
+    log: nodes(renderer, "data-zerops-build-log-line").length,
+    whole: nodes(renderer, "data-zerops-build-log-toggle").length,
   });
-
-  it("says only its line while the store has read nothing of it", () => {
-    read.regions = () => ({});
-    const renderer = mount(running);
-    expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
-  });
-
-  it("lands in the history as it stood once it ended, its pipeline and log still there", () => {
-    vi.useFakeTimers();
-    try {
-      const renderer = mount(running);
-      redraw(renderer, ended);
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
-      expect(count(renderer)).toEqual({ steps: 5, log: 0, whole: 1 });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("opens from the history onto its pipeline and the way to its log", () => {
-    const renderer = mount(record(ended.items, { live: false, status: null }));
-    expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
-    const opener = renderer.root.find(
+  const operationRows = (renderer: ReactTestRenderer) =>
+    renderer.root.findAll(
+      (node) =>
+        typeof node.type === "string" &&
+        String(node.props["data-chat-kind"] ?? "").startsWith("operation:"),
+    ).length;
+  const opener = (renderer: ReactTestRenderer) =>
+    renderer.root.findAll(
       (node) =>
         node.type === "button" && String(node.props["aria-label"] ?? "").includes("Show it"),
     );
-    act(() => opener.props.onClick());
-    expect(count(renderer)).toEqual({ steps: 5, log: 0, whole: 1 });
+  /** The plop: the call ended, and the slot's minimum show ran out. */
+  const plop = (renderer: ReactTestRenderer, row: RecordRow) => {
+    redraw(renderer, row);
+    act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+  };
+
+  it("a running deploy stands open in the live slot on its pipeline and its build's newest lines", () => {
+    const renderer = mount(inSlot(deploy("running")));
+    expect(count(renderer)).toMatchObject({ log: 2, whole: 1 });
+    expect(count(renderer).steps).toBeGreaterThan(0);
+    expect(store.reading).toBe(true);
+  });
+
+  it("says only its line while the store holds nothing of it", () => {
+    store.processes = [];
+    const renderer = mount(inSlot(deploy("running")));
+    expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
+  });
+
+  it("a running batch deploy stands as a line per service, the one building open on its pipeline and log", () => {
+    const renderer = mount(inSlot(batch()));
+    expect(operationRows(renderer)).toBe(2);
+    expect(count(renderer)).toMatchObject({ log: 2, whole: 1 });
+    expect(count(renderer).steps).toBeGreaterThan(0);
+  });
+
+  it.each([
+    { kind: "subdomain" as const },
+    { kind: "scale" as const },
+    { kind: "manage" as const },
+    { kind: "delete" as const },
+  ])("a running $kind in the slot asks the store to read nothing", ({ kind }) => {
+    mount(inSlot(deploy("running", { kind, steps: [] })));
+    expect(store.reading).toBe(false);
+  });
+
+  it("keeps reading after its call settled until its outcome is read", () => {
+    const renderer = mount(inSlot(deploy("running")));
+    redraw(renderer, inSlot(deploy("done")));
+    redraw(renderer, inSlot(deploy("done")));
+    expect(store.reading).toBe(true);
+    store.processes = [process("finished")];
+    redraw(renderer, inSlot(deploy("done")));
+    expect(store.reading).toBe(false);
+  });
+
+  it("lands in the history as it stood, the way to its log there from the first draw", () => {
+    const renderer = mount(inSlot(deploy("running")));
+    store.processes = [process("finished")];
+    redraw(renderer, inSlot(deploy("done")));
+    const settled = count(renderer);
+    plop(renderer, inRecord(deploy("done")));
+    expect(count(renderer)).toEqual(settled);
+    expect(settled).toMatchObject({ log: 0, whole: 1 });
+    expect(settled.steps).toBeGreaterThan(0);
+  });
+
+  it("keeps the build log's dialog open through the plop", () => {
+    const renderer = mount(inSlot(deploy("running")));
+    const toggle = nodes(renderer, "data-zerops-build-log-toggle")[0]!;
+    act(() => toggle.props.onClick());
+    expect(nodes(renderer, "data-dialog-open")).toHaveLength(1);
+    store.processes = [process("finished")];
+    plop(renderer, inRecord(deploy("done")));
+    expect(nodes(renderer, "data-dialog-open")).toHaveLength(1);
+  });
+
+  it("a landed card is simply there; one the person opens rises", () => {
+    const renderer = mount(inSlot(deploy("running")));
+    store.processes = [process("finished")];
+    plop(renderer, inRecord(deploy("done")));
+    expect(nodes(renderer, "data-chat-detail")).toHaveLength(1);
+    expect(nodes(renderer, "data-chat-detail-rises")).toHaveLength(0);
+
+    const fresh = mount(inRecord(deploy("done", { key: "op:d2" }), { live: false, status: null }));
+    act(() => opener(fresh)[0]!.props.onClick());
+    expect(nodes(fresh, "data-chat-detail-rises")).toHaveLength(1);
+  });
+
+  it("opened after a reload, a settled deploy reads its details from the store by its id", () => {
+    store.processes = [];
+    const renderer = mount(
+      inRecord(deploy("done", { key: "op:d9" }), { live: false, status: null }),
+    );
+    expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
+    act(() => opener(renderer)[0]!.props.onClick());
+    // Not held yet: the store is asked to read it.
+    expect(store.reading).toBe(true);
+    store.processes = [process("finished")];
+    redraw(renderer, inRecord(deploy("done", { key: "op:d9" }), { live: false, status: null }));
+    expect(count(renderer).steps).toBeGreaterThan(0);
+    expect(count(renderer).whole).toBe(1);
+    // Read: the store is asked no further.
+    expect(store.reading).toBe(false);
+  });
+
+  it("one whose call returned while its build runs on lands closed and opens onto nothing", () => {
+    const renderer = mount(inSlot(deploy("running")));
+    const returned = deploy("running", { returnedAt: fixtureAt(1, 20) });
+    plop(renderer, inRecord(returned));
+    redraw(renderer, inRecord(returned));
+    expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
+    expect(opener(renderer)).toHaveLength(0);
+    expect(store.reading).toBe(false);
   });
 });

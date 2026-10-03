@@ -18,6 +18,7 @@ import {
   settledOperationBar,
   settledOperationWords,
   showsCardInSlot,
+  slotOpenDeployLine,
 } from "./operationBar.logic";
 
 type Step = ZeropsOperation["steps"][number];
@@ -426,5 +427,42 @@ describe("showsCardInSlot — the live slot opens an operation onto what it read
     },
   ] as const)("$name", ({ observed, open }) => {
     expect(showsCardInSlot(observedLinesOf(observed))).toBe(open);
+  });
+});
+
+// Three deploys running at once in the live slot would outgrow its room: the
+// newest running one stands open on its card, the others stay a line each.
+describe("slotOpenDeployLine — the one deploy that stands open in the live slot", () => {
+  const deploy = (key: string, overrides: Partial<ZeropsOperation> = {}) => ({
+    key: `operation:${key}`,
+    operation: operation({ key, kind: "deploy", phase: "running", subject: key, ...overrides }),
+  });
+  const batch = deploy("b1", {
+    batch: true,
+    subject: "3 services",
+    steps: [step("apidev", "done"), step("webdev", "running"), step("workerdev", "queued")],
+  });
+  it.each([
+    { name: "none in the slot", lines: [], open: null },
+    { name: "the one running", lines: [deploy("d1")], open: "operation:d1" },
+    {
+      name: "the newest of those running",
+      lines: [deploy("d1"), deploy("d2"), deploy("d3")],
+      open: "operation:d3",
+    },
+    {
+      name: "the newest running, not one that ended after it",
+      lines: [deploy("d1"), deploy("d2", { phase: "done" })],
+      open: "operation:d1",
+    },
+    {
+      name: "none running: the newest, as it ended there",
+      lines: [deploy("d1", { phase: "done" }), deploy("d2", { phase: "failed" })],
+      open: "operation:d2",
+    },
+    { name: "never another kind", lines: [deploy("s1", { kind: "subdomain" })], open: null },
+    { name: "a batch: the service it is building", lines: [batch], open: "operation:b1~webdev" },
+  ])("$name", ({ lines, open }) => {
+    expect(slotOpenDeployLine(lines)).toBe(open);
   });
 });

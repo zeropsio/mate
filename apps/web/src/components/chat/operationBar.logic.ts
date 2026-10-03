@@ -14,6 +14,7 @@ import type {
 import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
+import { splitBatchDeploy } from "./conversation.logic";
 import type { BarTone } from "./StatusBar";
 
 export type OperationLineState = "waits" | "building" | "up" | "failed";
@@ -344,4 +345,40 @@ export function detailLines(
     (operation.screenshot === undefined ? 0 : 1) +
     (operation.browserRead === undefined ? 0 : 1)
   );
+}
+
+/** A batch deploy's service's line in the live slot: its own, beside the batch's. */
+export function slotServiceLine(line: string | null, service: ZeropsOperation): string {
+  return `${line ?? ""}~${service.subject}`;
+}
+
+/**
+ * The line of the one deploy that stands open on its card in the live slot:
+ * the newest running one, else, none running, the newest as it ended there —
+ * the others stay a line each, so the slot never outgrows its room. A batch
+ * stands as its services' lines: the one it is building, else the first
+ * still running.
+ */
+export function slotOpenDeployLine(
+  lines: ReadonlyArray<{ readonly key: string; readonly operation: ZeropsOperation }>,
+): string | null {
+  const deploys = lines.flatMap((line) =>
+    line.operation.kind !== "deploy"
+      ? []
+      : line.operation.batch === true
+        ? (() => {
+            const services = splitBatchDeploy(line.operation);
+            const service =
+              services.find((one) => one.steps[0]?.state === "running") ??
+              services.find((one) => one.phase === "running") ??
+              services.at(-1);
+            return service === undefined
+              ? []
+              : [{ key: slotServiceLine(line.key, service), operation: service }];
+          })()
+        : [line],
+  );
+  const newest =
+    deploys.findLast((line) => line.operation.phase === "running") ?? deploys.at(-1) ?? null;
+  return newest === null ? null : newest.key;
 }
