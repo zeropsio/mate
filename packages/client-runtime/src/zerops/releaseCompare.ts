@@ -47,7 +47,10 @@ const UNTOLD: ProductionRun = { kind: "untold" };
 export type ProductionRun =
   /** A commit, whole. */
   | { readonly kind: "commit"; readonly sha: string }
-  /** Listed, and runs no version: a first release puts its repository's whole `main` live. */
+  /**
+   * Listed, and runs no version, or the import's own no-code one (active, sourced `NONE`): a first
+   * release puts its repository's whole `main` live.
+   */
   | { readonly kind: "nothing" }
   /**
    * It runs something no comparison can start from: a version named by hand, or by seven hex no
@@ -80,7 +83,8 @@ export function productionRuns(input: {
   for (const { hostname, serviceId } of input.services) {
     const version = input.stated.get(serviceId);
     if (version?.state !== "known") return undefined;
-    if (version.value.activeId === null) {
+    // The import's own deploy carries no code: the service runs nothing, as `stopView` says.
+    if (version.value.activeId === null || version.value.source === "NONE") {
       runs.set(hostname, { kind: "nothing" });
       continue;
     }
