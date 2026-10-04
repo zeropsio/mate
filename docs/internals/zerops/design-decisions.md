@@ -3839,7 +3839,8 @@ no-cache`.
     sign-in line, amber dot or last message, and is still never retried on its own.
   - A Mate whose project HQ says is not closed off takes no lease and no Connect, even on screen,
     whatever its container's age. It reads "Closing off its project…" until HQ says it is closed
-    off, with Finish setup in its menu. HQ's streamed word alone says closed off: no project tag,
+    off, with Finish setup in its menu — offered on HQ's word whenever its container's marker is not
+    read absent, so a marker that cannot be read never leaves it without a way out. HQ's streamed word alone says closed off: no project tag,
     no clock (2026-10-05). While HQ says nothing, only this browser's own knowledge that its
     close-off has not happened holds it.
   - _Why:_ the stop hid a working Mate's state until reload, and leases had dropped 0.12.3's

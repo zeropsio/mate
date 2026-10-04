@@ -1258,23 +1258,30 @@ interface MarkedCandidate {
 const closedOffAtHq = (candidate: MarkedCandidate): boolean =>
   candidate.project.hq?.mate?.closedOff === true;
 
+/** Whether HQ's record of the project's Mate says it is not closed off. */
+const openAtHq = (candidate: MarkedCandidate): boolean =>
+  candidate.project.hq?.mate?.closedOff === false;
+
 /**
  * The zcp services of the Mates whose press was interrupted before its close-off: the container
- * carries the press's marker (`MATE_SETUP_RUNTIMES`) while HQ does not know the project closed off.
- * A marker the store has not read, or could not, says nothing.
+ * carries the press's marker (`MATE_SETUP_RUNTIMES`) while HQ does not know the project closed off
+ * — or HQ says it is not, and the marker is not read yet or cannot be. The close-off gate holds
+ * that Mate (`closeOffGate` `checking`), and *Finish setup* is its way out: closing off a project
+ * already closed off only restarts its services once. A marker read absent (a Mate made before the
+ * press) is never one.
  */
 export function interruptedPresses(
   candidates: ReadonlyArray<MarkedCandidate>,
   markers: ReadonlyMap<string, boolean | "unknown" | "unread">,
 ): ReadonlySet<string> {
   return new Set(
-    candidates.flatMap((candidate) =>
-      candidate.service !== undefined &&
-      !closedOffAtHq(candidate) &&
-      markers.get(candidate.service.id) === true
+    candidates.flatMap((candidate) => {
+      if (candidate.service === undefined || closedOffAtHq(candidate)) return [];
+      const marker = markers.get(candidate.service.id);
+      return marker === true || (marker !== false && marker !== undefined && openAtHq(candidate))
         ? [candidate.service.id]
-        : [],
-    ),
+        : [];
+    }),
   );
 }
 

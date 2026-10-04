@@ -115,7 +115,8 @@ export function finishMateSetupVerb(input: {
   readonly pressStopped: boolean;
   /**
    * Its container carries the press's marker (`MATE_SETUP_RUNTIMES`) and HQ does not know its
-   * project closed off: a press interrupted before its close-off, whose runtimes zcp holds back.
+   * project closed off — or HQ says it is not, and the marker is not read or cannot be: a press
+   * interrupted before its close-off, whose runtimes zcp holds back (`interruptedPresses`).
    */
   readonly closedOffMissing: boolean;
   /**

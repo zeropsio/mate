@@ -104,7 +104,8 @@ const mate = (serviceId: string | undefined, closedOff: boolean | undefined) => 
 });
 
 // A press interrupted before its close-off: the container carries the press's marker, and HQ does
-// not know its project closed off (pass 28). *Finish setup* finishes it.
+// not know its project closed off (pass 28) — or HQ says it is not, and the marker is not read.
+// *Finish setup* finishes it.
 describe("interruptedPresses", () => {
   it.each([
     {
@@ -125,15 +126,29 @@ describe("interruptedPresses", () => {
       marker: false,
       interrupted: false,
     },
+    // HQ's word that its project is not closed off is enough while the marker is not read, or
+    // cannot be: the close-off gate holds it then, and Finish setup is its way out (2026-10-05).
     {
-      case: "a marker the store has not read yet",
+      case: "a marker the store has not read yet, HQ saying it is not closed off",
       mate: mate("zcp-a", false),
       marker: "unread" as const,
+      interrupted: true,
+    },
+    {
+      case: "a marker whose stream failed, HQ saying it is not closed off",
+      mate: mate("zcp-a", false),
+      marker: "unknown" as const,
+      interrupted: true,
+    },
+    {
+      case: "a marker whose stream failed, HQ saying nothing of it",
+      mate: mate("zcp-a", undefined),
+      marker: "unknown" as const,
       interrupted: false,
     },
     {
-      case: "a marker whose stream failed",
-      mate: mate("zcp-a", false),
+      case: "a marker whose stream failed, HQ holding no record",
+      mate: { service: { id: "zcp-a" }, project: {} },
       marker: "unknown" as const,
       interrupted: false,
     },
