@@ -1558,6 +1558,41 @@ describe("the cells' one-shot reads", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("a newer input revision gets one read even when the superseded read failed", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const gate = yield* Deferred.make<void>();
+      let reads = 0;
+      const cells = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        adapter: unusedAdapter({
+          readOrganizationIntegrationTokenGrants: () =>
+            Effect.suspend(() => {
+              reads++;
+              return reads === 1
+                ? Deferred.await(gate).pipe(Effect.andThen(Effect.fail(transportFailure())))
+                : Effect.succeed([{ tokenId: "token-new", name: "new", grants: [] }]);
+            }),
+        }),
+      });
+      const request = tokenGrantsRequest(scope);
+      const reader = yield* Effect.forkChild(oneShot(cells, request));
+      yield* Effect.yieldNow;
+      yield* cells.invalidate(request);
+      yield* cells.invalidate(request);
+      yield* Deferred.succeed(gate, undefined);
+      expect(yield* Fiber.join(reader)).toMatchObject({
+        state: "known",
+        value: [{ tokenId: "token-new" }],
+      });
+      expect(reads).toBe(2);
+      yield* TestClock.adjust("1 minute");
+      expect(reads).toBe(2);
+      yield* cells.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("a new one-shot demand reads once after five manual failed reads", () =>
     Effect.gen(function* () {
       const scope = accountScope();

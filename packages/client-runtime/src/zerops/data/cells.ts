@@ -647,27 +647,33 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       return;
     }
     const failure = failureOf(exit.cause);
-    apply(entry, {
-      kind: "read-failed",
-      ordinal: inFlight.ordinal,
-      failure,
-      retryAtMs: null,
-    });
+    const failed = advance(
+      entry.cell,
+      {
+        kind: "read-failed",
+        ordinal: inFlight.ordinal,
+        failure,
+        retryAtMs: null,
+      },
+      now(),
+    );
     // A newer write is a new input revision, even if the earlier read failed.
+    // Its reader waits for that revision, rather than settling with the superseded failure.
     if (entry.demands.size > 0 && entry.cell.lastInvalidation > entry.attemptedInvalidation)
-      startRead(entry);
+      startRead(entry, failed);
+    else setCell(entry, failed);
   };
 
-  const startRead = (entry: CellEntry): void => {
+  const startRead = (entry: CellEntry, cell = entry.cell): void => {
     const inFlight: CellReadInFlight = {
       ordinal: ++ordinal,
       controller: new AbortController(),
       fiber: null,
     };
     const atMs = now();
-    entry.attemptedInvalidation = entry.cell.lastInvalidation;
+    entry.attemptedInvalidation = cell.lastInvalidation;
     entry.inFlight = inFlight;
-    apply(entry, { kind: "read-started", ordinal: inFlight.ordinal, atMs });
+    setCell(entry, advance(cell, { kind: "read-started", ordinal: inFlight.ordinal, atMs }, atMs));
     const read = readCell(options.adapter, entry.request, {
       abortSignal: inFlight.controller.signal,
     });
@@ -881,6 +887,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     if (held.demands.size === 1) cancelEviction(held);
     // New action demands consume one revision; passive views preserve a terminal failure.
     reconcile(held, options.access(), now(), true, passive);
+    if (pending.has(key)) drainAdmission();
     const active = () => !closed && held.demands.has(id);
     return {
       key,
