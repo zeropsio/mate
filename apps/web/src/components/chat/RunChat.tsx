@@ -123,6 +123,8 @@ import {
 import { useLiveSlot } from "./useLiveSlot";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
+import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
+import { easeRoom, easeRoomsUnder, type Room } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -2992,6 +2994,9 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
   return <NowLine answering={false} now={null} outcome={null} status={status} />;
 }
 
+/** The boxes in a run's chat whose height eases as what they hold grows (`easeRoom`). */
+const EASED_BOXES = "[data-chat-bubble],[data-chat-calls]";
+
 const NO_KEYS: ReadonlyArray<string> = [];
 const NO_HOLDS: ReadonlySet<string> = new Set();
 
@@ -3258,6 +3263,32 @@ function LiveSlot({
     placeSlot(listRef.current);
     // Read when what it shows changed, never on every draw.
   }, [slot, live, items, filler, lines.length]);
+  // Its room eases as rows come and go (`easeRoom`), uncovering a row that
+  // joins at its foot; nothing eases on a resync.
+  const syncingRef = useRef(ctx.syncing);
+  useLayoutEffect(() => {
+    syncingRef.current = ctx.syncing;
+  }, [ctx.syncing]);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const slotBox = list?.parentElement;
+    if (list === null || slotBox === null || slotBox === undefined) return;
+    const room = easeRoom({
+      box: slotBox,
+      content: list,
+      eases: () => shownRef.current && !syncingRef.current,
+      clips: true,
+    });
+    const rooms = easeRoomsUnder({
+      root: list,
+      selector: EASED_BOXES,
+      eases: () => shownRef.current && !syncingRef.current,
+    });
+    return () => {
+      rooms();
+      room.stop();
+    };
+  }, []);
   // A row opened or shut in place, or the page resized: the room it takes
   // changes with no change of what it shows.
   useEffect(() => {
@@ -3549,6 +3580,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         landing={landing?.from ?? null}
         lines={lines}
         keepRef={keepScrollRef}
+        eases={slotted && !ctx.syncing}
         {...(above ? { readingRef } : {})}
       />
     );
@@ -3860,6 +3892,7 @@ function RunScroll({
   readingRef,
   keepRef,
   landing = null,
+  eases = false,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
@@ -3869,6 +3902,8 @@ function RunScroll({
   readonly keepRef?: { current: (() => void) | null };
   /** The lines landing from the live slot this draw: they plop into place, never rise in. */
   readonly landing?: ReadonlyMap<string, number> | null;
+  /** Whether its room eases as lines join it, and it glides to its foot: a live run, watched. */
+  readonly eases?: boolean;
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -3880,6 +3915,36 @@ function RunScroll({
   const [from, setFrom] = useState(() => chatOpensAt(lines.length));
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
+  const easesRef = useRef(eases);
+  useLayoutEffect(() => {
+    easesRef.current = eases;
+  }, [eases]);
+  // Its room easing to its lines (`easeRoom`): made before what keeps it at
+  // its foot, so that hears each change with the room already holding the
+  // height it showed.
+  const roomRef = useRef<Room | null>(null);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    const list = listRef.current;
+    if (element === null || list === null) return;
+    const room = easeRoom({
+      box: element,
+      content: list,
+      eases: () => easesRef.current && shownRef.current,
+    });
+    roomRef.current = room;
+    // Each bubble and card of calls in it eases as what it holds grows.
+    const rooms = easeRoomsUnder({
+      root: list,
+      selector: EASED_BOXES,
+      eases: () => easesRef.current && shownRef.current,
+    });
+    return () => {
+      rooms();
+      room.stop();
+      roomRef.current = null;
+    };
+  }, []);
   // It follows its foot until the person moves it up or opens something in
   // it, and again once they move it down onto its foot or close what they
   // opened; where its top last stood tells their move from the page's. It
@@ -3906,21 +3971,70 @@ function RunScroll({
       heard({ kind: "set", top: element.scrollTop });
     };
     /**
+     * Where its foot will stand once its room has eased: a room still growing
+     * uncovers what joined, and the scroll stays.
+     */
+    const footOf = (position: RunScrollPosition) =>
+      Math.max(0, footTop(position) - (roomRef.current?.pending() ?? 0));
+    // The glide to the foot, while one runs: where it stands (the browser
+    // rounds what it is given), and the frame it waits for.
+    const gliding = { frame: 0, at: 0, last: 0 };
+    /**
+     * Glides it to its foot on the room's curve, retargeted each frame as the
+     * foot moves on; a move of the person's up stops it (`followAfter`).
+     */
+    const glide = () => {
+      const element = scrollRef.current;
+      if (element === null || gliding.frame !== 0) return;
+      gliding.at = element.scrollTop;
+      gliding.last = 0;
+      const tick = (now: number) => {
+        gliding.frame = 0;
+        const element = scrollRef.current;
+        if (element === null || !followRef.current.follows) return;
+        // Moved since by something else: it glides on from there.
+        if (Math.abs(element.scrollTop - gliding.at) > 2) gliding.at = element.scrollTop;
+        const target = footOf(positionOf(element));
+        gliding.at = approach(
+          gliding.at,
+          target,
+          gliding.last === 0 ? 1000 / 60 : now - gliding.last,
+          FOLLOW_TAU_MS,
+        );
+        gliding.last = now;
+        putAt(element, gliding.at);
+        markEdges(element);
+        if (gliding.at !== target) gliding.frame = requestAnimationFrame(tick);
+      };
+      gliding.frame = requestAnimationFrame(tick);
+    };
+    // How tall its lines stood at the last keep: lines joining glide it on,
+    // its own box changing keeps its foot where it is.
+    const laid: { height: number | null } = { height: null };
+    /**
      * Read where it stands — a move up not heard yet (a scroll event comes a
-     * frame late) is the person's — and, while it follows, put it at its foot.
+     * frame late) is the person's — and, while it follows, keep it at its
+     * foot: gliding there as lines join it, at once as its box changes.
      */
     const keep = () => {
       const element = scrollRef.current;
       if (element === null) return;
       const position = positionOf(element);
       heard({ kind: "scrolled", position });
-      if (followRef.current.follows) putAt(element, footTop(position));
+      const grew = laid.height !== null && position.scrollHeight > laid.height + 0.5;
+      laid.height = position.scrollHeight;
+      if (followRef.current.follows) {
+        const foot = footOf(position);
+        if (grew && foot > element.scrollTop + 0.5 && easesRef.current) glide();
+        else if (gliding.frame === 0) putAt(element, foot);
+      }
       markEdges(element);
     };
     return {
       heard,
       putAt,
       keep,
+      glide,
       hold: (key: string, opens: boolean) => {
         const element = scrollRef.current;
         // A move of theirs not heard yet is theirs, before the press counts.
@@ -4023,9 +4137,9 @@ function RunScroll({
             follow.heard({ kind: "scrolled", position });
             const element = scrollRef.current;
             if (element !== null) {
-              // Brought back to the foot it set out for, it catches up to
+              // Brought back to the foot it set out for, it glides on to
               // where the foot moved on since.
-              if (!followed && followRef.current.follows) follow.putAt(element, footTop(position));
+              if (!followed && followRef.current.follows) follow.glide();
               markEdges(element);
             }
             drawEarlier(position);
