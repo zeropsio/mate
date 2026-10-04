@@ -11,7 +11,7 @@ import { ZeropsFrameWait, ZeropsHandoverActions, ZeropsLandingShell } from "./Ze
 
 /** Registration and second factors belong to the Zerops account application. */
 export function ZeropsHostedLanding() {
-  const { status, adoptHandover, signOut, verifyAgain } = useZeropsSession();
+  const { status, adoptHandover, signOut, verifyAgain, retrying } = useZeropsSession();
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const generation = useRef(0);
   if (status === "signed-in") return <ZeropsProjectsPage />;
@@ -34,6 +34,10 @@ export function ZeropsHostedLanding() {
         >
           Sign out
         </button>
+        {/* A background retry speaks here, in room the line always holds: nothing moves. */}
+        <p className="min-h-4 text-center text-xs text-muted-foreground" aria-live="polite">
+          {retrying === true ? "Trying again…" : null}
+        </p>
       </ZeropsLandingShell>
     );
   const start = (intent?: "register") => {

@@ -63,7 +63,8 @@ export function parseZeropsSessionOwner(raw: string | null): ZeropsSessionOwner 
 export type ZeropsPrincipalVerdict =
   | { readonly kind: "user"; readonly user: ZeropsUser }
   | { readonly kind: "unauthorized" }
-  | { readonly kind: "unavailable" };
+  /** Zerops did not answer; a 429 says how long to wait (`Retry-After`). */
+  | { readonly kind: "unavailable"; readonly retryAfterMs?: number };
 
 /** The held token of an open account: current, or a stored one being verified. */
 export type ZeropsTokenState =
@@ -85,6 +86,8 @@ export type ZeropsSessionState =
       readonly status: "verifying";
       readonly session: ZeropsSession;
       readonly backoff: Backoff;
+      /** A timed, online or visible retry of a failed check: the failure stays shown meanwhile. */
+      readonly retry?: true;
     }
   | {
       readonly status: "unavailable";
@@ -296,9 +299,10 @@ function onProbed(
   const cancel = leaving(state, { closeAccount: false });
   if (verdict.kind === "unavailable") {
     const { retryAtMs, backoff } = scheduleRetry(token.backoff, ctx.nowMs, ctx.random);
+    const retryAt = Math.max(retryAtMs, ctx.nowMs + (verdict.retryAfterMs ?? 0));
     return {
-      state: { ...state, token: { ...token, backoff, retryAt: retryAtMs } },
-      effects: [...cancel, { kind: "schedule", at: retryAtMs }],
+      state: { ...state, token: { ...token, backoff, retryAt } },
+      effects: [...cancel, { kind: "schedule", at: retryAt }],
     };
   }
   if (!isSameLogin(state, verdict, owner)) return verify(state, token.next);
@@ -335,7 +339,10 @@ function onWakeEvent(
       return { state, effects: [{ kind: "schedule", at: state.retryAt }] };
     const backoff = backoffOn(state.backoff, RETRY_TRIGGER[trigger]);
     return {
-      state: { status: "verifying", session: state.session, backoff },
+      state:
+        trigger === "verify-again"
+          ? { status: "verifying", session: state.session, backoff }
+          : { status: "verifying", session: state.session, backoff, retry: true },
       effects: [
         ...(trigger === "tick" ? [] : [{ kind: "cancel-schedule" } as const]),
         { kind: "verify", session: state.session },
@@ -393,9 +400,11 @@ export function transitionZeropsSession(
         };
       if (verdict.kind === "unauthorized") return { state: { status: "signed-out" }, effects: [] };
       const { retryAtMs, backoff } = scheduleRetry(state.backoff, ctx.nowMs, ctx.random);
+      // A Retry-After is a floor the ladder never undercuts.
+      const retryAt = Math.max(retryAtMs, ctx.nowMs + (verdict.retryAfterMs ?? 0));
       return {
-        state: { status: "unavailable", session: state.session, backoff, retryAt: retryAtMs },
-        effects: [{ kind: "schedule", at: retryAtMs }],
+        state: { status: "unavailable", session: state.session, backoff, retryAt },
+        effects: [{ kind: "schedule", at: retryAt }],
       };
     }
     case "PROBED":
@@ -653,6 +662,13 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
  * access token alone, so a 401 never spends the refresh token another tab
  * shares, and never touches the tab's own client.
  */
+/** Zerops did not answer `cause`: a 429 carries the Retry-After the next check waits out. */
+export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
+  return cause instanceof ZeropsApiError && cause.status === 429 && cause.retryAfterMs !== null
+    ? { kind: "unavailable", retryAfterMs: cause.retryAfterMs }
+    : { kind: "unavailable" };
+}
+
 export async function probeZeropsPrincipal(
   options: { readonly fetch: FetchImplementation; readonly baseUrl: string },
   session: ZeropsSession,
@@ -664,6 +680,6 @@ export async function probeZeropsPrincipal(
   } catch (cause) {
     return cause instanceof ZeropsApiError && cause.status === 401
       ? { kind: "unauthorized" }
-      : { kind: "unavailable" };
+      : unavailableVerdict(cause);
   }
 }

@@ -1494,15 +1494,16 @@ describe("makeZeropsDataRuntime", () => {
           const historyLease = yield* runtime
             .acquire(history.descriptor)
             .pipe(Scope.provide(leaseScope));
-          // It fails alone, with its own retry time.
-          const settled = yield* waitForState(states, (state) => {
-            const history = state.interests.get(historyLease.interest)?.interest;
-            return history?.status === "failed" && history.retryAtMs !== null;
-          });
+          // It fails alone; refused (403), it waits for a person or a grant, not a timer.
+          const settled = yield* waitForState(
+            states,
+            (state) => state.interests.get(historyLease.interest)?.interest.status === "failed",
+          );
           expect(settled.interests.get(historyLease.interest)?.required).toBe(false);
           expect(settled.interests.get(historyLease.interest)?.interest).toMatchObject({
             status: "failed",
-            retryAtMs: expect.any(Number),
+            retryable: false,
+            retryAtMs: null,
           });
           expect(settled.interests.get(topology.interest)?.interest).toMatchObject({
             status: "observing",
@@ -2665,6 +2666,7 @@ describe("makeZeropsDataRuntime", () => {
         adapter,
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
         policy: makeZeropsDataPolicy({}),
       });
       const states = yield* Queue.unbounded<ZeropsDataState>();
@@ -4647,6 +4649,7 @@ describe("incomplete data says so, with its retry", () => {
           adapter,
           atomRegistry: registry,
           makeOpaqueId: makeIdFactory(),
+          random: () => 0,
           policy: makeZeropsDataPolicy({
             hydrationRetryLimit: 2,
             recoveryBackoffStartMs: 100,
@@ -5174,68 +5177,82 @@ describe("incomplete data says so, with its retry", () => {
     );
   }
 
-  it.effect(
-    "a later dependent shares a refused registration's answer; Reconnect sends it again",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const registry = AtomRegistry.make();
-          const harness = makeAdapterHarness();
-          let attempts = 0;
-          const runtime = yield* makeZeropsDataRuntime({
-            scope: runtimeScope,
-            adapter: {
-              ...harness.adapter,
-              register: (receiver, request, context) => {
-                if (
-                  request.descriptor.kind !== "query-membership" ||
-                  request.descriptor.query.kind !== "running-processes-of-project"
-                )
-                  return harness.adapter.register(receiver, request, context);
-                attempts += 1;
-                return Effect.fail({
-                  _tag: "ZeropsDataAdapterError",
-                  kind: "registration",
-                  message: "subscription refused",
-                  status: 403,
-                  retryable: true,
-                  accountRevocationEvidence: false,
-                } satisfies AdapterError);
-              },
+  it.effect("retains a refused shared registration until Reconnect", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        let attempts = 0;
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            register: (receiver, request, context) => {
+              if (
+                request.descriptor.kind !== "query-membership" ||
+                request.descriptor.query.kind !== "running-processes-of-project"
+              )
+                return harness.adapter.register(receiver, request, context);
+              attempts += 1;
+              return Effect.fail({
+                _tag: "ZeropsDataAdapterError",
+                kind: "registration",
+                message: "subscription refused",
+                status: 403,
+                retryable: true,
+                accountRevocationEvidence: false,
+              } satisfies AdapterError);
             },
-            atomRegistry: registry,
-            makeOpaqueId: makeIdFactory(),
-          });
-          const states = yield* Queue.unbounded<ZeropsDataState>();
-          const stop = registry.subscribe(runtime.stateAtom, (state) =>
-            Queue.offerUnsafe(states, state),
-          );
-          const first = yield* runtime.acquire({
-            kind: "project-activity",
-            project: topologyDescriptor.project,
-          });
-          yield* waitForState(
-            states,
-            (state) => state.interests.get(first.interest)?.interest.status === "failed",
-          );
-          const second = yield* runtime.acquire(topologyDescriptor);
-          yield* waitForState(
-            states,
-            (state) => state.interests.get(second.interest)?.interest.status === "failed",
-          );
-          expect(attempts).toBe(1);
-          yield* runtime.refresh(topologyDescriptor.project);
-          yield* waitForState(
-            states,
-            (state) =>
-              attempts === 2 && state.interests.get(second.interest)?.interest.status === "failed",
-          );
-          expect(attempts).toBe(2);
-          yield* runtime.shutdown("application-close");
-          stop();
-          registry.dispose();
-        }),
-      ),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const stop = registry.subscribe(runtime.stateAtom, (state) =>
+          Queue.offerUnsafe(states, state),
+        );
+        const first = yield* runtime.acquire({
+          kind: "project-activity",
+          project: topologyDescriptor.project,
+        });
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(first.interest)?.interest.status === "failed",
+        );
+        const second = yield* runtime.acquire(topologyDescriptor);
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(second.interest)?.interest.status === "failed",
+        );
+        // A refusal is permanent: no timer sends it again, however long its lease holds.
+        yield* TestClock.adjust("2 minutes");
+        expect((yield* runtime.state).interests.get(second.interest)?.interest).toMatchObject({
+          status: "failed",
+          retryable: false,
+          retryAtMs: null,
+        });
+        expect(attempts).toBe(1);
+        // A grant that changes for the project is the other thing that may lift a refusal.
+        yield* runtime.observeAccess({
+          kind: "project-access-established",
+          accountEpoch: runtimeScope.epoch,
+          project: topologyDescriptor.project,
+        });
+        yield* waitForState(states, () => attempts === 2);
+        yield* TestClock.adjust("2 minutes");
+        expect(attempts).toBe(2);
+        yield* runtime.refresh(topologyDescriptor.project);
+        yield* waitForState(
+          states,
+          (state) =>
+            attempts === 3 && state.interests.get(second.interest)?.interest.status === "failed",
+        );
+        expect(attempts).toBe(3);
+        yield* runtime.shutdown("application-close");
+        stop();
+        registry.dispose();
+      }),
+    ),
   );
 
   it.effect("a receiver stream that ends without a close frame ends visibly", () =>
@@ -5611,6 +5628,7 @@ it.effect("the establishment deadline closes a registration still awaiting its a
         policy: makeZeropsDataPolicy({ establishmentDeadlineMs: 100 }),
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
       });
       const states = yield* Queue.unbounded<ZeropsDataState>();
       const stop = registry.subscribe(runtime.stateAtom, (state) =>
@@ -5694,6 +5712,7 @@ it.effect.each(["login", "registration"] as const)(
           scope: runtimeScope,
           atomRegistry: registry,
           makeOpaqueId: makeIdFactory(),
+          random: () => 0,
           adapter: {
             ...harness.adapter,
             openReceiver: (scope, organization, identity, context) => {
@@ -5938,8 +5957,9 @@ describe("an interest that fails alone recovers alone", () => {
   const refused: AdapterError = {
     _tag: "ZeropsDataAdapterError",
     kind: "registration",
-    message: "subscription refused",
-    status: 403,
+    // A refusal that may pass: the platform's conflict, not its 403/404 (or a 5xx, its socket's).
+    message: "subscription conflict",
+    status: 409,
     retryable: true,
     accountRevocationEvidence: false,
   };
@@ -5979,6 +5999,7 @@ describe("an interest that fails alone recovers alone", () => {
         },
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
         policy: makeZeropsDataPolicy({
           recoveryBackoffStartMs: 100,
           recoveryBackoffMaxMs: 1_000,
@@ -5996,7 +6017,7 @@ describe("an interest that fails alone recovers alone", () => {
     });
 
   it.effect(
-    "retries a refused interest on its backoff, past its attempt limit on the cap, and a success resets the budget (B4)",
+    "retries an unavailable interest on its backoff, past its attempt limit on the cap (B4)",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -6019,8 +6040,8 @@ describe("an interest that fails alone recovers alone", () => {
             yield* TestClock.adjust("100 millis");
             yield* settle;
           }
-          // 100, then 200 ms; past the limit of two, the 1 s cap, then a fresh budget's 100 ms.
-          expect(rig.attemptsAt).toEqual([0, 100, 300, 1_300, 1_400]);
+          // 100, then 200 ms; past the limit of two, the 1 s cap, and it stays there.
+          expect(rig.attemptsAt).toEqual([0, 100, 300, 1_300, 2_300]);
           yield* waitForState(
             rig.states,
             (state) => state.interests.get(lease.interest)?.interest.status === "observing",
@@ -6035,7 +6056,7 @@ describe("an interest that fails alone recovers alone", () => {
   );
 
   it.effect(
-    "a fresh lease retries a failed interest at once, and its waiting retry sends nothing more",
+    "a fresh lease waits for the failed interest's scheduled retry, sending nothing sooner",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -6050,19 +6071,74 @@ describe("an interest that fails alone recovers alone", () => {
             return interest?.status === "failed" && interest.retryAtMs !== null;
           });
           yield* rig.runtime.acquire(descriptor);
+          yield* settle;
+          expect(rig.attemptsAt).toEqual([0]);
+          yield* TestClock.adjust("100 millis");
           yield* waitForState(
             rig.states,
             (state) => state.interests.get(first.interest)?.interest.status === "observing",
           );
-          expect(rig.attemptsAt).toEqual([0, 0]);
-          yield* TestClock.adjust("1 second");
-          yield* settle;
-          expect(rig.attemptsAt).toHaveLength(2);
+          expect(rig.attemptsAt).toEqual([0, 100]);
           yield* rig.runtime.shutdown("application-close");
           rig.stop();
           rig.registry.dispose();
         }),
       ),
+  );
+
+  it.effect(
+    "a retry sends again only the failed subscription, never the healthy ones beside it",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const rig = yield* refusing(4);
+          const lease = yield* rig.runtime.acquire({
+            kind: "project-activity",
+            project: topologyDescriptor.project,
+          });
+          yield* settle;
+          const sentBefore = rig.harness.counts().registrations;
+          for (let step = 0; step < 40; step++) {
+            yield* TestClock.adjust("100 millis");
+            yield* settle;
+          }
+          yield* waitForState(
+            rig.states,
+            (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+          );
+          // Four retries of the one failed subscription; the process feed beside it went once.
+          expect(rig.attemptsAt).toHaveLength(5);
+          expect(rig.harness.counts().registrations).toBe(sentBefore);
+          expect(rig.harness.counts().opens).toBe(1);
+          yield* rig.runtime.shutdown("application-close");
+          rig.stop();
+          rig.registry.dispose();
+        }),
+      ),
+  );
+
+  it.effect("retries that churn past the released-subscription bound replace the socket", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const rig = yield* refusing(3, { policy: { releasedRegistrationsPerReceiver: 2 } });
+        const lease = yield* rig.runtime.acquire({
+          kind: "project-activity",
+          project: topologyDescriptor.project,
+        });
+        for (let step = 0; step < 40; step++) {
+          yield* TestClock.adjust("100 millis");
+          yield* settle;
+        }
+        yield* waitForState(
+          rig.states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+        expect(rig.harness.counts().opens).toBe(2);
+        yield* rig.runtime.shutdown("application-close");
+        rig.stop();
+        rig.registry.dispose();
+      }),
+    ),
   );
 
   it.effect(
@@ -6189,6 +6265,7 @@ describe("an interest that fails alone recovers alone", () => {
           },
           atomRegistry: registry,
           makeOpaqueId: makeIdFactory(),
+          random: () => 0,
           policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 100 }),
         });
         const states = yield* Queue.unbounded<ZeropsDataState>();
@@ -6246,6 +6323,208 @@ describe("an interest that fails alone recovers alone", () => {
         yield* rig.runtime.shutdown("application-close");
         rig.stop();
         rig.registry.dispose();
+      }),
+    ),
+  );
+});
+
+describe("a 429 is answered with patience, never more requests", () => {
+  const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, {
+    discard: true,
+  });
+  const slowDown = (retryAfterMs: number, status = 429): AdapterError => ({
+    _tag: "ZeropsDataAdapterError",
+    kind: "network",
+    message: "slow down",
+    status,
+    retryAfterMs,
+    retryable: true,
+    accountRevocationEvidence: false,
+  });
+
+  it.effect("holds every read of the organization until the Retry-After one read was given", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const events = yield* Queue.unbounded<ReceiverEvent>();
+        let membership: RegistrationRequest | undefined;
+        const readsAt: Array<readonly [string, number]> = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            openReceiver: (_scope, organization, identity) =>
+              Effect.succeed({
+                identity,
+                organization,
+                delivery: "hot-single-consumer-buffered-before-open-resolves" as const,
+                events: Stream.fromQueue(events),
+              }),
+            register: (_receiver, request) => {
+              const baseline = unresolvedProcessBaseline(request);
+              if (baseline !== null) membership = request;
+              return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
+            },
+            read: (ticket) => {
+              if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+              const id = ticket.target.ref.processId;
+              return Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                readsAt.push([id, now]);
+                return id === "process-a"
+                  ? Effect.fail(slowDown(5_000))
+                  : Effect.succeed({ observations: [] });
+              });
+            },
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 0,
+        });
+        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        yield* settle;
+        expect(readsAt).toEqual([["process-a", 0]]);
+        yield* TestClock.adjust("1 second");
+        yield* Queue.offer(events, {
+          kind: "observation",
+          input: {
+            kind: "query-membership-observed",
+            operation: "add",
+            member: {
+              kind: "process",
+              project: topologyDescriptor.project,
+              processId: ZeropsProcessId.make("process-c"),
+            },
+            registration: membership as never,
+          },
+          bytes: 1,
+        });
+        yield* settle;
+        yield* TestClock.adjust("3999 millis");
+        yield* settle;
+        expect(readsAt).toEqual([["process-a", 0]]);
+        yield* TestClock.adjust("1 millis");
+        yield* settle;
+        expect(readsAt.map(([id]) => id).sort()).toEqual(["process-a", "process-a", "process-c"]);
+        expect(readsAt.every(([, at]) => at === 0 || at === 5_000)).toBe(true);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+    ),
+  );
+
+  it.effect("an interest's retry waits out its refusal's Retry-After", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const sentAt: number[] = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            register: (receiver, request, context) =>
+              request.descriptor.kind === "query-membership" &&
+              request.descriptor.query.kind === "running-processes-of-project"
+                ? Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                    sentAt.push(now);
+                    return sentAt.length === 1
+                      ? Effect.fail({ ...slowDown(5_000, 409), kind: "registration" as const })
+                      : Effect.succeed({ responseObservations: [] });
+                  })
+                : harness.adapter.register(receiver, request, context),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 0,
+          policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 100 }),
+        });
+        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        for (let step = 0; step < 60; step++) {
+          yield* TestClock.adjust("100 millis");
+          yield* settle;
+        }
+        // Never before its Retry-After, and not a backoff rung past it.
+        expect(sentAt).toHaveLength(2);
+        expect(sentAt[1]).toBeGreaterThanOrEqual(5_000);
+        expect(sentAt[1]).toBeLessThan(5_000 + 200);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+    ),
+  );
+
+  it.effect("a socket refused with a Retry-After logs in again only after it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const opensAt: number[] = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            openReceiver: (...args) =>
+              Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                opensAt.push(now);
+                return opensAt.length === 1
+                  ? Effect.fail({ ...slowDown(10_000), kind: "socket-open" as const })
+                  : harness.adapter.openReceiver(...args);
+              }),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 0,
+        });
+        yield* runtime.acquire(topologyDescriptor);
+        for (let step = 0; step < 15; step++) {
+          yield* TestClock.adjust("1 second");
+          yield* settle;
+        }
+        expect(opensAt).toEqual([0, 10_000]);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+    ),
+  );
+
+  it.effect("every backoff is jittered: a retry may come up to a fifth sooner", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const sentAt: number[] = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            register: (receiver, request, context) =>
+              request.descriptor.kind === "query-membership" &&
+              request.descriptor.query.kind === "running-processes-of-project"
+                ? Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                    sentAt.push(now);
+                    return sentAt.length === 1
+                      ? Effect.fail({ ...slowDown(0, 409), kind: "registration" as const })
+                      : Effect.succeed({ responseObservations: [] });
+                  })
+                : harness.adapter.register(receiver, request, context),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 1,
+          policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 1_000 }),
+        });
+        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        for (let step = 0; step < 15; step++) {
+          yield* TestClock.adjust("100 millis");
+          yield* settle;
+        }
+        // Its 1 s rung, a fifth sooner: never a whole second after the failure.
+        expect(sentAt).toHaveLength(2);
+        expect(sentAt[1]).toBeGreaterThanOrEqual(800);
+        expect(sentAt[1]).toBeLessThan(1_000);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
       }),
     ),
   );

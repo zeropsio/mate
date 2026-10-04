@@ -34,6 +34,7 @@ import {
   makeZeropsSessionDriver,
   parseZeropsSessionOwner,
   probeZeropsPrincipal,
+  unavailableVerdict,
   type ZeropsSessionDriver,
   type ZeropsSessionOwner,
   type ZeropsSessionState,
@@ -91,6 +92,8 @@ export interface ZeropsSessionValue {
   readonly verifyTotp: (code: string) => Promise<void>;
   readonly signOut: () => Promise<void>;
   readonly verifyAgain?: () => void;
+  /** A background retry of a failed check is running: the failure stays, saying it tries again. */
+  readonly retrying?: boolean;
   /**
    * The response of the most recent in-app registration, until consumed. The
    * project picker reads it once, to enter the provisioning wait for the
@@ -108,8 +111,11 @@ export { useZeropsSession, useZeropsSessionOptional } from "./sessionContext";
 function statusOf(state: ZeropsSessionState): ZeropsSessionStatus {
   switch (state.status) {
     case "booting":
-    case "verifying":
       return "loading";
+    case "verifying":
+      // A background retry of a failed check keeps the failure shown; only a fresh check, or the
+      // person's own Verify again, says it is checking.
+      return state.retry === true ? "unavailable" : "loading";
     case "second-factor":
       return "totp-required";
     default:
@@ -177,9 +183,9 @@ function makeSession(storage: ZeropsStorageAdapter) {
       client.restoreSession(session);
       try {
         return { kind: "user", user: await client.fetchUser() };
-      } catch {
+      } catch (cause) {
         // The client has already cleared a session the API refused.
-        if (client.session !== null) return { kind: "unavailable" };
+        if (client.session !== null) return unavailableVerdict(cause);
         // Nobody is signed in here any more: no Mate session kept under any login outlives it.
         endEveryKeptSession();
         return { kind: "unauthorized" };
@@ -220,6 +226,7 @@ export function ZeropsSessionProvider({
   const { client, driver } = useMemo(() => makeSession(storage), [storage]);
   const machine = useSyncExternalStore(driver.subscribe, driver.state);
   const status = statusOf(machine);
+  const retrying = machine.status === "verifying" && machine.retry === true;
   const user = machine.status === "signed-in" ? machine.user : null;
 
   useEffect(() => driver.start(), [driver]);
@@ -249,7 +256,10 @@ export function ZeropsSessionProvider({
         held: next !== null && next.accessToken === client.session?.accessToken,
       });
     };
-    const onOnline = () => driver.send({ type: "WAKE", trigger: "online" });
+    // A hidden tab sends nothing: its visible wake checks once it is shown.
+    const onOnline = () => {
+      if (document.visibilityState === "visible") driver.send({ type: "WAKE", trigger: "online" });
+    };
     const onVisibility = () => {
       if (document.visibilityState === "visible") driver.send({ type: "WAKE", trigger: "visible" });
     };
@@ -351,6 +361,7 @@ export function ZeropsSessionProvider({
       selectOrganization,
       updateVerifiedMemberships,
       verifyAgain: () => driver.send({ type: "VERIFY_AGAIN" }),
+      retrying,
       adoptHandover: async ({ token, clientId, zcpClaimed }) => {
         preferredClientIdRef.current = clientId;
         try {
@@ -413,6 +424,7 @@ export function ZeropsSessionProvider({
       selectOrganization,
       updateVerifiedMemberships,
       status,
+      retrying,
       user,
     ],
   );

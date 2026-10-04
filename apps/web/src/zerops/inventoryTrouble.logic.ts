@@ -23,18 +23,84 @@ export interface InventoryTroubleInput {
   readonly trouble: "grant" | "organization" | null;
   /** How long `trouble` has held without a break. */
   readonly troubledForMs: number;
+  /** Every failure in it has a retry coming; otherwise one waits for a person's Try now. */
+  readonly retrying: boolean;
 }
 
 export interface InventoryTroubleVoice {
   readonly sentence: string;
   /** "Try now": a grant round and the troubled organizations' reads at once. */
   readonly tryNow: true;
+  readonly retrying: boolean;
 }
 
 const UNANSWERED: InventoryTroubleVoice = {
   sentence: "Zerops isn't answering. Trying again…",
   tryNow: true,
+  retrying: true,
 };
+
+/** A failure no timer repairs says what does: the person's Try now. */
+const UNANSWERED_FOR_GOOD: InventoryTroubleVoice = {
+  sentence: "Zerops isn't answering. Try now to ask again.",
+  tryNow: true,
+  retrying: false,
+};
+
+/** What a demanded interest's state says of its trouble (`troubleLatch`). */
+export interface DemandedInterestTrouble {
+  readonly organizationId: string;
+  readonly projectId: string | null;
+  readonly interest:
+    | { readonly status: "failed"; readonly retryAtMs: number | null; readonly retryable: boolean }
+    | { readonly status: "establishing" | "observing" | "paused" }
+    | undefined;
+}
+
+export interface TroubleEntry {
+  /** Every failing read of it has a retry coming. */
+  readonly retrying: boolean;
+  /** The reads that failed, for the line's tooltip. */
+  readonly reads: ReadonlyArray<{
+    readonly organizationId: string;
+    readonly projectId: string | null;
+  }>;
+}
+
+/**
+ * Each organization whose demanded data failed and has not observed again since: a retry that
+ * re-establishes is the same trouble, not a fresh start, so the line holding it never flickers at
+ * an attempt's edge. It ends once every demanded read of the organization observes (or pauses).
+ */
+export function troubleLatch(
+  previous: ReadonlyMap<string, TroubleEntry>,
+  demanded: ReadonlyArray<DemandedInterestTrouble>,
+): ReadonlyMap<string, TroubleEntry> {
+  const next = new Map<string, TroubleEntry>();
+  const byOrganization = new Map<string, Array<DemandedInterestTrouble>>();
+  for (const entry of demanded) {
+    const group = byOrganization.get(entry.organizationId) ?? [];
+    group.push(entry);
+    byOrganization.set(entry.organizationId, group);
+  }
+  for (const [organizationId, group] of byOrganization) {
+    const failing = group.filter(({ interest }) => interest?.status === "failed");
+    if (failing.length > 0) {
+      next.set(organizationId, {
+        retrying: failing.every(
+          ({ interest }) =>
+            interest?.status === "failed" && (interest.retryAtMs !== null || interest.retryable),
+        ),
+        reads: failing.map(({ projectId }) => ({ organizationId, projectId })),
+      });
+      continue;
+    }
+    const held = previous.get(organizationId);
+    if (held !== undefined && group.some(({ interest }) => interest?.status === "establishing"))
+      next.set(organizationId, held);
+  }
+  return next;
+}
 
 /**
  * What the mounted product says of its inventory's trouble: nothing unless it has lasted
@@ -43,7 +109,8 @@ const UNANSWERED: InventoryTroubleVoice = {
  */
 export function inventoryTroubleVoice(input: InventoryTroubleInput): InventoryTroubleVoice | null {
   if (!input.mounted || input.lapsed || input.sessionEnded || input.trouble === null) return null;
-  return input.troubledForMs >= INVENTORY_TROUBLE_HOLD_MS ? UNANSWERED : null;
+  if (input.troubledForMs < INVENTORY_TROUBLE_HOLD_MS) return null;
+  return input.retrying ? UNANSWERED : UNANSWERED_FOR_GOOD;
 }
 
 /**
@@ -79,15 +146,22 @@ export function accountFootLine(input: {
   const still = input.attempt === "still";
   if (input.lapse !== null) {
     return {
-      sentence: input.lapse.retry && still ? STILL_NOT_ANSWERING : input.lapse.sentence,
+      sentence: input.lapse.retry && still ? STILL_RETRYING : input.lapse.sentence,
       actions: input.lapse.retry ? [tryNow, "sign-out"] : ["sign-out"],
     };
   }
   if (input.trouble === null) return null;
-  return { sentence: still ? STILL_NOT_ANSWERING : input.trouble.sentence, actions: [tryNow] };
+  return {
+    sentence: still
+      ? input.trouble.retrying
+        ? STILL_RETRYING
+        : "Still not answering. Try now to ask again."
+      : input.trouble.sentence,
+    actions: [tryNow],
+  };
 }
 
-const STILL_NOT_ANSWERING = "Still not answering. Trying again…";
+const STILL_RETRYING = "Still not answering. Trying again…";
 
 /**
  * What isn't answering, for the line's tooltip, so a report names it: the one project when it

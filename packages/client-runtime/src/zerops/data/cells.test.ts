@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -258,6 +259,69 @@ describe("makeZeropsCells", () => {
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a 429 waits out its Retry-After before the cell is read again", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const broker = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        random: () => 0.5,
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return reads === 1
+                ? Effect.fail({ ...transportFailure(), retryAfterMs: 30_000 })
+                : Effect.succeed([PRAGUE]);
+            }),
+        }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      expect(yield* lease.awaitSettled).toMatchObject({ state: "failed", retryAtMs: 30_000 });
+      yield* TestClock.adjust("29 seconds");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(1);
+      yield* TestClock.adjust("1 second");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(2);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect(
+    "a heavy list the platform keeps sitting on retries twice, then every five minutes",
+    () =>
+      Effect.gen(function* () {
+        const scope = accountScope();
+        const startedAt: number[] = [];
+        const broker = yield* makeZeropsCells({
+          scope,
+          access: () => verifiedAccess(scope),
+          random: () => 0.5,
+          adapter: unusedAdapter({
+            readOrganizationMembers: () =>
+              Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                startedAt.push(now);
+                return Effect.never;
+              }),
+          }),
+        });
+        const leaseScope = yield* Scope.make();
+        yield* broker.acquire(membersRequest(scope)).pipe(Scope.provide(leaseScope));
+        for (let second = 0; second < 15 * 60; second++) {
+          yield* TestClock.adjust("1 second");
+          yield* Effect.yieldNow;
+        }
+        // Fails at 30 s, retries on the 2 and 4 s rungs, then waits five minutes each time.
+        expect(startedAt.slice(0, 5)).toEqual([0, 32_000, 66_000, 396_000, 726_000]);
+        yield* Scope.close(leaseScope, Exit.void);
+        yield* broker.shutdown;
+      }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("a manual Read again reads at once, and its failure starts the ladder over", () =>

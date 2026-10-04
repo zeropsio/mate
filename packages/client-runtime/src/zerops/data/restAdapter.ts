@@ -1560,6 +1560,14 @@ const tokenGrantMetadata = (
 
 const cellReadError = (cause: unknown): ZeropsCellSourceError => {
   if (cause instanceof ZeropsApiError) {
+    // A 429 is Zerops asking for patience: retried, and not before its Retry-After.
+    if (cause.status === 429)
+      return {
+        _tag: "ZeropsCellSourceError",
+        kind: "transport",
+        retryable: true,
+        ...(cause.retryAfterMs === null ? {} : { retryAfterMs: cause.retryAfterMs }),
+      };
     switch (cause.kind) {
       case "forbidden":
       case "expired-session":

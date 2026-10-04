@@ -5,12 +5,17 @@ import {
   accountFootLine,
   inventoryTroubleVoice,
   organizationKnowledge,
+  troubleLatch,
   troubleSubject,
   type InventoryTroubleInput,
   type InventoryTroubleVoice,
 } from "./inventoryTrouble.logic";
 
-const SAYS = { sentence: "Zerops isn't answering. Trying again…", tryNow: true } as const;
+const SAYS = {
+  sentence: "Zerops isn't answering. Trying again…",
+  tryNow: true,
+  retrying: true,
+} as const;
 
 /** A mounted product on a grant still held, its session alive, and nothing wrong. */
 const calm: InventoryTroubleInput = {
@@ -19,6 +24,7 @@ const calm: InventoryTroubleInput = {
   sessionEnded: false,
   trouble: null,
   troubledForMs: 0,
+  retrying: true,
 };
 
 describe("when the inventory's trouble speaks", () => {
@@ -190,5 +196,91 @@ describe("Try now, and what the line names", () => {
     },
   ])("names $name", ({ input, subject }) => {
     expect(troubleSubject(input)).toBe(subject);
+  });
+});
+
+describe("a failure that lasts across its retries", () => {
+  const failed = (retryAtMs: number | null, retryable = true) =>
+    ({ status: "failed", retryAtMs, retryable }) as const;
+  const establishing = { status: "establishing" } as const;
+  const observing = { status: "observing" } as const;
+  type Step = ReadonlyArray<{
+    readonly organizationId: string;
+    readonly projectId: string | null;
+    readonly interest: {
+      readonly status: string;
+      readonly retryAtMs?: number | null;
+      readonly retryable?: boolean;
+    };
+  }>;
+  const run = (steps: ReadonlyArray<Step>) => {
+    let latch = troubleLatch(new Map(), []);
+    const seen: Array<ReadonlyArray<readonly [string, boolean]>> = [];
+    for (const step of steps) {
+      latch = troubleLatch(latch, step as never);
+      seen.push([...latch].map(([organization, entry]) => [organization, entry.retrying] as const));
+    }
+    return seen;
+  };
+
+  it("stays troubled through each retry's establishing, and ends once everything observes", () => {
+    expect(
+      run([
+        [{ organizationId: "o", projectId: null, interest: failed(1_000) }],
+        [{ organizationId: "o", projectId: null, interest: establishing }],
+        [{ organizationId: "o", projectId: null, interest: failed(3_000) }],
+        [{ organizationId: "o", projectId: null, interest: establishing }],
+        [{ organizationId: "o", projectId: null, interest: observing }],
+      ]),
+    ).toEqual([[["o", true]], [["o", true]], [["o", true]], [["o", true]], []]);
+  });
+
+  it("an establishing read with no failure before it is no trouble", () => {
+    expect(run([[{ organizationId: "o", projectId: null, interest: establishing }]])).toEqual([[]]);
+  });
+
+  it("a failure no retry follows is trouble that waits for a person", () => {
+    expect(run([[{ organizationId: "o", projectId: "p", interest: failed(null, false) }]])).toEqual(
+      [[["o", false]]],
+    );
+  });
+
+  it("names the failing reads, kept through a retry", () => {
+    let latch = troubleLatch(new Map(), [
+      { organizationId: "o", projectId: "p", interest: failed(1_000) } as never,
+    ]);
+    latch = troubleLatch(latch, [
+      { organizationId: "o", projectId: "p", interest: establishing } as never,
+    ]);
+    expect(latch.get("o")?.reads).toEqual([{ organizationId: "o", projectId: "p" }]);
+  });
+});
+
+describe("Trying again… is said only of a retry that is coming", () => {
+  it.each([
+    [true, "Zerops isn't answering. Trying again…"],
+    [false, "Zerops isn't answering. Try now to ask again."],
+  ])("retrying %s: %s", (retrying, sentence) => {
+    expect(
+      inventoryTroubleVoice({
+        ...calm,
+        trouble: "organization",
+        troubledForMs: INVENTORY_TROUBLE_HOLD_MS,
+        retrying,
+      }),
+    ).toEqual({ sentence, tryNow: true, retrying });
+  });
+
+  it.each([
+    [true, "Still not answering. Trying again…"],
+    [false, "Still not answering. Try now to ask again."],
+  ])("a trouble that outlived Try now, retrying %s: %s", (retrying, sentence) => {
+    expect(
+      accountFootLine({
+        lapse: null,
+        trouble: { sentence: "", tryNow: true, retrying },
+        attempt: "still",
+      })?.sentence,
+    ).toBe(sentence);
   });
 });

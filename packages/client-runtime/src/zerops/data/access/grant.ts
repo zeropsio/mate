@@ -17,6 +17,7 @@
  * - Effects are data. The interpreter runs `run` ops and feeds their answers back as events,
  *   arms one timer per `schedule` that delivers `TICK`, and forwards the rest to the runtime.
  */
+import { RETRY_JITTER } from "../../knowledge/retryPolicy.ts";
 import { renewalLeadMs, roundDeadlineMs, type ZeropsGrantPolicy } from "../policy.ts";
 import type {
   OrganizationEffectiveAccess,
@@ -34,6 +35,8 @@ export interface Instant {
 export interface GrantContext {
   readonly now: Instant;
   readonly policy: ZeropsGrantPolicy;
+  /** The jitter source of every rung: a retry comes up to `RETRY_JITTER` of it sooner. */
+  readonly random?: () => number;
 }
 
 /** Why a round or a project read did not answer. A 401 belongs to the session machine. */
@@ -361,6 +364,12 @@ const expired = (stamp: Instant, now: Instant, policy: ZeropsGrantPolicy): boole
 const rung = (ladder: ReadonlyArray<number>, attempt: number): number =>
   ladder[Math.min(Math.max(attempt, 1), ladder.length) - 1]!;
 
+/** A rung's wait, jittered up to `RETRY_JITTER` shorter so tabs that failed together part. */
+const waitOf = (ctx: GrantContext, ladder: ReadonlyArray<number>, attempt: number): number => {
+  const ms = rung(ladder, attempt);
+  return ctx.random === undefined ? ms : Math.round(ms * (1 - RETRY_JITTER * ctx.random()));
+};
+
 /** Failed reads retry only in a visible tab; the visible wake restarts them. */
 const retrying = (machine: GrantMachine): boolean =>
   machine.signals.online && machine.signals.hiddenSince === null;
@@ -591,7 +600,7 @@ const failRound = (
       phase: {
         phase: "unverified-failed",
         failure,
-        retryAt: after(ctx.now, rung(ctx.policy.initialRetryMs, attempt)),
+        retryAt: after(ctx.now, waitOf(ctx, ctx.policy.initialRetryMs, attempt)),
         attempt,
       },
     };
@@ -599,7 +608,7 @@ const failRound = (
   if (phase.phase === "granted") {
     // Bounded by the held deadline, where the lapse starts its own round (§4.2 timers).
     const retryAt = sooner(
-      after(ctx.now, rung(ctx.policy.renewalRetryMs, attempt)),
+      after(ctx.now, waitOf(ctx, ctx.policy.renewalRetryMs, attempt)),
       after(phase.evidence.account.startedAt, ctx.policy.windowMs),
     );
     return {
@@ -608,7 +617,7 @@ const failRound = (
     };
   }
   if (phase.phase !== "lapsed") return machine;
-  const retryAt = after(ctx.now, rung(ctx.policy.lapsedRetryMs, attempt));
+  const retryAt = after(ctx.now, waitOf(ctx, ctx.policy.lapsedRetryMs, attempt));
   return {
     ...machine,
     phase: { ...phase, renewal: { status: "failed", failure, retryAt, attempt }, failure },
@@ -740,7 +749,7 @@ const completeRound = (
         unverified.set(id, {
           project: target,
           failure: outcome.failure,
-          dueAt: after(ctx.now, rung(ctx.policy.projectRetryMs, 1)),
+          dueAt: after(ctx.now, waitOf(ctx, ctx.policy.projectRetryMs, 1)),
           attempt: 1,
         });
         break;
@@ -855,7 +864,7 @@ const projectResult = (
         ...closed,
         confirmation: {
           status: "due",
-          at: after(ctx.now, rung(ctx.policy.projectRetryMs, tries)),
+          at: after(ctx.now, waitOf(ctx, ctx.policy.projectRetryMs, tries)),
           failure: outcome.failure,
           attempt: tries,
         },
@@ -872,7 +881,7 @@ const projectResult = (
     unverified.set(id, {
       ...entry,
       failure: outcome.failure,
-      dueAt: after(ctx.now, rung(ctx.policy.projectRetryMs, entry.attempt + 1)),
+      dueAt: after(ctx.now, waitOf(ctx, ctx.policy.projectRetryMs, entry.attempt + 1)),
       attempt: entry.attempt + 1,
     });
     return withEvidence(machine, { ...held, unverified });
@@ -946,7 +955,7 @@ const apply = (
         phase: {
           phase: "unverified-failed",
           failure: { kind: "offline" },
-          retryAt: after(ctx.now, rung(ctx.policy.initialRetryMs, 1)),
+          retryAt: after(ctx.now, waitOf(ctx, ctx.policy.initialRetryMs, 1)),
           attempt: 1,
         },
       };

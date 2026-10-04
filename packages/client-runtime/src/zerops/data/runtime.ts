@@ -18,6 +18,7 @@ import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import { ZeropsApiError, type ZeropsProject } from "../api.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
+import { RETRY_JITTER } from "../knowledge/retryPolicy.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
 import { createZeropsDataAtoms } from "./atoms.ts";
 import { grantCapabilities } from "./access/capabilities.ts";
@@ -133,6 +134,16 @@ function interestIdentitiesEqual(left: InterestIdentity, right: InterestIdentity
 
 function organizationOfInterest(descriptor: RuntimeInterestDescriptor): OrganizationRef {
   return "organization" in descriptor ? descriptor.organization : descriptor.project.organization;
+}
+
+/** The organization a read asks of, for its Retry-After. */
+function organizationOfReadTarget(target: ReadTarget): OrganizationRef | null {
+  if (target.kind !== "query") return organizationOfEntityRef(target.ref);
+  const descriptor = target.descriptor as {
+    readonly organization?: OrganizationRef;
+    readonly project?: ProjectRef;
+  };
+  return descriptor.organization ?? descriptor.project?.organization ?? null;
 }
 
 function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
@@ -744,6 +755,8 @@ export interface ZeropsDataRuntimeOptions {
   readonly initialAccess?: AccessState;
   readonly visibility?: ZeropsVisibility;
   readonly buildLogTransport?: BuildLogTransport;
+  /** The jitter source of every backoff: a retry comes up to `RETRY_JITTER` of its wait sooner. */
+  readonly random?: () => number;
   readonly logTimers?: {
     readonly setTimer: (callback: () => void, delayMs: number) => unknown;
     readonly clearTimer: (handle: unknown) => void;
@@ -961,6 +974,16 @@ export function hydrationRefusal(error: AdapterError | null): HydrationRefusal {
   return { kind: "transient" };
 }
 
+/**
+ * A failure no timer repairs: the platform refused (400/401/403/404/410, or said so outright).
+ * Only a person's again, or a grant that changed, sends it again.
+ */
+const permanentFailure = (error: AdapterError | null): boolean =>
+  error !== null &&
+  (!error.retryable ||
+    ["unauthorized", "forbidden", "not-found", "rejected"].includes(error.kind) ||
+    [400, 401, 403, 404, 410].includes(error.status ?? 0));
+
 const registrationRefused = (error: AdapterError): boolean =>
   error.status !== undefined && !canReconnect(error);
 
@@ -995,6 +1018,31 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const runtimeContext = yield* Effect.context<never>();
   const scheduler = yield* Scheduler.Scheduler;
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
+  const random = options.random ?? Math.random;
+  /** A wait made up to `RETRY_JITTER` shorter, so tabs and entities that failed together part. */
+  const jittered = (ms: number): number => Math.round(ms * (1 - RETRY_JITTER * random()));
+  /**
+   * Until when each organization's reads, or its socket, wait out a 429's Retry-After: every
+   * request of that kind holds, not only the one the platform answered.
+   */
+  const throttles = new Map<string, number>();
+  const throttleKey = (organization: OrganizationRef, kind: "read" | "socket") =>
+    `${organizationKeyOf(organization)}:${kind}`;
+  const throttledUntil = (organization: OrganizationRef, kind: "read" | "socket"): number =>
+    throttles.get(throttleKey(organization, kind)) ?? 0;
+  const throttle = (
+    organization: OrganizationRef | null,
+    kind: "read" | "socket",
+    error: AdapterError | null,
+    nowMs: number,
+  ): void => {
+    if (organization === null || error?.status !== 429) return;
+    const until = nowMs + (error.retryAfterMs ?? policy.recoveryBackoffStartMs);
+    const key = throttleKey(organization, kind);
+    throttles.set(key, Math.max(throttles.get(key) ?? 0, until));
+  };
+  /** Each interest's own Retry-After, from the failure its retry answers. */
+  const interestRetryAfter = new Map<InterestKey, number>();
   const model = yield* Ref.make(
     makeInitialZeropsDataState(options.scope, options.initialAccess ?? { status: "unverified" }),
   );
@@ -1113,9 +1161,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     reason: string,
     error?: AdapterError,
   ) => Effect.Effect<void> = () => Effect.void;
-  let failInterest: (identity: InterestIdentity, message: string) => Effect.Effect<void> = () =>
-    Effect.void;
+  let failInterest: (
+    identity: InterestIdentity,
+    message: string,
+    error: AdapterError | null,
+  ) => Effect.Effect<void> = () => Effect.void;
   let requestInterestRetries: Effect.Effect<void> = Effect.void;
+  let rotateReceiver: (
+    receiver: RuntimeReceiver,
+    include: ReadonlySet<InterestKey>,
+  ) => Effect.Effect<void> = () => Effect.void;
 
   let pendingPublication: ZeropsDataState | null = null;
   let publicationEvents = 0;
@@ -1349,7 +1404,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   identity,
                   reason,
                   attempts: 1,
-                  retryable: true,
+                  retryable: false,
                   retryAtMs: null,
                 },
               },
@@ -1686,11 +1741,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             ),
           ),
           Effect.catch((error) =>
-            enqueue({
-              kind: "read-completion",
-              completion: { kind: "read-failed", ticket, failure: failureKind(error) },
-              interest: identity,
-            }).pipe(Effect.as({ succeeded: false, error })),
+            Clock.currentTimeMillis.pipe(
+              Effect.tap((now) =>
+                Effect.sync(() =>
+                  throttle(organizationOfReadTarget(ticket.target), "read", error, now),
+                ),
+              ),
+              Effect.andThen(
+                enqueue({
+                  kind: "read-completion",
+                  completion: { kind: "read-failed", ticket, failure: failureKind(error) },
+                  interest: identity,
+                }),
+              ),
+              Effect.as({ succeeded: false, error }),
+            ),
           ),
         ),
       );
@@ -1816,7 +1881,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // A grace after the last read and after the first id came due, so ids that arrive
           // together are read together; every bound is absolute, so a wake never postpones it.
           const dueAtMs = Math.min(...owed.map((wanted) => wanted.dueAtMs));
-          const readAt = Math.max(lastReadAt + TABLE_READ_GRACE_MS, dueAtMs + TABLE_READ_GRACE_MS);
+          const readAt = Math.max(
+            lastReadAt + TABLE_READ_GRACE_MS,
+            dueAtMs + TABLE_READ_GRACE_MS,
+            throttledUntil(followUp.organization, "read"),
+          );
           if (readAt > before) {
             const woken = yield* Effect.raceFirst(
               Effect.sleep(Duration.millis(readAt - before)).pipe(Effect.as(false)),
@@ -1902,6 +1971,35 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       );
     });
 
+  /** The queries whose hydration waits for an organization's Retry-After, read once it passes. */
+  const throttledQueries = new Map<string, Set<QueryKey>>();
+  const readAfterThrottle = (
+    organization: OrganizationRef,
+    until: number,
+    query: QueryKey,
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const key = throttleKey(organization, "read");
+      const waiting = throttledQueries.get(key);
+      if (waiting !== undefined) {
+        waiting.add(query);
+        return;
+      }
+      throttledQueries.set(key, new Set([query]));
+      const now = yield* Clock.currentTimeMillis;
+      yield* Effect.sleep(Duration.millis(Math.max(0, until - now))).pipe(
+        Effect.andThen(
+          Effect.suspend(() => {
+            const queries = throttledQueries.get(key) ?? new Set<QueryKey>();
+            throttledQueries.delete(key);
+            if (Ref.getUnsafe(currentVisibility) === "hidden") return Effect.void;
+            return Effect.forEach(queries, (held) => scheduleHydration(held), { discard: true });
+          }),
+        ),
+        forkOwned,
+      );
+    });
+
   scheduleHydration = (query) =>
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return;
@@ -1929,6 +2027,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               ownership: existing.ownership,
             });
           }
+          continue;
+        }
+        // The organization's reads wait out a 429's Retry-After: this one starts after it.
+        const heldUntil = throttledUntil(organizationOfEntityRef(target), "read");
+        if (heldUntil > (yield* Clock.currentTimeMillis)) {
+          yield* readAfterThrottle(organizationOfEntityRef(target), heldUntil, query);
           continue;
         }
         const attempted = hydrationAttempts.get(key);
@@ -2080,9 +2184,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       const backoffMs = spent
         ? policy.recoveryBackoffMaxMs
         : Math.min(policy.recoveryBackoffStartMs * 2 ** (count - 1), policy.recoveryBackoffMaxMs);
-      const delayMs =
-        refusal.kind === "throttled" ? Math.max(backoffMs, refusal.retryAfterMs ?? 0) : backoffMs;
       const now = yield* Clock.currentTimeMillis;
+      const delayMs = Math.max(
+        jittered(backoffMs),
+        refusal.kind === "throttled" ? (refusal.retryAfterMs ?? 0) : 0,
+        throttledUntil(organizationOfEntityRef(target), "read") - now,
+      );
       const record = {
         target,
         query,
@@ -2594,7 +2701,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // A refusal or abandoned send stays attached to this physical attempt.
           // An uncertain answer closes the known receiver before reconnecting.
           if (registrationRefused(outcome.error)) {
-            yield* failInterest(identity, outcome.error.message);
+            yield* failInterest(identity, outcome.error.message, outcome.error);
             return interestFailed;
           }
           yield* failReceiver(receiver, outcome.error.message, outcome.error);
@@ -2622,12 +2729,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           target,
         );
         if (!(yield* admitRead(ticket))) return yield* Effect.fail(readCapacityError());
-        const succeeded = yield* runRead(ticket, identity);
+        const read = yield* runReadOutcome(ticket, identity);
         if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0)
           return establishmentDone;
         // A read registers nothing on the receiver: it fails its own interest alone.
-        if (!succeeded) {
-          yield* failInterest(identity, "required direct read failed");
+        if (!read.succeeded) {
+          yield* failInterest(identity, "required direct read failed", read.error);
           return interestFailed;
         }
       }
@@ -2654,7 +2761,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           receiver.handle !== null &&
           runtimeInterest.identity.receiver.receiverId === receiver.identity.receiverId
         ) {
-          return failInterest(runtimeInterest.identity, error.message).pipe(
+          return failInterest(runtimeInterest.identity, error.message, error).pipe(
             Effect.as(interestFailed),
           );
         }
@@ -2683,6 +2790,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         if (desired === undefined) continue;
         if (!abortReads && receivers.get(receiverKeyOf(interest.descriptor))?.openFailure !== null)
           continue;
+        // A new failure supersedes a retry still waiting: the scheduler stamps it afresh, if any.
+        if (abortReads) interestRetries.delete(identity.key);
         yield* applyControl({
           kind: "interest-upserted",
           interest: {
@@ -2738,8 +2847,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   };
                   const reconnect = canReconnect(receiver.openFailure);
                   const attempts = ++receiver.reconnectFailures;
-                  const delayMs = Math.min(1_000 * 2 ** Math.min(attempts - 1, 5), 30_000);
-                  const retryAtMs = reconnect ? (yield* Clock.currentTimeMillis) + delayMs : null;
+                  const now = yield* Clock.currentTimeMillis;
+                  throttle(receiver.organization, "socket", receiver.openFailure, now);
+                  const delayMs = Math.max(
+                    jittered(Math.min(1_000 * 2 ** Math.min(attempts - 1, 5), 30_000)),
+                    receiver.openFailure.retryAfterMs ?? 0,
+                    throttledUntil(receiver.organization, "socket") - now,
+                  );
+                  const retryAtMs = reconnect ? now + delayMs : null;
                   receiver.reconnectAtMs = retryAtMs;
                   const affected = [...interests.values()].filter(
                     (interest) =>
@@ -2812,8 +2927,23 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         ),
       )
       .pipe(Effect.ensuring(receiver.stopped.open));
-  failInterest = (identity, message) =>
-    lifecycleLock.withPermit(failInterests([identity], message));
+  failInterest = (identity, message, error) =>
+    Effect.flatMap(Clock.currentTimeMillis, (now) => {
+      if (error?.retryAfterMs !== undefined)
+        interestRetryAfter.set(identity.key, now + error.retryAfterMs);
+      else interestRetryAfter.delete(identity.key);
+      return Effect.void;
+    }).pipe(
+      Effect.andThen(
+        lifecycleLock.withPermit(
+          failInterests([identity], message, true, {
+            retryAtMs: null,
+            attempts: 1,
+            retryable: !permanentFailure(error),
+          }),
+        ),
+      ),
+    );
 
   /**
    * An interest that failed on its own — a registration refused, a read of its own, a deadline on
@@ -2846,13 +2976,22 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         runtimeInterest.recoveryAttempts += 1;
         const attempts = runtimeInterest.recoveryAttempts;
         const spent = attempts > policy.recoveryAttemptLimit;
-        const delayMs = spent
-          ? policy.recoveryBackoffMaxMs
-          : Math.min(
-              policy.recoveryBackoffStartMs * 2 ** (attempts - 1),
-              policy.recoveryBackoffMaxMs,
-            );
-        const dueAtMs = now + delayMs;
+        const organization = organizationOfInterest(runtimeInterest.descriptor);
+        const dueAtMs = Math.max(
+          now +
+            jittered(
+              spent
+                ? policy.recoveryBackoffMaxMs
+                : Math.min(
+                    policy.recoveryBackoffStartMs * 2 ** (attempts - 1),
+                    policy.recoveryBackoffMaxMs,
+                  ),
+            ),
+          // A Retry-After its own failure carried, or its organization's 429, is a floor.
+          interestRetryAfter.get(runtimeInterest.key) ?? 0,
+          throttledUntil(organization, "read"),
+          throttledUntil(organization, "socket"),
+        );
         readFailures.delete(runtimeInterest.key);
         interestRetries.set(runtimeInterest.key, {
           identity: runtimeInterest.identity,
@@ -2917,7 +3056,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           Ref.getUnsafe(currentVisibility) === "hidden"
             ? []
             : retriesOn(receiver);
-        if (receiver === undefined || waiting.length === 0) return;
+        if (receiver === undefined || waiting.length === 0) {
+          // Ends in the same step its entry goes: a retry stamped next starts a cycle of its own.
+          if (recoveryCycles.get(key) === cycle) recoveryCycles.delete(key);
+          return;
+        }
         const dueAtMs = Math.min(...waiting.map((retry) => retry.dueAtMs));
         const beforeSleep = yield* Clock.currentTimeMillis;
         yield* Effect.raceFirst(
@@ -2936,11 +3079,20 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               return [];
             const now = yield* Clock.currentTimeMillis;
             const ready = retriesOn(receiver).filter((retry) => retry.dueAtMs <= now);
-            for (const { interest, spent } of ready) {
+            for (const { interest } of ready) {
               interestRetries.delete(interest.key);
-              // Past its attempt limit it waited the cap: the next failure starts a fresh budget.
-              if (spent) interest.recoveryAttempts = 0;
               yield* releaseFailedRegistrations(receiver, interest.key);
+            }
+            // Retries churn subscriptions too: past the bound only a fresh socket stops them.
+            if (
+              ready.length > 0 &&
+              receiver.registrationAttempts - receiver.registrations.size >=
+                policy.releasedRegistrationsPerReceiver
+            ) {
+              yield* rotateReceiver(receiver, new Set(ready.map(({ interest }) => interest.key)));
+              return [];
+            }
+            for (const { interest } of ready) {
               const desired = yield* updateInterestIdentity(interest, receiver);
               yield* applyControl({ kind: "interest-upserted", interest: desired });
             }
@@ -2993,22 +3145,20 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     });
 
   /**
-   * An interest about to register again lets go of the registrations it depends on: a failed one
-   * leaves the receiver for good, so the retry sends it afresh rather than re-reading its
-   * failure; a healthy one stops routing to it, as a project's manual again does.
+   * An interest about to register again lets go of its failed registrations only: the retry sends
+   * those afresh, and keeps every healthy one it shares, which the platform cannot unsubscribe.
    */
   const releaseFailedRegistrations = (
     receiver: RuntimeReceiver,
     interestKey: InterestKey,
   ): Effect.Effect<void> =>
-    Effect.gen(function* () {
+    Effect.sync(() => {
       for (const [registrationKey, registration] of receiver.registrations) {
         if (registration.status !== "failed" || !registration.dependents.has(interestKey)) continue;
         receiver.registrations.delete(registrationKey);
         if (receiver.registrationOwners.get(registration.request.subscriptionName) === registration)
           receiver.registrationOwners.delete(registration.request.subscriptionName);
       }
-      yield* detachRegistrations(receiver, interestKey);
     });
 
   const stopReceiver = (receiver: RuntimeReceiver): Effect.Effect<void> =>
@@ -3264,36 +3414,42 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           !hasOtherInterest ||
           (released >= policy.releasedRegistrationsPerReceiver && receiver?.openFailure === null)
         ) {
-          receivers.delete(organizationKey);
-          if (receiver !== undefined) {
-            yield* stopReceiver(receiver);
-            // A hydration read for the replaced socket's demand starts again on the fresh one.
-            for (const [key, hydration] of hydrations) {
-              if (
-                [...hydration.ownership.dependents.values()].some(
-                  (identity) => identity.receiver === receiver.identity,
-                )
-              )
-                yield* cancelHydration(key, hydration);
-            }
-          }
-          for (const remaining of interests.values()) {
-            if (
-              remaining.leases.size === 0 ||
-              receiverKeyOf(remaining.descriptor) !== organizationKey ||
-              (yield* Ref.get(model)).interests.get(remaining.key)?.interest.status === "failed"
-            )
-              continue;
-            const desired = yield* updateInterestIdentity(
-              remaining,
-              receiverFor(remaining.descriptor),
-            );
-            yield* applyControl({ kind: "interest-upserted", interest: desired });
-            yield* establishInterest(remaining).pipe(forkOwned);
-          }
+          if (receiver === undefined) receivers.delete(organizationKey);
+          else yield* rotateReceiver(receiver, new Set());
         }
       }),
     );
+
+  /**
+   * Replaces the organization's socket: the stale one stops, and every held interest it carried
+   * that is not failed — or failed and in `include`, whose retry this is — registers afresh on a
+   * new one. A hydration read for the stale socket's demand starts again on the fresh one.
+   */
+  rotateReceiver = (receiver, include) =>
+    Effect.gen(function* () {
+      if (receivers.get(receiver.key) === receiver) receivers.delete(receiver.key);
+      yield* stopReceiver(receiver);
+      for (const [key, hydration] of hydrations) {
+        if (
+          [...hydration.ownership.dependents.values()].some(
+            (identity) => identity.receiver === receiver.identity,
+          )
+        )
+          yield* cancelHydration(key, hydration);
+      }
+      for (const remaining of interests.values()) {
+        if (
+          remaining.leases.size === 0 ||
+          receiverKeyOf(remaining.descriptor) !== receiver.key ||
+          ((yield* Ref.get(model)).interests.get(remaining.key)?.interest.status === "failed" &&
+            !include.has(remaining.key))
+        )
+          continue;
+        const desired = yield* updateInterestIdentity(remaining, receiverFor(remaining.descriptor));
+        yield* applyControl({ kind: "interest-upserted", interest: desired });
+        yield* establishInterest(remaining).pipe(forkOwned);
+      }
+    });
 
   const presenceChecks = new Map<string, Fiber.Fiber<void>>();
   const refreshPresence: ZeropsDataRuntime["refreshPresence"] = (project) =>
@@ -3548,24 +3704,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           kind: "interest-upserted",
           interest: { ...existing, leases: runtimeInterest.leases.size },
         });
-        // A fresh lease is a fresh reason to retry a failed interest now, rather than waiting out
-        // the backoff a prior lessee's failures left behind. Its new identity fences the retry
-        // that was waiting. A receiver that failed is its reconnect's.
-        const receiver = receiverFor(descriptor);
-        if (
-          existing.interest.status === "failed" &&
-          existing.interest.retryable &&
-          !receiver.failed &&
-          receiver.openFailure === null
-        ) {
-          runtimeInterest.recoveryAttempts = 0;
-          interestRetries.delete(key);
-          readFailures.delete(key);
-          yield* releaseFailedRegistrations(receiver, key);
-          const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
-          yield* applyControl({ kind: "interest-upserted", interest: desired });
-          establishments.push(runtimeInterest);
-        }
       }
       const release = releaseLease(leaseId);
       yield* Scope.addFinalizer(leaseScope, release);
@@ -4122,13 +4260,66 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   };
 
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>
-    enqueue({ kind: "access-observation", observation, interest: null }).pipe(
-      Effect.andThen(awaitIngress),
-      Effect.andThen(
-        observation.kind === "access-verified" || observation.kind === "project-access-established"
-          ? retryRefusedHydrations
-          : Effect.void,
-      ),
+    Effect.gen(function* () {
+      const before = rolesOf((yield* Ref.get(model)).access);
+      yield* enqueue({ kind: "access-observation", observation, interest: null });
+      yield* awaitIngress;
+      if (observation.kind === "project-access-established") {
+        yield* retryRefusedHydrations;
+        yield* retryRefusedInterests(new Set([projectKeyOf(observation.project)]));
+      } else if (observation.kind === "access-verified") {
+        yield* retryRefusedHydrations;
+        // Only a project whose grant changed may now be answered otherwise.
+        const after = rolesOf((yield* Ref.get(model)).access);
+        yield* retryRefusedInterests(
+          new Set([...after].filter(([key, role]) => before.get(key) !== role).map(([key]) => key)),
+        );
+      }
+    });
+
+  /** Each project's granted role, keyed by project. */
+  const rolesOf = (access: AccessState): ReadonlyMap<string, string> =>
+    new Map(
+      (access.status === "verified" ? access.projects : []).map((entry) => [
+        projectKeyOf(entry.project),
+        entry.role,
+      ]),
+    );
+
+  /**
+   * A grant changed for these projects: each held interest of theirs a refusal failed for good
+   * registers once more, as a person's again would; a refusal that stands fails it the same way.
+   */
+  const retryRefusedInterests = (projects: ReadonlySet<string>): Effect.Effect<void> =>
+    lifecycleLock.withPermit(
+      Effect.gen(function* () {
+        if (projects.size === 0 || (yield* Ref.get(closed))) return;
+        const state = yield* Ref.get(model);
+        const refused = [...interests.values()].filter((runtimeInterest) => {
+          const failed = state.interests.get(runtimeInterest.key)?.interest;
+          return (
+            runtimeInterest.leases.size > 0 &&
+            "project" in runtimeInterest.descriptor &&
+            projects.has(projectKeyOf(runtimeInterest.descriptor.project)) &&
+            failed?.status === "failed" &&
+            !failed.retryable
+          );
+        });
+        const retried: RuntimeInterest[] = [];
+        for (const runtimeInterest of refused) {
+          const receiver = receivers.get(receiverKeyOf(runtimeInterest.descriptor));
+          if (receiver === undefined || receiver.failed || receiver.openFailure !== null) continue;
+          yield* releaseFailedRegistrations(receiver, runtimeInterest.key);
+          const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
+          yield* applyControl({ kind: "interest-upserted", interest: desired });
+          retried.push(runtimeInterest);
+        }
+        yield* Effect.forEach(
+          retried,
+          (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+          { discard: true },
+        );
+      }),
     );
 
   /** A grant changed: every entity the platform refused is read once more under it. */
@@ -4145,6 +4336,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const grant = yield* makeGrantDriver({
     scope: options.scope,
     policy: DEFAULT_ZEROPS_GRANT_POLICY,
+    random,
     clock,
     atomRegistry: options.atomRegistry,
     access: Ref.get(model).pipe(Effect.map((state) => state.access)),

@@ -12,6 +12,7 @@ import type { InventoryServiceOutcome } from "./inventoryContext";
 import {
   accessLapseCopy,
   carryForwardServiceOutcome,
+  demandedReads,
   isInterestBlocked,
   retryInvalidations,
 } from "./ZeropsInventoryProvider";
@@ -59,6 +60,65 @@ describe("retryInvalidations", () => {
     },
   ])("$name", ({ granted, blocked, want }) => {
     expect(retryInvalidations({ granted, blockedOrganizations: blocked })).toEqual(want);
+  });
+});
+
+describe("what the demanded reads say: loading, trouble and its retry", () => {
+  const organization = {
+    kind: "organization",
+    account: { apiOrigin: "https://api.example.test", accountId: "a" },
+    organizationId: "o",
+  } as never;
+  const identity = {} as InterestIdentity;
+  const at = (interest: InterestState | undefined) => [{ organization, projectId: "p", interest }];
+  const failed = (retryAtMs: number | null, retryable = true): InterestState => ({
+    status: "failed",
+    identity,
+    reason: "unavailable",
+    retryable,
+    attempts: 1,
+    retryAtMs,
+  });
+  const establishing: InterestState = {
+    status: "establishing",
+    identity,
+    startedAtMs: 0,
+    deadlineMs: 60_000,
+    progress: {} as never,
+  };
+  const observing: InterestState = {
+    status: "observing",
+    identity,
+    guarantee: "source-order-unverified",
+    sinceReceiptOrdinal: 0 as never,
+  };
+
+  it("a failed read is not loading: only an establishing one is", () => {
+    expect([...demandedReads(at(failed(5_000)), new Map(), 0, false).pending]).toEqual([]);
+    expect([...demandedReads(at(establishing), new Map(), 0, false).pending]).toEqual(["o"]);
+  });
+
+  it("holds one trouble through a retry's establishing, and lets go once it observes", () => {
+    let latch: ReturnType<typeof demandedReads>["latch"] = new Map();
+    const seen: Array<readonly [number, boolean]> = [];
+    for (const interest of [failed(5_000), establishing, failed(9_000), establishing, observing]) {
+      const read = demandedReads(at(interest), latch, 0, false);
+      latch = read.latch;
+      seen.push([read.blockedOrganizations.length, read.retrying]);
+    }
+    expect(seen).toEqual([
+      [1, true],
+      [1, true],
+      [1, true],
+      [1, true],
+      [0, true],
+    ]);
+  });
+
+  it("a failure no retry follows is trouble that is not retrying", () => {
+    const read = demandedReads(at(failed(null, false)), new Map(), 0, false);
+    expect(read.blockedOrganizations).toHaveLength(1);
+    expect(read.retrying).toBe(false);
   });
 });
 
