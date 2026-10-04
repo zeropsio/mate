@@ -139,11 +139,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       login RPCs. Absent on older servers, so a client offers *Add another
       login* only where it would work. */
   mateLogins: Schema.optionalKey(Schema.Boolean),
-  /** How a new Mate's setup runs here. `serverStandUp`: the server starts
-      the stand-up itself once its asker signed an agent in, and serves its
-      progress at `/setup.json`; a client that sees it never sends the
-      stand-up. Absent on older servers, where the client still sends it. */
-  setup: Schema.optionalKey(Schema.Struct({ serverStandUp: Schema.optionalKey(Schema.Boolean) })),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 
