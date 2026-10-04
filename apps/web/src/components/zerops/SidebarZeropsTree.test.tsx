@@ -40,6 +40,8 @@ import {
   ProjectOrderSchema,
 } from "~/zerops/projectOrderPreference";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
+import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
+import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 
 // The projects a person collapsed, as storage would hand them back, and what
 // the tree last asked it to remember.
@@ -79,6 +81,18 @@ vi.mock("~/zerops/crew/useCrew", async (original) => ({
       environmentId: undefined,
     },
 }));
+// The stops a drawn surface holds the deployment demand of, by project id.
+const demandedStops = vi.hoisted(() => new Set<string>());
+vi.mock("~/zerops/accountForge", async (original) => {
+  const actual = await original<typeof import("~/zerops/accountForge")>();
+  return {
+    ...actual,
+    useStopDeploymentDemand: (project: ProjectRef | null) => {
+      actual.useStopDeploymentDemand(project);
+      if (project !== null) demandedStops.add(project.projectId);
+    },
+  };
+});
 // Who is looking: nobody signed in to Zerops unless a test says whom.
 const session = vi.hoisted(() => ({ viewer: undefined as string | undefined }));
 vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
@@ -97,6 +111,7 @@ afterEach(() => {
   stored.written = undefined;
   session.viewer = undefined;
   hqCrews.clear();
+  demandedStops.clear();
   vi.unstubAllGlobals();
 });
 import {
@@ -1926,6 +1941,41 @@ describe("production and the stages are two chips on the project's heading (M2, 
     expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], { getFlow: () => flow() })).not.toContain(
       "sidebar-production-chip",
     );
+  });
+
+  it("demands its stops from a cold load with nothing remembered, and draws the chips once they answer", () => {
+    const refOf = (projectId: string) =>
+      ({ kind: "project", projectId, organization: { kind: "organization" } }) as ProjectRef;
+    const inventory = {
+      projectRefs: new Map(["crm-stage", "crm-prod"].map((id) => [id, refOf(id)])),
+    } as unknown as Inventory;
+    const tree = (candidates: ReadonlyArray<ZeropsCandidate>) => (
+      <InventoryContext value={inventory}>
+        <SidebarZeropsTree
+          candidates={candidates}
+          complete
+          getFlow={() => flow()}
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </InventoryContext>
+    );
+    const chips = (mounted: ReactTestRenderer) =>
+      mounted.root
+        .findAll(
+          (node) =>
+            node.type === "button" &&
+            node.props["data-zerops-surface"] === "sidebar-production-chip",
+        )
+        .map((chip) => chip.props["aria-label"]);
+    // The stops' services are unread and no chip is remembered: no chip holds their demand.
+    const mounted = mount(tree([CRM_DEV, CRM_STAGE, CRM_PROD]));
+    expect(chips(mounted)).toEqual([]);
+    expect([...demandedStops].toSorted()).toEqual(["crm-prod", "crm-stage"]);
+    act(() => {
+      mounted.update(tree([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]));
+    });
+    expect(chips(mounted)).toEqual(["Stage main, healthy", "Production v2.4.0, healthy"]);
   });
 
   it("draws what the platform alone says while HQ has not answered the releases, and never keeps it", () => {

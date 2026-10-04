@@ -102,6 +102,7 @@ import {
   SquareIcon,
 } from "lucide-react";
 import {
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -125,6 +126,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateBirthFace, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useStopDeploymentDemand } from "~/zerops/accountForge";
+import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
@@ -1350,12 +1353,24 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               projectFlow.main.head !== undefined &&
               stages.some(({ stop }) => stop.version?.commit === projectFlow.main.head),
           };
-    const header = renderHeader({
-      chips,
-      faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
-      line,
-      openStop,
-    });
+    // The heading holds its stops' demand itself: a chip draws only once they are read, so a
+    // demand held by the chip alone would never come on a cold load with nothing remembered.
+    const header = (
+      <>
+        {renderHeader({
+          chips,
+          faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
+          line,
+          openStop,
+        })}
+        {group === undefined
+          ? null
+          : [
+              ...stages.map(({ stop }) => stop.projectId),
+              ...(productionStop === undefined ? [] : [productionStop.projectId]),
+            ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />)}
+      </>
+    );
     // The change rows: HQ's once it told them, and until then the ones this
     // browser remembers drawing, untinted — so a reload grows no row when the
     // answer comes (`menuMemory.ts`).
@@ -2187,6 +2202,15 @@ const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
   unread: "finished",
   working: "is working",
 };
+
+/** A stop's deployment demand, held for as long as its project's heading is drawn. */
+function StopDemand({ projectId }: { readonly projectId: string }) {
+  const inventory = useContext(InventoryContext);
+  useStopDeploymentDemand(
+    inventory === null ? null : findInventoryProjectRef(inventory, projectId),
+  );
+  return null;
+}
 
 /**
  * The faces of a folded project's busy Mates (M15), after its title: 18 px,
