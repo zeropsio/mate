@@ -1556,7 +1556,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 notePersonSession({ type: "input", at: performance.now() });
                 void listRef.current?.scrollToIndex({
                   index: item.rowIndex,
-                  animated: true,
+                  animated: !reducedMotion(),
                   viewOffset: 24,
                 });
               }}
