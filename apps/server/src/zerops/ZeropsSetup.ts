@@ -73,16 +73,21 @@ import {
   parseZcpStatus,
   procStartTime,
   runningStandUpProcess,
+  sectionCall,
   setupDocument,
   standUpCommandIds,
   standUpDecision,
   standUpSigners,
   type GitAccess,
   type SetupDocument,
+  type StandUpCall,
   type StandUpWait,
   type ZcpProcess,
   type ZcpStatus,
 } from "./zeropsSetupSteps.ts";
+
+/** How many of the latest stand-up calls are held: a section, its carry, and retries before. */
+const STAND_UP_CALLS_HELD = 8;
 
 /** The variable zcp names its status file in when it launches this server. */
 export const ZCP_STATUS_FILE_VARIABLE = "ZCP_STATUS_FILE";
@@ -125,6 +130,12 @@ export class ZeropsSetup extends Context.Service<
     readonly status: Effect.Effect<ZcpStatus | undefined>;
     /** Whether the stand-up the file says runs lost its zcp MCP process, provably. */
     readonly standUpGone: (status: ZcpStatus | undefined) => Effect.Effect<boolean>;
+    /**
+     * A `zerops_standup` call an agent of this server started (`ZeropsStandUpRelay`): the turn
+     * zcp's section waits on is read off the calls (`sectionCall`). Held in memory: every start of
+     * the Mate's unit fails a section left running (zcp's `MarkLaunch`), so none outlives them.
+     */
+    readonly noteStandUpCall: (call: StandUpCall) => Effect.Effect<void>;
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /** One manual attempt, only for the recorded asker after a failed send. */
@@ -326,6 +337,17 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       return process === undefined ? Effect.succeed(false) : reads.processGone(process);
     };
 
+    /** A turn's state as the stand-up reads it: running, or how it ended; not found, unread. */
+    const turnState = (rows: ReadonlyArray<{ readonly state: string }>) => {
+      const state = rows[0]?.state;
+      if (state === undefined) return undefined;
+      return state === "running" || state === "pending"
+        ? "running"
+        : state === "completed"
+          ? "done"
+          : "failed";
+    };
+
     /**
      * The recorded stand-up's own turn — the one its ask started, found by its message (its ids
      * are the command's) — never the thread's latest, which a later message would make another's.
@@ -337,17 +359,29 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         WHERE thread_id = ${record.threadId} AND pending_message_id = ${record.commandId}
         ORDER BY row_id DESC LIMIT 1
       `.pipe(
-        Effect.map((rows) => {
-          const state = rows[0]?.state;
-          if (state === undefined) return undefined;
-          return state === "running" || state === "pending"
-            ? "running"
-            : state === "completed"
-              ? "done"
-              : "failed";
-        }),
-        Effect.catch(() => Effect.succeed(undefined)),
+        Effect.map(turnState),
+        Effect.orElseSucceed(() => undefined),
       );
+
+    /** The stand-up calls this server's agents started, the latest last; a few are enough. */
+    const calls = yield* Ref.make<ReadonlyArray<StandUpCall>>([]);
+    const noteStandUpCall = (call: StandUpCall) =>
+      Ref.update(calls, (held) => [...held, call].slice(-STAND_UP_CALLS_HELD));
+
+    /** The turn of the call zcp's section waits on (`sectionCall`). */
+    const sectionTurnOf = (read: ZcpStatus | undefined) =>
+      Effect.gen(function* () {
+        const call = sectionCall(read, yield* Ref.get(calls));
+        if (call?.turnId === undefined) return undefined;
+        return yield* sql<{ readonly state: string }>`
+          SELECT state FROM projection_turns
+          WHERE thread_id = ${call.threadId} AND turn_id = ${call.turnId}
+          ORDER BY row_id DESC LIMIT 1
+        `.pipe(
+          Effect.map(turnState),
+          Effect.orElseSucceed(() => undefined),
+        );
+      });
 
     const document = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
@@ -405,6 +439,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         nobodyAsked: hq?.kind === "linked" && hq.mate.standupRequestedBy === null,
         standUpTurn: ran ? yield* turnOf(record) : undefined,
         standUpProcessGone: yield* standUpGone(zcpStatus),
+        sectionTurn: yield* sectionTurnOf(zcpStatus),
         unknown: [
           ...(signinKnown ? [] : (["signin"] as const)),
           ...(marked || record !== undefined ? [] : (["standup"] as const)),
@@ -645,6 +680,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       document,
       status,
       standUpGone,
+      noteStandUpCall,
       retry,
       awaitStandUp: Deferred.await(settled),
     });
