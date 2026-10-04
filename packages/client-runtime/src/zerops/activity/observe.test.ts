@@ -305,7 +305,12 @@ describe("operationReadCeilingMs — how long after its start a card reads its o
   const CEILING = 30 * 60 * 1000;
   it.each([
     { name: "a running one: up to the ceiling", running: true, exact: false, ms: CEILING },
-    { name: "a running one its result named: the same", running: true, exact: true, ms: CEILING },
+    {
+      name: "a running one its result named: followed by its handle until it ends, whatever its age",
+      running: true,
+      exact: true,
+      ms: Number.POSITIVE_INFINITY,
+    },
     {
       name: "a settled one with nothing to know it by: up to the ceiling",
       running: false,

@@ -221,16 +221,17 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
 }
 
 /**
- * How long after its start a card draws what the account store read of its operation: a
- * running one up to the ceiling; a settled one — read only by the ids its result named, once
- * per open (`readsOperation`) — whatever its age, so the same row shows the same details in any
- * window and after a reload.
+ * How long after its start a card draws what the account store read of its operation. One its
+ * result named by id, whatever its age: a running one — a build zcp stopped following — is read
+ * by that handle until it ends, its card's phase being the build's answer; a settled one is read
+ * once per open (`readsOperation`), so the same row shows the same details in any window and
+ * after a reload. One known only by its service and start: up to the ceiling.
  */
 export function operationReadCeilingMs(
   operation: { readonly running: boolean; readonly exact: boolean },
   ceilingMs: number = DEFAULT_CEILING_MS,
 ): number {
-  return !operation.running && operation.exact ? Number.POSITIVE_INFINITY : ceilingMs;
+  return operation.exact ? Number.POSITIVE_INFINITY : ceilingMs;
 }
 
 /**
