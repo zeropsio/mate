@@ -1,8 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -101,7 +100,7 @@ const withLifecycle = <A, E>(
     Effect.gen(function* () {
       const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
       const lifecycle = yield* ZeropsLifecycle.make({
-        toolEvents: Stream.never,
+        toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
         repository,
       });
       return yield* use(lifecycle);
@@ -313,7 +312,7 @@ describe("ZeropsLifecycle", () => {
         yield* Effect.scoped(
           Effect.gen(function* () {
             const first = yield* ZeropsLifecycle.make({
-              toolEvents: Stream.never,
+              toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
               repository,
             });
             yield* first.ingest(claudeEvent({}));
@@ -322,7 +321,7 @@ describe("ZeropsLifecycle", () => {
 
         const readsFail = yield* Ref.make(true);
         const lifecycle = yield* ZeropsLifecycle.make({
-          toolEvents: Stream.never,
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
           repository: {
             ...repository,
             getByThreadId: (threadId) =>
@@ -357,7 +356,7 @@ describe("ZeropsLifecycle", () => {
         const reads = yield* Ref.make(0);
         const scope = yield* Effect.scope;
         const lifecycle = yield* ZeropsLifecycle.make({
-          toolEvents: Stream.never,
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
           repository: {
             ...repository,
             // The subscriber's snapshot read lets an update start while it is
@@ -401,257 +400,72 @@ describe("ZeropsLifecycle", () => {
     ).pipe(Effect.provide(persistence)),
   );
 
-  it.effect("a source failure ends every reader visibly without another attempt", () =>
+  it.effect("ingest failure restarts the ingest", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const fail = yield* Deferred.make<void>();
-        const runs = yield* Ref.make(0);
-        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
-        const lifecycle = yield* ZeropsLifecycle.make({
-          toolEvents: Stream.fromEffect(
-            Effect.gen(function* () {
-              yield* Ref.update(runs, (count) => count + 1);
-              yield* Deferred.await(fail);
-              return yield* Effect.die("provider stream defect");
-            }),
-          ),
-          repository,
-        });
-        yield* lifecycle.ingest(claudeEvent({}));
-        const readers = yield* Effect.forEach([THREAD, OTHER_THREAD], (threadId) =>
-          Effect.gen(function* () {
-            const subscription = yield* lifecycle.subscribe(threadId);
-            return yield* Stream.runDrain(subscription.changes).pipe(
-              Effect.exit,
-              Effect.timeoutOption("1 minute"),
-              Effect.forkChild,
-            );
-          }),
-        );
-        yield* Deferred.succeed(fail, undefined);
-        yield* TestClock.adjust("1 minute");
-        for (const reader of readers) {
-          const outcome = yield* Fiber.join(reader);
-          expect(Option.isSome(outcome)).toBe(true);
-          if (Option.isSome(outcome)) {
-            expect(Exit.isFailure(outcome.value)).toBe(true);
-            if (Exit.isFailure(outcome.value)) {
-              const words = String(Cause.squash(outcome.value.cause));
-              expect(words).toContain("Activity feed stopped");
-              expect(words).toContain("provider stream defect");
-              expect(words).toContain("Some activity unavailable");
-              expect(words).toContain("Read again");
-            }
-          }
-        }
-        expect(yield* Ref.get(runs)).toBe(1);
-        expect((yield* lifecycle.get(THREAD)).envelope?.phase).toBe("develop-active");
-      }),
-    ).pipe(Effect.provide(persistence)),
-  );
-
-  it.effect("reopening after failure starts one shared attempt that can fail visibly again", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const firstFailure = yield* Deferred.make<void>();
-        const secondFailure = yield* Deferred.make<void>();
-        const runs = yield* Ref.make(0);
-        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
-        const lifecycle = yield* ZeropsLifecycle.make({
-          toolEvents: Stream.fromEffect(
-            Effect.gen(function* () {
-              const run = yield* Ref.getAndUpdate(runs, (count) => count + 1);
-              yield* Deferred.await(run === 0 ? firstFailure : secondFailure);
-              return yield* Effect.die("provider stream defect");
-            }),
-          ),
-          repository,
-        });
-        const original = yield* lifecycle.subscribe(THREAD);
-        const stopped = yield* Stream.runDrain(original.changes).pipe(
-          Effect.exit,
-          Effect.timeoutOption("1 minute"),
-          Effect.forkChild,
-        );
-        yield* Deferred.succeed(firstFailure, undefined);
-        yield* TestClock.adjust("1 minute");
-        expect(Option.isSome(yield* Fiber.join(stopped))).toBe(true);
-        expect(yield* Ref.get(runs)).toBe(1);
-
-        // Reopening is the reader's explicit Read again action. Concurrent
-        // readers share this attempt, and an old reader remains stopped.
-        const reopened = yield* lifecycle.subscribe(THREAD);
-        const another = yield* lifecycle.subscribe(OTHER_THREAD);
-        const endings = yield* Effect.forEach([reopened, another, original], (subscription) =>
-          Stream.runDrain(subscription.changes).pipe(
-            Effect.exit,
-            Effect.timeoutOption("1 minute"),
-            Effect.forkChild,
-          ),
-        );
-        yield* Deferred.succeed(secondFailure, undefined);
-        yield* TestClock.adjust("1 minute");
-        for (const ending of endings) {
-          const outcome = yield* Fiber.join(ending);
-          expect(Option.map(outcome, Exit.isFailure)).toEqual(Option.some(true));
-        }
-        expect(yield* Ref.get(runs)).toBe(2);
-      }),
-    ).pipe(Effect.provide(persistence)),
-  );
-
-  it.effect("a reopened attempt delivers new events and outlives the reopening reader", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const fail = yield* Deferred.make<void>();
         const bus = yield* Queue.unbounded<SpiEvent>();
         const runs = yield* Ref.make(0);
         const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
         const lifecycle = yield* ZeropsLifecycle.make({
+          // The first run of the event stream dies; every later run is healthy.
           toolEvents: Stream.unwrap(
             Effect.map(
               Ref.getAndUpdate(runs, (count) => count + 1),
-              (run) =>
-                run === 0
-                  ? Stream.fromEffect(
-                      Effect.andThen(Deferred.await(fail), Effect.die("source lost")),
-                    )
-                  : Stream.fromQueue(bus),
+              (run) => (run === 0 ? Stream.die("provider stream defect") : Stream.fromQueue(bus)),
             ),
           ),
           repository,
         });
-        const original = yield* lifecycle.subscribe(THREAD);
-        const stopped = yield* Stream.runDrain(original.changes).pipe(
-          Effect.exit,
-          Effect.timeoutOption("1 minute"),
-          Effect.forkChild,
-        );
-        yield* Deferred.succeed(fail, undefined);
-        yield* TestClock.adjust("1 minute");
-        expect(Option.map(yield* Fiber.join(stopped), Exit.isFailure)).toEqual(Option.some(true));
 
-        // The reader owns its subscription, while the service owns ingestion
-        // and persistence for all threads, including those with no reader.
-        yield* Effect.scoped(lifecycle.subscribe(THREAD));
-        const reopened = yield* lifecycle.subscribe(THREAD);
-        const next = yield* Stream.runHead(reopened.changes).pipe(
-          Effect.timeoutOption("1 minute"),
-          Effect.forkChild,
-        );
-        yield* Queue.offer(bus, claudeEvent({}));
-        yield* TestClock.adjust("1 minute");
-        expect(
-          Option.map(Option.flatten(yield* Fiber.join(next)), (state) => state.envelope?.phase),
-        ).toEqual(Option.some("develop-active"));
-        expect(yield* Ref.get(runs)).toBe(2);
-      }),
-    ).pipe(Effect.provide(persistence)),
-  );
-
-  it.effect("two empty segments end visibly rather than spinning on clean completion", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const segmentEnd = yield* Deferred.make<void>();
-        const runs = yield* Ref.make(0);
-        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
-        const lifecycle = yield* ZeropsLifecycle.make({
-          toolEvents: Stream.fromEffect(
-            Effect.andThen(
-              Ref.update(runs, (count) => count + 1),
-              Deferred.await(segmentEnd),
-            ),
-          ).pipe(Stream.drain),
-          repository,
-        });
-        const subscription = yield* lifecycle.subscribe(THREAD);
-        const stopped = yield* Stream.runDrain(subscription.changes).pipe(
-          Effect.exit,
-          Effect.timeoutOption("1 minute"),
-          Effect.forkChild,
-        );
-        yield* Deferred.succeed(segmentEnd, undefined);
-        yield* TestClock.adjust("1 minute");
-        const outcome = yield* Fiber.join(stopped);
-        expect(Option.map(outcome, Exit.isFailure)).toEqual(Option.some(true));
-        if (Option.isSome(outcome) && Exit.isFailure(outcome.value)) {
-          expect(String(Cause.squash(outcome.value.cause))).toContain(
-            "provider activity stream ended",
-          );
-        }
-        expect(yield* Ref.get(runs)).toBe(2);
-      }),
-    ).pipe(Effect.provide(persistence)),
-  );
-
-  it.effect("a planned source end continues once and delivers the next segment", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const segmentEnd = yield* Deferred.make<void>();
-        const bus = yield* Queue.unbounded<SpiEvent>();
-        const runs = yield* Ref.make(0);
-        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
-        const lifecycle = yield* ZeropsLifecycle.make({
-          toolEvents: Stream.unwrap(
-            Effect.map(
-              Ref.getAndUpdate(runs, (count) => count + 1),
-              (run) =>
-                run === 0
-                  ? Stream.fromEffect(Deferred.await(segmentEnd)).pipe(Stream.drain)
-                  : Stream.fromQueue(bus),
-            ),
-          ),
-          repository,
-        });
         const subscription = yield* lifecycle.subscribe(THREAD);
         const next = yield* Stream.runHead(subscription.changes).pipe(
           Effect.timeoutOption("1 minute"),
           Effect.forkChild,
         );
-        yield* Deferred.succeed(segmentEnd, undefined);
         yield* Queue.offer(bus, claudeEvent({}));
         yield* TestClock.adjust("1 minute");
         const delivered = Option.flatten(yield* Fiber.join(next));
+
         expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
           Option.some("develop-active"),
         );
-        expect(yield* Ref.get(runs)).toBe(2);
       }),
     ).pipe(Effect.provide(persistence)),
   );
 
-  it.effect("a failed planned continuation ends visibly without a third attempt", () =>
+  it.effect("after a healthy run the restart backoff starts from the first rung again", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const segmentEnd = yield* Deferred.make<void>();
-        const runs = yield* Ref.make(0);
+        const starts = yield* Ref.make<ReadonlyArray<number>>([]);
         const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
-        const lifecycle = yield* ZeropsLifecycle.make({
+        yield* ZeropsLifecycle.make({
+          // Six runs die at once and climb the backoff to its cap; the seventh
+          // runs healthily for two minutes before it dies; the eighth stays up.
           toolEvents: Stream.unwrap(
-            Effect.map(
-              Ref.getAndUpdate(runs, (count) => count + 1),
-              (run) =>
-                run === 0
-                  ? Stream.fromEffect(Deferred.await(segmentEnd)).pipe(Stream.drain)
-                  : Stream.die("next segment unavailable"),
-            ),
+            Effect.gen(function* () {
+              const now = yield* Clock.currentTimeMillis;
+              const run = (yield* Ref.getAndUpdate(starts, (seen) => [...seen, now])).length;
+              if (run < 6) {
+                return Stream.die("provider stream defect");
+              }
+              if (run === 6) {
+                return Stream.fromEffect(
+                  Effect.andThen(Effect.sleep("2 minutes"), Effect.die("provider stream defect")),
+                );
+              }
+              return Stream.never;
+            }),
           ),
           repository,
         });
-        const subscription = yield* lifecycle.subscribe(THREAD);
-        const stopped = yield* Stream.runDrain(subscription.changes).pipe(
-          Effect.exit,
-          Effect.timeoutOption("1 minute"),
-          Effect.forkChild,
-        );
-        yield* Deferred.succeed(segmentEnd, undefined);
-        yield* TestClock.adjust("1 minute");
-        const outcome = yield* Fiber.join(stopped);
-        expect(Option.map(outcome, Exit.isFailure)).toEqual(Option.some(true));
-        if (Option.isSome(outcome) && Exit.isFailure(outcome.value)) {
-          expect(String(Cause.squash(outcome.value.cause))).toContain("next segment unavailable");
+
+        for (let second = 0; second < 300; second += 1) {
+          yield* TestClock.adjust("1 second");
         }
-        expect(yield* Ref.get(runs)).toBe(2);
+
+        expect((yield* Ref.get(starts)).map((at) => at / 1000)).toEqual([
+          0, 1, 3, 7, 15, 31, 61, 182,
+        ]);
       }),
     ).pipe(Effect.provide(persistence)),
   );
@@ -758,7 +572,7 @@ describe("ZeropsLifecycle", () => {
         yield* Effect.scoped(
           Effect.gen(function* () {
             const lifecycle = yield* ZeropsLifecycle.make({
-              toolEvents: Stream.never,
+              toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
               repository,
             });
             yield* lifecycle.ingest(claudeEvent({}));
@@ -768,7 +582,7 @@ describe("ZeropsLifecycle", () => {
         // A container restart keeps state.sqlite, so a returning client must
         // still see its strip without a fresh `status` call.
         const restarted = yield* ZeropsLifecycle.make({
-          toolEvents: Stream.never,
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
           repository,
         });
         expect((yield* restarted.get(THREAD)).envelope?.phase).toBe("develop-active");
