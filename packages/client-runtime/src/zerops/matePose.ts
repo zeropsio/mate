@@ -53,7 +53,8 @@ export const MATE_ARRIVAL_WINDOW_MS = FIRST_BUILD_GIVE_UP_MS;
  * coming up, to its first sign-in, bounded to {@link MATE_ARRIVAL_WINDOW_MS} from its project's
  * creation. `undefined` when it is not arriving at all: somebody has signed one of its logins in
  * (`mateSignedInOnce` — a sign-out keeps its last signer, so a Mate once signed in has arrived for
- * good), its container is unavailable, or its creation time is not known.
+ * good), its agent runs without a sign-in (`runsWithoutSignIn`, told once it is up), its container
+ * is unavailable, or its creation time is not known.
  */
 export function mateArrivingUntil(
   candidate: Pick<ZeropsCandidate, "group"> & {
@@ -62,6 +63,9 @@ export function mateArrivingUntil(
 ): number | undefined {
   if (candidate.group === "unavailable") return undefined;
   if (mateSignedInOnce(candidate.project)) return undefined;
+  // Its agent runs without a sign-in: nothing to wait on once it is up. HQ knows that only from
+  // the overview the Mate sends over its own link, so knowing it means the Mate has been up.
+  if (candidate.project.hq?.mate?.runsWithoutSignIn === true) return undefined;
   const created = Date.parse(candidate.project.created ?? "");
   return Number.isNaN(created) ? undefined : created + MATE_ARRIVAL_WINDOW_MS;
 }
