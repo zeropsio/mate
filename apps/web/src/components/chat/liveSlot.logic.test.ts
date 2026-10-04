@@ -411,3 +411,21 @@ describe("slotClock", () => {
     expect(slotClock(given, first, waitingSince ?? null)).toEqual(clock);
   });
 });
+
+// Review of pass 39: "Thinking"'s clock restarted on every catch-up and every
+// reload, and held the first item back as if Thinking had just been said.
+describe("the quiet's start, from the data", () => {
+  it.each([
+    { name: "a reload mid-quiet", start: true },
+    { name: "a catch-up batch", start: false },
+  ])("carries when the quiet began through $name", ({ start }) => {
+    const offer = { at: 60_000, live: [] as string[], record: ["c1"], quietFrom: 20_000 };
+    const slot = start
+      ? slotStart(offer)
+      : slotResync(slotStart({ at: 0, live: ["c1"], record: [] }), offer);
+    expect(slot.quietSince).toBe(20_000);
+    // An item now enters at once: Thinking stood long ago.
+    const next = slotOffer(slot, { at: 60_100, live: ["c2"], record: ["c1"], final: false });
+    expect(next.entries.map((entry) => entry.key)).toEqual(["c2"]);
+  });
+});

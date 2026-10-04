@@ -79,6 +79,12 @@ export interface SlotOffer {
   readonly record: ReadonlyArray<string>;
   readonly at: number;
   readonly final: boolean;
+  /**
+   * When the quiet began, from the data — the record's newest line, else
+   * the run's start — for a slot drawn or caught up mid-quiet: its
+   * "Thinking" never restarts with a reload or a resync.
+   */
+  readonly quietFrom?: number;
 }
 
 /** A question stands its minimum from its answer, so the pair is read together. */
@@ -139,6 +145,13 @@ function quietAfter(
   return entries.length > 0 ? null : (quietSince ?? at);
 }
 
+/** When the quiet began, as the data says: never after now. */
+function quietStart(offer: Omit<SlotOffer, "final">): number | null {
+  return offer.quietFrom === undefined || !Number.isFinite(offer.quietFrom)
+    ? null
+    : Math.min(offer.quietFrom, offer.at);
+}
+
 /** The slot as first drawn: what the record holds is history, what is live shows at once. */
 export function slotStart(offer: Omit<SlotOffer, "final">): LiveSlot {
   const entries = admit([], offer.live, offer.at, null);
@@ -146,7 +159,7 @@ export function slotStart(offer: Omit<SlotOffer, "final">): LiveSlot {
     entries,
     live: offer.live,
     seen: new Set(offer.record),
-    quietSince: quietAfter(entries, null, offer.at),
+    quietSince: quietAfter(entries, quietStart(offer), offer.at),
     pending: [],
   };
 }
@@ -179,7 +192,7 @@ export function slotResync(slot: LiveSlot, offer: Omit<SlotOffer, "final">): Liv
         entries,
         live: offer.live,
         seen,
-        quietSince: quietAfter(entries, null, offer.at),
+        quietSince: quietAfter(entries, quietStart(offer), offer.at),
         pending: [],
       };
 }

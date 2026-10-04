@@ -3462,6 +3462,13 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [row.items],
   );
   const slotRef = useRef<HTMLDivElement>(null);
+  // When the quiet began, from the data: the record's newest line, else the
+  // run's start — a reload or a catch-up never restarts "Thinking".
+  const quietFrom = useMemo(() => {
+    const ats = row.items.map((item) => Date.parse(item.at)).filter(Number.isFinite);
+    const start = row.status === null ? Number.NaN : Date.parse(row.status.startedAt);
+    return ats.length > 0 ? Math.max(...ats) : start;
+  }, [row.items, row.status]);
   // Where each row leaving the slot stood, and each line of the history, read
   // before they move: the plop starts there, and the history glides from there.
   const [landing, setLanding] = useState<Landing | null>(null);
@@ -3470,6 +3477,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     record: recordKeys,
     final: !slotted,
     syncing: ctx.syncing,
+    quietFrom,
     onChange: (from, to, redrawn) => {
       const after = slotHolds(to);
       const before = slotHolds(from);
