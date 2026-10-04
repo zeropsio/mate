@@ -43,6 +43,7 @@ import {
   isBootstrapDecidable,
   resolveZeropsBootstrapModelSelection,
 } from "./zerops/ZeropsBootstrapModel.ts";
+import { interruptedTurnMessage, ZeropsRestartRead } from "./zerops/ZeropsRestartRead.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { forkParked } from "./serverActivation.ts";
 import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
@@ -369,10 +370,8 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
     Effect.withSpan(`server.startup.${phase}`),
   );
 
-const ORPHANED_PROVIDER_SESSION_ERROR =
-  "Provider session did not survive a server restart. Send a new message to continue.";
-
 export const reconcileProviderSessions = Effect.gen(function* () {
+  const bootAt = DateTime.formatIso(yield* DateTime.now);
   const crypto = yield* Crypto.Crypto;
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
@@ -391,6 +390,18 @@ export const reconcileProviderSessions = Effect.gen(function* () {
         thread.session.activeTurnId !== null) &&
       !liveThreadIds.has(thread.id),
   );
+
+  if (orphanedThreads.length === 0) return;
+  // The platform is asked once for the whole boot, never once per thread and never retried.
+  // Outside Zerops there is no own-key reader; the plain restart message still applies.
+  const reader = yield* Effect.serviceOption(ZeropsRestartRead);
+  const evidence = Option.isSome(reader)
+    ? yield* reader.value.read.pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterrupts(cause) ? Effect.failCause(cause) : Effect.succeed(null),
+        ),
+      )
+    : null;
 
   for (const thread of orphanedThreads) {
     const session = thread.session;
@@ -427,7 +438,14 @@ export const reconcileProviderSessions = Effect.gen(function* () {
           ...session,
           status: "error",
           activeTurnId: null,
-          lastError: ORPHANED_PROVIDER_SESSION_ERROR,
+          lastError: interruptedTurnMessage({
+            evidence,
+            lastActivityAt:
+              Date.parse(thread.updatedAt) > Date.parse(session.updatedAt)
+                ? thread.updatedAt
+                : session.updatedAt,
+            bootAt,
+          }),
           updatedAt: reconciledAt,
         },
         createdAt: reconciledAt,

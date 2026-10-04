@@ -36,6 +36,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
+import * as ZeropsRestartReadModule from "./ZeropsRestartRead.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
@@ -174,6 +175,8 @@ const liveLayer = Layer.mergeAll(
   // read — for the watch, the signers and the door alike, written by the link
   // to HQ above; it reaches the door the same way the reader below does.
   Layer.provideMerge(ZeropsProjectAccessModule.layer),
+  // Startup's one read of why running turns were interrupted, over the same own-key reader.
+  Layer.provideMerge(ZeropsRestartReadModule.layer),
   // The org's member list, read once for the watch, the signers and the door
   // alike (`ZeropsOrgRead`), over the one own-key reader below; it reaches
   // the door the same way that reader does.
