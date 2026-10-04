@@ -11,8 +11,9 @@ Mate shows why and stops. Fix the cause in Zerops, then press **Again**. If Zero
 an operation, **Again** checks its recorded progress rather than sending the operation again.
 
 HQ calls stop with a visible failure when HQ cannot answer. Press **Try again** to ask again.
-If HQ's live connection drops, Mate keeps the last known projects visible and stops until
-you press **Try again** in the menu; Mate chats remain available.
+If HQ's live connection drops, Mate keeps the last known projects visible and reconnects by
+itself with increasing delays; only a refusal waits for **Try again** in the menu. Mate chats
+remain available.
 
 Opening a Mate reads its project before connecting. If that read cannot start, Mate shows the
 reason and **Again**. Press **Again** to make one new attempt.
