@@ -447,7 +447,7 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
 });
 
 describe("comingLine — the line an environment coming up says", () => {
-  it.each<[string, StopComing & { kind: "coming" }, { fact: string; rest: string }]>([
+  it.each<[string, StopComing & { kind: "coming" }, { fact: string; rest: string | undefined }]>([
     [
       "Stage",
       { kind: "coming", step: "project" },
@@ -458,10 +458,17 @@ describe("comingLine — the line an environment coming up says", () => {
       { kind: "coming", step: "app" },
       { fact: "Production coming up", rest: "adding the app" },
     ],
+    // Held for a key, nothing comes up until somebody mints one: its own fact, never "coming up"
+    // (restores 630d8f1bb's idea for HQ's key).
     [
       "Stage",
       { kind: "coming", step: "awaiting-key" },
-      { fact: "Stage coming up", rest: "awaits a deploy key" },
+      { fact: "Stage awaits a deploy key", rest: undefined },
+    ],
+    [
+      "qa",
+      { kind: "coming", step: "awaiting-key" },
+      { fact: "qa awaits a deploy key", rest: undefined },
     ],
   ])("%s %j", (subject, coming, line) => {
     expect(comingLine(subject, coming)).toEqual(line);
