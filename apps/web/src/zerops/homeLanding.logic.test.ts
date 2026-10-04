@@ -1,10 +1,16 @@
-import { hqHomeMate } from "./homeLanding.logic";
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { homeGuess, homeView, readHomeLanding, writeHomeLanding } from "./homeLanding.logic";
+import {
+  homeGuess,
+  homeTarget,
+  homeView,
+  hqHomeMate,
+  readHomeLanding,
+  writeHomeLanding,
+} from "./homeLanding.logic";
 
 const ref = scopeThreadRef(EnvironmentId.make("env-quill"), ThreadId.make("thread-ivy"));
 
@@ -193,5 +199,74 @@ describe("the home from HQ, before any Mate socket opens", () => {
   it("earns no destination before HQ knows any Mate", () => {
     expect(hqHomeMate(null)).toBeUndefined();
     expect(hqHomeMate(new Map())).toBeUndefined();
+  });
+});
+
+describe("homeTarget: where the home lands, and never on a Mate that is gone", () => {
+  const quill = EnvironmentId.make("env-quill");
+  const fern = EnvironmentId.make("env-fern");
+  const base = {
+    target: null,
+    hqMate: undefined,
+    hqMatesRead: true,
+    environments: [],
+  } as const;
+  it.each([
+    [
+      "a connect names an environment whose shell has not arrived: unknown",
+      { target: { environmentId: quill, bootstrapped: false }, hqMate: "proj-ivy" },
+      null,
+    ],
+    [
+      "a connect names an environment, its shell here: that one, before HQ's",
+      { target: { environmentId: quill, bootstrapped: true }, hqMate: "proj-ivy" },
+      { kind: "environment", environmentId: quill },
+    ],
+    [
+      "HQ names a Mate: that Mate",
+      { hqMate: "proj-ivy", hqMatesRead: false },
+      { kind: "mate", projectId: "proj-ivy" },
+    ],
+    ["HQ not read yet, naming none: unknown", { hqMatesRead: false }, null],
+    [
+      "a socket on its first attempt: unknown",
+      { environments: [{ environmentId: quill, phase: "connecting", snapshot: false }] },
+      null,
+    ],
+    [
+      "a live socket whose shell has not arrived: unknown",
+      { environments: [{ environmentId: quill, phase: "connected", snapshot: false }] },
+      null,
+    ],
+    [
+      "live sockets: among them only",
+      {
+        environments: [
+          { environmentId: quill, phase: "connected", snapshot: true },
+          { environmentId: fern, phase: "error", snapshot: true },
+        ],
+      },
+      { kind: "among", environmentIds: [quill] },
+    ],
+    // Restores f3c9cba48's rule: a registration that does not answer keeps its cached projects,
+    // and with HQ down naming none of them, its old conversation is a Mate that may be gone.
+    [
+      "HQ down, a dead registration still cached: nowhere",
+      {
+        environments: [
+          { environmentId: quill, phase: "error", snapshot: true },
+          { environmentId: fern, phase: "reconnecting", snapshot: true },
+        ],
+      },
+      { kind: "none" },
+    ],
+    [
+      "a registration held but not opened: nowhere, HQ names the Mates",
+      { environments: [{ environmentId: quill, phase: "available", snapshot: true }] },
+      { kind: "none" },
+    ],
+    ["no environment at all: nowhere", {}, { kind: "none" }],
+  ] as const)("%s", (_case, over, target) => {
+    expect(homeTarget({ ...base, ...over })).toEqual(target);
   });
 });

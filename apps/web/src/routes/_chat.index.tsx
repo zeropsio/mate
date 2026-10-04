@@ -16,11 +16,7 @@ import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import {
-  useAllEnvironmentShellsBootstrapped,
-  useProjects,
-  useThreadShells,
-} from "../state/entities";
+import { useProjects, useThreadShells } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
@@ -30,7 +26,7 @@ import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { hqMatesAtom } from "../state/zerops";
-import { hqHomeMate, homeView } from "../zerops/homeLanding.logic";
+import { homeTarget, homeView, hqHomeMate } from "../zerops/homeLanding.logic";
 import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useMatesSettled } from "../zerops/useMatesSettled";
@@ -65,7 +61,8 @@ function ChatIndexRouteView() {
  * because that one happened to be cached first.
  *
  * Without one, HQ names the most recently active Mate, preferring an online one. Opening it
- * holds just its route lease. Local environments fall back to their connected projects.
+ * holds just its route lease. Else the connected environments' projects; a registration that does
+ * not answer never claims the landing with its cached projects (`homeTarget`).
  *
  * Either way the landing is the environment's main chat when it has one
  * (`resolvePrimaryConversation`), else a draft in the project: a Mate's other
@@ -111,7 +108,6 @@ function IndexDraftLanding() {
   );
   // Read once, as the page opens: what it waits with never changes under the eye.
   const [remembered] = useState(() => rememberedHomeLanding(activeOrganization?.id));
-  const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
   const { environmentId: targetSearch } = Route.useSearch();
@@ -144,51 +140,46 @@ function IndexDraftLanding() {
         : { kind: "thread", ref: scopeThreadRef(project.environmentId, primary.id) };
     };
 
-    if (targetEnvironmentId !== null) {
-      if (!targetBootstrapped) return null;
+    const target = homeTarget({
+      target:
+        targetEnvironmentId === null
+          ? null
+          : { environmentId: targetEnvironmentId, bootstrapped: targetBootstrapped },
+      // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
+      hqMate: hqHomeMate(hqMates?.mates ?? null, unavailable),
+      hqMatesRead,
+      environments: environments.map((environment) => ({
+        environmentId: environment.environmentId,
+        phase: environment.connection.phase,
+        snapshot: withSnapshot.has(environment.environmentId),
+      })),
+    });
+    if (target === null || target.kind === "none" || target.kind === "mate") return target;
+    if (target.kind === "environment") {
       const environmentThreads = threads.filter(
-        (thread) => thread.environmentId === targetEnvironmentId,
+        (thread) => thread.environmentId === target.environmentId,
       );
       const { primary } = resolvePrimaryConversation(environmentThreads);
       if (primary !== undefined) {
-        return { kind: "thread", ref: scopeThreadRef(targetEnvironmentId, primary.id) };
+        return { kind: "thread", ref: scopeThreadRef(target.environmentId, primary.id) };
       }
       return landingIn(
         sortScopedProjectsForSidebar(
-          projects.filter((entry) => entry.environmentId === targetEnvironmentId),
+          projects.filter((entry) => entry.environmentId === target.environmentId),
           environmentThreads,
           "updated_at",
         )[0],
       );
     }
-
-    // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
-    const projectId = hqHomeMate(hqMates?.mates ?? null, unavailable);
-    if (projectId !== undefined) return { kind: "mate", projectId };
-    if (!hqMatesRead) return null;
-
-    // A socket on its first attempt is about to tell us something; a live
-    // one whose shell has not arrived yet is about to hand us its projects.
-    // Either is worth a moment. A registration stuck reconnecting is not.
-    if (environments.some((environment) => environment.connection.phase === "connecting")) {
-      return null;
-    }
-    const live = environments.filter((environment) => environment.connection.phase === "connected");
-    if (live.some((environment) => !withSnapshot.has(environment.environmentId))) return null;
-    if (live.length > 0) {
-      const liveIds = new Set(live.map((environment) => environment.environmentId));
-      return landingIn(
-        sortScopedProjectsForSidebar(
-          projects.filter((entry) => liveIds.has(entry.environmentId)),
-          threads,
-          "updated_at",
-        )[0],
-      );
-    }
-    if (!bootstrapped) return null;
-    return landingIn(sortScopedProjectsForSidebar(projects, threads, "updated_at")[0]);
+    const among = new Set<EnvironmentId>(target.environmentIds);
+    return landingIn(
+      sortScopedProjectsForSidebar(
+        projects.filter((entry) => among.has(entry.environmentId)),
+        threads,
+        "updated_at",
+      )[0],
+    );
   }, [
-    bootstrapped,
     hqMates,
     hqMatesRead,
     unavailable,

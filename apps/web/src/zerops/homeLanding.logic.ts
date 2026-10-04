@@ -5,6 +5,7 @@
  * Mate it will land on (`homeGuess`), it guesses by it: that Mate's face, name and opening line,
  * with nothing that takes input; else the boot's one wait line. "No projects" is an answer: only once the read is whole. Pure.
  */
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
@@ -37,6 +38,51 @@ export function homeView(input: {
     return { kind: "opening", ref: input.remembered };
   }
   return { kind: "wait" };
+}
+
+/** Where the home lands, before it is resolved to a conversation or a draft there. */
+export type HomeTarget =
+  /** The Mate HQ names: opening it holds just its route lease (A9). */
+  | { readonly kind: "mate"; readonly projectId: string }
+  /** The environment a connect handed over. */
+  | { readonly kind: "environment"; readonly environmentId: EnvironmentId }
+  /** The most recently active project among these environments, every one of them live. */
+  | { readonly kind: "among"; readonly environmentIds: ReadonlyArray<EnvironmentId> }
+  | { readonly kind: "none" };
+
+/**
+ * Where the home lands (null: not known yet). A connect's environment first, once its shell is
+ * here; else the Mate HQ names; else, once HQ has answered, the projects of the environments whose
+ * socket is up. A registration that does not answer keeps its cached projects, and those never
+ * claim the landing: with HQ naming none, its old conversation may be a Mate that is gone. A
+ * socket on its first attempt, or a live one whose shell has not arrived, is worth a moment. Pure.
+ */
+export function homeTarget(input: {
+  readonly target: { readonly environmentId: EnvironmentId; readonly bootstrapped: boolean } | null;
+  /** The Mate HQ names (`hqHomeMate`). */
+  readonly hqMate: string | undefined;
+  /** HQ has answered for this organization, or its absence/failure is known. */
+  readonly hqMatesRead: boolean;
+  readonly environments: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly phase: EnvironmentConnectionPhase;
+    /** Its shell has arrived. */
+    readonly snapshot: boolean;
+  }>;
+}): HomeTarget | null {
+  if (input.target !== null) {
+    return input.target.bootstrapped
+      ? { kind: "environment", environmentId: input.target.environmentId }
+      : null;
+  }
+  if (input.hqMate !== undefined) return { kind: "mate", projectId: input.hqMate };
+  if (!input.hqMatesRead) return null;
+  if (input.environments.some((environment) => environment.phase === "connecting")) return null;
+  const live = input.environments.filter((environment) => environment.phase === "connected");
+  if (live.some((environment) => !environment.snapshot)) return null;
+  return live.length === 0
+    ? { kind: "none" }
+    : { kind: "among", environmentIds: live.map((environment) => environment.environmentId) };
 }
 
 /**
