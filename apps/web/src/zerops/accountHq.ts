@@ -38,7 +38,7 @@ import {
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
-import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 
 import { appBasePath } from "~/basePath";
@@ -255,15 +255,18 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 /** Where an HQ stands, as this tab last read it. */
 export type HqStanding =
   | { readonly kind: "unknown" }
-  | { readonly kind: "healthy" }
+  /** `build` the Core it runs, as its health says it (`hq/update.ts`). */
+  | { readonly kind: "healthy"; readonly build: string }
   /** Serving, while it cannot check Zerops right now: no outage, everything keeps using it. */
-  | { readonly kind: "unchecked" }
+  | { readonly kind: "unchecked"; readonly build: string }
   /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
   | { readonly kind: "unavailable"; readonly since: number };
 
 /** The standing a health read leaves: an outage keeps the time it began. */
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy" || health.kind === "unchecked") return { kind: health.kind };
+  if (health.kind === "healthy" || health.kind === "unchecked") {
+    return { kind: health.kind, build: health.build };
+  }
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
 }
 
@@ -337,6 +340,28 @@ export async function readCarriedCoreBuild(
   } catch {
     return "";
   }
+}
+
+/** This tab's one read of the Core it carries: its build does not change under it. */
+let carriedCoreBuild: Promise<string> | undefined;
+
+/** The Core this build carries (`readCarriedCoreBuild`); `undefined` until read. */
+export function useCarriedCoreBuild(): string | undefined {
+  const [build, setBuild] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    carriedCoreBuild ??= readCarriedCoreBuild(
+      (input, init) => fetch(input, init),
+      `${appBasePath()}/hq-core`,
+    );
+    void carriedCoreBuild.then((read) => {
+      if (live) setBuild(read);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return build;
 }
 
 /**
