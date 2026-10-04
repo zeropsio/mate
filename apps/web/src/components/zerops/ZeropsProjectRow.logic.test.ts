@@ -339,6 +339,43 @@ describe("deriveZeropsRowAction", () => {
       expect(offered(ageless)).toBe("none");
     });
 
+    // Live, 2026-10-04: a plain project ("central-prometheus") was not listed at all. 0.13 reads a
+    // project's services only once something leases it, so an unopened plain project's row has
+    // them unread — never "no container". Its Set up Mate reads them as it runs, and imports
+    // nothing where a container is there already: offered on its other evidence.
+    it("is offered on a plain project whose services nothing has read yet", () => {
+      const unread = {
+        key: "bare",
+        group: "unavailable",
+        presence: "unknown",
+        project: shop.project,
+      } as ZeropsRowCandidate;
+      expect(offered(unread)).toBe("set-up-mate");
+    });
+
+    it("draws such a row as one with no Mate, never as checking: nothing will read it", () => {
+      const unread = {
+        key: "bare",
+        group: "unavailable",
+        presence: "unknown",
+        project: shop.project,
+      } as ZeropsRowCandidate;
+      expect(
+        deriveZeropsRowPresentation({ ...input(unread, undefined, PLAIN), plainEvidence: EVIDENCE })
+          .status,
+      ).toEqual({ label: "Not available", tone: "off" });
+    });
+
+    it("is not offered on a project whose services nothing has read, where it is a declared Mate's", () => {
+      const unread = {
+        key: "bare",
+        group: "unavailable",
+        presence: "unknown",
+        project: { ...shop.project, tagList: ["mate"] },
+      } as ZeropsRowCandidate;
+      expect(offered(unread)).toBe("none");
+    });
+
     it("gathers every project HQ's structure holds any record of", () => {
       expect(
         [
