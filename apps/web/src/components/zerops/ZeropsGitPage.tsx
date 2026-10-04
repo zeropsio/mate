@@ -19,7 +19,10 @@
  */
 import { changeKindTag, changeState, gitRepositoryLine } from "@t3tools/client-runtime/zerops";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
+import { Button } from "../ui/button";
+import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
+import { requestHqSnapshot } from "~/zerops/hqStructure";
 
 import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
@@ -34,12 +37,35 @@ import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 
-function ReadTrouble({ failure }: { readonly failure: string | null }) {
+function Reading() {
+  return (
+    <p className="text-sm text-muted-foreground" role="status" data-zerops-surface="git-reading">
+      Reading repositories and changes…
+    </p>
+  );
+}
+
+function ReadTrouble({
+  failure,
+  onAgain,
+}: {
+  readonly failure: string | null;
+  readonly onAgain?: (() => void) | undefined;
+}) {
   if (failure === null) return null;
   return (
-    <p className="text-sm text-status-failed" data-zerops-surface="git-read-trouble">
-      {failure}
-    </p>
+    <div className="flex flex-col gap-2" data-zerops-surface="git-read-trouble">
+      <p className="text-sm text-status-failed" role="alert">
+        {failure}
+      </p>
+      {onAgain === undefined ? null : (
+        <div>
+          <Button variant="ghost" size="sm" onClick={onAgain}>
+            Again
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -48,29 +74,51 @@ export function ZeropsGitOverview({
   onOpenChange,
   repositoryHref,
   onOpenRepository,
+  onAgain,
 }: {
   readonly state: GitPageState;
+  readonly onAgain?: (() => void) | undefined;
   readonly repositoryHref?: (appId: string, repo: string) => string;
   readonly onOpenRepository?: (appId: string, repo: string) => void;
   /** Opens a change's own page. */
   readonly onOpenChange?: (appId: string, repository: string, number: number) => void;
 }) {
-  // Nothing read yet is not nothing: the list lands in a moment, and an empty state that gives
-  // way to it is the layout shift this page refuses. A read that did not answer says why instead.
-  if (state.kind === "unread") return <ReadTrouble failure={state.failure} />;
+  if (state.kind === "refused")
+    return (
+      <p className="text-sm text-status-failed" role="alert" data-zerops-surface="git-refused">
+        {state.reason}
+      </p>
+    );
+  if (state.kind === "unread")
+    return state.failure === null ? (
+      <Reading />
+    ) : (
+      <ReadTrouble failure={state.failure} onAgain={onAgain} />
+    );
+  const refusals = state.refusals?.map(({ appId, name, reason }) => (
+    <p key={appId} className="text-sm text-muted-foreground" role="status">
+      {name}: {reason}
+    </p>
+  ));
   if (state.apps.every((app) => app.repositories.length === 0)) {
     return (
       <>
-        <ReadTrouble failure={state.failure} />
-        <p className="text-sm text-muted-foreground" data-zerops-surface="git-empty">
-          No repository yet. The first project brings one.
-        </p>
+        <ReadTrouble failure={state.failure} onAgain={onAgain} />
+        {refusals}
+        {state.reading ? <Reading /> : null}
+        {state.reading || state.failure !== null ? null : (
+          <p className="text-sm text-muted-foreground" data-zerops-surface="git-empty">
+            No repository yet. The first project brings one.
+          </p>
+        )}
       </>
     );
   }
   return (
     <>
-      <ReadTrouble failure={state.failure} />
+      <ReadTrouble failure={state.failure} onAgain={onAgain} />
+      {state.reading ? <Reading /> : null}
+      {refusals}
       <div className="flex flex-col gap-10" data-zerops-surface="git-overview">
         {state.apps.map((app) => (
           <section className="flex flex-col gap-3" data-zerops-git-app={app.appId} key={app.appId}>
@@ -111,7 +159,9 @@ export function ZeropsGitOverview({
                       </a>
                     )}
                     <span className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1">
-                      {gitRepositoryLine(repository.changes.length)}
+                      {state.unreadChanges?.includes(app.appId)
+                        ? "Changes not read yet."
+                        : gitRepositoryLine(repository.changes.length)}
                     </span>
                   </div>
                   {repository.changes.length === 0 ? null : (
@@ -157,6 +207,8 @@ export function ZeropsGitPage() {
   const flow = useZeropsProjectFlow();
   const registry = useZeropsRegistry();
   const offersOf = useChangeOffers();
+  const inventory = useContext(InventoryContext);
+  const accountTrouble = useAccountTrouble();
   const navigate = useNavigate();
   const search = useSearch({ from: "/git" });
   // Every application the person may read the changes of: the one whose changes HQ's rule keeps
@@ -165,13 +217,15 @@ export function ZeropsGitPage() {
     () =>
       registry.registry.groups.map((group) => {
         const groupFlow = flow.flows.get(group.groupId);
+        const offers = offersOf(group.groupId);
         return {
           appId: group.groupId,
           name: group.name,
-          read: offersOf(group.groupId)?.read,
+          read: offers?.read,
+          readReason: offers?.reason,
           changes: groupFlow?.changesKnown === true ? groupFlow.pullRequests : undefined,
           repositories: groupFlow?.repos,
-          failure: flow.releaseFailures.get(group.groupId),
+          failure: flow.releaseFailures.get(group.groupId) ?? groupFlow?.changesFailure,
         };
       }),
     [flow.flows, flow.releaseFailures, offersOf, registry.registry.groups],
@@ -179,6 +233,7 @@ export function ZeropsGitPage() {
   const state = gitPageState({
     appsKnown: !registry.loading,
     apps,
+    failure: flow.readFailure ?? inventory?.error ?? undefined,
     mateName: (projectId) => flow.mateNames.get(projectId),
   });
   const scoped =
@@ -212,6 +267,7 @@ export function ZeropsGitPage() {
         <ZeropsRepositoryBrowser
           key={`${activeOrganization?.id}:${search.appId}:${search.repo}`}
           allowed={offersOf(search.appId)?.read}
+          accessReason={offersOf(search.appId)?.reason}
           appId={search.appId}
           repo={search.repo}
           query={{
@@ -231,6 +287,11 @@ export function ZeropsGitPage() {
         />
       ) : (
         <ZeropsGitOverview
+          onAgain={() => {
+            if (activeOrganization !== null) requestHqSnapshot(activeOrganization.id);
+            if (inventory?.error || accountTrouble?.trouble || accountTrouble?.lapse)
+              accountTrouble?.retry();
+          }}
           repositoryHref={(appId, repo) =>
             `${appBasePath()}/git?${new URLSearchParams({ appId, repo })}`
           }

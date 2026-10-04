@@ -1,7 +1,12 @@
 # Browse repositories
 
 Open **Git** from the account menu. The repositories belong to your projects and use your Zerops
-permissions. A repository opens its source: choose a branch, open a folder, then a file.
+permissions. Repositories already read stay listed while other reads finish. A pending read says
+what it is reading; a failure gives a reason and **Again** for a manual attempt. When project access
+has not been verified, the page says so. Unrelated service reads do not hide your available change
+and release actions.
+
+A repository opens its source: choose a branch, open a folder, then a file.
 
 Files and folders are read at the commit shown beside their path. A later push does not change the
 files you are reading. Choose the branch again or use **Read again** at the branch root to see its

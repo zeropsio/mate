@@ -75,6 +75,7 @@ export function ZeropsRepositorySource({
 export function ZeropsRepositoryBrowser({
   appId,
   allowed,
+  accessReason,
   repo,
   query,
   onNavigate,
@@ -82,6 +83,7 @@ export function ZeropsRepositoryBrowser({
 }: {
   readonly appId: string;
   readonly allowed: boolean | undefined;
+  readonly accessReason?: string | undefined;
   readonly repo: string;
   readonly query: RepositoryQuery;
   readonly onNavigate: (query: RepositoryQuery) => void;
@@ -97,6 +99,19 @@ export function ZeropsRepositoryBrowser({
       </Button>
     </div>
   );
+  if (allowed !== true) {
+    return (
+      <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
+        {heading}
+        <p className="text-sm text-muted-foreground" role="alert">
+          {accessReason ??
+            (allowed === undefined
+              ? "Your access to this repository has not been verified."
+              : "You do not have access to this repository.")}
+        </p>
+      </section>
+    );
+  }
   if (source.state !== "known") {
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">

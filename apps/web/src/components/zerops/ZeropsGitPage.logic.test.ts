@@ -66,9 +66,67 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
       "an application's repositories are on their way",
       { apps: [app({ repositories: undefined })] },
     ],
-    ["an application's changes are not told yet", { apps: [app({ changes: undefined })] }],
-  ] as const)("says nothing while %s", (_case, over) => {
+  ] as const)("waits visibly while %s", (_case, over) => {
     expect(state({ apps: [app()], ...over })).toEqual({ kind: "unread", failure: null });
+  });
+
+  it("keeps repository facts while that application's changes are still unread", () => {
+    expect(state({ apps: [app({ changes: undefined })] })).toMatchObject({
+      kind: "read",
+      reading: true,
+      unreadChanges: ["a-todo"],
+      apps: [{ repositories: [{ name: "appdev" }, { name: "group" }] }],
+    });
+  });
+
+  it("lists a readable app while another permission is unresolved", () => {
+    expect(state({ apps: [app(), app({ appId: "pending", read: undefined })] })).toMatchObject({
+      kind: "read",
+      reading: true,
+      apps: [{ appId: "a-todo" }],
+    });
+  });
+
+  it("explains a refused read instead of claiming there are no repositories", () => {
+    expect(state({ apps: [app({ read: false })] })).toMatchObject({
+      kind: "refused",
+      reason: expect.stringContaining("Basic user"),
+    });
+  });
+
+  it("names an application's unverified access alongside repositories already read", () => {
+    expect(
+      state({
+        apps: [
+          app(),
+          app({
+            appId: "unknown",
+            name: "Unknown",
+            read: false,
+            readReason: "Project access has not been verified.",
+          }),
+        ],
+      }),
+    ).toMatchObject({
+      kind: "read",
+      refusals: [{ name: "Unknown", reason: "Project access has not been verified." }],
+    });
+  });
+  it("uses the permission's reason when no application can be read", () => {
+    expect(
+      state({ apps: [app({ read: false, readReason: "Project access has not been verified." })] }),
+    ).toMatchObject({ kind: "refused", reason: "Project access has not been verified." });
+  });
+
+  it("ends a failed changes read visibly even without repository facts", () => {
+    expect(
+      state({
+        apps: [app({ changes: undefined, repositories: undefined, failure: "Read failed." })],
+      }),
+    ).toEqual({
+      kind: "unread",
+      failure: "Read failed.",
+    });
   });
 
   // Main's Gitea read rule (`read_change`): an application listed to the person whose changes are
