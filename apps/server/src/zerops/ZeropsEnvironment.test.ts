@@ -13,7 +13,6 @@ import {
 const input = (overrides?: Partial<Parameters<typeof resolveZeropsEnvironment>[0]>) => ({
   projectId: undefined,
   apiHost: undefined,
-  allowedOrigins: [],
   publicOrigin: undefined,
   ...overrides,
 });
@@ -112,15 +111,6 @@ describe("resolveZeropsEnvironment — the one detection rule", () => {
         `sessionMaxAgeSeconds=${String(seconds)}`,
       );
     }
-  });
-
-  it("keeps the configured extra origins", () => {
-    assert.deepStrictEqual(
-      resolveZeropsEnvironment(
-        input({ projectId: "abc", allowedOrigins: ["https://app.zerops.io"] }),
-      )?.allowedOrigins,
-      ["https://app.zerops.io"],
-    );
   });
 
   it("leaves the public origin undefined unless configured", () => {

@@ -114,8 +114,26 @@ export function mapRemoteEnvironmentError(
         detail: "The environment could not authorize the connection.",
         traceId: error.traceId,
       });
-    case "RemoteEnvironmentAuthInvalidJsonError":
     case "RemoteEnvironmentAuthUndeclaredStatusError":
+      // A refusal this client cannot decode — a reason an older or newer
+      // server names — still says by its status whose move it is.
+      if (error.status === 401) {
+        return new ConnectionBlockedError({
+          reason: "authentication",
+          detail: "The environment credential is invalid.",
+        });
+      }
+      if (error.status === 403) {
+        return new ConnectionBlockedError({
+          reason: "permission",
+          detail: "The environment credential does not grant the required access.",
+        });
+      }
+      return new ConnectionTransientError({
+        reason: "remote-unavailable",
+        detail: error.message,
+      });
+    case "RemoteEnvironmentAuthInvalidJsonError":
       return new ConnectionTransientError({
         reason: "remote-unavailable",
         detail: error.message,

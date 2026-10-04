@@ -254,7 +254,6 @@ const MATE_KEY = "the-mates-own-zerops-key";
 const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: MATE_KEY,
 })!;
 

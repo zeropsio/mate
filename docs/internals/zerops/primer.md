@@ -1066,46 +1066,43 @@ lands.
    existing HQ but a hand import into its project.
 7. **HQ's own updates.** Core is deployed once, at the birth, from the build that bore it;
    `/health` names its `build`, and nothing brings a newer Core to an HQ that has one.
-8. **HQ answers the origins it was born with.** `HQ_CLIENT_ORIGINS` is the birth's own origin and
-   `https://mate.zerops.io`, written into the import; an HQ born from one origin refuses any other —
-   a desktop shell, a developer's localhost — and nothing changes the list later.
-9. **The old system's own machinery** in an organization that ran the release: its broker keeps its
+8. **The old system's own machinery** in an organization that ran the release: its broker keeps its
    passes and the `deploy-*` keys of the stages and productions HQ will deploy after the import.
    Whether a pass of the old broker would deploy Gitea's commits over HQ's is unmeasured; whether it
    stops at the switch is T14's to settle with the owner.
-10. **Not yet run live**: a production released and rolled back from HQ (T9a, T9b); _Add Mate_'s
-    stand-up from HQ's recipe in the browser (T10); a delivery owed through an HQ outage and
-    finished after (T7b); an enrollment HQ no longer knows, renewed by zcp's 10-minute recheck
-    (T6a).
+9. **Not yet run live**: a production released and rolled back from HQ (T9a, T9b); _Add Mate_'s
+   stand-up from HQ's recipe in the browser (T10); a delivery owed through an HQ outage and
+   finished after (T7b); an enrollment HQ no longer knows, renewed by zcp's 10-minute recheck
+   (T6a).
 
 ### Carried from the release, as last recorded
 
 What the release's runs and passes left open, from the first owner's runs to pass 26 — not
 re-checked against passes 27 and later, nor against the rebuild.
 
-11. **The onboarding design pass** — the empty state, the _New project_ form and the first-minutes
+10. **The onboarding design pass** — the empty state, the _New project_ form and the first-minutes
     page as one composed flow: the real Mate mark, the sidebar hidden on an empty account, editorial
     type and spacing, one motion moment, verified at 1786 and 1280 in both themes.
-12. **Typing while the Mate boots** — the conversation route cannot open without a server
+11. **Typing while the Mate boots** — the conversation route cannot open without a server
     connection.
-13. **A restart the app did not start reads as "not connected"** — a release rollout looks like an
+12. **A restart the app did not start reads as "not connected"** — a release rollout looks like an
     outage; the platform's service status could name it.
-14. **Platform:** `project.create` fails with `internalServerError` after answering `200`, two of
+13. **Platform:** `project.create` fails with `internalServerError` after answering `200`, two of
     five creations on 2026-09-16/17 (process ids in the ledger); the client and the drivers read the
     verdict and retry or show it.
-15. **The Git tab's row says "no repository yet" until a reload after the agent makes a checkout**
+14. **The Git tab's row says "no repository yet" until a reload after the agent makes a checkout**
     (Dara's run, 2026-09-17: "its not updated live?"). A row subscribes to the server's VCS status for
     `/var/www/{host}`, loaded once; the turn-end refresh reached the thread's cwd — the workspace
     root, never a repository. Fixed in 0.11.12: a turn's end refreshes every mounted checkout
     (`CheckpointReactor`, `resolveCheckpointTargets`); it reaches a Mate through the release and the
     Mate's next update, not the running Dara. A change made outside a turn still needs the reload.
-16. **A refused import says "Zerops request result is uncertain"** — every failure of `import-project`
+15. **A refused import says "Zerops request result is uncertain"** — every failure of `import-project`
     is mapped to that sentence (`uncertainCommandError`), so a plain `400` on a bad document (the
     two-name project block of 2026-09-17) reads as a maybe. Fix: keep the platform's words for a
     refusal the platform clearly gave, and "uncertain" for a request whose outcome is unknown. Fixed on `main` (`71fd3a22c`, 2026-09-18): a `400` is the adapter's `rejected`
     kind, not retryable, and reads "Zerops refused the request: …" with the platform's validation
     words — the one kind whose message is forwarded; every other kind keeps its fixed sentence.
-17. **A push to `main` with no environment following it fails the service repo's workflow** — zcp's
+16. **A push to `main` with no environment following it fails the service repo's workflow** — zcp's
     `.gitea/workflows/zerops.yml` runs the deploy action on every push to `main`; with no stage
     declared yet the job fails after 4 s and the Git tab counts a red check on `main` (journal 22, for
     the hardening person: the action could end cleanly on "no environment"). A second cause, the
@@ -1116,7 +1113,7 @@ re-checked against passes 27 and later, nor against the rebuild.
     the broker's "no environment of that tier yet" reaches a repository only by moving that tag or by
     zcp writing a newer pin — a contract change across gitea-mate, zcp and every existing repository,
     not a one-commit fix.
-18. **zcp after an expansion** — the recipe was not re-proposed when `zerops.yaml`'s setups changed
+17. **zcp after an expansion** — the recipe was not re-proposed when `zerops.yaml`'s setups changed
     (spec 2.2 "kept current"), and the expansion dropped the pair's Gitea record so `group-recipe`
     refused with "no pair has its Gitea repository yet". The record is kept since zcp `f04dcc77`
     (v9.178.0); re-proposing on a setup change is the hardening person's — and a recipe composed
@@ -1124,22 +1121,22 @@ re-checked against passes 27 and later, nor against the rebuild.
     `todo/group` `main`: `zeropsSetup: appdev`, start `zsc noop`); the correction as the bot was
     refused by the session's classifier and waits on the owner (ledger, _The owner's Todo run_).
 
-19. **A signer recorded in another browser is not seen by an open session** — the owner signed
+18. **A signer recorded in another browser is not seen by an open session** — the owner signed
     Claude in from their browser; the audit browser, open on the same Mate, refused the first message
     ("This agent's sign-in was not recorded by Zerops Mate…") until a reload. The client reads the
     signer record from the project's tags it holds, and a tag change does not reach an open session.
-20. **The _Add Mate_ creation failed a step after the project on Fen** (2026-09-17) and the panel's
+19. **The _Add Mate_ creation failed a step after the project on Fen** (2026-09-17) and the panel's
     error text was not read; the token was lowered, so the failure sits in the delegation or the
     isolation step. The consequences (no registration, no hand-off) are fixed; the cause is open.
-21. **In a wired Mate zcp still asks the service mode** (dev/stage pair, dev only, simple) although
+20. **In a wired Mate zcp still asks the service mode** (dev/stage pair, dev only, simple) although
     the pair is the only answer it takes, and a Mate that adopted the recipe's services suggests
     `launch-production` (Fen, 2026-09-17). zcp's.
-22. **A row-menu verb can miss its first click** — _Publish app_ on the stage row did nothing at
+21. **A row-menu verb can miss its first click** — _Publish app_ on the stage row did nothing at
     17:57:33Z and published at 17:59:47Z (the audit browser; unmeasured whether a person's click
     can).
-23. **From the audit run through the UI** (2026-09-17): the Codex _ACTION REQUIRED_ card stays after
+22. **From the audit run through the UI** (2026-09-17): the Codex _ACTION REQUIRED_ card stays after
     Claude Code is signed in; the platform's words ("startWithoutCode") leak into rows.
-24. **A group built from nothing** (2026-09-18, the ledger's _A group built from nothing_), open for
+23. **A group built from nothing** (2026-09-18, the ledger's _A group built from nothing_), open for
     the app: a Mate restart can drop the projects page to "Could not load your Zerops projects" and
     pin a renderer at ~106 % CPU; _Update_ installs and then says nothing about the restart its
     version needs; a new Mate opens on a model the account may have no credits for, said only inside
@@ -1149,7 +1146,7 @@ re-checked against passes 27 and later, nor against the rebuild.
     its code itself rather than ask the person to send the bootstrap message; deploying dev to dev
     makes no sense now that git is the code of record; and an empty delivery must never become a
     change, nor keep its first session's title once it holds a later change.
-25. **Pass 16's open ends** (2026-09-29; the ledger's _Pass 16 as measured_). Codex keeps its image
+24. **Pass 16's open ends** (2026-09-29; the ledger's _Pass 16 as measured_). Codex keeps its image
     order: its adapter is ported code and takes pictures by path after one text item, so there only
     the labels tie a picture to its place. "What it does" (R3) was empty in a live review of an
     older change, whose run's answers never linked it; a newer run's should, unmeasured. One first
@@ -1165,7 +1162,7 @@ re-checked against passes 27 and later, nor against the rebuild.
     is unknown, the Merge button's double focus ring, and the kit's measures kept where the mock
     drew less — _Open in Zerops_ padded 9 px for 6, the header's buttons 4 px apart for 2, the
     Mate's name 12 px from its task for 10, the send button 36 px on a phone.
-26. **Pass 16's feedback, its open ends** (2026-09-29, mate 0.11.64). The menu: the member list's
+25. **Pass 16's feedback, its open ends** (2026-09-29, mate 0.11.64). The menu: the member list's
     reading is not passed to the menu, so a Mate on a shared project token says "Nobody has signed
     in yet", and a row goes from 58 to 48 px once someone signs in. The crew line: the "JOB V1" chip
     still 10 px capitals, the lane bars as they were, and on a reload the header names the crewmate
@@ -1173,10 +1170,10 @@ re-checked against passes 27 and later, nor against the rebuild.
     fix, and below about 560 px of window the model menu opens beside its trigger. The result's
     tiles are six at 109 × 68 where the plan said about 128 × 80 (five would fit that); a file a
     later run overwrote without looking at it again shows its new contents under the older run.
-27. **Pass 16's second round** (2026-09-29, mate 0.11.65): _Forget memory_ has no door in the web
+26. **Pass 16's second round** (2026-09-29, mate 0.11.65): _Forget memory_ has no door in the web
     app since the header's rebuild; a run's pictures from a late first answer may shift the strip
     once in a narrow column.
-28. **Pass 18's open ends** (2026-09-29, mate 0.11.66). Not yet seen live: the stand-up as the
+27. **Pass 18's open ends** (2026-09-29, mate 0.11.66). Not yet seen live: the stand-up as the
     Mate's server sends it, the line's switch, an ask from the Git tab or the jump box sending at
     once, a watched run's fold on a real Mate. Deleting a Mate: after a reload inside the platform's
     window the row reads Deleting… only once the platform says `DELETING`, and until then paints as
@@ -1190,7 +1187,7 @@ re-checked against passes 27 and later, nor against the rebuild.
     while a release runs; a project with no recipe still gets an empty Mate. Still for the owner to
     judge: a Mate row's band on the list's 9 and 8 px where a heading's stands 10 from either side;
     the dialog's title at the kit's 20 px.
-29. **Pass 19's open ends** (2026-09-29, mate 0.11.67). Not yet seen live: _New project_'s first
+28. **Pass 19's open ends** (2026-09-29, mate 0.11.67). Not yet seen live: _New project_'s first
     Mate with its face, a colleague's client taking a changed face, and _Change face…_ on a Mate
     that wore its name's tint (`:named`). Still open: a colleague opening a new Mate's view sees its
     coming words, then the question; the birth line under the view's headline keeps its 12 px words
@@ -1207,7 +1204,7 @@ re-checked against passes 27 and later, nor against the rebuild.
     is still 20.3 × 24 px where the open mark is 28 × 33; the bare `ZeropsHostedFrame` bar, outside
     the menu, grows to 65 with the token; the route gate's floating notice centres at about 31
     against the bar's 32.5; the stand-up harness still draws its own 52 px header.
-30. **Pass 20's open ends** (2026-09-30, mate 0.11.68). Not yet run live: a plan's _Start_, _Keep
+29. **Pass 20's open ends** (2026-09-30, mate 0.11.68). Not yet run live: a plan's _Start_, _Keep
     going…_ after a limit, an _Answer_ in a row, _Let Fen suggest a crew_, a piece of work added to
     Fen's code and shipped from _In Fen's code_. Kept where the board drew otherwise: the kit's look
     — the dialog's title at 20 px, its surface the kit's popover, the kit's radios and checkboxes,
@@ -1217,7 +1214,7 @@ re-checked against passes 27 and later, nor against the rebuild.
     a row's ··· shows only on hover. Older builds pair: an older client shows the new stop words as
     "Backend's task #12 stopped mid-way: when the $20 ran out", and an older server sends no
     `landedAt`, so its _In Fen's code_ rows carry no time.
-31. **Pass 21's open ends** (2026-09-30, mate 0.11.69). Mixed-login crews are closed per login in
+30. **Pass 21's open ends** (2026-09-30, mate 0.11.69). Mixed-login crews are closed per login in
     tests only; the closed composer slot was not measured at phone width. A crewmate's empty state
     wraps its whose line at 1280 with the panel open (a 305 px column). The run's opener rule leaves
     one narrow case: a Stop before the first thought and a resend within 60 s with no notice
@@ -1229,7 +1226,7 @@ re-checked against passes 27 and later, nor against the rebuild.
     motion was checked in code, not in a browser. **The add-Mate flow**, recorded on Beviro the same
     day (26 min 9 s from _Add_ to development up, the person needed at 0:00 and 3:07, the stand-up
     16 min of a model improvising a procedure zcp knows), was the input of pass 25.
-32. **Pass 26's open ends** (2026-09-30, mate 0.11.74): zcp to fold a process's `error` into its
+31. **Pass 26's open ends** (2026-09-30, mate 0.11.74): zcp to fold a process's `error` into its
     import result and to relay a dev server's state live; dev artefacts' 2–4 min uploads.
 
 ## 8. Working on it

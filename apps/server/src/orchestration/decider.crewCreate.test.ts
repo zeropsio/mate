@@ -126,7 +126,6 @@ const onZerops = Layer.merge(
     zerops: resolveZeropsEnvironment({
       projectId: "project-zerops",
       apiHost: undefined,
-      allowedOrigins: [],
       apiToken: "key",
     })!,
   } as ServerConfig.ServerConfig["Service"]),

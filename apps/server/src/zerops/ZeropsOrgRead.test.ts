@@ -32,7 +32,6 @@ const API_NOW = "Tue, 16 Sep 2026 10:00:00 GMT";
 const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: MATE_KEY,
 })!;
 

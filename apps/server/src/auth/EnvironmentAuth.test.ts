@@ -69,7 +69,6 @@ const SESSION_MAX_AGE_SECONDS = 900;
 const zeropsTestEnvironment = resolveZeropsEnvironment({
   projectId: "nTV3oMB2SS634ImDJnQckg",
   apiHost: undefined,
-  allowedOrigins: [],
   sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS,
 });
 

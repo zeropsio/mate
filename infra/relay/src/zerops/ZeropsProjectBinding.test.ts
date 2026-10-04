@@ -6,7 +6,11 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as ZeropsProjectBinding from "./ZeropsProjectBinding.ts";
 
 const PROJECT_ID = "project-1";
-const SUBDOMAIN_HOST = "abcd.prg1.zerops.app";
+// The shape Zerops answers, measured (docs/internals/zerops/verified.md, "The project object
+// carries the region too"; client-runtime's z3-eval.service-stack.json): `zeropsSubdomainHost` is a
+// bare prefix, the region rides in `publicZone`, and a service-stack port says `scheme`.
+const SUBDOMAIN_HOST = "abcd";
+const PUBLIC_ZONE = "fte23prpara6p2koq60b9pvsgk0.prg1-zerops.zone";
 
 function stub(route: (url: string) => Response) {
   return Layer.succeed(
@@ -22,13 +26,19 @@ const json = (body: unknown, status = 200) =>
 
 const boundRoute = (url: string): Response => {
   if (url.endsWith(`/project/${PROJECT_ID}`)) {
-    return json({ clientId: "client-1", zeropsSubdomainHost: SUBDOMAIN_HOST });
+    return json({
+      clientId: "client-1",
+      zeropsSubdomainHost: SUBDOMAIN_HOST,
+      publicZone: PUBLIC_ZONE,
+    });
   }
   if (url.endsWith(`/project/${PROJECT_ID}/service-stack`)) {
     return json({
       list: [
-        { name: "mate", subdomainAccess: true, ports: [{ port: 8080, httpSupport: true }] },
-        { name: "db", subdomainAccess: false },
+        { name: "mate", subdomainAccess: true, ports: [{ port: 8080, scheme: "http" }] },
+        { name: "web", subdomainAccess: true, ports: [{ port: 80, scheme: "http" }] },
+        { name: "cache", subdomainAccess: true, ports: [{ port: 6379, scheme: "tcp" }] },
+        { name: "db", subdomainAccess: false, ports: [{ port: 5432, scheme: "postgresql" }] },
       ],
     });
   }
@@ -114,40 +124,48 @@ describe("ZeropsProjectBinding.verify", () => {
     }).pipe(Effect.provide(stub(() => new Response(null, { status: 404 })))),
   );
 
-  it.effect(
-    "fails with ZeropsEndpointNotBoundError when the project subdomain host is a bare prefix",
-    () =>
-      // Known limitation documented on the module: some projects' GetProject
-      // returns only a bare prefix ("8a"), not "8a.prg1.zerops.app" — the
-      // reconstruction can never match, and the check fails closed.
-      Effect.gen(function* () {
-        const error = yield* Effect.flip(
-          ZeropsProjectBinding.verify({
-            apiBaseUrl: "https://api.example.test",
-            token: "user-token",
-            zeropsProjectId: PROJECT_ID,
-            endpointOrigin: "https://mate-8a.prg1.zerops.app",
-          }),
-        );
-        expect(error._tag).toBe("ZeropsEndpointNotBoundError");
-      }).pipe(
-        Effect.provide(
-          stub((url) =>
-            url.endsWith(`/project/${PROJECT_ID}`)
-              ? json({ clientId: "client-1", zeropsSubdomainHost: "8a" })
-              : url.endsWith(`/project/${PROJECT_ID}/service-stack`)
-                ? json({
-                    list: [
-                      {
-                        name: "mate",
-                        subdomainAccess: true,
-                        ports: [{ port: 80, httpSupport: true }],
-                      },
-                    ],
-                  })
-                : json({}, 500),
-          ),
+  it.effect("binds a port-80 service's origin, which carries no port segment", () =>
+    ZeropsProjectBinding.verify({
+      apiBaseUrl: "https://api.example.test",
+      token: "user-token",
+      zeropsProjectId: PROJECT_ID,
+      endpointOrigin: "https://web-abcd.prg1.zerops.app",
+    }).pipe(Effect.provide(stub(boundRoute))),
+  );
+
+  it.effect("ignores a port that is not HTTP", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        ZeropsProjectBinding.verify({
+          apiBaseUrl: "https://api.example.test",
+          token: "user-token",
+          zeropsProjectId: PROJECT_ID,
+          endpointOrigin: "https://cache-abcd-6379.prg1.zerops.app",
+        }),
+      );
+      expect(error._tag).toBe("ZeropsEndpointNotBoundError");
+    }).pipe(Effect.provide(stub(boundRoute))),
+  );
+
+  it.effect("fails with ZeropsEndpointNotBoundError when the project has no public zone", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        ZeropsProjectBinding.verify({
+          apiBaseUrl: "https://api.example.test",
+          token: "user-token",
+          zeropsProjectId: PROJECT_ID,
+          endpointOrigin: "https://mate-abcd-8080.prg1.zerops.app",
+        }),
+      );
+      expect(error._tag).toBe("ZeropsEndpointNotBoundError");
+    }).pipe(
+      Effect.provide(
+        stub((url) =>
+          url.endsWith(`/project/${PROJECT_ID}`)
+            ? json({ clientId: "client-1", zeropsSubdomainHost: SUBDOMAIN_HOST })
+            : boundRoute(url),
         ),
       ),
+    ),
   );
 });

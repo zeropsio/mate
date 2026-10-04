@@ -32,38 +32,34 @@ import { NotLeader } from "./leader.ts";
 import { ZeropsUnavailable } from "./zerops/api.ts";
 
 describe("HQ's failures", () => {
-  it.effect("caches an allowed preflight for two hours without changing its CORS door", () =>
+  it.effect("caches a preflight from any origin for two hours, without credentials", () =>
     Effect.gen(function* () {
       const { handler, dispose } = HttpRouter.toWebHandler(
-        corsRoutes([CLIENT, "http://localhost:4380"]).pipe(Layer.provide(HttpServer.layerServices)),
+        corsRoutes.pipe(Layer.provide(HttpServer.layerServices)),
       );
       yield* Effect.addFinalizer(() => Effect.promise(dispose));
-      const preflight = (origin: string) =>
-        Effect.promise(() =>
-          handler(
-            new Request("https://hq.example/api/structure", {
-              method: "OPTIONS",
-              headers: {
-                origin,
-                "access-control-request-method": "GET",
-                "access-control-request-headers": "authorization",
-              },
-            }),
-          ),
-        );
-      const allowed = yield* preflight(CLIENT);
-      assert.strictEqual(allowed.headers.get("access-control-max-age"), "7200");
-      assert.strictEqual(allowed.headers.get("access-control-allow-origin"), CLIENT);
+      const preflight = yield* Effect.promise(() =>
+        handler(
+          new Request("https://hq.example/api/structure", {
+            method: "OPTIONS",
+            headers: {
+              origin: "https://mate.dev-team.example.org",
+              "access-control-request-method": "GET",
+              "access-control-request-headers": "authorization",
+            },
+          }),
+        ),
+      );
+      assert.strictEqual(preflight.headers.get("access-control-max-age"), "7200");
+      assert.strictEqual(preflight.headers.get("access-control-allow-origin"), "*");
+      assert.isNull(preflight.headers.get("access-control-allow-credentials"));
       assert.strictEqual(
-        allowed.headers.get("access-control-allow-methods"),
+        preflight.headers.get("access-control-allow-methods"),
         "GET, POST, PUT, PATCH, DELETE",
       );
       assert.strictEqual(
-        allowed.headers.get("access-control-allow-headers"),
+        preflight.headers.get("access-control-allow-headers"),
         "authorization,content-type",
-      );
-      assert.isNull(
-        (yield* preflight("https://evil.example")).headers.get("access-control-allow-origin"),
       );
     }).pipe(Effect.scoped),
   );
@@ -1425,28 +1421,37 @@ describe("HQ API", () => {
         }),
     );
 
-    it.effect("answers a client origin's preflight, and no other origin", () =>
+    // A browser at any address may call: every call carries a bearer, never a
+    // cookie, so CORS answers without credentials and grants a foreign page nothing.
+    it.effect("answers a preflight from any origin, without credentials", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(true);
-        const preflight = (origin: string) =>
-          call("OPTIONS", "/api/structure", {
+        for (const origin of [CLIENT, "https://mate.dev-team.example.org"]) {
+          const preflight = yield* call("OPTIONS", "/api/structure", {
             headers: {
               origin,
               "access-control-request-method": "GET",
               "access-control-request-headers": "authorization",
             },
           });
-        const allowed = yield* preflight(CLIENT);
-        assert.isBelow(allowed.status, 300);
-        assert.strictEqual(allowed.headers.get("access-control-allow-origin"), CLIENT);
-        assert.strictEqual(allowed.headers.get("access-control-max-age"), "7200");
-        assert.strictEqual(
-          (yield* preflight("http://localhost:4380")).headers.get("access-control-allow-origin"),
-          "http://localhost:4380",
-        );
-        assert.isNull(
-          (yield* preflight("https://evil.example")).headers.get("access-control-allow-origin"),
-        );
+          assert.isBelow(preflight.status, 300, origin);
+          assert.strictEqual(preflight.headers.get("access-control-allow-origin"), "*", origin);
+          assert.isNull(preflight.headers.get("access-control-allow-credentials"), origin);
+          assert.strictEqual(preflight.headers.get("access-control-max-age"), "7200", origin);
+        }
+      }),
+    );
+
+    it.effect("serves a bearer from any origin, and refuses a call without one", () =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const headers = { origin: "https://mate.dev-team.example.org" };
+        const read = yield* call("GET", "/api/structure", { session, headers });
+        assert.strictEqual(read.status, 200);
+        assert.strictEqual(read.headers.get("access-control-allow-origin"), "*");
+        assert.strictEqual((yield* call("GET", "/api/structure", { headers })).status, 401);
       }),
     );
 

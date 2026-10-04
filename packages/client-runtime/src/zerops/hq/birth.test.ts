@@ -312,7 +312,6 @@ const KEY_SECRET = btoa(
 
 const INPUT = {
   clientId: ORG,
-  origins: ["http://localhost:4380", "https://mate.zerops.io"],
   zeropsApi: "https://api.app-prg1.zerops.io/api/rest/public",
 };
 
@@ -417,7 +416,8 @@ describe("runHqBirth", () => {
     expect(yaml).toMatch(/hostname: hq\n/u);
     expect(yaml).not.toMatch(/hostname: core\b/u);
     expect(yaml).not.toContain("enableSubdomainAccess");
-    expect(yaml).toContain('HQ_CLIENT_ORIGINS: "http://localhost:4380,https://mate.zerops.io"');
+    // HQ answers any origin (bearer only), so a birth names none.
+    expect(yaml).not.toContain("HQ_CLIENT_ORIGINS");
     expect(yaml).toContain('HQ_ZEROPS_API: "https://api.app-prg1.zerops.io/api/rest/public"');
     // Backup sets go to a private bucket of HQ's own, which Core reaches by the service's variables.
     expect(yaml).toContain(
