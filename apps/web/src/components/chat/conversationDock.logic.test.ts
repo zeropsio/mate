@@ -306,9 +306,10 @@ describe("deriveDock", () => {
     pause: null,
   };
 
-  // The band holds only what runs now (pass 35): a failure is told once, as
-  // its row in the record, red until a later step undoes it.
-  it("holds the background tasks that run now, this turn's and any from before, never a failed one", () => {
+  // Run 9 and Bodhi: a bar of running tasks only read full beside "0/3", and
+  // its count could fall. While one runs, the bar holds everything the turn
+  // sent to the background, so what finished fills it and counts only rise.
+  it("holds, while one runs, every background task this turn ran and any from before still running", () => {
     const dock = deriveDock({
       ...base,
       backgroundTasks: foldBackgroundTasks([
@@ -322,9 +323,42 @@ describe("deriveDock", () => {
         task("task.started", "b2", 4, { detail: "Test" }),
       ]),
     });
-    expect(dock?.background).toMatchObject({ running: 2, done: 0, failed: 0 });
-    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["old-running", "b2"]);
+    // An earlier turn's task finished beside one of its own that still runs: one batch.
+    expect(dock?.background).toMatchObject({ running: 2, done: 2, failed: 1 });
+    expect(dock?.background?.tasks.map((item) => item.id)).toEqual([
+      "old-done",
+      "old-running",
+      "b1",
+      "b0",
+      "b2",
+    ]);
     expect(dock?.afterTurn).toBeNull();
+  });
+
+  it("counts only up as a turn's background tasks finish", () => {
+    const steps = [
+      task("task.started", "b1", 2, { detail: "Soak" }),
+      task("task.started", "b2", 2, { detail: "Outdated" }),
+      task("task.started", "b3", 2, { detail: "Fails" }),
+      task("task.completed", "b2", 3, { status: "completed" }),
+      task("task.completed", "b3", 4, { status: "failed" }),
+    ];
+    const finished = steps.map((_, index) => {
+      const background = deriveDock({
+        ...base,
+        backgroundTasks: foldBackgroundTasks(steps.slice(0, index + 1)),
+      })?.background;
+      return background === null || background === undefined
+        ? null
+        : [background.tasks.length, background.done + background.failed];
+    });
+    expect(finished).toEqual([
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [3, 1],
+      [3, 2],
+    ]);
   });
 
   it("stays after the turn while work runs on in the background: what still runs, and nothing else", () => {
@@ -335,6 +369,8 @@ describe("deriveDock", () => {
       backgroundLiveness: "working",
       agentPanelModel: panel([agent("h1", "running", "Long work"), agent("h2", "completed", "b")]),
       backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b0", 1, { detail: "Build" }, "t0"),
+        task("task.completed", "b0", 2, { status: "completed" }, "t0"),
         task("task.started", "b1", 2, { detail: "Typecheck" }),
         task("task.completed", "b1", 3, { status: "completed" }),
         task("task.started", "b2", 4, { detail: "Watch the PR", taskType: "monitor" }),
@@ -345,6 +381,7 @@ describe("deriveDock", () => {
       operations: [],
       tasks: null,
       helpers: { working: 1, done: 0 },
+      // After the turn its card's line is the record: the band holds only what runs.
       background: { running: 1, done: 0, failed: 0 },
     });
     expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b2"]);

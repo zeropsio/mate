@@ -17,7 +17,7 @@ import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimel
 import { foldsLikeAMessage, RunChat } from "./RunChat";
 import { MateFace } from "../zerops/primitives";
 import { useHelperFocus } from "./helperFocus";
-import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
+import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
@@ -1190,7 +1190,8 @@ describe("RunChat, as the person uses it", () => {
         step(command("w3", "pnpm w3")),
       ];
       draw(live(landed, []));
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // They hold the slot a moment for what comes next; then "Thinking" stands its minimum.
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + 100));
       draw(live(landed, ["w4"]));
       expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w4"]);
       expect(
@@ -1627,6 +1628,56 @@ describe("RunChat, as the person uses it", () => {
       expect(text(renderer)).toContain("echo line-59-done");
     });
 
+    // Bodhi: an opened card drew each picture in the step that looked at it
+    // and again in the result's strip right under it.
+    it.each([
+      { name: "the result's strip holds it: the step leaves it there", inStrip: true, drawn: 0 },
+      { name: "no strip holds it: the step draws it", inStrip: false, drawn: 1 },
+    ])("draws a picture an opened card looked at once: $name", ({ inStrip, drawn }) => {
+      setRunFold(CONVERSATION, "turn-1", "shown");
+      const look = step({
+        id: "v1",
+        createdAt: at(5),
+        label: "Viewed image",
+        tone: "tool",
+        itemType: "image_view",
+        viewedImagePath: "/srv/shots/home.png",
+        toolLifecycleStatus: "completed",
+      });
+      const outcome = {
+        ...outcomeOf([]),
+        pictures: inStrip
+          ? [{ kind: "file" as const, key: "f1", path: "/srv/shots/home.png", name: "home.png" }]
+          : [],
+      };
+      const markup = renderToStaticMarkup(
+        <TimelineRowCtx
+          value={{
+            ...SHARED,
+            threadRef: {
+              environmentId: EnvironmentId.make("environment-local"),
+              threadId: ThreadId.make("thread-1"),
+            },
+          }}
+        >
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat
+              row={record([look], {
+                status: status({ live: false, face: "produced", endedAt: at(80) }),
+                outcome,
+              })}
+            />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+      forgetRunFolds(CONVERSATION);
+      // Its line names it either way; the picture itself is drawn (here, read as gone) once.
+      expect(markup.replace(/<[^>]+>/gu, "")).toContain("Looked at home.png");
+      expect(markup.match(/home\.png is not there any more|Open home\.png/gu)?.length ?? 0).toBe(
+        drawn,
+      );
+    });
+
     it("keeps even a lone word of its behind Show work", () => {
       const markup = draw(
         record(
@@ -1845,9 +1896,11 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
-      // Seen only once it returned, it stands its minimum in the live slot,
-      // then plops into the history: the scroll's first line.
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // Seen only once it returned, it waits for "Thinking" to stand its
+      // minimum, stands its own and its hold in the live slot, then plops
+      // into the history: the scroll's first line.
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS));
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + SLOT_HOLD_MS + 100));
       expect(heard).toHaveLength(1);
       box.scrollHeight = 900;
       box.clientHeight = 440;

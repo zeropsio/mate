@@ -27,6 +27,7 @@ const STATE_WORD: Readonly<Record<PipelineSpokenState, string>> = {
   waiting: "Waiting",
   running: "Running",
   activating: "Activating",
+  // Never said: a finished step's sentence is in the past tense.
   finished: "Done",
   failed: "Failed",
   cancelled: "Cancelled",
@@ -82,7 +83,8 @@ function Row({
           )}
         >
           {sentence}
-          <span className="sr-only"> · {STATE_WORD[state]}</span>
+          {/* A finished step's sentence is in the past already ("Initialized …"). */}
+          {state === "finished" ? null : <span className="sr-only"> · {STATE_WORD[state]}</span>}
         </span>
         {beneath}
       </span>

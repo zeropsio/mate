@@ -201,6 +201,34 @@ describe("opens — a control is drawn only when it opens onto something not on 
     ]);
   });
 
+  // A command sent to the background returned only a notice that it went
+  // there, with the agent's own folder in it: it opens onto what the job
+  // reported, and onto nothing while it runs or when it said nothing more.
+  it.each([
+    { name: "running", job: { state: "running", report: null }, shown: [] },
+    { name: "finished, saying nothing more", job: { state: "done", report: null }, shown: [] },
+    {
+      name: "failed with its exit code",
+      job: { state: "failed", report: "Exit code 3" },
+      shown: [{ key: "job", label: null, text: "Exit code 3" }],
+    },
+  ] as const)("a command sent to the background opens onto its report: $name", ({ job, shown }) => {
+    const launched = command(
+      "Command running in background with ID: b1. Output is being written to: /tmp/x/b1.output",
+    );
+    const sent = {
+      ...launched,
+      background: {
+        key: launched.key,
+        title: "Soak",
+        startedAt: launched.startedAt,
+        endedAt: null,
+        ...job,
+      },
+    };
+    expect(stepOutput(sent)).toEqual(shown);
+  });
+
   // An ACP agent's detail is what its call names, not what it returned; a
   // read's line is the whole of it, whatever the driver handed back.
   it.each([

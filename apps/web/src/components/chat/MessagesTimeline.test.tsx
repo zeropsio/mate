@@ -1630,13 +1630,11 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    // The task in its own words, and where it ran; what it reported opens
-    // under it.
+    // The task in its own words, where it ran, and what it reported in a
+    // few words, on the line itself: nothing left to open.
     expect(markup).toContain("Run the smoke tests finished");
-    expect(markup).toContain("in the background");
-    expect(markup).toContain(
-      'aria-label="Run the smoke tests finished, in the background. Show what it reported"',
-    );
+    expect(markup).toContain("in the background · 4 passed");
+    expect(markup).not.toContain("Show what it reported");
     expect(markup).not.toContain("1 background task ");
   });
 
@@ -1676,9 +1674,7 @@ describe("MessagesTimeline — the conversation", () => {
     const line = markup.indexOf("Review the endpoint finished");
     expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
     expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
-    expect(markup).toContain(
-      'aria-label="Review the endpoint finished, helper. Show what it reported"',
-    );
+    expect(markup).toContain("helper · No issues found.");
   });
 
   it.each([

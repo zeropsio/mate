@@ -505,8 +505,12 @@ function usePanelRoom({
   return { panelRef, settle };
 }
 
+/**
+ * A background task's segment fills as it finishes: a bar of tasks that all
+ * run reads empty, never full beside "0/3" (Bodhi, run 9).
+ */
 const TASK_BAR: Record<DockBackgroundTask["state"], BarTone> = {
-  running: "running",
+  running: "waiting",
   done: "done",
   failed: "failed",
   stopped: "waiting",
@@ -727,11 +731,14 @@ function Instruments({
             bar={background.tasks.map((task) => ({ key: task.id, tone: TASK_BAR[task.state] }))}
             failed={background.running === 0 && background.failed > 0}
             figure={
-              background.tasks.length > 1
-                ? `${background.done}/${background.tasks.length}`
-                : runningTask !== undefined
-                  ? spanOf(runningTask.startedAt, null)
-                  : null
+              // How many ended of all, once one has; while all run, nothing to count.
+              background.tasks.length > 1 && background.running < background.tasks.length
+                ? `${background.tasks.length - background.running}/${background.tasks.length}`
+                : background.tasks.length > 1
+                  ? null
+                  : runningTask !== undefined
+                    ? spanOf(runningTask.startedAt, null)
+                    : null
             }
             label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed.${backgroundOpens ? ` ${backgroundShown ? "Hide" : "Show"} each one` : ""}`}
             onToggle={backgroundOpens ? () => toggle("background") : null}
