@@ -142,7 +142,7 @@ export const withOperation = <A, E, R>(
           if (exit._tag === "Success") return;
           // The engine is shutting down (a Mate update, SIGTERM): the row stays running, its stage
           // confirmed, and the next boot marks it interrupted and carries it on (`crewBoot`).
-          if (Cause.hasInterruptsOnly(exit.cause)) return;
+          if (Cause.hasInterruptsOnly(exit.cause) && core.shuttingDown()) return;
           const current = Option.getOrThrow(
             yield* asRefusal(core.store.getOperation(operation.id)),
           );

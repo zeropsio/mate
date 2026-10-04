@@ -387,7 +387,17 @@ export interface CrewStoreService {
     crew: string,
     kinds: ReadonlyArray<string>,
   ) => Effect.Effect<ReadonlyArray<CrewLogEntry>, CrewStoreError>;
-  readonly putRun: (row: CrewRunRow) => Effect.Effect<void, CrewStoreError>;
+  /**
+   * Writes the run; with `from`, a move of its state, only while it still
+   * stands there — `false` when it moved meanwhile, so a decision made on a
+   * stale read never undoes a newer one — keeping the spend as it stands.
+   */
+  readonly putRun: (row: CrewRunRow, from?: CrewRunState) => Effect.Effect<boolean, CrewStoreError>;
+  /** Moves a run's clock and spend in place, never its state. */
+  readonly updateRunMeters: (
+    run: Pick<CrewRunRow, "crew" | "run">,
+    meters: { readonly wallMs?: number; readonly addSpentUsd?: number },
+  ) => Effect.Effect<void, CrewStoreError>;
   /** The crew's run started last, in any state. */
   readonly latestRun: (crew: string) => Effect.Effect<Option.Option<CrewRunRow>, CrewStoreError>;
   readonly changes: Stream.Stream<CrewStoreChange>;
@@ -1219,13 +1229,13 @@ export const make = Effect.gen(function* () {
               ),
             ),
           ),
-    putRun: (row) =>
+    putRun: (row, from) =>
       Effect.gen(function* () {
         const options = yield* decode(
           "putRun",
           encodeRunOptions({ options: row.options, reasonDetail: row.reasonDetail }),
         );
-        yield* sql`
+        const written = yield* sql<{ readonly run: string }>`
           INSERT INTO crew_run (
             run, crew, started_by, budget_usd, spent_usd, options_json, state, reason,
             started_at, wall_ms, waiting_ms, finished_at
@@ -1236,15 +1246,29 @@ export const make = Effect.gen(function* () {
           )
           ON CONFLICT (run) DO UPDATE SET
             budget_usd = excluded.budget_usd,
-            spent_usd = excluded.spent_usd,
+            spent_usd = ${from === undefined ? sql`excluded.spent_usd` : sql`crew_run.spent_usd`},
             options_json = excluded.options_json,
             state = excluded.state,
             reason = excluded.reason,
             wall_ms = excluded.wall_ms,
             waiting_ms = excluded.waiting_ms,
             finished_at = excluded.finished_at
+          WHERE ${from === undefined ? sql`1` : sql`crew_run.state = ${from}`}
+          RETURNING run
         `.pipe(Effect.mapError(sqlError("putRun")));
-      }).pipe(Effect.andThen(publish({ crew: row.crew, table: "run" }))),
+        yield* publish({ crew: row.crew, table: "run" });
+        return written.length > 0;
+      }),
+    updateRunMeters: (run, meters) =>
+      sql`
+        UPDATE crew_run SET
+          wall_ms = COALESCE(${meters.wallMs ?? null}, wall_ms),
+          spent_usd = spent_usd + ${meters.addSpentUsd ?? 0}
+        WHERE run = ${run.run}
+      `.pipe(
+        Effect.mapError(sqlError("updateRunMeters")),
+        Effect.andThen(publish({ crew: run.crew, table: "run" })),
+      ),
     latestRun: (crew) =>
       sql<RunSqlRow>`
         SELECT

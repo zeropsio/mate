@@ -17,6 +17,7 @@
  *
  * @module crewBoot
  */
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -42,6 +43,7 @@ import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
 import { runOnAfterRestart } from "./crewRuns.ts";
 import { repairUnsetCopies } from "./CrewStints.ts";
 import { adoptOwnWrites, readLandedEvidence } from "./crewContinue.ts";
+import type { DeployState } from "./crewDeployState.ts";
 import { recoverLanes } from "./crewTurns.ts";
 
 /** A task whose turn was running when the server stopped: its session died with it. */
@@ -194,9 +196,6 @@ export const inspectBoot = (core: CrewCore) =>
  */
 const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
   Effect.gen(function* () {
-    // A self-deploy the restart cut off has nobody left to see it end: the host thaws, and
-    // the sweep and recovery below read what the deploy left.
-    yield* asRefusal(core.workspace.unfreeze(host));
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     const open = (handle: string) => openTaskOf(tasks, handle);
     const checked = new Set(
@@ -210,7 +209,18 @@ const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
     for (const lane of swept.lanes) {
       const task = lane._tag === "held" ? open(lane.handle) : undefined;
       if (task === undefined) continue;
-      for (const row of yield* asRefusal(core.store.operations(CREW_ID))) {
+      const rows = yield* asRefusal(core.store.operations(CREW_ID));
+      // A landing that went through is landed: its resume records it, whatever the copy holds.
+      if (
+        rows.some(
+          (row) =>
+            row.taskId === task.assignment &&
+            row.kind === "landing" &&
+            readLandedEvidence(row.result) !== undefined,
+        )
+      )
+        continue;
+      for (const row of rows) {
         if (row.taskId !== task.assignment || row.status !== "interrupted") continue;
         core.memory.resumeAtBoot.delete(row.id);
         yield* updateOperation(core, row.id, { status: "continued" });
@@ -222,6 +232,58 @@ const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
       .map((lane) => lane.handle);
     for (const handle of missing) core.memory.missingLanes.add(handle);
     if (missing.length > 0) yield* recoverLanes(core, applied, host, "came back from a restart");
+  });
+
+/** How often a host frozen by a deploy the restart cut off asks the platform again. */
+const DEPLOY_RECHECK = Duration.seconds(15);
+
+const serviceIdOf = (applied: AppliedCrew, host: string) =>
+  applied.repositories.get(host)?.identity?.serviceId;
+
+/** The writers whose copies live on `host`. */
+export const writersOn = (applied: AppliedCrew, host: string): ReadonlyArray<string> =>
+  [...applied.members.values()]
+    .filter((row) => row.kind === "writer" && row.host === host)
+    .map((row) => row.handle);
+
+const frozenWords = (host: string, state: DeployState) =>
+  state === "running"
+    ? `${host} is still redeploying; its crew copies stay frozen until the deploy ends.`
+    : `Mate could not read whether ${host}'s deploy still runs; its crew copies stay frozen, and Mate tries again.`;
+
+/**
+ * A host frozen by a deploy the restart cut off: asked again until the
+ * platform says the deploy ended, then thawed after its copies are recovered
+ * and swept, holding them meanwhile. An answer that cannot be read keeps it
+ * frozen with words, and Mate tries again; it never thaws on a guess.
+ */
+const awaitDeployEnd = (core: CrewCore, host: string) =>
+  Effect.gen(function* () {
+    while (true) {
+      yield* Effect.sleep(DEPLOY_RECHECK);
+      const applied = yield* core.applied;
+      if (applied === undefined) return;
+      const state = yield* core.deployState(host, serviceIdOf(applied, host));
+      if (state !== "settled") {
+        core.memory.lastError = frozenWords(host, state);
+        yield* core.changed;
+        continue;
+      }
+      if (
+        core.memory.lastError === frozenWords(host, "running") ||
+        core.memory.lastError === frozenWords(host, "unknown")
+      )
+        core.memory.lastError = null;
+      yield* core.holdingCopies(
+        writersOn(applied, host),
+        recoverLanes(core, applied, host, "came back from its deploy").pipe(
+          Effect.andThen(sweepHost(core, applied, host)),
+        ),
+      );
+      yield* advanceAll(core);
+      yield* core.changed;
+      return;
+    }
   });
 
 /**
@@ -245,26 +307,30 @@ export const carryOnAtBoot = (core: CrewCore) =>
       const landed = own
         .map((row) => readLandedEvidence(row.result))
         .find((evidence) => evidence !== undefined)?.commit;
-      yield* core
-        .crewmate(handle)(adoptOwnWrites(core, member, own, landed))
-        .pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              core.memory.lastError = failureWords(error);
-            }),
-          ),
-        );
+      yield* core.holdingCopies([handle], adoptOwnWrites(core, member, own, landed)).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            core.memory.lastError = failureWords(error);
+          }),
+        ),
+      );
     }
     for (const host of applied.repositories.keys()) {
-      // Every copy on the host is held while it is swept: a person's press waits its turn.
-      const writers = [...applied.members.values()]
-        .filter((row) => row.kind === "writer" && row.host === host)
-        .map((row) => row.handle);
-      const held = writers.reduce(
-        (effect, handle) => core.crewmate(handle)(effect),
-        sweepHost(core, applied, host),
+      // A self-deploy the restart cut off may still run: its host stays frozen until it ends.
+      const frozen = (yield* asRefusal(core.store.lanesOnHost(host))).some(
+        (lane) => lane.frozenSince !== null,
       );
-      yield* held.pipe(
+      if (frozen) {
+        const state = yield* core.deployState(host, serviceIdOf(applied, host));
+        if (state !== "settled") {
+          core.memory.lastError = frozenWords(host, state);
+          yield* core.background(awaitDeployEnd(core, host));
+          continue;
+        }
+        yield* asRefusal(core.workspace.unfreeze(host));
+      }
+      // Every copy on the host is held while it is swept: a person's press waits its turn.
+      yield* core.holdingCopies(writersOn(applied, host), sweepHost(core, applied, host)).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             core.memory.lastError = failureWords(error);

@@ -576,6 +576,26 @@ describe("CrewStore", () => {
       ...overrides,
     });
 
+    it.effect("a run's meters move without touching its state; a stale move does not land", () =>
+      Effect.gen(function* () {
+        const store = yield* CrewStore.CrewStore;
+        const arcade = (overrides: Partial<CrewStore.CrewRunRow> = {}) =>
+          run({ run: "arcade-1", crew: "arcade", ...overrides });
+        yield* store.putRun(arcade({ spentUsd: 1 }));
+        // The run finished while a tick or a turn's end held the running row it read.
+        const finished = yield* store.putRun(arcade({ state: "finished" }), "running");
+        yield* store.updateRunMeters(arcade(), { wallMs: 5_000, addSpentUsd: 0.5 });
+        const paused = yield* store.putRun(
+          arcade({ state: "paused", reason: "budget" }),
+          "running",
+        );
+        assert.deepStrictEqual(
+          [finished, paused, Option.getOrUndefined(yield* store.latestRun("arcade"))],
+          [true, false, arcade({ state: "finished", spentUsd: 1.5, wallMs: 5_000 })],
+        );
+      }),
+    );
+
     it.effect("keeps a crew's runs, changes one in place and reads the latest", () =>
       Effect.gen(function* () {
         const store = yield* CrewStore.CrewStore;

@@ -35,6 +35,7 @@ import type {
   CrewTaskSource,
   CrewTaskState,
 } from "@t3tools/contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -109,7 +110,8 @@ export const busyWords = (handle: string) =>
 /**
  * A press to a crewmate, under its lock (`CrewCore.crewmate`): it never runs
  * beside that crewmate's turn end, a merge or another press in the same copy,
- * and never waits for one — it is refused at once as busy, having done nothing.
+ * and never waits for one — it is refused at once as busy, having done nothing
+ * — except behind the boot sweep or a deploy's recovery, which it waits out.
  */
 export const pressCrewmate = <A, E, R>(
   core: CrewCore,
@@ -121,11 +123,25 @@ export const pressCrewmate = <A, E, R>(
     .pipe(
       Effect.flatMap(
         Option.match({
-          onNone: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+          // The boot sweep or a deploy's recovery holds the copy: the press waits its turn, bounded.
+          onNone: () =>
+            core.memory.sweeping.has(handle)
+              ? core
+                  .crewmate(handle)(effect)
+                  .pipe(
+                    Effect.timeoutOrElse({
+                      duration: SWEEP_WAIT,
+                      orElse: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+                    }),
+                  )
+              : Effect.fail(refuse("wrong-state", busyWords(handle))),
           onSome: (value) => Effect.succeed(value),
         }),
       ),
     );
+
+/** How long a press waits for a copy the boot sweep or a deploy's recovery holds. */
+const SWEEP_WAIT = Duration.minutes(2);
 
 /** `pressCrewmate` on every one of `handles`, or on none: a busy one refuses the whole press. */
 export const pressCrewmates = <A, E, R>(
@@ -464,6 +480,8 @@ export const sendTurn = (
     yield* updateOperation(core, owned.id, {
       targets: { ...owned.targets, threadId: stint.threadId, commandId: command.commandId },
       confirmedStage: admittedCommand === undefined ? "attempt-recorded" : "admitted",
+      // The turn's words, kept until its dispatch is confirmed: a restart before that sends them.
+      result: { turn: text },
     });
     if (admittedCommand === undefined)
       yield* operationStep(
@@ -527,7 +545,11 @@ export const startTask = (
         core,
         owned.id,
         "preparing-copy",
-        asRefusal(core.workspace.prepareDispatch(key)),
+        asRefusal(
+          core.workspace.prepareDispatch(key, (target) =>
+            updateOperation(core, owned.id, { result: { resetTo: target } }).pipe(Effect.orDie),
+          ),
+        ),
       );
       switch (prepared._tag) {
         case "dirty":

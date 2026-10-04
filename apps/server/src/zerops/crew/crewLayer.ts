@@ -46,6 +46,7 @@ import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { ZeropsAgentAuth } from "../ZeropsAgentAuth.ts";
+import { withLogins } from "../ZeropsLogins.ts";
 import { isZeropsEnvironment } from "../ZeropsEnvironment.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { guardCommand, guardFilesWrite } from "./crewAccess.ts";
@@ -525,6 +526,10 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       watching = true;
       // Each login's sign-in as last seen: only a login whose state or signer moved retries.
       const seen = new Map<string, string>();
+      const baseline = Effect.gen(function* () {
+        const defaults = withLogins(yield* agentAuth.latest, []).logins ?? [];
+        moved([...defaults, ...(yield* core.logins.latest)]);
+      });
       const moved = (logins: ReadonlyArray<ZeropsLogin>) => {
         const changed = new Set<string>();
         for (const login of logins) {
@@ -534,9 +539,15 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
         }
         return changed;
       };
-      return Stream.merge(
-        core.logins.changes,
-        Stream.map(agentAuth.changes, (snapshot) => snapshot.logins ?? []),
+      return Stream.unwrap(
+        Effect.as(
+          baseline,
+          Stream.merge(
+            core.logins.changes,
+            // The default logins live on the agent rows: their state and signer, as the picker reads them.
+            Stream.map(agentAuth.changes, (snapshot) => withLogins(snapshot, []).logins ?? []),
+          ),
+        ),
       ).pipe(
         Stream.runForEach((logins) =>
           retryRefused(core, moved(logins)).pipe(
@@ -631,7 +642,8 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       command: (command, principal) =>
         guardCommand(core, command, principal).pipe(
           Effect.andThen(Deferred.await(inspected)),
-          Effect.andThen(run(core, command, principal, activate)),
+          // Once accepted, a press runs to its end whatever happens to the browser that sent it.
+          Effect.andThen(core.inEngine(run(core, command, principal, activate))),
         ),
     };
     return Context.make(CrewEngine, engine).pipe(

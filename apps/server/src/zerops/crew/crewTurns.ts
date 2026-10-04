@@ -27,7 +27,6 @@ import {
  */
 import { CommandId, ThreadId, type CrewRunReason, type SpiEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 
 import {
   asRefusal,
@@ -147,15 +146,12 @@ export const commitAndPolice = (
   withOperation(core, { kind: "checkpoint", handle: member.row.handle, task }, (operation) =>
     Effect.gen(function* () {
       const key = { crew: CREW_ID, handle: member.row.handle };
-      // A checked task's copy is the tree that lands: an edit on it is never committed.
-      if (task !== undefined && CHECKED_STATES.has(task.state) && member.row.host !== null) {
-        const stats = yield* core.reads
-          .laneStats(member.row.host, member.row.handle)
-          .pipe(Effect.option);
-        if (Option.isSome(stats) && stats.value.dirty) {
+      // A checked task's copy is the tree that lands: nothing is committed on it. A tracked
+      // edit stops the task; untracked files are neither edits nor landed.
+      if (task !== undefined && CHECKED_STATES.has(task.state)) {
+        if (yield* asRefusal(core.workspace.trackedEdits(key)))
           yield* parkTask(core, task, EDITED_AFTER_CHECK);
-          return;
-        }
+        return;
       }
       const turnKey = task === undefined ? "" : `${task.assignment}:${task.attempt}`;
       const committed = yield* operationStep(
@@ -517,12 +513,18 @@ export const makeTurnHandler = (core: CrewCore) => {
           deploys.set(event.itemId, target);
           yield* freeze(applied, target);
         } else if (event.type === "item.completed" && deploys.delete(event.itemId)) {
-          yield* asRefusal(core.workspace.unfreeze(target));
-          yield* core.changed;
+          // The copies are recovered while held, and the host thaws only after: no check or
+          // turn starts on a copy being brought back.
+          const writers = [...applied.members.values()]
+            .filter((row) => row.kind === "writer" && row.host === target)
+            .map((row) => row.handle);
           yield* core.background(
-            recoverLanes(core, applied, target, "came back from its deploy").pipe(
-              Effect.andThen(advanceAll(core)),
-            ),
+            core
+              .holdingCopies(
+                writers,
+                recoverLanes(core, applied, target, "came back from its deploy"),
+              )
+              .pipe(Effect.andThen(advanceAll(core))),
           );
         }
       }
@@ -551,7 +553,11 @@ export const makeTurnHandler = (core: CrewCore) => {
           yield* followCrewWork(core);
           break;
         case "turn.completed":
-          yield* core.crewmate(stint.member)(turnEnded(core, stint, event));
+          // Behind the boot sweep or a deploy's recovery, the turn's end queues on its crewmate's
+          // copy instead of holding up every other crewmate's events.
+          if (core.memory.sweeping.has(stint.member))
+            yield* core.background(core.crewmate(stint.member)(turnEnded(core, stint, event)));
+          else yield* core.crewmate(stint.member)(turnEnded(core, stint, event));
           break;
         case "thread.token-usage.updated":
           core.memory.context.set(stint.threadId, {
