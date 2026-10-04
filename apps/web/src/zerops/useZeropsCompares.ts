@@ -5,24 +5,26 @@
  *
  * Two commits compare the same for ever, so each comparison is asked once and held for as long as
  * HQ is the same one, whichever surface asked for it first — one store per HQ for the whole tab.
- * A comparison HQ did not answer says why (`movedCommits` reads it as such), and is asked again a
- * minute later by whoever still wants it.
+ * A comparison HQ did not answer ends with its reason until a reader presses Compare again.
  */
-import { compareReadKey, type CompareRead } from "@t3tools/client-runtime/zerops";
+import {
+  compareReadKey,
+  type CompareRead,
+  type MovedCommits,
+} from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { CompareResponse } from "@t3tools/shared/hqChanges";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useOfficialHq } from "./accountHq";
 
-/** How long a comparison HQ did not answer waits before it is asked again. */
-export const COMPARES_RETRY_MS = 60_000;
-
 /** One application's comparisons as HQ answered them, held under `compareReadKey`. */
 export interface AppCompares {
   readonly answers: ReadonlyMap<string, CompareResponse>;
   /** Why a comparison was not answered, while it is not. */
   readonly failures: ReadonlyMap<string, string>;
+  /** Makes one new attempt for the selected failed revisions, shared by every surface. */
+  readonly again: (reads: ReadonlyArray<CompareRead>) => void;
 }
 
 /** Each asking application's comparisons, by its id. */
@@ -32,7 +34,7 @@ export type ZeropsCompares = ReadonlyMap<string, AppCompares>;
 interface Snapshot {
   readonly answers: ReadonlyMap<string, CompareResponse>;
   readonly failures: ReadonlyMap<string, string>;
-  /** Asked and not due again: on its way, answered, or failed less than a minute ago. */
+  /** Attempted: on its way, answered, or terminally failed. */
   readonly asked: ReadonlySet<string>;
 }
 
@@ -110,14 +112,6 @@ export function useZeropsCompares(
             ...held,
             failures: new Map(held.failures).set(key, zeropsErrorMessage(cause)),
           }));
-          // A minute later it is due again, for whoever still wants it.
-          setTimeout(() => {
-            update(store, (held) => {
-              const asked = new Set(held.asked);
-              asked.delete(key);
-              return { ...held, asked };
-            });
-          }, COMPARES_RETRY_MS);
         },
       );
     }
@@ -136,9 +130,27 @@ export function useZeropsCompares(
             if (answer !== undefined) answers.set(compareReadKey(read), answer);
             if (failure !== undefined) failures.set(compareReadKey(read), failure);
           }
-          return [appId, { answers, failures }];
+          const again = (selected: ReadonlyArray<CompareRead>) => {
+            if (hq === null || store === null) return;
+            const wanted = new Set(reads.map(compareReadKey));
+            update(store, (held) => {
+              const asked = new Set(held.asked);
+              const failures = new Map(held.failures);
+              for (const read of selected) {
+                const key = appKey(appId, read);
+                if (!wanted.has(compareReadKey(read)) || !failures.has(key)) continue;
+                asked.delete(key);
+                failures.delete(key);
+              }
+              return { ...held, asked, failures };
+            });
+          };
+          return [appId, { answers, failures, again }];
         }),
       ),
-    [asks, snapshot],
+    [asks, hq, snapshot, store],
   );
 }
+
+/** The selected comparison's failure action, carried only by the web presentation. */
+export type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefined };
