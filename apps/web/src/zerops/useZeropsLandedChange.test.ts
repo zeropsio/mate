@@ -3,17 +3,12 @@ import type { ChangeDetailResponse, HqChange } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  LANDED_CHANGE_RETRY_MS,
-  useZeropsLandedChange,
-  type ZeropsLandedChangeState,
-} from "./useZeropsLandedChange";
+import { useZeropsLandedChange, type ZeropsLandedChangeState } from "./useZeropsLandedChange";
 
 /**
  * What HQ answers each read of the change, in order — the last answer repeats — and whether the
  * organization's official HQ is known yet.
  */
-type Answer = "change" | "unpushed" | "absent" | "unavailable" | "forbidden";
 const hq = vi.hoisted(() => ({
   official: false,
   answers: [] as Array<"change" | "unpushed" | "absent" | "unavailable" | "forbidden">,
@@ -133,30 +128,6 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
-/**
- * A change a Mate links to that the flow does not carry: HQ is asked for it on its own. Whatever
- * the first read met, the link settles on the change within a minute — never on the bare url until
- * the page is reloaded.
- */
-const settles: ReadonlyArray<{
-  readonly name: string;
-  /** Whether the official HQ is known when the link is first drawn. */
-  readonly officialAtFirst: boolean;
-  readonly answers: ReadonlyArray<Answer>;
-}> = [
-  {
-    name: "an HQ anchor resolved after the link is drawn",
-    officialAtFirst: false,
-    answers: ["change"],
-  },
-  { name: "a read HQ did not answer", officialAtFirst: true, answers: ["unavailable", "change"] },
-  {
-    name: "a first read that did not find it",
-    officialAtFirst: true,
-    answers: ["absent", "change"],
-  },
-];
-
 const LINK = { appId: "g1", repo: "zitdev", number: 31 };
 
 describe("useZeropsLandedChange", () => {
@@ -169,7 +140,11 @@ describe("useZeropsLandedChange", () => {
   });
 
   /** The states drawn while the link is read, `officialAtFirst` turning true on the second render. */
-  async function settle(link: typeof LINK, officialAtFirst: boolean) {
+  async function settle(
+    link: typeof LINK,
+    officialAtFirst: boolean,
+    expected?: { readonly kind: string },
+  ) {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     installTestDom();
     const { createRoot } = await import("react-dom/client");
@@ -187,6 +162,7 @@ describe("useZeropsLandedChange", () => {
     await act(async () => {
       root.render(createElement(Probe, { render: 1 }));
     });
+    if (expected !== undefined) expect(seen.at(-1)).toMatchObject(expected);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10 * 60_000);
     });
@@ -196,31 +172,24 @@ describe("useZeropsLandedChange", () => {
     return seen;
   }
 
-  it.each(settles)("reads the change after $name", async ({ officialAtFirst, answers }) => {
-    hq.answers = [...answers];
-    const seen = await settle(LINK, officialAtFirst);
-    expect(seen.at(-1)).toMatchObject({
-      kind: "read",
-      pull: { number: 31, merged: true, url: `${HQ_ADDRESS}/changes/g1/zitdev/31` },
-    });
+  it("reads once when the official HQ becomes known", async () => {
+    hq.answers = ["change"];
+    const seen = await settle(LINK, false);
+    expect(seen.at(-1)).toMatchObject({ kind: "read", pull: { number: 31, merged: true } });
+    expect(hq.reads).toBe(1);
   });
 
-  it("stops asking once HQ keeps saying the change is not there", async () => {
-    hq.answers = ["absent"];
-    const seen = await settle({ ...LINK, number: 999 }, true);
-    expect(seen.at(-1)).toEqual({ kind: "gone" });
-    expect(hq.reads).toBe(1 + LANDED_CHANGE_RETRY_MS.length);
-  });
-
-  it("draws no change no push reached, as nothing else does", async () => {
-    hq.answers = ["unpushed"];
-    const seen = await settle(LINK, true);
-    expect(seen.at(-1)).toEqual({ kind: "gone" });
-  });
-
-  it("says why when HQ will not let the person read it", async () => {
-    hq.answers = ["forbidden"];
-    const seen = await settle(LINK, true);
-    expect(seen.at(-1)).toEqual({ kind: "failed", reason: "HQ refused this (forbidden)." });
+  it.each([
+    ["absent", { kind: "gone" }],
+    ["unpushed", { kind: "gone" }],
+    ["unavailable", { kind: "unavailable", reason: "HQ could not be reached." }],
+    ["forbidden", { kind: "refused", reason: "HQ refused this (forbidden)." }],
+    ["change", { kind: "read" }],
+  ] as const)("publishes %s immediately after one read", async (answer, expected) => {
+    hq.answers = [answer, "change"];
+    // Fake timers remain still until after the first result is asserted.
+    const seen = await settle(LINK, true, expected);
+    expect(seen.at(-1)).toMatchObject(expected);
+    expect(hq.reads).toBe(1);
   });
 });

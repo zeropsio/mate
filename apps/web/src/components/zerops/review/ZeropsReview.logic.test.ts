@@ -567,7 +567,7 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
     ],
     [
       "a read that failed",
-      { read: { kind: "failed", reason: "HQ is not answering right now." } },
+      { read: { kind: "unavailable", reason: "HQ is not answering right now." } },
       "attention",
       "This change could not be read",
     ],

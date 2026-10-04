@@ -484,7 +484,7 @@ export function changeReadVerdict(input: {
   /** The read of the change on its own; `idle` until the organization's official HQ is known. */
   readonly read:
     | { readonly kind: "idle" | "reading" | "gone" }
-    | { readonly kind: "failed"; readonly reason: string };
+    | { readonly kind: "refused" | "unavailable"; readonly reason: string };
   /** Whether there is an account's flow to read it through at all. */
   readonly provided: boolean;
   readonly failure?: string | undefined;
@@ -501,7 +501,7 @@ export function changeReadVerdict(input: {
   if (read.kind === "gone") {
     return verdict("attention", `${input.repository} has no change #${String(input.number)}`);
   }
-  if (read.kind === "failed")
+  if (read.kind === "refused" || read.kind === "unavailable")
     return verdict("attention", "This change could not be read", read.reason);
   if (!input.provided) return verdict("quiet", "Nothing here reads this change");
   if (input.failure !== undefined)

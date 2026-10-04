@@ -2,7 +2,7 @@ import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { TestNode } from "../../zerops/__fixtures__/testDom";
+import { buttonsLabelled, press, TestNode } from "../../zerops/__fixtures__/testDom";
 import type { ZeropsProjectFlowValue } from "../../zerops/projectFlowContext";
 import type { ZeropsLandedChangeState } from "../../zerops/useZeropsLandedChange";
 
@@ -10,12 +10,20 @@ import type { ZeropsLandedChangeState } from "../../zerops/useZeropsLandedChange
 const hq = vi.hoisted(() => ({
   answer: { kind: "reading" } as ZeropsLandedChangeState,
   asked: null as ChangeLink | null,
+  readAgain: vi.fn(),
 }));
 
 vi.mock("../../zerops/useZeropsLandedChange", () => ({
   useZeropsLandedChange: (link: ChangeLink | null) => {
     hq.asked = link;
-    return link === null ? { kind: "idle" } : hq.answer;
+    return link === null
+      ? { kind: "idle" }
+      : {
+          ...hq.answer,
+          ...(hq.answer.kind === "gone" || hq.answer.kind === "unavailable"
+            ? { readAgain: hq.readAgain }
+            : {}),
+        };
   },
 }));
 
@@ -80,11 +88,12 @@ function installTestDom(): TestNode {
 afterEach(() => {
   hq.answer = { kind: "reading" };
   hq.asked = null;
+  hq.readAgain.mockClear();
   vi.unstubAllGlobals();
 });
 
 /**
- * A Mate links a change the moment it opens it. The link is drawn as the change from its address
+ * A Mate links a change after HQ records its push. The link is drawn as the change from its address
  * at once — the application, the repository and the number are in it — and takes its word from
  * the flow, or from HQ for one the flow does not carry: never a bare url until a reload.
  */
@@ -138,7 +147,7 @@ describe("ZeropsChangeLinkChip", () => {
     {
       name: "a change HQ does not have stays the link it was",
       renders: [{ hqAddress: HQ, answer: { kind: "gone" } }],
-      text: HREF,
+      text: `${HREF}zitdev has no change #31Read again`,
     },
     {
       name: "a change on another HQ stays the link it was",
@@ -171,6 +180,42 @@ describe("ZeropsChangeLinkChip", () => {
       await act(async () => root.unmount());
     }
   });
+
+  it.each(["gone", "unavailable", "refused"] as const)(
+    "shows %s and keeps recovery manual",
+    async (kind) => {
+      const document = installTestDom();
+      const { act } = await import("react");
+      const { createRoot } = await import("react-dom/client");
+      const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
+      const { ZeropsChangeLinkChip } = await import("./ZeropsChangeLinkChip");
+      const container = document.createElement("div");
+      const root = createRoot(container as unknown as Element);
+      const value = flowValue(HQ);
+      hq.answer = kind === "gone" ? { kind } : { kind, reason: "HQ answered this read." };
+      try {
+        await act(async () =>
+          root.render(
+            <ZeropsProjectFlowContext.Provider value={value}>
+              <ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>
+            </ZeropsProjectFlowContext.Provider>,
+          ),
+        );
+        expect(container.textContent).toContain(
+          kind === "gone" ? "zitdev has no change #31" : "This change could not be read",
+        );
+        const buttons = buttonsLabelled(container, "Read again");
+        expect(buttons).toHaveLength(kind === "refused" ? 0 : 1);
+        expect(hq.readAgain).not.toHaveBeenCalled();
+        if (kind !== "refused") {
+          await act(async () => press(buttons[0]!));
+          expect(hq.readAgain).toHaveBeenCalledTimes(1);
+        }
+      } finally {
+        await act(async () => root.unmount());
+      }
+    },
+  );
 
   it("asks HQ for nothing the flow carries", async () => {
     const document = installTestDom();

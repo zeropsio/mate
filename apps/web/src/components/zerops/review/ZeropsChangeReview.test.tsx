@@ -5,6 +5,7 @@
  */
 import { changeReadout, releaseOffer, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
+import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -25,6 +26,7 @@ import {
 const account = vi.hoisted(() => ({
   changes: new Map<string, unknown>(),
   reads: [] as Array<string>,
+  readError: null as unknown,
   verbs: [] as Array<readonly unknown[]>,
   answer: { ok: true } as { readonly ok: true } | { readonly ok: false; readonly reason: string },
 }));
@@ -53,6 +55,7 @@ const hq = vi.hoisted(() => ({
     change: async (link: { appId: string; repo: string; number: number }) => {
       const key = `${link.appId}/${link.repo}#${String(link.number)}`;
       account.reads.push(key);
+      if (account.readError !== null) throw account.readError;
       return { change: account.changes.get(key) };
     },
   },
@@ -404,6 +407,7 @@ const API_CHANGE: HqChange = {
 describe("ZeropsChangeReview: a change its project's flow does not hold yet", () => {
   afterEach(() => {
     account.changes.clear();
+    account.readError = null;
     account.reads.length = 0;
     account.verbs.length = 0;
     account.answer = { ok: true };
@@ -465,6 +469,34 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       commitsTruncated: false,
     }),
   };
+
+  it.each([
+    [404, "refused", true, "apidev has no change #1"],
+    [403, "refused", false, "This change could not be read"],
+    [503, "unavailable", true, "This change could not be read"],
+  ] as const)(
+    "shows a %s outcome and offers Read again only where allowed",
+    async (status, kind, again, words) => {
+      account.readError = new HqError({
+        kind,
+        status,
+        code: "test",
+        message: "HQ answered this read.",
+      });
+      await reviewed(async (host) => {
+        expect(account.reads).toHaveLength(1);
+        expect(host.textContent).toContain(words);
+        expect(host.textContent).not.toContain("Reading this change");
+        expect(buttonsOf(host, "Read again")).toHaveLength(again ? 1 : 0);
+        if (again) {
+          account.readError = null;
+          await pressed(host, "Read again");
+          expect(account.reads).toHaveLength(2);
+          expect(host.textContent).toContain("Rebuild the full API on the new schema");
+        }
+      });
+    },
+  );
 
   it("merges with the head the review shows, and says it merged", async () => {
     detail.readout = READ_DETAIL;
