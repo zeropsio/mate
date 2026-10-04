@@ -19,7 +19,7 @@
  * - Effects are data. The interpreter runs `run` ops and feeds their answers back as events,
  *   arms one timer per `schedule` that delivers `TICK`, and forwards the rest to the runtime.
  */
-import { RETRY_JITTER } from "../../knowledge/retryPolicy.ts";
+import { rungMs, soonerJittered, type RetryLadder } from "../../knowledge/retryPolicy.ts";
 import { renewalLeadMs, roundDeadlineMs, type ZeropsGrantPolicy } from "../policy.ts";
 import type {
   OrganizationEffectiveAccess,
@@ -377,20 +377,17 @@ const expired = (stamp: Instant, now: Instant, policy: ZeropsGrantPolicy): boole
   reached(after(stamp, policy.windowMs), now) ||
   now.wall - stamp.wall < now.mono - stamp.mono - policy.wallJumpBackToleranceMs;
 
-const rung = (ladder: ReadonlyArray<number>, attempt: number): number =>
-  ladder[Math.min(Math.max(attempt, 1), ladder.length) - 1]!;
-
-/** A rung's wait, jittered up to `RETRY_JITTER` shorter so tabs that failed together part. */
-const waitOf = (ctx: GrantContext, ladder: ReadonlyArray<number>, attempt: number): number => {
-  const ms = rung(ladder, attempt);
-  return ctx.random === undefined ? ms : Math.round(ms * (1 - RETRY_JITTER * ctx.random()));
+/** A rung's wait (`rungMs`), jittered up to a fifth sooner so tabs that failed together part. */
+const waitOf = (ctx: GrantContext, ladder: RetryLadder, attempt: number): number => {
+  const ms = rungMs(ladder, attempt);
+  return ctx.random === undefined ? ms : soonerJittered(ms, ctx.random());
 };
 
 /** When a read that failed with `failure` is due again on `ladder`: never, for a definitive one. */
 const retryAtOf = (
   ctx: GrantContext,
   failure: GrantFailure,
-  ladder: ReadonlyArray<number>,
+  ladder: RetryLadder,
   attempt: number,
 ): Instant | null => (definitive(failure) ? null : after(ctx.now, waitOf(ctx, ladder, attempt)));
 
@@ -625,7 +622,7 @@ const failRound = (
    * When the next round goes out on `ladder`: at once when a person asked during this one, never
    * by itself after a definitive failure.
    */
-  const retryAfter = (ladder: ReadonlyArray<number>): Instant | null =>
+  const retryAfter = (ladder: RetryLadder): Instant | null =>
     round.askedAgain === true ? ctx.now : retryAtOf(ctx, failure, ladder, attempt);
   if (phase.phase === "verifying") {
     return {

@@ -1,3 +1,10 @@
+import {
+  GRANT_RETRY_LADDERS,
+  RECOVERY_CAP_MS,
+  RECOVERY_FIRST_MS,
+  type RetryLadder,
+} from "../knowledge/retryPolicy.ts";
+
 export interface ZeropsDataPolicy {
   readonly httpDeadlineMs: number;
   /** A command of several requests, between them all (`commandDeadlineMs`). */
@@ -106,8 +113,8 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   retainedCommandAttemptsPerAccount: 1_000,
   hydrationRetryLimit: 3,
   recoveryAttemptLimit: 5,
-  recoveryBackoffStartMs: 1_000,
-  recoveryBackoffMaxMs: 30_000,
+  recoveryBackoffStartMs: RECOVERY_FIRST_MS,
+  recoveryBackoffMaxMs: RECOVERY_CAP_MS,
   retainedProjectsPerAccount: 10_000,
   retainedServicesPerAccount: 50_000,
   retainedTerminalProcessesPerProject: 500,
@@ -214,13 +221,13 @@ export interface ZeropsGrantPolicy {
   /** A 403/404 removes content only after a direct read at least this much later agrees (G6). */
   readonly denialConfirmationDelayMs: number;
   /** Before the first grant: the session backoff (§4.0 rungs). */
-  readonly initialRetryMs: ReadonlyArray<number>;
+  readonly initialRetryMs: RetryLadder;
   /** A failed renewal while the held evidence is still valid, bounded by its deadline. */
-  readonly renewalRetryMs: ReadonlyArray<number>;
+  readonly renewalRetryMs: RetryLadder;
   /** Lapsed: the lapse's own round runs at once, later failures wait these rungs (G9). */
-  readonly lapsedRetryMs: ReadonlyArray<number>;
+  readonly lapsedRetryMs: RetryLadder;
   /** One project whose read, or denial's confirmation, failed while the account stays granted. */
-  readonly projectRetryMs: ReadonlyArray<number>;
+  readonly projectRetryMs: RetryLadder;
   /**
    * The epoch's first mount waits this long after its round started or ended before its wait
    * offers a way off (G10): a round that never answers, or data that never arrives.
@@ -230,8 +237,6 @@ export interface ZeropsGrantPolicy {
 
 const SECOND_MS = 1_000;
 const MINUTE_MS = 60 * SECOND_MS;
-const seconds = (...values: ReadonlyArray<number>): ReadonlyArray<number> =>
-  Object.freeze(values.map((value) => value * SECOND_MS));
 
 export const DEFAULT_ZEROPS_GRANT_POLICY: ZeropsGrantPolicy = Object.freeze({
   windowMs: 15 * MINUTE_MS,
@@ -245,10 +250,10 @@ export const DEFAULT_ZEROPS_GRANT_POLICY: ZeropsGrantPolicy = Object.freeze({
   roundProjectConcurrency: 4,
   wallJumpBackToleranceMs: 60 * SECOND_MS,
   denialConfirmationDelayMs: 5 * SECOND_MS,
-  initialRetryMs: seconds(2, 4, 8, 15, 30, 60),
-  renewalRetryMs: seconds(10, 20, 40, 60),
-  lapsedRetryMs: seconds(2, 5, 15, 30, 60),
-  projectRetryMs: seconds(10, 20, 40, 60),
+  initialRetryMs: GRANT_RETRY_LADDERS.initial,
+  renewalRetryMs: GRANT_RETRY_LADDERS.renewal,
+  lapsedRetryMs: GRANT_RETRY_LADDERS.lapsed,
+  projectRetryMs: GRANT_RETRY_LADDERS.project,
   firstMountPatienceMs: 20 * SECOND_MS,
 });
 

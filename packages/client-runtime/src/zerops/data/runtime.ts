@@ -18,7 +18,13 @@ import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import { ZeropsApiError, type ZeropsProject } from "../api.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
-import { RETRY_JITTER } from "../knowledge/retryPolicy.ts";
+import {
+  doublingLadder,
+  onLastRung,
+  rungMs,
+  soonerJittered,
+  type RetryLadder,
+} from "../knowledge/retryPolicy.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
 import { createZeropsDataAtoms } from "./atoms.ts";
 import { grantCapabilities } from "./access/capabilities.ts";
@@ -1031,8 +1037,22 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const scheduler = yield* Scheduler.Scheduler;
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
   const random = options.random ?? Math.random;
-  /** A wait made up to `RETRY_JITTER` shorter, so tabs and entities that failed together part. */
-  const jittered = (ms: number): number => Math.round(ms * (1 - RETRY_JITTER * random()));
+  /** A wait made up to a fifth shorter, so tabs and entities that failed together part. */
+  const jittered = (ms: number): number => soonerJittered(ms, random());
+  /**
+   * The recovery's ladders (`retryPolicy.ts`): an entity's hydration doubles to the cap within
+   * `hydrationRetryLimit` failures, an interest's past `recoveryAttemptLimit`; each stays there.
+   */
+  const hydrationLadder: RetryLadder = doublingLadder(
+    policy.recoveryBackoffStartMs,
+    policy.recoveryBackoffMaxMs,
+    policy.hydrationRetryLimit,
+  );
+  const recoveryLadder: RetryLadder = doublingLadder(
+    policy.recoveryBackoffStartMs,
+    policy.recoveryBackoffMaxMs,
+    policy.recoveryAttemptLimit + 1,
+  );
   /**
    * Until when each organization's reads, or its socket, wait out a 429's Retry-After: every
    * request of that kind holds, not only the one the platform answered.
@@ -2229,10 +2249,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     Effect.gen(function* () {
       const count = (hydrationAttempts.get(key)?.count ?? 0) + 1;
       const refusal = hydrationRefusal(error);
-      const spent = count >= policy.hydrationRetryLimit;
-      const backoffMs = spent
-        ? policy.recoveryBackoffMaxMs
-        : Math.min(policy.recoveryBackoffStartMs * 2 ** (count - 1), policy.recoveryBackoffMaxMs);
+      const backoffMs = rungMs(hydrationLadder, count);
       const now = yield* Clock.currentTimeMillis;
       const delayMs = Math.max(
         jittered(backoffMs),
@@ -3027,18 +3044,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         if (receiver === undefined || receiver.failed || receiver.openFailure !== null) continue;
         runtimeInterest.recoveryAttempts += 1;
         const attempts = runtimeInterest.recoveryAttempts;
-        const spent = attempts > policy.recoveryAttemptLimit;
+        const spent = onLastRung(recoveryLadder, attempts);
         const organization = organizationOfInterest(runtimeInterest.descriptor);
         const dueAtMs = Math.max(
-          now +
-            jittered(
-              spent
-                ? policy.recoveryBackoffMaxMs
-                : Math.min(
-                    policy.recoveryBackoffStartMs * 2 ** (attempts - 1),
-                    policy.recoveryBackoffMaxMs,
-                  ),
-            ),
+          now + jittered(rungMs(recoveryLadder, attempts)),
           // A Retry-After its own failure carried, or its organization's 429, is a floor.
           interestRetryAfter.get(runtimeInterest.key) ?? 0,
           throttledUntil(organization, "read"),
