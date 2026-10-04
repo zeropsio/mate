@@ -1,7 +1,7 @@
 import type { HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deployAnswerSaid } from "./deployAnswer.ts";
+import { deployAnswerFollowing, deployAnswerSaid } from "./deployAnswer.ts";
 
 const WEB = "5c3ea18b00000000000000000000000000000000";
 const API = "b21d904c00000000000000000000000000000000";
@@ -152,5 +152,28 @@ it("retains the deploy answer's job and process for inspection", () => {
   expect(said.environments[0]?.jobs[0]).toMatchObject({
     jobId: "7",
     deployLog: { jobId: "7", processId: "p7", appVersionId: null },
+  });
+});
+
+describe("deployAnswerFollowing — HQ's stream over the request's snapshot", () => {
+  it("takes the streamed state of a job it finds by id, and keeps the rest as answered", () => {
+    const answer = {
+      jobs: [
+        outcome({ job: "1" }),
+        outcome({ job: "2", service: "api", sha: API }),
+        outcome({ job: null }),
+      ],
+      note: null,
+    };
+    const followed = deployAnswerFollowing(
+      answer,
+      new Map([["1", { state: "failed" as const, reason: "build broke", processId: null }]]),
+    );
+    expect(followed.jobs[0]).toMatchObject({
+      state: "failed",
+      reason: "build broke",
+      processId: "process-1",
+    });
+    expect(followed.jobs.slice(1)).toEqual(answer.jobs.slice(1));
   });
 });

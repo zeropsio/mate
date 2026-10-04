@@ -40,6 +40,7 @@ export {
   type OpenHqSocket,
 } from "./client.ts";
 export {
+  deployAnswerFollowing,
   deployAnswerSaid,
   type DeployAnswerEnvironment,
   type DeployAnswerJob,

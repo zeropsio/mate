@@ -79,7 +79,14 @@ describe("answeredDeploys — a press's deploys, where HQ answered them", () => 
   });
 });
 
-const job = { id: "3", kind: "deploy", processId: "p3", appVersionId: "v3" };
+const job = {
+  id: "3",
+  kind: "deploy",
+  state: "building",
+  reason: null,
+  processId: "p3",
+  appVersionId: "v3",
+};
 const flow = {
   flows: new Map([
     [
@@ -107,4 +114,43 @@ it("offers the answered job's inspection through its HQ project id, even after a
   );
   expect(markup).toContain("View deploy");
   expect(markup).toContain('data-zerops-deploy-job="3"');
+});
+
+// HQ's stream is the source of truth: the answer said where a job stood when the request ended.
+describe("an answered job follows HQ's stream to its end", () => {
+  const streamed = (state: string, reason: string | null = null) =>
+    ({
+      flows: new Map([
+        [
+          "app",
+          {
+            environmentInputs: [
+              {
+                projectId: "prod-id",
+                environment: "stage",
+                services: [{ deploy: { latest: { ...job, state, reason }, live: null } }],
+              },
+            ],
+          },
+        ],
+      ]),
+    }) as unknown as ZeropsProjectFlowValue;
+  const building: HqDeployAnswer = {
+    ...ANSWER,
+    jobs: [{ ...ANSWER.jobs[0]!, state: "building", processId: "p3" }],
+  };
+
+  it.each([
+    ["live", null, "5c3ea18 live"],
+    ["failed", "build broke", "5c3ea18 failed: build broke"],
+  ])("says %s once HQ's job has ended", (state, reason, said) => {
+    const markup = renderToStaticMarkup(
+      <ZeropsProjectFlowContext.Provider value={streamed(state, reason)}>
+        <ZeropsDeployAnswer answer={building} />
+      </ZeropsProjectFlowContext.Provider>,
+    );
+    expect(markup).toContain(said);
+    expect(markup).toContain(`data-zerops-job-state="${state}"`);
+    expect(markup).not.toContain("building");
+  });
 });
