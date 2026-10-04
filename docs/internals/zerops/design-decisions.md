@@ -3804,3 +3804,20 @@ no-cache`.
     non-animated height expansions, the sometimes weirdly acting scroll processes". Run 9 measured
     231 one-frame height changes and 83 unprovoked jumps; the desktop harness now shows 0 and 0–1.
     At 390 px a card still bounces when a tall step arrives (its 60svh cap), the first follow-up.
+- **2026-10-05** — **Automatic recovery is wanted; a clock standing in for an answer is not.**
+  - **Wanted:** recovery with a clear logic — renewing a session, reconnecting, re-subscribing,
+    re-reading, re-running an idempotent step after a transient failure (network, timeout, 5xx, the
+    network coming back, a tab waking). Bounded (backoff and a cap), visible ("reconnecting…"), and
+    ending in a visible failure with a manual "again" once the bound is spent.
+  - **Not wanted:** a clock that stands in for the owner's answer ("30 minutes after a release, it has
+    ended"; "20 s with nothing running, the deploy failed"); side effects nobody asked for and nobody
+    sees (a timer that compares wanted with actual and quietly rewrites, deploys or deletes — what
+    the Gitea backbone did); retrying a definitive refusal (rights, validation); repeating a
+    non-idempotent side effect without first reading its own handle.
+  - **Supersedes** the reading of 2026-10-03 that every automatic retry is wrong; passages that say
+    "nothing retries" or "stays failed until the manual action" describe today's code, not the rule,
+    and change with the code that restores a recovery.
+  - _Why:_ the owner: "problém mám s automatickými opakováními jako třeba to, že se na FE nastavilo a
+    čekalo, že něco proběhne do 30 min, nebo že se nějak magicky dělo historicky něco v Gitee. Ne to,
+    že se něco automaticky opakuje a vyrovnává se stavem, který nějak vzniká, a je to jeho legitimní
+    řešení, jako třeba že se automaticky obnoví session."
