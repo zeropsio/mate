@@ -76,8 +76,7 @@ function mintNonce(): string {
 /**
  * The port to ask the callback to return to, or null when this is not a dev
  * server. Matched on the hostname `localhost` and deliberately not
- * `127.0.0.1`, the same line `apps/server/src/zerops/origin.ts` draws for the
- * CORS allowlist — the trust is on the hostname. `URL.port` is empty when the
+ * `127.0.0.1` — the trust is on the hostname. `URL.port` is empty when the
  * origin leaves the scheme's default implicit, so it is filled in here rather
  * than sending nothing.
  */

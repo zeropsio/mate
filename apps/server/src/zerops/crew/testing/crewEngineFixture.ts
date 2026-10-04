@@ -80,7 +80,6 @@ export const PROJECT_ID = ProjectId.make("project-mate");
 export const ZEROPS = resolveZeropsEnvironment({
   projectId: TEST_IDENTITY.projectId,
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: "the-mates-own-zerops-key",
 })!;
 

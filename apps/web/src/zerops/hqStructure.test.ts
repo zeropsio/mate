@@ -4,6 +4,7 @@ import {
   type HqApi,
   type HqHealth,
   type HqMates,
+  type HqParts,
   type HqStructure,
   type HqStructureEvent,
   type OpenHqSocket,
@@ -30,6 +31,9 @@ const VERA = Schema.decodeUnknownSync(MateLiveView)({
   logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
   crew: { status: "off" },
 });
+
+/** HQ's parts as a health read with nothing wrong reports them. */
+const QUIET: HqParts = { quarantined: [] };
 
 /** HQ's ping, this long after what came before it. */
 type Ping = { readonly pingAfterMs: number; readonly tick: (ms: number) => void };
@@ -166,8 +170,8 @@ describe("HQ's standing, from its stream", () => {
     // HQ serves, but its door cannot check Zerops right now: no outage (e840eb444).
     [
       "HQ unable to check Zerops",
-      { kind: "unchecked", build: "b1" },
-      { kind: "unchecked", build: "b1" },
+      { kind: "unchecked", build: "b1", parts: QUIET },
+      { kind: "unchecked", build: "b1", parts: QUIET },
     ],
   ])("after its stream breaks, says %s as HQ's health does", async (_case, health, standing) => {
     vi.useFakeTimers();
@@ -284,7 +288,7 @@ describe("HQ's standing, from its stream", () => {
   // A refusal waits for a manual again: no next attempt would ever read HQ's health.
   it("reads HQ's health on the tab's return after a refusal it was hidden for", async () => {
     vi.useFakeTimers();
-    const h = harness(undefined, { kind: "unchecked", build: "b1" });
+    const h = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
     h.page.visible = false;
     const api = {
       streamStructure: async () => {
@@ -299,7 +303,7 @@ describe("HQ's standing, from its stream", () => {
       h.show();
       await vi.advanceTimersByTimeAsync(0);
       expect(h.healthReads).toHaveLength(1);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1" });
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1", parts: QUIET });
     } finally {
       stop.abort();
       await driving;
@@ -322,11 +326,11 @@ describe("HQ's standing, from its stream", () => {
     try {
       await vi.advanceTimersByTimeAsync(1000);
       expect(answers).toHaveLength(2);
-      answers[1]!({ kind: "unchecked", build: "b1" });
+      answers[1]!({ kind: "unchecked", build: "b1", parts: QUIET });
       await vi.advanceTimersByTimeAsync(0);
       answers[0]!({ kind: "unreachable" });
       await vi.advanceTimersByTimeAsync(0);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1" });
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1", parts: QUIET });
     } finally {
       stop.abort();
       await driving;
@@ -346,7 +350,11 @@ describe("HQ's standing, from its stream", () => {
       api: streamingApi([{ events: [{ ...snapshot, build: BUILD }], end: "hang" }]),
       signal: stop.signal,
     });
-    const older = harness(undefined, { kind: "healthy", build: "20261001T090000Z.aaaaaaaaaaaa" });
+    const older = harness(undefined, {
+      kind: "healthy",
+      build: "20261001T090000Z.aaaaaaaaaaaa",
+      parts: QUIET,
+    });
     const halt = new AbortController();
     const going = driveHqStructure({
       ...older.deps,
@@ -360,6 +368,7 @@ describe("HQ's standing, from its stream", () => {
       expect(older.views.at(-1)?.standing).toEqual({
         kind: "healthy",
         build: "20261001T090000Z.aaaaaaaaaaaa",
+        parts: QUIET,
       });
     } finally {
       stop.abort();
@@ -370,10 +379,45 @@ describe("HQ's standing, from its stream", () => {
     }
   });
 
+  // HQ's card says how its parts stand off the stream, as each change comes; no health read.
+  it("says how HQ's parts stand as its stream tells them", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const parts = { db: "up" as const, quarantined: [], backup: { state: "pending" as const } };
+    const api = streamingApi([
+      {
+        events: [
+          { ...snapshot, build: "b2", parts },
+          { kind: "parts", parts: { ...parts, backup: { state: "ok", takenAt: 5 } } },
+        ],
+        end: "hang",
+      },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.views.at(-1)?.standing).toEqual({
+        kind: "healthy",
+        build: "b2",
+        parts: { ...parts, backup: { state: "ok", takenAt: 5 } },
+      });
+      expect(h.healthReads).toEqual([]);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
   // A Core born before its stream said so sends no verdict: its /health says it, once.
   it.each<[string, HqHealth, HqStanding]>([
-    ["unable to check Zerops", { kind: "unchecked", build: "b1" }, { kind: "unchecked" }],
-    ["the official HQ", { kind: "healthy", build: "b1" }, { kind: "healthy" }],
+    [
+      "unable to check Zerops",
+      { kind: "unchecked", build: "b1", parts: QUIET },
+      { kind: "unchecked" },
+    ],
+    ["the official HQ", { kind: "healthy", build: "b1", parts: QUIET }, { kind: "healthy" }],
   ])("reads an old Core's health once its stream serves: %s", async (_case, health, standing) => {
     vi.useFakeTimers();
     const h = harness(undefined, health);
@@ -393,7 +437,7 @@ describe("HQ's standing, from its stream", () => {
 
   it("reads an old Core's health on the tab's return, and none for a Core yet to check", async () => {
     vi.useFakeTimers();
-    const h = harness(undefined, { kind: "unchecked", build: "b1" });
+    const h = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
     h.page.visible = false;
     const api = streamingApi([{ events: [legacy], end: "hang" }]);
     const stop = new AbortController();
@@ -404,13 +448,13 @@ describe("HQ's standing, from its stream", () => {
       h.show();
       await vi.advanceTimersByTimeAsync(0);
       expect(h.healthReads).toHaveLength(1);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1" });
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1", parts: QUIET });
     } finally {
       stop.abort();
       await driving;
     }
 
-    const fresh = harness(undefined, { kind: "unchecked", build: "b1" });
+    const fresh = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
     const checking = streamingApi([{ events: [{ ...snapshot, official: null }], end: "hang" }]);
     const halt = new AbortController();
     const going = driveHqStructure({ ...fresh.deps, api: checking, signal: halt.signal });

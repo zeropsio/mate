@@ -1,8 +1,8 @@
 /**
- * HQ's update, for an owner or an admin (`ZeropsHqTool`): offered when HQ's health names an older
+ * HQ's update, for an owner or an admin (`ZeropsHqCard`): offered when HQ's health names an older
  * Core than this app carries, so the offer costs no read of its own. Opened, it reads where HQ
- * stands from Zerops — its `hq` service's app version and builds — and offers the one action that
- * fits. *Update HQ* deploys the carried Core with the person's own token and follows that deploy;
+ * stands — the Core HQ's health answers with, and its `hq` service's builds in Zerops; again when
+ * HQ answers with another Core — and offers the one action that fits. *Update HQ* deploys the carried Core with the person's own token and follows that deploy;
  * once it ends Zerops is read again. Nothing reads or retries while it is closed.
  */
 import {
@@ -36,10 +36,13 @@ type Read =
   | { readonly kind: "unread"; readonly reason: string };
 
 export function ZeropsHqUpdatePanel({
+  answering,
   read,
   run,
   onBusy,
 }: {
+  /** The Core HQ's health names; `undefined` while unread. */
+  readonly answering: string | undefined;
   /** Where HQ stands, read from Zerops. */
   readonly read: () => Promise<HqUpdateState>;
   /** Deploys the carried Core and follows it to its end. */
@@ -49,6 +52,8 @@ export function ZeropsHqUpdatePanel({
   const [shown, setShown] = useState<Read>({ kind: "reading" });
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState<string | null>(null);
+  /** The Core an update pressed here deployed: Zerops may offer it again for a few seconds. */
+  const [ran, setRan] = useState<string | null>(null);
 
   /** Zerops' answer, as the panel shows it. */
   const settle = useCallback(
@@ -79,13 +84,23 @@ export function ZeropsHqUpdatePanel({
     onBusy?.(true);
     const outcome = await run();
     setStopped(outcome.ok ? null : outcome.reason);
+    if (outcome.ok && shown.kind === "read" && shown.state.kind !== "current") {
+      setRan(shown.state.kind === "updating" ? null : shown.state.carried);
+    }
     setRunning(false);
     onBusy?.(false);
     setShown({ kind: "reading" });
     setShown(await settle());
   };
 
-  const words = shown.kind === "read" ? hqUpdateWords(shown.state) : null;
+  const state: HqUpdateState | null =
+    shown.kind !== "read"
+      ? null
+      : (shown.state.kind === "available" || shown.state.kind === "failed") &&
+          shown.state.carried === ran
+        ? { kind: "current", running: ran }
+        : shown.state;
+  const words = state === null ? null : hqUpdateWords(state, answering);
   const line = running
     ? "Updating HQ… It keeps serving until the new Core answers."
     : shown.kind === "reading"
@@ -126,39 +141,55 @@ export function ZeropsHqUpdatePanel({
   );
 }
 
-/** The offer on the Tools row, and the dialog it opens. */
+/** The offer on HQ's card, and the dialog it opens. */
 export function ZeropsHqUpdate({
   projectId,
   carried,
+  answering,
+  trigger,
+  onBusy,
 }: {
   /** HQ's project. */
   readonly projectId: string;
   /** The Core this app carries. */
   readonly carried: string;
+  /** The Core HQ's health names. */
+  readonly answering: string;
+  readonly trigger: "Update available" | "Up to date";
+  /** Told when an update pressed here starts and ends. */
+  readonly onBusy: (busy: boolean) => void;
 }) {
   const { client } = useZeropsSession();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const busyNow = useCallback(
+    (next: boolean) => {
+      setBusy(next);
+      onBusy(next);
+    },
+    [onBusy],
+  );
   const read = useCallback(
-    () => readHqUpdate({ platform: client, projectId, carried }),
-    [carried, client, projectId],
+    () => readHqUpdate({ platform: client, projectId, carried, answering }),
+    [answering, carried, client, projectId],
   );
   const run = useCallback(
     () =>
       runHqUpdate({
         platform: client,
         projectId,
+        answering,
         core: () =>
           readBundledCore((input, init) => fetch(input, init), `${appBasePath()}/hq-core`),
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         now: () => Date.now(),
       }),
-    [client, projectId],
+    [answering, client, projectId],
   );
   return (
     <>
       <Button onClick={() => setOpen(true)} size="xs" variant="link">
-        Update available
+        {trigger}
       </Button>
       <Dialog
         onOpenChange={(next) => {
@@ -169,7 +200,9 @@ export function ZeropsHqUpdate({
         open={open}
       >
         <DialogPopup className="max-w-md">
-          {open ? <ZeropsHqUpdatePanel onBusy={setBusy} read={read} run={run} /> : null}
+          {open ? (
+            <ZeropsHqUpdatePanel answering={answering} onBusy={busyNow} read={read} run={run} />
+          ) : null}
         </DialogPopup>
       </Dialog>
     </>

@@ -64,8 +64,6 @@ export interface ZeropsEnvironment {
   readonly projectId: string;
   /** Fully-qualified REST base, e.g. `https://api.app-prg1.zerops.io/api/rest/public`. */
   readonly apiBaseUrl: string;
-  /** Extra browser origins allowed to reach this server, beyond the built-ins. */
-  readonly allowedOrigins: ReadonlyArray<string>;
   /**
    * An explicit override for this container's own public origin (e.g.
    * `https://zcp-26a7-8080.prg1.zerops.app`), set via `T3CODE_ZEROPS_PUBLIC_ORIGIN`.
@@ -110,7 +108,6 @@ export interface ZeropsEnvironment {
 export interface ZeropsEnvironmentInput {
   readonly projectId: string | undefined;
   readonly apiHost: string | undefined;
-  readonly allowedOrigins: ReadonlyArray<string>;
   readonly publicOrigin?: string | undefined;
   readonly apiToken?: string | undefined;
   readonly roleRecheckSeconds?: number | undefined;
@@ -153,7 +150,6 @@ export const resolveZeropsEnvironment = (
   return {
     projectId,
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
-    allowedOrigins: input.allowedOrigins,
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
     apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
     roleRecheckInterval: Duration.seconds(

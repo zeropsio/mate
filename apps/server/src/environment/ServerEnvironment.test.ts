@@ -185,7 +185,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
                 zerops: {
                   projectId: "nTV3oMB2SS634ImDJnQckg",
                   apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
-                  allowedOrigins: [],
                   publicOrigin: undefined,
                   apiToken: undefined,
                   roleRecheckInterval: Duration.seconds(300),
@@ -208,7 +207,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         zerops: {
           projectId: "nTV3oMB2SS634ImDJnQckg",
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
-          allowedOrigins: [],
           publicOrigin: undefined,
           apiToken: undefined,
           roleRecheckInterval: Duration.seconds(300),
@@ -334,7 +332,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         zerops: {
           projectId: "nTV3oMB2SS634ImDJnQckg",
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
-          allowedOrigins: [],
           publicOrigin: undefined,
           apiToken: undefined,
           roleRecheckInterval: Duration.seconds(300),

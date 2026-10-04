@@ -30,7 +30,10 @@ const linkedMate = (overviews: MateOverviews["Service"]) =>
 import type { AppReadValue } from "@t3tools/shared/hqAppReads";
 import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 
+import { Backup, type BackupStatus } from "./backup.ts";
 import { ChangeRefused, Changes } from "./changes.ts";
+import { DeployKeys } from "./deployKeys.ts";
+import { GitHost } from "./gitHost.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { Official, type OfficialStatus } from "./official.ts";
@@ -147,6 +150,8 @@ const streamFor = (
     const mateUnreadable = new Set<string>();
     /** Whether this Core is the official HQ, as its last check of Zerops said. */
     const official = yield* Ref.make<OfficialStatus>({ official: start.official, allowed: true });
+    /** This Core's newest backup set, as its health reports it. */
+    const backup = yield* Ref.make<BackupStatus>({ state: "pending" });
     /** Whether this Core's first check of Zerops has finished. */
     const checked = yield* Ref.make(start.checked);
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
@@ -203,6 +208,20 @@ const streamFor = (
       Layer.succeed(Roles, Roles.of({ view: Ref.get(view) } as unknown as Roles["Service"])),
       Layer.succeed(MateOverviews, overviews),
       Layer.succeed(
+        GitHost,
+        GitHost.of({
+          status: Effect.succeed({ git: "open", quarantined: [] }),
+        } as unknown as GitHost["Service"]),
+      ),
+      Layer.succeed(Backup, Backup.of({ status: Ref.get(backup) } as unknown as Backup["Service"])),
+      Layer.succeed(
+        DeployKeys,
+        DeployKeys.of({
+          state: "ok",
+          status: Effect.succeed("ok"),
+        } as unknown as DeployKeys["Service"]),
+      ),
+      Layer.succeed(
         Official,
         Official.of({
           status: Ref.get(official),
@@ -232,6 +251,7 @@ const streamFor = (
       official,
       checked,
       mateUnreadable,
+      backup,
     };
   });
 
@@ -346,6 +366,28 @@ describe("the structure stream", () => {
       Effect.gen(function* () {
         const h = yield* streamFor("owner");
         assert.strictEqual(h.sent[0]?.["build"], BUILD);
+      }),
+    ),
+  );
+
+  // HQ's card says how its parts stand, from the stream — never a /health poll.
+  it.effect("says how its parts stand in its snapshot, and each time they change", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.deepStrictEqual(h.sent[0]?.["parts"], {
+          db: "up",
+          backup: { state: "pending" },
+          keys: "ok",
+        });
+        yield* Ref.set(h.backup, { state: "off" });
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [
+          { type: "parts", parts: { db: "up", backup: { state: "off" }, keys: "ok" } },
+        ]);
       }),
     ),
   );

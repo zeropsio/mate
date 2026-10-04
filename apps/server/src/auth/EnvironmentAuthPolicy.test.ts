@@ -180,7 +180,6 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
           zerops: resolveZeropsEnvironment({
             projectId: "nTV3oMB2SS634ImDJnQckg",
             apiHost: undefined,
-            allowedOrigins: [],
           }),
         }),
       ),

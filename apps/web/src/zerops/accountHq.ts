@@ -29,6 +29,7 @@ import {
   type HqCoreArtifact,
   type HqEndpoint,
   type HqHealth,
+  type HqParts,
   type OfficialHq,
   type OpenHqSocket,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -60,9 +61,6 @@ import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
-
-/** The origins an HQ's API answers (`HQ_CLIENT_ORIGINS`): this one, and the hosted app. */
-export const HOSTED_APP_ORIGIN = "https://mate.zerops.io";
 
 export interface AccountHq {
   /**
@@ -267,20 +265,21 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 export type HqStanding =
   | { readonly kind: "unknown" }
   /**
-   * `build` the Core it runs (`hq/update.ts`), as its stream or its health says it; absent while
-   * neither has yet.
+   * Serving as the official HQ — `unchecked` while it cannot check Zerops right now: no outage,
+   * everything keeps using it. `build` the Core it runs (`hq/update.ts`) and `parts` how they
+   * stand, as its stream or its health says them; each absent while neither has yet.
    */
-  | { readonly kind: "healthy"; readonly build?: string }
-  /** Serving, while it cannot check Zerops right now: no outage, everything keeps using it. */
-  | { readonly kind: "unchecked"; readonly build?: string }
+  | {
+      readonly kind: "healthy" | "unchecked";
+      readonly build?: string;
+      readonly parts?: HqParts;
+    }
   /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
   | { readonly kind: "unavailable"; readonly since: number };
 
 /** The standing a health read leaves: an outage keeps the time it began. */
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy" || health.kind === "unchecked") {
-    return { kind: health.kind, build: health.build };
-  }
+  if (health.kind === "healthy" || health.kind === "unchecked") return health;
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
 }
 
@@ -395,13 +394,11 @@ export function hqBirthDeps(client: ZeropsApiClient): HqBirthDeps {
   };
 }
 
-/** The birth's own inputs beside its record: the origins HQ answers, the API Core reads. */
+/** The birth's own input beside its record: the API Core reads. */
 export function hqBirthSite(client: ZeropsApiClient): {
-  readonly origins: ReadonlyArray<string>;
   readonly zeropsApi: string;
 } {
   return {
-    origins: [window.location.origin, HOSTED_APP_ORIGIN],
     zeropsApi: `${client.baseUrl}/api/rest/public`,
   };
 }

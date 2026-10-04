@@ -1122,7 +1122,7 @@ https://evil.example` → no `access-control-allow-origin` (the S0.9 wildcard is
 - Until the S2 server/web slice is pushed the SPA at `/z3/` still references `/assets/…`
   (root-absolute) — the S0.5 finding, unchanged.
   - _How it was established:_ `curl -s …/z3/ | grep src=`
-- **S1.4 through the public door** (fork `8051697c8` under `zerops@z3`, via nginx `/z3/`): a VALID
+- **S1.4 through the public door** (superseded 2026-10-04: the Mate server no longer checks the origin, spec D36) (fork `8051697c8` under `zerops@z3`, via nginx `/z3/`): a VALID
   ticket with `Origin: https://evil.example` on `/z3/ws` → `403` `{code: operation_forbidden,
 reason: origin_not_allowed}` — refused before the ticket is read; the container's own origin →
   `400` (upgrade attempted, curl is not a websocket); no `Origin` → `400` likewise; Node's

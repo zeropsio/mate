@@ -110,18 +110,21 @@ jobs:
       - name: Typecheck
         run: vpr typecheck
 
-      - name: Build desktop pipeline
-        run: vp run build:desktop
+      # `t3#build` depends on `@t3tools/web#build`: the production web and server
+      # bundles, built on every run. The desktop half builds in Desktop Smoke.
+      - name: Build server bundle
+        run: vp run --filter t3 build
 
-      - name: Verify preload bundle output
-        run: node apps/desktop/scripts/verify-preload-bundle.mjs
-
+  # Every job gated on the `changes` outputs below runs unless the gate said
+  # an explicit "false": a gate that failed leaves the output empty, and that
+  # must run the job rather than silently skip it. `!cancelled()` keeps a
+  # failed gate from skipping its dependents outright.
   desktop_smoke:
     name: Desktop Smoke
-    needs: check
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.desktop != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -143,6 +146,9 @@ jobs:
 
       - name: Build desktop pipeline
         run: vp run build:desktop
+
+      - name: Verify preload bundle output
+        run: node apps/desktop/scripts/verify-preload-bundle.mjs
 
       - name: Stage desktop web bundle
         run: node scripts/stage-desktop-web.ts
@@ -170,16 +176,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Everything except `t3` (apps/server). `--parallel` drops the package
-  # dependency ordering that `vp run` applies by default: these `test` tasks
-  # declare no `dependsOn` and resolve workspace deps from source, so ordering
-  # only bought us idle runners between dependency layers. The concurrency
-  # limit stays at the default 4 so peak load per runner is unchanged.
+  # Everything except `t3` (apps/server), `@t3tools/web` and `@t3tools/mobile`,
+  # which have runners of their own. `--parallel` drops the package dependency ordering that
+  # `vp run` applies by default: these `test` tasks declare no `dependsOn` and
+  # resolve workspace deps from source, so ordering only bought us idle runners
+  # between dependency layers. The concurrency limit stays at the default 4 so
+  # peak load per runner is unchanged.
   test:
     name: Test
     runs-on: ubuntu-latest
-    # The client packages' suites run ~8.5 min on a hosted runner after setup.
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -200,7 +206,61 @@ jobs:
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Test
-        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' test
+        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' test
+
+  test_mobile:
+    name: Test Mobile
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.mobile != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Test
+        run: vp run --filter @t3tools/mobile test
+
+  # apps/web alone ran ~8.5 min inside Test and set the length of every CI run.
+  # Its 669 files run in parallel workers, so two runners halve it.
+  test_web:
+    name: Test Web ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Test
+        run: vp run --filter @t3tools/web test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
   # apps/server sets `fileParallelism: false`, so its 239 files run strictly
   # one at a time. Sharding spreads them over separate runners instead of
@@ -265,6 +325,8 @@ jobs:
   # for checks that take under 3s, on the critical path of every PR.
   rust:
     name: Rust
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.resource_monitor != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -287,21 +349,26 @@ jobs:
       - name: Test resource monitor
         run: cargo test --locked --manifest-path native/resource-monitor/Cargo.toml
 
-  # The static analysis below needs a macOS runner, which bills ~6.7x a Linux
-  # minute, so gate it on the native sources it actually lints instead of paying
-  # for it on every push. Detection is API-only (no checkout) and fails open: if
-  # the diff cannot be resolved, the lint runs.
-  mobile_native_changes:
-    name: Mobile Native Changes
+  # Desktop, mobile and the resource monitor are clients the container bundle
+  # does not ship, so a pull request pays for their jobs only when it touches
+  # them or what they build on. A push to main runs them all. The mobile native
+  # lint needs a macOS runner, which bills ~6.7x a Linux minute, so it stays
+  # gated on its own sources on main too. Detection is API-only (no checkout)
+  # and fails open: if the diff cannot be resolved, every gated job runs.
+  changes:
+    name: Changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
     outputs:
-      changed: ${{ steps.detect.outputs.changed }}
+      desktop: ${{ steps.detect.outputs.desktop }}
+      mobile: ${{ steps.detect.outputs.mobile }}
+      resource_monitor: ${{ steps.detect.outputs.resource_monitor }}
+      mobile_native: ${{ steps.detect.outputs.mobile_native }}
     steps:
-      - name: Detect mobile native changes
+      - name: Detect changed areas
         id: detect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -310,9 +377,11 @@ jobs:
         run: |
           set -uo pipefail
 
+          areas=(desktop mobile resource_monitor mobile_native)
+
           fail_open() {
-            echo "$* Running native static analysis."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "$* Running every gated job."
+            for area in "${areas[@]}"; do echo "${area}=true" >> "$GITHUB_OUTPUT"; done
             exit 0
           }
 
@@ -322,7 +391,7 @@ jobs:
 
           # One row per changed file, holding the new path and, for a rename,
           # the path it replaced: renaming a matched file out of the matched
-          # paths removes a lint input just like editing it.
+          # paths removes an input just like editing it.
           row='[.filename, (.previous_filename // empty)] | @tsv'
 
           if [[ -n "${PR_NUMBER}" ]]; then
@@ -342,7 +411,7 @@ jobs:
               || fail_open "Could not resolve changed files."
 
             # The compare endpoint reports at most 300 files and pagination does
-            # not extend that list, so a full list may be hiding native changes.
+            # not extend that list, so a full list may be hiding changes.
             listed=$(count_rows "$rows")
             if [[ "$listed" -ge 300 ]]; then
               fail_open "GitHub listed ${listed} changed files, the compare endpoint maximum."
@@ -351,26 +420,42 @@ jobs:
 
           paths=$(tr '\t' '\n' <<< "$rows")
 
+          gate() {
+            local area="$1" pattern="$2"
+            if grep -qE "$pattern" <<< "$paths"; then
+              echo "${area}: changed"
+              grep -E "$pattern" <<< "$paths" | head -n 20 | sed 's/^/  /'
+              echo "${area}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "${area}: unchanged"
+              echo "${area}=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          # What every client builds on: the workspace manifests and toolchain
+          # config, this workflow, and the packages the clients import. The
+          # clients never import apps/server; they meet it over the contracts.
+          shared='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|\.github/workflows/ci\.yml)$|^packages/(contracts|shared|client-runtime)/'
+
+          if [[ -n "${PR_NUMBER}" ]]; then
+            # Desktop Smoke stages the hosted web bundle through scripts/.
+            gate desktop "${shared}|^apps/(desktop|web)/|^scripts/"
+            gate mobile "${shared}|^apps/mobile/|^native/libghostty-vt/"
+            gate resource_monitor '^native/resource-monitor/|^\.github/workflows/ci\.yml$'
+          else
+            echo "Push to main: desktop, mobile and resource monitor run in full."
+            for area in desktop mobile resource_monitor; do echo "${area}=true" >> "$GITHUB_OUTPUT"; done
+          fi
+
           # Sources scripts/mobile-native-static-check.ts lints, plus the tool
           # and rule configuration that decides how it lints them, plus the
           # root package.json that defines the lint:mobile command.
-          pattern='^apps/mobile/.*\.(swift|kt|kts)$|^apps/mobile/(\.swiftlint\.yml|detekt\.yml|\.editorconfig|Brewfile)$|^scripts/mobile-native-static-check\.ts$|^package\.json$|^\.github/workflows/ci\.yml$'
-
-          if grep -qE "$pattern" <<< "$paths"; then
-            echo "Native sources or lint configuration changed:"
-            grep -E "$pattern" <<< "$paths"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No mobile native sources or lint configuration changed."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          gate mobile_native '^apps/mobile/.*\.(swift|kt|kts)$|^apps/mobile/(\.swiftlint\.yml|detekt\.yml|\.editorconfig|Brewfile)$|^scripts/mobile-native-static-check\.ts$|^package\.json$|^\.github/workflows/ci\.yml$'
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
-    needs: mobile_native_changes
-    # Skip only on an explicit "no": a gate job that failed or errored leaves the
-    # output empty, and that must run the lint rather than silently skip it.
-    if: ${{ !cancelled() && needs.mobile_native_changes.outputs.changed != 'false' }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.mobile_native != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:

@@ -11,7 +11,8 @@
  *
  * The snapshot says, as `official`, whether HQ could check Zerops that it is the official HQ
  * (`unknown` while Zerops does not answer, which HQ serves through), and an `official` message says
- * it again each time it changes.
+ * it again each time it changes. It names the Core it runs (`build`), and says how HQ's parts stand
+ * (`parts`), again in a `parts` message each time they change.
  *
  * The same socket carries the Mates the reader may observe (`@t3tools/shared/hqMates`): the
  * snapshot holds each of them whole, with the people the view names; a `mate` message, what
@@ -36,7 +37,13 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { HqAppContents, HqBirth, HqStructure } from "./client.ts";
+import {
+  readHqParts,
+  type HqAppContents,
+  type HqBirth,
+  type HqParts,
+  type HqStructure,
+} from "./client.ts";
 import { environmentsOf } from "./environments.ts";
 
 type HqApp = HqStructure["apps"][number];
@@ -75,7 +82,10 @@ export type HqStructureEvent =
       readonly official?: string | null;
       /** The Core HQ runs, as its bundle stamps it; absent from a Core whose stream does not name it. */
       readonly build?: string;
+      /** How HQ's parts stand, as its health reports them; absent from a Core that does not say. */
+      readonly parts?: HqParts;
     }
+  | { readonly kind: "parts"; readonly parts: HqParts }
   | { readonly kind: "official"; readonly official: string | null }
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
   | { readonly kind: "ungrouped"; readonly mates: HqUngrouped }
@@ -180,6 +190,9 @@ function matesOf(sent: unknown): HqMates | null {
   return mates;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** A message from the socket, parsed, as a structure event; nothing for one that is not. */
 export function structureEventOf(message: unknown): HqStructureEvent | undefined {
   if (typeof message !== "object" || message === null) return undefined;
@@ -194,6 +207,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       people,
       official,
       build,
+      parts,
     } = message as {
       readonly apps?: unknown;
       readonly ungrouped?: unknown;
@@ -203,6 +217,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       readonly people?: unknown;
       readonly official?: unknown;
       readonly build?: unknown;
+      readonly parts?: unknown;
     };
     // An HQ from before the Mates in no application names none of them.
     if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
@@ -221,7 +236,12 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       people: Option.getOrNull(readPeople(people)),
       ...(typeof official === "string" || official === null ? { official } : {}),
       ...(typeof build === "string" ? { build } : {}),
+      ...(isRecord(parts) ? { parts: readHqParts(parts) } : {}),
     };
+  }
+  if (type === "parts") {
+    const { parts } = message as { readonly parts?: unknown };
+    return isRecord(parts) ? { kind: "parts", parts: readHqParts(parts) } : undefined;
   }
   if (type === "official") {
     const { official } = message as { readonly official?: unknown };

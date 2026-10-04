@@ -161,7 +161,7 @@ import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
-import { ZeropsHqTool } from "./ZeropsHqTool";
+import { ZeropsHqCard } from "./ZeropsHqCard";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
@@ -2674,7 +2674,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         onCreateProject={
           hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
         }
-        hqTool={<ZeropsHqTool />}
+        hqCard={<ZeropsHqCard />}
         openMate={mateOpenerOf}
         onRetryContainers={(items) => {
           for (const candidate of items) runRowAction(candidate, "retry-probe");

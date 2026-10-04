@@ -45,7 +45,6 @@ import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.t
 const ZEROPS = resolveZeropsEnvironment({
   projectId: "project-mate",
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: "the-mates-own-key",
 })!;
 

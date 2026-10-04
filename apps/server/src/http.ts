@@ -46,7 +46,6 @@ import {
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./httpCors.ts";
-import { makeZeropsOriginAllowlist } from "./zerops/origin.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -215,25 +214,11 @@ export const httpCompressionLayer = HttpRouter.middleware(HttpMiddleware.compres
 export const browserApiCorsLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
-    const devOrigin = config.devUrl?.origin;
-    // A Zerops container is published on the public internet by its own nginx,
-    // so the wildcard every other deployment can live with is a hole here. The
-    // allowlist replaces it, and no cookie ever crosses an origin - the Zerops
-    // door is bearer/DPoP only, so `credentials` stays off.
-    if (config.zerops !== undefined) {
-      const { allowsOrigin } = makeZeropsOriginAllowlist(config.zerops);
-      // HttpRouter.cors narrows allowedOrigins to a list; the middleware it
-      // wraps takes a predicate, which is what a per-port localhost rule needs.
-      return HttpRouter.middleware(
-        HttpMiddleware.cors({
-          allowedOrigins: allowsOrigin,
-          allowedMethods: browserApiCorsAllowedMethods,
-          allowedHeaders: browserApiCorsAllowedHeaders,
-          maxAge: 600,
-        }),
-        { global: true },
-      );
-    }
+    // Inside a Zerops project the server is published on the public internet,
+    // and still answers every origin: its door is bearer/DPoP or a short-lived
+    // signed ticket, never a cookie, so a foreign page holds nothing a browser would
+    // attach for it and `credentials` stays off.
+    const devOrigin = config.zerops === undefined ? config.devUrl?.origin : undefined;
     // Dev uses credentialed requests from Vite or the Electron custom origin, so both must be
     // explicit. Packaged desktop omits credentials and uses Effect's default wildcard origin.
     //

@@ -39,7 +39,6 @@ const CREATED_AT = "2026-09-27T10:00:00.000Z";
 const environment = resolveZeropsEnvironment({
   projectId: "nTV3oMB2SS634ImDJnQckg",
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: "the-mates-own-zerops-key",
 })!;
 

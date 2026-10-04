@@ -339,6 +339,10 @@
       "types": "./src/zerops/cards/payloads.ts",
       "default": "./src/zerops/cards/payloads.ts"
     },
+    "./zerops/containerAddress": {
+      "types": "./src/zerops/containerAddress.ts",
+      "default": "./src/zerops/containerAddress.ts"
+    },
     "./zerops/containerHealth": {
       "types": "./src/zerops/containerHealth.ts",
       "default": "./src/zerops/containerHealth.ts"

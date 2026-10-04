@@ -148,15 +148,6 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zeropsAllowedOrigins: Config.String("T3CODE_ZEROPS_ALLOWED_ORIGINS").pipe(
-    Config.withDefault(""),
-    Config.map((value) =>
-      value
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0),
-    ),
-  ),
   // Explicit override for this container's own public origin, consulted by
   // the environment-link proof before falling back to the linking request's
   // Origin/Host (see ZeropsEnvironment.publicOrigin).
@@ -423,7 +414,6 @@ export const resolveServerConfig = (
         ? resolveZeropsEnvironment({
             projectId: env.zeropsProjectId,
             apiHost: env.zeropsApiHost,
-            allowedOrigins: env.zeropsAllowedOrigins,
             publicOrigin: env.zeropsPublicOrigin,
             apiToken: env.zeropsApiToken,
             roleRecheckSeconds: env.zeropsRoleRecheckSeconds,

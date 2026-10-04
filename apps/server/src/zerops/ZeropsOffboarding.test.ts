@@ -140,7 +140,6 @@ describe("ZeropsOffboarding's loop", () => {
       const environment = resolveZeropsEnvironment({
         projectId: "P",
         apiHost: undefined,
-        allowedOrigins: [],
         apiToken: "key",
       })!;
       yield* Effect.gen(function* () {

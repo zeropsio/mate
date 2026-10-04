@@ -21,7 +21,8 @@ import * as RelayConfiguration from "../Config.ts";
 import * as EnvironmentLinker from "./EnvironmentLinker.ts";
 
 const ZEROPS_PROJECT_ID = "project-1";
-const ZEROPS_SUBDOMAIN_HOST = "abcd.prg1.zerops.app";
+const ZEROPS_SUBDOMAIN_HOST = "abcd";
+const ZEROPS_PUBLIC_ZONE = "fte23prpara6p2koq60b9pvsgk0.prg1-zerops.zone";
 const ZEROPS_SERVICE_NAME = "mate";
 const ZEROPS_SERVICE_PORT = 8080;
 const BOUND_ENDPOINT_ORIGIN = `https://${ZEROPS_SERVICE_NAME}-abcd-${ZEROPS_SERVICE_PORT}.prg1.zerops.app`;
@@ -134,7 +135,11 @@ const makeRequest = (
 const boundZeropsApiRoute = (url: string): Response => {
   if (url.endsWith(`/project/${ZEROPS_PROJECT_ID}`)) {
     return new Response(
-      JSON.stringify({ clientId: "client-1", zeropsSubdomainHost: ZEROPS_SUBDOMAIN_HOST }),
+      JSON.stringify({
+        clientId: "client-1",
+        zeropsSubdomainHost: ZEROPS_SUBDOMAIN_HOST,
+        publicZone: ZEROPS_PUBLIC_ZONE,
+      }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
   }
@@ -145,7 +150,7 @@ const boundZeropsApiRoute = (url: string): Response => {
           {
             name: ZEROPS_SERVICE_NAME,
             subdomainAccess: true,
-            ports: [{ port: ZEROPS_SERVICE_PORT, httpSupport: true }],
+            ports: [{ port: ZEROPS_SERVICE_PORT, scheme: "http" }],
           },
         ],
       }),

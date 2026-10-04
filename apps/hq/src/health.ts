@@ -33,6 +33,28 @@ import { Recomputes } from "./recomputes.ts";
 /** A stuck database must not hang the health check with it. */
 const PROBE_TIMEOUT = Duration.seconds(2);
 
+/**
+ * How this Core's parts stand beside its database: the repositories git withholds, the newest
+ * backup set, and its key for deploy tokens — what `/health` reports, and HQ's structure stream
+ * says again whenever it changes (`stream.ts`).
+ */
+export const healthParts = Effect.gen(function* () {
+  const git = yield* (yield* GitHost).status;
+  const backup = yield* (yield* Backup).status;
+  const deployKeys = yield* DeployKeys;
+  // A database that does not answer says nothing of the tokens: the key as the env gives it.
+  const keys = yield* deployKeys.status.pipe(
+    Effect.timeout(PROBE_TIMEOUT),
+    Effect.orElseSucceed(() => deployKeys.state),
+  );
+  return {
+    git: git.git,
+    ...(git.quarantined.length === 0 ? {} : { quarantined: git.quarantined }),
+    backup,
+    keys,
+  };
+});
+
 export const healthRoute = (build: string) =>
   HttpRouter.add(
     "GET",
@@ -48,16 +70,9 @@ export const healthRoute = (build: string) =>
         Effect.as("up"),
         Effect.orElseSucceed(() => "down"),
       );
-      const git = yield* (yield* GitHost).status;
-      const backup = yield* (yield* Backup).status;
+      const { git: gitState, ...parts } = yield* healthParts;
       const loop = yield* (yield* LoopWatch).status;
       const recomputes = yield* (yield* Recomputes).lastMinute;
-      const deployKeys = yield* DeployKeys;
-      // A database that does not answer says nothing of the tokens: the key as the env gives it.
-      const keys = yield* deployKeys.status.pipe(
-        Effect.timeout(PROBE_TIMEOUT),
-        Effect.orElseSucceed(() => deployKeys.state),
-      );
       // Another Core holds the lock: the one a deploy would retire. Not known counts as held.
       const lockHeld = sql<{ readonly held: boolean }>`
         SELECT EXISTS (
@@ -71,7 +86,7 @@ export const healthRoute = (build: string) =>
       );
       const ready =
         state === "active"
-          ? git.git === "open"
+          ? gitState === "open"
           : state === "standby" && db === "up" && (allowed || !(yield* lockHeld));
       return HttpServerResponse.jsonUnsafe(
         {
@@ -79,10 +94,8 @@ export const healthRoute = (build: string) =>
           ...(held === null ? {} : { reason: held }),
           official,
           db,
-          git: git.git,
-          ...(git.quarantined.length === 0 ? {} : { quarantined: git.quarantined }),
-          backup,
-          keys,
+          git: gitState,
+          ...parts,
           loop,
           recomputes,
           epoch,
