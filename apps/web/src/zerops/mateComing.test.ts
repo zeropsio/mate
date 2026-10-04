@@ -224,6 +224,23 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: { kind: "coming", line: "Taking longer than usual." },
     },
+    // A clock is no answer: half an hour on, with nothing read of its build, it is taking longer.
+    ...[true, undefined].map((created) => ({
+      case: `a first build half an hour on, nothing known of it${created === true ? ", made here" : ""}`,
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning" as const,
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 40 * 60_000).toISOString(),
+          },
+        },
+        created,
+        nowMs: NOW,
+      },
+      expected: { kind: "coming" as const, line: "Taking longer than usual." },
+    })),
     {
       case: "a first build half an hour on, its build still running: on its way",
       input: {
@@ -291,23 +308,6 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       case: "a Mate this tab made that a whole listing, read well after, lacks",
       input: { press: undefined, candidate: undefined, created: true, listingLacksIt: true },
     },
-    // Half an hour on with nothing known of its build — another person's, a months-old one whose
-    // build failed — it is not coming up: its own row and menu say what it is, with their verbs.
-    ...[true, undefined].map((created) => ({
-      case: `a first build half an hour on, nothing known of it${created === true ? ", made here" : ""}`,
-      input: {
-        press: undefined,
-        candidate: {
-          group: "provisioning" as const,
-          service: {
-            status: "READY_TO_DEPLOY",
-            created: new Date(NOW - 40 * 60_000).toISOString(),
-          },
-        },
-        created,
-        nowMs: NOW,
-      },
-    })),
     {
       case: "a Mate this tab made whose project is gone",
       input: { press: undefined, candidate: undefined, created: true, linkHolds: false },

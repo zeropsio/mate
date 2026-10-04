@@ -103,8 +103,6 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const NO_FAILURES: ReadonlyMap<string, string> = new Map();
-/** How long a verb whose call landed stays pending while the flow has not read its effect back. */
-export const HELD_VERB_MS = 30_000;
 /** What a second press of a verb that is still running says: the first one is the one that counts. */
 export const VERB_ALREADY_RUNNING = "It is already on its way.";
 
@@ -137,14 +135,14 @@ interface HeldVerb {
         /** The service's newest job when it was asked: read once a newer one is there. */
         readonly after: string;
       };
-  readonly sinceMs: number;
 }
 
-/** Whether the held verb's effect is read, or its application's releases can no longer say. */
+/** Whether the held verb's effect is read, or HQ can no longer say it: nothing then holds it. */
 function effectRead(held: HeldVerb, failed: boolean, flow: ZeropsProjectFlow | undefined): boolean {
   const { against } = held;
+  if (failed) return true;
   if (against.kind === "release")
-    return failed || (flow?.releases.some((entry) => entry.tag === against.tag) ?? false);
+    return flow?.releases.some((entry) => entry.tag === against.tag) ?? false;
   if (against.kind === "deploy") {
     const latest = flow?.environmentInputs
       .find((entry) => entry.projectId === against.projectId)
@@ -853,32 +851,15 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   /**
    * A verb whose call landed, by its key, with the effect it waits to read. The verb stays pending
-   * until that is read, the group's releases fail to read, or {@link HELD_VERB_MS} passes: until
-   * then the flow still offers what was just done — the release it just made. A settled entry is
-   * dropped.
+   * until HQ's answer reads it, or HQ can no longer say it — the group's releases fail to read, or
+   * HQ refuses its stream: until then a second press would do it twice — a second release, a second
+   * deploy. A stream that blinks reconnects and brings the effect back; no clock lets it go. A
+   * settled entry is dropped.
    */
   const [awaiting, setAwaiting] = useState<ReadonlyMap<string, HeldVerb>>(() => new Map());
   const hold = useCallback((verb: FlowVerb, groupId: string, against: HeldVerb["against"]) => {
-    setAwaiting((current) =>
-      new Map(current).set(flowVerbKey(verb), { groupId, against, sinceMs: Date.now() }),
-    );
+    setAwaiting((current) => new Map(current).set(flowVerbKey(verb), { groupId, against }));
   }, []);
-  const letGo = useCallback((key: string, entry: HeldVerb) => {
-    setAwaiting((current) => {
-      if (current.get(key) !== entry) return current;
-      const next = new Map(current);
-      next.delete(key);
-      return next;
-    });
-  }, []);
-  useEffect(() => {
-    const timers = [...awaiting].map(([key, entry]) =>
-      setTimeout(() => letGo(key, entry), entry.sinceMs + HELD_VERB_MS - Date.now()),
-    );
-    return () => {
-      for (const timer of timers) clearTimeout(timer);
-    };
-  }, [awaiting, letGo]);
 
   const mateNames = useMemo(
     () => new Map(inventory.projects.map((project) => [project.id, project.name])),
@@ -1066,13 +1047,22 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
   // A held verb waits for its effect in the group's flow, or for its streamed release read to
-  // fail: the wait then has nothing left to hold.
+  // fail or HQ to refuse its stream — not reconnecting it: the wait then has nothing left to hold.
+  const streamRefused =
+    hqStructure !== null &&
+    !hqStructure.current &&
+    hqStructure.unavailableSince !== null &&
+    hqStructure.reconnecting === null;
   const settled = useMemo(
     () =>
       [...awaiting].filter(([, entry]) =>
-        effectRead(entry, releaseFailures.has(entry.groupId), flows.get(entry.groupId)),
+        effectRead(
+          entry,
+          releaseFailures.has(entry.groupId) || streamRefused,
+          flows.get(entry.groupId),
+        ),
       ),
-    [awaiting, flows, releaseFailures],
+    [awaiting, flows, releaseFailures, streamRefused],
   );
   useEffect(() => {
     if (settled.length === 0) return;

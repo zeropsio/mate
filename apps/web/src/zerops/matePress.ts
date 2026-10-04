@@ -47,7 +47,6 @@ import {
   type HqPlacement,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
-import type * as Effect from "effect/Effect";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
@@ -723,33 +722,17 @@ export function pressRegistration(
   };
 }
 
-/** How long one command of a press is given to answer before the try counts as failed. */
-export const PRESS_CALL_CAP_MS = 60_000;
-
-/** What a press's command that did not answer in time says, and the press with it once it stops. */
-export const PRESS_CALL_SILENT = "Zerops did not answer within a minute, so the setup stopped.";
+/**
+ * What a press stopped by a write that may have landed says beside its reason: its answer was lost
+ * or its deadline passed. Only a step that reads what is there before it writes is tried again.
+ */
+export const PRESS_MAY_HAVE_LANDED =
+  "Zerops may have done it anyway: Try again reads what is there before it writes.";
 
 /**
- * One command of a press, given {@link PRESS_CALL_CAP_MS} to answer: one that has not is ended
- * where it stands — never sent where it had not been — and its try fails, to be tried again as
- * the step's tries are. A command that never answered held Dan's press "pressing" for two hours,
- * its workspace's clock running on (F6b, 2026-10-03).
+ * The press's platform calls, through the account's command layer, each bounded by its own
+ * deadline there: one past it may have landed, and says so (`uncertain`).
  */
-async function answered<Value, Failure>(
-  command: Effect.Effect<{ readonly value: Value }, Failure>,
-): Promise<Value> {
-  const stop = new AbortController();
-  const timer = setTimeout(() => stop.abort(), PRESS_CALL_CAP_MS);
-  try {
-    return await runZeropsCommand(command, stop.signal);
-  } catch (cause) {
-    throw stop.signal.aborted ? new Error(PRESS_CALL_SILENT) : cause;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** The press's platform calls, through the account's command layer, each bounded (`answered`). */
 export function pressPlatform(
   inputs: PressInputs,
   options: {
@@ -768,11 +751,11 @@ export function pressPlatform(
   const projectOf = (projectId: string) => data.projectRef(organizationId, projectId);
   return {
     createProject: ({ clientId: _clientId, ...input }) =>
-      answered(data.runtime.commands.createProject({ organization, ...input })),
+      runZeropsCommand(data.runtime.commands.createProject({ organization, ...input })),
     // Reads, not writes: the platform's verdict on what the press made, waited on by the runner.
     readProjectCreation: (input) => client.readProjectCreation(input),
     importDevelopmentContainer: ({ projectId, projectName, agents, setupRuntimesYaml }) =>
-      answered(
+      runZeropsCommand(
         data.runtime.commands.importDevelopmentContainer({
           project: projectOf(projectId),
           projectName,
@@ -781,13 +764,13 @@ export function pressPlatform(
         }),
       ),
     importServices: (projectId, yaml) =>
-      answered(data.runtime.commands.importServices(projectOf(projectId), yaml)),
+      runZeropsCommand(data.runtime.commands.importServices(projectOf(projectId), yaml)),
     importProject: ({ clientId: _clientId, yaml }) =>
-      answered(data.runtime.commands.importProject(organization, yaml)),
+      runZeropsCommand(data.runtime.commands.importProject(organization, yaml)),
     // The same hardening a Mate made before this pass is finished with: for a key the press
     // minted it writes nothing to the key, and closes the project off.
     closeOff: async (projectId) => {
-      await answered(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
+      await runZeropsCommand(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
     },
     readIsolation: async (projectId) =>
       (await client.readProjectEnv(organizationId, projectId)).find(
@@ -941,7 +924,10 @@ async function pressRun(
     {
       kind: "failed",
       step: outcome.failedStep.kind,
-      reason: outcome.error,
+      reason:
+        outcome.uncertain === true && resumeSetup !== undefined
+          ? `${outcome.error} ${PRESS_MAY_HAVE_LANDED}`
+          : outcome.error,
       retry:
         resumeSetup === undefined
           ? null

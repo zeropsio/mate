@@ -4,10 +4,9 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
   ADDRESS_GRACE_MS,
-  FIRST_BUILD_GIVE_UP_MS,
   addressSeenAfter,
   type AddressSeen,
-  applyFirstBuildGiveUp,
+  applyFirstBuildVerdict,
   firstBuildOverdue,
   applyProjectCreationVerdict,
   candidateContainerRuns,
@@ -402,37 +401,35 @@ describe("firstBuildOverdue", () => {
   });
 });
 
-// Half an hour on, a first build nothing says is running has failed or is stuck for good: the
-// listing reads it as the platform leaves it — unavailable, naming its status, with what removes it.
-describe("applyFirstBuildGiveUp", () => {
-  const NOW = Date.parse("2026-10-02T12:00:00.000Z");
+// A first build is over when its build's process says so, never by its age: a slow or queued one
+// stays on its way however long it takes, and a failed one is unavailable with what removes it.
+describe("applyFirstBuildVerdict", () => {
   const candidate = (created: string, status = "READY_TO_DEPLOY") =>
     deriveZeropsCandidates(PROJECT, [service({ id: "s1", status, created })], NO_CONNECTIONS)[0]!;
+  const LONG_AGO = "2026-10-02T11:20:00.000Z";
 
   it.each([
-    {
-      case: "twenty minutes on: taking longer, still on its way",
-      created: "2026-10-02T11:40:00.000Z",
-      group: "provisioning",
-    },
-    {
-      case: "forty minutes on: not coming",
-      created: "2026-10-02T11:20:00.000Z",
-      group: "unavailable",
-    },
-  ])("$case", ({ created, group }) => {
-    expect(applyFirstBuildGiveUp(candidate(created), NOW).group).toBe(group);
+    { case: "forty minutes on, its build running: on its way", build: { kind: "running" } },
+    { case: "forty minutes on, nothing known of its build: on its way", build: undefined },
+  ] as const)("$case", ({ build }) => {
+    expect(applyFirstBuildVerdict(candidate(LONG_AGO), build).group).toBe("provisioning");
   });
 
-  it("names the platform's status, and keeps its service", () => {
-    const given = applyFirstBuildGiveUp(candidate("2026-10-02T11:20:00.000Z"), NOW);
-    expect(given.reason).toBe("container is READY_TO_DEPLOY");
-    expect(given.service?.id).toBe("s1");
+  it("its build failed: unavailable in the platform's words, its service kept", () => {
+    const failed = applyFirstBuildVerdict(candidate(LONG_AGO), {
+      kind: "failed",
+      why: "Build failed: npm ERR! code ENOENT",
+    });
+    expect(failed.group).toBe("unavailable");
+    expect(failed.reason).toBe("Build failed: npm ERR! code ENOENT");
+    expect(failed.service?.id).toBe("s1");
   });
 
   it("never touches a container in any other state", () => {
-    const starting = candidate("2020-01-01T00:00:00.000Z", "STARTING");
-    expect(applyFirstBuildGiveUp(starting, NOW)).toBe(starting);
+    const starting = candidate(LONG_AGO, "STARTING");
+    expect(applyFirstBuildVerdict(starting, { kind: "failed", why: "the build failed" })).toBe(
+      starting,
+    );
   });
 });
 
@@ -497,7 +494,7 @@ describe("a young container ACTIVE before its address landed", () => {
       service: { subdomainAccess: false },
       now: 31 * MINUTE,
       group: "provisioning",
-      awaited: { since: 31 * MINUTE, until: FIRST_BUILD_GIVE_UP_MS + ADDRESS_GRACE_MS },
+      awaited: { since: 31 * MINUTE, until: 30 * MINUTE + ADDRESS_GRACE_MS },
     },
     {
       case: "seen so past its grace: no public address",
@@ -613,7 +610,7 @@ describe("a young container whose address landed, its Mate not answering yet", (
       case: "a slow first build turned ACTIVE late: its wait ends with its first minutes",
       now: 31 * MINUTE + 10_000,
       seen: { addressed: true, since: at(31 * MINUTE) },
-      arriving: { since: 31 * MINUTE, until: FIRST_BUILD_GIVE_UP_MS + ADDRESS_GRACE_MS },
+      arriving: { since: 31 * MINUTE, until: 30 * MINUTE + ADDRESS_GRACE_MS },
     },
     {
       case: "seen in its first build, then ACTIVE with its address at once: on its way from now",

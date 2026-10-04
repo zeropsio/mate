@@ -29,8 +29,7 @@ import {
   runPress,
   settlePress,
   mateFinishRegistration,
-  PRESS_CALL_CAP_MS,
-  PRESS_CALL_SILENT,
+  PRESS_MAY_HAVE_LANDED,
   pressPlatform,
   whilePressing,
   type MatePress,
@@ -342,63 +341,37 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
 
 // A pool-claimed Mate's harden ran once and was never tried again (pass 28 review).
 // F6b (e2e, 2026-10-03): Dan's press stood "pressing" for two hours, his workspace's clock running
-// on: a call of the press that never answered held it, and nothing bounded a try.
-describe("a press whose platform never answers", () => {
-  /** The account's command layer, whose container import never answers; whether it was ended. */
-  const silentImport = () => {
-    const seen = { interrupted: false };
-    const inputs = {
-      client: {} as never,
-      organizationId: "org-acme",
-      data: {
-        organizationRef: (organizationId: string) => ({ organizationId }),
-        projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
-        runtime: {
-          commands: {
-            importDevelopmentContainer: () =>
-              Effect.never.pipe(
-                Effect.onInterrupt(() =>
-                  Effect.sync(() => {
-                    seen.interrupted = true;
-                  }),
-                ),
+// on. The account's command layer bounds every command by its own deadline, and one past it may
+// have landed: it says so (`uncertain`), and no clock of the press calls it stopped first.
+describe("a press whose platform does not answer in time", () => {
+  /** The account's command layer, whose container import reaches its deadline after `ms`. */
+  const lateImport = (ms: number) => ({
+    client: {} as never,
+    organizationId: "org-acme",
+    data: {
+      organizationRef: (organizationId: string) => ({ organizationId }),
+      projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
+      runtime: {
+        commands: {
+          importDevelopmentContainer: () =>
+            Effect.sleep(ms).pipe(
+              Effect.andThen(
+                Effect.fail({
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "uncertain",
+                  message: "Zerops command exceeded its deadline.",
+                  retryable: false,
+                }),
               ),
-          },
+            ),
         },
-      } as never,
-    };
-    return { inputs, seen };
-  };
-
-  it("gives a call a minute, then ends it where it stands and says it did not answer", async () => {
-    vi.useFakeTimers();
-    try {
-      const { inputs, seen } = silentImport();
-      const platform = pressPlatform(inputs, {
-        register: null,
-        hq: null,
-        readObservedServices: async () => [],
-      });
-      const answer = platform
-        .importDevelopmentContainer({ projectId: "p-1", projectName: "Acme - Dan", agents: [] })
-        .then(
-          () => "answered",
-          (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
-        );
-      await vi.advanceTimersByTimeAsync(PRESS_CALL_CAP_MS - 1);
-      expect(seen.interrupted).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(await answer).toBe(PRESS_CALL_SILENT);
-      expect(seen.interrupted).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
+      },
+    } as never,
   });
 
-  it("stops the press at its container, for its view to say so and Finish setup to resume it", async () => {
+  it("says a command past its deadline may have landed, and Try again reads before it writes", async () => {
     vi.useFakeTimers();
     try {
-      const { inputs } = silentImport();
       beginPress({
         projectId: "p-1",
         organizationId: "org-acme",
@@ -409,7 +382,7 @@ describe("a press whose platform never answers", () => {
       const outcome = runPress({
         organizationId: "org-acme",
         steps: [{ kind: "import-container", agents: [] }, { kind: "close-off" }],
-        platform: pressPlatform(inputs, {
+        platform: pressPlatform(lateImport(90_000), {
           register: null,
           hq: null,
           readObservedServices: async () => [],
@@ -418,17 +391,19 @@ describe("a press whose platform never answers", () => {
         resume: { from: 0, projectId: "p-1", projectName: "Acme - Dan" },
         locks: undefined,
       });
-      await vi.advanceTimersByTimeAsync(PRESS_CALL_CAP_MS);
+      await vi.advanceTimersByTimeAsync(90_000);
       expect(await outcome).toMatchObject({
         ok: false,
         failedStep: { kind: "import-container" },
-        error: PRESS_CALL_SILENT,
+        uncertain: true,
       });
-      expect(readMatePress("p-1")?.state).toMatchObject({
+      const state = readMatePress("p-1")?.state;
+      expect(state).toMatchObject({
         kind: "failed",
         step: "import-container",
-        reason: PRESS_CALL_SILENT,
+        reason: `Zerops command exceeded its deadline. ${PRESS_MAY_HAVE_LANDED}`,
       });
+      expect(state?.kind === "failed" ? state.retry : null).not.toBeNull();
     } finally {
       forgetPress("p-1");
       vi.useRealTimers();

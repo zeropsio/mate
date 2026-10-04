@@ -20,7 +20,7 @@
  */
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import { FIRST_BUILD_GIVE_UP_MS, type ZeropsCandidate } from "./candidates.ts";
+import type { ZeropsCandidate } from "./candidates.ts";
 import { mateOwnerRecords } from "./mateAccess.ts";
 
 /** Where a Mate is in its life, as its faces need it. */
@@ -43,10 +43,10 @@ export interface MatePoseFacts {
 }
 
 /**
- * How long from its project's creation a Mate may be arriving: the first build's own give-up
- * (`FIRST_BUILD_GIVE_UP_MS`) — half an hour on, a Mate that has not come up is not coming.
+ * How long from its project's creation a Mate's face may wear its arrival: half an hour, well past
+ * any first build measured. A pose only — whether it came up is its build's and its link's to say.
  */
-export const MATE_ARRIVAL_WINDOW_MS = FIRST_BUILD_GIVE_UP_MS;
+export const MATE_ARRIVAL_WINDOW_MS = 30 * 60_000;
 
 /**
  * Until when a Mate is arriving, in epoch milliseconds — from its press, through its container

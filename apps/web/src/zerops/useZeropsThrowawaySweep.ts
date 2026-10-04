@@ -1,7 +1,9 @@
 /**
  * One inventory-owned cleanup attempt for the account's persisted door debt. Outstanding mints
- * wait past the door window; failed cleanup stays visible until an explicit again. An explicit
- * cleanup also discovers legacy leftovers, without an unconditional token-list read on loads.
+ * wait past the door window, then exactly the throwaways owed are deleted — by the id their mint
+ * answered, or by their name where that answer was lost — never another tab's or device's by its
+ * look or its age. Failed cleanup stays visible until an explicit again. Nothing owed lists
+ * nothing.
  */
 import {
   planThrowawaySweep,
@@ -164,25 +166,20 @@ export function useZeropsThrowawaySweep(input: {
           );
           return;
         }
+        const owed = debt.owed(clientId, upToMs);
         const request = {
           kind: "tokens",
           account: runtime.scope,
           organization: organizationRef(clientId),
         } as const;
-        const tokens = await readZeropsCell(runtime.cells, request, controller.signal, explicit);
+        // Only a mint whose answer was lost needs the list: it is found by its name.
+        const tokens = owed.every((entry) => entry.tokenId !== undefined)
+          ? []
+          : await readZeropsCell(runtime.cells, request, controller.signal, explicit);
         if (controller.signal.aborted) return;
         const stale = planThrowawaySweep({
-          tokens: tokens
-            .filter(
-              (token) =>
-                token.createdByUser === undefined || token.createdByUser === client.session?.userId,
-            )
-            .map((token) => ({
-              id: token.tokenId,
-              name: token.name,
-              ...(token.created === undefined ? {} : { created: token.created }),
-            })),
-          nowEpochMs: Date.now(),
+          tokens: tokens.map((token) => ({ id: token.tokenId, name: token.name })),
+          owed,
         });
         for (const tokenId of stale) {
           if (controller.signal.aborted) return;
@@ -190,7 +187,11 @@ export function useZeropsThrowawaySweep(input: {
             publishOutstandingFailure();
             return;
           }
-          await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
+          try {
+            await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
+          } catch (cause) {
+            if (!(cause instanceof ZeropsApiError && cause.kind === "not-found")) throw cause;
+          }
         }
         if (controller.signal.aborted) return;
         if (!explicit && debt.sweepFailed(clientId)) {

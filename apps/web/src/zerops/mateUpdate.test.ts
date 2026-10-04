@@ -61,6 +61,10 @@ describe("mateUpdateStatus", () => {
       expected: { text: "Updating to 0.11.49…", tone: "quiet" },
     },
     {
+      state: { phase: "updating", to: "0.11.49", overdue: true } as const,
+      expected: { text: "Updating to 0.11.49… taking longer than usual", tone: "quiet" },
+    },
+    {
       state: { phase: "updated", to: "0.11.49" } as const,
       expected: { text: "Updated to 0.11.49", tone: "quiet" },
     },

@@ -164,7 +164,9 @@ describe("useZeropsMateUpdate", () => {
     expect(hook.state).toEqual({ phase: "idle" });
   });
 
-  it("an update past its budget says the server has not come back", async () => {
+  // A clock is no answer: a slow install is still an install, and a second Update mid-install
+  // would start another.
+  it("an update past its budget is taking longer, never failed, and Update stays off", async () => {
     commandSpy.mockResolvedValue({
       _tag: "Success",
       value: {
@@ -182,10 +184,14 @@ describe("useZeropsMateUpdate", () => {
     container.verdict = { level: "updating", overdue: true };
     render("0.8.0");
     hook = render("0.8.0");
-    expect(hook.state.phase).toBe("failed");
+    expect(hook.state).toEqual({ phase: "updating", to: "0.8.1", overdue: true });
+
+    hook.update("0.8.1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(commandSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("an update no container follows waits for another version, within the update's budget", async () => {
+  it("an update no container follows waits for another version, taking longer past its budget", async () => {
     container.takes = false;
     commandSpy.mockResolvedValue({
       _tag: "Success",
@@ -203,10 +209,10 @@ describe("useZeropsMateUpdate", () => {
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "updating", to: "0.8.1" });
 
-    // Past the update's budget with the version unchanged, it says the server has not come back.
+    // Past the update's budget with the version unchanged, it is taking longer — never failed.
     await vi.advanceTimersByTimeAsync(120_000);
     hook = render("0.8.0");
-    expect(hook.state.phase).toBe("failed");
+    expect(hook.state).toEqual({ phase: "updating", to: "0.8.1", overdue: true });
 
     // Coming back later on the new version, it has still updated.
     render("0.8.1");
@@ -352,7 +358,7 @@ describe("useZeropsMateUpdate", () => {
     expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
   });
 
-  it("a server that never comes back does say so", async () => {
+  it("a server that never comes back reads as taking longer, the update still its", async () => {
     commandSpy.mockResolvedValue({
       _tag: "Failure",
       cause: Cause.die(new Error("SocketCloseError: connection reset")),
@@ -364,7 +370,11 @@ describe("useZeropsMateUpdate", () => {
     container.verdict = { level: "updating", overdue: true };
     render("0.8.0");
     hook = render("0.8.0");
-    expect(hook.state.phase).toBe("failed");
+    expect(hook.state).toEqual({ phase: "updating", to: "0.8.1", overdue: true });
+
+    hook.update("0.8.1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(commandSpy).toHaveBeenCalledTimes(1);
   });
 
   it("a Mate that comes back late has still updated", async () => {
@@ -379,7 +389,7 @@ describe("useZeropsMateUpdate", () => {
     container.verdict = { level: "updating", overdue: true };
     render("0.8.0");
     hook = render("0.8.0");
-    expect(hook.state.phase).toBe("failed");
+    expect(hook.state).toEqual({ phase: "updating", to: "0.8.1", overdue: true });
 
     // It was slow, not broken.
     container.verdict = { level: "ready" };

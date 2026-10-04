@@ -36,7 +36,12 @@ export function mateUpdateLine(
 export type MateUpdateState =
   | { readonly phase: "idle" }
   | { readonly phase: "checking" }
-  | { readonly phase: "updating"; readonly to: string }
+  | {
+      readonly phase: "updating";
+      readonly to: string;
+      /** Past its budget: still the update's, only slower than usual — never failed by a clock. */
+      readonly overdue?: true;
+    }
   | { readonly phase: "already-current" }
   | { readonly phase: "updated"; readonly to: string }
   | { readonly phase: "failed"; readonly message: string };
@@ -61,7 +66,10 @@ export function mateUpdateStatus(state: MateUpdateState | undefined): MateUpdate
     case "checking":
       return { text: "Checking for updates…", tone: "quiet" };
     case "updating":
-      return { text: `Updating to ${state.to}…`, tone: "quiet" };
+      return {
+        text: `Updating to ${state.to}…${state.overdue === true ? " taking longer than usual" : ""}`,
+        tone: "quiet",
+      };
     case "updated":
       return { text: `Updated to ${state.to}`, tone: "quiet" };
     case "already-current":
