@@ -147,7 +147,7 @@ import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
-import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
+import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
@@ -287,48 +287,12 @@ function useMateMenus(): {
   return { menuForMate, dialogs: actions.dialogs, trouble: actions.trouble };
 }
 
-/**
- * The project's own quiet actions, on its own page.
- *
- * *Rename project* had lived only on the projects screen, so the page whose
- * whole subject is this project could not name it (the owner, 2026-09-19:
- * "why isn't there options to rename group?"). The dialog is
- * `ZeropsRenameProjectDialog`, shared with that screen, so one rename means one
- * thing wherever it is offered.
- */
+/** The project's own menu uses the same writer decision and rename form as its row. */
 function useGroupActions(groupId: string): {
   readonly menu: React.ReactNode;
 } {
   const group = useGroup(groupId);
-  const [renaming, setRenaming] = useState(false);
-  if (group === undefined) return { menu: null };
-  return {
-    menu: (
-      <>
-        <ZeropsProjectMenu
-          actions={[
-            {
-              id: "rename-group",
-              label: group.nameSource === "id" ? "Name this project" : "Rename project",
-              onSelect: () => {
-                setRenaming(true);
-              },
-            },
-          ]}
-          label={`More for ${group.name}`}
-        />
-        {renaming ? (
-          <ZeropsRenameProjectDialog
-            group={group}
-            key={`rename-group:${group.groupId}`}
-            onClose={() => {
-              setRenaming(false);
-            }}
-          />
-        ) : null}
-      </>
-    ),
-  };
+  return { menu: group === undefined ? null : <ZeropsProjectRenameMenu group={group} /> };
 }
 
 /** Every environment of a group, by the sha it runs, whole or short as its version name spells it. */

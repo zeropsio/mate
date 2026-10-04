@@ -972,3 +972,28 @@ describe("a group's one line about itself", () => {
     expect(projectsPageSource).not.toContain("setToolError(`${entry.displayName}");
   });
 });
+
+describe("project rename permissions on the projects surfaces", () => {
+  it("uses the same permission-aware rename menu for the row and detail", () => {
+    expect(projectsPageSource).toContain("<ZeropsProjectRenameMenu");
+    expect(groupDetailSource).toContain("<ZeropsProjectRenameMenu");
+    for (const source of [projectsPageSource, groupDetailSource]) {
+      expect(source).not.toContain('id: "rename-group"');
+    }
+  });
+
+  it("preserves the existing environment creation offers independently of rename permission", () => {
+    expect(projectsPageSource).toContain("...(groupIsEmpty(group)");
+    expect(projectsPageSource).toContain("...(addsOfferedFor(group)");
+    expect(projectsPageSource).toContain(
+      '...(mayCreate && !groupIsEmpty(group) && creatableRoles(group).includes("prod")',
+    );
+    expect(projectsPageSource).toContain(
+      "productionAddable({\n              group,\n              mayCreate,",
+    );
+    expect(projectsPageSource).toContain("if (creationRunning) return;");
+    expect(projectsPageSource).toContain(
+      "addsOffered={(group) => groupIsEmpty(group) || addsOfferedFor(group)}",
+    );
+  });
+});
