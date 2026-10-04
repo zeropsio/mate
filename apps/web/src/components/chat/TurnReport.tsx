@@ -47,6 +47,7 @@ import {
   type ResultFacts,
   type ResultPicture,
   type ResultRow,
+  STRIP_TILES,
 } from "./runResult.logic";
 import { useRunResultFacts } from "./runResultFacts";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
@@ -196,9 +197,6 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
     </span>
   );
 }
-
-/** At most this many tiles stand in the strip; the last says how many more the viewer holds. */
-const STRIP_TILES = 6;
 
 /** The pictures' files, by path, as a harness gives them where the app does not read them. */
 export type ResultFiles = ReadonlyMap<string, AssetUrlState>;

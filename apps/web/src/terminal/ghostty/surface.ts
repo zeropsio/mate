@@ -32,7 +32,10 @@ const TERMINAL_GLYPH_FALLBACKS =
 // reject the whole string.
 export const DEFAULT_TERMINAL_FONT_FAMILY =
   '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", ' + TERMINAL_GLYPH_FALLBACKS;
-const CONTENT_PADDING = 4;
+// The grid's gutter inside the canvas: the same inset every right-panel
+// surface keeps, and part of the terminal, so a click, wheel or drag there
+// still lands on it (padding outside the mount would be dead space).
+export const TERMINAL_CONTENT_PADDING = 12;
 const MIN_SCROLLBAR_THUMB_HEIGHT = 18;
 /** Half a blink cycle: the visible and hidden phases are equally long. */
 const CURSOR_BLINK_INTERVAL_MS = 500;
@@ -589,7 +592,7 @@ export class GhosttyTerminalSurface {
   private scrollbarPointerOffset = 0;
   private disposed = false;
   private resizeNotifyTimer: number | null = null;
-  private originY = CONTENT_PADDING;
+  private originY = TERMINAL_CONTENT_PADDING;
   private mountHeight = 0;
   private selectionEnd: { x: number; y: number } | null = null;
   private selectionAnchorScreen: { x: number; y: number } | null = null;
@@ -686,8 +689,7 @@ export class GhosttyTerminalSurface {
     input.autocapitalize = "off";
     input.autocomplete = "off";
     input.spellcheck = false;
-    input.style.cssText =
-      "position:absolute;left:4px;top:4px;width:1px;height:1px;opacity:0;padding:0;border:0;resize:none;pointer-events:none;";
+    input.style.cssText = `position:absolute;left:${TERMINAL_CONTENT_PADDING}px;top:${TERMINAL_CONTENT_PADDING}px;width:1px;height:1px;opacity:0;padding:0;border:0;resize:none;pointer-events:none;`;
 
     const scrollbar = document.createElement("div");
     scrollbar.className =
@@ -720,7 +722,12 @@ export class GhosttyTerminalSurface {
     }
     const fontFamily = await loadTerminalFontFamily(options.font?.family, fontSize);
     const metrics = measureGhosttyCell(context, fontSize, fontFamily);
-    const grid = terminalGridSize(mount.clientWidth, mount.clientHeight, metrics, CONTENT_PADDING);
+    const grid = terminalGridSize(
+      mount.clientWidth,
+      mount.clientHeight,
+      metrics,
+      TERMINAL_CONTENT_PADDING,
+    );
     const core = await GhosttyTerminalCore.create(
       grid.cols,
       grid.rows,
@@ -885,7 +892,7 @@ export class GhosttyTerminalSurface {
       this.scrollbarDirty = true;
       shouldRender = true;
     }
-    const grid = terminalGridSize(width, height, this.metrics, CONTENT_PADDING);
+    const grid = terminalGridSize(width, height, this.metrics, TERMINAL_CONTENT_PADDING);
     this.mountHeight = height;
     // onResize is the only PTY resize channel, so the first successful fit must
     // notify even when the measured grid equals the 1x1 construction sentinel.
@@ -987,7 +994,7 @@ export class GhosttyTerminalSurface {
     if (!viewportEnd) return null;
     const bounds = this.canvas.getBoundingClientRect();
     return {
-      right: bounds.left + CONTENT_PADDING + (viewportEnd.x + 1) * this.metrics.width,
+      right: bounds.left + TERMINAL_CONTENT_PADDING + (viewportEnd.x + 1) * this.metrics.width,
       bottom: bounds.top + this.originY + (viewportEnd.y + 1) * this.metrics.height,
     };
   }
@@ -1759,7 +1766,7 @@ export class GhosttyTerminalSurface {
         ? null
         : terminalScrollbarGeometry(
             state,
-            Math.max(0, this.mount.clientHeight - CONTENT_PADDING * 2),
+            Math.max(0, this.mount.clientHeight - TERMINAL_CONTENT_PADDING * 2),
           );
     this.scrollbar.hidden = geometry === null;
     if (state === null || geometry === null) return;
@@ -1825,7 +1832,7 @@ export class GhosttyTerminalSurface {
     const anchorBottom = scrollState !== null && scrollState.total > scrollState.len;
     const nextOriginY = terminalContentOriginY(
       this.mountHeight,
-      CONTENT_PADDING,
+      TERMINAL_CONTENT_PADDING,
       this.rows,
       this.metrics.height,
       anchorBottom,
@@ -1841,7 +1848,7 @@ export class GhosttyTerminalSurface {
       metrics: this.metrics,
       fontSize: this.fontSize,
       fontFamily: this.fontFamily,
-      padding: CONTENT_PADDING,
+      padding: TERMINAL_CONTENT_PADDING,
       originY: this.originY,
       forceFull: this.forceFullRender,
       cursorOn: this.cursorOn,
@@ -1894,7 +1901,7 @@ export class GhosttyTerminalSurface {
     }
     // The IME candidate window anchors to the textarea, so it must follow the
     // terminal cursor for composition to appear where the user is typing.
-    const left = CONTENT_PADDING + snapshot.cursorX * this.metrics.width;
+    const left = TERMINAL_CONTENT_PADDING + snapshot.cursorX * this.metrics.width;
     const top = this.originY + snapshot.cursorY * this.metrics.height;
     if (left === this.inputLeft && top === this.inputTop) return;
     this.inputLeft = left;
@@ -1911,7 +1918,7 @@ export class GhosttyTerminalSurface {
         0,
         Math.min(
           this.cols - 1,
-          Math.floor((clientX - bounds.left - CONTENT_PADDING) / this.metrics.width),
+          Math.floor((clientX - bounds.left - TERMINAL_CONTENT_PADDING) / this.metrics.width),
         ),
       ),
       y: Math.max(
@@ -1933,7 +1940,7 @@ export class GhosttyTerminalSurface {
       cols: this.cols,
       rows: this.rows,
       metrics: this.metrics,
-      padding: CONTENT_PADDING,
+      padding: TERMINAL_CONTENT_PADDING,
       originY: this.originY,
     });
     if (!cell) return null;
@@ -1987,8 +1994,8 @@ export class GhosttyTerminalSurface {
       screenHeight: bounds.height,
       cellWidth: this.metrics.width,
       cellHeight: this.metrics.height,
-      paddingLeft: CONTENT_PADDING,
-      paddingRight: CONTENT_PADDING,
+      paddingLeft: TERMINAL_CONTENT_PADDING,
+      paddingRight: TERMINAL_CONTENT_PADDING,
       paddingTop: this.originY,
       paddingBottom: Math.max(0, bounds.height - this.originY - this.rows * this.metrics.height),
       anyButtonPressed: event.buttons !== 0,

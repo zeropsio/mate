@@ -24,12 +24,19 @@ const services: ZeropsTopologyService[] = [
     routes: [{ url: origin, host: "web-2ff4-3000.prg1.zerops.app", port: 3000 }],
   },
 ];
-function render(url: string, topology: typeof services | undefined) {
+function render(
+  url: string,
+  topology: typeof services | undefined,
+  addresses: ReadonlyArray<{ readonly url: string }> = [],
+  addressesKnown = true,
+) {
   return renderToStaticMarkup(
     <ServiceBrowserPanels
       surfaces={[{ id: "service:web", kind: "browser", service: "web", url }]}
       activeSurfaceId="service:web"
       services={topology}
+      addresses={addresses}
+      addressesKnown={addressesKnown}
     />,
   );
 }
@@ -42,6 +49,22 @@ describe("restored service previews", () => {
     const html = render(url, services);
     expect(html).not.toContain("<iframe");
     expect(html).toContain("Open in new tab");
+  });
+  /** The group's production lives in a project of its own; it is the Mate's address all the same. */
+  it("loads an address of the Mate's group outside its own project", () => {
+    const production = "https://app-3c4d-80.prg1.zerops.app";
+    expect(render(production, services)).not.toContain("<iframe");
+    expect(render(production, services, [{ url: production }])).toContain("<iframe");
+  });
+  /** A stage or production tab restored before the account read its project waits; it does not refuse. */
+  it.each([
+    { name: "the topology", topology: undefined, known: true },
+    { name: "the group's projects", topology: services, known: false },
+  ])("says nothing of a restored address while $name is unread", ({ topology, known }) => {
+    const production = "https://app-3c4d-80.prg1.zerops.app";
+    const html = render(production, topology, [], known);
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("only for known service domains");
   });
   it("waits for known topology before loading a restored page", () => {
     expect(render(origin, undefined)).not.toContain("<iframe");

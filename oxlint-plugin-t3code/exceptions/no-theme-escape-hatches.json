@@ -1976,14 +1976,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/RightPanelTabs.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"absolute -top-1.5 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-white\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in RightPanelTabs awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
     "kind": "Literal",
     "fingerprint": "\"border-black/10 hover:scale-105 dark:border-white/20\"",

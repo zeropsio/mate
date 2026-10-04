@@ -45,6 +45,8 @@ type Scene = {
   alongside?: boolean;
   /** The thread's provider driver; Codex unless given, whose batches go by timing. */
   provider?: string | null;
+  /** The background jobs the server holds live. */
+  liveJobs?: ReadonlyArray<string>;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -71,6 +73,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     ...(scene.helperFinishes === undefined ? {} : { helperFinishes: scene.helperFinishes }),
     ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
     provider: scene.provider === undefined ? "codex" : scene.provider,
+    ...(scene.liveJobs === undefined ? {} : { liveJobs: { ids: new Set(scene.liveJobs) } }),
   });
 }
 
@@ -1337,6 +1340,13 @@ describe("deriveMessagesTimelineRows", () => {
     });
   it.each([
     {
+      // Bodhi: its word landed a moment after the run it woke began.
+      name: "a helper whose finish landed a moment after the run it woke began",
+      during: [helperDone("h1", "t1", 2, 6.05)],
+      after: [],
+      woke: { entries: [{ id: "h1" }], tasks: 1, failed: 0, helpers: true, title: "Review h1" },
+    },
+    {
       name: "a helper that finished after the run before it ended",
       during: [helperDone("h1", "t1", 2, 5)],
       after: [],
@@ -1451,6 +1461,234 @@ describe("deriveMessagesTimelineRows", () => {
     expect(second?.kind === "record" ? second.items.map((item) => item.kind) : null).toEqual([
       "step",
     ]);
+  });
+
+  // Run 9: a helper that finished during the run that launched it was taken
+  // in by that run, yet woke a run twenty minutes later, as a line of its own.
+  it("never says a helper woke a run when it finished while the run before still worked", () => {
+    const launch = tool("l1", "t1", 2, {
+      label: "List routes",
+      toolTitle: "List routes",
+      taskId: "task-routes",
+      agentRole: "Explore",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      agentSpawn: { workflowId: null, agentTaskIds: ["task-routes", "task-components"] },
+    });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started them."),
+      launch,
+      assistant("a2", "t1", 4, "Both are back."),
+      assistant("a3", "t2", 20, "Something else came in."),
+    ];
+    const helperFinishes: ReadonlyArray<HelperFinish> = [
+      { id: "task-routes", title: "List routes", finishedAt: at(3), failed: false },
+      { id: "task-components", title: "Count components", finishedAt: at(3, 30), failed: false },
+    ];
+    const list = rows({ entries, settled: "t2", helperFinishes });
+    expect(list.some((row) => row.id.startsWith("woke:"))).toBe(false);
+  });
+
+  // Bodhi woke into "thought 5s" cards with nothing above them: the
+  // platform's word that a helper finished can land a moment after the run
+  // it woke began.
+  it("says a helper woke a run when its finish lands a moment after the run began", () => {
+    const launch = tool("l1", "t1", 2, {
+      label: "List routes",
+      toolTitle: "List routes",
+      taskId: "task-routes",
+      agentRole: "Explore",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      agentSpawn: { workflowId: null, agentTaskIds: ["task-routes", "task-components"] },
+    });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started them."),
+      launch,
+      assistant("a2", "t1", 4, "They report back when done."),
+      assistant("a3", "t2", 6, "One is back."),
+    ];
+    const helperFinishes: ReadonlyArray<HelperFinish> = [
+      { id: "task-routes", title: "List routes", finishedAt: at(6, 4), failed: false },
+    ];
+    expect(
+      rows({ entries, settled: "t2", helperFinishes }).find((row) => row.id === "woke:turn:t2"),
+    ).toMatchObject({ kind: "background", title: "List routes" });
+  });
+
+  // Review of pass 39: a helper landing in a woken run's first moments was
+  // later said to wake another run, and a task reporting then took the
+  // place of the helper that did wake it.
+  describe("what woke a run, when two finish close together", () => {
+    const launch = tool("l1", "t1", 2, {
+      label: "Fan out",
+      toolTitle: "Fan out",
+      taskId: "task-a",
+      agentRole: "Explore",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      agentSpawn: { workflowId: null, agentTaskIds: ["task-a", "task-b", "task-c"] },
+    });
+    const finish = (id: string, minute: number, second: number): HelperFinish => ({
+      id: `task-${id}`,
+      title: `Helper ${id}`,
+      finishedAt: at(minute, second),
+      failed: false,
+    });
+    const wakers = (list: MessagesTimelineRow[]) =>
+      Object.fromEntries(
+        list.flatMap((row) =>
+          row.kind === "background" && row.id.startsWith("woke:") ? [[row.id, row.title]] : [],
+        ),
+      );
+
+    it("a helper landing in a woken run's first moments wakes no later run", () => {
+      const entries = [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started them."),
+        launch,
+        assistant("a2", "t1", 4, "They report back."),
+        // t2 works from 6:00 to 7:00: B lands in it.
+        tool("x2", "t2", 6),
+        assistant("a3", "t2", 7, "A is back."),
+        assistant("a4", "t3", 20, "C is back."),
+      ];
+      const helperFinishes = [finish("a", 5, 59), finish("b", 6, 4), finish("c", 19, 59)];
+      expect(wakers(rows({ entries, settled: "t3", helperFinishes }))).toEqual({
+        "woke:turn:t2": "Helper a",
+        "woke:turn:t3": "Helper c",
+      });
+    });
+
+    it("a task reporting in a woken run's first moments never stands for the helper that woke it", () => {
+      const watch = background("w1", 6, {
+        label: "Watch the logs",
+        toolTitle: "Watch the logs",
+        updatedAt: at(6, 5),
+      });
+      const entries = [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started them."),
+        launch,
+        assistant("a2", "t1", 4, "They report back."),
+        { ...watch, entry: { ...watch.entry, turnId: turn("t2") } } as TimelineEntry,
+        assistant("a3", "t2", 7, "A is back."),
+        assistant("a4", "t3", 20, "Nothing else."),
+      ];
+      const list = rows({ entries, settled: "t3", helperFinishes: [finish("a", 5, 59)] });
+      expect(wakers(list)).toEqual({ "woke:turn:t2": "Helper a" });
+      // The watch stays where it reported: in the run it reported in.
+      const t2 = list.find((row) => row.kind === "record" && row.id.endsWith("t2"));
+      expect(t2?.kind === "record" ? t2.items.map((item) => item.kind) : null).toContain("task");
+    });
+  });
+
+  // Run 9: commands sent to the background reported after their turn ended,
+  // as a loose line whose count fell from 5 to 4 as the run they woke began,
+  // and again above that run. A job is its own turn's: told once, on its
+  // card, its count only rising.
+  describe("a command sent to the background", () => {
+    const launch = (id: string, title: string, minute: number) =>
+      tool(id, "t1", minute, {
+        label: "Command run",
+        command: `./${id}.sh`,
+        callInput: { description: title },
+        updatedAt: at(minute, 1),
+        // Its call's own notice, as production reads it: the task's start
+        // never reaches the work log.
+        sentToBackground: `job-${id}`,
+      });
+    const reported = (id: string, title: string, minute: number, failed = false) =>
+      background(`${id}-done`, minute, {
+        label: title,
+        toolTitle: title,
+        taskId: `job-${id}`,
+        taskToolUseId: `call-${id}`,
+        command: undefined as never,
+        tone: failed ? "error" : "info",
+        detail: `Background command "${title}" ${failed ? "failed with exit code 3" : "completed (exit code 0)"}`,
+      });
+    const turnOne = [
+      user("m0", 0),
+      launch("soak", "Run the soak test", 1),
+      launch("fails", "Run the failing job", 1),
+      assistant("a1", "t1", 2, "Both are running."),
+    ];
+
+    const jobsOf = (list: MessagesTimelineRow[]) => {
+      const line = list.find((row) => row.id === "jobs:msg:m0");
+      return line?.kind === "background"
+        ? (line.jobs ?? []).map((job) => [job.title, job.state, job.report])
+        : null;
+    };
+
+    // Its session gone — idle, and the server says nothing lives in the
+    // background — a job that never reported says so, once.
+    it.each([
+      { name: "the server holds both", held: ["job-soak", "job-fails"], state: "running" },
+      { name: "the server holds neither any more", held: [], state: "lost" },
+    ])("a job that never reported back: $name", ({ held, state }) => {
+      const list = rows({ entries: turnOne, settled: "t1", liveJobs: held });
+      const line = list.find((row) => row.id === "jobs:msg:m0");
+      expect(line?.kind === "background" ? line.jobs?.map((job) => job.state) : null).toEqual([
+        state,
+        state,
+      ]);
+    });
+
+    it.each([
+      {
+        name: "both still running",
+        later: [] as TimelineEntry[],
+        settled: "t1",
+        jobs: [
+          ["Run the soak test", "running", null],
+          ["Run the failing job", "running", null],
+        ],
+      },
+      {
+        name: "one failed after the turn, waking a run of its own",
+        later: [
+          reported("fails", "Run the failing job", 3, true),
+          assistant("a2", "t2", 4, "The failing job failed."),
+        ],
+        settled: "t2",
+        jobs: [
+          ["Run the soak test", "running", null],
+          ["Run the failing job", "failed", "Exit code 3"],
+        ],
+      },
+      {
+        name: "both reported",
+        later: [
+          reported("fails", "Run the failing job", 3, true),
+          assistant("a2", "t2", 4, "The failing job failed."),
+          reported("soak", "Run the soak test", 6),
+          assistant("a3", "t3", 7, "The soak passed."),
+        ],
+        settled: "t3",
+        jobs: [
+          ["Run the soak test", "done", null],
+          ["Run the failing job", "failed", "Exit code 3"],
+        ],
+      },
+    ])("tells its job on its own card, once: $name", ({ later, settled, jobs }) => {
+      const list = framed({ entries: [...turnOne, ...later], settled });
+      expect(jobsOf(list)).toEqual(jobs);
+      // On the card of the turn that sent them, under its record.
+      const line = list.findIndex((row) => row.id === "jobs:msg:m0");
+      const cardEnd = list.findIndex((row) => row.kind === "card-end");
+      expect(line).toBeGreaterThan(list.findIndex((row) => row.id === "record:msg:m0"));
+      expect(line).toBeLessThan(cardEnd);
+      // Nowhere else: no loose line, no line over the run it woke.
+      expect(
+        list.filter(
+          (row) => (row.kind === "background" && row.id !== "jobs:msg:m0") || row.kind === "work",
+        ),
+      ).toEqual([]);
+    });
   });
 
   it("says which of the helpers one launch started woke each run, in the order they finished", () => {

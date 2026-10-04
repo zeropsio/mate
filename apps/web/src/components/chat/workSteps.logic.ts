@@ -13,6 +13,7 @@
  */
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
+import { jobLost, type LiveJobs } from "./liveJobs.logic";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
@@ -64,6 +65,27 @@ export interface WorkStep {
    * "closed" once the run settled without it: "No result".
    */
   readonly noResult?: "stale" | "closed";
+  /** A command sent to the background: the job its call started, as it stands now. */
+  readonly background?: BackgroundJob;
+}
+
+/**
+ * A command the Mate sent to the background: its call returned while the
+ * task it started ran on, and the task reports in later — after the turn,
+ * often. The job stands on its command's own line, so it is told once.
+ */
+export interface BackgroundJob {
+  /** The command entry's id. */
+  readonly key: string;
+  /** What it was asked to do: the task's words, else the command's own. */
+  readonly title: string;
+  /** "lost": its session is gone and it never reported — it never will. */
+  readonly state: "running" | "done" | "failed" | "lost";
+  readonly startedAt: string;
+  /** When its task ended; null while it runs. */
+  readonly endedAt: string | null;
+  /** What it reported past its own title — "Exit code 3" — or null. */
+  readonly report: string | null;
 }
 
 /**
@@ -80,11 +102,16 @@ export interface TrackedCommands {
   readonly byCommand: ReadonlyMap<string, TrackedCommand>;
   /** The tasks that are commands: never a row or a bar of their own. */
   readonly trackers: ReadonlySet<string>;
+  /** Each background task's words, by its id: a read of its output names it. */
+  readonly jobTitles: ReadonlyMap<string, string>;
+  /** The jobs the server holds live (`liveJobs.logic`): one it does not, unreported, never will. */
+  readonly liveJobs?: LiveJobs | null;
 }
 
 export const NO_TRACKED_COMMANDS: TrackedCommands = {
   byCommand: new Map(),
   trackers: new Set(),
+  jobTitles: new Map(),
 };
 
 /**
@@ -161,7 +188,7 @@ const STATEMENT_PREAMBLE =
  * opens with dropped, its first line, its whitespace folded — never nothing.
  */
 export function commandShown(command: string): string {
-  let rest = command;
+  let rest = withoutScratch(command);
   for (let match = STATEMENT_PREAMBLE.exec(rest); match; match = STATEMENT_PREAMBLE.exec(rest)) {
     rest = rest.slice(match[0].length);
   }
@@ -172,12 +199,25 @@ export function commandShown(command: string): string {
 
 /** A command whole, as a bubble draws it: its preamble dropped, every line kept. */
 export function commandWhole(command: string): string {
-  let rest = command;
+  let rest = withoutScratch(command);
   for (let match = STATEMENT_PREAMBLE.exec(rest); match; match = STATEMENT_PREAMBLE.exec(rest)) {
     rest = rest.slice(match[0].length);
   }
   const whole = rest.trimEnd();
-  return whole.trim().length > 0 ? whole.trim() : command.trim();
+  return whole.trim().length > 0 ? whole.trim() : withoutScratch(command).trim();
+}
+
+/**
+ * Claude Code's own folder for a session — `/tmp/claude-<uid>/<project>/<session id>/`,
+ * where a background command's output lands — is no place the person knows:
+ * a command reading it says `…/tasks/b7k.output` (run 9: the live card read
+ * "cat /tmp/claude-2023/-var-www/3c6ba9e5-…").
+ */
+const SCRATCH_FOLDER =
+  /(?:\/private)?\/tmp\/claude-\d+\/[^/\s'"]+\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//gu;
+
+function withoutScratch(command: string): string {
+  return command.replace(SCRATCH_FOLDER, "…/");
 }
 
 function isTask(entry: WorkLogEntry): boolean {
@@ -225,8 +265,17 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
   );
   const byCommand = new Map<string, TrackedCommand>();
   const trackers = new Set<string>();
+  const jobTitles = new Map<string, string>();
+  // A job still running has no task in the log yet: its command names it.
+  for (const command of commands) {
+    const words = command.callInput?.description?.trim();
+    if (command.sentToBackground !== undefined && words)
+      jobTitles.set(command.sentToBackground, words);
+  }
   for (const task of entries) {
     if (!isTask(task)) continue;
+    const words = (task.toolTitle ?? task.label).trim();
+    if (task.taskId !== undefined && words.length > 0) jobTitles.set(task.taskId, words);
     const command =
       task.taskToolUseId !== undefined
         ? byCallId.get(task.taskToolUseId)
@@ -248,7 +297,120 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
         : { task },
     );
   }
-  return { byCommand, trackers };
+  return { byCommand, trackers, jobTitles };
+}
+
+/** The file a background task writes what it prints to: `…/tasks/<task id>.output`. */
+const JOB_OUTPUT = /[\\/]tasks[\\/]([\w-]+)\.output$/u;
+
+/**
+ * A read of the file a background job writes, said by the job (a probe read
+ * "Read be98ni9xv.output" on the live card): null for any other read.
+ */
+function jobOutputPhrase(
+  entry: WorkLogEntry,
+  tracked: TrackedCommands,
+  running: boolean,
+): StepPhrase | null {
+  const file = entry.callInput?.filePath ?? detailFile(entry.detail) ?? null;
+  const id = file === null ? undefined : JOB_OUTPUT.exec(file)?.[1];
+  if (id === undefined) return null;
+  const title = tracked.jobTitles.get(id);
+  const verb = running ? "Reading" : "Read";
+  return title === undefined
+    ? { verb: `${verb} a background job's output`, targets: [], more: 0, code: false }
+    : { verb: `${verb} the output of`, targets: [title], more: 0, code: false };
+}
+
+/**
+ * The job a command sent to the background, or null: a command its task
+ * tracked whose call returned while the task ran on — not one that waited on
+ * its task to the end (a long command Claude Code tracks).
+ */
+export function backgroundJobOf(
+  command: WorkLogEntry,
+  tracked: TrackedCommands,
+  /** Its turn still runs: its jobs are live whatever the server has said yet. */
+  live = false,
+): BackgroundJob | null {
+  // Its call's own output says it went to the background (Claude Code's
+  // notice), the task that tracks it reaching the log only once it ends.
+  const sent = command.sentToBackground !== undefined;
+  const track = tracked.byCommand.get(command.id);
+  if (track === undefined && !sent) return null;
+  if (command.toolLifecycleStatus === "inProgress" && !sent) return null;
+  const task = track?.task;
+  const ended = task?.sourceActivityKind === "task.completed";
+  // Else a task that ended with its call was the command itself.
+  if (!sent && task !== undefined && ended && endOf(task) - endOf(command) <= TRACK_TOLERANCE_MS) {
+    return null;
+  }
+  const title = (
+    track?.description ??
+    command.callInput?.description ??
+    task?.toolTitle ??
+    task?.label ??
+    command.command ??
+    "A background job"
+  ).trim();
+  const failed =
+    task !== undefined &&
+    ended &&
+    (task.tone === "error" ||
+      task.toolLifecycleStatus === "failed" ||
+      /\bfailed\b/iu.test(task.detail ?? ""));
+  return {
+    key: command.id,
+    title,
+    state:
+      task === undefined || !ended
+        ? jobLost(
+            { id: command.sentToBackground ?? task?.taskId, ofLiveTurn: live },
+            tracked.liveJobs ?? null,
+          )
+          ? "lost"
+          : "running"
+        : failed
+          ? "failed"
+          : "done",
+    startedAt: command.startedAt ?? command.createdAt,
+    endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
+    report: task !== undefined && ended ? taskReportWords(taskSaid(task), title) : null,
+  };
+}
+
+/**
+ * What a task said as it ended: its detail, else its label where the work
+ * log put Claude Code's own word there (`Background command "…" failed …`).
+ */
+export function taskSaid(task: WorkLogEntry): string | undefined {
+  return task.detail ?? (/^Background command\b/u.test(task.label) ? task.label : undefined);
+}
+
+/**
+ * What a task reported, past what its line already says: Claude Code says
+ * `Background command "Run the soak test" failed with exit code 3`, whose
+ * title and verdict the line has — "Exit code 3" is all it adds.
+ */
+export function taskReportWords(detail: string | undefined, title: string): string | null {
+  const whole = (detail ?? "").trim();
+  if (whole.length === 0) return null;
+  const quoted = /^Background command\s+"[^"]*"\s*/u.exec(whole);
+  const rest =
+    quoted !== null
+      ? whole.slice(quoted[0].length)
+      : title.length > 0 && whole.startsWith(title)
+        ? whole.slice(title.length).trim()
+        : null;
+  // A report in words of its own (a helper's, a watch's): all of it.
+  if (rest === null) return whole;
+  const code = /exit code (\d+)/iu.exec(rest)?.[1];
+  if (/^(?:completed|finished|succeeded)\b/iu.test(rest)) {
+    return code === undefined || code === "0" ? null : `Exit code ${code}`;
+  }
+  if (/^(?:was\s+)?(?:stopped|killed)\b/iu.test(rest)) return "Stopped";
+  const said = rest.replace(/^failed\b\s*(?:with\s+)?/iu, "").trim();
+  return said.length === 0 ? null : said.charAt(0).toUpperCase() + said.slice(1);
 }
 
 function basename(path: string): string {
@@ -528,13 +690,14 @@ export function stepOf(
 ): WorkStep {
   const kind = stepKind(entry);
   const track = tracked.byCommand.get(entry.id);
+  const job = kind === "command" ? backgroundJobOf(entry, tracked, live) : null;
   const taskRuns = track !== undefined && live && track.task.toolLifecycleStatus === "inProgress";
-  const state = taskRuns ? "running" : stepState(entry, live);
+  const state = job?.state === "failed" ? "failed" : taskRuns ? "running" : stepState(entry, live);
   const running = state === "running";
   // The run is over and the call never returned: it has no end to time.
   const unreturned = !running && state !== "failed" && entry.toolLifecycleStatus === "inProgress";
   const ended =
-    running || unreturned
+    running || unreturned || job?.state === "running"
       ? null
       : new Date(Math.max(endOf(entry), track === undefined ? 0 : endOf(track.task))).toISOString();
   // The command as it was written, out of the shell the runtime ran it in.
@@ -544,11 +707,17 @@ export function stepOf(
   const script = unwrapped === null ? null : commandWhole(unwrapped);
   const look = kind === "look" ? lookedAt(entry) : null;
   const described = entry.callInput?.description ?? track?.description ?? null;
+  const ofJob =
+    kind === "read" && described === null ? jobOutputPhrase(entry, tracked, running) : null;
   return {
     key: entry.id,
     kind,
-    words: described ?? plainWords(entry, kind, running),
-    phrase: described === null ? plainPhrase(entry, kind, running) : null,
+    words:
+      described ??
+      (ofJob === null
+        ? plainWords(entry, kind, running)
+        : [ofJob.verb, ...ofJob.targets].join(" ")),
+    phrase: described !== null ? null : (ofJob ?? plainPhrase(entry, kind, running)),
     code,
     script,
     codeLines: script === null ? 0 : script.split("\n").length,
@@ -558,6 +727,7 @@ export function stepOf(
     entries: [entry],
     images: look === null ? [] : [look],
     ...(unreturned ? { noResult: "closed" as const } : {}),
+    ...(job === null ? {} : { background: job }),
   };
 }
 

@@ -27,6 +27,7 @@ import { EnvironmentCacheStore } from "../platform/persistence.ts";
 import { subscribeDynamic } from "../rpc/client.ts";
 import { ThreadSnapshotLoader, type ThreadSnapshotWindow } from "./threadSnapshotHttp.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
+import { mergeFirstPageSnapshot } from "./threadSnapshotMerge.ts";
 import { applyThreadDetailEvent } from "./threadReducer.ts";
 import { THREAD_SNAPSHOT_IDLE_TTL_MS } from "./threadRetention.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
@@ -444,16 +445,22 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
     snapshot: OrchestrationThreadDetailSnapshot,
     connecting: boolean,
   ) {
-    // A fresh snapshot replaces all loaded history, including older
-    // pages: a turn reverted while disconnected would otherwise survive
-    // in the preserved history with no event left to remove it. The
-    // epoch bump discards any older-page fetch racing this snapshot.
+    // A fresh snapshot replaces the loaded history, but the older turns the
+    // client already holds stay below its page unless it proves they
+    // changed (a revert while disconnected) — see mergeFirstPageSnapshot.
+    // The epoch bump discards any older-page fetch racing this snapshot.
     yield* Ref.update(historyEpoch, (epoch) => epoch + 1);
     // A parked response must not clear loadingOlder on a request started
     // from the replacement snapshot's cursor.
     yield* Ref.set(pendingOlderPage, null);
     yield* SubscriptionRef.set(lastSequence, snapshot.snapshotSequence);
-    yield* setThread(snapshot.thread, pageStateFromSnapshot(snapshot.page), connecting);
+    const current = yield* SubscriptionRef.get(state);
+    const merged = mergeFirstPageSnapshot({
+      held: current.status === "deleted" ? null : Option.getOrNull(current.data),
+      heldPage: Option.getOrNull(current.page),
+      snapshot,
+    });
+    yield* setThread(merged.thread, Option.fromNullishOr(merged.page), connecting);
   });
 
   const applyItemLocked = Effect.fn("EnvironmentThreadState.applyItemLocked")(function* (

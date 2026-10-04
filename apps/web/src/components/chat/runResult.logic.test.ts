@@ -10,6 +10,8 @@ import type {
 } from "./conversation.logic";
 import {
   resultPictures,
+  STRIP_TILES,
+  stripShowsFiles,
   rowPictures,
   resultRows,
   runEffortWords,
@@ -900,6 +902,30 @@ describe("resultPictures", () => {
   ])("$name", ({ outcome: model, labels }) => {
     expect(resultPictures(model).map((picture) => picture.label)).toEqual(labels);
   });
+
+  // Review of pass 39: an opened card left a step's picture to the strip,
+  // which shows six, and to a strip that drops one a later run took over.
+  it.each([
+    { name: "six files: all stand", files: 6, later: [] as string[], shown: 6 },
+    { name: "eight files: the first six stand", files: 8, later: [] as string[], shown: 6 },
+    {
+      name: "one a later run took over: not this strip's",
+      files: 2,
+      later: ["/s/0.png"],
+      shown: 1,
+    },
+  ])(
+    "says which of its files surely stand in its strip: $name",
+    ({ files, later: taken, shown }) => {
+      const model = outcome({
+        pictures: Array.from({ length: files }, (_, index) => filePicture(`/s/${index}.png`)),
+        later: later({ files: taken }),
+      });
+      const standing = stripShowsFiles(model);
+      expect(standing.size).toBe(shown);
+      expect(standing.has(`/s/${files - 1}.png`)).toBe(files <= STRIP_TILES);
+    },
+  );
 });
 
 describe("a service's row reads as one line", () => {

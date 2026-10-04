@@ -92,6 +92,9 @@ function CheckpointRootDiff(
   const sectionRef = useRef<HTMLElement>(null);
   // Held as state: the viewer mounts once the diff worker pool is ready.
   const [viewer, setViewer] = useState<AnnotatableCodeViewHandle | null>(null);
+  // A side that was not captured leaves nothing to compare: the server answers
+  // with the capture's own reason, already said once above the diff.
+  const notRecorded = checkpointRootNotice(entry);
   const query = useCheckpointDiff(
     {
       environmentId: props.environmentId,
@@ -103,7 +106,7 @@ function CheckpointRootDiff(
       cacheScope: props.history.runId,
       runId: props.history.runId,
     },
-    { enabled: expanded },
+    { enabled: expanded && notRecorded === null },
   );
   const responseError = checkpointRootResponseError(query.data, entry.root.rootId);
   const detail = responseError ? null : query.data;
@@ -161,7 +164,7 @@ function CheckpointRootDiff(
             </span>
           )}
         </button>
-        {expanded && (
+        {expanded && notRecorded === null && (
           <Button
             size="xs"
             variant="outline"
@@ -173,10 +176,10 @@ function CheckpointRootDiff(
           </Button>
         )}
       </div>
-      {checkpointRootNotice(entry) ? (
-        <p className="px-3 py-2 text-xs text-muted-foreground">{checkpointRootNotice(entry)}</p>
-      ) : null}
-      {expanded && (
+      {notRecorded === null ? null : (
+        <p className="px-3 py-2 text-xs text-muted-foreground">{notRecorded}</p>
+      )}
+      {expanded && notRecorded === null && (
         <>
           {state.message && (
             <p

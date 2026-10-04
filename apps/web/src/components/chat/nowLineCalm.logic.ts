@@ -7,8 +7,12 @@
  * end: the worked line never waits on the step before it.
  */
 
-/** How long a line, once shown, stands before another may take its place. */
-export const NOW_LINE_DWELL_MS = 1000;
+/**
+ * How long a line, once shown, stands before another may take its place: long
+ * enough to read a short sentence (run 9: at 1 s the line's median state stood
+ * exactly its dwell, and read as flicker).
+ */
+export const NOW_LINE_DWELL_MS = 1200;
 
 /** What the line shows, since when, and the latest line waiting its turn. */
 export interface CalmLine<T> {

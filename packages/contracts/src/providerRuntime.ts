@@ -562,6 +562,8 @@ export type TaskAgentLinkage = typeof TaskAgentLinkage.Type;
 const TaskStartedPayload = Schema.Struct({
   taskId: RuntimeTaskId,
   description: Schema.optional(TrimmedNonEmptyStringSchema),
+  /** A helper's task in the words it was given, where the driver says them. */
+  prompt: Schema.optional(TrimmedNonEmptyStringSchema),
   ...taskAgentLinkageFields,
 });
 export type TaskStartedPayload = typeof TaskStartedPayload.Type;

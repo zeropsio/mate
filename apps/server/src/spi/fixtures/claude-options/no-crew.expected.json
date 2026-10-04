@@ -2,6 +2,7 @@
   {
     "scenario": "full-access, no cwd, no model",
     "queryOptions": {
+      "stderr": "[function]",
       "pathToClaudeCodeExecutable": "claude",
       "systemPrompt": {
         "type": "preset",
@@ -44,6 +45,7 @@
     "scenario": "approval-required, cwd, model with effort and fast mode, resumed",
     "queryOptions": {
       "cwd": "/srv/app",
+      "stderr": "[function]",
       "model": "claude-synthetic-capable",
       "pathToClaudeCodeExecutable": "claude",
       "systemPrompt": {
@@ -90,6 +92,7 @@
     "scenario": "auto-accept-edits, launch-arg permission mode, auto-compact window, thinking",
     "queryOptions": {
       "cwd": "/srv/app",
+      "stderr": "[function]",
       "model": "claude-synthetic-thinking",
       "pathToClaudeCodeExecutable": "claude",
       "systemPrompt": {

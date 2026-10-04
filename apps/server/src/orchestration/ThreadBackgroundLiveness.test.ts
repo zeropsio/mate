@@ -227,3 +227,44 @@ describe("ThreadBackgroundLiveness", () => {
     expect(a.getThreadBackgroundLiveness("t")).toBeNull();
   });
 });
+
+// Pass 39: the client judges each background job by whether the server still
+// holds it live — a session's end or a restart leaves a job unreported for good.
+describe("ThreadBackgroundLiveness live task ids", () => {
+  it.each([
+    {
+      name: "a running shell and an agent",
+      ended: [] as string[],
+      cleared: false,
+      ids: ["a1", "b1"],
+    },
+    { name: "one completed", ended: ["b1"], cleared: false, ids: ["a1"] },
+    { name: "the session gone", ended: [] as string[], cleared: true, ids: [] as string[] },
+  ])("names the tasks it holds live: $name", ({ ended, cleared, ids }) => {
+    const liveness = ThreadBackgroundLiveness.make();
+    for (const [taskId, taskType] of [
+      ["b1", "local_bash"],
+      ["a1", "local_agent"],
+    ] as const) {
+      liveness.recordTaskLiveness({
+        threadId: "thread",
+        taskId,
+        taskType,
+        status: undefined,
+        kind: "started",
+      });
+    }
+    for (const taskId of ended) {
+      liveness.recordTaskLiveness({
+        threadId: "thread",
+        taskId,
+        taskType: "local_bash",
+        status: "completed",
+        kind: "completed",
+      });
+    }
+    if (cleared) liveness.clearThreadLiveness("thread");
+    expect(liveness.getThreadLiveTaskIds("thread")).toEqual(ids);
+    expect(liveness.getThreadLiveTaskIds("other")).toEqual([]);
+  });
+});

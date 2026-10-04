@@ -124,7 +124,7 @@ export function ServiceBrowserPanel({
             blank page to find out. */}
         <Button
           variant="ghost"
-          size="compact"
+          size="xs"
           className="shrink-0 text-muted-foreground"
           render={<a href={url} target="_blank" rel="noreferrer" />}
         >
@@ -140,8 +140,8 @@ export function ServiceBrowserPanel({
             Browsers block most cookies here, so sign-ins and carts need a new tab.
           </p>
           <Button
-            variant="ghost"
-            size="compact"
+            variant="ghost-muted"
+            size="xs"
             className="shrink-0"
             onClick={() => setCookieNoteRead(true)}
           >
@@ -161,31 +161,57 @@ export function ServiceBrowserPanel({
   );
 }
 
+const NO_ADDRESSES: ReadonlyArray<{ readonly url: string }> = [];
+
+const hostnameOf = (href: string): string | null => {
+  try {
+    return new URL(href).hostname;
+  } catch {
+    return null;
+  }
+};
+
 /** Keep each page mounted while switching tabs, preserving forms and in-page navigation. */
 export function ServiceBrowserPanels({
   surfaces,
   activeSurfaceId,
   services,
+  addresses = NO_ADDRESSES,
+  addressesKnown = true,
 }: {
   surfaces: RightPanelSurface[];
   activeSurfaceId: string | null;
   services: readonly ZeropsTopologyService[] | undefined;
+  /** The Mate's addresses outside its own project — its group's stage and production. */
+  addresses?: ReadonlyArray<{ readonly url: string }>;
+  /** Whether the account has read every project those addresses come from. */
+  addressesKnown?: boolean;
 }) {
   return surfaces.map((surface) => {
     if (surface.kind !== "browser" || !("url" in surface)) return null;
     const owner = serviceForPreview(surface.url, services);
+    const host = hostnameOf(surface.url);
+    const known =
+      owner !== null ||
+      (host !== null && addresses.some((address) => hostnameOf(address.url) === host));
+    // A restored tab waits for what decides it rather than refusing and then loading.
+    const deciding = !known && (services === undefined || !addressesKnown);
     return (
       <div
         key={`${surface.id}:${surface.url}`}
         className={surface.id === activeSurfaceId ? "h-full min-h-0" : "hidden"}
       >
-        {owner ? (
+        {deciding ? null : known ? (
           <ServiceBrowserPanel
             service={surface.service}
             url={surface.url}
-            deployedVersion={deployedVersionKey(
-              services?.find((service) => service.hostname === owner)?.deploy,
-            )}
+            deployedVersion={
+              owner === null
+                ? undefined
+                : deployedVersionKey(
+                    services?.find((service) => service.hostname === owner)?.deploy,
+                  )
+            }
           />
         ) : (
           <p className="p-4 text-sm text-muted-foreground">

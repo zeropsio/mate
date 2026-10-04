@@ -4067,6 +4067,7 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
           status: null,
           face: "working",
           subject: "Add a /status page",
+          // An hour ago, never a fixed day: past seven days the Mate folds under "quiet".
           at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
           snippet: "The page reads the build number.",
           unread: false,

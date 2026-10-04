@@ -49,7 +49,12 @@ import { resolveThreadRouteRef } from "../threadRoutes";
 import { useClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
-import { resolveCheckpointDiffAvailability } from "./DiffPanel.logic";
+import { recallCheckoutIsRepo } from "./ChatView.logic";
+import {
+  diffScope,
+  resolveCheckpointDiffAvailability,
+  resolveDiffSelection,
+} from "./DiffPanel.logic";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
@@ -155,7 +160,13 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
   );
-  const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
+  // The conversation already asked this checkout; its answer paints the first frame.
+  const isGitRepo =
+    gitStatusQuery.data?.isRepo ??
+    (activeThread && activeCwd
+      ? recallCheckoutIsRepo(activeThread.environmentId, activeCwd)
+      : undefined) ??
+    true;
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
   const orderedTurnDiffSummaries = useMemo(
@@ -181,12 +192,18 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     );
   }, [diffSelection, orderedTurnDiffSummaries, routeThreadRef]);
 
-  const selectedTurnId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
-  const selectedGitScope = diffSelection.kind === "unstaged" ? "unstaged" : "branch";
-  const selectedBaseRef = diffSelection.kind === "branch" ? diffSelection.baseRef : null;
-  const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
+  // A workspace of checkouts (a Mate's) has turns to show, never a working tree or a branch.
+  const shownSelection = resolveDiffSelection({
+    selection: diffSelection,
+    isGitRepo,
+    latestTurnId: orderedTurnDiffSummaries[0]?.turnId,
+  });
+  const selectedTurnId = shownSelection.kind === "turn" ? shownSelection.turnId : null;
+  const selectedGitScope = shownSelection.kind === "unstaged" ? "unstaged" : "branch";
+  const selectedBaseRef = shownSelection.kind === "branch" ? shownSelection.baseRef : null;
+  const selectedFilePath = shownSelection.kind === "turn" ? shownSelection.filePath : null;
   const selectedFileRevealRequestId =
-    diffSelection.kind === "turn" ? diffSelection.revealRequestId : 0;
+    shownSelection.kind === "turn" ? shownSelection.revealRequestId : 0;
   const selectedTurn =
     selectedTurnId === null
       ? undefined
@@ -196,14 +213,22 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     selectedTurn &&
     (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[selectedTurn.turnId]);
   const latestTurn = orderedTurnDiffSummaries[0];
+  // A stored turn that is gone shows the latest one, and is named so.
+  const scope = diffScope({
+    shown:
+      shownSelection.kind === "turn" && selectedTurn
+        ? { ...shownSelection, turnId: selectedTurn.turnId }
+        : shownSelection,
+    latestTurnId: latestTurn?.turnId,
+  });
   const selectedScopeLabel =
-    selectedTurnId === null
-      ? selectedGitScope === "unstaged"
-        ? "Working tree"
-        : "Branch changes"
-      : selectedTurn?.turnId === latestTurn?.turnId
-        ? "Latest turn"
-        : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
+    scope === "unstaged"
+      ? "Working tree"
+      : scope === "branch"
+        ? "Branch changes"
+        : scope === "latest"
+          ? "Latest turn"
+          : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
   const reviewSectionId = selectedTurn ? `turn:${selectedTurn.turnId}` : selectedGitScope;
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
@@ -247,7 +272,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     { enabled: checkpointDiffAvailability.enabled && !selectedTurn?.history },
   );
   const primaryBranchDiffPreview = useEnvironmentQuery(
-    selectedTurnId === null && activeThread && activeCwd
+    isGitRepo && selectedTurnId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
           input: {
@@ -522,12 +547,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   // turn as "latest", while the turn sub-menu keys every turn by id so the
   // latest turn is also marked there.
   const selectedTurnValue = selectedTurn ? `turn:${selectedTurn.turnId}` : "";
-  const selectedScopeValue =
-    selectedTurnId === null
-      ? selectedGitScope
-      : selectedTurn?.turnId === latestTurn?.turnId
-        ? "latest"
-        : selectedTurnValue;
+  const selectedScopeValue = scope === "turn" ? selectedTurnValue : scope;
   const selectScopeValue = (value: string) => {
     if (value === "unstaged" || value === "branch") {
       selectGitScope(value);
@@ -553,12 +573,16 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuRadioGroup value={selectedScopeValue} onValueChange={selectScopeValue}>
-              <DropdownMenuRadioItem value="unstaged" closeOnClick>
-                <span>Working tree</span>
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="branch" closeOnClick>
-                <span>Branch changes</span>
-              </DropdownMenuRadioItem>
+              {isGitRepo ? (
+                <>
+                  <DropdownMenuRadioItem value="unstaged" closeOnClick>
+                    <span>Working tree</span>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="branch" closeOnClick>
+                    <span>Branch changes</span>
+                  </DropdownMenuRadioItem>
+                </>
+              ) : null}
               <DropdownMenuRadioItem value="latest" closeOnClick>
                 <span>Latest turn</span>
               </DropdownMenuRadioItem>
@@ -836,9 +860,14 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   return (
     <DiffPanelShell mode={mode} header={headerRow}>
       {!activeThread ? (
-        <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          Select a thread to inspect turn diffs.
-        </div>
+        // A conversation on its way in loads; only no conversation at all asks for one.
+        routeThreadRef ? (
+          <DiffPanelLoadingState label="Loading conversation..." />
+        ) : (
+          <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+            Select a thread to inspect turn diffs.
+          </div>
+        )
       ) : selectedTurn?.history && activeThread && selectedCheckpointRange ? (
         <CheckpointHistoryDiff
           history={selectedTurn.history}
@@ -854,6 +883,11 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           selectedFilePath={selectedFilePath}
           revealRequestId={selectedFileRevealRequestId}
         />
+      ) : shownSelection.kind === "no-turns" ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-1 px-6 text-center text-xs text-muted-foreground">
+          <p className="text-foreground">No changes yet</p>
+          <p>Each turn's changes to the code show here once the agent makes some.</p>
+        </div>
       ) : checkpointDiffAvailability.showNotRepository ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Working tree and branch changes are unavailable because this workspace is not one Git

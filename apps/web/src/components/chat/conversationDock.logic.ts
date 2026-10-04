@@ -18,7 +18,9 @@ const WATCH_TASK_TYPES: ReadonlySet<string> = new Set(["monitor", "monitor_mcp"]
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
-import { readUsageLimitNotice, splitBatchDeploy } from "./conversation.logic";
+import { readUsageLimitNotice, splitBatchDeploy, timelineEntryTurnId } from "./conversation.logic";
+import { jobLost, type LiveJobs } from "./liveJobs.logic";
+import { helperNowWords, helperSpan } from "./helpers.logic";
 
 /** Operations that run long enough to watch: a pipeline, a multi-step setup, a stand-up's builds. */
 export const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
@@ -44,7 +46,8 @@ export interface DockBackgroundTask {
   readonly id: string;
   /** What it was asked to do, in the words it was given. */
   readonly title: string;
-  readonly state: "running" | "done" | "failed" | "stopped";
+  /** "lost": it never reported and the server holds it no longer (`jobLost`). */
+  readonly state: "running" | "done" | "failed" | "stopped" | "lost";
   /** It watches something (a log, a pull request) rather than running once. */
   readonly watch: boolean;
   readonly turnId: string | null;
@@ -294,6 +297,29 @@ export function foldBackgroundTasks(
     }));
 }
 
+/**
+ * The background bar while something in it runs: what runs, and what the
+ * running turn sent to the background or saw end — so a task that finishes
+ * fills its segment and the count of what finished only rises (run 9: a bar
+ * of running tasks only read full beside "0/3", and fell from 5 to 4). An
+ * earlier turn's task that ended before this one began is its own card's.
+ * Nothing runs: no bar.
+ */
+function backgroundRunning(
+  tasks: ReadonlyArray<DockBackgroundTask>,
+  turn: { readonly id: string | null; readonly startedMs: number },
+): DockModel["background"] {
+  if (!tasks.some((task) => task.state === "running")) return null;
+  return backgroundGroup(
+    tasks.filter(
+      (task) =>
+        task.state === "running" ||
+        (turn.id !== null && task.turnId === turn.id) ||
+        (task.endedAt !== null && Date.parse(task.endedAt) >= turn.startedMs),
+    ),
+  );
+}
+
 function backgroundGroup(tasks: ReadonlyArray<DockBackgroundTask>): DockModel["background"] {
   return tasks.length === 0
     ? null
@@ -325,6 +351,15 @@ function helperTitle(agent: RuntimeSubagent): string {
   return agent.role ? `A ${agent.role.replace(/[-_]/g, " ")} helper` : "A helper";
 }
 
+function spanStart(agent: RuntimeSubagent): string {
+  const { since, ranMs } = helperSpan(agent);
+  if (since !== null) return since;
+  if (agent.completedAt !== null && ranMs !== null) {
+    return new Date(Date.parse(agent.completedAt) - ranMs).toISOString();
+  }
+  return agent.startedAt ?? agent.firstSeenAt;
+}
+
 /**
  * The helpers of the turn running now, flattened: the direct ones and each
  * workflow's members — those it started, and any from before still working.
@@ -348,8 +383,11 @@ export function dockHelpers(
       id: agent.id,
       title: helperTitle(agent),
       tone: state.tone,
-      word: state.word,
-      startedAt: agent.startedAt ?? agent.firstSeenAt,
+      // Working, it says what it does now (`helperNowWords`); waiting on the
+      // person or settled, its state.
+      word: (agent.status === "waiting" ? null : helperNowWords(agent)) ?? state.word,
+      // Its clock by its driver's own count where it keeps one (`helperSpan`).
+      startedAt: spanStart(agent),
       endedAt: agent.completedAt,
     };
   });
@@ -367,6 +405,8 @@ export function deriveDock(input: {
   readonly backgroundTasks?: ReadonlyArray<DockBackgroundTask>;
   /** The server's word on work that outlived the turn. */
   readonly backgroundLiveness?: "working" | "monitoring" | null;
+  /** The jobs the server holds live (`liveJobs.logic`): a running one it does not is lost. */
+  readonly liveJobs?: LiveJobs | null;
   /** The thread is held by a usage limit: when it resets, if known. */
   readonly pause: { readonly resetsAt: string | null } | null;
   /**
@@ -375,7 +415,17 @@ export function deriveDock(input: {
    */
   readonly standupsDone?: ReadonlySet<string>;
 }): DockModel | null {
-  const backgroundTasks = input.backgroundTasks ?? [];
+  // A task that never reported and that the server holds no longer is lost:
+  // never running in the band (the run card's line says so too).
+  const backgroundTasks = (input.backgroundTasks ?? []).map((task) =>
+    task.state === "running" &&
+    jobLost(
+      { id: task.id, ofLiveTurn: input.isWorking && task.turnId === input.runningTurnId },
+      input.liveJobs ?? null,
+    )
+      ? { ...task, state: "lost" as const }
+      : task,
+  );
   // Work that outlived the turn: what still runs, and nothing else.
   const afterTurn = input.isWorking ? null : (input.backgroundLiveness ?? null);
   if (afterTurn !== null) {
@@ -386,6 +436,7 @@ export function deriveDock(input: {
       operations: [],
       helpers: rows.length === 0 ? null : { rows, working: rows.length, done: 0, failed: 0 },
       tasks: null,
+      // After the turn its card's line is the record of what ended: only what runs.
       background: backgroundGroup(backgroundTasks.filter((task) => task.state === "running")),
       afterTurn,
       pause: null,
@@ -450,16 +501,25 @@ export function deriveDock(input: {
         }
       : null;
 
-  // What runs in the background now, from this turn or before: one that
-  // failed is told once, as its row in the record.
+  // When the running turn began: the server's word, else its first entry.
+  const firstOfTurn = input.timelineEntries.find(
+    (entry) => input.runningTurnId !== null && timelineEntryTurnId(entry) === input.runningTurnId,
+  );
+  const turnStart =
+    input.turnStartedAt != null
+      ? Date.parse(input.turnStartedAt)
+      : firstOfTurn === undefined
+        ? Number.NaN
+        : Date.parse(firstOfTurn.createdAt);
+  // What runs in the background now, from this turn or before, with what
+  // this turn sent along that finished (`backgroundRunning`).
   const background = input.isWorking
-    ? backgroundGroup(backgroundTasks.filter((task) => task.state === "running"))
+    ? backgroundRunning(backgroundTasks, { id: input.runningTurnId, startedMs: turnStart })
     : null;
 
   const pause = input.isWorking ? null : input.pause;
   // What ended this turn: a bar the person watched shows its ending a moment.
   // A batch deploy ends a row per service, as the band drew it.
-  const turnStart = input.turnStartedAt == null ? Number.NaN : Date.parse(input.turnStartedAt);
   const endings =
     input.isWorking && input.runningTurnId !== null
       ? {

@@ -46,7 +46,10 @@ export function ZeropsGitPanel({
 }: ZeropsGitPanelProps) {
   return (
     <ScrollArea className={cn("min-h-0 flex-1", className)}>
-      <div className="flex flex-col gap-5 px-4 py-4" data-zerops-surface="git-panel">
+      <div
+        className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-4"
+        data-zerops-surface="git-panel"
+      >
         {/* No "Repositories" label over them: each block says its own name, and
             a heading for a list of one is a line that repeats the tab. */}
         {model.blocks.length === 0 ? (

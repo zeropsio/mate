@@ -205,6 +205,12 @@ export interface WorkLogEntry {
   callInput?: WorkCallInput;
   /** A task's: the tool call it tracks — Claude Code tracks a long command as a task. */
   taskToolUseId?: string;
+  /**
+   * A command's: the id of the job it sent to the background, as its own
+   * output says ("Command running in background with ID: …") — known before
+   * the task that tracks it reaches the log, which is only once it ends.
+   */
+  sentToBackground?: string;
   /** A task's kind, as the runtime names it ("local_bash", "local_agent", …). */
   taskType?: string;
   itemType?: ToolLifecycleItemType;
@@ -1110,6 +1116,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   } else if (!isTaskActivity) {
     const callInput = readCallInput(asRecord(data?.input));
     if (callInput !== undefined) entry.callInput = callInput;
+    const sent = BACKGROUND_NOTICE.exec(asTrimmedString(asRecord(data?.rawOutput)?.content) ?? "");
+    if (sent?.[1] !== undefined) entry.sentToBackground = sent[1];
   }
   if (itemType) {
     entry.itemType = itemType;
@@ -1321,6 +1329,9 @@ function shouldCollapseToolLifecycleEntries(
       normalizeCompactToolLabel(next.toolTitle ?? next.label)
   );
 }
+
+/** Claude Code's word that a command went to the background, and the job's id. */
+const BACKGROUND_NOTICE = /running in (?:the )?background with ID:\s*([\w-]+)/iu;
 
 function mergeDerivedWorkLogEntries(
   previous: DerivedWorkLogEntry,

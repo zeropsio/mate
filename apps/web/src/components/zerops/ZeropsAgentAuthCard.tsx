@@ -92,7 +92,7 @@ export function ZeropsAgentAuthCard({
   // available; the header alone stops demanding once nothing needs it.
   const needsAttention = zeropsAgentAuthNeedsAttention(snapshot);
   return (
-    <FlatCard className="overflow-hidden" data-zerops-agent-auth-card>
+    <FlatCard className="@container overflow-hidden" data-zerops-agent-auth-card>
       <header className="border-b border-border/60 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-foreground">
           {needsAttention ? "Authorize coding agents" : "Coding agents"}
@@ -271,7 +271,7 @@ function ZeropsAgentAuthRow({
 
   return (
     <div
-      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm @sm:flex-row @sm:items-center @sm:justify-between"
       data-agent-id={agent.agentId}
       data-agent-state={agent.state}
       data-agent-login-phase={login.kind}
@@ -293,7 +293,7 @@ function ZeropsAgentAuthRow({
           <RunsOnLine runsOn={runsOn} />
         </div>
       </div>
-      <div className="flex min-w-0 flex-col items-stretch gap-1.5 sm:items-end">
+      <div className="flex min-w-0 flex-col items-start gap-1.5 ps-11 @sm:items-end @sm:ps-0">
         {ownershipNotice === undefined ? null : (
           <p
             className={
@@ -447,7 +447,7 @@ function ZeropsLoginRow({
 
   return (
     <div
-      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm @sm:flex-row @sm:items-center @sm:justify-between"
       data-login-id={login.id}
       data-login-state={login.state}
       data-zerops-login-row
@@ -466,7 +466,7 @@ function ZeropsLoginRow({
           <RunsOnLine runsOn={login} />
         </div>
       </div>
-      <div className="flex min-w-0 flex-col items-stretch gap-1.5 sm:items-end">
+      <div className="flex min-w-0 flex-col items-start gap-1.5 ps-11 @sm:items-end @sm:ps-0">
         {someoneElses && signedIn ? (
           <p className="text-xs leading-4 text-muted-foreground">
             {signerName.trim().length === 0
@@ -474,7 +474,7 @@ function ZeropsLoginRow({
               : `Only ${signerName.trim()}'s crews can use it.`}
           </p>
         ) : null}
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center gap-2 @sm:justify-end">
           {walking && onSignIn !== undefined ? (
             <Button
               data-zerops-login-sign-in
@@ -566,7 +566,7 @@ function ZeropsLoginRow({
         )}
         {status?.error === undefined ? null : (
           <p
-            className="w-full text-right text-xs leading-4 text-destructive"
+            className="w-full text-xs leading-4 text-destructive @sm:text-right"
             data-zerops-login-error
           >
             {status.error}
@@ -602,7 +602,8 @@ function AddLoginControl({
 
   if (!open) {
     return (
-      <div className="px-4 py-2">
+      // The ghost button's own padding carries its words onto the rows' logo edge.
+      <div className="py-2 pr-4 pl-2.5">
         <Button
           data-zerops-add-login={agentId}
           onClick={() => {
@@ -613,7 +614,9 @@ function AddLoginControl({
         >
           + Add another login
         </Button>
-        {error === undefined ? null : <p className="text-xs leading-4 text-destructive">{error}</p>}
+        {error === undefined ? null : (
+          <p className="ps-1.5 text-xs leading-4 text-destructive">{error}</p>
+        )}
       </div>
     );
   }
@@ -805,7 +808,7 @@ function ZeropsAgentAuthActionSlot({
     case "awaiting-code":
     case "verifying-code":
       return (
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        <div className="flex flex-wrap items-center gap-2 @sm:justify-end">
           <Button
             data-zerops-agent-primary-action
             onClick={() => {
@@ -919,7 +922,7 @@ function ZeropsAgentAuthActionButton({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center gap-2 @sm:justify-end">
       <Button
         {...(ownership === "mine"
           ? { "data-zerops-agent-switch-account": true }
@@ -947,7 +950,7 @@ function ZeropsAgentAuthActionButton({
       ) : null}
       {signOutError === undefined ? null : (
         <p
-          className="w-full text-right text-xs leading-4 text-destructive"
+          className="w-full text-xs leading-4 text-destructive @sm:text-right"
           data-zerops-agent-sign-out-error
         >
           {signOutError}

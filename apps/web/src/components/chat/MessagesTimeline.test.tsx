@@ -35,16 +35,6 @@ vi.mock("@legendapp/list/react", async () => {
     };
     contentInsetEndAdjustment?: number;
     className?: string;
-    maintainScrollAtEnd?:
-      | boolean
-      | {
-          animated?: boolean;
-          on?: {
-            dataChange?: boolean;
-            itemLayout?: boolean;
-            layout?: boolean;
-          };
-        };
     maintainVisibleContentPosition?:
       | boolean
       | {
@@ -66,27 +56,6 @@ vi.mock("@legendapp/list/react", async () => {
         data-anchor-on-ready={Boolean(props.anchoredEndSpace?.onReady)}
         data-content-inset-end={props.contentInsetEndAdjustment}
         data-class-name={props.className}
-        data-maintain-scroll-at-end={props.maintainScrollAtEnd ? "enabled" : undefined}
-        data-maintain-scroll-at-end-animated={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.animated
-            : undefined
-        }
-        data-maintain-scroll-at-end-data-change={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.on?.dataChange
-            : undefined
-        }
-        data-maintain-scroll-at-end-item-layout={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.on?.itemLayout
-            : undefined
-        }
-        data-maintain-scroll-at-end-layout={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.on?.layout
-            : undefined
-        }
         data-maintain-visible-content-position={
           typeof props.maintainVisibleContentPosition === "object"
             ? "object"
@@ -507,7 +476,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("data-anchor-max-size=");
     expect(markup).toContain('data-content-inset-end="144"');
     expect(markup).toContain("[overflow-anchor:none]");
-    expect(markup).not.toContain('data-maintain-scroll-at-end="enabled"');
+    expect(markup).not.toContain('data-timeline-follows-end=""');
     expect(markup).toContain('data-maintain-visible-content-position="object"');
     expect(markup).toContain('data-maintain-visible-content-position-data="true"');
     expect(markup).toContain('data-maintain-visible-content-position-size="true"');
@@ -539,7 +508,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).not.toContain("data-anchor-index=");
-    expect(markup).toContain('data-maintain-scroll-at-end="enabled"');
+    expect(markup).toContain('data-timeline-follows-end=""');
     expect(onAnchorReady).not.toHaveBeenCalled();
   });
 
@@ -583,7 +552,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain('data-anchor-index="1"');
-    expect(markup).not.toContain('data-maintain-scroll-at-end="enabled"');
+    expect(markup).not.toContain('data-timeline-follows-end=""');
   });
 
   it("hands end-following back to the list once the send anchor is released", () => {
@@ -599,7 +568,7 @@ describe("MessagesTimeline", () => {
     const timelineEntries = [firstEntry, secondEntry];
 
     // While the send anchor holds the end space open, ChatView owns streaming
-    // scrolls and LegendList must not re-pin behind it.
+    // scrolls and the timeline must not re-pin behind it.
     expect(
       renderToStaticMarkup(
         <MessagesTimeline
@@ -608,7 +577,7 @@ describe("MessagesTimeline", () => {
           timelineEntries={timelineEntries}
         />,
       ),
-    ).not.toContain('data-maintain-scroll-at-end="enabled"');
+    ).not.toContain('data-timeline-follows-end=""');
 
     // Dropping the anchor is what actually gives end-following back, so
     // returning to the live edge has to release it — re-enabling live follow
@@ -621,7 +590,7 @@ describe("MessagesTimeline", () => {
           timelineEntries={timelineEntries}
         />,
       ),
-    ).toContain('data-maintain-scroll-at-end="enabled"');
+    ).toContain('data-timeline-follows-end=""');
 
     // Reading history still wins over both.
     expect(
@@ -633,7 +602,7 @@ describe("MessagesTimeline", () => {
           timelineEntries={timelineEntries}
         />,
       ),
-    ).not.toContain('data-maintain-scroll-at-end="enabled"');
+    ).not.toContain('data-timeline-follows-end=""');
   });
 
   it("follows a row easing taller on the next frame, and only while following", async () => {
@@ -697,6 +666,80 @@ describe("MessagesTimeline", () => {
       easeTaller();
       runFrames();
       expect(viewport.scrollTop).toBe(1180);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // The review, 2026-10-04: one step taller than the list and the composer —
+  // a long answer landing on a phone — turned the list's own reading of its
+  // end stale after the glide's first frame, and the end was lost for good.
+  it("follows a step taller than the list to its end, the list's own reading gone stale", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    let now = 0;
+    const runFrames = () => {
+      for (let guard = 0; frames.length > 0 && guard < 300; guard += 1) {
+        now += 1000 / 60;
+        for (const frame of frames.splice(0)) frame(now);
+      }
+    };
+    const { LegendList } = await import("@legendapp/list/react");
+    // A phone's list, 700 tall, at its end. LegendList recomputes whether it
+    // is within a viewport of its end only as a scroll lands: once the glide
+    // moves it with the end a viewport and more away, it reads false.
+    let top = 1300;
+    let within = true;
+    const viewport = {
+      scrollHeight: 2000,
+      clientHeight: 700,
+      get scrollTop() {
+        return top;
+      },
+      set scrollTop(next: number) {
+        top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        within = this.scrollHeight - this.clientHeight - top <= this.clientHeight;
+      },
+    };
+    const listRef = {
+      current: {
+        getState: () => ({ isWithinMaintainScrollAtEndThreshold: within }),
+        getScrollableNode: () => viewport,
+      } as unknown as LegendListRef,
+    };
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <MessagesTimeline
+            {...buildProps()}
+            listRef={listRef}
+            liveFollowEnabled
+            routeThreadKey="environment-local:thread-tall-step"
+            timelineEntries={[buildUserTimelineEntry("Write it all out.")]}
+          />,
+        );
+      });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      runFrames();
+      expect(top).toBe(1300);
+      // The answer lands whole: 1000 px more.
+      viewport.scrollHeight += 1000;
+      await act(async () => {
+        renderer!.root.findByType(LegendList).props.onItemSizeChanged({
+          index: 0,
+          itemKey: "message-1",
+          itemData: undefined,
+          previous: 300,
+          size: 1300,
+        });
+      });
+      runFrames();
+      expect(top).toBe(2300);
     } finally {
       await act(() => renderer?.unmount());
     }
@@ -815,11 +858,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("Show full message");
-    expect(markup).toContain('data-maintain-scroll-at-end="enabled"');
-    expect(markup).toContain('data-maintain-scroll-at-end-animated="false"');
-    expect(markup).toContain('data-maintain-scroll-at-end-data-change="true"');
-    expect(markup).toContain('data-maintain-scroll-at-end-item-layout="true"');
-    expect(markup).toContain('data-maintain-scroll-at-end-layout="true"');
+    expect(markup).toContain('data-timeline-follows-end=""');
     expect(markup).toContain('data-user-message-collapsed="true"');
     expect(markup).toContain('data-user-message-fade="true"');
     expect(markup).toContain('data-user-message-footer="true"');
@@ -1665,13 +1704,11 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    // The task in its own words, and where it ran; what it reported opens
-    // under it.
+    // The task in its own words, where it ran, and what it reported in a
+    // few words, on the line itself: nothing left to open.
     expect(markup).toContain("Run the smoke tests finished");
-    expect(markup).toContain("in the background");
-    expect(markup).toContain(
-      'aria-label="Run the smoke tests finished, in the background. Show what it reported"',
-    );
+    expect(markup).toContain("in the background · 4 passed");
+    expect(markup).not.toContain("Show what it reported");
     expect(markup).not.toContain("1 background task ");
   });
 
@@ -1711,9 +1748,7 @@ describe("MessagesTimeline — the conversation", () => {
     const line = markup.indexOf("Review the endpoint finished");
     expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
     expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
-    expect(markup).toContain(
-      'aria-label="Review the endpoint finished, helper. Show what it reported"',
-    );
+    expect(markup).toContain("helper · No issues found.");
   });
 
   it.each([
@@ -2100,10 +2135,15 @@ describe("MessagesTimeline — placing its rows", () => {
         getScrollableNode: () => reading,
       } as unknown as LegendListRef,
     };
-    const onManualNavigation = vi.fn();
+    // As ChatView does: the person's place being put back turns follow off.
+    let follows = true;
+    const onManualNavigation = vi.fn(() => {
+      follows = false;
+    });
     const streamed = (words: number) => (
       <MessagesTimeline
         {...buildProps()}
+        liveFollowEnabled={follows}
         listRef={readingList}
         onManualNavigation={onManualNavigation}
         routeThreadKey={threadKey}

@@ -60,10 +60,13 @@ import {
 import {
   foldSteps,
   stepOf,
+  backgroundJobOf,
   trackCommands,
+  type BackgroundJob,
   type TrackedCommands,
   type WorkStep,
 } from "./workSteps.logic";
+import type { LiveJobs } from "./liveJobs.logic";
 
 export type TimelineLatestTurn = Pick<
   OrchestrationLatestTurn,
@@ -592,6 +595,11 @@ type MessagesTimelineRowBody =
       helpers: boolean;
       /** The latest task's, in the words it was given. */
       title: string | null;
+      /**
+       * The commands a settled turn sent to the background, on its own card
+       * (`jobs:` rows): each job as it stands now, running or reported.
+       */
+      jobs?: ReadonlyArray<BackgroundJob>;
     }
   | {
       /** Something stopped the Mate: an error it could not work past. */
@@ -1750,6 +1758,13 @@ function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
 }
 
 /**
+ * How long after a run nobody wrote to start the word that woke it may land:
+ * a helper's finish reaches the thread a moment after the run it woke began
+ * (Bodhi woke into "thought 5s" cards with nothing above them).
+ */
+const WOKE_LAG_MS = 10_000;
+
+/**
  * A run of background work, by task: a watch that reported three times and
  * then finished is one task, and it failed if its last word was a failure.
  */
@@ -1807,6 +1822,8 @@ export function deriveMessagesTimelineRows(input: {
   newSince?: string | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /** The background jobs the server holds live (`liveJobs.logic`): one it does not never reports. */
+  liveJobs?: LiveJobs | null;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
   nowMs?: number;
   /** When each helper finished, as the helpers panel knows it (`helperFinishesOf`). */
@@ -1831,11 +1848,14 @@ export function deriveMessagesTimelineRows(input: {
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
   // Which tasks are the commands they track: a command's words, and no row of their own.
-  const tracked = trackCommands(
-    entries.flatMap((entry) =>
-      entry.kind === "work" || entry.kind === "generic-call" ? [entry.entry] : [],
+  const tracked = {
+    ...trackCommands(
+      entries.flatMap((entry) =>
+        entry.kind === "work" || entry.kind === "generic-call" ? [entry.entry] : [],
+      ),
     ),
-  );
+    liveJobs: input.liveJobs ?? null,
+  };
 
   const diffByTurnId = new Map<TurnId, TurnDiffSummary>();
   const diffByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
@@ -2010,7 +2030,9 @@ export function deriveMessagesTimelineRows(input: {
         isTaskActivityKind(candidate.entry.sourceActivityKind)) &&
       candidate.entry.questionAnswer === undefined &&
       candidate.entry.sourceActivityKind !== "context-compaction" &&
-      candidate.entry.crewSeam === undefined
+      candidate.entry.crewSeam === undefined &&
+      // A command's own task is told on its command's card (`jobs:`), never loose.
+      !tracked.trackers.has(candidate.entry.id)
     );
   };
   /** When a background task or a helper finished: a helper's row takes each report as it comes. */
@@ -2036,15 +2058,42 @@ export function deriveMessagesTimelineRows(input: {
         : [],
     ),
   );
+  // One that finished while a run worked was that run's to take in, never
+  // what woke a later one (run 9: a helper done mid-run woke a run twenty
+  // minutes on, as a line of its own).
+  const working = structure.turns.map((turn) => {
+    const end = turn.stretches.at(-1)?.endedAt ?? null;
+    return [
+      Date.parse(turn.stretches[0]?.startedAt ?? ""),
+      end === null ? Number.POSITIVE_INFINITY : Date.parse(end),
+    ] as const;
+  });
+  const takenIn = (finishedMs: number) =>
+    working.some(([from, to]) => finishedMs >= from && finishedMs <= to);
   const helperQueue = (input.helperFinishes ?? [])
     .filter((finish) => gathered.has(finish.id) && !reported.has(finish.id))
     .toSorted((left, right) => Date.parse(left.finishedAt) - Date.parse(right.finishedAt));
-  /** The next gathered helper that finished before a run nothing else woke began, taken. */
-  const helperWoke = (startedAt: string): HelperFinish | null => {
-    const next = helperQueue[0];
-    if (next === undefined || Date.parse(next.finishedAt) > Date.parse(startedAt)) return null;
-    helperQueue.shift();
-    return next;
+  /**
+   * The gathered helper that woke a run nothing else woke, taken: the first
+   * that finished between runs, before it began — else, `lagging`, the
+   * first whose word landed in its first moments (`WOKE_LAG_MS`). Only the
+   * one taken is spared from having been taken in by the run it landed in.
+   */
+  const helperWoke = (startedAt: string, lagging: boolean): HelperFinish | null => {
+    const startMs = Date.parse(startedAt);
+    const at = helperQueue.findIndex((finish) => {
+      const ms = Date.parse(finish.finishedAt);
+      return lagging ? ms > startMs && ms <= startMs + WOKE_LAG_MS : ms <= startMs && !takenIn(ms);
+    });
+    if (at < 0) return null;
+    return helperQueue.splice(at, 1)[0] ?? null;
+  };
+  /** When the run before `turn` ended: what finished since is what may have woken it. */
+  const previousEndMs = (turn: ConversationTurn): number => {
+    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
+    return previous === undefined
+      ? -Infinity
+      : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
   };
   /**
    * What woke a run nobody wrote to start: the helpers and background tasks
@@ -2055,17 +2104,18 @@ export function deriveMessagesTimelineRows(input: {
    * panel's to say (`helperWoke`). Work no turn owns says itself in its own
    * line, and is never said again here.
    */
-  const wokeBy = (turn: ConversationTurn): WorkLogEntry[] => {
-    const untilMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
-    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
-    const fromMs =
-      previous === undefined ? -Infinity : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
+  const wokeBy = (turn: ConversationTurn, lagging: boolean): WorkLogEntry[] => {
+    const startMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
+    const fromMs = lagging ? startMs : previousEndMs(turn);
+    const untilMs = lagging ? startMs + WOKE_LAG_MS : startMs;
     if (!Number.isFinite(untilMs) || Number.isNaN(fromMs)) return [];
     return entries
       .flatMap((entry, index) =>
         entry.kind === "work" &&
         entry.entry.sourceActivityKind === "task.completed" &&
         !structure.looseIndexes.has(index) &&
+        // A command's own task is told on its command's card.
+        !tracked.trackers.has(entry.entry.id) &&
         (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1 &&
         finishedAt(entry.entry) > fromMs &&
         finishedAt(entry.entry) <= untilMs
@@ -2125,6 +2175,20 @@ export function deriveMessagesTimelineRows(input: {
     // where each reached the Mate (the owner, 2026-09-28, of the card
     // breaking around them: "these split working groups have no chance to
     // stay like this when the work is done").
+    // What woke a run nobody wrote to start: what finished before it began,
+    // tasks first, then a helper; only with none, what landed in its first
+    // moments (`WOKE_LAG_MS`) — a word that reached the thread late.
+    let woke: WorkLogEntry[] = [];
+    let helper: HelperFinish | null = null;
+    if (lead === null) {
+      woke = wokeBy(turn, false);
+      if (woke.length === 0) helper = helperWoke(first.startedAt, false);
+      if (woke.length === 0 && helper === null) {
+        woke = wokeBy(turn, true);
+        if (woke.length === 0) helper = helperWoke(first.startedAt, true);
+      }
+    }
+    const wokeIds = new Set(woke.map((entry) => entry.id));
     const exchanges: MessagesTimelineRow[] = [];
     // What the card holds besides its record: a plan to approve, a pause.
     const extras: MessagesTimelineRow[] = [];
@@ -2157,7 +2221,10 @@ export function deriveMessagesTimelineRows(input: {
         reading,
         batch,
       });
-      items.push(...built.items);
+      // What woke the run is said once, over it (`wokeBy`), never again as its line.
+      items.push(
+        ...built.items.filter((item) => item.kind !== "task" || !wokeIds.has(item.entry.id)),
+      );
       extras.push(...built.rows);
     });
     const hasRecord = items.some((item) => item.kind !== "person");
@@ -2189,9 +2256,7 @@ export function deriveMessagesTimelineRows(input: {
       // shows anything at all. One that did nothing to see is nothing to
       // announce (the owner, 2026-09-27, of a lone "Background task
       // finished" line: "why does it say here?").
-      const woke = wokeBy(turn);
       // Taken even by a run that shows nothing: it was woken all the same.
-      const helper = woke.length === 0 ? helperWoke(first.startedAt) : null;
       if (!carded && answer === null) {
         lastEnd = last.endedAt ?? last.startedAt;
         return;
@@ -2299,6 +2364,30 @@ export function deriveMessagesTimelineRows(input: {
           outcome: result,
         });
       }
+      // What it sent to the background, on its own card: one line, the jobs
+      // as they stand now — running past the turn, or reported since.
+      if (!turn.live) {
+        const jobs = turn.stretches.flatMap((stretch) =>
+          stretch.entries.flatMap((candidate) => {
+            if (candidate.kind !== "work") return [];
+            const job = backgroundJobOf(candidate.entry, tracked);
+            return job === null ? [] : [job];
+          }),
+        );
+        if (jobs.length > 0) {
+          rows.push({
+            kind: "background",
+            id: `jobs:${first.key}`,
+            createdAt: last.endedAt ?? last.startedAt,
+            entries: [],
+            tasks: jobs.length,
+            failed: jobs.filter((job) => job.state === "failed").length,
+            helpers: false,
+            title: jobs.at(-1)?.title ?? null,
+            jobs,
+          });
+        }
+      }
       // A line with nothing under it is no card: one quiet line, not an
       // empty box.
       if (rows.length > cardStart + (chatted ? 0 : 1)) {
@@ -2361,6 +2450,13 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
     if (structure.looseIndexes.has(index)) {
+      // A command's own task, reporting after its turn: its card tells it (`jobs:`).
+      if (
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        tracked.trackers.has(entry.entry.id)
+      ) {
+        continue;
+      }
       seamBefore(entry.createdAt, entry.id);
       if (isUserMessageEntry(entry)) rows.push(personRow(entry, index, false));
       else if (entry.kind === "message" && entry.message.role === "assistant") {

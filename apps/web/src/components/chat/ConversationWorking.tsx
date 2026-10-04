@@ -16,6 +16,7 @@
  * until the work ends.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
@@ -57,9 +58,11 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 import { DetailRow, spanOf } from "./DetailRow";
+import { showHelper } from "./helperFocus";
 import { standupBar } from "./standupBar.logic";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
+import { useEasedRoom } from "./runRoom";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -503,11 +506,16 @@ function usePanelRoom({
   return { panelRef, settle };
 }
 
+/**
+ * A background task's segment fills as it finishes: a bar of tasks that all
+ * run reads empty, never full beside "0/3" (Bodhi, run 9).
+ */
 const TASK_BAR: Record<DockBackgroundTask["state"], BarTone> = {
-  running: "running",
+  running: "waiting",
   done: "done",
   failed: "failed",
   stopped: "waiting",
+  lost: "waiting",
 };
 
 const TASK_STATE: Record<
@@ -518,6 +526,7 @@ const TASK_STATE: Record<
   done: { tone: "ok", word: "Done" },
   failed: { tone: "failed", word: "Failed" },
   stopped: { tone: "off", word: "Stopped" },
+  lost: { tone: "off", word: "Didn't report back" },
 };
 
 /** Whether anything in the dock runs alongside the Mate: a bar of its own under the live line. */
@@ -696,6 +705,11 @@ function Instruments({
                 {helpers.rows.map((helper) => (
                   <DetailRow
                     key={helper.id}
+                    long="word"
+                    onOpen={() => {
+                      if (threadRef !== null) showHelper(scopedThreadKey(threadRef), helper.id);
+                      onOpenAgents();
+                    }}
                     time={spanOf(helper.startedAt, helper.endedAt)}
                     title={helper.title}
                     tone={helper.tone}
@@ -720,11 +734,14 @@ function Instruments({
             bar={background.tasks.map((task) => ({ key: task.id, tone: TASK_BAR[task.state] }))}
             failed={background.running === 0 && background.failed > 0}
             figure={
-              background.tasks.length > 1
-                ? `${background.done}/${background.tasks.length}`
-                : runningTask !== undefined
-                  ? spanOf(runningTask.startedAt, null)
-                  : null
+              // How many ended of all, once one has; while all run, nothing to count.
+              background.tasks.length > 1 && background.running < background.tasks.length
+                ? `${background.tasks.length - background.running}/${background.tasks.length}`
+                : background.tasks.length > 1
+                  ? null
+                  : runningTask !== undefined
+                    ? spanOf(runningTask.startedAt, null)
+                    : null
             }
             label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed.${backgroundOpens ? ` ${backgroundShown ? "Hide" : "Show"} each one` : ""}`}
             onToggle={backgroundOpens ? () => toggle("background") : null}
@@ -836,8 +853,11 @@ export function ConversationAfterWork({
   const watching =
     (dock?.helpers ?? null) === null &&
     (running.length > 0 ? running.every((task) => task.watch) : state === "monitoring");
+  // As what runs comes and goes, its height eases (`useEasedRoom`).
+  const roomRef = useEasedRoom<HTMLElement>(true);
   return (
     <section
+      ref={roomRef}
       aria-label={`${speaker.name} at work in the background`}
       className="run-tray run-tray-whole @container/panel animate-panel-in text-card-foreground motion-reduce:animate-none"
       data-conversation-after-work={state}

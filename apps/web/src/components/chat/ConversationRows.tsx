@@ -37,6 +37,8 @@ export interface ConversationSpeaker {
   readonly tint: MateTintId;
   /** The shape its person picked for the Mate; a crewmate, or nobody, wears its tint's own. */
   readonly shape?: MateShapeId | undefined;
+  /** A helper's own run (`HelperCard`): it works under the Mate, and wears no face of its own. */
+  readonly helper?: boolean | undefined;
 }
 
 /**

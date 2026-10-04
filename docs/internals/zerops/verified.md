@@ -7616,3 +7616,19 @@ mcp-disabled.json`, a JSON array of names (`cursor-agent mcp disable`, isolated 
 - **`cursor-agent` against a fake HOME raises macOS keychain dialogs** — any `cursor-agent` run with a
   HOME other than the person's ("Keychain Not Found … cursor-user"), including zcp's own container
   tests when `cursor-agent` is on PATH.
+- **A thread snapshot's 500 newest activities held ~19 minutes of a busy run** (2026-10-04, Bodhi,
+  Claude Opus 5.5 Max, three helpers). Its server sent 643 activities in 24 minutes: about 60%
+  context-window readings and in-flight updates, 130 steps. 19 of 22 cards then reloaded with no
+  steps. The fix is in pass 39 (whole-turn pages, superseded rows outside the budget).
+- **The Claude Agent SDK streams no events for a helper's calls** (CLI 2.1.278). They arrive only
+  inside its subagent snapshots, with `parent_tool_use_id` set to the Agent call, and a helper's own
+  background Bash arrived as an unowned `local_bash` task. `task_notification.summary` is the
+  helper's whole report. Helpers launch async and outlive the Mate's turn; a resumed helper keeps
+  its id.
+- **Run 9's live card, before pass 39** (Ferry / Rosa, Claude Opus 5.5 Medium, 6 turns, 35 min).
+  - The working line changed 285 times, median dwell 0.92 s; 143 of 277 states lasted under 1 s.
+  - 231 of 360 height changes of ≥24 px landed in one or two frames.
+  - 83 row jumps of ≥40 px happened with no input.
+  - The timeline lost its end 6 times and jumped +992 px at one settle.
+  - A second window that only followed saw the same classes.
+  - Recorded with `runprobe.js` and `runcard.py` (mate-captures rig).
