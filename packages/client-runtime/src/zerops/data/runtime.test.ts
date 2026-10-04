@@ -6238,7 +6238,7 @@ describe("an interest that fails alone recovers alone", () => {
     ),
   );
 
-  it.effect("retries that churn past the released-subscription bound replace the socket", () =>
+  it.effect("refused retries never held a subscription: past the bound, the socket stays", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const rig = yield* refusing(3, { policy: { releasedRegistrationsPerReceiver: 2 } });
@@ -6254,7 +6254,8 @@ describe("an interest that fails alone recovers alone", () => {
           rig.states,
           (state) => state.interests.get(lease.interest)?.interest.status === "observing",
         );
-        expect(rig.harness.counts().opens).toBe(2);
+        // Each refusal the platform answered left nothing subscribed on the socket to release.
+        expect(rig.harness.counts().opens).toBe(1);
         yield* rig.runtime.shutdown("application-close");
         rig.stop();
         rig.registry.dispose();

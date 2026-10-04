@@ -728,6 +728,8 @@ interface RuntimeRegistration {
   readonly dependents: Map<InterestKey, InterestIdentity>;
   status: "registering" | "registered" | "failed";
   awaitingAnswer: boolean;
+  /** The platform answered it with a refusal: nothing was subscribed. */
+  refused: boolean;
 }
 
 interface RuntimeReceiver {
@@ -745,6 +747,8 @@ interface RuntimeReceiver {
   readonly registrations: Map<string, RuntimeRegistration>;
   readonly registrationOwners: Map<string, RuntimeRegistration>;
   registrationAttempts: number;
+  /** Attempts dropped that never held a subscription: refused, or never sent. */
+  neverSubscribed: number;
 }
 
 interface RuntimeHydration {
@@ -1570,6 +1574,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       registrations: new Map(),
       registrationOwners: new Map(),
       registrationAttempts: 0,
+      neverSubscribed: 0,
     };
   };
 
@@ -2486,6 +2491,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           dependents: new Map([[identity.key, identity]]),
           status: "registering",
           awaitingAnswer: false,
+          refused: false,
         };
         receiver.registrationAttempts += 1;
         receiver.registrations.set(key, registration);
@@ -2505,6 +2511,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             yield* applyControl({ kind: "shared-read-released", requestId: ticket.requestId });
             receiver.registrations.delete(key);
             receiver.registrationOwners.delete(request.subscriptionName);
+            receiver.neverSubscribed += 1;
             registration.status = "failed";
             return yield* Effect.fail(readCapacityError());
           }
@@ -2659,6 +2666,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               : { kind: "succeeded", receipt: result.success };
             if (outcome.kind === "failed") {
               registration.status = "failed";
+              // An answer with a status is the platform's refusal; one without may have subscribed.
+              registration.refused = outcome.error.status !== undefined;
               receiver.registrationOwners.delete(registration.request.subscriptionName);
             } else {
               yield* enqueueRegistrationObservations(
@@ -3137,8 +3146,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             // Retries churn subscriptions too: past the bound only a fresh socket stops them.
             if (
               ready.length > 0 &&
-              receiver.registrationAttempts - receiver.registrations.size >=
-                policy.releasedRegistrationsPerReceiver
+              releasedOn(receiver) >= policy.releasedRegistrationsPerReceiver
             ) {
               yield* rotateReceiver(receiver, new Set(ready.map(({ interest }) => interest.key)));
               return [];
@@ -3199,6 +3207,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
    * An interest about to register again lets go of its failed registrations only: the retry sends
    * those afresh, and keeps every healthy one it shares, which the platform cannot unsubscribe.
    */
+  /** The subscriptions a socket held and let go: their frames may still arrive on it. */
+  const releasedOn = (receiver: RuntimeReceiver): number =>
+    receiver.registrationAttempts - receiver.registrations.size - receiver.neverSubscribed;
+
   const releaseFailedRegistrations = (
     receiver: RuntimeReceiver,
     interestKey: InterestKey,
@@ -3207,6 +3219,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       for (const [registrationKey, registration] of receiver.registrations) {
         if (registration.status !== "failed" || !registration.dependents.has(interestKey)) continue;
         receiver.registrations.delete(registrationKey);
+        if (registration.refused) receiver.neverSubscribed += 1;
         if (receiver.registrationOwners.get(registration.request.subscriptionName) === registration)
           receiver.registrationOwners.delete(registration.request.subscriptionName);
       }
@@ -3377,6 +3390,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         }
         if (registration.dependents.size === 0) {
           receiver.registrations.delete(registrationKey);
+          if (registration.refused) receiver.neverSubscribed += 1;
           receiver.registrationOwners.delete(registration.request.subscriptionName);
         }
       }
@@ -3467,8 +3481,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         );
         // The socket closes with its organization's last demand, or is replaced once the
         // subscriptions released on it reach the bound: only a fresh socket stops their frames.
-        const released =
-          receiver === undefined ? 0 : receiver.registrationAttempts - receiver.registrations.size;
+        const released = receiver === undefined ? 0 : releasedOn(receiver);
         if (
           !hasOtherInterest ||
           (released >= policy.releasedRegistrationsPerReceiver && receiver?.openFailure === null)

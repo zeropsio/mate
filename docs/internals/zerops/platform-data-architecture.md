@@ -323,7 +323,8 @@ opened project's subscriptions, each under its own subscription name. When deman
 registrations stop being routed and the socket stays; the platform has no unsubscribe, so a
 released subscription keeps sending until the socket closes. The socket closes with the
 organization's last demand, and is replaced once the subscriptions released on it reach
-`releasedRegistrationsPerReceiver`. A socket failure reconnects that one socket and re-registers
+`releasedRegistrationsPerReceiver`; a registration the platform refused, or one never sent, held
+no subscription and does not count. A socket failure reconnects that one socket and re-registers
 everything it carried with fresh baselines. A failed sibling remains failed during rebuilding.
 Metrics and metric history are separate leases held only while the opened Mate panel and browser
 tab are visible. Panel **Try again** re-registers that project's held demand on the same socket,
