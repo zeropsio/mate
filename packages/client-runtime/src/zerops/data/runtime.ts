@@ -2800,7 +2800,18 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           (released >= policy.releasedRegistrationsPerReceiver && receiver?.openFailure === null)
         ) {
           receivers.delete(organizationKey);
-          if (receiver !== undefined) yield* stopReceiver(receiver);
+          if (receiver !== undefined) {
+            yield* stopReceiver(receiver);
+            // A hydration read for the replaced socket's demand starts again on the fresh one.
+            for (const [key, hydration] of hydrations) {
+              if (
+                [...hydration.ownership.dependents.values()].some(
+                  (identity) => identity.receiver === receiver.identity,
+                )
+              )
+                yield* cancelHydration(key, hydration);
+            }
+          }
           for (const remaining of interests.values()) {
             if (
               remaining.leases.size === 0 ||

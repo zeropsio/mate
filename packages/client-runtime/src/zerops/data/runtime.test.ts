@@ -849,6 +849,64 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  it.effect(
+    "a socket replaced for its released subscriptions reads a pending hydration again",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        let processReads = 0;
+        const adapter: ZeropsDataAdapter = {
+          openReceiver: (_scope, organization, identity) =>
+            Effect.succeed({
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.never,
+            }),
+          register: (_receiver, request) =>
+            Effect.succeed({
+              responseObservations: [unresolvedProcessBaseline(request)].filter(
+                (observation) => observation !== null,
+              ),
+            }),
+          read: (ticket) => {
+            if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+            processReads += 1;
+            return Effect.never;
+          },
+          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          closeReceiver: () => Effect.void,
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          policy: makeZeropsDataPolicy({
+            releasedRegistrationsPerReceiver:
+              planZeropsInterest(topologyDescriptor).registrations.length,
+          }),
+        });
+        const leaseScope = yield* Scope.make();
+        yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
+        const other = yield* runtime
+          .acquire({ kind: "project-topology", project: project("project-b") })
+          .pipe(Scope.provide(leaseScope));
+        const settle = Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow, {
+          discard: true,
+        });
+        yield* settle;
+        expect(processReads).toBe(1);
+
+        yield* other.release;
+        yield* settle;
+        expect(processReads).toBe(2);
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        registry.dispose();
+      }),
+  );
+
   it.effect("a failure signal that lands after background pause stays paused", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
