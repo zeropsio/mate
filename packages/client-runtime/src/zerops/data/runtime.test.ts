@@ -4722,10 +4722,11 @@ describe("incomplete data says so, with its retry", () => {
       reads: { atFirst: 1, afterAMinute: 1, afterGrant: 2 },
     },
     {
-      // 1 s, 2 s, then the 10 s cap for good: a spent budget never falls back to fast rungs.
+      // 1 s, then the 10 s cap for good (a budget of two): a spent budget never falls back to
+      // fast rungs.
       name: "a 5xx backs off and is read again, staying at the cap",
       error: { kind: "server", status: 503 },
-      reads: { atFirst: 1, afterAMinute: 8, afterGrant: 8 },
+      reads: { atFirst: 1, afterAMinute: 7, afterGrant: 7 },
     },
   ] as const)("a failed entity read: $name", ({ error, reads }) =>
     Effect.gen(function* () {
@@ -4763,6 +4764,7 @@ describe("incomplete data says so, with its retry", () => {
         adapter,
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
         policy: makeZeropsDataPolicy({
           hydrationRetryLimit: 2,
           recoveryBackoffStartMs: 1_000,
