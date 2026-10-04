@@ -93,8 +93,10 @@ Terminal records remain available to retained history/operation views.
    admitted as indexed search, so the interest still completes and per-project
    anchors keep their authority. An unopened project's inventory
    never downloads process history. Hydrate unresolved
-   added IDs with one shared in-flight request per target/facet. A failed attempt waits for
-   a visible manual **again**.
+   added IDs with one shared in-flight request per target/facet. A failed attempt retries on
+   the recovery backoff within its budget, then the backoff's cap, while the tab is visible; a
+   429 waits its Retry-After and a 403/404/410 waits for a grant change. A visible manual
+   **again** reads it at once.
 5. On a direct result reject obsolete generations. For each owned field group,
    suppress values if a native observation arrived after the ticket began, or a
    later-started direct read has already applied. Apply unaffected groups. **Mark
@@ -115,11 +117,12 @@ Terminal records remain available to retained history/operation views.
 8. On disconnect, registration failure, malformed data or overflow, fence affected work and
    publish a failed attempt immediately. A registration refusal fails only its dependents; a
    socket failure, malformed frame or uncertain ownership fails the receiver's demand. Optional metrics can fail without
-   withholding service topology. No automatic recovery cycle or retry ladder runs. A visible
-   manual **again** re-establishes the held scope with new identities and baselines.
+   withholding service topology. An interest that failed alone re-establishes alone on its own
+   backoff, its siblings observing on; a failed receiver reconnects on its own. A visible manual
+   **again** re-establishes the held scope with new identities and baselines at once.
 9. Bound establishment/token/open/greeting/read deadlines. The first failed attempt has a
    visible cause and manual action. Foreground return re-establishes healthy paused demand and
-   checks expired access, but preserves failed interests. Removing project or metric demand stops
+   checks expired access; a failed interest waiting for its retry starts over from the first rung. Removing project or metric demand stops
    routing its registrations on the organization's one receiver; no safe native unsubscribe has
    been established, so the receiver is replaced once its released registrations reach the
    policy bound, rebuilding the surviving healthy registrations.
@@ -175,17 +178,17 @@ Registration requests share one account-wide concurrency bound. The organization
 inventory's own registrations, its project feed and project list, are admitted
 ahead of waiting project registrations; a registration's deadline starts when it
 is sent, not while it waits for its turn. A registration the platform refused
-with an HTTP error status took no effect; a manual attempt may register again on the
-same receiver. A required interest's registration without an answer, or with an
+with an HTTP error status took no effect; it registers again on the same receiver on its
+own backoff, or at a manual attempt. A required interest's registration without an answer, or with an
 answer that could not be read, may have left a subscription nobody owns, so its
-receiver fails and a manual attempt replaces it. A subscription nobody owns names no registration the
+receiver fails and reconnects. A subscription nobody owns names no registration the
 adapter holds: should a refused or optional registration have taken effect after
 all, its first frame fails the receiver rather than initiating recovery.
 
 Native frames are the ordinary data path. A valid admitted update performs no REST
 reread. New baselines come from explicit refresh and foreground return of healthy paused demand;
-unresolved demanded references get one hydration attempt. Disconnect, decoding failure or loss
-stays failed until a manual attempt. Healthy receivers have no periodic
+unresolved demanded references are hydrated, a failure on the recovery backoff. Disconnect,
+decoding failure or loss reconnects on its own backoff; a manual attempt does so at once. Healthy receivers have no periodic
 inventory, process or metric reread. Heartbeats test transport health; they do not
 prove complete source delivery. A silent source omission with no observable fault
 can remain until a new baseline or explicit refresh; `observing` retains its weaker

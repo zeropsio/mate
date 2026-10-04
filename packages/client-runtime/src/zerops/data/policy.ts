@@ -16,6 +16,8 @@ export interface ZeropsDataPolicy {
   readonly ingressPublicationBatchEvents: number;
   readonly readConcurrency: number;
   readonly hydrationConcurrency: number;
+  /** The interests one recovery round re-establishes at once; the rest wait for a slot. */
+  readonly recoveryConcurrency: number;
   /**
    * Registration requests in flight at once across the account, the organization inventory's
    * admitted first; a registration's deadline starts when it is sent, not while it waits.
@@ -26,6 +28,12 @@ export interface ZeropsDataPolicy {
   readonly retainedCompletedReadsPerAccount: number;
   readonly queuedCommandRequestsPerAccount: number;
   readonly retainedCommandAttemptsPerAccount: number;
+  /** Failed reads of one entity before its retry waits the backoff's cap and starts over. */
+  readonly hydrationRetryLimit: number;
+  /** Failed re-establishments of one interest before its retry waits the backoff's cap. */
+  readonly recoveryAttemptLimit: number;
+  readonly recoveryBackoffStartMs: number;
+  readonly recoveryBackoffMaxMs: number;
   readonly retainedProjectsPerAccount: number;
   readonly retainedServicesPerAccount: number;
   readonly retainedTerminalProcessesPerProject: number;
@@ -66,8 +74,8 @@ export interface ZeropsDataPolicy {
  * tune these values without changing public observation semantics.
  *
  * Every one of these budgets is a capacity, never a silent-loss trigger:
- * reducers must expose the state transition ("partial" or "failed")
- * before any policy-driven discard. The eviction rule per kind of
+ * reducers must expose the state transition ("partial" or "failed", which the
+ * runtime retries on its backoff) before any policy-driven discard. The eviction rule per kind of
  * state — an inactive query is removed immediately after its last lease, a
  * completed read evicts its oldest diagnostic first, a terminal command
  * attempt evicts its oldest unreferenced attempt, pending work is never
@@ -89,12 +97,17 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   ingressMaxFrameBytes: 1 * 1_024 * 1_024,
   readConcurrency: 8,
   hydrationConcurrency: 4,
+  recoveryConcurrency: 4,
   registrationConcurrency: 6,
   queuedReadRequestsPerAccount: 1_024,
   activeSharedReadsPerAccount: 256,
   retainedCompletedReadsPerAccount: 2_048,
   queuedCommandRequestsPerAccount: 128,
   retainedCommandAttemptsPerAccount: 1_000,
+  hydrationRetryLimit: 3,
+  recoveryAttemptLimit: 5,
+  recoveryBackoffStartMs: 1_000,
+  recoveryBackoffMaxMs: 30_000,
   retainedProjectsPerAccount: 10_000,
   retainedServicesPerAccount: 50_000,
   retainedTerminalProcessesPerProject: 500,
@@ -151,6 +164,9 @@ export function makeZeropsDataPolicy(overrides: Partial<ZeropsDataPolicy> = {}):
   }
   if (policy.ingressMaxFrameBytes > policy.ingressMaxBytesPerAccount) {
     throw new RangeError("ingressMaxFrameBytes cannot exceed ingressMaxBytesPerAccount.");
+  }
+  if (policy.recoveryBackoffStartMs > policy.recoveryBackoffMaxMs) {
+    throw new RangeError("recoveryBackoffStartMs cannot exceed recoveryBackoffMaxMs.");
   }
   if (policy.desiredInterestsPerReceiver > policy.registrationAttemptsPerReceiver) {
     throw new RangeError(

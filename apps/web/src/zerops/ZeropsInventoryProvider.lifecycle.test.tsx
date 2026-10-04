@@ -924,14 +924,14 @@ it.live(
         }
         // The silence changes nothing the data says: through the hold before the line speaks,
         // the stalled read is not known.
-        expect(loading).toContain(true);
-        expect(harness.inventory()?.error).toBe("Zerops isn't answering.");
-        expect(harness.inventory()?.isLoading).toBe(false);
+        expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
+        expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
+        expect(harness.inventory()?.isLoading).toBe(true);
         // Said once, at the menu's foot, naming what isn't answering — the organization's
         // projects and services, whose subscriptions every project shares — with Try now and no
         // Sign out.
         expect(harness.container.textContent).toBe(
-          "Zerops isn't answering.Organization's projects and servicesTry now",
+          "Zerops isn't answering. Trying again…Organization's projects and servicesTry now",
         );
         heard.length = 0;
         const reopened = harness.refreshed().length;

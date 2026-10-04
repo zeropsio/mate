@@ -7,7 +7,7 @@
  * - its list's search (`listStream`'s registration answer, or a read), which states every row the
  *   list admits at the moment it ran;
  * - its list's membership frames, which carry bare ids and so prove nothing (S0.11): an id added
- *   or removed is read by id in one batch (`tableRowsWanted`).
+ *   or removed is read by id, batched, after a short grace (`tableRowsWanted`).
  *
  * Every row keeps the receipt it is as current as, and the wall time it came: an older answer
  * never overwrites a newer push, and a search never takes away a row pushed so recently its index
@@ -85,11 +85,22 @@ interface WantedRow {
   readonly id: string;
   /** The receipt that asked: a read that began before it answers nothing about it. */
   readonly since: number;
-  /** Immediate on demand; infinity after one absent answer until a manual action. */
+  /** When it may be read: past the index's lag, or past its back-off once found absent. */
   readonly dueAtMs: number;
-  /** Whether one read found it absent; a manual action resets this to zero. */
+  /** How often a read found it absent though the table is owed it (`ABSENT_BACKOFF_MS`). */
   readonly absent: number;
+  /** When it was first owed: a read before `SEARCH_LAG_MS` past it may not show it yet. */
+  readonly firstAtMs: number;
 }
+
+/**
+ * How long a row the table is owed and a read found absent waits before it is asked about
+ * again: 30 s, then 2 min, then every 10 min. It never loops, and it reads unknown meanwhile.
+ */
+export const ABSENT_BACKOFF_MS: ReadonlyArray<number> = [30_000, 120_000, 600_000];
+
+/** How long a failed read by id waits before the rows it asked about are asked again. */
+export const TABLE_READ_RETRY_MS = 30_000;
 
 export interface EntityTableState {
   readonly rows: {
@@ -165,6 +176,15 @@ const outcomeOf = (
 
 type Rows = Map<string, HeldRow<TableRow>>;
 
+/** Whether two states of a row say the same: a tombstone, or every field alike. */
+const sameRow = (left: TableRow | null, right: TableRow | null): boolean => {
+  if (left === null || right === null) return left === right;
+  const a = left as unknown as Record<string, unknown>;
+  const b = right as unknown as Record<string, unknown>;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].every((key) => a[key] === b[key]);
+};
+
 const rowsOf = (state: EntityTableState, entity: TableEntity): Rows =>
   new Map(state.rows[entity] as ReadonlyMap<string, HeldRow<TableRow>>);
 
@@ -225,6 +245,7 @@ export function reduceTableObservation(
       since: receipt,
       dueAtMs: atMs,
       absent: 0,
+      firstAtMs: wanted.get(wantedKey(entity, observation.id))?.firstAtMs ?? atMs,
     });
     return { state: { ...state, wanted }, outcome: outcomeOf(observation, "applied") };
   }
@@ -270,6 +291,20 @@ export function reduceTableObservation(
   const wanted = new Map(state.wanted);
   const said = new Map(observation.rows.map((row) => [row.id, row] as const));
   const startMs = ticket.startedAtMs;
+  /** One more look at a row a push stated too recently for the index to agree yet. */
+  const lookAgain = (id: string, held: HeldRow<TableRow>) => {
+    const owed = wanted.get(wantedKey(entity, id));
+    wanted.set(wantedKey(entity, id), {
+      entity,
+      organization: descriptor.organization,
+      serviceIds: owed?.serviceIds ?? descriptor.serviceIds,
+      id,
+      since: startedAt,
+      dueAtMs: Math.max(owed?.dueAtMs ?? 0, held.atMs + SEARCH_LAG_MS),
+      absent: owed?.absent ?? 0,
+      firstAtMs: owed?.firstAtMs ?? atMs,
+    });
+  };
   /**
    * Sets what the read said of one id (`null`: absent), unless something newer than the read
    * did: a push after it began, or one so recent before it that the index may not show it yet.
@@ -281,6 +316,7 @@ export function reduceTableObservation(
     if (held === undefined && admitted === null) return;
     // A push the index may not show yet keeps its content, whatever the answer says of it.
     if (held !== undefined && held.source === "push" && held.atMs > startMs - SEARCH_LAG_MS) {
+      if (!sameRow(held.row, admitted)) lookAgain(id, held);
       return;
     }
     rows.set(id, { row: admitted, asOf: startedAt, atMs: startMs, source: "read", organizationId });
@@ -289,7 +325,8 @@ export function reduceTableObservation(
       wanted.delete(wantedKey(entity, id));
   };
 
-  // A named row absent from the answer stays unknown until fresh data or a manual refresh.
+  // A read of named ids: settles those ids. One the table is owed and the read found absent is
+  // asked about again on a widening back-off, never at once.
   if (descriptor.ids !== undefined) {
     for (const id of descriptor.ids) {
       const owed = wanted.get(wantedKey(entity, id));
@@ -297,10 +334,15 @@ export function reduceTableObservation(
       const answer = said.get(id) ?? null;
       if (answer === null && rows.get(id) === undefined) {
         if (owed === undefined) continue;
+        // Too soon after it was first owed for the index to show it: one more look, not absent.
+        if (startMs < owed.firstAtMs + SEARCH_LAG_MS) {
+          wanted.set(wantedKey(entity, id), { ...owed, dueAtMs: owed.firstAtMs + SEARCH_LAG_MS });
+          continue;
+        }
         wanted.set(wantedKey(entity, id), {
           ...owed,
-          dueAtMs: Number.POSITIVE_INFINITY,
-          absent: 1,
+          dueAtMs: atMs + ABSENT_BACKOFF_MS[Math.min(owed.absent, ABSENT_BACKOFF_MS.length - 1)]!,
+          absent: owed.absent + 1,
         });
         continue;
       }
@@ -331,6 +373,7 @@ export function reduceTableObservation(
       continue;
     }
     if (held.source === "push" && held.atMs > startMs - SEARCH_LAG_MS) {
+      lookAgain(id, held);
       continue;
     }
     rows.delete(id);
@@ -473,6 +516,7 @@ function want(
       since,
       dueAtMs: nowMs,
       absent: 0,
+      firstAtMs: nowMs,
     });
   return { ...state, wanted };
 }
@@ -507,7 +551,6 @@ export function tableRowsWanted(state: EntityTableState): ReadonlyArray<{
     { entity: TableEntity; organization: OrganizationRef; ids: string[]; dueAtMs: number }
   >();
   for (const owed of state.wanted.values()) {
-    if (owed.absent > 0) continue;
     const key = `${owed.entity}:${organizationKeyOf(owed.organization)}`;
     const batch = batches.get(key) ?? {
       entity: owed.entity,
@@ -546,9 +589,9 @@ export function askedAbsent(
   state: EntityTableState,
   entity: TableEntity,
   id: string,
-): { readonly retryAtMs: null } | null {
+): { readonly retryAtMs: number } | null {
   const owed = state.wanted.get(wantedKey(entity, id));
-  return owed !== undefined && owed.absent > 0 ? { retryAtMs: null } : null;
+  return owed !== undefined && owed.absent > 0 ? { retryAtMs: owed.dueAtMs } : null;
 }
 
 /** The organization's list of a kind has answered in full: a row the table lacks is not there. */
@@ -668,7 +711,7 @@ export function serviceVariablesDelivered(
   };
 }
 
-/** A manual action gives failed absent rows in its service scope one more attempt. */
+/** A manual action asks about absent rows in its service scope now, past their back-off. */
 export function retryAbsentTableRows(
   state: EntityTableState,
   organization: OrganizationRef,
@@ -690,13 +733,17 @@ export function retryAbsentTableRows(
   return changed ? { ...state, wanted } : state;
 }
 
-/** A specific-ID read ends with the rows still owed unavailable, preserving newer evidence. */
-export function finishTableRowRead(
+/**
+ * A read by id that failed: the rows it asked about, still owed and asked nothing newer since, wait
+ * `TABLE_READ_RETRY_MS` before the next batch asks again, never a loop.
+ */
+export function deferFailedTableRowRead(
   state: EntityTableState,
   entity: TableEntity,
   organization: OrganizationRef,
   ids: ReadonlyArray<string>,
   startedAtReceipt: number,
+  atMs: number,
 ): EntityTableState {
   const wanted = new Map(state.wanted);
   let changed = false;
@@ -706,11 +753,10 @@ export function finishTableRowRead(
     if (
       owed === undefined ||
       owed.since > startedAtReceipt ||
-      owed.absent > 0 ||
       organizationKeyOf(owed.organization) !== organizationKeyOf(organization)
     )
       continue;
-    wanted.set(key, { ...owed, absent: 1, dueAtMs: Number.POSITIVE_INFINITY });
+    wanted.set(key, { ...owed, dueAtMs: Math.max(owed.dueAtMs, atMs + TABLE_READ_RETRY_MS) });
     changed = true;
   }
   return changed ? { ...state, wanted } : state;

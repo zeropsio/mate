@@ -7,7 +7,12 @@ import {
   statedDeployKey,
   wantStaleVariables,
 } from "./deployedVersion.ts";
-import { reduceTableObservation, SERVICE_VARIABLE_KEYS, tableRowsWanted } from "./entityTable.ts";
+import {
+  ABSENT_BACKOFF_MS,
+  reduceTableObservation,
+  SERVICE_VARIABLE_KEYS,
+  tableRowsWanted,
+} from "./entityTable.ts";
 import { makeUnresolvedService } from "./inventory.ts";
 import { decodeEntityQueryResponse } from "./platformProtocol.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
@@ -463,19 +468,37 @@ describe("a version a service runs that its organization's list lacks", () => {
       deploy({}),
     );
 
-  it("reads a missing version once and exposes failure until a manual refresh", () => {
+  it("is read by id, waits out the index's lag, then reads unknown on a back-off, never in a loop", () => {
     let state = wantActiveVersions(fresh(), 3, 1_000);
-    expect(tableRowsWanted(state.table)).toMatchObject([{ entity: "app-version", ids: ["v-2"] }]);
+    expect(tableRowsWanted(state.table)).toMatchObject([
+      { entity: "app-version", ids: ["v-2"], dueAtMs: 1_000 },
+    ]);
+    // A read right after it was owed may trail it: no verdict, one more look after the lag.
     state = absentById(state, ["v-2"], 5, 1_500);
-    state = wantActiveVersions(state, 6, 1_000_000);
-    expect(tableRowsWanted(state.table)).toEqual([]);
-    expect(selectDeployedVersion(state, ref)).toMatchObject({ state: "failed", retryAtMs: null });
+    expect(selectDeployedVersion(state, ref).state).toBe("unread");
+    expect(tableRowsWanted(state.table)).toMatchObject([{ ids: ["v-2"], dueAtMs: 11_000 }]);
+    // The read past the lag finds it absent too.
+    state = absentById(state, ["v-2"], 7, 11_000);
+    // Every later message asks nothing sooner than its back-off.
+    for (const [receipt, nowMs] of [
+      [8, 12_100],
+      [9, 12_200],
+      [10, 13_000],
+    ] as const)
+      state = wantActiveVersions(state, receipt, nowMs);
+    expect(tableRowsWanted(state.table)).toMatchObject([
+      { ids: ["v-2"], dueAtMs: 11_500 + ABSENT_BACKOFF_MS[0]! },
+    ]);
+    expect(selectDeployedVersion(state, ref)).toMatchObject({
+      state: "failed",
+      retryAtMs: 11_500 + ABSENT_BACKOFF_MS[0]!,
+    });
   });
 
   it("stops asking about a version once no service runs it", () => {
     let state = wantActiveVersions(fresh(), 3, 1_000);
     state = absentById(state, ["v-2"], 5, 11_000);
-    expect(tableRowsWanted(state.table)).toEqual([]);
+    expect(tableRowsWanted(state.table)).toMatchObject([{ ids: ["v-2"] }]);
     state = wantActiveVersions(withService(state, null), 6, 12_000);
     expect(tableRowsWanted(state.table)).toEqual([]);
   });
