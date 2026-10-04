@@ -507,10 +507,11 @@ const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
   "effect/Struct",
 ]);
 
-// Shared modules that compute values, import nothing and run nothing.
+// Shared modules that compute values, import only other pure shared modules and run nothing.
 const PURE_SHARED_MODULES: ReadonlySet<string> = new Set([
   "@t3tools/shared/basePath",
   "@t3tools/shared/brand",
+  "@t3tools/shared/mateFaces",
   "@t3tools/shared/messagePreview",
   "@t3tools/shared/semver",
 ]);
@@ -2752,6 +2753,29 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           file: `${zerops}/projections/sidebarRows.ts`,
           reason: "uses setTimeout",
         },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("pure zones allow face definitions but reject transitive DateTime formatting", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+        "environments/gate.ts": 'import { presentation } from "../knowledge/presentation.ts";\n',
+        "knowledge/presentation.ts": 'import * as DateTime from "effect/DateTime";\n',
+        "projections/groups.ts": 'import { readMateFace } from "@t3tools/shared/mateFaces";\n',
+      });
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      const rejected = (file: string) => ({
+        root: `${zerops}/${file}`,
+        file: `${zerops}/knowledge/presentation.ts`,
+        reason: "imports effect/DateTime, which is not a pure effect data module",
+      });
+      assert.deepStrictEqual(yield* collectPureZoneViolations(fixtureRoot, MACHINE_ZONE), [
+        rejected("environments/gate.ts"),
+        rejected("knowledge/presentation.ts"),
+      ]);
+      assert.deepStrictEqual(yield* collectPureZoneViolations(fixtureRoot, PURE_PROJECTION_ZONE), [
+        rejected("environments/gate.ts"),
       ]);
     }).pipe(Effect.scoped),
   );

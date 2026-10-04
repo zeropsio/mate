@@ -5,8 +5,6 @@
  * A message names the cause only (R-K3); the affordance is a separate field the component renders
  * exactly once. Negative domain copy comes only from a complete known value (R-K1).
  */
-import * as DateTime from "effect/DateTime";
-
 import type {
   FailureReason,
   Known,
@@ -34,6 +32,8 @@ export interface KnownSurface<T> {
 
 export interface PresentationContext {
   readonly nowMs: number;
+  /** The kept value's timestamp, formatted at the client edge when the surface shows it. */
+  readonly asOfTime?: string;
   /** The Mate's descriptor offers an update (MU-1). */
   readonly updateOffered: boolean;
 }
@@ -286,7 +286,7 @@ function knownValue<T>(
       return {
         ...value,
         current: false,
-        ...staleMarker(freshness.reason, surface, context, shown.asOf.atMs),
+        ...staleMarker(freshness.reason, surface, context),
       };
   }
 }
@@ -295,14 +295,17 @@ function staleMarker<T>(
   reason: StaleReason,
   surface: KnownSurface<T>,
   context: PresentationContext,
-  asOfMs: number,
 ): Pick<KnownPresentation, "message" | "affordance"> {
   switch (reason.kind) {
     case "source-recovering":
       return {
         message: say(
           reason.coverageGap
-            ? `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(asOfMs), { timeStyle: "medium" })}. Changes while disconnected may be missing.`
+            ? joined(
+                "Reconnecting…",
+                context.asOfTime === undefined ? null : `Last data as of ${context.asOfTime}.`,
+                "Changes while disconnected may be missing.",
+              )
             : "Reconnecting…",
           "notice",
         ),

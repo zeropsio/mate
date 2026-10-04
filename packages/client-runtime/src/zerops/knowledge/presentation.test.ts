@@ -1,4 +1,3 @@
-import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import type {
@@ -284,15 +283,33 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       reason: { kind: "source-recovering", retryAtMs: 104_000, coverageGap: true },
       sinceMs: 95_000,
     }),
+    context: { ...CONTEXT, asOfTime: "00:00:01" },
     expected: {
       region: "value",
       message: {
-        text: `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(1_000), { timeStyle: "medium" })}. Changes while disconnected may be missing.`,
+        text: "Reconnecting… Last data as of 00:00:01. Changes while disconnected may be missing.",
         afterMs: 0,
         tone: "notice",
       },
       affordance: { kind: "retry-now", label: "Try now" },
       current: false,
+    },
+  },
+  {
+    name: "receiver recovery without a time label still names the coverage gap",
+    shown: known(["#1"], {
+      kind: "stale",
+      reason: { kind: "source-recovering", retryAtMs: 104_000, coverageGap: true },
+      sinceMs: 95_000,
+    }),
+    expected: {
+      message: {
+        text: "Reconnecting… Changes while disconnected may be missing.",
+        afterMs: 0,
+        tone: "notice",
+      },
+      current: false,
+      affordance: { kind: "retry-now", label: "Try now" },
     },
   },
   {
