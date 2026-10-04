@@ -129,6 +129,9 @@ function IndexDraftLanding() {
   // to supersede an earlier pick.
   const startedForKeyRef = useRef<string | null>(null);
   const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
+  const [projectsShown, setProjectsShown] = useState<{
+    readonly organizationId: string | null;
+  } | null>(null);
 
   const landing = useMemo((): IndexLanding | null => {
     /** The environment's one conversation when it has one, else a draft in the project. */
@@ -195,10 +198,34 @@ function IndexDraftLanding() {
     withSnapshot,
   ]);
 
+  const view = homeView({
+    landing: landing === null ? "unknown" : landing.kind === "none" ? "none" : "going",
+    startFailed: startState.failed,
+    targeted: targetEnvironmentId !== null,
+    remembered,
+    hqMatesRead,
+    organizationId: activeOrganization?.id ?? null,
+    organization: organizationStatus,
+    accountTrouble: inventory.error !== null,
+    catalogFailed,
+    // A negative answer needs both the platform/registration read and HQ's unopened Mates.
+    projectsRead: matesSettled,
+    projectsShown,
+  });
+  // Kept from the render that painted it, so nothing it holds — an open row, a dialog — is torn
+  // down by a read unsettled again.
+  if (
+    view.kind === "projects" &&
+    (projectsShown === null || projectsShown.organizationId !== view.organizationId)
+  ) {
+    setProjectsShown({ organizationId: view.organizationId });
+  }
+  const held = view.kind === "projects";
+
   useEffect(() => {
     // A retry re-runs this effect; the key below was cleared by the failure.
     void startState.retryRequest;
-    if (landing === null || landing.kind === "none") return;
+    if (held || landing === null || landing.kind === "none") return;
     const key =
       landing.kind === "mate"
         ? `mate:${landing.projectId}`
@@ -227,21 +254,8 @@ function IndexDraftLanding() {
       startedForKeyRef.current = null;
       setStartState((state) => ({ ...state, failed: true }));
     });
-  }, [handleNewThread, landing, navigate, openMate, startState.retryRequest]);
+  }, [handleNewThread, held, landing, navigate, openMate, startState.retryRequest]);
 
-  const view = homeView({
-    landing: landing === null ? "unknown" : landing.kind === "none" ? "none" : "going",
-    startFailed: startState.failed,
-    targeted: targetEnvironmentId !== null,
-    remembered,
-    hqMatesRead,
-    organizationId: activeOrganization?.id ?? null,
-    organization: organizationStatus,
-    accountTrouble: inventory.error !== null,
-    catalogFailed,
-    // A negative answer needs both the platform/registration read and HQ's unopened Mates.
-    projectsRead: matesSettled,
-  });
   switch (view.kind) {
     case "start-failed":
       return (

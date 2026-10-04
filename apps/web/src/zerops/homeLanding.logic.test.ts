@@ -26,6 +26,7 @@ describe("homeView: the home never stands blank while it waits", () => {
     organization: "selected",
     accountTrouble: false,
     catalogFailed: false,
+    projectsShown: null,
   } as const;
   const projects = { kind: "projects", organizationId: "org-moss" } as const;
   it.each([
@@ -106,6 +107,53 @@ describe("homeView: the home never stands blank while it waits", () => {
       "the environment catalog failed, HQ names a Mate: on its way there",
       { landing: "going", catalogFailed: true },
       { kind: "wait" },
+    ],
+    // Restores f3c9cba48: once painted, the projects page is torn down only by somebody here — a
+    // registration on its way, HQ read again or a colleague's new Mate never take it back.
+    [
+      "the projects page shown, the read unsettled again: it stays",
+      { landing: "none", projectsShown: { organizationId: "org-moss" }, remembered: ref },
+      projects,
+    ],
+    [
+      "the projects page shown, the landing unknown again: it stays",
+      { landing: "unknown", projectsShown: { organizationId: "org-moss" }, remembered: ref },
+      projects,
+    ],
+    [
+      "the projects page shown, HQ names a Mate nobody here opened: it stays",
+      { landing: "going", projectsShown: { organizationId: "org-moss" } },
+      projects,
+    ],
+    [
+      "the projects page shown, a connect hands over its environment: the landing",
+      { landing: "going", targeted: true, projectsShown: { organizationId: "org-moss" } },
+      { kind: "wait" },
+    ],
+    [
+      "another organization chosen, still reading: the page stays as it was",
+      { landing: "unknown", projectsShown: { organizationId: "org-fern" } },
+      { kind: "projects", organizationId: "org-fern" },
+    ],
+    [
+      "another organization chosen, its HQ names a Mate: on its way there",
+      { landing: "going", projectsShown: { organizationId: "org-fern" }, remembered: ref },
+      { kind: "wait" },
+    ],
+    [
+      "another organization chosen, nowhere to land: the page is that organization's",
+      { landing: "none", projectsRead: true, projectsShown: { organizationId: "org-fern" } },
+      projects,
+    ],
+    [
+      "the projects page shown, the draft would not start",
+      {
+        landing: "going",
+        targeted: true,
+        startFailed: true,
+        projectsShown: { organizationId: "org-moss" },
+      },
+      { kind: "start-failed" },
     ],
     [
       "the draft would not start",

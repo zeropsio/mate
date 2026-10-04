@@ -4,7 +4,8 @@
  * and meanwhile it shows what it waits for, never a blank page. Where this browser remembers the
  * Mate it will land on (`homeGuess`), it guesses by it: that Mate's face, name and opening line,
  * with nothing that takes input; else the boot's one wait line. Nowhere to land is an answer only
- * once the read is whole, and it is the projects page, where New project works. Pure.
+ * once the read is whole, and it is the projects page, where New project works; once painted, it
+ * stays until somebody here sends the home elsewhere. Pure.
  */
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
@@ -39,6 +40,8 @@ export function homeView(input: {
   /** The account's access failed to verify (`useZeropsInventory().error`). */
   readonly accountTrouble: boolean;
   readonly catalogFailed: boolean;
+  /** The projects page this home painted, and the organization it painted it for. */
+  readonly projectsShown: { readonly organizationId: string | null } | null;
 }): HomeView {
   if (input.startFailed) return { kind: "start-failed" };
   // Nothing lists the Mates until something happens — an organization chosen, the account's
@@ -51,6 +54,15 @@ export function homeView(input: {
     (input.targeted || input.hqMatesRead)
   ) {
     return { kind: "projects", organizationId: input.organizationId };
+  }
+  // Once painted, the projects page goes only where somebody here sends it: a connect's
+  // environment, or the Mate of the organization they switched to. A read unsettled again or a
+  // Mate nobody here opened never takes it back.
+  const shown = input.projectsShown;
+  if (shown !== null && !input.targeted) {
+    return shown.organizationId !== input.organizationId && input.landing === "going"
+      ? { kind: "wait" }
+      : { kind: "projects", organizationId: shown.organizationId };
   }
   if (input.remembered !== null && !input.targeted) {
     return { kind: "opening", ref: input.remembered };
