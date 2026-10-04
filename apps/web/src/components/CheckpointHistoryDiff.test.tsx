@@ -89,6 +89,45 @@ describe("independent checkpoint root review", () => {
   });
 });
 
+/**
+ * A service whose snapshot was refused has no diff to ask for: the query only
+ * repeated the capture's reason under it, and its Retry could never succeed
+ * (read live on a Mate's dev service, the same refusal said twice).
+ */
+it("says once why a service's turn was not recorded, with nothing to retry", () => {
+  const reason = "Snapshot refused: candidate path byte limit exceeded";
+  query.mockReset();
+  query.mockReturnValue({
+    data: null,
+    error: `api: ${reason}`,
+    isPending: false,
+    refresh: () => {},
+  });
+  const html = renderToStaticMarkup(
+    <CheckpointHistoryDiff
+      {...props}
+      history={{
+        ...history,
+        roots: [
+          {
+            root: {
+              rootId: "api",
+              label: "API service",
+              remotePath: "/var/www",
+              pathPrefix: "api/",
+            },
+            before: snapshot,
+            after: { status: "error", reason },
+          },
+        ],
+      }}
+    />,
+  );
+  expect(html.split(reason)).toHaveLength(2);
+  expect(html).not.toContain("Retry API service diff");
+  expect(query.mock.calls.every(([, options]) => options?.enabled === false)).toBe(true);
+});
+
 it("does not label an older server aggregate patch as one service's changes", () => {
   query.mockReturnValue({
     data: { diff: "aggregate patch" },
