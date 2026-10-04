@@ -26,6 +26,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import {
   candidateRowsAtom,
+  candidateListingWholeAtom,
   takenBotNamesAtom,
   zeropsEnvironmentsAtom,
   zeropsInventoryAtom,
@@ -161,6 +162,8 @@ export function useZeropsCandidates(): {
   readonly listing: Shown<ReadonlyArray<ZeropsCandidatePresentation>>;
   /** A read is in flight: the header's spinner, never a reason to paint less. */
   readonly isLoading: boolean;
+  /** Every project this person can see is accounted for, even while containers are unread. */
+  readonly wholeForPerson: boolean;
   readonly error: string | null;
   readonly refresh: () => void;
 } {
@@ -168,6 +171,7 @@ export function useZeropsCandidates(): {
   const { organizationRef } = useZeropsData();
   const inventory = useZeropsInventory();
   const listing = useAtomValue(candidateListingAtom);
+  const wholeForPerson = useAtomValue(candidateListingWholeAtom);
   const canLoad = status === "signed-in" && organizationStatus === "selected";
   const isLoading = inventory.isLoading || !canLoad;
   const activeOrganizationRef = useMemo(
@@ -181,7 +185,7 @@ export function useZeropsCandidates(): {
     invalidateZerops({ topic: "inventory", organization: activeOrganizationRef });
   }, [activeOrganizationRef]);
 
-  return { listing, isLoading, error: inventory.error, refresh };
+  return { listing, wholeForPerson, isLoading, error: inventory.error, refresh };
 }
 
 /**
