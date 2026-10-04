@@ -1971,8 +1971,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       );
     });
 
-  /** The queries whose hydration waits for an organization's Retry-After, read once it passes. */
+  /**
+   * The queries whose hydration waits for an organization's Retry-After, read once it passes. A
+   * hold that ends while the tab is hidden leaves its queries for the visible wake.
+   */
   const throttledQueries = new Map<string, Set<QueryKey>>();
+  const heldPastHidden = new Set<QueryKey>();
   const readAfterThrottle = (
     organization: OrganizationRef,
     until: number,
@@ -1992,7 +1996,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           Effect.suspend(() => {
             const queries = throttledQueries.get(key) ?? new Set<QueryKey>();
             throttledQueries.delete(key);
-            if (Ref.getUnsafe(currentVisibility) === "hidden") return Effect.void;
+            if (Ref.getUnsafe(currentVisibility) === "hidden") {
+              for (const held of queries) heldPastHidden.add(held);
+              return Effect.void;
+            }
             return Effect.forEach(queries, (held) => scheduleHydration(held), { discard: true });
           }),
         ),
@@ -3242,8 +3249,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         { discard: true },
       );
       // A tab back before its pause still holds its receivers: what waited on them while it was
-      // hidden reads now, from a fresh budget — a failed entity, an owed row, a failed interest.
-      const queries = new Set<QueryKey>();
+      // hidden reads now, from a fresh budget — a failed entity, a read a Retry-After held, an owed
+      // row, a failed interest.
+      const queries = new Set<QueryKey>(heldPastHidden);
+      heldPastHidden.clear();
       for (const [key, record] of hydrationAttempts) {
         if (record.refusal.kind === "gone" || record.retryAtMs === Number.POSITIVE_INFINITY)
           continue;
