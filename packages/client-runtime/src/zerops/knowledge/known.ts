@@ -39,7 +39,11 @@ export type FailureReason =
   | { readonly kind: "unsupported"; readonly capability: string };
 
 export type StaleReason =
-  | { readonly kind: "source-recovering"; readonly retryAtMs: number | null }
+  | {
+      readonly kind: "source-recovering";
+      readonly retryAtMs: number | null;
+      readonly coverageGap?: boolean;
+    }
   | {
       readonly kind: "revalidation-failed";
       readonly failure: FailureReason;

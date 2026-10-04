@@ -94,6 +94,26 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     },
   },
   {
+    name: "a receiver reconnects visibly before its first baseline",
+    shown: {
+      state: "failed",
+      failure: { kind: "transport", detail: "socket closed" },
+      atMs: 1_000,
+      attempt: 1,
+      retryAtMs: 104_000,
+    },
+    expected: {
+      region: "message",
+      message: {
+        text: "Reconnecting… Changes while disconnected may be missing.",
+        afterMs: 0,
+        tone: "notice",
+      },
+      affordance: { kind: "retry-now", label: "Try now" },
+      current: false,
+    },
+  },
+  {
     name: "failed: a region message that names the cause, and Try again",
     shown: { state: "failed", failure: TIMEOUT, atMs: 1_000, attempt: 1, retryAtMs: 104_000 },
     expected: {
@@ -252,6 +272,24 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     expected: {
       region: "value",
       message: { text: "Reconnecting…", afterMs: 0, tone: "notice" },
+      affordance: { kind: "retry-now", label: "Try now" },
+      current: false,
+    },
+  },
+  {
+    name: "receiver recovery shows the coverage gap beside the kept data",
+    shown: known(["#1"], {
+      kind: "stale",
+      reason: { kind: "source-recovering", retryAtMs: 104_000, coverageGap: true },
+      sinceMs: 95_000,
+    }),
+    expected: {
+      region: "value",
+      message: {
+        text: `Reconnecting… Last data as of ${new Date(1_000).toLocaleTimeString()}. Changes while disconnected may be missing.`,
+        afterMs: 0,
+        tone: "notice",
+      },
       affordance: { kind: "retry-now", label: "Try now" },
       current: false,
     },
