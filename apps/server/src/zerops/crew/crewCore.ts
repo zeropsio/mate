@@ -30,6 +30,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Option from "effect/Option";
@@ -570,6 +571,15 @@ export const makeCrewCore = Effect.gen(function* () {
         Effect.forkIn(scope),
         Effect.asVoid,
       ),
+    /**
+     * Runs a person's press in the engine's own scope and waits for it: a
+     * browser that goes away interrupts only the wait, never the landing or
+     * check it started, which finishes and shows on the next frame.
+     */
+    inEngine: <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+      Effect.flatMap(Effect.forkIn(effect, scope), Fiber.join),
+    /** The engine is shutting down (its scope is closing): work in flight is left for the next boot. */
+    shuttingDown: (): boolean => scope.state._tag === "Closed",
     signals: Stream.fromPubSub(signals),
     /** Serializes what takes a task's `#N`: two presses at once never share a number. */
     numbered: <A, E, R>(effect: Effect.Effect<A, E, R>) => numbering.withPermits(1)(effect),

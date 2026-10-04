@@ -1067,3 +1067,26 @@ it.live("the boot sweep holds each crewmate's copy: a press during it waits its 
       }),
   ]),
 );
+
+it.live("a Land whose browser went away mid-landing still lands", () =>
+  withCrewEngine((world) =>
+    Effect.gen(function* () {
+      yield* readyTask(world);
+      const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
+      const hold = yield* world.holdSsh((script) => script.includes("commit-tree"));
+      const press = yield* command({ _tag: "land", taskId: task!.assignment }).pipe(
+        Effect.forkChild,
+      );
+      yield* hold.reached;
+      // The RPC server interrupts a disconnecting client's request.
+      yield* Fiber.interrupt(press);
+      yield* hold.release;
+      const landed = yield* snapshotWhere(
+        (frame) =>
+          frame.board.tasks[0]?.state === "landed" &&
+          frame.operations?.every((row) => row.status !== "running") === true,
+      );
+      assert.isNotNull(landed.board.tasks[0]!.landedCommit);
+    }),
+  ),
+);

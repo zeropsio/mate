@@ -447,6 +447,10 @@ lead's wake in a running run is woken again on its spacing), a changed task, or 
 refuses, whose row says why. A copy save outside any task is redone, or dropped by Drop it. A
 writer's conversation that records no copy at all gets its crew copy back.
 
+A press, once accepted, runs in the engine's own scope (`CrewCore.inEngine`): a browser that
+closes or reloads interrupts only its wait, never the landing, check or Continue it started, and
+a handle is left running for the next boot only when the engine itself shuts down.
+
 Rows still interrupted offer Continue and, before landing, Drop it. Continue operates on the selected
 handle under the crewmate's lock, rejects a changed attempt or newer handle, and records a new
 operation for its side effects. An already landed receipt only records the task's outcome.

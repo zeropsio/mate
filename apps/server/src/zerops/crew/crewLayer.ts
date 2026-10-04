@@ -631,7 +631,8 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       command: (command, principal) =>
         guardCommand(core, command, principal).pipe(
           Effect.andThen(Deferred.await(inspected)),
-          Effect.andThen(run(core, command, principal, activate)),
+          // Once accepted, a press runs to its end whatever happens to the browser that sent it.
+          Effect.andThen(core.inEngine(run(core, command, principal, activate))),
         ),
     };
     return Context.make(CrewEngine, engine).pipe(
