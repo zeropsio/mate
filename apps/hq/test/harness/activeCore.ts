@@ -22,7 +22,6 @@ export const activeCoreLayer = (url: string) => {
     migrations: treeMigrations(),
     heartbeat: Duration.millis(100),
     heartbeatTimeout: Duration.seconds(1),
-    retryAfter: Duration.millis(100),
   }).pipe(
     Layer.provideMerge(PgClient.layer({ url: databaseUrl })),
     Layer.provide(

@@ -205,7 +205,6 @@ export const startCore = (
       build: "test",
       drainFor: Duration.millis(300),
       heartbeat: Duration.millis(100),
-      retryAfter: Duration.millis(100),
       viewTtl: given.viewTtl ?? Duration.millis(200),
       reconcileEvery: given.reconcileEvery ?? Duration.millis(200),
       streamRecheck: Duration.millis(200),

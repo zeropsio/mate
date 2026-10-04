@@ -74,7 +74,6 @@ export interface CoreOptions {
   readonly drainFor?: Duration.Duration;
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
-  readonly retryAfter?: Duration.Duration;
   readonly officialRecheck?: Duration.Duration;
   readonly viewTtl?: Duration.Duration;
   readonly reconcileEvery?: Duration.Duration;
@@ -104,7 +103,6 @@ const services = (options: CoreOptions) => {
     migrations: options.migrations,
     afterMigrations: sealPlainTokens(keySecret),
     ...(options.heartbeat === undefined ? {} : { heartbeat: options.heartbeat }),
-    ...(options.retryAfter === undefined ? {} : { retryAfter: options.retryAfter }),
   }).pipe(
     Layer.provideMerge(
       officialLayer({
@@ -205,4 +203,17 @@ export const coreApp = (options: CoreOptions) =>
   drainLayer(options.drainFor ?? Duration.seconds(10)).pipe(
     Layer.provide(HttpRouter.serve(routes(options))),
     Layer.provideMerge(services(options)),
+  );
+
+/** A terminal owner failure ends the served process after the normal drain. */
+const coreFailure = Effect.gen(function* () {
+  const leader = yield* Leader;
+  const git = yield* GitHost;
+  return yield* Effect.raceFirst(leader.failure, git.failure);
+});
+
+/** Serve until an owner fails or shutdown interrupts, then drain before returning the outcome. */
+export const runCore = <A, E, R>(core: Layer.Layer<A | Leader | GitHost, E, R>) =>
+  Effect.scoped(
+    Effect.flatMap(Layer.build(core), (context) => coreFailure.pipe(Effect.provide(context))),
   );

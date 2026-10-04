@@ -7,7 +7,7 @@
  * `pg_advisory_lock`, raise the epoch and run the pending migrations, then lead. A heartbeat on the
  * lock connection keeps checking that this session still holds the epoch and that this HQ is still
  * the official one; any failure ends the session — the connection closes, the lock is released,
- * the instance is a standby again and tries anew.
+ * the instance fails for good. The process logs why and stops; Zerops service controls start it again.
  *
  * As it gives the lead up (`release`, a deploy's SIGTERM), the leader records its newest `ok` of
  * that verdict in `hq_leader`, and a waiting instance that Zerops has not answered yet takes it as
@@ -19,6 +19,9 @@
  */
 import * as PgConnection from "@effect/sql-pg/PgConnection";
 import * as Context from "effect/Context";
+import * as Cause from "effect/Cause";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
@@ -38,7 +41,7 @@ import { Official } from "./official.ts";
 /**
  * `starting` until the first session reaches the database; `standby` while connected and not
  * leading; `active` while leading; `failed` when the database cannot be reached or a migration
- * failed — the latter holds until a session leads.
+ * failed — the outcome is terminal for this instance.
  */
 export type CoreState = "starting" | "standby" | "active" | "failed";
 
@@ -63,6 +66,8 @@ export class Leader extends Context.Service<
   Leader,
   {
     readonly status: Effect.Effect<LeaderStatus>;
+    /** Terminal session failure: production awaits it and exits, leaving Start again to Zerops. */
+    readonly failure: Effect.Effect<never, Error>;
     /** The status now, then each change of it: what runs only while this Core leads follows it. */
     readonly changes: Stream.Stream<LeaderStatus>;
     /**
@@ -102,8 +107,6 @@ export interface LeaderOptions {
   readonly heartbeat?: Duration.Duration;
   /** A heartbeat that takes longer ends the session: the connection is presumed gone. */
   readonly heartbeatTimeout?: Duration.Duration;
-  /** The pause before an ended session tries again. */
-  readonly retryAfter?: Duration.Duration;
 }
 
 /** The advisory lock's key ("MATE" in ASCII); every build uses it, so old and new exclude each other. */
@@ -146,9 +149,6 @@ const unreachable = (current: Internal): Internal =>
     ? current
     : { state: "failed", epoch: null, migrationFailed: false, held: null };
 
-/** A session ended: a standby again if it had reached the database and failed nothing on the way. */
-const ended = (current: Internal): Internal => (current.state === "failed" ? current : STANDBY);
-
 class Lost {
   readonly _tag = "Lost";
 }
@@ -165,7 +165,10 @@ export const leaderLayer = (
     Effect.gen(function* () {
       const heartbeat = options.heartbeat ?? Duration.seconds(2);
       const heartbeatTimeout = options.heartbeatTimeout ?? Duration.seconds(5);
-      const retryAfter = options.retryAfter ?? Duration.seconds(2);
+      const failure = yield* Deferred.make<never, Error>();
+      const stage = yield* Ref.make<"connection" | "waiting" | "migrations" | "active">(
+        "connection",
+      );
       const official = yield* Official;
       const sql = yield* SqlClient.SqlClient;
       const allowed = Effect.map(official.status, (current) => current.allowed);
@@ -243,6 +246,7 @@ export const leaderLayer = (
           discard: true,
         });
         yield* SubscriptionRef.update(status, reached);
+        yield* Ref.set(stage, "waiting");
         yield* Effect.andThen(inheritRecorded, allowed).pipe(
           Effect.repeat({ schedule: Schedule.spaced(heartbeat), until: (ok) => ok }),
         );
@@ -252,6 +256,7 @@ export const leaderLayer = (
         yield* inheritRecorded;
         yield* stillOfficial;
 
+        yield* Ref.set(stage, "migrations");
         // With the schema there the epoch moves first; the first boot has no table to raise yet.
         const raise = readEpoch(
           connection,
@@ -274,6 +279,7 @@ export const leaderLayer = (
           held: null,
         });
 
+        yield* Ref.set(stage, "active");
         const check = withinTimeout(
           readEpoch(connection, "SELECT epoch FROM hq_leader WHERE id = 1"),
         );
@@ -285,22 +291,34 @@ export const leaderLayer = (
         ).pipe(Effect.forever);
       }).pipe(
         Effect.scoped,
-        Effect.catch((error) =>
-          SubscriptionRef.update(status, ended).pipe(
-            Effect.andThen(Effect.logWarning("leader session ended", error)),
-          ),
-        ),
-        Effect.catchDefect((defect) =>
-          SubscriptionRef.update(status, ended).pipe(
-            Effect.andThen(Effect.logError("leader session crashed", defect)),
-          ),
+        Effect.catchCause((cause) =>
+          Effect.gen(function* () {
+            const error = Cause.findErrorOption(cause);
+            if (Option.isSome(error) && error.value instanceof NotOfficial) {
+              // An announced hand-over releases ownership; this instance stays retired.
+              yield* SubscriptionRef.set(status, STANDBY);
+              yield* Effect.logInfo("leader session released: HQ no longer official");
+              return;
+            }
+            yield* SubscriptionRef.update(status, unreachable);
+            const failedStage = yield* Ref.get(stage);
+            yield* Effect.logError(
+              "leader session failed; start HQ again through Zerops service controls",
+              { stage: failedStage, cause },
+            );
+            yield* Deferred.fail(
+              failure,
+              new Error(
+                `HQ leader session failed at ${failedStage}; start HQ again through Zerops service controls.`,
+              ),
+            );
+          }),
         ),
       );
 
-      const loop = yield* Effect.forkScoped(
-        Effect.forever(Effect.andThen(session, Effect.sleep(retryAfter))),
-      );
+      const sessionFiber = yield* Effect.forkScoped(session);
       return Leader.of({
+        failure: Deferred.await(failure),
         status: Effect.map(SubscriptionRef.get(status), ({ state, epoch }) => ({ state, epoch })),
         changes: SubscriptionRef.changes(status).pipe(
           Stream.map(({ state, epoch }): LeaderStatus => ({ state, epoch })),
@@ -308,7 +326,7 @@ export const leaderLayer = (
         ),
         release: Effect.andThen(
           recordOk,
-          Effect.andThen(Fiber.interrupt(loop), SubscriptionRef.set(status, STANDBY)),
+          Effect.andThen(Fiber.interrupt(sessionFiber), SubscriptionRef.set(status, STANDBY)),
         ),
         hold: (reason) =>
           SubscriptionRef.set(status, {
