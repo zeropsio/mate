@@ -3470,7 +3470,8 @@ no-cache`.
   applications and never writes to it (`tools.ts`). Retiring it is a separate decision, later.
   - _Why:_ accounts that ran it still have it, and HQ replaces it without taking it down
 - **2026-10-02** — **Superseded 2026-10-03 in part by "A Mate's key is lowered only when Finish
-  setup adopts it" below: the projects page lowers no key on its read.**
+  setup adopts it" below: the projects page lowers no key on its read. Superseded 2026-10-04 in part
+  by "Finish setup takes an old Mate key's sibling grants off": `planMateKey` keeps no other grant.**
   **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
   Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
   more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
@@ -3843,8 +3844,13 @@ no-cache`.
     close-off gate, so an unisolated project could be used.
 - **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
   its owner's own tags.**
-  - A plain project is one with no Mate, no place in HQ, and no `mate` or `mate:*` tag. That rules
-    out HQ's own project.
+  - A project is plain only on evidence:
+    - HQ's structure is read and holds no record of it of any kind, and no HQ anchor names it;
+    - it carries no `mate` or `mate:*` tag;
+    - it was made before the organization's HQ project. 0.13 makes stages and productions untagged,
+      after HQ.
+  - Set up Mate asks first, in the app's own dialog: what it adds, and that the project's services
+    restart once while it is closed off.
   - Declaring a Mate adds `mate` beside the project's tags and drops only old `mate:*` ones; a rename
     puts every tag back.
   - **Supersedes:** "limit Mate setup to declared development environments", and "a project carries
@@ -3856,6 +3862,12 @@ no-cache`.
   - HQ records a key wider than its project at enrollment and on its credential (`keyWider`, HQ
     migration 0037). The Mate then offers Finish setup, whose harden leaves the key on its own
     project.
+  - Where the Mate's HQ is a Core older than that, owners and admins get "Check what its key can
+    read" in the Mate's menu. Pressing it reads the token list once and runs the same harden.
+  - `planMateKey` writes a Mate's key as exactly its own project at `BASIC_USER`. A Mate's key is one
+    with a single `ADMIN` or `BASIC_USER` grant on its own project and nothing above `READ_ONLY`
+    elsewhere (`mateKeyReach`, shared by HQ and the client). Any other `zcp-*` key is left alone and
+    a new one is minted.
   - No load reads a token list.
   - **Supersedes in part:** the 2026-10-02 row's "taken off by hand", and the 2026-10-03 row's "a
     Mate HQ holds is never hardened", for widened keys only.
