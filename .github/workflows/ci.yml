@@ -424,7 +424,7 @@ jobs:
             local area="$1" pattern="$2"
             if grep -qE "$pattern" <<< "$paths"; then
               echo "${area}: changed"
-              grep -E "$pattern" <<< "$paths" | head -n 20 | sed 's/^/  /'
+              grep -m 20 -E "$pattern" <<< "$paths" | sed 's/^/  /'
               echo "${area}=true" >> "$GITHUB_OUTPUT"
             else
               echo "${area}: unchanged"
