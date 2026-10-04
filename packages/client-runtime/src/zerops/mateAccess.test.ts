@@ -403,3 +403,59 @@ describe("a ready agent's person from HQ", () => {
     ).toBe(person);
   });
 });
+
+it.each([false, true])(
+  "a signed-out Mate keeps its last signer over its maker (runsWithoutSignIn: %s)",
+  (runsWithoutSignIn) => {
+    const hq: HqPlacement = {
+      ...placedWith({}),
+      mate: {
+        face: "",
+        madeBy: "u-maker",
+        runsWithoutSignIn,
+        logins: {
+          "claude-code": {
+            signedInBy: null,
+            lastSignedInBy: "u-eva",
+            present: false,
+            token: false,
+          },
+        },
+      },
+    };
+    const project = { id: PROJECT, clientId: ORG, userRoles: [], hq };
+    expect(mateOwnerRecords(project)).toEqual({
+      named: true,
+      signedIn: false,
+      signer: "u-eva",
+      person: "u-eva",
+      runsWithoutSignIn,
+    });
+    expect(mateIsViewers(project, "u-eva")).toBe(true);
+    expect(mateIsViewers(project, "u-maker")).toBe(false);
+    expect(resolveMateOwnerPerson({ project, people: { "u-eva": { name: "Eva" } } })).toEqual({
+      userId: "u-eva",
+      name: "Eva",
+    });
+  },
+);
+
+it("logout keeps Claude's badge priority when Codex remains signed in by someone else", () => {
+  const hq: HqPlacement = {
+    ...placedWith({}),
+    mate: {
+      face: "",
+      logins: {
+        "claude-code": { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },
+        codex: { signedInBy: "u-jan", lastSignedInBy: "u-jan", present: true, token: false },
+      },
+    },
+  };
+  expect(mateOwnerRecords({ hq, userRoles: [] })).toEqual({
+    named: true,
+    signedIn: true,
+    signer: "u-eva",
+    person: "u-eva",
+    runsWithoutSignIn: false,
+  });
+});

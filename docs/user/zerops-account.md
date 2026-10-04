@@ -54,3 +54,7 @@ its signer is recorded.
 Deleting a Mate also retires the Zerops key its container used. If HQ cannot identify that key,
 the dialog shows the failure before deleting the project. If key retirement fails after the project
 is deleted, the dialog says the Mate was deleted and keeps **Try again** for retiring that key only.
+
+Signing out of a provider keeps the Mate's owner badge. It remembers the last person who signed
+that provider in; the badge does not mean its provider account is still signed in. A later successful
+sign-in updates that record.

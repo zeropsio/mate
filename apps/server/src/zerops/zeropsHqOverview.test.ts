@@ -450,3 +450,34 @@ describe("mateOverviewOf", () => {
     expect(none.main).not.toBeNull();
   });
 });
+
+it("relays the last signer for display while a signed-out login vouches for nobody", () => {
+  const auth = decodeAuth({
+    available: true,
+    agents: [
+      {
+        agentId: "claude-code",
+        credPresent: false,
+        flagOAuth: false,
+        flagToken: false,
+        providerAuth: "unknown",
+        state: "not-authorized",
+      },
+    ],
+  });
+  const overview = decodeOverview(
+    mateOverviewOf({
+      identity: IDENTITY,
+      threads: [],
+      auth,
+      crew: CREW_OFF_SNAPSHOT,
+      lastSigners: { "claude-code": "user-ada" },
+    }),
+  );
+  expect(overview.logins["claude-code"]).toEqual({
+    signedInBy: null,
+    lastSignedInBy: "user-ada",
+    present: false,
+    token: false,
+  });
+});

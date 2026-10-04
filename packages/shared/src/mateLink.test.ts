@@ -5,6 +5,7 @@ import {
   MATE_LINK_FRAME_MAX,
   MATE_LINK_TEXT_MAX,
   MateLinkDown,
+  LoginDigest,
   MateLinkUp,
   linkFrameBytes,
   readLinkUp,
@@ -297,4 +298,11 @@ describe("mateLink", () => {
     expect(titles({})).toEqual([null]);
     expect(titles({ title: 7 })).toBe("Failure");
   });
+});
+
+const decodeLogin = Schema.decodeUnknownSync(LoginDigest);
+it("carries display ownership separately from current signer authority", () => {
+  expect(
+    decodeLogin({ signedInBy: null, lastSignedInBy: "U1", present: false, token: false }),
+  ).toEqual({ signedInBy: null, lastSignedInBy: "U1", present: false, token: false });
 });

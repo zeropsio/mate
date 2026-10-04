@@ -162,6 +162,12 @@ while its interest is not observing.
 
 ## Fact owners
 
+- A Mate's last signer is display knowledge, separate from current login authority. The server
+  retains it in `signed-in.json` when the credential goes (`credentialCleared`), omits it from
+  `ZeropsProjectSigners.signers`, and relays `lastSignedInBy` beside `signedInBy` in its HQ overview.
+  HQ names both through its people stream. The shared owner resolver can keep a badge while
+  `signedIn` is false; authentication and turn admission still use only the current signer.
+
 A fact is owned where it is born and where its authority is checked. The Mate server owns what is
 born in its container (boot, planned stops, the sessions it issued, its key's verdict, its checkout,
 its agent's tool results, agent sign-in and its signer). zcp reaches the client only through the

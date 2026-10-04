@@ -517,3 +517,33 @@ describe("serveStructureSocket: who ended a socket, and with what code", () => {
     }).pipe(Effect.provide(liveSocketsLayer)),
   );
 });
+
+it.effect("the people stream names a signed-out Mate's last signer", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { sent } = yield* streamFor("owner", (mates) =>
+        Effect.gen(function* () {
+          const link = yield* mates.connect("P_MATE");
+          yield* mates.report("P_MATE", link, {
+            type: "overview",
+            full: true,
+            overview: overviewOf({
+              logins: {
+                codex: { signedInBy: null, lastSignedInBy: "reader", present: false, token: false },
+              },
+            }),
+          });
+        }),
+      );
+      const snapshot = sent[0] as unknown as {
+        readonly people: Readonly<
+          Record<string, { readonly name: string; readonly clientUserId?: string }>
+        >;
+      };
+      assert.deepStrictEqual(snapshot.people.reader, {
+        name: "Person reader",
+        clientUserId: "C-reader",
+      });
+    }),
+  ),
+);

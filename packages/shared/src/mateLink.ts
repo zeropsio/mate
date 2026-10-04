@@ -190,6 +190,8 @@ export type OverviewThreads = typeof OverviewThreads.Type;
 export const LoginDigest = Schema.Struct({
   /** A Zerops user id, or nobody yet. */
   signedInBy: Schema.NullOr(Schema.String),
+  /** Last recorded signer for the owner badge; never authority to spend a login. */
+  lastSignedInBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** Its credential is there. */
   present: Schema.Boolean,
   /** An API key, not a person's sign-in. */
