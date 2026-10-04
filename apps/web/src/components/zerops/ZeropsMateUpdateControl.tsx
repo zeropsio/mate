@@ -4,7 +4,8 @@
  * (the Mate card) or the Mate's home card without the caller managing a hook
  * per candidate. Reads the live descriptor off `useEnvironment` — the same
  * subscription `serverConfig` already rides — never a version comparison
- * of its own (MU-1).
+ * of its own (MU-1). What an update came to is read off the same descriptor:
+ * its version and its boot (`useZeropsMateUpdate`).
  *
  * A hook cannot live inside a plain menu-building function, so the same
  * update state that draws the line also supplies the Mate menus' *Check for
@@ -48,7 +49,7 @@ export function ZeropsMateUpdateControl({
   readonly children: (view: ZeropsMateUpdateView) => ReactNode;
 }) {
   const environment = useEnvironment(environmentId)?.serverConfig?.environment;
-  const mateUpdate = useZeropsMateUpdate(environmentId, environment?.serverVersion);
+  const mateUpdate = useZeropsMateUpdate(environmentId, environment ?? null);
   const { check, update } = mateUpdate;
   const capable = environment?.capabilities.mateUpdate === true;
 
