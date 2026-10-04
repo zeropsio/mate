@@ -3,7 +3,7 @@
  * application and the changes Mates deliver into them, the replacement of a pull request.
  *
  * A Mate works only in the application HQ holds it in: it names a repository by its name, and HQ
- * finds it there. Whether it may is `can` (`@t3tools/shared/zeropsPermissions`), asked here and
+ * finds it there. Whether it may is `can` (`permissions.ts`), asked here and
  * nowhere else — a Mate's writes over the org as every write is decided (`mateApp`, `mateChange`:
  * `roles.ts` `confirmingRefusal`), its fetches
  * over the org's view as every read is decided (`roles.ts` `view`, `mateFetch`); a person's reads
@@ -43,7 +43,8 @@ import {
   type RecipeTierResponse,
   hasServices,
 } from "@t3tools/shared/hqRecipe";
-import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { type Decision, REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, can } from "./permissions.ts";
 import {
   SOURCE_FILE_MAX_BYTES,
   type RepositoryQuery,

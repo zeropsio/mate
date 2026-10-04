@@ -1,6 +1,6 @@
 /**
  * What HQ offers a person, beside each thing its structure streams them (`apps/hq/src/offers.ts`):
- * a `can` record of verb to decision — the same `can` (`zeropsPermissions.ts`) over the same target
+ * a `can` record of verb to decision — the same `can` (`apps/hq/src/permissions.ts`) over the same target
  * HQ enforces the write with, over the org as HQ last read it. The write itself is decided again at
  * the press, and its refusal wins.
  *

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
+import { resolveDoorVisibility } from "@t3tools/shared/mateAccess";
 
-import { type Decision, type Facts, type FactMember, can } from "@t3tools/shared/zeropsPermissions";
+import { type Decision } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, type FactMember, can } from "./permissions.ts";
 
 import {
   type AppProjectRow,
@@ -229,5 +231,46 @@ describe("HQ's offers on a Mate", () => {
       { create_mate_record: ALLOW },
       { create_mate_record: no("not_project_admin") },
     ]);
+  });
+});
+
+/**
+ * Who opens a Mate is decided twice, by two executors over the same Zerops facts: HQ offers following
+ * it (`observe_mate`) and the Mate's door lets them in (`resolveDoorVisibility`). Every org role,
+ * every grant on the Mate's project and an inactive member: the two never disagree.
+ */
+describe("a Basic user opens a Mate: HQ's offer and the door agree", () => {
+  const ROLES = ["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER", "SUPREME"] as const;
+  const GRANTS = [undefined, ...ROLES] as const;
+  const cases = ROLES.flatMap((orgRole) =>
+    GRANTS.flatMap((grant) =>
+      ["ACTIVE", "SUSPENDED"].map((status) => [orgRole, grant, status] as const),
+    ),
+  );
+  it.each(cases)("org %s, grant %s, %s", (orgRole, grant, status) => {
+    const facts: Facts = {
+      freshness: "cached",
+      members: [member("u", orgRole, status)],
+      projects: [
+        {
+          id: "P_MATE",
+          userRoles: grant === undefined ? [] : [{ clientUserId: "C-u", roleCode: grant }],
+        },
+      ],
+    };
+    const door = resolveDoorVisibility({
+      projectId: "P_MATE",
+      member: {
+        userId: "u",
+        clientUserId: "C-u",
+        orgRole,
+        status,
+        canCreateProjects: false,
+      },
+      override: grant,
+    });
+    expect(mateOffers("u", "P_MATE", "mate", facts).observe_mate.allow).toBe(
+      door.visibility === "open",
+    );
   });
 });

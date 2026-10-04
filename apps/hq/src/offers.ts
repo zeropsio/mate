@@ -14,8 +14,8 @@
  * @module offers
  */
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
+import { type Decision } from "@t3tools/shared/zeropsPermissions";
 import {
-  type Decision,
   type Facts,
   type FactsFor,
   type Held,
@@ -24,7 +24,7 @@ import {
   type Targets,
   type Verb,
   can,
-} from "@t3tools/shared/zeropsPermissions";
+} from "./permissions.ts";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 
 /** A project an application holds, as `hq_app_project` has it. */

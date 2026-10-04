@@ -8,7 +8,7 @@
  * only writer; every write is fenced by the leader and checks the writer against Zerops, as every
  * write is decided (`roles.ts` `confirmingRefusal`).
  *
- * Who may is `can` (`@t3tools/shared/zeropsPermissions`), asked with the project's kind as HQ holds
+ * Who may is `can` (`permissions.ts`), asked with the project's kind as HQ holds
  * it now and, for a write, the org as `Roles.forWrite` holds it, its refusal confirmed fresh. A refusal answers
  * a code and a reason code, and is
  * logged with who asked what.
@@ -17,14 +17,8 @@
  */
 import * as NodeBuffer from "node:buffer";
 
-import {
-  type FactsFor,
-  type Reason,
-  REASONS,
-  type Targets,
-  type Verb,
-  can,
-} from "@t3tools/shared/zeropsPermissions";
+import { type Reason, REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type FactsFor, type Targets, type Verb, can } from "./permissions.ts";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";

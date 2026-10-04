@@ -6,7 +6,7 @@
  * where the facts refuse it once more over a fresh read, whose refusal stands; its waits on Zerops
  * end within 35 s (F22, 2026-10-03: a release waited on a fresh read while KRLS's org-wide reads
  * stalled 25 s, and went with its client at 20 s). The decisions themselves are `can`'s
- * (`@t3tools/shared/zeropsPermissions`); nothing about people is stored in HQ.
+ * (`permissions.ts`); nothing about people is stored in HQ.
  *
  * While Zerops does not answer, `view` serves the last good view for five minutes from its read,
  * at once, and asks Zerops again behind it at most every 30 s (E2E 2026-10-03: KRLS's member list
@@ -26,12 +26,8 @@
  *
  * @module roles
  */
-import {
-  type Facts,
-  type Freshness,
-  REASONS,
-  type WriteFreshness,
-} from "@t3tools/shared/zeropsPermissions";
+import { REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, type Freshness, type WriteFreshness } from "./permissions.ts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";

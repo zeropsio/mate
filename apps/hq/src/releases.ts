@@ -35,7 +35,8 @@ import {
   nextPatch,
   releaseMessage,
 } from "@t3tools/shared/hqRelease";
-import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { type Decision, REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, can } from "./permissions.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
