@@ -13,10 +13,11 @@ import {
 import type { EnvironmentMachine, TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
-  addressClockOf,
+  addressFactsOf,
   NO_ADDRESS_MEMORY,
   learnAddresses,
   selectCandidates,
+  subdomainEnableIn,
   type AddressMemory,
   type CandidateRow,
 } from "@t3tools/client-runtime/zerops/projections";
@@ -95,9 +96,9 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
   const [error, setError] = useState<string | null>(null);
   const [demandAttempt, setDemandAttempt] = useState(0);
   const organizationIdsKey = activeOrganization?.id ?? "";
-  // What this view saw of each container's address, for as long as it lives: a young container
-  // ACTIVE before its address landed is on its way, and its wait never begins again
-  // (`AddressMemory`). Read and written only where the rows are derived, in the demand's publish.
+  // What this view saw of each container's address, for as long as it lives: one seen with its
+  // address never waits for it again, and one watched coming up stays watched (`AddressMemory`).
+  // Read and written only where the rows are derived, in the demand's publish.
   const addresses = useRef<AddressMemory>(NO_ADDRESS_MEMORY);
 
   // Navigation holds only the selected organization; service detail follows the opened project.
@@ -117,6 +118,7 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
     const pendingInventory = new Map<string, Promise<InterestLease>>();
     const projectUnsubscribes: Array<() => void> = [];
     const serviceUnsubscribes = new Map<string, () => void>();
+    const activityUnsubscribes = new Map<string, () => void>();
     let desiredInventory = new Map<string, ProjectRef>();
     let projectReads: ReadonlyArray<StampedRead<CollectionRead<ProjectRecord>>> = [];
     let serviceReads = new Map<string, StampedRead<CollectionRead<ServiceRecord>>>();
@@ -134,6 +136,8 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
       projectUnsubscribes.length = 0;
       for (const unsubscribe of serviceUnsubscribes.values()) unsubscribe();
       serviceUnsubscribes.clear();
+      for (const unsubscribe of activityUnsubscribes.values()) unsubscribe();
+      activityUnsubscribes.clear();
     };
 
     const refused = (cause: unknown) =>
@@ -185,6 +189,20 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
           }),
         );
       }
+      // Whether a container's address is being turned on is its project's processes' word: the
+      // account runtime reads them while a container of it lacks one (`account/environments.ts`).
+      for (const [key, unsubscribe] of activityUnsubscribes) {
+        if (desiredInventory.has(key)) continue;
+        unsubscribe();
+        activityUnsubscribes.delete(key);
+      }
+      for (const [key, project] of desiredInventory) {
+        if (activityUnsubscribes.has(key)) continue;
+        activityUnsubscribes.set(
+          key,
+          registry.subscribe(runtime.reads.activity(project), publish, { immediate: false }),
+        );
+      }
     };
 
     function publish(): void {
@@ -213,7 +231,15 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
           ]),
       );
       const atMs = Date.now();
-      const clock = addressClockOf(addresses.current, atMs);
+      const opened = new Map(
+        [...desiredInventory.values()].map((project) => [project.projectId as string, project]),
+      );
+      const facts = addressFactsOf(addresses.current, atMs, (projectId, serviceId) => {
+        const project = opened.get(projectId);
+        return project === undefined
+          ? undefined
+          : subdomainEnableIn(registry.get(runtime.reads.activity(project)), serviceId);
+      });
       const listings = projectReads.map(({ read, atMs: projectsAtMs }) =>
         selectCandidates(
           knownProjectsOf(read, projectsAtMs),
@@ -221,7 +247,7 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
             const services = serviceReads.get(projectKeyOf(project));
             return services === undefined ? UNREAD : knownServicesOf(services.read, services.atMs);
           },
-          clock,
+          facts,
         ),
       );
       const learned = learnAddresses(addresses.current, listings);

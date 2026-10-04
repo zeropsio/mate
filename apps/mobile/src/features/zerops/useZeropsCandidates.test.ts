@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
-import { ADDRESS_GRACE_MS } from "@t3tools/client-runtime/zerops/candidates";
 import {
   initialEnvironment,
   type EnvironmentMachine,
@@ -25,7 +24,11 @@ const runtime = vi.hoisted(() => ({
   },
 }));
 const session = vi.hoisted(() => ({ status: "signed-in", activeId: "org-a" as string | null }));
-const reads = vi.hoisted(() => ({ services: null as unknown, project: null as unknown }));
+const reads = vi.hoisted(() => ({
+  services: null as unknown,
+  project: null as unknown,
+  activity: null as unknown,
+}));
 /** The account runtime's Mate environments, as the provider binds them after the first grant. */
 const stage = vi.hoisted(() => ({
   machines: new Map() as ReadonlyMap<string, unknown>,
@@ -193,6 +196,7 @@ describe("candidate inventory demand", () => {
     };
     const projectsAtom = {};
     const servicesAtom = {};
+    const activityAtom = {};
     const stateAtom = {};
     const projects = {
       value: [
@@ -222,6 +226,7 @@ describe("candidate inventory demand", () => {
       observation: { required: [], optional: [], access: { status: "unverified" as const } },
     };
     reads.project = project;
+    reads.activity = null;
     const released: Array<{ readonly kind: string }> = [];
     runtime.acquire.mockImplementation((descriptor: { readonly kind: string }) =>
       Effect.sync(() => ({
@@ -231,7 +236,7 @@ describe("candidate inventory demand", () => {
       })),
     );
     runtime.registry.get.mockImplementation((atom: unknown) =>
-      atom === projectsAtom ? projects : reads.services,
+      atom === projectsAtom ? projects : atom === activityAtom ? reads.activity : reads.services,
     );
     runtime.registry.subscribe.mockImplementation(() => () => undefined);
     runtime.binding = {
@@ -241,6 +246,7 @@ describe("candidate inventory demand", () => {
         reads: {
           projectsOf: () => projectsAtom,
           servicesOf: () => servicesAtom,
+          activity: () => activityAtom,
         },
         acquire: runtime.acquire,
         refresh: runtime.refresh,
@@ -420,11 +426,43 @@ describe("candidate inventory demand", () => {
     });
   });
 
-  // A phone opened while a new Mate's container is ACTIVE before its address landed reads it as
-  // web does (live run 3): on its way, never "public access is off" — until its wait ends.
-  describe("a young Mate ACTIVE before its address landed", () => {
+  // A phone opened while a Mate's container is ACTIVE before its address landed reads it as web
+  // does (live run 3): on its way while the platform turns its address on, never "public access is
+  // off" — and for as long as that process says so, never by a clock.
+  describe("a Mate ACTIVE before its address landed", () => {
     const CREATED_AT = "2026-10-02T12:00:00.000Z";
     const CREATED = Date.parse(CREATED_AT);
+
+    /** Its project's processes as read: an enable in this status, or none; not read where null. */
+    const activityOf = (status: "RUNNING" | "FAILED" | "none" | null) => {
+      const enable = {
+        knowledge: "observed",
+        record: {
+          ref: { kind: "process", project: reads.project, processId: "enable-1" },
+          identity: {
+            knowledge: "observed",
+            fields: {
+              actionName: "stack.enableSubdomainAccess",
+              serviceIds: ["service-a"],
+              createdAt: CREATED_AT,
+            },
+          },
+          lifecycle: {
+            knowledge: "observed",
+            fields: { status, startedAt: null, finishedAt: null },
+          },
+          pipeline: { knowledge: "unresolved" },
+        },
+      };
+      return status === null
+        ? null
+        : {
+            running: { value: status === "RUNNING" ? [enable] : [], query: { status: "observed" } },
+            retainedHistory: status === "FAILED" ? [enable] : [],
+            processHistory: "read",
+            observation: { required: [], optional: [] },
+          };
+    };
 
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -477,25 +515,51 @@ describe("candidate inventory demand", () => {
 
     it.each<{
       readonly case: string;
+      readonly enable: "RUNNING" | "FAILED" | "none" | null;
       /** How long after it was first seen the row is read. */
       readonly afterMs: number;
       readonly group: "provisioning" | "unavailable";
     }>([
-      { case: "first seen: on its way", afterMs: 0, group: "provisioning" },
-      { case: "a moment on: still on its way", afterMs: 5_000, group: "provisioning" },
       {
-        case: "elapsed time supplies no new platform fact",
-        afterMs: ADDRESS_GRACE_MS,
+        case: "its address being turned on: on its way",
+        enable: "RUNNING",
+        afterMs: 0,
         group: "provisioning",
       },
-    ])("$case", async ({ afterMs, group }) => {
+      {
+        case: "elapsed time supplies no new platform fact",
+        enable: "RUNNING",
+        afterMs: 60 * 60_000,
+        group: "provisioning",
+      },
+      {
+        case: "its enable failed: no public address",
+        enable: "FAILED",
+        afterMs: 0,
+        group: "unavailable",
+      },
+      {
+        case: "nothing turns it on: no public address",
+        enable: "none",
+        afterMs: 0,
+        group: "unavailable",
+      },
+      {
+        case: "its processes not read yet, never watched: as the platform leaves it",
+        enable: null,
+        afterMs: 0,
+        group: "unavailable",
+      },
+    ])("$case", async ({ enable, afterMs, group }) => {
+      reads.activity = activityOf(enable);
       render();
       await settle();
       listenerOf(runtime.binding?.projectAtom)?.();
       await settle();
-      expect(rowOf(render().listing)?.group).toBe("provisioning");
 
       vi.advanceTimersByTime(afterMs);
+      listenerOf(runtime.binding?.projectAtom)?.();
+      await settle();
       const row = rowOf(render().listing);
       expect(row?.group).toBe(group);
       if (group === "provisioning") {

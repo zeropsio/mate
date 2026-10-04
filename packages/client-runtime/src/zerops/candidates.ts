@@ -63,15 +63,14 @@ export interface ZeropsCandidate {
   readonly containerOrigin?: string;
   readonly environmentId?: EnvironmentId;
   /**
-   * A young container ACTIVE before its address landed (`addressWaitEnds`): on its way, from when
-   * its reader first saw it so until its wait ends, wall ms. Its reader derives it again then.
+   * A container ACTIVE before its address landed, while the platform turns its address on
+   * (`subdomainEnableOf`): on its way to it, for as long as that process says so — no clock ends it.
    */
-  readonly addressAwaited?: { readonly since: number; readonly until: number };
+  readonly addressAwaited?: true;
   /**
-   * A young container whose reader watched it wait for its address, and saw it land: its Mate on
-   * its way to answering, on the same clock (`addressWaitEnds`) — from when its reader first saw
-   * it ACTIVE until that wait ends, wall ms. Whether it answers yet is its link's to say. Its
-   * reader derives it again at its end.
+   * A young container whose reader watched it come up, and saw its address land: its Mate on its
+   * way to answering, from then until {@link ARRIVAL_MS} on, wall ms. A face's pose: whether it
+   * answers is its link's to say. Its reader derives it again at its end.
    */
   readonly arriving?: { readonly since: number; readonly until: number };
 }
@@ -244,45 +243,63 @@ export function applyFirstBuildVerdict<Candidate extends ZeropsCandidate>(
   return { ...candidate, group: "unavailable", reason: build.why };
 }
 
-/**
- * How long a container ACTIVE without its address stays on its way to it, from when its reader
- * first saw it so. The platform enables a new Mate's address a second or two after its first build
- * makes it ACTIVE, and the push of that lands seconds later (measured 2026-10-02: 5.6 s from
- * ACTIVE to the address in the tab, under 20 s in the REST record; 2026-09-22: 3 s): two minutes
- * is ample for both, and short enough that an address that will not come says so soon.
- */
-export const ADDRESS_GRACE_MS = 120_000;
+/** Where the platform stands on turning a container's address on (`subdomainEnableOf`). */
+export type SubdomainEnable = "on" | "off";
 
-/** How young a container ACTIVE without its address may be and still be on its way to it. */
-const ADDRESS_YOUTH_MS = 30 * 60_000;
+const SUBDOMAIN_ACTIONS: ReadonlySet<string> = new Set([
+  "stack.enableSubdomainAccess",
+  "stack.disableSubdomainAccess",
+]);
+const ENABLE_HOLDS: ReadonlySet<string> = new Set(["PENDING", "RUNNING", "FINISHED"]);
 
 /**
- * When a container's wait for its address ends, wall ms, given when its reader first saw it ACTIVE
- * without one; null when it is not waiting. Only a young container waits: a Mate turns ACTIVE at
- * the end of its first build, so one ACTIVE without an address past {@link ADDRESS_YOUTH_MS} and
- * the grace is not being born — its access is off, and a reload never paints it "coming up". A
- * creation time not known says nothing young.
+ * Where the platform stands on turning a container's address on, as its project's processes say
+ * it: `on` while its newest `stack.enableSubdomainAccess` is queued or running, or finished with no
+ * `stack.disableSubdomainAccess` after it — the service's record follows the process seconds later
+ * (measured 2026-10-02: 5.6 s from ACTIVE to the address in the tab, under 20 s in the REST
+ * record) — and `off` where it failed, a disable is newer, or none is held. `undefined` while the
+ * processes are not read: running ones and the newest history both.
  */
-export function addressWaitEnds(
-  service: Pick<ZeropsService, "status" | "created">,
-  sinceMs: number,
-): number | null {
-  if (service.status !== "ACTIVE") return null;
-  const created = Date.parse(service.created ?? "");
-  if (Number.isNaN(created)) return null;
-  return Math.min(sinceMs, created + ADDRESS_YOUTH_MS) + ADDRESS_GRACE_MS;
+export function subdomainEnableOf(
+  processes:
+    | ReadonlyArray<{
+        readonly actionName: string;
+        readonly serviceStackIds: ReadonlyArray<string>;
+        readonly status: string;
+        readonly created: string;
+      }>
+    | undefined,
+  serviceId: string,
+): SubdomainEnable | undefined {
+  if (processes === undefined) return undefined;
+  const newest = processes
+    .filter(
+      (process) =>
+        SUBDOMAIN_ACTIONS.has(process.actionName) && process.serviceStackIds.includes(serviceId),
+    )
+    .sort((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
+  return newest?.actionName === "stack.enableSubdomainAccess" && ENABLE_HOLDS.has(newest.status)
+    ? "on"
+    : "off";
 }
 
 /**
+ * How long a young container's arrival is shown once its address landed where its reader watched
+ * it come up: its server answers seconds after (measured 2026-10-02: ACTIVE at +265 s, the Mate
+ * answering at about +280 s), so two minutes are ample. A pose, never a verdict: past it a Mate
+ * that does not answer reads as any other.
+ */
+export const ARRIVAL_MS = 120_000;
+
+/**
  * What a reader holds of a container's address: that it saw the container with one — and, where
- * it watched it come up, when it first saw it ACTIVE — when it first saw it ACTIVE without one, or
- * that it saw it in its first build, before it was ACTIVE at all. Kept for as long as the reader
- * lives (`addressSeenAfter`).
+ * it watched it come up, when the address landed — or that it watched it come up — in its first
+ * build, or ACTIVE while its address was turned on — before the address landed. Kept for as long
+ * as the reader lives (`addressSeenAfter`).
  */
 export type AddressSeen =
   | { readonly addressed: true; readonly since?: number }
-  | { readonly addressed: false; readonly since: number }
-  | { readonly addressed: false; readonly since?: undefined; readonly building: true };
+  | { readonly addressed: false; readonly building: true };
 
 /**
  * A container's first build, as its statuses say it: made, or waiting for the build its import
@@ -290,22 +307,22 @@ export type AddressSeen =
  */
 const FIRST_BUILD_STATUSES: ReadonlySet<string> = new Set(["NEW", "CREATING", "READY_TO_DEPLOY"]);
 
-/** The clock a reader judges an address wait by (`addressWaitEnds`). */
-export interface AddressClock {
+/** What a reader judges a container's address by, beside what the listing reads. */
+export interface AddressFacts {
   readonly nowMs: number;
   /** What this reader holds of the container's address, by service id; none: first seen now. */
   readonly addressSeen?: (serviceId: string) => AddressSeen | undefined;
+  /** Where the platform stands on turning its address on (`subdomainEnableOf`), by service. */
+  readonly subdomainEnable?: (projectId: string, serviceId: string) => SubdomainEnable | undefined;
 }
 
 /**
  * What a reader keeps of a candidate's address once it derived it, from what it held. A container
  * seen with its address is seen with it for good: one whose access is switched off later has no
- * public address, never a wait. Its address landing keeps the moment it was first seen ACTIVE, the
- * clock its arrival is judged by (`ZeropsCandidate.arriving`) — the moment its wait began, or, seen
- * in its first build and next with its address at once, that moment. A wait keeps its first
- * moment, past its end too, so a wait that ended never begins again. A container seen in its first
- * build is kept so until it is ACTIVE. A container never seen with its address, never waiting for
- * it and never seen building — old, or its creation not known — leaves nothing to keep.
+ * public address, never a wait. Its address landing, where its reader watched it come up, keeps
+ * that moment — the clock its arrival pose runs by (`ZeropsCandidate.arriving`). A container seen
+ * in its first build, or while its address was turned on, is kept so until its address lands. A
+ * container never seen with its address and never seen coming up leaves nothing to keep.
  */
 export function addressSeenAfter(
   candidate: Pick<
@@ -316,41 +333,34 @@ export function addressSeenAfter(
 ): AddressSeen | undefined {
   if (held?.addressed === true) return held;
   if (candidate.containerOrigin !== undefined) {
-    const since = held?.since ?? candidate.arriving?.since;
+    const since = candidate.arriving?.since;
     return since === undefined ? { addressed: true } : { addressed: true, since };
   }
-  if (candidate.addressAwaited !== undefined && held?.since === undefined) {
-    return { addressed: false, since: candidate.addressAwaited.since };
-  }
   if (held !== undefined) return held;
-  return candidate.group === "provisioning" &&
-    FIRST_BUILD_STATUSES.has(candidate.service?.status ?? "")
+  return candidate.addressAwaited === true ||
+    (candidate.group === "provisioning" &&
+      FIRST_BUILD_STATUSES.has(candidate.service?.status ?? ""))
     ? { addressed: false, building: true }
     : undefined;
 }
 
 /**
- * A young container's arrival, where its reader watched it come up — in its first build, or
- * waiting for its address: its Mate on its way to answering until the end of the wait for its
- * address, from when its reader first saw it ACTIVE (`addressWaitEnds`). The platform enables a new Mate's
- * address seconds after its first build makes it ACTIVE, and its server answers seconds after
- * that (measured 2026-10-02: ACTIVE at +265 s, the Mate answering at about +280 s), so the same
- * two minutes from first seen ACTIVE are ample for both; past them a Mate that does not answer
- * reads as any other, so a broken one is never on its way for good. A reader that first sees it
- * with its address — a reload — did not see it come and never says it is coming: a reload paints
- * nothing it takes back.
+ * A young container's arrival, where its reader watched it come up — in its first build, or while
+ * its address was turned on — and saw its address land: its Mate on its way to answering for
+ * {@link ARRIVAL_MS} from then. A reader that first sees it with its address — a reload — did not
+ * see it come and never says it is coming: a reload paints nothing it takes back.
  */
 function arrivingOf(
-  service: Pick<ZeropsService, "id" | "status" | "created">,
-  clock: AddressClock | undefined,
+  service: Pick<ZeropsService, "id">,
+  facts: AddressFacts | undefined,
 ): { readonly since: number; readonly until: number } | undefined {
-  if (clock === undefined) return undefined;
-  const seen = clock.addressSeen?.(service.id);
-  // Seen building and ACTIVE now for the first time: its arrival's clock starts here.
-  const since = seen?.since ?? (seen !== undefined && "building" in seen ? clock.nowMs : undefined);
+  if (facts === undefined) return undefined;
+  const seen = facts.addressSeen?.(service.id);
+  // Watched coming up, and its address here now for the first time: its arrival starts now.
+  const since = seen === undefined ? undefined : seen.addressed ? seen.since : facts.nowMs;
   if (since === undefined) return undefined;
-  const until = addressWaitEnds(service, since);
-  return until !== null && clock.nowMs < until ? { since, until } : undefined;
+  const until = since + ARRIVAL_MS;
+  return facts.nowMs < until ? { since, until } : undefined;
 }
 
 /**
@@ -359,14 +369,15 @@ function arrivingOf(
  * `services` is null when the project's service list could not be read; that is
  * a different statement from "this project has no container".
  * `creation` is the platform's verdict on the project's creation when the
- * caller has read one (`applyProjectCreationVerdict`).
+ * caller has read one (`applyProjectCreationVerdict`); `facts`, what the caller's reader knows of
+ * its containers' addresses (`AddressFacts`).
  */
 export function deriveZeropsCandidates(
   project: ZeropsProject,
   services: ReadonlyArray<ZeropsService> | null,
   connectedOrigins: ReadonlyMap<string, EnvironmentId>,
   creation?: ZeropsProjectCreation | undefined,
-  clock?: AddressClock | undefined,
+  facts?: AddressFacts | undefined,
 ): ReadonlyArray<ZeropsCandidate> {
   if (project.status !== "ACTIVE") {
     if (PROJECT_PROVISIONING_STATUSES.has(project.status)) {
@@ -422,22 +433,23 @@ export function deriveZeropsCandidates(
 
     const origin = containerOrigin(project, service);
     if (!origin.ok) {
-      // A young container ACTIVE before its address landed is on its way to it, never without one
-      // — unless its reader saw it with its address: its access is off.
-      const seen = clock?.addressSeen?.(service.id);
-      if (clock !== undefined && seen?.addressed !== true) {
-        const since = seen?.since ?? clock.nowMs;
-        const until = addressWaitEnds(service, since);
-        if (until !== null && clock.nowMs < until) {
-          return {
-            key,
-            project,
-            group: "provisioning",
-            reason: "its address is on its way",
-            service: candidateService,
-            addressAwaited: { since, until },
-          };
-        }
+      // A container whose access the platform is turning on is on its way to its address, for as
+      // long as that process says so — or, its processes not read yet, where its reader watched it
+      // come up. One its reader saw with its address has its access off.
+      const seen = facts?.addressSeen?.(service.id);
+      const enable = facts?.subdomainEnable?.(project.id, service.id);
+      if (
+        seen?.addressed !== true &&
+        (enable === "on" || (enable === undefined && seen?.addressed === false))
+      ) {
+        return {
+          key,
+          project,
+          group: "provisioning",
+          reason: "its address is on its way",
+          service: candidateService,
+          addressAwaited: true,
+        };
       }
       return {
         key,
@@ -459,7 +471,7 @@ export function deriveZeropsCandidates(
         environmentId,
       };
     }
-    const arriving = arrivingOf(service, clock);
+    const arriving = arrivingOf(service, facts);
     return {
       key,
       project,

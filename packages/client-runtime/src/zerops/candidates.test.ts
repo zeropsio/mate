@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
-  ADDRESS_GRACE_MS,
+  ARRIVAL_MS,
   addressSeenAfter,
   type AddressSeen,
   applyFirstBuildVerdict,
@@ -12,6 +12,7 @@ import {
   candidateContainerRuns,
   deriveZeropsCandidates,
   groupZeropsCandidates,
+  subdomainEnableOf,
   zeropsMateBaseUrl,
 } from "./candidates.ts";
 import type { ZeropsProjectCreation } from "./projectCreation.ts";
@@ -435,142 +436,174 @@ describe("applyFirstBuildVerdict", () => {
 
 // A Mate's container turns ACTIVE a second or more before the platform enables its address, and
 // the record of it lands later still (measured 2026-10-02: the tab held ACTIVE without an address
-// for 5.6 s). While it is young, that is a container on its way to its address — never one without
-// any; past the grace, the same facts read as the platform leaves them.
-describe("a young container ACTIVE before its address landed", () => {
-  const CREATED_AT = "2026-10-02T12:00:00.000Z";
-  const CREATED = Date.parse(CREATED_AT);
-  const at = (ms: number) => CREATED + ms;
-  const MINUTE = 60_000;
+// for 5.6 s). Whether its address is coming is the platform's `stack.enableSubdomainAccess`
+// process's to say, never a clock's.
+describe("subdomainEnableOf", () => {
+  const process = (actionName: string, status: string, created: string, serviceId = "s1") => ({
+    actionName,
+    serviceStackIds: [serviceId],
+    status,
+    created,
+  });
+  const ENABLE = "stack.enableSubdomainAccess";
+  const DISABLE = "stack.disableSubdomainAccess";
 
-  const table: ReadonlyArray<{
+  it.each<{
+    readonly case: string;
+    readonly processes: ReadonlyArray<ReturnType<typeof process>> | undefined;
+    readonly said: "on" | "off" | undefined;
+  }>([
+    { case: "its processes not read: not known", processes: undefined, said: undefined },
+    {
+      case: "an enable queued: on",
+      processes: [process(ENABLE, "PENDING", "2026-10-02T12:00:00Z")],
+      said: "on",
+    },
+    {
+      case: "an enable running: on",
+      processes: [process(ENABLE, "RUNNING", "2026-10-02T12:00:00Z")],
+      said: "on",
+    },
+    {
+      case: "an enable finished, the record still behind it: on",
+      processes: [process(ENABLE, "FINISHED", "2026-10-02T12:00:00Z")],
+      said: "on",
+    },
+    {
+      case: "an enable failed: off",
+      processes: [process(ENABLE, "FAILED", "2026-10-02T12:00:00Z")],
+      said: "off",
+    },
+    {
+      case: "a disable after the enable: off",
+      processes: [
+        process(ENABLE, "FINISHED", "2026-10-02T12:00:00Z"),
+        process(DISABLE, "FINISHED", "2026-10-02T13:00:00Z"),
+      ],
+      said: "off",
+    },
+    {
+      case: "an enable again after a disable: on",
+      processes: [
+        process(DISABLE, "FINISHED", "2026-10-02T12:00:00Z"),
+        process(ENABLE, "RUNNING", "2026-10-02T13:00:00Z"),
+      ],
+      said: "on",
+    },
+    {
+      case: "none for this service: off",
+      processes: [
+        process(ENABLE, "RUNNING", "2026-10-02T12:00:00Z", "s2"),
+        process("stack.build", "RUNNING", "2026-10-02T12:00:00Z"),
+      ],
+      said: "off",
+    },
+  ])("$case", ({ processes, said }) => {
+    expect(subdomainEnableOf(processes, "s1")).toBe(said);
+  });
+});
+
+describe("a container ACTIVE before its address landed", () => {
+  const BUILDING = { addressed: false, building: true } as const;
+
+  it.each<{
     readonly case: string;
     readonly service: Partial<ZeropsService>;
     readonly project?: Partial<ZeropsProject>;
-    /** Since its creation, ms; undefined when no clock judges it. */
-    readonly now: number | undefined;
-    /**
-     * What this reader holds of its address: when it first saw it ACTIVE without one, since its
-     * creation, or that it saw it with one.
-     */
-    readonly seen?: number | "addressed";
-    readonly created?: string | null;
+    /** What the platform says of turning its address on; no facts at all where null. */
+    readonly enable: "on" | "off" | undefined | null;
+    readonly seen?: AddressSeen;
     readonly group: "provisioning" | "unavailable";
-    readonly awaited?: { readonly since: number; readonly until: number };
     readonly reason?: RegExp;
-  }> = [
+  }>([
     {
-      case: "seen so for the first time, its access not enabled yet: on its way",
+      case: "its address being turned on: on its way, however long that takes",
       service: { subdomainAccess: false },
-      now: 110_000,
+      enable: "on",
       group: "provisioning",
-      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
     },
     {
-      case: "seen so a moment ago: still on its way, its wait dated where it began",
-      service: { subdomainAccess: false },
-      now: 115_000,
-      seen: 110_000,
-      group: "provisioning",
-      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
-    },
-    {
-      case: "its port not read yet: on its way the same",
+      case: "its port not read yet, its address being turned on: on its way the same",
       service: { ports: [] },
-      now: 110_000,
+      enable: "on",
       group: "provisioning",
-      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
     },
     {
-      case: "its project's subdomain not read yet: on its way the same",
+      case: "its project's subdomain not read yet, its address being turned on: on its way",
       service: {},
       project: { zeropsSubdomainHost: "" },
-      now: 110_000,
+      enable: "on",
       group: "provisioning",
-      awaited: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
     },
     {
-      case: "a slow first build turned ACTIVE late: its wait ends with its first minutes",
+      case: "its address not being turned on: no public address",
       service: { subdomainAccess: false },
-      now: 31 * MINUTE,
-      group: "provisioning",
-      awaited: { since: 31 * MINUTE, until: 30 * MINUTE + ADDRESS_GRACE_MS },
-    },
-    {
-      case: "seen so past its grace: no public address",
-      service: { subdomainAccess: false },
-      now: 110_000 + ADDRESS_GRACE_MS,
-      seen: 110_000,
+      enable: "off",
+      seen: BUILDING,
       group: "unavailable",
       reason: /public access/i,
     },
     {
-      case: "an old Mate whose access is off, on a reload: no public address at once",
+      case: "its processes not read yet, watched coming up: on its way",
       service: { subdomainAccess: false },
-      now: 3 * 60 * MINUTE,
-      group: "unavailable",
-      reason: /public access/i,
+      enable: undefined,
+      seen: BUILDING,
+      group: "provisioning",
     },
     {
-      case: "its creation time unknown: no public address, as the platform leaves it",
+      case: "its processes not read yet, on a reload: no public address, as the platform leaves it",
       service: { subdomainAccess: false },
-      created: null,
-      now: 110_000,
+      enable: undefined,
       group: "unavailable",
+      reason: /public access/i,
     },
     {
       case: "seen with its address before, its access now off: no public address, never a wait",
       service: { subdomainAccess: false },
-      now: 20 * MINUTE,
-      seen: "addressed",
+      enable: "on",
+      seen: { addressed: true },
       group: "unavailable",
       reason: /public access/i,
     },
     {
-      case: "no clock judges it: as the platform leaves it",
+      case: "no facts judge it: as the platform leaves it",
       service: { subdomainAccess: false },
-      now: undefined,
+      enable: null,
       group: "unavailable",
     },
-  ];
-
-  it.each(table)("$case", (row) => {
-    const created = row.created === null ? {} : { created: row.created ?? CREATED_AT };
+  ])("$case", (row) => {
     const [candidate] = deriveZeropsCandidates(
       { ...PROJECT, ...row.project },
-      [service({ id: "s1", ...created, ...row.service })],
+      [service({ id: "s1", ...row.service })],
       NO_CONNECTIONS,
       undefined,
-      row.now === undefined
+      row.enable === null
         ? undefined
         : {
-            nowMs: at(row.now),
-            addressSeen: (serviceId) =>
-              serviceId !== "s1" || row.seen === undefined
-                ? undefined
-                : row.seen === "addressed"
-                  ? { addressed: true }
-                  : { addressed: false, since: at(row.seen) },
+            nowMs: 0,
+            addressSeen: (serviceId) => (serviceId === "s1" ? row.seen : undefined),
+            subdomainEnable: (projectId, serviceId) =>
+              projectId === PROJECT.id && serviceId === "s1" ? row.enable! : undefined,
           },
     );
     expect(candidate?.group).toBe(row.group);
     expect(candidate?.service?.id).toBe("s1");
     expect(candidate?.containerOrigin).toBeUndefined();
-    expect(candidate?.addressAwaited).toEqual(
-      row.awaited === undefined
-        ? undefined
-        : { since: at(row.awaited.since), until: at(row.awaited.until) },
-    );
+    expect(candidate?.addressAwaited).toBe(row.group === "provisioning" ? true : undefined);
     if (row.reason !== undefined) expect(candidate?.reason).toMatch(row.reason);
   });
 
   it("is ready the moment its address lands, its wait over", () => {
     const [candidate] = deriveZeropsCandidates(
       PROJECT,
-      [service({ id: "s1", created: CREATED_AT })],
+      [service({ id: "s1" })],
       NO_CONNECTIONS,
       undefined,
-      { nowMs: at(115_300), addressSeen: () => ({ addressed: false, since: at(110_000) }) },
+      {
+        nowMs: 0,
+        addressSeen: () => BUILDING,
+        subdomainEnable: () => "on",
+      },
     );
     expect(candidate?.group).toBe("ready");
     expect(candidate?.addressAwaited).toBeUndefined();
@@ -578,120 +611,96 @@ describe("a young container ACTIVE before its address landed", () => {
 });
 
 // Run 4, 2 Oct 2026: in a window that did not make it, a new Mate's row read asleep for the 15 s
-// between its address landing and its server answering. A reader that watched it wait for its
-// address holds it on its way to answering on the same clock; one that first sees it with its
-// address — a reload — never says so, so it paints nothing it takes back.
+// between its address landing and its server answering. A reader that watched it come up holds it
+// on its way to answering for a moment — a pose; one that first sees it with its address — a
+// reload — never says so, so it paints nothing it takes back.
 describe("a young container whose address landed, its Mate not answering yet", () => {
-  const CREATED_AT = "2026-10-02T12:00:00.000Z";
-  const CREATED = Date.parse(CREATED_AT);
-  const at = (ms: number) => CREATED + ms;
-  const MINUTE = 60_000;
+  const LANDED = Date.parse("2026-10-02T12:02:00.000Z");
 
   it.each<{
     readonly case: string;
-    /** Since its creation, ms; undefined when no clock judges it. */
+    /** Since its address landed, ms; undefined when no facts judge it. */
     readonly now: number | undefined;
     readonly seen?: AddressSeen;
     readonly arriving?: { readonly since: number; readonly until: number };
   }>([
     {
-      case: "its address lands while this reader waits for it: on its way, on the wait's clock",
-      now: 115_300,
-      seen: { addressed: false, since: at(110_000) },
-      arriving: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
-    },
-    {
-      case: "seen with its address since that wait: still on its way",
-      now: 125_000,
-      seen: { addressed: true, since: at(110_000) },
-      arriving: { since: 110_000, until: 110_000 + ADDRESS_GRACE_MS },
-    },
-    {
-      case: "a slow first build turned ACTIVE late: its wait ends with its first minutes",
-      now: 31 * MINUTE + 10_000,
-      seen: { addressed: true, since: at(31 * MINUTE) },
-      arriving: { since: 31 * MINUTE, until: 30 * MINUTE + ADDRESS_GRACE_MS },
-    },
-    {
-      case: "seen in its first build, then ACTIVE with its address at once: on its way from now",
-      now: 152_000,
+      case: "its address lands where this reader watched it come up: on its way from now",
+      now: 0,
       seen: { addressed: false, building: true },
-      arriving: { since: 152_000, until: 152_000 + ADDRESS_GRACE_MS },
+      arriving: { since: 0, until: ARRIVAL_MS },
     },
     {
-      case: "past its wait: ready, and nothing says it is on its way",
-      now: 110_000 + ADDRESS_GRACE_MS,
-      seen: { addressed: true, since: at(110_000) },
+      case: "seen with its address since: still on its way",
+      now: 10_000,
+      seen: { addressed: true, since: LANDED },
+      arriving: { since: 0, until: ARRIVAL_MS },
     },
     {
-      case: "first seen with its address, as a reload sees it: nothing on its way",
-      now: 125_000,
+      case: "past its pose: ready, and nothing says it is on its way",
+      now: ARRIVAL_MS,
+      seen: { addressed: true, since: LANDED },
     },
+    { case: "first seen with its address, as a reload sees it: nothing on its way", now: 10_000 },
     {
-      case: "seen with its address and never waiting for it: nothing on its way",
-      now: 125_000,
+      case: "seen with its address and never watched coming up: nothing on its way",
+      now: 10_000,
       seen: { addressed: true },
     },
     {
-      case: "no clock judges it: as the platform leaves it",
+      case: "no facts judge it: as the platform leaves it",
       now: undefined,
-      seen: { addressed: true, since: at(110_000) },
+      seen: { addressed: true, since: LANDED },
     },
   ])("$case", (row) => {
     const [candidate] = deriveZeropsCandidates(
       PROJECT,
-      [service({ id: "s1", created: CREATED_AT })],
+      [service({ id: "s1" })],
       NO_CONNECTIONS,
       undefined,
-      row.now === undefined ? undefined : { nowMs: at(row.now), addressSeen: () => row.seen },
+      row.now === undefined ? undefined : { nowMs: LANDED + row.now, addressSeen: () => row.seen },
     );
     expect(candidate?.group).toBe("ready");
     expect(candidate?.containerOrigin).toBeDefined();
     expect(candidate?.arriving).toEqual(
       row.arriving === undefined
         ? undefined
-        : { since: at(row.arriving.since), until: at(row.arriving.until) },
+        : { since: LANDED + row.arriving.since, until: LANDED + row.arriving.until },
     );
   });
 });
 
 // What a reader keeps of each container's address once a derivation read it: a container seen with
-// its address never waits for it again, and a wait's first moment is kept — after its end too.
+// its address never waits for it again, and one watched coming up stays watched until it lands.
 describe("addressSeenAfter", () => {
-  const CREATED_AT = "2026-10-02T12:00:00.000Z";
-  const CREATED = Date.parse(CREATED_AT);
-  const derive = (subdomainAccess: boolean, nowMs: number, held?: AddressSeen, status = "ACTIVE") =>
+  const NOW = Date.parse("2026-10-02T12:02:00.000Z");
+  const derive = (
+    subdomainAccess: boolean,
+    held: AddressSeen | undefined,
+    status = "ACTIVE",
+    enable: "on" | "off" = "off",
+  ) =>
     deriveZeropsCandidates(
       PROJECT,
-      [service({ id: "s1", created: CREATED_AT, subdomainAccess, status })],
+      [service({ id: "s1", subdomainAccess, status })],
       NO_CONNECTIONS,
       undefined,
-      { nowMs, addressSeen: () => held },
+      { nowMs: NOW, addressSeen: () => held, subdomainEnable: () => enable },
     )[0]!;
   const BUILDING = { addressed: false, building: true } as const;
-  const WITHOUT = { addressed: false, since: CREATED + 110_000 } as const;
 
   it.each<{
     readonly case: string;
     readonly held: AddressSeen | undefined;
     readonly subdomainAccess: boolean;
-    readonly now: number;
     readonly status?: string;
+    readonly enable?: "on" | "off";
     readonly kept: AddressSeen | undefined;
   }>([
     {
       case: "first seen in its first build: its arrival is this reader's to see",
       held: undefined,
       subdomainAccess: false,
-      now: 60_000,
-      status: "READY_TO_DEPLOY",
-      kept: BUILDING,
-    },
-    {
-      case: "seen in its first build again: kept",
-      held: BUILDING,
-      subdomainAccess: false,
-      now: 90_000,
       status: "READY_TO_DEPLOY",
       kept: BUILDING,
     },
@@ -699,76 +708,48 @@ describe("addressSeenAfter", () => {
       case: "a restart is never a first build: nothing to keep",
       held: undefined,
       subdomainAccess: true,
-      now: 60_000,
       status: "RESTARTING",
       kept: undefined,
     },
     {
-      case: "seen building, then ACTIVE without its address: its wait begins now",
-      held: BUILDING,
-      subdomainAccess: false,
-      now: 152_000,
-      kept: { addressed: false, since: CREATED + 152_000 },
-    },
-    {
-      case: "seen building, then ACTIVE with its address at once: seen with it, from now",
-      held: BUILDING,
-      subdomainAccess: true,
-      now: 152_000,
-      kept: { addressed: true, since: CREATED + 152_000 },
-    },
-    {
-      case: "first seen without its address: its wait begins now",
+      case: "first seen while its address is turned on: watched coming up",
       held: undefined,
       subdomainAccess: false,
-      now: 110_000,
-      kept: WITHOUT,
+      enable: "on",
+      kept: BUILDING,
     },
     {
-      case: "seen without it again: the first moment is kept",
-      held: WITHOUT,
+      case: "watched coming up, ACTIVE without its address: still watched",
+      held: BUILDING,
       subdomainAccess: false,
-      now: 113_000,
-      kept: WITHOUT,
+      enable: "on",
+      kept: BUILDING,
     },
     {
-      case: "past its wait: the first moment is kept, so it never begins again",
-      held: WITHOUT,
-      subdomainAccess: false,
-      now: 110_000 + ADDRESS_GRACE_MS + 10_000,
-      kept: WITHOUT,
-    },
-    {
-      case: "its address landed: seen with it, on the clock its wait began",
-      held: WITHOUT,
+      case: "watched coming up, its address landed: seen with it, from now",
+      held: BUILDING,
       subdomainAccess: true,
-      now: 115_300,
-      kept: { addressed: true, since: WITHOUT.since },
+      kept: { addressed: true, since: NOW },
     },
     {
-      case: "first seen with its address: seen with it, and no wait to date it by",
+      case: "first seen with its address: seen with it, and no arrival to date it by",
       held: undefined,
       subdomainAccess: true,
-      now: 115_300,
       kept: { addressed: true },
     },
     {
       case: "seen with it, its access off later: still seen with it",
       held: { addressed: true },
       subdomainAccess: false,
-      now: 20 * 60_000,
       kept: { addressed: true },
     },
     {
-      case: "an old container without its address, never seen with one: nothing to keep",
+      case: "a container without its address, not being turned on: nothing to keep",
       held: undefined,
       subdomainAccess: false,
-      now: 3 * 60 * 60_000,
       kept: undefined,
     },
-  ])("$case", ({ held, subdomainAccess, now, status, kept }) => {
-    expect(addressSeenAfter(derive(subdomainAccess, CREATED + now, held, status), held)).toEqual(
-      kept,
-    );
+  ])("$case", ({ held, subdomainAccess, status, enable, kept }) => {
+    expect(addressSeenAfter(derive(subdomainAccess, held, status, enable), held)).toEqual(kept);
   });
 });

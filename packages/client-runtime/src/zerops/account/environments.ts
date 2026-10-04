@@ -399,6 +399,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   >();
   const listeners = new Set<() => void>();
   const detailLeases = new Map<string, Fiber.Fiber<void>>();
+  /**
+   * The processes each project holds while a container of it is ACTIVE without its address: the
+   * listing reads from them whether the platform is turning its address on (`subdomainEnableIn`).
+   */
+  const addressWatch = new Map<string, Fiber.Fiber<void>>();
   /** The project lease each drawn Mate's project holds, so its Mate is listed (`updateDrawn`). */
   const drawnLeases = new Map<string, Fiber.Fiber<void>>();
   const detailFailures = new Map<string, LeaseAdmissionError>();
@@ -869,6 +874,41 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /**
+   * Reads the processes — running, and the newest history — of every listed project with a
+   * container ACTIVE without its address, for as long as it lacks one: its address landing, or the
+   * project leaving the listing, lets the read go.
+   */
+  const updateAddressWatch = () => {
+    if (closed) return;
+    const lacking = new Map<string, ProjectRef>();
+    for (const row of rows) {
+      if (row.presence !== "known" || row.service?.status !== "ACTIVE") continue;
+      if (row.containerOrigin !== undefined || lacking.has(row.project.id)) continue;
+      const ref = projectRefOf(row.project.id);
+      if (ref !== undefined) lacking.set(row.project.id, ref);
+    }
+    for (const [projectId, fiber] of addressWatch) {
+      if (lacking.has(projectId)) continue;
+      addressWatch.delete(projectId);
+      run(Fiber.interrupt(fiber));
+    }
+    for (const [projectId, project] of lacking) {
+      if (addressWatch.has(projectId)) continue;
+      addressWatch.set(
+        projectId,
+        run(
+          Effect.scoped(
+            Effect.all([
+              data.acquire({ kind: "project-activity", project }),
+              data.acquire({ kind: "project-process-history", project, before: null, limit: 100 }),
+            ]).pipe(Effect.andThen(Effect.never)),
+          ).pipe(Effect.ignore),
+        ),
+      );
+    }
+  };
+
   // ── The index ──────────────────────────────────────────────────────────────────────────────
 
   let indexed: {
@@ -1005,6 +1045,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
           const moved = !sameItems(rows, listedRows);
           if (moved) rows = listedRows;
+          updateAddressWatch();
           // The route's target first, so its container is read before any other's.
           updateRoute();
           updateActions();
@@ -1136,6 +1177,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         checks.clear();
         for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
         detailLeases.clear();
+        for (const fiber of addressWatch.values()) run(Fiber.interrupt(fiber));
+        addressWatch.clear();
         for (const fiber of drawnLeases.values()) run(Fiber.interrupt(fiber));
         drawnLeases.clear();
         detailFailures.clear();

@@ -1,10 +1,10 @@
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { ADDRESS_GRACE_MS } from "../candidates.ts";
 import {
   identity,
   organization,
+  process,
   project,
   scope,
   service,
@@ -141,7 +141,7 @@ describe("candidateListingsAtom: a read with no value yet", () => {
   });
 });
 
-describe("candidateListingsAtom: a young container ACTIVE before its address landed", () => {
+describe("candidateListingsAtom: a container ACTIVE before its address landed", () => {
   const CREATED_AT = "2026-10-02T12:00:00.000Z";
   const CREATED = Date.parse(CREATED_AT);
 
@@ -221,11 +221,39 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
     projects: yes ? [{ project: project(), role: "OWNER" }] : [],
   });
 
+  /** The project's `stack.enableSubdomainAccess` for its zcp service, in this status. */
+  const enable = (status: string) => ({
+    knowledge: "observed",
+    record: {
+      ref: process("enable-1", project()),
+      identity: observed({
+        actionName: "stack.enableSubdomainAccess",
+        serviceIds: ["service-1"],
+        createdAt: "2026-10-02T12:01:40.000Z",
+      }),
+      lifecycle: observed({ status, startedAt: null, finishedAt: null }),
+      pipeline: unresolved,
+    },
+  });
+
+  /** The project's processes as read: running ones and the newest history, or not read yet. */
+  const activityOf = (enableStatus: string | null, read = true) => ({
+    running: {
+      value: enableStatus === "RUNNING" ? [enable(enableStatus)] : [],
+      query: { status: read ? "observed" : "pending" },
+    },
+    retainedHistory:
+      enableStatus !== null && enableStatus !== "RUNNING" ? [enable(enableStatus)] : [],
+    processHistory: read ? "read" : "reading",
+    observation: { required: [], optional: [] },
+  });
+
   const listingOver = () => {
     const registry = AtomRegistry.make();
     const servicesRead = Atom.make<unknown>(read([], project()));
     const projectsRead = Atom.make<unknown>(read([projectRecord]));
     const access = Atom.make<unknown>(admitted(true));
+    const activity = Atom.make<unknown>(activityOf(null, false));
     const data = {
       access: {
         view: Atom.make({
@@ -246,6 +274,7 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
         access,
         projectsOf: () => projectsRead,
         servicesOf: () => servicesRead,
+        activity: () => activity,
       },
     } as unknown as ManagedZeropsDataRuntime;
     const listings = candidateListingsAtom(data);
@@ -256,6 +285,14 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
           case "address-off":
           case "address-on":
             return registry.set(servicesRead, read([zcp(event === "address-on")], project()));
+          case "enabling":
+            return registry.set(activity, activityOf("RUNNING"));
+          case "enabled":
+            return registry.set(activity, activityOf("FINISHED"));
+          case "enable-failed":
+            return registry.set(activity, activityOf("FAILED"));
+          case "not-enabling":
+            return registry.set(activity, activityOf(null));
           case "projects-unread":
             return registry.set(projectsRead, unreadProjects);
           case "projects-back":
@@ -277,6 +314,11 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
   type Event =
     | "address-off"
     | "address-on"
+    /** Its project's processes: an enable running, finished, failed, or none at all. */
+    | "enabling"
+    | "enabled"
+    | "enable-failed"
+    | "not-enabling"
     | "projects-unread"
     | "projects-back"
     | "not-admitted"
@@ -284,10 +326,9 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
     /** Nothing read changes: only the clock runs. */
     | "tick";
 
-  /** The row after a step: its group and its wait's first moment, since creation; none without a row. */
+  /** The row after a step: its group; none without a row. */
   type Seen =
-    | { readonly group: "provisioning"; readonly since: number }
-    | { readonly group: "ready" | "unavailable" }
+    | { readonly group: "provisioning" | "ready" | "unavailable" }
     | { readonly presence: "unknown" }
     | "no-row";
 
@@ -299,74 +340,73 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
     vi.useRealTimers();
   });
 
-  const AFTER = 110_000 + ADDRESS_GRACE_MS;
+  const HOUR = 60 * 60_000;
 
   it.each<{
     readonly case: string;
     readonly steps: ReadonlyArray<readonly [atMs: number, event: Event, seen: Seen]>;
   }>([
     {
-      case: "on its way from the moment it was first seen so, through a push",
+      case: "on its way while its enable runs, however long, ready the moment its address lands",
       steps: [
-        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
-        [113_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [110_000, "enabling", { group: "unavailable" }],
+        [110_000, "address-off", { group: "provisioning" }],
+        [HOUR, "tick", { group: "provisioning" }],
+        [HOUR + 1_000, "address-on", { group: "ready" }],
       ],
     },
     {
-      case: "ready the moment its address lands",
+      case: "on its way once its enable finished, until its record catches up",
       steps: [
-        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
-        [115_300, "address-on", { group: "ready" }],
+        [110_000, "address-off", { group: "unavailable" }],
+        [111_000, "enabled", { group: "provisioning" }],
+        [115_000, "address-on", { group: "ready" }],
       ],
     },
     {
-      case: "as the platform leaves it once its wait ends, with no read changing",
+      case: "no public address once its enable failed",
       steps: [
-        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
-        [AFTER, "tick", { group: "unavailable" }],
+        [110_000, "address-off", { group: "unavailable" }],
+        [111_000, "enabling", { group: "provisioning" }],
+        [112_000, "enable-failed", { group: "unavailable" }],
       ],
     },
     {
-      case: "its wait never begins again once it ended, whatever is pushed after",
+      case: "no public address where nothing turns it on, read as such at once",
       steps: [
-        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
-        [AFTER, "tick", { group: "unavailable" }],
-        [240_000, "address-off", { group: "unavailable" }],
-        [361_000, "tick", { group: "unavailable" }],
-        [400_000, "address-off", { group: "unavailable" }],
+        [110_000, "not-enabling", { group: "unavailable" }],
+        [110_000, "address-off", { group: "unavailable" }],
+        [HOUR, "tick", { group: "unavailable" }],
       ],
     },
     {
-      case: "a young Mate seen with its address whose access is switched off has none",
+      case: "its processes not read yet on a reload: as the platform leaves it",
+      steps: [[110_000, "address-off", { group: "unavailable" }]],
+    },
+    {
+      case: "a Mate seen with its address whose access is switched off has none",
       steps: [
         [110_000, "address-on", { group: "ready" }],
+        [20 * 60_000, "enabling", { group: "ready" }],
         [20 * 60_000, "address-off", { group: "unavailable" }],
-        [20 * 60_000 + 10_000, "address-off", { group: "unavailable" }],
       ],
     },
     {
-      case: "its wait keeps its first moment through the organization's read blinking",
+      case: "on its way through the organization's read blinking",
       steps: [
-        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [110_000, "enabling", { group: "unavailable" }],
+        [110_000, "address-off", { group: "provisioning" }],
         [112_000, "projects-unread", "no-row"],
-        [114_000, "projects-back", { group: "provisioning", since: 110_000 }],
+        [114_000, "projects-back", { group: "provisioning" }],
       ],
     },
     {
-      case: "its wait keeps its first moment through its project's admission blinking",
+      case: "on its way through its project's admission blinking",
       steps: [
-        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
+        [110_000, "enabling", { group: "unavailable" }],
+        [110_000, "address-off", { group: "provisioning" }],
         [112_000, "not-admitted", { presence: "unknown" }],
-        [114_000, "admitted", { group: "provisioning", since: 110_000 }],
-      ],
-    },
-    {
-      case: "an ended wait stays ended through a blink",
-      steps: [
-        [110_000, "address-off", { group: "provisioning", since: 110_000 }],
-        [AFTER, "tick", { group: "unavailable" }],
-        [240_000, "projects-unread", "no-row"],
-        [242_000, "projects-back", { group: "unavailable" }],
+        [114_000, "admitted", { group: "provisioning" }],
       ],
     },
   ])("$case", ({ steps }) => {
@@ -382,11 +422,7 @@ describe("candidateListingsAtom: a young container ACTIVE before its address lan
       } else if ("presence" in seen) {
         expect(row?.presence).toBe(seen.presence);
       } else {
-        expect({ atMs, group: row?.group, since: row?.addressAwaited?.since }).toEqual({
-          atMs,
-          group: seen.group,
-          since: "since" in seen ? CREATED + seen.since : undefined,
-        });
+        expect({ atMs, group: row?.group }).toEqual({ atMs, group: seen.group });
       }
     }
   });

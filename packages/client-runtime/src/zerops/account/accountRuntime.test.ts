@@ -1819,6 +1819,33 @@ describe("the post-grant stage's Mate environments", () => {
 
   // A coming page left open on a Mate whose door fails minted a throwaway a minute as the route
   // (review, 2026-10-03): the Mate on screen is one the person asked for, capped as no route is.
+  // B6: whether a Mate's address is being turned on is its project's processes' word, so they are
+  // read for as long as its container is ACTIVE without one — and not for a Mate that has one.
+  it.effect.each([
+    { case: "its address off: its project's processes are read", address: false, read: true },
+    { case: "its address on: nothing more is read", address: true, read: false },
+  ])("a Mate ACTIVE, $case", ({ address, read }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const lacking = { ...A_MATE, service: { ...A_MATE.service, subdomainAccess: address } };
+        const opened = yield* granted([], [lacking]);
+        yield* settle;
+        const kinds = new Set(
+          [...opened.registry.get(opened.built.data.stateAtom).interests.values()]
+            .filter(
+              ({ descriptor, leases }) =>
+                leases > 0 &&
+                "project" in descriptor &&
+                descriptor.project.projectId === A_MATE.projectId,
+            )
+            .map(({ descriptor }) => descriptor.kind),
+        );
+        expect(kinds.has("project-activity")).toBe(read);
+        expect(kinds.has("project-process-history")).toBe(read);
+      }),
+    ),
+  );
+
   it.effect("the Mate on screen is asked for, and capped as no route is", () =>
     Effect.scoped(
       Effect.gen(function* () {
