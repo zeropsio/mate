@@ -3722,8 +3722,12 @@ no-cache`.
   "nothing" (no "None open", "Not set up", "Nothing waiting to release"). Preview, Rename, Add Mate,
   Add stage and Add production are in the row's ··· menu. Rows that need the person rise first,
   keeping the person's order within each group. A row holds the place it was last drawn while a
-  Mate reconnects or a read is out (`rowRiseMemory.ts`), and says "Gitea didn't answer" when that
-  read failed. The page has one tab, and the containers outside a project are one folded group.
+  Mate reconnects or a read is out (`rowRiseMemory.ts`). Where its changes are not known it says
+  why: "HQ didn't answer", or "Needs Basic user access" where HQ's rule withholds them. Every row
+  holds the reads of its stops (production and stages), opened or not; a stop whose read failed
+  is named on the first line beside its one Again, and what HQ still holds of a project (a deletion
+  under way, records left) stands beside its name. The page has one tab, and the containers
+  outside a project are one folded group.
   **Supersedes:** of the 2026-09-24 _projects listing_ row, the _Next steps_ strip, the _Only a Mate
   so far_ tiles and `groupPlacementMemory.ts`. Creations drawn from their birth and the in-flight
   words stand.

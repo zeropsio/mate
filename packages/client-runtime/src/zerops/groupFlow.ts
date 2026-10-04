@@ -295,8 +295,6 @@ export const PRODUCTION_SETTING_UP = "Setting up production…";
 export const PRODUCTION_DEPLOYING = "Deploying…";
 /** A stage's line while its creation is under way (`stopComing.ts`). */
 export { STAGE_SETTING_UP } from "./stopComing.ts";
-/** Beside *Add production*, where the verb is: the Mate's part ends at the pull request. */
-export const PRODUCTION_ADDED_HERE = "Production is added here, not by the Mate.";
 /** The verb that adds it. */
 export const ADD_PRODUCTION_LABEL = "Add production";
 /** The step that asks for it. */
