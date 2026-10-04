@@ -42,7 +42,6 @@ export function planProjectTagPort(project, snapshot, projects = []) {
     if (tool !== "gitea") blocked.push(`Unknown tool kind: ${tool}`);
     else fact("tool", tool, snapshot.tools?.find((row) => row.projectId === project.id)?.kind);
   }
-  const signers = new Map();
   for (const tag of tags.filter((tag) => tag.startsWith("mate:signer:"))) {
     const rest = tag.slice("mate:signer:".length);
     const at = rest.indexOf(":");
@@ -51,15 +50,11 @@ export function planProjectTagPort(project, snapshot, projects = []) {
       continue;
     }
     const key = rest.slice(0, at);
-    signers.set(key, (signers.get(key) ?? new Set()).add(rest.slice(at + 1)));
-  }
-  for (const [key, people] of signers) {
-    // Two people named for one login are unsettled: tag order is no evidence of whose it is.
-    if (people.size !== 1) continue;
+    const by = rest.slice(at + 1);
     const login = snapshot.mates?.[project.id]?.logins?.[key];
     fact(
       `signers.${key}`,
-      [...people][0],
+      by,
       held?.mate?.signers?.[key] ?? login?.signedInBy ?? login?.lastSignedInBy,
     );
   }
