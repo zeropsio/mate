@@ -15,7 +15,7 @@
  *
  * Pure: no React, no store.
  */
-import { readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   devPartnerHostname,
   foldedStageHostnames,
@@ -132,18 +132,22 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
   );
 }
 
+/** A stage's or a production's role where HQ places a project as one. */
+const roleOf = (placement: HqPlacement | undefined): GroupRole | undefined =>
+  placement?.kind === "stage" ? "stage" : placement?.kind === "production" ? "prod" : undefined;
+
 /**
- * What the account holds of the Mate's group for its addresses: the Mate's own
- * project's role, and the group's stage and production projects with their
- * routes. A project whose services are not read yet is left out until they
- * are, and `pending` says so — as it does while the Mate's own project is not
- * held. Another Mate's dev is that Mate's, never this one's.
+ * What the account holds of the Mate's application for its addresses, as HQ places its projects
+ * (`ZeropsProject.hq`): the Mate's own project's role, and the application's stage and production
+ * projects with their routes. A project whose services are not read yet is left out until they
+ * are, and `pending` says so — as it does while the Mate's own project is not held. Another
+ * Mate's dev is that Mate's, never this one's.
  */
 export function groupAddressEnvironments<
   P extends {
     readonly id: string;
     readonly name: string;
-    readonly tagList?: ReadonlyArray<string> | undefined;
+    readonly hq?: HqPlacement | undefined;
   },
 >(input: {
   readonly projectId: string;
@@ -158,21 +162,20 @@ export function groupAddressEnvironments<
 } {
   const own = input.projects.find((project) => project.id === input.projectId);
   if (own === undefined) return { ownRole: undefined, environments: [], pending: true };
-  const ownTags = readZeropsGroupTags(own.tagList);
-  const ownRole = ownTags.role === "stage" || ownTags.role === "prod" ? ownTags.role : undefined;
-  if (ownTags.groupId === undefined) return { ownRole, environments: [], pending: false };
+  const ownRole = roleOf(own.hq);
+  const appId = own.hq?.appId ?? null;
+  if (appId === null) return { ownRole, environments: [], pending: false };
   let pending = false;
   const environments = input.projects.flatMap((project) => {
     if (project.id === input.projectId) return [];
-    const tags = readZeropsGroupTags(project.tagList);
-    if (tags.groupId !== ownTags.groupId || (tags.role !== "stage" && tags.role !== "prod"))
-      return [];
+    const role = roleOf(project.hq);
+    if (project.hq?.appId !== appId || role === undefined) return [];
     const routes = input.routesOf(project);
     if (routes === undefined) {
       pending = true;
       return [];
     }
-    return [{ projectId: project.id, name: project.name, role: tags.role, routes }];
+    return [{ projectId: project.id, name: project.name, role, routes }];
   });
   return { ownRole, environments, pending };
 }

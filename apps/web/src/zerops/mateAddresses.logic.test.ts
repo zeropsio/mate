@@ -1,4 +1,5 @@
 import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
+import type { RoleProjectKind as HqKind } from "@t3tools/shared/zeropsRoles";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -206,10 +207,20 @@ describe("mateAddresses", () => {
 });
 
 describe("groupAddressEnvironments", () => {
-  const project = (id: string, tagList: ReadonlyArray<string>) => ({
+  // Where HQ places a project (`ZeropsProject.hq`): its application and its kind.
+  const project = (id: string, place?: { readonly app: string; readonly kind: HqKind }) => ({
     id,
     name: `${id} project`,
-    tagList,
+    ...(place === undefined
+      ? {}
+      : {
+          hq: {
+            appId: place.app,
+            appName: `${place.app} app`,
+            kind: place.kind,
+            mate: null,
+          },
+        }),
   });
   const routes: Record<string, ReadonlyArray<{ service: string; url: string }>> = {
     mate: [route("appdev", "https://appdev-1-3000.example.app")],
@@ -220,13 +231,13 @@ describe("groupAddressEnvironments", () => {
 
   it.each([
     {
-      name: "the Mate's group's stage and production, never another group's or a Mate's dev",
+      name: "the Mate's application's stage and production, never another's or a Mate's dev",
       projects: [
-        project("mate", ["mate:g:one", "mate:role:dev"]),
-        project("stage", ["mate:g:one", "mate:role:stage"]),
-        project("prod", ["mate:g:one", "mate:role:prod"]),
-        project("peer", ["mate:g:one", "mate:role:dev"]),
-        project("other", ["mate:g:two", "mate:role:prod"]),
+        project("mate", { app: "one", kind: "mate" }),
+        project("stage", { app: "one", kind: "stage" }),
+        project("prod", { app: "one", kind: "production" }),
+        project("peer", { app: "one", kind: "mate" }),
+        project("other", { app: "two", kind: "production" }),
       ],
       expected: {
         ownRole: undefined,
@@ -239,20 +250,20 @@ describe("groupAddressEnvironments", () => {
     },
     {
       name: "the Mate's own project's role, when it is a stage or a production",
-      projects: [project("mate", ["mate:g:one", "mate:role:prod"])],
+      projects: [project("mate", { app: "one", kind: "production" })],
       expected: { ownRole: "prod", environments: [], pending: false },
     },
     {
-      name: "nothing for a Mate in no group",
-      projects: [project("mate", []), project("prod", ["mate:g:one", "mate:role:prod"])],
+      name: "nothing for a Mate HQ places in no application",
+      projects: [project("mate"), project("prod", { app: "one", kind: "production" })],
       expected: { ownRole: undefined, environments: [], pending: false },
     },
     {
       name: "nothing known while the account does not hold the Mate's project",
-      projects: [project("prod", ["mate:g:one", "mate:role:prod"])],
+      projects: [project("prod", { app: "one", kind: "production" })],
       expected: { ownRole: undefined, environments: [], pending: true },
     },
-  ])("$name", ({ projects, expected }) => {
+  ] as const)("$name", ({ projects, expected }) => {
     expect(
       groupAddressEnvironments({
         projectId: "mate",
@@ -267,8 +278,8 @@ describe("groupAddressEnvironments", () => {
       groupAddressEnvironments({
         projectId: "mate",
         projects: [
-          project("mate", ["mate:g:one"]),
-          project("prod", ["mate:g:one", "mate:role:prod"]),
+          project("mate", { app: "one", kind: "mate" }),
+          project("prod", { app: "one", kind: "production" }),
         ],
         routesOf: () => undefined,
       }),
