@@ -120,8 +120,6 @@ export interface CrewAssignmentRow {
   readonly updatedAt: string;
 }
 
-/** A landing the integration branch must keep carrying (its `Crew-Assignment:` trailer). */
-
 export interface CrewHostPort {
   readonly port: number;
   /** Whether the service's subdomain routes the port (`httpRouting`); `null` when not known. */

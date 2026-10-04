@@ -26,8 +26,9 @@
  * **Ref policing.** At dispatch a lane's policed refs are snapshotted; at
  * turn end a change nobody explains parks the lane. Other lanes' branches are
  * explained by their recorded tips, the engine's own writes by the caller.
- * The integration branch is the person's: it is judged by content instead -
- * every recorded landing's trailer must stay in its first-parent history.
+ * The integration branch is the person's and is not policed; whether a task
+ * landed on it is read when asked, from its trailer in the branch's
+ * first-parent history (`landingEvidence`).
  *
  * @module CrewIntegration
  */

@@ -7,7 +7,7 @@
  * aged by how long before it was sent Zerops answered HQ's view. HQ relays Zerops's access; this
  * Mate trusts it at most {@link RELAY_HOLDS} from HQ's read of Zerops, then reads Zerops itself —
  * its own project and its org's member list, with its own key (`ZeropsOrgRead`) — as it does with
- * no relay at all: before HQ links, under an HQ older than the relay, or in an org with no HQ.
+ * no relay at all: before HQ links, or while HQ is out.
  *
  * @module ZeropsProjectAccess
  */

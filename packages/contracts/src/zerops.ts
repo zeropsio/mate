@@ -1009,8 +1009,8 @@ export class ZeropsDataConsoleError extends Schema.TaggedError<ZeropsDataConsole
  *
  * The Git tab may not infer this from the last push, from the presence of a
  * token or from a remote being configured at all: every one of those is true
- * of a Mate whose Gitea credential was never written, and a tab that mixes
- * them shows "configured" for a setup that cannot push.
+ * of a checkout whose remote refuses its credential, or that holds none, and
+ * a tab that mixes them shows "configured" for a setup that cannot push.
  */
 export const ZeropsGitRemoteProbeInput = Schema.Struct({
   /** The checkout, as every other `vcs.*` call names it. */

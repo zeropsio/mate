@@ -3,18 +3,19 @@
  *
  * A landing fast-forwards the person's tree (`git merge --ff-only <S>` in
  * `/var/www`), a two-way checkout that leaves unrelated edits alone and
- * refuses when one is in the way. Only that refusal waits on the person; the
- * rest are the engine's to handle:
+ * refuses when one is in the way. Nothing repeats a refused landing on its
+ * own: `crewLanding.ts` holds the task with the refusal's reason, and the
+ * person continues it when ready, or it parks:
  *
- * | Refusal                       | Action                                             |
- * |-------------------------------|----------------------------------------------------|
- * | a tracked path is dirty       | `wait`: retry when the paths are clean or HEAD moves |
- * | an untracked file in the way  | `wait`                                             |
- * | not a fast-forward            | `redo` merge-in, check and land at once, uncounted |
- * | `index.lock` present          | `backoff`; never delete the lock                   |
- * | ENOSPC                        | `park` and name the disk                           |
- * | missing object                | `retry` once                                       |
- * | anything else                 | `park` with git's first error line                 |
+ * | Refusal                      | Action                                             |
+ * |------------------------------|----------------------------------------------------|
+ * | a tracked path is dirty      | `wait`: held on the person's tree, paths named     |
+ * | an untracked file in the way | `wait`                                             |
+ * | not a fast-forward           | `redo`: held, the tree moved during the landing    |
+ * | `index.lock` present         | `backoff`: held and refused; never delete the lock |
+ * | ENOSPC                       | `park` and name the disk                           |
+ * | missing object               | `retry`: held, an object was missing               |
+ * | anything else                | `park` with git's first error line                 |
  *
  * Every crew git line runs under `LC_ALL=C`, so these are git's own words.
  *
