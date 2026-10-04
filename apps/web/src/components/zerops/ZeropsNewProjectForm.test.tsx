@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 import { Dialog } from "../ui/dialog";
+import birthPortsSource from "../../zerops/useNewProjectBirthPorts.ts?raw";
 import hostSource from "./ZeropsNewProjectHost.tsx?raw";
 import { ZeropsNewProjectForm } from "./ZeropsNewProjectForm";
 import { zeropsNewProjectScopeStepVisible } from "./ZeropsNewProjectHost";
@@ -27,18 +28,23 @@ const ORGANIZATION: ZeropsOrganization = {
 describe("ZeropsNewProjectHost source", () => {
   it("writes no tags for its group: the group is an application HQ creates, and HQ names", () => {
     expect(hostSource).not.toContain("runtime.commands.updateProjectTags(");
-    expect(hostSource).toContain(".createApp(groupName)");
+    expect(birthPortsSource).not.toContain("runtime.commands.updateProjectTags(");
+    expect(birthPortsSource).toContain(".createApp(groupName)");
     // HQ stands before any project does (ADR 0001): no project brings it along.
     expect(hostSource).not.toContain("runHqBirth(");
+    expect(birthPortsSource).not.toContain("runHqBirth(");
   });
 
   // F6b (2026-10-03): the project alone, then its press — its Mate attached to its application
   // before its container, which the press imports — never project and container in one call.
   it("creates the project alone through the typed runtime command, its press bringing the container", () => {
-    expect(hostSource).toContain("runtime.commands.createProject(");
+    // gap-create extracts the callable ports so a reloaded creation can use the same steps.
+    expect(hostSource).toContain("ports: birthPorts(ask)");
+    expect(birthPortsSource).toContain("runtime.commands.createProject(");
     expect(hostSource).not.toContain("createProjectWithMate");
-    expect(hostSource).toContain("container: { agents: ask.agents }");
-    expect(hostSource).not.toContain("containerImported");
+    expect(birthPortsSource).not.toContain("createProjectWithMate");
+    expect(birthPortsSource).toContain("container: { agents: ask.agents }");
+    expect(birthPortsSource).not.toContain("containerImported");
   });
 
   it("loads organization locations through the broker's demand-scoped atom", () => {

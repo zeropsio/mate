@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { RepositorySource } from "@t3tools/shared/hqGit";
-import { makeRepositoryStore } from "./repositoryStore.ts";
+import { makeRepositoryStore, selectRepositorySource } from "./repositoryStore.ts";
 import { HqError } from "./client.ts";
 
 const target = { appId: "app", repo: "code", query: { path: "", kind: "tree" as const } };
@@ -14,6 +14,50 @@ const source: RepositorySource = {
   truncated: false,
 };
 describe("repository source owner", () => {
+  it("projects retained source and its reread state, withholding content when access is denied", async () => {
+    let failed = false;
+    const store = makeRepositoryStore({
+      read: async () => {
+        if (failed) throw new Error("offline");
+        return source;
+      },
+      now: () => 1,
+    });
+    expect(selectRepositorySource(store.snapshot(target))).toEqual({
+      state: "unread",
+      words: "Waiting for HQ…",
+      alert: false,
+      busy: false,
+    });
+    await store.load(target);
+    expect(selectRepositorySource(store.snapshot(target))).toEqual({
+      state: "known",
+      source,
+      busy: false,
+      failed: false,
+    });
+    failed = true;
+    const pending = store.again(target);
+    expect(selectRepositorySource(store.snapshot(target))).toEqual({
+      state: "known",
+      source,
+      busy: true,
+      failed: false,
+    });
+    await pending;
+    expect(selectRepositorySource(store.snapshot(target))).toEqual({
+      state: "known",
+      source,
+      busy: false,
+      failed: true,
+    });
+    expect(selectRepositorySource(store.snapshot(target, false))).toEqual({
+      state: "withheld",
+      words: "You no longer have access to this repository.",
+      alert: true,
+      busy: false,
+    });
+  });
   it("deduplicates demand, retains commit-pinned facts, and only retries a failure on an explicit again", async () => {
     let calls = 0;
     const store = makeRepositoryStore({

@@ -849,6 +849,7 @@
         "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
         "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.tsx",
         "apps/web/src/zerops/useMateActions.tsx",
         "apps/web/src/zerops/RestartMateConfirmation.tsx",
         "apps/web/src/components/zerops/ZeropsRestartMateDialog.tsx",
@@ -992,6 +993,10 @@
         {
           "action": "Change face",
           "reverse": "Change face"
+        },
+        {
+          "action": "Clean up sign-in tokens",
+          "reverse": "none: Deleted throwaway tokens cannot be restored. A failure stays visible with Try again."
         }
       ],
       "docs": {
@@ -999,6 +1004,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.test.tsx",
+        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.test.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.test.tsx",
@@ -1072,6 +1078,10 @@
       "components": [
         "apps/web/src/components/zerops/ZeropsGitPage.tsx",
         "apps/web/src/components/zerops/ZeropsGitPage.logic.ts",
+        "apps/web/src/components/zerops/ZeropsGitCredentials.tsx",
+        "apps/web/src/components/zerops/ZeropsRepositoryBrowser.tsx",
+        "apps/web/src/zerops/useGitCredentials.ts",
+        "apps/web/src/zerops/useRepositorySource.ts",
         "apps/web/src/zerops/useZeropsAppReleases.ts",
         "packages/client-runtime/src/zerops/gitOverview.ts"
       ],
@@ -1103,14 +1113,36 @@
         {
           "action": "Open a change's own page",
           "reverse": "none: navigation."
+        },
+        {
+          "action": "Browse a repository",
+          "reverse": "Back to repositories"
+        },
+        {
+          "action": "Back to repositories",
+          "reverse": "Browse a repository"
+        },
+        {
+          "action": "Create Git password",
+          "reverse": "Revoke"
+        },
+        {
+          "action": "Revoke",
+          "reverse": "none: A revoked password cannot be restored. Create Git password issues a new one."
+        },
+        {
+          "action": "Read again",
+          "reverse": "none: An explicit read changes no remote state."
         }
       ],
-      "docs": {
-        "none": "No docs/user page documents the Git page yet."
-      },
+      "docs": "docs/user/git.md",
       "tests": [
         "apps/web/src/components/zerops/ZeropsGitPage.test.tsx",
         "apps/web/src/components/zerops/ZeropsGitPage.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsGitCredentials.test.tsx",
+        "apps/web/src/components/zerops/ZeropsRepositoryBrowser.test.tsx",
+        "packages/client-runtime/src/zerops/hq/gitCredentialStore.test.ts",
+        "packages/client-runtime/src/zerops/hq/repositoryStore.test.ts",
         "apps/web/src/zerops/hqAppLoad.test.tsx",
         "packages/client-runtime/src/zerops/gitOverview.test.ts"
       ],

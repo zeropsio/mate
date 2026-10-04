@@ -1,11 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 import type { GitCredentialSnapshot } from "@t3tools/client-runtime/zerops/hq";
+import { selectGitCredentials } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsGitCredentialsView } from "./ZeropsGitCredentials";
 const render = (state: GitCredentialSnapshot) =>
   renderToStaticMarkup(
     <ZeropsGitCredentialsView
-      state={state}
+      state={selectGitCredentials(state)}
       cloneUrl="https://hq.example/git/app/code.git"
       onIssue={() => {}}
       onRevoke={() => {}}

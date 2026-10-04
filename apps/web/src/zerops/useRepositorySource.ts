@@ -1,5 +1,6 @@
 import {
   makeRepositoryStore,
+  selectRepositorySource,
   type HqApi,
   type RepositoryTarget,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -49,7 +50,7 @@ export function useRepositorySource(input: RepositoryTarget, allowed: boolean | 
     if (store !== null && allowed === true) void store.load(target);
   }, [store, target, allowed]);
   return {
-    source,
+    source: selectRepositorySource(source),
     again: () => {
       if (store !== null && allowed === true) void store.again(target);
     },

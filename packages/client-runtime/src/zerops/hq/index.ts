@@ -84,6 +84,15 @@ export {
   type ZeropsRegistryProject,
 } from "./registry.ts";
 
-export { makeRepositoryStore, repositoryKey, type RepositoryTarget } from "./repositoryStore.ts";
+export {
+  makeRepositoryStore,
+  repositoryKey,
+  selectRepositorySource,
+  type RepositoryTarget,
+} from "./repositoryStore.ts";
 
-export { makeGitCredentialStore, type GitCredentialSnapshot } from "./gitCredentialStore.ts";
+export {
+  makeGitCredentialStore,
+  selectGitCredentials,
+  type GitCredentialSnapshot,
+} from "./gitCredentialStore.ts";

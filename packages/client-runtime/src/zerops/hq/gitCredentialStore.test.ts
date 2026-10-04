@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { GitCredential } from "@t3tools/shared/hqGit";
-import { makeGitCredentialStore } from "./gitCredentialStore.ts";
+import { makeGitCredentialStore, selectGitCredentials } from "./gitCredentialStore.ts";
 const issued: GitCredential = {
   id: "id",
   appId: "app",
@@ -9,6 +9,34 @@ const issued: GitCredential = {
   token: "test-password",
 };
 describe("Git credential attempts", () => {
+  it("projects retained records and a failed reread without treating an unread list as empty", async () => {
+    let failed = false;
+    const store = makeGitCredentialStore({
+      list: async () => {
+        if (failed) throw new Error("offline");
+        return [issued];
+      },
+      issue: async () => issued,
+      revoke: async () => undefined,
+      now: () => 1,
+    });
+    expect(selectGitCredentials(store.snapshot()).credentials).toEqual({ state: "unread" });
+    await store.load();
+    expect(selectGitCredentials(store.snapshot()).credentials).toEqual({
+      state: "known",
+      records: [issued],
+      partial: false,
+      stale: false,
+    });
+    failed = true;
+    await store.again();
+    expect(selectGitCredentials(store.snapshot()).credentials).toEqual({
+      state: "known",
+      records: [issued],
+      partial: false,
+      stale: true,
+    });
+  });
   it("shares one issue attempt, exposes its failure, and allows a manual new attempt with metadata to revoke", async () => {
     let resolve!: (value: GitCredential) => void;
     let attempts = 0;

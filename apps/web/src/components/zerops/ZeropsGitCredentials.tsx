@@ -1,4 +1,4 @@
-import type { GitCredentialSnapshot } from "@t3tools/client-runtime/zerops/hq";
+import type { selectGitCredentials } from "@t3tools/client-runtime/zerops/hq";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { useGitCredentials } from "~/zerops/useGitCredentials";
@@ -12,7 +12,7 @@ export function ZeropsGitCredentialsView({
   onAgain,
   onCopy,
 }: {
-  readonly state: GitCredentialSnapshot;
+  readonly state: ReturnType<typeof selectGitCredentials>;
   readonly cloneUrl: string;
   readonly onIssue: () => void;
   readonly onRevoke: (id: string) => void;
@@ -74,17 +74,17 @@ export function ZeropsGitCredentialsView({
       </div>
       {state.credentials.state === "known" ? (
         <>
-          {state.credentials.coverage === "partial" ? (
+          {state.credentials.partial ? (
             <p className="text-sm text-muted-foreground">Read again to see all your passwords.</p>
           ) : null}
-          {state.credentials.freshness.kind === "stale" ? (
+          {state.credentials.stale ? (
             <p className="text-sm text-status-failed">HQ could not read the password list again.</p>
           ) : null}
-          {state.credentials.value.length === 0 ? (
+          {state.credentials.records.length === 0 ? (
             <p className="text-sm text-muted-foreground">No Git password yet.</p>
           ) : (
             <ul className="divide-y divide-border">
-              {state.credentials.value.map((record) => (
+              {state.credentials.records.map((record) => (
                 <li key={record.id} className="flex items-center justify-between gap-3 py-2">
                   <span className="text-xs text-muted-foreground">
                     Created{" "}
@@ -111,9 +111,7 @@ export function ZeropsGitCredentialsView({
         </>
       ) : state.credentials.state === "failed" ? (
         <p role="alert" className="text-sm text-status-failed">
-          {state.credentials.failure.kind === "refused"
-            ? state.credentials.failure.words
-            : "HQ could not read the password list."}
+          {state.credentials.words}
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">Reading your Git passwords…</p>
