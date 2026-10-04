@@ -11,6 +11,12 @@ import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZerop
  */
 
 import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
+import {
+  projectRecordToZeropsProject,
+  type CollectionRead,
+  type ProjectRecord,
+} from "@t3tools/client-runtime/zerops/data";
 import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -227,8 +233,7 @@ import {
   groupAddsOffered,
   isZeropsToolCandidate,
   mateRowCan,
-  hqRecordedProjects,
-  type PlainProjectEvidence,
+  plainEvidenceOf,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -800,6 +805,11 @@ export function useZeropsProjectConnection(): {
   };
 }
 
+/** No organization's projects, while none is open. */
+const NO_ORGANIZATION_PROJECTS = Atom.make<Pick<CollectionRead<ProjectRecord>, "value">>({
+  value: [],
+});
+
 function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) {
   const authGate = useRouteContext({
     from: "__root__",
@@ -1002,31 +1012,36 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The organization's HQ, where the registry lives: its project is no project of the page's.
   const accountHq = useAccountHq(activeOrganization?.id);
   const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
-  // What says a project is its person's own, for Set up Mate on it (`plainZeropsProject`): HQ's
-  // records of every kind, its anchors, its age, and what this tab is making — none while HQ's
-  // structure is not known, so nothing is plain then.
+  // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
+  // records of every kind, its anchors, its age — from the organization's whole project listing in
+  // the store, which holds the HQ's own project the candidate rows never do — and what this tab is
+  // making. None while HQ's structure is not known, so nothing is plain then.
+  const organizationProjects = useAtomValue(
+    activeOrganization === null
+      ? NO_ORGANIZATION_PROJECTS
+      : runtime.reads.projectsOf(organizationRef(activeOrganization.id)),
+  );
   const knownStructure = hqStructure?.structure ?? null;
-  const plainEvidence = useMemo((): PlainProjectEvidence | undefined => {
-    if (!hqKnown || knownStructure === null) return undefined;
-    const anchors =
-      accountHq.hq.kind === "official"
-        ? [accountHq.hq.projectId]
-        : accountHq.hq.kind === "unclear"
-          ? accountHq.hq.projectIds
-          : [];
-    const official = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
-    return {
-      hqRecords: hqRecordedProjects(knownStructure),
-      hqAnchors: new Set(anchors),
-      hqBornAt: candidates.find((candidate) => candidate.project.id === official)?.project.created,
-      local: new Set([
-        ...presses.map((press) => press.projectId),
-        ...Object.values(made).flatMap((birth) =>
-          birth.projectId === null ? [] : [birth.projectId],
-        ),
-      ]),
-    };
-  }, [accountHq.hq, candidates, hqKnown, knownStructure, made, presses]);
+  const plainEvidence = useMemo(
+    () =>
+      plainEvidenceOf({
+        hqKnown,
+        structure: knownStructure,
+        hq: accountHq.hq,
+        organizationProjects: organizationProjects.value.flatMap((member) => {
+          const project =
+            member.knowledge === "observed" ? projectRecordToZeropsProject(member.record) : null;
+          return project === null ? [] : [project];
+        }),
+        local: [
+          ...presses.map((press) => press.projectId),
+          ...Object.values(made).flatMap((birth) =>
+            birth.projectId === null ? [] : [birth.projectId],
+          ),
+        ],
+      }),
+    [accountHq.hq, hqKnown, knownStructure, made, organizationProjects, presses],
+  );
 
   const rowInput = (
     candidate: ZeropsCandidatePresentation,
