@@ -44,6 +44,7 @@ import { ClaudeThreadExtensionRegistry } from "../../spi/claudeThreadProfile.ts"
 import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
+import { ZeropsAgentAuth } from "../ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "../ZeropsEnvironment.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { guardCommand, guardFilesWrite } from "./crewAccess.ts";
@@ -121,7 +122,7 @@ import {
 import { makeTurnHandler } from "./crewTurns.ts";
 import { restoreNotes } from "./crewNotes.ts";
 import { MIRRORED_TABLES } from "./crewState.ts";
-import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
+import { advanceAll, retryRefused, takeUpWaiting } from "./crewRunFlow.ts";
 import { finishRun, pressPause, resumeRun, runView, startRun, stopRun } from "./crewRuns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
@@ -478,6 +479,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const core = yield* makeCrewCore;
     yield* restoreNotes(core);
     const bus = yield* ProviderRuntimeEventBus;
+    const agentAuth = yield* ZeropsAgentAuth;
     const readiness = yield* ServerCommandReadiness;
     const policies = yield* ThreadToolPolicyRegistry;
     const extensions = yield* ClaudeThreadExtensionRegistry;
@@ -515,7 +517,29 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
           ),
     );
 
-    const activate: Activate = installPolicies;
+    // A queued task admission refused may start once a sign-in or a signer changes.
+    let watching = false;
+    const watchSignIns = Effect.suspend(() => {
+      if (watching) return Effect.void;
+      watching = true;
+      return Stream.merge(
+        Stream.map(core.logins.changes, () => undefined),
+        Stream.map(agentAuth.changes, () => undefined),
+      ).pipe(
+        Stream.runForEach(() =>
+          retryRefused(core).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                core.memory.lastError = failureWords(error);
+              }),
+            ),
+          ),
+        ),
+        Effect.forkIn(scope),
+        Effect.asVoid,
+      );
+    });
+    const activate: Activate = installPolicies.pipe(Effect.andThen(watchSignIns));
 
     yield* core.reload;
     if ((yield* core.applied) !== undefined) yield* activate;

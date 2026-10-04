@@ -263,6 +263,23 @@ export const takeUpWaiting = (core: CrewCore) =>
   });
 
 /**
+ * Starts again every queued task admission refused, once a sign-in or a
+ * signer changed: the cause may have cleared. One refused again keeps its
+ * *Can't start* row with the new words.
+ */
+export const retryRefused = (core: CrewCore) =>
+  Effect.gen(function* () {
+    if (core.memory.cantStart.size === 0) return;
+    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+    const handles = new Set(
+      tasks
+        .filter((task) => task.state === "queued" && core.memory.cantStart.has(task.assignment))
+        .map((task) => task.member),
+    );
+    for (const handle of handles) yield* advanceWhenFree(core, handle);
+  });
+
+/**
  * Advances a crewmate now when nothing holds its copy; else later, for sure:
  * once its turn end, merge or press lets go — never a wait here.
  */

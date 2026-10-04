@@ -687,7 +687,7 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("a refused queued task needs an explicit Try again after a login sign-in changes", () =>
+  it.live("a refused queued task starts again once a login's sign-in changes", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -703,15 +703,12 @@ describe("CrewEngine", () => {
         yield* snapshotWhere((current) => current.attention.length === 1);
         yield* Ref.set(world.refusal, undefined);
         yield* world.signedIn;
-        const refused = yield* latest;
-        assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 0);
-        yield* command({ _tag: "taskRetry", taskId: refused.board.tasks[0]!.id });
         const started = yield* snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
         assert.deepStrictEqual(
           [started.attention, (yield* Ref.get(world.admitted)).at(-1)?.principal],
-          [[], KAREL],
+          [[], AS_CREW],
         );
       }),
     ),

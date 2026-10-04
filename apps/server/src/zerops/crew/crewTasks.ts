@@ -550,6 +550,8 @@ export const startTask = (
     );
     const now = yield* core.now;
     if (refused !== undefined) {
+      // The refusal is the outcome, shown as Can't start; no effect waits to be continued.
+      yield* finishOperation(core, owned.id, { refused });
       core.memory.cantStart.set(task.assignment, { text: refused, at: now });
       return { _tag: "refused", detail: refused } satisfies StartOutcome as StartOutcome;
     }
