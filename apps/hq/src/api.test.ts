@@ -725,11 +725,17 @@ describe("HQ API", () => {
             call("POST", "/api/door", { body: { token: "unknown" }, headers: { "x-real-ip": ip } }),
             (answer) => answer.status,
           );
-        // A whole office comes from one address (t12, 2026-10-03): 120 at once, then one a second.
-        const statuses = yield* Effect.forEach(Array.from({ length: 121 }), () =>
+        // A whole office comes from one address (t12, 2026-10-03): its bucket starts at 120, so
+        // the first 120 get in. Core runs on the real clock and refills one a second while the
+        // knocks travel, so the 429 after them is awaited, not counted to — the exact steps are
+        // rateLimit.test.ts's, on a test clock. A hundred more knocks without one is 100 s.
+        const statuses = yield* Effect.forEach(Array.from({ length: 120 }), () =>
           knock("10.0.0.1"),
         );
-        assert.deepStrictEqual(statuses, [...Array(120).fill(401), 429]);
+        assert.deepStrictEqual(statuses, Array(120).fill(401));
+        let status = 401;
+        for (let more = 0; status !== 429 && more < 100; more++) status = yield* knock("10.0.0.1");
+        assert.strictEqual(status, 429);
         assert.strictEqual(yield* knock("10.0.0.2"), 401);
 
         const session = yield* sessionFor(call, "door-owner");
@@ -789,7 +795,9 @@ describe("HQ API", () => {
         const office = Array.from({ length: 20 }, (_, person) =>
           throwaways(`staff-${String(person)}`, 3),
         );
-        const flood = throwaways("flooder", 21);
+        // Twenty, then twenty more to await the 429 by: the person refills one every three seconds
+        // on the real clock, so twenty without one is a minute. The address's 120 hold all 101.
+        const flood = throwaways("flooder", 40);
         const colleague = throwaways("colleague", 1);
         // Past the org view the boot read: the new people are in the next.
         yield* Effect.sleep(Duration.millis(400));
@@ -803,7 +811,16 @@ describe("HQ API", () => {
           new Set(yield* Effect.forEach(office.flat(), enter)),
           new Set([200]),
         );
-        assert.deepStrictEqual(yield* Effect.forEach(flood, enter), [...Array(20).fill(200), 429]);
+        assert.deepStrictEqual(
+          yield* Effect.forEach(flood.slice(0, 20), enter),
+          Array(20).fill(200),
+        );
+        let status = 200;
+        for (const token of flood.slice(20)) {
+          status = yield* enter(token);
+          if (status === 429) break;
+        }
+        assert.strictEqual(status, 429);
         assert.deepStrictEqual(yield* Effect.forEach(colleague, enter), [200]);
       }),
     );
