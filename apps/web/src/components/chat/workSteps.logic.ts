@@ -321,21 +321,28 @@ export function backgroundJobOf(
   command: WorkLogEntry,
   tracked: TrackedCommands,
 ): BackgroundJob | null {
+  // Its call's own output says it went to the background (Claude Code's
+  // notice), the task that tracks it reaching the log only once it ends.
+  const sent = command.sentToBackground !== undefined;
   const track = tracked.byCommand.get(command.id);
-  if (track === undefined || command.toolLifecycleStatus === "inProgress") return null;
-  const { task } = track;
-  const ended = task.sourceActivityKind === "task.completed";
-  // Its call says it went to the background (Claude Code's notice); else a
-  // task that ended with its call was the command itself.
-  const sent = /running in (?:the )?background/iu.test(command.detail ?? "");
-  if (!sent && ended && endOf(task) - endOf(command) <= TRACK_TOLERANCE_MS) return null;
+  if (track === undefined && !sent) return null;
+  if (command.toolLifecycleStatus === "inProgress" && !sent) return null;
+  const task = track?.task;
+  const ended = task?.sourceActivityKind === "task.completed";
+  // Else a task that ended with its call was the command itself.
+  if (!sent && task !== undefined && ended && endOf(task) - endOf(command) <= TRACK_TOLERANCE_MS) {
+    return null;
+  }
   const title = (
-    track.description ??
+    track?.description ??
     command.callInput?.description ??
-    task.toolTitle ??
-    task.label
+    task?.toolTitle ??
+    task?.label ??
+    command.command ??
+    "A background job"
   ).trim();
   const failed =
+    task !== undefined &&
     ended &&
     (task.tone === "error" ||
       task.toolLifecycleStatus === "failed" ||
@@ -343,10 +350,10 @@ export function backgroundJobOf(
   return {
     key: command.id,
     title,
-    state: !ended ? "running" : failed ? "failed" : "done",
+    state: task === undefined || !ended ? "running" : failed ? "failed" : "done",
     startedAt: command.startedAt ?? command.createdAt,
-    endedAt: ended ? new Date(endOf(task)).toISOString() : null,
-    report: ended ? taskReportWords(task.detail, title) : null,
+    endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
+    report: task !== undefined && ended ? taskReportWords(task.detail, title) : null,
   };
 }
 

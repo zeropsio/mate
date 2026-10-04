@@ -510,7 +510,7 @@ describe("backgroundJobOf", () => {
   it("is a job however quickly it ended, when its call said it went to the background", () => {
     const run = command("1", "npm view express version", {
       updatedAt: "2026-09-27T08:00:01.000Z",
-      detail: "Command running in background with ID: b1. Output is being written to: /tmp/x",
+      sentToBackground: "b1",
     });
     const tracker = task("t1", "Look up versions", {
       taskToolUseId: "toolu_1",
@@ -528,6 +528,19 @@ describe("backgroundJobOf", () => {
     expect(backgroundJobOf(run, trackCommands([run, tracker]))).toBeNull();
   });
 
+  // Its task reaches the log only once it ends: its call's word is enough.
+  it("runs from the moment its call says it went to the background", () => {
+    const run = command("1", "sleep 40; exit 2", {
+      callInput: { description: "Sleep 40s then exit with code 2" },
+      sentToBackground: "b94",
+    });
+    expect(backgroundJobOf(run, trackCommands([run]))).toMatchObject({
+      title: "Sleep 40s then exit with code 2",
+      state: "running",
+      endedAt: null,
+    });
+  });
+
   it("is no job while its call has not returned", () => {
     const run = command("1", "./soak.sh", { toolLifecycleStatus: "inProgress" });
     expect(backgroundJobOf(run, trackCommands([run, started]))).toBeNull();
@@ -537,6 +550,7 @@ describe("backgroundJobOf", () => {
     const run = command("1", "./soak.sh", {
       callInput: { description: "Run the soak test" },
       updatedAt: "2026-09-27T08:00:01.000Z",
+      sentToBackground: "b1",
       detail: "Command running in background with ID: b1. Output is being written to: /tmp/x",
     });
     const failed = finished({
