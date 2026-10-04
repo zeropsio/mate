@@ -27,7 +27,7 @@ import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { useZeropsInventory } from "../zerops/inventoryContext";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
-import { hqMatesAtom } from "../state/zerops";
+import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
 import { homeTarget, homeView, hqHomeMate } from "../zerops/homeLanding.logic";
 import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
@@ -64,7 +64,8 @@ function ChatIndexRouteView() {
  *
  * Without one, HQ names the most recently active Mate, preferring an online one. Opening it
  * holds just its route lease. Else the connected environments' projects; a registration that does
- * not answer never claims the landing with its cached projects (`homeTarget`).
+ * not answer never claims the landing with its cached projects, and only the organization in view
+ * lands anything (`homeTarget`).
  *
  * Either way the landing is the environment's main chat when it has one
  * (`resolvePrimaryConversation`), else a draft in the project: a Mate's other
@@ -90,7 +91,6 @@ type IndexLanding =
 function IndexDraftLanding() {
   const projects = useProjects();
   const threads = useThreadShells();
-  const { environments } = useEnvironments();
   const matesSettled = useMatesSettled();
   const { settled: hqMatesRead } = useHqMatesRead();
   const hqMates = useAtomValue(hqMatesAtom);
@@ -124,6 +124,12 @@ function IndexDraftLanding() {
   );
   const targetBootstrapped = targetShell.data?.snapshot._tag === "Some";
   const withSnapshot = useAtomValue(environmentsWithSnapshotAtom);
+  // Every organization's registrations; each says the Zerops project it serves.
+  const zeropsEnvironments = useAtomValue(zeropsEnvironmentsAtom);
+  const organizationProjects = useMemo(
+    () => new Set(heldCandidates(listing).rows.map((row) => row.project.id)),
+    [listing],
+  );
   // Keyed by the chosen destination, not a bare flag: a better target that
   // arrives a tick later (the named environment's own project) must be able
   // to supersede an earlier pick.
@@ -147,18 +153,25 @@ function IndexDraftLanding() {
         : { kind: "thread", ref: scopeThreadRef(project.environmentId, primary.id) };
     };
 
+    // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
+    const hqMate = hqHomeMate(hqMates?.mates ?? null, unavailable);
     const target = homeTarget({
       target:
         targetEnvironmentId === null
           ? null
           : { environmentId: targetEnvironmentId, bootstrapped: targetBootstrapped },
-      // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
-      hqMate: hqHomeMate(hqMates?.mates ?? null, unavailable),
+      hqMate:
+        hqMates === null || hqMate === undefined
+          ? null
+          : { organizationId: hqMates.organizationId, projectId: hqMate },
       hqMatesRead,
-      environments: environments.map((environment) => ({
+      organizationId: activeOrganization?.id ?? null,
+      organizationProjects,
+      environments: zeropsEnvironments.map((environment) => ({
         environmentId: environment.environmentId,
         phase: environment.connection.phase,
         snapshot: withSnapshot.has(environment.environmentId),
+        zeropsProjectId: environment.zeropsProjectId,
       })),
     });
     if (target === null || target.kind === "none" || target.kind === "mate") return target;
@@ -187,10 +200,12 @@ function IndexDraftLanding() {
       )[0],
     );
   }, [
+    activeOrganization,
     hqMates,
     hqMatesRead,
     unavailable,
-    environments,
+    organizationProjects,
+    zeropsEnvironments,
     projects,
     targetBootstrapped,
     targetEnvironmentId,
