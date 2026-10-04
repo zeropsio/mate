@@ -397,6 +397,36 @@ describe("applyStructureEvent", () => {
     expect([structure?.can, structure?.rolesAnsweredAt]).toEqual([undefined, null]);
   });
 
+  it("reads each Mate's offers and moves, and each project HQ holds nowhere, through their shapes", () => {
+    const can = { observe_mate: { allow: true } };
+    const snapshot = structureEventOf({
+      type: "snapshot",
+      unheld: { "p-free": { create_mate_record: { allow: true } }, "p-odd": "yes" },
+      ungrouped: [{ ...LONE, can, moveTo: { "app-1": ["mate"] } }],
+      // A move list this build cannot read is no move at all; the Mate beside it still is.
+      apps: [
+        {
+          ...ACME,
+          projects: [{ ...ACME.projects[0]!, can, moveTo: { "app-1": "mate" } }],
+        },
+      ],
+    });
+    const structure = applyStructureEvent(null, snapshot!);
+    expect([
+      structure?.unheld,
+      structure?.ungrouped[0]?.moveTo,
+      structure?.apps[0]?.projects[0]?.can,
+      structure?.apps[0]?.projects[0]?.moveTo,
+    ]).toEqual([
+      { "p-free": { create_mate_record: { allow: true } } },
+      { "app-1": ["mate"] },
+      can,
+      undefined,
+    ]);
+    const moved = structureEventOf({ type: "org", unheld: {} });
+    expect(applyStructureEvent(structure, moved!)?.unheld).toEqual({});
+  });
+
   it("knows nothing from a change before its snapshot", () => {
     expect(applyStructureEvent(null, { kind: "change", appId: "app-2", app: BETA })).toBeNull();
   });
