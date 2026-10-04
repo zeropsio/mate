@@ -133,8 +133,11 @@ export type ZeropsSessionEvent =
   | { readonly type: "SECOND_FACTOR_REQUIRED" }
   /** A fresh read of the same person, with its memberships. */
   | { readonly type: "USER_UPDATED"; readonly user: ZeropsUser }
-  /** This tab's client dropped its session: sign-out, or a refresh that failed. */
-  | { readonly type: "SESSION_ENDED" }
+  /**
+   * This tab's client dropped its session: the person signed out, or the
+   * platform refused it (a 401, or a refresh that failed).
+   */
+  | { readonly type: "SESSION_ENDED"; readonly cause: "signed-out" | "refused" }
   | { readonly type: "WAKE"; readonly trigger: ZeropsSessionWake }
   /** The person pressed Verify again: what a wake does, at once and from the first rung. */
   | { readonly type: "VERIFY_AGAIN" };
@@ -154,7 +157,17 @@ export type ZeropsSessionEffect =
   | { readonly kind: "claim-owner"; readonly userId: string }
   | { readonly kind: "write-owner"; readonly owner: ZeropsSessionOwner }
   | { readonly kind: "schedule"; readonly at: number }
-  | { readonly kind: "cancel-schedule" };
+  | { readonly kind: "cancel-schedule" }
+  /**
+   * The platform refused this tab's session: send the tab back for a fresh
+   * hand-over, unless the port's own guard says one was just refused too.
+   */
+  | { readonly kind: "reauth" }
+  /**
+   * A stored session survived a fresh load's verification: the last hand-over
+   * held, so the next refusal may ask for another one.
+   */
+  | { readonly kind: "reauth-settled" };
 
 export interface ZeropsSessionContext {
   readonly nowMs: number;
@@ -407,9 +420,11 @@ export function transitionZeropsSession(
           effects: [
             { kind: "open-account", user: verdict.user },
             { kind: "claim-owner", userId: verdict.user.id },
+            { kind: "reauth-settled" },
           ],
         };
-      if (verdict.kind === "unauthorized") return { state: { status: "signed-out" }, effects: [] };
+      if (verdict.kind === "unauthorized")
+        return { state: { status: "signed-out" }, effects: [{ kind: "reauth" }] };
       const { retryAtMs, backoff } = scheduleRetry(state.backoff, ctx.nowMs, ctx.random);
       // A Retry-After is a floor the ladder never undercuts.
       const retryAt = Math.max(retryAtMs, ctx.nowMs + (verdict.retryAfterMs ?? 0));
@@ -455,7 +470,10 @@ export function transitionZeropsSession(
       if (state.status === "signed-out") return stay(state);
       return {
         state: { status: "signed-out" },
-        effects: leaving(state, { closeAccount: true }),
+        effects: [
+          ...leaving(state, { closeAccount: true }),
+          ...(event.cause === "refused" ? [{ kind: "reauth" } as const] : []),
+        ],
       };
     case "WAKE":
       return onWakeEvent(state, event.trigger, ctx);
@@ -490,6 +508,9 @@ export interface ZeropsSessionPorts {
    */
   readonly awake: () => boolean;
   readonly newGeneration: () => string;
+  /** The `reauth` effect: the tab's way back to a fresh hand-over. */
+  readonly reauth: () => void;
+  readonly reauthSettled: () => void;
 }
 
 export interface ZeropsSessionDriver {
@@ -594,6 +615,12 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
         return;
       case "cancel-schedule":
         clearTimer();
+        return;
+      case "reauth":
+        ports.reauth();
+        return;
+      case "reauth-settled":
+        ports.reauthSettled();
         return;
     }
   };

@@ -11,6 +11,8 @@ import {
   type ZeropsHandoverNonceStore,
 } from "./handover";
 
+const here = { origin: "https://mate.zerops.io", path: "" } as const;
+
 function fakeStore(initial: string | null = null): ZeropsHandoverNonceStore & {
   readonly reads: () => number;
 } {
@@ -33,8 +35,8 @@ function fakeStore(initial: string | null = null): ZeropsHandoverNonceStore & {
 describe("startZeropsHandover", () => {
   it("remembers the nonce it sent, so the callback has something to check against", () => {
     const store = fakeStore();
-    const url = new URL(startZeropsHandover({ store }));
-    const sent = url.searchParams.get("state") ?? "";
+    const url = new URL(startZeropsHandover({ ...here, store }));
+    const sent = url.searchParams.get("nonce") ?? "";
 
     expect(sent).not.toBe("");
     expect(store.take()).toBe(sent);
@@ -43,8 +45,8 @@ describe("startZeropsHandover", () => {
   it("mints a fresh nonce per attempt, so an abandoned one cannot be reused", () => {
     const seen = new Set<string>();
     for (let attempt = 0; attempt < 32; attempt += 1) {
-      const url = new URL(startZeropsHandover({ store: fakeStore() }));
-      seen.add(url.searchParams.get("state") ?? "");
+      const url = new URL(startZeropsHandover({ ...here, store: fakeStore() }));
+      seen.add(url.searchParams.get("nonce") ?? "");
     }
     expect(seen.size).toBe(32);
     for (const nonce of seen) {
@@ -54,7 +56,7 @@ describe("startZeropsHandover", () => {
   });
 
   it("carries the sign-up intent when that is the button the user pressed", () => {
-    const url = new URL(startZeropsHandover({ store: fakeStore(), intent: "register" }));
+    const url = new URL(startZeropsHandover({ ...here, store: fakeStore(), intent: "register" }));
     expect(url.searchParams.get("intent")).toBe("register");
     expect(url.pathname).toBe("/authorize-app");
   });
@@ -85,14 +87,13 @@ describe("completeZeropsHandover", () => {
   it("accepts a callback answering the nonce this browser stored", () => {
     const store = fakeStore("nonce-1");
     const outcome = completeZeropsHandover({
-      fragment: "#token=rt-1&state=nonce-1&clientId=org-1&zcpClaimed=true",
+      fragment: "#token=rt-1&nonce=nonce-1&zcpClaimed=true",
       store,
     });
 
     expect(outcome).toEqual({
       kind: "session",
       token: "rt-1",
-      clientId: "org-1",
       zcpClaimed: true,
     });
   });
@@ -101,7 +102,7 @@ describe("completeZeropsHandover", () => {
     // A back button, a restored tab or a copied link must not sign anyone in
     // a second time off one authorization.
     const store = fakeStore("nonce-1");
-    const fragment = "#token=rt-1&state=nonce-1";
+    const fragment = "#token=rt-1&nonce=nonce-1";
 
     expect(completeZeropsHandover({ fragment, store })).toMatchObject({ kind: "session" });
     expect(completeZeropsHandover({ fragment, store })).toEqual({ kind: "mismatched" });
@@ -110,7 +111,7 @@ describe("completeZeropsHandover", () => {
   it("refuses a credential this browser never asked for, and reads nothing out of it", () => {
     const store = fakeStore(null);
     const outcome = completeZeropsHandover({
-      fragment: "#token=attacker-token&state=whatever",
+      fragment: "#token=attacker-token&nonce=whatever",
       store,
     });
 
@@ -132,39 +133,48 @@ describe("completeZeropsHandover", () => {
   });
 });
 
-describe("startZeropsHandover from a dev server", () => {
-  // Without this the callback goes to the production origin, where the nonce
-  // this tab stored does not exist — the sign-in dies at "did not come from
-  // this window" and the dev server never sees a credential.
-  it("asks the platform to come back to this localhost port", () => {
+describe("startZeropsHandover names where this tab lives", () => {
+  // The platform builds the callback as origin + path + /zerops/authorized, so
+  // whatever this tab sends is where the token comes back — a lab instance on
+  // a project route, a /mate build in a container, a dev server on localhost.
+  const rows = [
+    { origin: "https://mate.zerops.io", path: "" },
+    { origin: "https://app-1abc.prg1.zerops.app", path: "" },
+    { origin: "https://zcp-2333-8080.prg1.zerops.app", path: "/mate" },
+    { origin: "http://localhost:5733", path: "" },
+  ] as const;
+  for (const row of rows) {
+    it(`${row.origin}${row.path}`, () => {
+      const url = new URL(startZeropsHandover({ store: fakeStore(), ...row }));
+      expect(url.searchParams.get("origin")).toBe(row.origin);
+      expect(url.searchParams.get("path")).toBe(row.path);
+    });
+  }
+
+  // TRANSITION: the app.zerops.io still live finds a dev server only by its
+  // port, interpolated into http://localhost:<port>.
+  it("also names the localhost port, for the old Zerops app", () => {
+    const at = (origin: string) =>
+      new URL(startZeropsHandover({ store: fakeStore(), origin, path: "" })).searchParams.get(
+        "port",
+      );
+    expect(at("http://localhost:5173")).toBe("5173");
+    expect(at("http://localhost")).toBe("80");
+    expect(at("http://127.0.0.1:5173")).toBeNull();
+    expect(at("https://localhost.evil.example")).toBeNull();
+    expect(at("https://mate.zerops.io")).toBeNull();
+  });
+
+  it("goes to the Zerops app this build was pointed at", () => {
     const url = new URL(
-      startZeropsHandover({ store: fakeStore(), origin: "http://localhost:5173" }),
+      startZeropsHandover({ ...here, store: fakeStore(), guiBaseUrl: "https://app.zerops.dev" }),
     );
-
-    expect(url.searchParams.get("app")).toBe("zerops-code");
-    expect(url.searchParams.get("port")).toBe("5173");
+    expect(url.origin).toBe("https://app.zerops.dev");
   });
 
-  it("infers the default port when the origin leaves it implicit", () => {
-    const url = new URL(startZeropsHandover({ store: fakeStore(), origin: "http://localhost" }));
-    expect(url.searchParams.get("port")).toBe("80");
-  });
-
-  describe("sends no port anywhere else, so the registered origin is used", () => {
-    // `origin.ts` trusts the hostname `localhost` and deliberately not
-    // `127.0.0.1`; the destination rule follows the same line, and a lookalike
-    // hostname must not slip through it.
-    for (const origin of [
-      "https://mate.zerops.io",
-      "http://127.0.0.1:5173",
-      "https://localhost.evil.example",
-      "https://zcp-2333-8080.prg1.zerops.app",
-    ]) {
-      it(origin, () => {
-        const url = new URL(startZeropsHandover({ store: fakeStore(), origin }));
-        expect(url.searchParams.get("port")).toBeNull();
-      });
-    }
+  it("names the project hint this build carries", () => {
+    const url = new URL(startZeropsHandover({ ...here, store: fakeStore(), project: "proj-1" }));
+    expect(url.searchParams.get("project")).toBe("proj-1");
   });
 });
 
@@ -177,7 +187,7 @@ describe("reading the callback exactly once", () => {
   // server: run 1 `session`, run 2 `absent`.
   it("returns the first outcome to every later caller, and reads only once", () => {
     const outcomes: ZeropsHandoverOutcome[] = [
-      { kind: "session", token: "rt-1", clientId: null, zcpClaimed: false },
+      { kind: "session", token: "rt-1", zcpClaimed: false },
       { kind: "absent" },
     ];
     let reads = 0;

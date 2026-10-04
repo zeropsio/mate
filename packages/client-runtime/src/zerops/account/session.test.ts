@@ -85,6 +85,8 @@ describe("transitionZeropsSession", () => {
       [
         { kind: "open-account", user: person },
         { kind: "claim-owner", userId: "user-1" },
+        // A stored session that survived a fresh load proves the last hand-over.
+        { kind: "reauth-settled" },
       ],
     ],
     [
@@ -100,11 +102,19 @@ describe("transitionZeropsSession", () => {
       [{ kind: "schedule", at: 1_000 + RETRY_RUNGS_MS[0]! }],
     ],
     [
-      "is signed out when the stored session is refused",
+      "asks for a fresh hand-over when the stored session is refused",
       verifying(),
       { type: "VERIFIED", session: stored, verdict: unauthorized },
       { status: "signed-out" },
-      [],
+      [{ kind: "reauth" }],
+    ],
+    [
+      // The client clears a refused session before the verdict comes back.
+      "asks for a fresh hand-over when the client drops the session it verifies",
+      verifying(),
+      { type: "SESSION_ENDED", cause: "refused" },
+      { status: "signed-out" },
+      [{ kind: "reauth" }],
     ],
     [
       "drops the answer for a session it no longer verifies",
@@ -342,11 +352,18 @@ describe("transitionZeropsSession", () => {
       [{ kind: "cancel-schedule" }, { kind: "close-account" }, { kind: "forget-session" }],
     ],
     [
-      "closes the account when its own session ends",
+      "closes the account when the person signs out, and asks for nothing",
       signedIn(),
-      { type: "SESSION_ENDED" },
+      { type: "SESSION_ENDED", cause: "signed-out" },
       { status: "signed-out" },
       [{ kind: "close-account" }],
+    ],
+    [
+      "asks for a fresh hand-over when the platform refuses its open session",
+      signedIn(),
+      { type: "SESSION_ENDED", cause: "refused" },
+      { status: "signed-out" },
+      [{ kind: "close-account" }, { kind: "reauth" }],
     ],
     [
       "takes the owner record's generation when it holds none",
@@ -480,6 +497,8 @@ function makeOrigin(initial: { session: ZeropsSession | null; owner: ZeropsSessi
         random: () => 0.5,
         awake: () => true,
         newGeneration: () => `g${++generations}`,
+        reauth: () => events.push("reauth"),
+        reauthSettled: () => undefined,
         ...overrides,
       };
       const driver = makeZeropsSessionDriver(ports);

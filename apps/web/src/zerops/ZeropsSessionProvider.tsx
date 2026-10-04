@@ -53,6 +53,8 @@ import {
 } from "react";
 
 import { randomUUID } from "../lib/utils";
+import { browserZeropsReauth } from "./reauth";
+import { installDevHooks } from "./devHooks";
 import { browserZeropsStorage } from "./storage";
 import { tokenWrites } from "./tokenWriteLock";
 
@@ -76,15 +78,13 @@ export interface ZeropsSessionValue {
   readonly selectOrganization: (membershipId: string) => Promise<void>;
   readonly signIn: (email: string, password: string) => Promise<void>;
   /**
-   * Adopts a revocable personal token handed back by `app.zerops.io` after the
-   * user signed in there. It is proven before persistence, so an invalid token
+   * Adopts the bearer the sign-in hand-over delivered after the user signed in
+   * on the Zerops app. It is proven before persistence, so an invalid token
    * cannot leave this client looking signed in.
    */
   readonly adoptHandover: (input: {
-    /** A personal access token minted for this client by app.zerops.io. */
+    /** The session access token (or, TRANSITION, personal token) handed over. */
     readonly token: string;
-    /** Organization selected on app.zerops.io, when the hand-over named one. */
-    readonly clientId: string | null;
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
@@ -161,6 +161,8 @@ function makeSession(storage: ZeropsStorageAdapter) {
   // Web Locks exist only in a secure context; without them each tab renews alone.
   const locks: LockManager | undefined = browser.navigator.locks;
   let driver!: ZeropsSessionDriver;
+  /** True while the person's own sign-out runs: its session end is no refusal. */
+  let signingOut = false;
   const client = new ZeropsApiClient({
     // The client's own token writes hold the same locks as every other writer in this browser.
     holdToken: tokenWrites,
@@ -170,7 +172,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
         // The client clears itself when a refresh fails mid-flight, so a
         // session that dies between renders cannot leave an
         // authorized-looking UI behind.
-        driver.send({ type: "SESSION_ENDED" });
+        driver.send({ type: "SESSION_ENDED", cause: signingOut ? "signed-out" : "refused" });
         return clearZeropsSession(storage);
       }
       return saveZeropsSession(storage, session);
@@ -207,8 +209,18 @@ function makeSession(storage: ZeropsStorageAdapter) {
     random: Math.random,
     awake: () => browser.document.visibilityState === "visible" && browser.navigator.onLine,
     newGeneration: randomUUID,
+    reauth: browserZeropsReauth.ask,
+    reauthSettled: browserZeropsReauth.settled,
   });
-  return { client, driver };
+  const signOutLocally = async () => {
+    signingOut = true;
+    try {
+      await client.signOutLocally();
+    } finally {
+      signingOut = false;
+    }
+  };
+  return { client, driver, signOutLocally };
 }
 
 export function ZeropsSessionProvider({
@@ -223,13 +235,21 @@ export function ZeropsSessionProvider({
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
   const preferredClientIdRef = useRef<string | null>(null);
 
-  const { client, driver } = useMemo(() => makeSession(storage), [storage]);
+  const { client, driver, signOutLocally } = useMemo(() => makeSession(storage), [storage]);
   const machine = useSyncExternalStore(driver.subscribe, driver.state);
   const status = statusOf(machine);
   const retrying = machine.status === "verifying" && machine.retry === true;
   const user = machine.status === "signed-in" ? machine.user : null;
 
   useEffect(() => driver.start(), [driver]);
+  useEffect(
+    () =>
+      installDevHooks(async (session) => {
+        await client.adoptSession(session);
+        driver.signedIn(await client.fetchUser());
+      }),
+    [client, driver],
+  );
   // The next load's first frame (`bootFrame.ts`): the app's once the session is signed in, the
   // sign-in's once it is signed out. Written as the state changes, ahead of any reload it causes.
   useEffect(() => {
@@ -282,7 +302,7 @@ export function ZeropsSessionProvider({
   );
 
   // The platform GUI persists the exact clientUser membership. Restore it per
-  // Zerops user, while letting an explicit hand-over clientId override stale
+  // Zerops user, while letting a registration's clientId override stale
   // local state. Multiple new memberships deliberately require a choice.
   useEffect(() => {
     if (!user) {
@@ -362,28 +382,17 @@ export function ZeropsSessionProvider({
       updateVerifiedMemberships,
       verifyAgain: () => driver.send({ type: "VERIFY_AGAIN" }),
       retrying,
-      adoptHandover: async ({ token, clientId, zcpClaimed }) => {
-        preferredClientIdRef.current = clientId;
-        try {
-          const session = await client.adoptPersonalToken(token);
-          const adopted = await client.fetchUser();
-          driver.signedIn(adopted);
-          if (zcpClaimed) {
-            // The picker reads this to enter the provisioning wait for the
-            // project the claim handed over, instead of waiting for a candidate
-            // list to say so. It is a registration response in every way that
-            // consumer looks at: the org comes from `user`, the claim from the
-            // flag.
-            setLastRegistration({
-              auth: session,
-              user: adopted,
-              ...(clientId ? { clientId } : {}),
-              zcpClaimed: true,
-            });
-          }
-        } catch (cause) {
-          preferredClientIdRef.current = null;
-          throw cause;
+      adoptHandover: async ({ token, zcpClaimed }) => {
+        const session = await client.adoptSession({ accessToken: token });
+        const adopted = await client.fetchUser();
+        driver.signedIn(adopted);
+        if (zcpClaimed) {
+          // The picker reads this to enter the provisioning wait for the
+          // project the claim handed over, instead of waiting for a candidate
+          // list to say so. It is a registration response in every way that
+          // consumer looks at: the org comes from `user`, the claim from the
+          // flag.
+          setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
         }
       },
       signIn: async (email, password) => {
@@ -407,7 +416,9 @@ export function ZeropsSessionProvider({
       },
       signOut: async () => {
         setLastRegistration(null);
-        await client.logout();
+        // Local only: the token is the Zerops app's own session, and logging
+        // it out would sign the person out there too.
+        await signOutLocally();
       },
       lastRegistration,
       clearLastRegistration: () => {
@@ -422,6 +433,7 @@ export function ZeropsSessionProvider({
       organizationStatus,
       organizations,
       selectOrganization,
+      signOutLocally,
       updateVerifiedMemberships,
       status,
       retrying,
