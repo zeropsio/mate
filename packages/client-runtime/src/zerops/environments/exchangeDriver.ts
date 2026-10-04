@@ -13,7 +13,7 @@
  *   environment; a late or superseded answer is logged by the machine and dropped.
  * - A target the person asked for — the route's, the one on screen, one an action of theirs
  *   holds, or one whose Connect they pressed — starts the moment it can, past every budget. The
- *   background — the Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the
+ *   background — the Mates a page draws, the Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the
  *   door's mint pace (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every
  *   other wanted target waits `on: budget`. A target with a session kept from an earlier load
  *   mints nothing while its Mate still holds it, so it neither waits on the pace nor spends it.
@@ -54,10 +54,11 @@ export type TargetKey = string;
 
 /**
  * What an emitter publishes the whole of: the route's target, the Mate on screen — its own view,
- * its birth, asked for but capped as no route is — and the Mate left last (krok-a-hub §3, kept
- * warm a while).
+ * its birth, asked for but capped as no route is — every Mate a page that draws them all names
+ * (Usage), and the Mate left last (krok-a-hub §3, kept warm a while). The page's and the last
+ * one's are the background.
  */
-export type DemandReason = "route" | "screen" | "recent";
+export type DemandReason = "route" | "screen" | "drawn" | "recent";
 
 /**
  * A lease one caller holds on one target until it lets it go: an action from outside the Mate's
@@ -237,6 +238,7 @@ const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = [
   "screen",
   "user",
   "action",
+  "drawn",
   "recent",
 ];
 
@@ -246,6 +248,7 @@ const ASKED_RANK = PRIORITY.indexOf("action");
 const EXCHANGE_REASON: Record<DemandReason, IdentityExchangeReason> = {
   route: "restore",
   screen: "restore",
+  drawn: "restore",
   recent: "restore",
 };
 

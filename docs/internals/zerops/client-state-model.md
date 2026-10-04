@@ -334,12 +334,14 @@ descriptor → exchange → thread state.
 An exchange runs when the key is wanted — while a lease holds it (step A, A9): the route names
 it; it is the Mate on screen, its own view or its birth; it was left last, for 5 minutes or until
 another is left; an action from outside its view holds it until the action answers
-(`AccountEnvironments.hold`); or a Connect runs — and all of these hold: the post-grant stage runs,
+(`AccountEnvironments.hold`); the Usage page, which draws every Mate HQ names, stands
+(`AccountEnvironments.setDrawn`, no project detail); or a Connect runs — and all of these hold: the post-grant stage runs,
 the session is signed in, P is `present`, C is `ready` or `unknown`, no exchange is in flight for
 the origin, the tab is visible or this is the route's target, the tab's exchange budget has a
 token, and `identityMint` is allowed. One driver per store serves them: a target the person asked
 for — the route's, the screen's, an action's, a Connect's — starts the moment it can, past every
-budget; the Mate left last starts at most 3 at once, at the door's mint pace; single flight per
+budget; the Mates Usage draws and the Mate left last start at most 3 at once, at the door's mint
+pace; single flight per
 origin, 20 s per attempt. A Mate no lease holds is **parked**: the registry closes its socket and
 stops its renewal, and keeps its registration, kept session and cached data; unparked, it connects
 on the session it kept, through no door. A route or an action no record or descriptor names finds

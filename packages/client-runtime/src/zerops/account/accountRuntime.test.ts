@@ -2357,6 +2357,40 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  // Usage draws every Mate of the organization: while it stands, each is wanted in the background,
+  // with no project detail held, and let go when it closes.
+  it.effect("a page that draws every Mate wants each in the background until it lets go", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([], [A_MATE, B_MATE], undefined, undefined, {
+          hqIndex: {
+            projectOf: (environmentId) =>
+              environmentId === ENV_A
+                ? A_MATE.projectId
+                : environmentId === ENV_B
+                  ? B_MATE.projectId
+                  : null,
+            subscribe: () => () => undefined,
+          },
+        });
+
+        environments.setDrawn([ENV_A, ENV_B]);
+        yield* settle;
+        expect(rig.exchanges.map(({ input: { key, asked } }) => ({ key, asked }))).toEqual([
+          { key: MATE, asked: false },
+          { key: B_MATE.key, asked: false },
+        ]);
+        expect(environments.machines().get(B_MATE.key)?.guards.want).toBe(true);
+        expect(environments.detailProjects().size).toBe(0);
+
+        environments.setDrawn([]);
+        yield* settle;
+        expect(environments.machines().get(MATE)?.guards.want).toBe(false);
+        expect(environments.machines().get(B_MATE.key)?.guards.want).toBe(false);
+      }),
+    ),
+  );
+
   it.effect("an unknown route does not sweep other projects for descriptors", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -13,7 +13,7 @@
  * - The account's guards come from its grant, the tab from the account's signals, a container's
  *   re-read from the account's bus.
  * - A Mate is connected while it holds a lease (krok-a-hub §3): the route's and the screen's, the
- *   one left last for `RECENT_MS`, an action's, a Connect's. The route's target is found through
+ *   one left last for `RECENT_MS`, an action's, a Connect's, a page's that draws every Mate (Usage). The route's target is found through
  *   its record or the descriptor index or HQ. An unresolved route never probes other projects. A
  *   remembered Mate with no lease is parked: its registration, kept session and cached data stay,
  *   its socket closes.
@@ -264,6 +264,11 @@ export interface AccountEnvironments {
    * screen's lease, asked for as the route's is but capped and held while hidden as no route is.
    */
   readonly setOnScreen: (projectId: string | null) => void;
+  /**
+   * The environments of every Mate a page draws — Usage — or none: each is wanted in the background
+   * while named, with no project detail; replaced whole.
+   */
+  readonly setDrawn: (environmentIds: ReadonlyArray<EnvironmentId>) => void;
 }
 
 /** What the account runtime drives the stage with, besides its stores. */
@@ -353,6 +358,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let routeKey: TargetKey | null = null;
   let activeOrganization: string | null = null;
   let onScreen: string | null = null;
+  /** The environments a page that draws every Mate names (`setDrawn`). */
+  let drawn: ReadonlyArray<EnvironmentId> = [];
+  /** The targets `drawn` resolved to, as the driver was last told. */
+  let drawnKeys: ReadonlyArray<TargetKey> = [];
   /** The targets the route and the screen hold: one that leaves them is the Mate left last. */
   let viewed: ReadonlyArray<TargetKey> = [];
   /** The Mate left last, and what disarms the timer that lets it go. */
@@ -548,10 +557,23 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /**
+   * A page that draws every Mate wants the targets its environments name now, in the background:
+   * no project detail, and none of them becomes the Mate left last. One nothing names yet waits.
+   */
+  const updateDrawn = () => {
+    if (stores === null || closed) return;
+    const keys = drawn.flatMap((environmentId) => targetOf(environmentId) ?? []);
+    if (keys.length === drawnKeys.length && keys.every((key, at) => key === drawnKeys[at])) return;
+    drawnKeys = keys;
+    stores.driver.setDemand("drawn", keys);
+  };
+
   /** The records, or the installs that write them, changed. */
   const registrationsChanged = () => {
     updateRoute();
     updateActions();
+    updateDrawn();
     updateTargets();
     release();
     updateParking();
@@ -913,6 +935,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       containers.subscribe(() => {
         updateRoute();
         updateActions();
+        updateDrawn();
         updateProcesses();
         updateDowns();
         notify();
@@ -920,6 +943,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       driver.subscribe(() => {
         updateRoute();
         updateActions();
+        updateDrawn();
         updateDowns();
         // A credential its machine let go — an install that failed, a retirement — is released.
         release();
@@ -931,6 +955,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       ports.hqIndex?.subscribe(() => {
         updateRoute();
         updateActions();
+        updateDrawn();
       }) ?? (() => undefined),
       ports.online?.subscribe(updateOnline) ?? (() => undefined),
       ports.hqOrganization?.subscribe(updateOnline) ?? (() => undefined),
@@ -954,6 +979,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           // The route's target first, so its container is read before any other's.
           updateRoute();
           updateActions();
+          updateDrawn();
           if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
             updateTargets();
         },
@@ -999,6 +1025,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         const action: ActionLease = { environmentId, key: null, letGo: null };
         actions.add(action);
         updateActions();
+        updateDrawn();
         updateRoute();
         return () => {
           if (actions.delete(action)) action.letGo?.();
@@ -1026,6 +1053,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         if (onScreen === projectId) return;
         onScreen = projectId;
         updateRoute();
+      },
+      setDrawn: (environmentIds) => {
+        drawn = environmentIds;
+        updateDrawn();
       },
     };
 
