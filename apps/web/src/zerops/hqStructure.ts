@@ -55,6 +55,7 @@ import {
 } from "./accountHq";
 import { menuMemory, rememberedMates, rememberMenu, withMates, withStructure } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { whenShown } from "./whenShown";
 
 /** A stream nothing came down for this long — three pings — is given up. */
 export const HQ_STREAM_SILENCE_MS = 60_000;
@@ -91,11 +92,16 @@ export async function driveHqStructure(input: {
   /** Told how each stream ended — the close code a break carried — and how long it lived (F26). */
   readonly log: (line: string) => void;
   /**
-   * HQ's `/health`, read once after each attempt that failed, while the tab is visible: whether
-   * HQ is down or serves while it cannot check Zerops right now. Never while the stream serves.
+   * HQ's `/health`, read once after each attempt that failed, while the tab is visible — in a
+   * hidden tab once it is shown: whether HQ is down or serves while it cannot check Zerops right
+   * now. While the stream serves, only for a Core whose stream says nothing of it, once.
    */
   readonly readHealth: () => Promise<HqHealth>;
-  readonly visible: () => boolean;
+  /**
+   * Runs `run` now while the tab is shown, else once it is shown again (`whenShown.ts`); what it
+   * returns stops waiting.
+   */
+  readonly whenShown: (run: () => void) => () => void;
   readonly signal: AbortSignal;
   readonly silenceMs?: number;
 }): Promise<void> {
@@ -127,21 +133,46 @@ export async function driveHqStructure(input: {
 
   /** Each snapshot served: a health read that began before one is stale. */
   let served = 0;
-  const standingAfterFailure = (since: number) => {
-    const previous: HqStanding = view.standing ?? { kind: "unknown" };
-    if (!input.visible()) {
-      // Nothing is read while hidden: the stream's own failure stands, an unchecked HQ aside.
-      return previous.kind === "unchecked" ? previous : { kind: "unavailable" as const, since };
-    }
-    const asked = served;
-    void input.readHealth().then((health) => {
-      if (input.signal.aborted || served !== asked) return;
-      publish({
-        ...view,
-        standing: nextHqStanding(view.standing ?? { kind: "unknown" }, health, since),
+  /** Each health read asked: only the newest one's answer counts. */
+  let healthAsked = 0;
+  let unwaitHealth = () => {};
+  /** HQ's health as last read: what a Core whose stream says nothing of it stands on. */
+  let told: HqHealth | undefined;
+  /** A Core whose stream says nothing of its check of Zerops had its health read for it. */
+  let toldAsked = false;
+  /**
+   * Reads HQ's health now while the tab is shown, else once it is; `apply` takes its answer while
+   * `wanted` and no newer read was asked. True when it was read now.
+   */
+  const askHealth = (apply: (health: HqHealth) => void, wanted: () => boolean): boolean => {
+    unwaitHealth();
+    let now = false;
+    unwaitHealth = input.whenShown(() => {
+      now = true;
+      unwaitHealth = () => {};
+      const asked = ++healthAsked;
+      void input.readHealth().then((health) => {
+        if (input.signal.aborted || asked !== healthAsked || !wanted()) return;
+        told = health;
+        apply(health);
       });
     });
-    return previous;
+    return now;
+  };
+  const standingAfterFailure = (since: number): HqStanding => {
+    const previous: HqStanding = view.standing ?? { kind: "unknown" };
+    const asked = served;
+    const read = askHealth(
+      (health) =>
+        publish({
+          ...view,
+          standing: nextHqStanding(view.standing ?? { kind: "unknown" }, health, since),
+        }),
+      () => served === asked,
+    );
+    if (read) return previous;
+    // Nothing is read while hidden: the stream's own failure stands, an unchecked HQ aside.
+    return previous.kind === "unchecked" ? previous : { kind: "unavailable", since };
   };
 
   let backoffMs = HQ_RECONNECT_FIRST_MS;
@@ -184,14 +215,19 @@ export async function driveHqStructure(input: {
       let appReads: HqAppReads | null = view.appReads;
       let mates: HqMates | null = null;
       let people: HqPeople | null = null;
-      /** Whether HQ could check Zerops, as this stream last said; none from an HQ that sends none. */
-      let official: string | undefined;
-      const servingStanding = () =>
-        nextHqStanding(
-          view.standing ?? { kind: "unknown" },
-          healthOfOfficial(official),
-          input.now(),
-        );
+      /**
+       * Whether HQ could check Zerops, as this stream last said: `null` before its first check,
+       * nothing from a Core whose stream does not say it.
+       */
+      let official: string | null | undefined;
+      const servingStanding = (): HqStanding =>
+        official === undefined
+          ? { kind: told?.kind === "unchecked" ? "unchecked" : "healthy" }
+          : nextHqStanding(
+              view.standing ?? { kind: "unknown" },
+              healthOfOfficial(official),
+              input.now(),
+            );
       let rememberedAt: number | null = null;
       let dirty = false;
       const rememberMates = (force: boolean) => {
@@ -241,7 +277,20 @@ export async function driveHqStructure(input: {
                 if (streamed !== null) publish({ ...view, standing: servingStanding() });
                 return;
               }
-              if (event.kind === "snapshot") official = event.official;
+              if (event.kind === "snapshot") {
+                official = event.official;
+                // Serving again: a health read still waiting on a failure is none of its business.
+                unwaitHealth();
+                if (official === undefined && !toldAsked) {
+                  toldAsked = true;
+                  askHealth(
+                    () => {
+                      if (view.current) publish({ ...view, standing: servingStanding() });
+                    },
+                    () => true,
+                  );
+                }
+              }
               if (event.kind === "mate" || event.kind === "people") return;
               streamed = applyStructureEvent(streamed, event);
               changes = applyChangesEvent(changes, event);
@@ -317,6 +366,7 @@ export async function driveHqStructure(input: {
       }
     }
   } finally {
+    unwaitHealth();
     input.signal.removeEventListener("abort", abort);
     attempt?.abort();
     readers.delete(reread);
@@ -326,11 +376,11 @@ export async function driveHqStructure(input: {
 
 /**
  * What a serving HQ's verdict of itself says of it, as `/health` would: the official HQ, one that
- * serves while it cannot check Zerops right now, or one that is not the official HQ. An HQ that
- * sends no verdict serves, and is taken as the official one.
+ * serves while it cannot check Zerops right now, or one that is not the official HQ. A Core yet to
+ * finish its first check (`null`) serves, and is taken as the official one.
  */
-function healthOfOfficial(official: string | undefined): HqHealth {
-  if (official === undefined || official === "ok") return { kind: "healthy", build: "" };
+function healthOfOfficial(official: string | null): HqHealth {
+  if (official === null || official === "ok") return { kind: "healthy", build: "" };
   return official === "unknown"
     ? { kind: "unchecked", build: "" }
     : { kind: "not-ready", state: "active", official };
@@ -439,7 +489,7 @@ export function ZeropsHqStructure(): null {
       now: () => Date.now(),
       log: (line) => console.info(line),
       readHealth: () => readHqHealth((input, init) => fetch(input, init), hqAddress),
-      visible: () => document.visibilityState === "visible",
+      whenShown,
       signal: stop.signal,
     });
     return () => stop.abort();
