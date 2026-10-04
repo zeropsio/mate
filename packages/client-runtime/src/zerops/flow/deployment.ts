@@ -806,7 +806,8 @@ export function deploymentReadFailed(deployment: Shown<Deployment> | undefined):
 
 /**
  * A stop's tone with no clock — what `stopView` colours it, for a surface that draws only the dot
- * and its word: a build the platform runs is deploying; a version it runs is {@link runningTone}'s; nothing running, or nothing known, says nothing.
+ * and its word: a build the platform runs is deploying; a version it runs, or the flow's while its
+ * answer is on its way, is {@link runningTone}'s; nothing running, or nothing known, says nothing.
  */
 export function stopTone(
   deployment: Shown<Deployment> | undefined,
@@ -820,7 +821,7 @@ export function stopTone(
   }
   if (deployment?.state === "known" && deployment.value.kind === "running")
     return runningTone(deployment.value.version, row);
-  return "neutral";
+  return runningTone(undefined, row);
 }
 
 /**
@@ -846,7 +847,8 @@ function runningView(
  * A stop's row from its deployment and, where the deploy half read one, its
  * environment row. The platform decides whether anything runs and names it; the
  * row colours the version it read, and names it only where nothing else does. A
- * historical row cannot replace an unread or failed platform answer.
+ * version the row read stands while the platform's answer is on its way. A runtime failure
+ * still says why it could not be read, and a complete none overrides the row.
  */
 export function stopView(input: {
   readonly deployment: Shown<Deployment>;
@@ -898,6 +900,7 @@ export function stopView(input: {
       activatedAt: null,
       afterMs: 0,
     };
+  if (row !== undefined && row.version.label !== undefined) return runningView(undefined, row);
   const text = presentation.message?.text ?? CHECKING_WHAT_RUNS;
   return {
     tone: "neutral",

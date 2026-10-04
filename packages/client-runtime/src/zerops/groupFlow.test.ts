@@ -628,7 +628,7 @@ describe("groupFlow", () => {
         },
       ] as const
     ).map(({ deployment, line }) => ({
-      case: `HQ release history cannot replace the runtime answer: ${deployment.state}`,
+      case: `the flow's version stands while unread, but the runtime failure stays visible: ${deployment.state}`,
       production: productionOf({
         row: declared({
           projectId: "p-prod",
@@ -639,7 +639,14 @@ describe("groupFlow", () => {
         }),
         deployment,
       }),
-      expected: { kind: "checking", line, stop: { state: "checking", version: undefined } },
+      expected:
+        deployment.state === "unread"
+          ? { kind: "live", line: "v0.1.0", stop: { state: "deployed" } }
+          : {
+              kind: "checking",
+              line,
+              stop: { state: "checking", version: undefined, readFailed: true },
+            },
     })),
     {
       case: "checking: the platform has not answered and the row names nothing",
@@ -682,9 +689,9 @@ describe("groupFlow", () => {
       expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
     },
     {
-      case: "HQ history cannot stand for a deploy while the platform answer is on its way",
+      case: "the flow's name stands for a deploy while the platform answer is on its way",
       production: productionOf({ deployment: undefined }),
-      expected: { kind: "checking", line: "Checking what runs here…", stop: { state: "checking" } },
+      expected: { kind: "live", line: "055a7e8", stop: { state: "deployed" } },
     },
   ])("reads production as $case", ({ production, expected }) => {
     expect(production).toMatchObject(expected);

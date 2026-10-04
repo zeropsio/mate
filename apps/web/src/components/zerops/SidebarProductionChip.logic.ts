@@ -308,9 +308,13 @@ export function productionChip(input: {
       waitingAtLeast,
     });
   }
+  if (
+    serving.kind === "unknown" &&
+    !(production.kind === "checking" && production.stop.readFailed === true)
+  )
+    return UNKNOWN;
   if (production.kind === "checking")
     return chipOf("prod", "unverified", { readLine: production.line });
-  if (serving.kind === "unknown") return UNKNOWN;
   if (input.releases.kind === "waiting") {
     return untilReleases(productionChip({ ...input, releases: { kind: "absent" } }));
   }
@@ -380,9 +384,9 @@ export function stageStopChip(input: {
   const version = stageVersion(stop);
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
+  if (serving.kind === "unknown" && stop.readFailed !== true) return UNKNOWN;
   if (stop.state === "checking")
     return chipOf("stage", "unverified", { readLine: stop.readLine ?? "Checking what runs here…" });
-  if (serving.kind === "unknown") return UNKNOWN;
   if (input.releases.kind === "waiting") {
     return untilReleases(stageStopChip({ ...input, releases: { kind: "absent" } }));
   }
@@ -501,11 +505,7 @@ export function drawnChip(
 ): ProductionChip | undefined {
   if (view.kind === "chip") return view.chip;
   if (view.kind !== "unknown") return undefined;
-  if (view.partial !== undefined) return view.partial;
-  const held = remembered;
-  return held === undefined
-    ? undefined
-    : { label: held.label, state: "unverified", readLine: "Checking what runs here…" };
+  return view.partial ?? remembered;
 }
 
 /**

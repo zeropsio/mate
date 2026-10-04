@@ -22,6 +22,7 @@ import {
   rememberedChipAfter,
   releaseFailureOf,
   stageChip,
+  stageStopChip,
   stageMenu,
   stopServing,
   type ChipView,
@@ -661,7 +662,7 @@ describe("drawnChip and rememberedChipAfter — a reload paints what it last dre
     { view: { kind: "chip", chip: NOW } as const, drawn: NOW, remember: NOW },
     {
       view: { kind: "unknown" } as const,
-      drawn: { label: "prod", state: "unverified", readLine: "Checking what runs here…" },
+      drawn: REMEMBERED,
       remember: undefined,
     },
     { view: { kind: "none" } as const, drawn: undefined, remember: null },
@@ -1508,4 +1509,43 @@ it("an unread production overrides a remembered healthy chip with the shared rea
   const drawn = drawnChip(view, remembered)!;
   expect(chipFace(drawn).words).toBe("Production, Checking what runs here…");
   expect(chipDot(drawn)).toBe("off");
+});
+
+it("keeps unread stops unknown while their serving status is also unread", () => {
+  const serving = { kind: "unknown" } as const;
+  expect(productionChip(input({ production: checking(), serving }))).toEqual({ kind: "unknown" });
+  expect(
+    stageStopChip({
+      stop: stop({ state: "checking", version: undefined }),
+      serving,
+      releases: { kind: "absent" },
+    }),
+  ).toEqual({ kind: "unknown" });
+});
+
+it.each<ProductionChip>([
+  { label: "prod", state: "ok", version: "v1.0.0" },
+  { label: "prod", state: "ok", version: "v1.0.0", untold: ["api"] },
+  { label: "prod", state: "stopped", version: "v1.0.0" },
+])("keeps remembered facts while serving status is unread: $state $untold", (remembered) => {
+  const view = productionChip(input({ production: checking(), serving: { kind: "unknown" } }));
+  expect(drawnChip(view, remembered)).toEqual(remembered);
+  expect(rememberedChipAfter(view)).toBeUndefined();
+});
+
+it("shows a failed runtime attempt even while serving metadata is unread", () => {
+  const readLine = "Couldn't read what runs here. Zerops didn't answer.";
+  const failed = stop({ state: "checking", version: undefined, readLine, readFailed: true });
+  const serving = { kind: "unknown" } as const;
+  const production = productionChip(
+    input({ production: { kind: "checking", stop: failed, line: readLine }, serving }),
+  );
+  expect(production).toEqual({
+    kind: "chip",
+    chip: { label: "prod", state: "unverified", readLine },
+  });
+  expect(stageStopChip({ stop: failed, serving, releases: { kind: "absent" } })).toEqual({
+    kind: "chip",
+    chip: { label: "stage", state: "unverified", readLine },
+  });
 });

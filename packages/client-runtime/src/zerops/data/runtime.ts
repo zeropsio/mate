@@ -2415,28 +2415,37 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }
     });
   failReceiver = (receiver, message) =>
-    lifecycleLock.withPermit(
-      Effect.gen(function* () {
-        if (receivers.get(receiver.key) !== receiver) return;
-        yield* failInterests(
-          [...interests.values()]
-            .filter(
-              (interest) => interest.identity.receiver.receiverId === receiver.identity.receiverId,
-            )
-            .map((interest) => interest.identity),
-          `${message} Reconnect to read a fresh baseline; updates while disconnected may be missing.`,
-        );
-        receiver.openFailure ??= {
-          _tag: "ZeropsDataAdapterError",
-          kind: "network",
-          message,
-          retryable: true,
-          accountRevocationEvidence: false,
-        };
-        const handle = receiver.handle;
-        receiver.handle = null;
-        if (handle !== null) yield* options.adapter.closeReceiver(handle);
-      }),
+    Ref.get(closed).pipe(
+      Effect.flatMap((isClosed) =>
+        // Shutdown interrupts registrations while holding the lifecycle lock. Their finalizers
+        // settle the abandoned attempt, but must not acquire that lock for a closed epoch.
+        isClosed
+          ? Effect.void
+          : lifecycleLock.withPermit(
+              Effect.gen(function* () {
+                if ((yield* Ref.get(closed)) || receivers.get(receiver.key) !== receiver) return;
+                yield* failInterests(
+                  [...interests.values()]
+                    .filter(
+                      (interest) =>
+                        interest.identity.receiver.receiverId === receiver.identity.receiverId,
+                    )
+                    .map((interest) => interest.identity),
+                  `${message} Reconnect to read a fresh baseline; updates while disconnected may be missing.`,
+                );
+                receiver.openFailure ??= {
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "network",
+                  message,
+                  retryable: true,
+                  accountRevocationEvidence: false,
+                };
+                const handle = receiver.handle;
+                receiver.handle = null;
+                if (handle !== null) yield* options.adapter.closeReceiver(handle);
+              }),
+            ),
+      ),
     );
   failSubscription = (receiver, registration) =>
     lifecycleLock.withPermit(
@@ -3558,10 +3567,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     lifecycleLock.withPermit(
       Effect.gen(function* () {
         if (yield* Ref.get(closed)) return;
+        // Fence the epoch before interrupting any grant or transport work.
+        yield* Ref.set(closed, true);
         // No round, read or timer of the grant outlives the epoch.
         yield* grant.close;
-        // Fence publication and clear grants/model first; transport finalizers run afterward.
-        yield* Ref.set(closed, true);
         yield* applyControl({ kind: "runtime-closed" });
         yield* flushPublication;
         yield* ingress.shutdown;

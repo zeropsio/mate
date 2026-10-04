@@ -342,16 +342,19 @@ describe("stopView", () => {
     });
   });
 
-  it("waits for the platform instead of presenting a historical version as running", () => {
+  it.each<Shown<Deployment>>([
+    { state: "unread", waitingFor: null },
+    { state: "reading", sinceMs: 0, attempt: 1 },
+  ])("keeps the flow's own version while the platform is $state", (deployment) => {
     const view = stopView({
-      deployment: { state: "unread", waitingFor: null },
+      deployment,
       row: ROWS[2]!.row,
       nowMs: NOW,
     });
     expect(view).toMatchObject({
-      tone: "neutral",
-      word: "Checking what runs here…",
-      version: undefined,
+      tone: "good",
+      word: "Deployed",
+      version: ROWS[2]!.row!.version,
     });
   });
 });
@@ -992,15 +995,15 @@ describe("a deploy of a commit only moves forward", () => {
       step: "the platform's answer goes unknown on a reconnect, the stale read standing",
       deployment: { state: "reading", sinceMs: 0, attempt: 1 },
       row: read(NEW, "queued"),
-      word: "Checking what runs here…",
-      state: "checking",
+      word: "Deployed",
+      state: "deployed",
     },
     {
       step: "the active version arrives unstated, the stale read standing",
       deployment: { state: "unread", waitingFor: null },
       row: read(NEW, "queued"),
-      word: "Checking what runs here…",
-      state: "checking",
+      word: "Deployed",
+      state: "deployed",
     },
     {
       step: "HQ's record of it going live lands",
@@ -1043,7 +1046,7 @@ describe("a deploy of a commit only moves forward", () => {
   it.each(STEPS)("$step: $word", ({ deployment, row, word, state }) => {
     expect(stopView({ deployment, row, nowMs: NOW }).word).toBe(word);
     expect(flowState(deployment, row)).toBe(state);
-    expect(deployWord(stopTone(deployment, row))).toBe(state === "checking" ? undefined : word);
+    expect(deployWord(stopTone(deployment, row))).toBe(word);
   });
 });
 
@@ -1105,9 +1108,9 @@ describe("heldThroughRecheck — a re-check keeps the last answer only where it 
   });
 });
 
-// A historical release is not proof that its version still runs.
+// The flow's version survives an unanswered runtime read; a failure still names its cause.
 it.each(["unread", "failed"] as const)(
-  "stopView preserves a %s runtime answer over HQ's version",
+  "stopView handles a %s runtime answer beside the flow's version",
   (state) => {
     const deployment: Shown<Deployment> =
       state === "unread"
@@ -1121,10 +1124,10 @@ it.each(["unread", "failed"] as const)(
           };
     const row = ROWS.find(({ row }) => row?.version.label !== undefined)!.row;
     const view = stopView({ deployment, row, nowMs: NOW });
-    expect(view.version).toBeUndefined();
+    expect(view.version).toEqual(state === "unread" ? row!.version : undefined);
     expect(view.line).toBe(
       state === "unread"
-        ? "Checking what runs here…"
+        ? row!.version.label
         : "Couldn't read what runs here. Zerops didn't answer.",
     );
   },
