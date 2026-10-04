@@ -19,10 +19,9 @@
  * ## The check, in order
  *
  * Each step's failure is a {@link ZeropsThrowawayRefusedError} naming the rule
- * it broke: six rules, in the order main's broker proved a person
- * (`gitea-mate/docs/broker-api.md`, *Proving a person*), over the prefix
- * `mate-door:{projectId}:`. HQ's door applies the same rules
- * (`@t3tools/shared/zeropsDoor`).
+ * it broke. Steps 3–5 are the door's token-shape rules, the one copy HQ's door
+ * judges by too (`checkDoorTokenShape`, `@t3tools/shared/zeropsDoor`); this
+ * server only reads the facts they judge.
  *
  * 0. `GET /project/{own}` **with the Mate's own key** — the org this project
  *    belongs to, and this project's `userRoles`. Read first because the org is
@@ -34,12 +33,13 @@
  * 2. `GET /client/{our org}/integration-token/{id}` **as the presented token**
  *    must answer `200` (`wrong_org`). A token from another org cannot read
  *    this org's tokens, and a personal token is not a token row at all.
- * 3. `roleCode == NO_ACCESS`, no project grants, **no flag of any kind**
- *    (`has_rights`). The flag rule is load-bearing rather than tidy: a token
- *    minted through a *delegation* names the delegating person as its creator,
- *    and every Mate's key carries a one-use delegation of exactly the shape
- *    `NO_ACCESS` + *can create projects* (measured, ledger *Zerops auth
- *    surface*) — so without it a Mate could mint a token that names its owner.
+ * 3. `roleCode == NO_ACCESS`, no project grants, **no flag** —
+ *    `canCreateProjects`, `canViewFinances`, `canEditFinances` (`has_rights`).
+ *    The flag rule is load-bearing rather than tidy: a token minted through a
+ *    *delegation* names the delegating person as its creator, and every Mate's
+ *    key carries a one-use delegation of exactly the shape `NO_ACCESS` + *can
+ *    create projects* (measured, ledger *Zerops auth surface*) — so without it
+ *    a Mate could mint a token that names its owner.
  *    A flagged token is not a throwaway, whoever made it.
  * 4. The name is `mate-door:{this project}:…` (`wrong_name`), so a throwaway
  *    captured at one Mate's door is not a pass to another.
@@ -68,6 +68,7 @@ import {
   resolveDoorVisibility,
   type ZeropsOrgMember,
 } from "@t3tools/shared/mateAccess";
+import { checkDoorTokenShape, type DoorInput, type DoorRule } from "@t3tools/shared/zeropsDoor";
 import { ZEROPS_ACTIVE_MEMBER_STATUS, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -89,12 +90,6 @@ import {
   ZeropsProjectNotFoundError,
 } from "./zeropsApiRead.ts";
 
-/** The throwaway name every door credential carries, before its project id. */
-export const DOOR_THROWAWAY_PREFIX = "mate-door";
-
-/** How far a throwaway's `created` may be from the API's own clock. */
-export const DOOR_THROWAWAY_MAX_AGE_MS = 5 * 60 * 1000;
-
 /**
  * Which rule the presented credential broke.
  *
@@ -106,16 +101,8 @@ export const DOOR_THROWAWAY_MAX_AGE_MS = 5 * 60 * 1000;
 export type ZeropsThrowawayRule =
   /** `/user/info` refused the presented token. */
   | "token_dead"
-  /** The token is not a token of this org — or not an integration token at all. */
-  | "wrong_org"
-  /** It carries a role, a project grant or a flag. */
-  | "has_rights"
-  /** It is not named for this Mate. */
-  | "wrong_name"
-  /** It was minted more than five minutes ago, by the API's clock. */
-  | "stale"
-  /** Its creator is not an `ACTIVE` member of the org. */
-  | "not_member";
+  /** The door's own rules (`@t3tools/shared/zeropsDoor`). */
+  | DoorRule;
 
 /** The presented credential is not a throwaway minted for this Mate. */
 export class ZeropsThrowawayRefusedError extends Schema.TaggedError<ZeropsThrowawayRefusedError>()(
@@ -170,42 +157,29 @@ const UserInfoResponse = Schema.Struct({
 const decodeProject = Schema.decodeUnknownEffect(ProjectResponse);
 const decodeUserInfo = Schema.decodeUnknownEffect(UserInfoResponse);
 
-/** Flags a throwaway must not carry. Any truthy one refuses the token. */
-const TOKEN_FLAG_KEYS = [
-  "canCreateProjects",
-  "canManageFinances",
-  "canManageFinance",
-  "hasFinances",
-] as const;
-
-interface IntegrationTokenRecord {
-  readonly id: string;
-  readonly name: string;
-  readonly created: string;
-  readonly createdByUser: string;
-  readonly roleCode: string;
-  readonly hasGrants: boolean;
-  readonly hasFlag: boolean;
-}
-
 /**
- * Reads a token record out of an unknown body. Anything missing makes the
- * record unusable (`null`), which the caller turns into a refusal rather than
- * a default.
+ * The presented token's own record, read in `orgId`, as the facts the door's
+ * rules judge. A body without an `id` is no record (`null`); any other field
+ * that is missing reads as what fails its rule — no role, no name, no
+ * `created`, no creator — never as a pass. A flag is set only by `true`.
  */
-export function readIntegrationTokenRecord(body: unknown): IntegrationTokenRecord | null {
+function readTokenFacts(body: unknown, orgId: string): DoorInput["token"] | null {
   if (typeof body !== "object" || body === null) return null;
   const record = body as Record<string, unknown>;
   if (typeof record["id"] !== "string" || record["id"].length === 0) return null;
   const projects = record["projects"];
+  const createdByUser = record["createdByUser"];
   return {
-    id: record["id"],
+    orgId,
     name: typeof record["name"] === "string" ? record["name"] : "",
-    created: typeof record["created"] === "string" ? record["created"] : "",
-    createdByUser: typeof record["createdByUser"] === "string" ? record["createdByUser"] : "",
     roleCode: typeof record["roleCode"] === "string" ? record["roleCode"] : "",
-    hasGrants: Array.isArray(projects) && projects.length > 0,
-    hasFlag: TOKEN_FLAG_KEYS.some((key) => record[key] === true),
+    canCreateProjects: record["canCreateProjects"] === true,
+    canViewFinances: record["canViewFinances"] === true,
+    canEditFinances: record["canEditFinances"] === true,
+    projectGrants: Array.isArray(projects) ? projects.length : 0,
+    createdMs: typeof record["created"] === "string" ? Date.parse(record["created"]) : Number.NaN,
+    createdByUser:
+      typeof createdByUser === "string" && createdByUser.length > 0 ? createdByUser : null,
   };
 }
 
@@ -306,40 +280,29 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   // The API's own wall clock, from the very response that carried `created`.
   const apiNowMs = responseDateEpochMs(tokenResponse);
   const tokenBody = yield* readJson(tokenResponse);
-  const record = readIntegrationTokenRecord(tokenBody);
-  if (record === null) {
+  const token = readTokenFacts(tokenBody, project.clientId);
+  if (token === null) {
     return yield* unavailable("The presented token's record was not in the expected shape.");
   }
 
-  // 3. No rights of any kind.
-  if (record.roleCode !== "NO_ACCESS" || record.hasGrants || record.hasFlag) {
-    return yield* refused("has_rights");
-  }
-
-  // 4. Named for this Mate.
-  if (!record.name.startsWith(`${DOOR_THROWAWAY_PREFIX}:${projectId}:`)) {
-    return yield* refused("wrong_name");
-  }
-
-  // 5. Minted seconds ago, by the API's clock and never by ours.
-  if (apiNowMs === undefined) {
+  // 3–5. No rights, named for this Mate, minted seconds ago by the API's clock
+  //      and never by ours: the door's own rules.
+  const shape = checkDoorTokenShape({ doorProjectId: projectId, token, apiNowMs });
+  if (shape?.kind === "refused") return yield* refused(shape.rule);
+  if (shape?.kind === "unavailable") {
     return yield* unavailable("The Zerops API sent no Date header to judge the token's age by.");
-  }
-  const createdMs = Date.parse(record.created);
-  if (!Number.isFinite(createdMs)) return yield* refused("stale");
-  if (Math.abs(apiNowMs - createdMs) > DOOR_THROWAWAY_MAX_AGE_MS) {
-    return yield* refused("stale");
   }
 
   // 6. Resolve its creator with one member-list read. A failed read stays
   // unavailable; the caller or the next membership sample owns another read.
-  if (record.createdByUser.length === 0) return yield* refused("not_member");
+  const createdByUser = token.createdByUser;
+  if (createdByUser === null) return yield* refused("not_member");
   // HQ's relay while it holds (`ZeropsProjectAccess`, R6): a creator it opens for is let in,
   // and the member list is not read. Whomever it lists or leaves out, the read below decides —
   // its refusals tell a non-member from one this project hides or only lists.
   const relayed = Option.getOrUndefined(yield* (yield* ZeropsProjectAccess).relay);
   const opened = relayed?.members.find(
-    (entry) => entry.userId === record.createdByUser && entry.visibility === "open",
+    (entry) => entry.userId === createdByUser && entry.visibility === "open",
   );
   if (opened !== undefined) {
     return {
@@ -366,7 +329,7 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   if (entries.length === 0) {
     return yield* unavailable("This org's member list came back empty.");
   }
-  const member = findOrgMember(entries, record.createdByUser);
+  const member = findOrgMember(entries, createdByUser);
   if (member === null || member.status !== ZEROPS_ACTIVE_MEMBER_STATUS) {
     return yield* refused("not_member");
   }
