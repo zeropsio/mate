@@ -47,7 +47,11 @@ import {
   SYNTHETIC_CLAUDE_STANDARD_MODEL,
   SYNTHETIC_CLAUDE_THINKING_MODEL,
 } from "../ClaudeModelCatalog.testFixtures.ts";
-import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
+import {
+  type ProviderAdapterError,
+  ProviderAdapterProcessError,
+  ProviderAdapterValidationError,
+} from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import type { ClaudeScopedLimitNames } from "./claudeUsageLimits.ts";
 import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
@@ -2412,6 +2416,406 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // A helper's own work reaches the thread as its steps: the SDK forwards a
+  // helper's calls only in its snapshots (no stream events), each tagged with
+  // the launching Agent call as its parent.
+  describe("a helper's steps", () => {
+    const SESSION = "sdk-session-helper-steps";
+    const launch = (id: string, input: Record<string, unknown>) =>
+      ({
+        type: "stream_event",
+        session_id: SESSION,
+        uuid: `launch-${id}`,
+        parent_tool_use_id: null,
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "tool_use", id, name: "Agent", input },
+        },
+      }) as unknown as SDKMessage;
+    const started = (
+      taskId: string,
+      toolUseId: string,
+      taskType: string,
+      extra: Record<string, unknown> = {},
+    ) =>
+      ({
+        type: "system",
+        subtype: "task_started",
+        task_id: taskId,
+        tool_use_id: toolUseId,
+        description: `Task ${taskId}`,
+        task_type: taskType,
+        uuid: `started-${taskId}`,
+        session_id: SESSION,
+        ...extra,
+      }) as unknown as SDKMessage;
+    const helperCalls = (
+      parent: string,
+      calls: ReadonlyArray<{ id: string; name: string; input: Record<string, unknown> }>,
+    ) =>
+      ({
+        type: "assistant",
+        parent_tool_use_id: parent,
+        message: {
+          model: SYNTHETIC_SUBAGENT_MODEL,
+          content: calls.map((call) => ({ type: "tool_use", ...call })),
+        },
+        uuid: `snapshot-${calls.map((call) => call.id).join("-")}`,
+        session_id: SESSION,
+      }) as unknown as SDKMessage;
+    const returned = (parent: string | null, id: string, content: string) =>
+      ({
+        type: "user",
+        session_id: SESSION,
+        uuid: `result-${id}`,
+        parent_tool_use_id: parent,
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content }] },
+      }) as unknown as SDKMessage;
+    const notified = (taskId: string, toolUseId: string, summary: string) =>
+      ({
+        type: "system",
+        subtype: "task_notification",
+        task_id: taskId,
+        tool_use_id: toolUseId,
+        status: "completed",
+        output_file: `/tmp/${taskId}.output`,
+        summary,
+        uuid: `notified-${taskId}`,
+        session_id: SESSION,
+      }) as unknown as SDKMessage;
+    const turnEnd = {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      errors: [],
+      session_id: SESSION,
+      uuid: "result-helper-steps",
+    } as unknown as SDKMessage;
+    const PROMPT = "Read the schema and report every table without a primary key.";
+
+    type Seen = ReadonlyArray<ProviderRuntimeEvent>;
+    const callsOf = (events: Seen, type: "item.started" | "item.updated" | "item.completed") =>
+      events.flatMap((event) =>
+        event.type === type && event.itemId !== undefined
+          ? [
+              {
+                id: String(event.itemId),
+                agentId: event.payload.agentId ?? null,
+                parent: event.payload.parentToolUseId ?? null,
+              },
+            ]
+          : [],
+      );
+    const tasksOf = (events: Seen) =>
+      events.flatMap((event) => (event.type === "task.started" ? [event.payload] : []));
+
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly messages: ReadonlyArray<SDKMessage>;
+      readonly check: (events: Seen) => void;
+    }> = [
+      {
+        name: "a helper's call starts and returns as its own step",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent", { prompt: PROMPT }),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h1", name: "Bash", input: { command: "npm test" } },
+          ]),
+          returned("toolu_agent_a", "tool-h1", "4 passing"),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.deepStrictEqual(callsOf(events, "item.started").at(-1), {
+            id: "tool-h1",
+            agentId: "task-a",
+            parent: "toolu_agent_a",
+          });
+          assert.deepStrictEqual(
+            callsOf(events, "item.completed").filter((call) => call.id === "tool-h1"),
+            [{ id: "tool-h1", agentId: "task-a", parent: "toolu_agent_a" }],
+          );
+          // Its result is in its completion: no streamed update row for a helper's call.
+          assert.deepStrictEqual(
+            callsOf(events, "item.updated").filter((call) => call.id === "tool-h1"),
+            [],
+          );
+        },
+      },
+      {
+        name: "a helper starts with the prompt it was given",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent", { prompt: PROMPT }),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(tasksOf(events)[0]?.prompt, PROMPT);
+        },
+      },
+      {
+        name: "a call a helper's stream already started is not started twice",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          {
+            type: "stream_event",
+            session_id: SESSION,
+            uuid: "helper-stream-h1",
+            parent_tool_use_id: "toolu_agent_a",
+            event: {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "tool_use", id: "tool-h1", name: "Read", input: {} },
+            },
+          } as unknown as SDKMessage,
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h1", name: "Read", input: { file_path: "/srv/schema.sql" } },
+          ]),
+          returned("toolu_agent_a", "tool-h1", "create table"),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(
+            callsOf(events, "item.started").filter((call) => call.id === "tool-h1").length,
+            1,
+          );
+        },
+      },
+      {
+        name: "a helper's own background command is its work, not the Mate's",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h2", name: "Bash", input: { command: "npm run dev" } },
+          ]),
+          started("task-shell", "tool-h2", "local_bash"),
+          turnEnd,
+        ],
+        check: (events) => {
+          const shell = tasksOf(events).find((task) => task.taskId === "task-shell");
+          assert.equal(shell?.agentId, "task-a");
+        },
+      },
+      {
+        name: "a helper's helper names the helper that started it",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "toolu_agent_b", name: "Agent", input: { description: "Read the logs" } },
+          ]),
+          started("task-b", "toolu_agent_b", "local_agent"),
+          helperCalls("toolu_agent_b", [
+            { id: "tool-b1", name: "Read", input: { file_path: "/var/log/app.log" } },
+          ]),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(tasksOf(events).find((task) => task.taskId === "task-b")?.agentId, "task-a");
+          assert.deepStrictEqual(
+            callsOf(events, "item.started").find((call) => call.id === "tool-b1"),
+            { id: "tool-b1", agentId: "task-b", parent: "toolu_agent_b" },
+          );
+        },
+      },
+      {
+        name: "the Mate's turn ending leaves a working helper's call open; the helper's end closes it",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          returned(null, "toolu_agent_a", "Async agent launched successfully."),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h3", name: "Bash", input: { command: "sleep 600" } },
+          ]),
+          turnEnd,
+          notified("task-a", "toolu_agent_a", "Every table has a primary key."),
+        ],
+        check: (events) => {
+          const closes = events.flatMap((event) =>
+            event.type === "item.completed" && String(event.itemId) === "tool-h3" ? [event] : [],
+          );
+          assert.equal(closes.length, 1);
+          const close = closes[0]!;
+          assert.equal(close.payload.agentId, "task-a");
+          const turnEndAt = events.findIndex((event) => event.type === "turn.completed");
+          assert.ok(events.indexOf(close) > turnEndAt);
+        },
+      },
+      {
+        name: "a helper's call before its helper is known is still a helper's, never the Mate's",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-early", name: "Bash", input: { command: "npm test" } },
+          ]),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          returned(null, "toolu_agent_a", "Async agent launched successfully."),
+          turnEnd,
+          returned("toolu_agent_a", "tool-early", "4 passing"),
+        ],
+        check: (events) => {
+          // Tagged with its launch until the helper is known by its task.
+          assert.deepStrictEqual(
+            callsOf(events, "item.started").find((call) => call.id === "tool-early"),
+            { id: "tool-early", agentId: "toolu_agent_a", parent: "toolu_agent_a" },
+          );
+          assert.deepStrictEqual(
+            callsOf(events, "item.updated").filter((call) => call.id === "tool-early"),
+            [],
+          );
+          // Its result completes it, after the Mate's turn ended: never closed as unreturned.
+          const closes = events.flatMap((event) =>
+            event.type === "item.completed" && String(event.itemId) === "tool-early" ? [event] : [],
+          );
+          assert.equal(closes.length, 1);
+          assert.equal(closes[0]?.payload.unreturned, undefined);
+        },
+      },
+      {
+        name: "a helper's helper launched before its parent is known names the parent's task",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          helperCalls("toolu_agent_a", [
+            { id: "toolu_agent_b", name: "Agent", input: { description: "Read the logs" } },
+          ]),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          started("task-b", "toolu_agent_b", "local_agent"),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(tasksOf(events).find((task) => task.taskId === "task-b")?.agentId, "task-a");
+        },
+      },
+      {
+        name: "a helper's own task list is never the Mate's plan",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-task", name: "TaskCreate", input: { subject: "Read the schema" } },
+          ]),
+          {
+            ...(returned("toolu_agent_a", "tool-task", "Task #1 created") as object),
+            tool_use_result: { task: { id: "1", subject: "Read the schema" } },
+          } as unknown as SDKMessage,
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(events.filter((event) => event.type === "turn.plan.updated").length, 0);
+        },
+      },
+      {
+        name: "a helper's end by a status patch closes its calls",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h4", name: "Bash", input: { command: "sleep 600" } },
+          ]),
+          {
+            type: "system",
+            subtype: "task_updated",
+            task_id: "task-a",
+            patch: { status: "killed", end_time: 1_791_098_296_585 },
+            uuid: "patched-task-a",
+            session_id: SESSION,
+          } as unknown as SDKMessage,
+        ],
+        check: (events) => {
+          const close = events.find(
+            (event) => event.type === "item.completed" && String(event.itemId) === "tool-h4",
+          );
+          assert.equal(close?.type === "item.completed" ? close.payload.agentId : null, "task-a");
+        },
+      },
+    ];
+
+    it.effect("a stop while a helper works closes the calls it left open", () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const beforeFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil(
+            (event) => event.type === "task.completed" && event.payload.taskId === "task-sync",
+          ),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({ threadId: session.threadId, input: "delegate", attachments: [] });
+        for (const message of [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          returned(null, "toolu_agent_a", "Async agent launched successfully."),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h5", name: "Bash", input: { command: "sleep 600" } },
+          ]),
+          turnEnd,
+          notified("task-sync", "toolu_sync", "sync"),
+        ]) {
+          harness.query.emit(message);
+        }
+        const before = Array.from(yield* Fiber.join(beforeFiber));
+        // The Mate idle, its helper at work: then the session stops.
+        const afterFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "task.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.stopSession(session.threadId);
+        const events = [...before, ...Array.from(yield* Fiber.join(afterFiber))];
+        const closes = events.filter(
+          (event) => event.type === "item.completed" && String(event.itemId) === "tool-h5",
+        );
+        assert.equal(closes.length, 1);
+        const close = closes[0]!;
+        assert.equal(close.type === "item.completed" ? close.payload.agentId : null, "task-a");
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
+
+    for (const { name, messages, check } of cases) {
+      it.effect(name, () => {
+        const harness = makeHarness();
+        return Effect.gen(function* () {
+          const adapter = yield* ClaudeAdapter;
+          const eventsFiber = yield* adapter.streamEvents.pipe(
+            Stream.takeUntil(
+              (event) => event.type === "task.completed" && event.payload.taskId === "task-end",
+            ),
+            Stream.runCollect,
+            Effect.forkChild,
+          );
+          const session = yield* adapter.startSession({
+            threadId: THREAD_ID,
+            provider: ProviderDriverKind.make("claudeAgent"),
+            runtimeMode: "full-access",
+          });
+          yield* adapter.sendTurn({
+            threadId: session.threadId,
+            input: "delegate",
+            attachments: [],
+          });
+          for (const message of messages) harness.query.emit(message);
+          harness.query.emit(notified("task-end", "toolu_end", "end"));
+          check(Array.from(yield* Fiber.join(eventsFiber)));
+        }).pipe(
+          Effect.provideService(Random.Random, makeDeterministicRandomService()),
+          Effect.provide(harness.layer),
+        );
+      });
+    }
+  });
+
   // The calls of one model response are one batch: the live slot tells a
   // newer batch by the response a call was written in.
   it.effect("stamps each call with the model response it was written in", () => {
@@ -4636,7 +5040,10 @@ describe("ClaudeAdapterLive", () => {
       const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
       assert.equal(runtimeError?.type, "runtime.error");
       if (runtimeError?.type === "runtime.error") {
-        assert.equal(runtimeError.payload.message, "Claude runtime stream failed.");
+        assert.equal(
+          runtimeError.payload.message,
+          "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+        );
         assert.deepEqual(runtimeError.payload.detail, {
           failureCount: 1,
           failureTags: ["ProviderAdapterProcessError"],
@@ -4647,8 +5054,248 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(completed?.type, "turn.completed");
       if (completed?.type === "turn.completed") {
         assert.equal(completed.payload.state, "failed");
-        assert.equal(completed.payload.errorMessage, "Claude runtime stream failed.");
+        assert.equal(
+          completed.payload.errorMessage,
+          "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+        );
       }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // A stream that dies says why, in plain words, and what happens next; the
+  // CLI's own stderr goes to the log, never the conversation.
+  it.effect("says why a stream died, from the CLI's stderr", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEvents: Array<ProviderRuntimeEvent> = [];
+      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => {
+          runtimeEvents.push(event);
+        }),
+      ).pipe(Effect.forkChild);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+      const stderr = harness.getLastCreateQueryInput()?.options.stderr;
+      assert.equal(typeof stderr, "function");
+      stderr?.(
+        "FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\n",
+      );
+      harness.query.fail(
+        Object.assign(new Error("Claude Code process exited with code 134"), { exitCode: 134 }),
+      );
+      for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+      runtimeEventsFiber.interruptUnsafe();
+
+      const words = "Claude Code ran out of memory. Send a message to pick up where it left off.";
+      const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
+      assert.equal(
+        runtimeError?.type === "runtime.error" ? runtimeError.payload.message : null,
+        words,
+      );
+      // Its stderr is the log's, never the conversation's.
+      assert.deepEqual(
+        runtimeError?.type === "runtime.error" ? runtimeError.payload.detail : null,
+        { failureCount: 1, failureTags: ["ProviderAdapterProcessError"] },
+      );
+      const completed = runtimeEvents.find((event) => event.type === "turn.completed");
+      assert.equal(
+        completed?.type === "turn.completed" ? completed.payload.errorMessage : null,
+        words,
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // How a stream ended, and what the person is told: a crash says why and
+  // fails the turn (its reason the thread's last error); our own failure to
+  // read the stream is ours, never Claude Code's; a crash whose stderr says
+  // "aborted" is no Stop; and only this stream's stderr is read.
+  describe("a stream's end", () => {
+    const SESSION = "sdk-session-stream-end";
+    const resultOf = (uuid: string) =>
+      ({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: SESSION,
+        uuid,
+      }) as unknown as SDKMessage;
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly run: (
+        harness: ReturnType<typeof makeHarness>,
+        adapter: ClaudeAdapterShape,
+      ) => Effect.Effect<void, ProviderAdapterError>;
+      readonly words: string;
+    }> = [
+      {
+        name: "a crash mid-turn fails the turn with its reason",
+        run: (harness) =>
+          Effect.sync(() => {
+            harness.getLastCreateQueryInput()?.options.stderr?.("Error: socket hang up\n");
+            harness.query.finish();
+          }),
+        words: "The Claude API stopped answering. Send a message to pick up where it left off.",
+      },
+      {
+        name: "our own failure to read its output is ours",
+        run: (harness) =>
+          Effect.sync(() => {
+            harness.query.emit({
+              type: "assistant",
+              parent_tool_use_id: "toolu_x",
+              message: null,
+              uuid: "broken-snapshot",
+              session_id: SESSION,
+            } as unknown as SDKMessage);
+          }),
+        words: "Mate failed to read Claude's output. Send a message to pick up where it left off.",
+      },
+      {
+        name: "a crash whose stderr says aborted is no Stop",
+        run: (harness) =>
+          Effect.sync(() => {
+            harness.query.fail(
+              Object.assign(
+                new Error("Claude Code process exited with code 1. stderr: Request was aborted."),
+                { exitCode: 1 },
+              ),
+            );
+          }),
+        words: "Claude Code exited (code 1). Send a message to pick up where it left off.",
+      },
+      {
+        name: "an earlier turn's stderr is not this one's",
+        run: (harness, adapter) =>
+          Effect.gen(function* () {
+            harness.getLastCreateQueryInput()?.options.stderr?.("API Error: 529 overloaded\n");
+            harness.query.emit(resultOf("result-first"));
+            for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+            yield* adapter.sendTurn({ threadId: THREAD_ID, input: "again", attachments: [] });
+            harness.query.fail(new Error("stream closed"));
+          }),
+        words: "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+      },
+    ];
+    for (const { name, run, words } of cases) {
+      it.effect(name, () => {
+        const harness = makeHarness();
+        return Effect.gen(function* () {
+          const adapter = yield* ClaudeAdapter;
+          const runtimeEvents: Array<ProviderRuntimeEvent> = [];
+          const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+            Effect.sync(() => {
+              runtimeEvents.push(event);
+            }),
+          ).pipe(Effect.forkChild);
+          yield* adapter.startSession({
+            threadId: THREAD_ID,
+            provider: ProviderDriverKind.make("claudeAgent"),
+            runtimeMode: "full-access",
+          });
+          yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+          yield* run(harness, adapter);
+          for (let tick = 0; tick < 10; tick += 1) yield* Effect.yieldNow;
+          runtimeEventsFiber.interruptUnsafe();
+          const errors = runtimeEvents.flatMap((event) =>
+            event.type === "runtime.error" ? [event.payload.message] : [],
+          );
+          assert.deepEqual(errors, [words]);
+          const ends = runtimeEvents.flatMap((event) =>
+            event.type === "turn.completed"
+              ? [[event.payload.state, event.payload.errorMessage ?? null]]
+              : [],
+          );
+          assert.deepEqual(ends.at(-1), ["failed", words]);
+        }).pipe(
+          Effect.provideService(Random.Random, makeDeterministicRandomService()),
+          Effect.provide(harness.layer),
+        );
+      });
+    }
+  });
+
+  // The Mate idle, its helpers at work, and the stream dies: the person is
+  // told, and each helper and its open call read as stopped, never working on.
+  it.effect("stops the helpers a dead stream left working, and says so", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEvents: Array<ProviderRuntimeEvent> = [];
+      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => {
+          runtimeEvents.push(event);
+        }),
+      ).pipe(Effect.forkChild);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "delegate", attachments: [] });
+      const session = "sdk-session-dead-stream";
+      for (const message of [
+        {
+          type: "system",
+          subtype: "task_started",
+          task_id: "task-a",
+          tool_use_id: "toolu_agent_a",
+          description: "Check the schema",
+          task_type: "local_agent",
+          uuid: "started-task-a",
+          session_id: session,
+        },
+        {
+          type: "assistant",
+          parent_tool_use_id: "toolu_agent_a",
+          message: {
+            model: SYNTHETIC_SUBAGENT_MODEL,
+            content: [{ type: "tool_use", id: "tool-h1", name: "Bash", input: { command: "ls" } }],
+          },
+          uuid: "snapshot-h1",
+          session_id: session,
+        },
+        {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          errors: [],
+          session_id: session,
+          uuid: "result-dead-stream",
+        },
+      ]) {
+        harness.query.emit(message as unknown as SDKMessage);
+      }
+      for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+      harness.query.fail(new Error("socket hang up"));
+      for (let tick = 0; tick < 8; tick += 1) yield* Effect.yieldNow;
+      runtimeEventsFiber.interruptUnsafe();
+
+      const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
+      assert.equal(
+        runtimeError?.type === "runtime.error" ? runtimeError.payload.message : null,
+        "The Claude API stopped answering. Send a message to pick up where it left off.",
+      );
+      const stopped = runtimeEvents.find(
+        (event) => event.type === "task.completed" && event.payload.taskId === "task-a",
+      );
+      assert.equal(stopped?.type === "task.completed" ? stopped.payload.status : null, "stopped");
+      const closed = runtimeEvents.find(
+        (event) => event.type === "item.completed" && String(event.itemId) === "tool-h1",
+      );
+      assert.equal(closed?.type === "item.completed" ? closed.payload.agentId : null, "task-a");
+      assert.ok(runtimeEvents.some((event) => event.type === "session.exited"));
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

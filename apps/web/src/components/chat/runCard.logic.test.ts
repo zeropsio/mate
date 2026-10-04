@@ -34,6 +34,9 @@ import {
   thoughtRunText,
   thoughtTicker,
   workedWords,
+  noteText,
+  slotWords,
+  thoughtTail,
 } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
 
@@ -1076,5 +1079,71 @@ describe("runCardShows — where a run's work stands, and what its line offers",
     },
   ] as const)("$name", ({ settled, fold, work, toggle }) => {
     expect(runCardShows(settled, fold)).toEqual({ work, toggle });
+  });
+});
+
+// Bodhi: notes ended on "Committing:", "Full error output:", "Screenshot of
+// the tab:" with nothing after them — what they announced is the next step.
+describe("noteText", () => {
+  it.each([
+    ["Committing:", false, "Committing"],
+    ["Full error output:\n", false, "Full error output"],
+    ["Here is the plan:\n\n1. Build", false, "Here is the plan:\n\n1. Build"],
+    ["Ratio 3:2 holds.", false, "Ratio 3:2 holds."],
+    ["Committing:", true, "Committing:"],
+    ["```yaml\nkey:\n```", false, "```yaml\nkey:\n```"],
+  ])("%j (streaming %j) reads %j", (text, streaming, expected) => {
+    expect(noteText(text, streaming)).toBe(expected);
+  });
+});
+
+describe("thoughtTail", () => {
+  it.each([
+    ["Short. Whole.", 40, "Short. Whole."],
+    [
+      "The first goes. The second stays. The third stays.",
+      36,
+      "The second stays. The third stays.",
+    ],
+    ["One sentence that is far too long to fit at all here", 20, "…to fit at all here"],
+  ])("%j in %j characters reads %j", (run, chars, expected) => {
+    expect(thoughtTail(run, chars)).toBe(expected);
+  });
+});
+
+describe("slotWords", () => {
+  it.each([
+    {
+      name: "nothing standing, thinking",
+      item: null,
+      filler: { kind: "thinking" },
+      words: "Thinking",
+    },
+    {
+      name: "nothing standing, a wait",
+      item: null,
+      filler: { kind: "waiting", on: "approval" },
+      words: "Waiting for your approval",
+    },
+    {
+      name: "a thought standing",
+      item: { kind: "thought", key: "t", at: "", messages: [], durationMs: null },
+      filler: { kind: "writing" },
+      words: "Thinking",
+    },
+    {
+      // Review of pass 39: a check in the browser was heard as "Thinking".
+      name: "a check in the browser",
+      item: {
+        kind: "strip",
+        key: "strip:b1",
+        at: "",
+        strip: { key: "strip:b1", checks: [browser], views: 1, failures: 0, live: true },
+      },
+      filler: { kind: "thinking" },
+      words: "Checking /status in the browser",
+    },
+  ] as const)("$name", ({ item, filler, words }) => {
+    expect(slotWords(item as RecordItem | null, filler)).toBe(words);
   });
 });

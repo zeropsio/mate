@@ -3,6 +3,7 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { PlusIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -20,32 +21,52 @@ import {
   useProjects,
   useThreadShells,
 } from "../state/entities";
+import { environmentCatalog } from "../connection/catalog";
 import { useEnvironments } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
-import { homeView } from "../zerops/homeLanding.logic";
+import { homeDoor, homeView } from "../zerops/homeLanding.logic";
 import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
 import { useMatesSettled } from "../zerops/useMatesSettled";
+import { useZeropsInventory } from "../zerops/inventoryContext";
+import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments } = useEnvironments();
+  const matesSettled = useMatesSettled();
+  const { organizationStatus } = useZeropsSession();
+  const inventory = useZeropsInventory();
+  const catalogFailed = AsyncResult.isFailure(useAtomValue(environmentCatalog.catalogAtom));
 
   const door = resolveDoor(authGateState, {
     pathname: "/",
     environmentCount: countDoorEnvironments(environments),
   });
+  const noEnvironments = door.surface === "zerops-onboarding";
+  // Once painted, the projects page stays until a Mate is counted (`homeDoor`): kept from the
+  // render that decided it, so nothing it holds — an open row, a dialog — is torn down.
+  const [projectsShown, setProjectsShown] = useState(false);
+  const home = homeDoor({
+    noEnvironments,
+    matesSettled,
+    projectsShown,
+    organization: organizationStatus,
+    accountTrouble: inventory.error !== null,
+    catalogFailed,
+  });
+  if ((home === "projects") !== projectsShown) setProjectsShown(home === "projects");
 
-  if (door.surface === "zerops-onboarding") {
+  if (home === "projects") {
     // Upstream's empty state is kept whole and handed to the landing, which
     // offers it as the manual fallback.
     return <ZeropsHostedLanding />;
   }
 
-  return <IndexDraftLanding />;
+  return <IndexDraftLanding held={home === "wait"} />;
 }
 
 /**
@@ -80,7 +101,12 @@ type IndexLanding =
  * for the right project, so the first screen is a prompt instead of a dead
  * end. Falls back to an add-project hero when no project exists yet.
  */
-function IndexDraftLanding() {
+function IndexDraftLanding({
+  held,
+}: {
+  /** No usable environment yet: it waits with its guess and lands nowhere. */
+  readonly held: boolean;
+}) {
   const projects = useProjects();
   const threads = useThreadShells();
   const { environments } = useEnvironments();
@@ -107,6 +133,7 @@ function IndexDraftLanding() {
   const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
 
   const landing = useMemo((): IndexLanding | null => {
+    if (held) return null;
     /** The environment's one conversation when it has one, else a draft in the project. */
     const landingIn = (
       project: { readonly environmentId: EnvironmentId; readonly id: ProjectId } | undefined,
@@ -161,6 +188,7 @@ function IndexDraftLanding() {
   }, [
     bootstrapped,
     environments,
+    held,
     projects,
     targetBootstrapped,
     targetEnvironmentId,

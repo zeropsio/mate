@@ -194,6 +194,13 @@ function truncateDetail(value: string, limit = 180): string {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
 
+/**
+ * A helper's words kept whole — the prompt it was given and the report it
+ * gave back — up to a bound no reader needs past (a runaway report must not
+ * bloat every snapshot).
+ */
+const HELPER_WORDS_LIMIT = 16_000;
+
 function normalizeProposedPlanMarkdown(planMarkdown: string | undefined): string | undefined {
   const trimmed = planMarkdown?.trim();
   if (!trimmed) {
@@ -699,6 +706,9 @@ export function runtimeEventToActivities(
             ...(event.payload.description
               ? { detail: truncateDetail(event.payload.description) }
               : {}),
+            ...(event.payload.prompt
+              ? { prompt: truncateDetail(event.payload.prompt, HELPER_WORDS_LIMIT) }
+              : {}),
             ...taskLinkageActivityFields(event.payload as Record<string, unknown>),
           },
           turnId: toTurnId(event.turnId) ?? null,
@@ -850,6 +860,7 @@ export function runtimeEventToActivities(
     }
 
     case "task.completed": {
+      const linkage = taskLinkageActivityFields(event.payload as Record<string, unknown>);
       return [
         {
           id: event.eventId,
@@ -874,8 +885,12 @@ export function runtimeEventToActivities(
                   detail: truncateDetail(event.payload.summary),
                 }
               : {}),
+            // A helper's summary is its whole report: kept beside the one-line cut.
+            ...(event.payload.summary && linkage.agentKind === "agent"
+              ? { result: truncateDetail(event.payload.summary, HELPER_WORDS_LIMIT) }
+              : {}),
             ...(event.payload.usage !== undefined ? { usage: event.payload.usage } : {}),
-            ...taskLinkageActivityFields(event.payload as Record<string, unknown>),
+            ...linkage,
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -2169,11 +2184,24 @@ const make = Effect.gen(function* () {
         yield* appendBufferedProposedPlan(planId, proposedPlanDelta, now);
       }
 
+      // A helper's own item (agentId) is its work, never the Mate's: it ends
+      // none of the Mate's thoughts, and its words and reasoning are never the
+      // Mate's (its steps reach the thread as activities only).
+      const helperItem =
+        (event.type === "item.started" ||
+          event.type === "item.updated" ||
+          event.type === "item.completed") &&
+        event.payload.agentId !== undefined;
+
       // Tool work ends the thinking block that led to it. Without this a
       // provider that reuses one reasoning stream across a turn (Claude has no
       // per-block id) would append post-tool thinking to a block that already
       // sits above the tool row.
-      if (event.type === "item.started" && isToolLifecycleItemType(event.payload.itemType)) {
+      if (
+        !helperItem &&
+        event.type === "item.started" &&
+        isToolLifecycleItemType(event.payload.itemType)
+      ) {
         const toolTurnId = toTurnId(event.turnId);
         if (toolTurnId) {
           yield* finalizeActiveSegmentForTurn({
@@ -2189,7 +2217,11 @@ const make = Effect.gen(function* () {
         }
       }
 
-      if (event.type === "item.completed" && event.payload.itemType === "reasoning") {
+      if (
+        !helperItem &&
+        event.type === "item.completed" &&
+        event.payload.itemType === "reasoning"
+      ) {
         const turnId = toTurnId(event.turnId);
         if (turnId) {
           const activeReasoningMessageId = yield* getActiveAssistantMessageIdForTurn(
@@ -2266,7 +2298,9 @@ const make = Effect.gen(function* () {
       }
 
       const assistantCompletion =
-        event.type === "item.completed" && event.payload.itemType === "assistant_message"
+        !helperItem &&
+        event.type === "item.completed" &&
+        event.payload.itemType === "assistant_message"
           ? {
               messageId: MessageId.make(
                 `assistant:${event.itemId ?? event.turnId ?? event.eventId}`,

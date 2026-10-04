@@ -3751,7 +3751,8 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
         activityFromMemory({
           subject: "Add a /status page",
           snippet: "The page reads the build number.",
-          at: "2026-09-27T10:00:00.000Z",
+          // An hour ago, never a fixed day: past seven days the Mate folds under "quiet".
+          at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
           unread: false,
           threadId: "thread-1",
           threadKey: "env-crm-dev:thread-1",

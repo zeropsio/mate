@@ -3535,3 +3535,90 @@ no-cache`.
   for its own slice; mobile has no right panel, so no tab yet.
   - _Why:_ Claude Code's /mcp in a Mate answers with one line of text, Codex has none, and an MCP
     server a person adds is useful only if it reaches whichever agent the conversation runs on.
+
+- **2026-10-04** — **The projects page is one dense list, a row per project** (pass 39). A row's
+  first line is the project's name and its Mates as faces with whole names (two named, then "+N"),
+  with production's version only where production runs one. Its second line is the one thing that
+  needs the person, as a sentence, with its one action at the row's right edge. Without that, it is
+  a running Mate's step, a deploy or release on its way, or the newest fact. Nothing is drawn for
+  "nothing" (no "None open", "Not set up", "Nothing waiting to release"). Preview, Rename, Add Mate,
+  Add stage and Add production are in the row's ··· menu. Rows that need the person rise first,
+  keeping the person's order within each group. A row holds the place it was last drawn while a
+  Mate reconnects or a read is out (`rowRiseMemory.ts`), and says "Gitea didn't answer" when that
+  read failed. The page has one tab, and the containers outside a project are one folded group.
+  **Supersedes:** of the 2026-09-24 _projects listing_ row, the _Next steps_ strip, the _Only a Mate
+  so far_ tiles and `groupPlacementMemory.ts`. Creations drawn from their birth and the in-flight
+  words stand.
+  - _Why:_ the owner, 2026-10-04: "this projects page is insanely bad - ux, design, information
+    density, everything". Names were cut to "Ru…" and "Experime…", every row repeated filler, and
+    the strip repeated the rows' own actions.
+- **2026-10-04** — **The home decides where it lands before it paints.** `homeDoor` answers
+  _landing_, _wait_ or _projects_. The projects page shows when no Mate is counted and the Mates are
+  settled, or when nothing will list them: no organization chosen, the grant failed, or the catalog
+  failed. Once shown, it stays until a Mate is counted.
+  - _Why:_ the owner: "when you go to mate.zerops.io it first redirect you to this page briefly for
+    whatever reason then redirecting you elsewhere". A cold load painted the projects page from
+    1.3 s to 2.7 s; it now never does.
+- **2026-10-04** — **On a phone the composer is the screen's last thing; the menu opener stands in
+  the top bar's corner,** below the status bar with the header. There is no edge swipe: it fights
+  the system's back gesture in iOS Safari and on gesture-navigation Android.
+  - _Why:_ the owner: "you can only open the left panel with something under the composer.. on
+    mobile the composer should be the very last thing".
+- **2026-10-04** — **A site opens only when the person asks.**
+  - Picking Browser lists the Mate's sites (dev, stage, production, by role) above the agent's own
+    browser.
+  - The conversation's top bar lists them under _Sites_. A click opens a panel tab; the arrow, a
+    middle click or a new-tab gesture opens a browser tab.
+  - Diff opens on a Mate whose workspace is not one repository and shows its turns.
+  - A snapshot skips untracked dependency trees (`node_modules`, `vendor`, `target`, virtualenvs).
+  - _Why:_ the owner: "browser automatically opens all tabs, imo it shouldnt", "the diff tab hasn't
+    been working / doing anything for ages". `node_modules` without a `.gitignore` blew the
+    snapshot's path budget, so no turn was ever recorded.
+- **2026-10-04** — **A helper is a run of its own.**
+  - Each helper's calls reach the thread tagged with it: Claude's from its subagent snapshots,
+    Codex's from a child's items. Other drivers keep the single row.
+  - Its prompt and its whole report are kept.
+  - A helper's row says what it does now and opens its own card in the right panel (its task, its
+    run in the run card's own form, its report).
+  - The Agents panel is a map: the Mate, its helpers, their helpers.
+  - A helper's Zerops operations, background jobs and task list are its own, never the Mate's.
+  - _Why:_ the owner: "there is no 'map' no hierarchy, no way to see inside (imo basically you should
+    be able to open a 'working' card for each". The adapter had dropped every helper call, and a
+    report was cut to 180 characters.
+- **2026-10-04** — **A card keeps its work.**
+  - A history page holds whole turns, as many as fit 1,000 of the Mate's rows.
+  - Readings and updates that a later one supersedes don't count against the budget.
+  - A helper's start rides with any page holding its later rows.
+  - A fresh first page keeps the older turns the client holds when they connect to it.
+  - The budgets read indexed columns (migration 057), never a payload.
+  - _Why:_ in a 24-minute Bodhi run, 60% of 643 activities were readings and updates, so the
+    500-row window held 19 minutes. 19 of 22 cards read "thought …" with no steps, and a settled card
+    changed after the fact.
+- **2026-10-04** — **The working card says what it does at a readable pace.**
+  - Every state stands at least 1.2 s; a finished step holds its place until the next one;
+    "Thinking" shows after a quiet.
+  - The clock counts what the line shows; a wait on the person counts as a wait.
+  - Steps read in words (`…/` for the agent's own temp folder, at most two lines of code).
+  - A turn's background jobs live on the step that sent them, and its card ends with one line ("3
+    background tasks: 1 running, 1 finished, 1 failed"), failures first. Counts only rise.
+  - A job whose session is gone reads "didn't report back". After the turn, the band holds only jobs
+    still running.
+  - _Why:_ the owner: "the 'working' card is still not quite there", "the background tasks and their
+    finishing", "expansions … with the same content repeated". Run 9 counted 285 line changes in 35
+    min, a median 0.92 s each, and Bodhi's "N background tasks finished" row reached 68.
+- **2026-10-04** — **A run card moves on one curve, and the conversation keeps its own end.**
+  - **One curve:** everything the card moves on its own (heights, the run scroll's glide, a line's
+    plop) takes 31% of what is left each frame. The speed is capped at 1.6 px/ms, and a late frame
+    moves no further than an on-time one.
+  - **Heights:** only the innermost box that changed eases its height.
+  - **Arrivals:** rows enter one after another, 150 ms apart and down to 60 ms with a backlog. History
+    drawn in above the reader enters at once.
+  - **The end:** the conversation keeps its own end, judged from the scrolls it hears (LegendList's
+    `maintainScrollAtEnd` is off), and leaves it only on a person's move up.
+  - **Settles and openings:** a settle is one motion at a time: enter, glide, then fold. What a person
+    opens glides into view above the composer.
+  - **Snapping:** out of sight and under reduced motion, everything snaps.
+  - _Why:_ the owner: "the agressive plop that's sometimes too much too fast to process, the
+    non-animated height expansions, the sometimes weirdly acting scroll processes". Run 9 measured
+    231 one-frame height changes and 83 unprovoked jumps; the desktop harness now shows 0 and 0–1.
+    At 390 px a card still bounces when a tall step arrives (its 60svh cap), the first follow-up.

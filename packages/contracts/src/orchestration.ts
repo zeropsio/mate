@@ -841,6 +841,12 @@ export const OrchestrationThreadShell = Schema.Struct({
    */
   backgroundLiveness: Schema.optional(Schema.NullOr(Schema.Literals(["working", "monitoring"]))),
   /**
+   * The background tasks the server holds live, by task id: a job that never
+   * reported and is not among them never will (its session ended, or the
+   * server restarted). Optional so old servers interop; absent = unknown.
+   */
+  backgroundTaskIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /**
    * Current plan step while a turn runs, for the Working indicators
    * (sidebar row, in-chat working line). Cleared when the turn settles —
    * never persists as stale UI. Optional so old servers/clients interop.

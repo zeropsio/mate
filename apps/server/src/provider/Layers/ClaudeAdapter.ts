@@ -131,6 +131,11 @@ import {
   ProviderAdapterValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
+import {
+  describeClaudeStreamFailure,
+  makeStderrTail,
+  type StderrTail,
+} from "../claudeStreamFailure.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { spawnAndCollect } from "../providerSnapshot.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -405,6 +410,9 @@ interface ClaudeTaskAgentState {
  */
 const PENDING_TASK_MODEL_CAP = 64;
 
+/** The detail a failure of the SDK's own stream is wrapped in (`runSdkStream`). */
+const STREAM_FAILED_DETAIL = "Claude runtime stream failed.";
+
 /**
  * Buffers a subagent snapshot's authoritative model under its
  * parent_tool_use_id, for snapshots that beat their task_started to the
@@ -426,6 +434,8 @@ function rememberPendingTaskModel(
 
 interface ClaudeSessionContext {
   session: ProviderSession;
+  /** The last of what the CLI wrote to stderr: why its stream died, for the log. */
+  readonly stderrTail: StderrTail;
   startInput: Parameters<ClaudeAdapterShape["startSession"]>[0];
   readonly turnStartMessageIds: Array<string | null>;
   readonly promptQueue: Queue.Queue<PromptQueueItem>;
@@ -564,13 +574,26 @@ function getEffectiveClaudeAgentEffort(
   return normalized ? (normalized as ClaudeSdkEffort) : null;
 }
 
+/**
+ * The SDK's own words for an interruption, whole: never a phrase found inside
+ * a longer message, which can carry the CLI's stderr ("… exited with code 1.
+ * stderr: Request was aborted.") and is a crash.
+ */
+const CLAUDE_INTERRUPTION_MESSAGES: ReadonlySet<string> = new Set([
+  "all fibers interrupted without error",
+  "request was aborted",
+  "interrupted by user",
+  "claude code process aborted by user",
+  "operation aborted",
+]);
+
 function isClaudeInterruptedMessage(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("all fibers interrupted without error") ||
-    normalized.includes("request was aborted") ||
-    normalized.includes("interrupted by user")
-  );
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/^error: /u, "")
+    .replace(/\.$/u, "");
+  return CLAUDE_INTERRUPTION_MESSAGES.has(normalized);
 }
 
 function isClaudeInterruptedCause(cause: Cause.Cause<ProviderAdapterProcessError>): boolean {
@@ -1389,6 +1412,19 @@ function agentIdForParentToolUse(
     }
   }
   return undefined;
+}
+
+/**
+ * Who a helper's call belongs to: its helper's task, or — while the helper
+ * is not known by its task yet (its snapshot beat its task_started, or the
+ * task named no launch) — its launch, so it is never taken for the Mate's.
+ */
+function helperOfCall(
+  agents: Map<string, ClaudeTaskAgentState>,
+  parentToolUseId: string | null | undefined,
+): string | undefined {
+  if (parentToolUseId === null || parentToolUseId === undefined) return undefined;
+  return agentIdForParentToolUse(agents, parentToolUseId) ?? parentToolUseId;
 }
 
 /**
@@ -2837,40 +2873,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     for (const [index, tool] of context.inFlightTools.entries()) {
-      const toolStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "item.completed",
-        eventId: toolStamp.eventId,
-        provider: PROVIDER,
-        createdAt: toolStamp.createdAt,
-        threadId: context.session.threadId,
+      // A helper still at work outlives the Mate's turn, and so do its calls:
+      // the helper's own end closes them (`closeHelperCalls`).
+      if (helperStillWorks(context, tool)) continue;
+      yield* closeUnreturnedCall(context, tool, {
+        status: status === "completed" ? "completed" : "failed",
         turnId: turnState.turnId,
-        itemId: asRuntimeItemId(tool.itemId),
-        payload: {
-          itemType: tool.itemType,
-          status: status === "completed" ? "completed" : "failed",
-          title: tool.title,
-          ...(tool.detail ? { detail: tool.detail } : {}),
-          data: {
-            toolName: tool.toolName,
-            input: tool.input,
-          },
-          // Mate: its result never came; the turn's end closes it.
-          unreturned: true,
-        },
-        providerRefs: nativeProviderRefs(context, {
-          providerItemId: tool.itemId,
-        }),
-        raw: {
-          source: "claude.sdk.message",
-          method: "claude/result",
-          payload: result ?? { status },
-        },
+        rawMethod: "claude/result",
+        rawPayload: result ?? { status },
       });
       context.inFlightTools.delete(index);
     }
-    // Clear any remaining stale entries (e.g. from interrupted content blocks)
-    context.inFlightTools.clear();
 
     for (const block of turnState.assistantTextBlockOrder) {
       yield* completeAssistantTextBlock(context, block, {
@@ -3173,7 +3186,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // spawning Task tool's id as parent_tool_use_id.
       const parentToolUseId =
         (message as { parent_tool_use_id?: string | null }).parent_tool_use_id ?? undefined;
-      const owningAgentId = agentIdForParentToolUse(context.taskAgents, parentToolUseId);
+      const owningAgentId = helperOfCall(context.taskAgents, parentToolUseId);
 
       const tool: ToolInFlight = {
         itemId,
@@ -3246,6 +3259,157 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
   });
 
+  /** Mate: a call whose result never came; what ended around it closes it. */
+  const closeUnreturnedCall = Effect.fn("closeUnreturnedCall")(function* (
+    context: ClaudeSessionContext,
+    tool: ToolInFlight,
+    options: {
+      readonly status: "completed" | "failed";
+      readonly turnId: TurnId | undefined;
+      readonly rawMethod: string;
+      readonly rawPayload: unknown;
+    },
+  ) {
+    const toolStamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      type: "item.completed",
+      eventId: toolStamp.eventId,
+      provider: PROVIDER,
+      createdAt: toolStamp.createdAt,
+      threadId: context.session.threadId,
+      ...(options.turnId ? { turnId: asCanonicalTurnId(options.turnId) } : {}),
+      itemId: asRuntimeItemId(tool.itemId),
+      payload: {
+        itemType: tool.itemType,
+        status: options.status,
+        title: tool.title,
+        ...(tool.detail ? { detail: tool.detail } : {}),
+        ...(tool.agentId ? { agentId: tool.agentId } : {}),
+        ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+        data: {
+          toolName: tool.toolName,
+          input: tool.input,
+        },
+        unreturned: true,
+      },
+      providerRefs: nativeProviderRefs(context, {
+        providerItemId: tool.itemId,
+      }),
+      raw: {
+        source: "claude.sdk.message",
+        method: options.rawMethod,
+        payload: options.rawPayload,
+      },
+    });
+  });
+
+  /** A helper that ended closes the calls it never saw return. */
+  const closeHelperCalls = Effect.fn("closeHelperCalls")(function* (
+    context: ClaudeSessionContext,
+    taskId: string,
+    status: "completed" | "failed",
+    rawPayload: unknown,
+  ) {
+    const launch = context.taskAgents.get(taskId)?.toolUseId;
+    for (const [index, tool] of context.inFlightTools.entries()) {
+      if (tool.agentId !== taskId && (launch === undefined || tool.parentToolUseId !== launch)) {
+        continue;
+      }
+      yield* closeUnreturnedCall(context, tool, {
+        status,
+        turnId: context.turnState?.turnId,
+        rawMethod: "claude/system/task_notification",
+        rawPayload,
+      });
+      context.inFlightTools.delete(index);
+    }
+  });
+
+  /**
+   * A helper's call outlives the Mate's turn while its helper works — or
+   * while its helper is not known yet, which only a working helper can be.
+   */
+  const helperStillWorks = (context: ClaudeSessionContext, tool: ToolInFlight): boolean => {
+    if (tool.agentId === undefined) return false;
+    const owner = agentIdForParentToolUse(context.taskAgents, tool.parentToolUseId);
+    return owner === undefined || context.liveTaskIds.has(owner);
+  };
+
+  /**
+   * A helper's calls, from its snapshot: the SDK streams no events for a
+   * helper's response, so its snapshot is the first sight of each call. Each
+   * starts as a step of the helper that made it (the owner of its parent
+   * call), and its result completes it (`handleUserMessage`). A call its
+   * stream already started is left alone.
+   */
+  const startHelperCalls = Effect.fn("startHelperCalls")(function* (
+    context: ClaudeSessionContext,
+    message: Extract<SDKMessage, { type: "assistant" }>,
+    parentToolUseId: string,
+  ) {
+    const content = (message.message as { content?: unknown }).content;
+    if (!Array.isArray(content)) return;
+    for (const entry of content) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const block = entry as { type?: unknown; id?: unknown; name?: unknown; input?: unknown };
+      if (
+        block.type !== "tool_use" &&
+        block.type !== "server_tool_use" &&
+        block.type !== "mcp_tool_use"
+      ) {
+        continue;
+      }
+      if (typeof block.id !== "string" || typeof block.name !== "string") continue;
+      const itemId = block.id;
+      if (Array.from(context.inFlightTools.values()).some((tool) => tool.itemId === itemId)) {
+        continue;
+      }
+      const toolInput =
+        typeof block.input === "object" && block.input !== null
+          ? (block.input as Record<string, unknown>)
+          : {};
+      const itemType = classifyToolItemType(block.name, toolInput);
+      const owningAgentId = helperOfCall(context.taskAgents, parentToolUseId);
+      const tool: ToolInFlight = {
+        itemId,
+        itemType,
+        toolName: block.name,
+        title: titleForTool(itemType),
+        detail: summarizeToolRequest(block.name, toolInput),
+        input: toolInput,
+        partialInputJson: "",
+        ...(owningAgentId ? { agentId: owningAgentId } : {}),
+        parentToolUseId,
+      };
+      context.inFlightTools.set(`${parentToolUseId}#${itemId}`, tool);
+      const stamp = yield* makeEventStamp();
+      yield* offerRuntimeEvent({
+        type: "item.started",
+        eventId: stamp.eventId,
+        provider: PROVIDER,
+        createdAt: stamp.createdAt,
+        threadId: context.session.threadId,
+        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+        itemId: asRuntimeItemId(itemId),
+        payload: {
+          itemType,
+          status: "inProgress",
+          title: tool.title,
+          ...(tool.detail ? { detail: tool.detail } : {}),
+          ...(owningAgentId ? { agentId: owningAgentId } : {}),
+          parentToolUseId,
+          data: { toolName: block.name, input: toolInput },
+        },
+        providerRefs: nativeProviderRefs(context, { providerItemId: itemId }),
+        raw: {
+          source: "claude.sdk.message",
+          method: "claude/assistant",
+          payload: message,
+        },
+      });
+    }
+  });
+
   const handleUserMessage = Effect.fn("handleUserMessage")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
@@ -3275,33 +3439,35 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         result: toolResult.block,
       };
 
-      const updatedStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "item.updated",
-        eventId: updatedStamp.eventId,
-        provider: PROVIDER,
-        createdAt: updatedStamp.createdAt,
-        threadId: context.session.threadId,
-        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
-        itemId: asRuntimeItemId(tool.itemId),
-        payload: {
-          itemType: tool.itemType,
-          status: toolResult.isError ? "failed" : "inProgress",
-          title: tool.title,
-          ...(tool.detail ? { detail: tool.detail } : {}),
-          ...(tool.agentId ? { agentId: tool.agentId } : {}),
-          ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
-          data: toolData,
-        },
-        providerRefs: nativeProviderRefs(context, {
-          providerItemId: tool.itemId,
-        }),
-        raw: {
-          source: "claude.sdk.message",
-          method: "claude/user",
-          payload: message,
-        },
-      });
+      // A helper's call has its result in its completion: no update row of its own.
+      if (!tool.agentId) {
+        const updatedStamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "item.updated",
+          eventId: updatedStamp.eventId,
+          provider: PROVIDER,
+          createdAt: updatedStamp.createdAt,
+          threadId: context.session.threadId,
+          ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+          itemId: asRuntimeItemId(tool.itemId),
+          payload: {
+            itemType: tool.itemType,
+            status: toolResult.isError ? "failed" : "inProgress",
+            title: tool.title,
+            ...(tool.detail ? { detail: tool.detail } : {}),
+            ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+            data: toolData,
+          },
+          providerRefs: nativeProviderRefs(context, {
+            providerItemId: tool.itemId,
+          }),
+          raw: {
+            source: "claude.sdk.message",
+            method: "claude/user",
+            payload: message,
+          },
+        });
+      }
 
       const streamKind = toolResultStreamKind(tool.itemType);
       if (streamKind && toolResult.text.length > 0 && context.turnState) {
@@ -3394,8 +3560,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         }
       }
 
+      // A helper's task list is its own (2.1.278 gives helpers no task tools):
+      // never the Mate's plan.
       if (
         !toolResult.isError &&
+        tool.agentId === undefined &&
         applyClaudeTaskToolResult(context.claudeTasks, tool, toolUseResult)
       ) {
         yield* emitClaudeTaskPlanUpdated(context, {
@@ -3442,6 +3611,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           );
         }
       }
+      yield* startHelperCalls(context, message, assistantParentToolUseId);
       context.lastAssistantUuid = message.uuid;
       yield* updateResumeCursor(context);
       return;
@@ -3836,7 +4006,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
               (tool) => tool.itemId === message.tool_use_id,
             )
           : undefined;
-        const owningAgentId = launchingTool?.agentId;
+        const owningAgentId =
+          launchingTool === undefined
+            ? undefined
+            : (helperOfCall(context.taskAgents, launchingTool.parentToolUseId) ??
+              launchingTool.agentId);
         // Model/effort: the Agent tool's input carries explicit overrides;
         // absent ones inherit the session's selection (SDK behavior).
         // Subagent assistant snapshots refine model with the authoritative API
@@ -3889,6 +4063,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ...(effort ? { effort } : {}),
             ...(message.tool_use_id ? { toolUseId: message.tool_use_id } : {}),
             ...(message.workflow_name ? { workflowName: message.workflow_name } : {}),
+            ...(trimmedString(message.prompt) ? { prompt: trimmedString(message.prompt) } : {}),
           },
         });
         return;
@@ -3937,6 +4112,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           patch.status !== undefined ? CLAUDE_TASK_PATCH_STATUS[patch.status] : undefined;
         if (status === "completed" || status === "failed" || status === "cancelled") {
           context.liveTaskIds.delete(message.task_id);
+          yield* closeHelperCalls(
+            context,
+            message.task_id,
+            status === "completed" ? "completed" : "failed",
+            message,
+          );
         }
         const endedAt =
           typeof patch.end_time === "number" && Number.isFinite(patch.end_time)
@@ -3961,6 +4142,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
       case "task_notification": {
         context.liveTaskIds.delete(message.task_id);
+        yield* closeHelperCalls(
+          context,
+          message.task_id,
+          message.status === "completed" ? "completed" : "failed",
+          message,
+        );
         yield* emitThreadTokenUsage(
           context,
           normalizeClaudeTaskProgressTokenUsage(message.usage, context),
@@ -4335,6 +4522,33 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
   });
 
+  /** Why the stream died, read off its error and the CLI's stderr, logged whole and scrubbed. */
+  const logStreamFailure = Effect.fn("logStreamFailure")(function* (
+    context: ClaudeSessionContext,
+    input: { readonly error: unknown; readonly detail: string; readonly defect: boolean },
+  ) {
+    const failure = describeClaudeStreamFailure({
+      error: input.error,
+      stderr: context.stderrTail.text(),
+      defect: input.defect,
+    });
+    // Only what says what crashed reaches the log (`crashLines`), never the
+    // CLI's stderr as it came.
+    yield* Effect.logError("claude.stream.failed", {
+      threadId: context.session.threadId,
+      detail: input.detail,
+      reason: failure.reason,
+      error: failure.log.error,
+      exitCode: failure.log.exitCode,
+      signal: failure.log.signal,
+      crashLines: failure.log.crashLines,
+      ...(failure.log.stack === null ? {} : { stack: failure.log.stack }),
+      liveTasks: context.liveTaskIds.size,
+      turnActive: context.turnState !== undefined,
+    });
+    return failure;
+  });
+
   const runSdkStream = (
     context: ClaudeSessionContext,
   ): Effect.Effect<void, ProviderAdapterProcessError> =>
@@ -4344,7 +4558,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         new ProviderAdapterProcessError({
           provider: PROVIDER,
           threadId: context.session.threadId,
-          detail: "Claude runtime stream failed.",
+          detail: STREAM_FAILED_DETAIL,
           cause,
         }),
     ).pipe(
@@ -4372,24 +4586,42 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return;
     }
 
-    if (Exit.isFailure(exit)) {
-      if (isClaudeInterruptedCause(exit.cause)) {
-        if (context.turnState) {
-          yield* completeTurn(context, "interrupted", "Claude runtime interrupted.");
-        }
-      } else {
-        const failures = exit.cause.reasons.flatMap((reason) =>
-          Cause.isFailReason(reason) ? [reason.error] : [],
-        );
-        const message = failures[0]?.detail ?? "Claude runtime stream failed.";
-        yield* emitRuntimeError(context, message, {
-          failureCount: failures.length,
-          failureTags: failures.map((failure) => failure._tag),
-        });
-        yield* completeTurn(context, "failed", message);
+    if (Exit.isFailure(exit) && isClaudeInterruptedCause(exit.cause)) {
+      if (context.turnState) {
+        yield* completeTurn(context, "interrupted", "Claude runtime interrupted.");
       }
-    } else if (context.turnState) {
-      yield* completeTurn(context, "interrupted", "Claude runtime stream ended.");
+    } else {
+      // The stream ended without a stop from here: Claude Code's stream died
+      // (its error), or it ended by itself (none), or our own reading of it
+      // failed (a defect, or a failure to handle an event) — that one is ours.
+      const failures = Exit.isFailure(exit)
+        ? exit.cause.reasons.flatMap((reason) => (Cause.isFailReason(reason) ? [reason.error] : []))
+        : [];
+      const defects = Exit.isFailure(exit)
+        ? exit.cause.reasons.flatMap((reason) => (Cause.isDieReason(reason) ? [reason.defect] : []))
+        : [];
+      const first = failures[0];
+      const ours =
+        defects.length > 0 || (first !== undefined && first.detail !== STREAM_FAILED_DETAIL);
+      const failure = yield* logStreamFailure(context, {
+        error: defects[0] ?? first?.cause,
+        detail: first?.detail ?? (Exit.isFailure(exit) ? "defect" : "Claude runtime stream ended."),
+        defect: ours,
+      });
+      // The person is told why, and the turn fails with it: its reason stands
+      // as the thread's last error. With no turn, its helpers stop with it
+      // (`stopSessionInternal`) and the person is told all the same; a stream
+      // that ended by itself with nothing at work is only logged.
+      const told =
+        Exit.isFailure(exit) || context.turnState !== undefined || context.liveTaskIds.size > 0;
+      if (told)
+        yield* emitRuntimeError(context, failure.words, {
+          failureCount: failures.length + defects.length,
+          failureTags: [...failures.map((failure) => failure._tag), ...defects.map(() => "Defect")],
+        });
+      if (context.turnState) {
+        yield* completeTurn(context, "failed", failure.words);
+      }
     }
 
     yield* stopSessionInternal(context, {
@@ -4422,6 +4654,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       if (!context.liveTaskIds.delete(taskId)) {
         continue;
       }
+      yield* closeHelperCalls(context, taskId, "failed", { status: "stopped" });
       const stamp = yield* makeEventStamp();
       yield* offerRuntimeEvent({
         type: "task.completed",
@@ -4437,6 +4670,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         },
         providerRefs: nativeProviderRefs(context),
       });
+    }
+
+    // A helper never known by its task leaves its calls too: nothing runs them now.
+    for (const [index, tool] of context.inFlightTools.entries()) {
+      if (tool.agentId === undefined) continue;
+      yield* closeUnreturnedCall(context, tool, {
+        status: "failed",
+        turnId: context.turnState?.turnId,
+        rawMethod: "claude/stop",
+        rawPayload: { status: "stopped" },
+      });
+      context.inFlightTools.delete(index);
     }
 
     for (const [requestId, pending] of context.pendingApprovals) {
@@ -5060,8 +5305,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(input.cwd ? [input.cwd] : []),
         serverConfig.attachmentsDir,
       ];
+      const stderrTail = makeStderrTail();
       const baseQueryOptions: ClaudeQueryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
+        // Kept for the log: why the stream died, when it dies.
+        stderr: stderrTail.push,
         ...(apiModelId ? { model: apiModelId } : {}),
         pathToClaudeCodeExecutable: claudeBinaryPath,
         systemPrompt: {
@@ -5177,6 +5425,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
       const context: ClaudeSessionContext = {
         session,
+        stderrTail,
         startInput: input,
         turnStartMessageIds: resumeState?.turnStartMessageIds
           ? [...resumeState.turnStartMessageIds]
@@ -5288,6 +5537,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
   const sendTurn: ClaudeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
     const context = yield* requireSession(input.threadId);
+    // What the CLI wrote before this turn is no cause of how this one ends.
+    context.stderrTail.reset();
     const modelCatalog = yield* modelCatalogEffect;
     const selectedModel = yield* claudeTurnModelSelection(
       threadRegistries,

@@ -80,6 +80,18 @@ export interface RuntimeSubagent {
   readonly phases: ReadonlyArray<SubagentWorkflowPhase>;
   readonly runHandles: SubagentRunHandles | null;
   readonly recentActivity: ReadonlyArray<SubagentActivityEntry>;
+  /** Its task in the words it was given, where the driver says them. */
+  readonly prompt: string | null;
+  /** The call that started it: its own calls name it as their parent. */
+  readonly toolUseId: string | null;
+  /** The helper that started it; null for one the Mate started. */
+  readonly spawnedBy: string | null;
+  /**
+   * Its call in flight — what it is doing now — as the row the call started
+   * with; null between calls, once settled, and for a driver that forwards no
+   * helper's calls.
+   */
+  readonly liveCall: OrchestrationThreadActivity | null;
   /** First retained observation, used as the roster's stable display order. */
   readonly firstSeenAt: string;
   readonly startedAt: string | null;
@@ -106,6 +118,8 @@ export function isActiveSubagentStatus(status: RuntimeSubagentStatus): boolean {
 
 const RECENT_ACTIVITY_LIMIT = 6;
 const SUMMARY_CHAR_LIMIT = 180;
+/** A helper's report and prompt are read whole, up to the server's own bound. */
+const WORDS_CHAR_LIMIT = 16_000;
 const ROSTER_LIMIT = 100;
 
 /**
@@ -120,8 +134,8 @@ export function isBackgroundTaskActivity(payload: Record<string, unknown>): bool
   return payload.agentKind !== "agent";
 }
 
-function bounded(value: string): string {
-  return value.length <= SUMMARY_CHAR_LIMIT ? value : `${value.slice(0, SUMMARY_CHAR_LIMIT - 1)}…`;
+function bounded(value: string, limit = SUMMARY_CHAR_LIMIT): string {
+  return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
 }
 
 /** Appends to the ring buffer, deduping consecutive identical summaries. */
@@ -249,6 +263,10 @@ interface MutableAgent {
   phases: ReadonlyArray<SubagentWorkflowPhase>;
   runHandles: SubagentRunHandles | null;
   recentActivity: ReadonlyArray<SubagentActivityEntry>;
+  prompt: string | null;
+  toolUseId: string | null;
+  spawnedBy: string | null;
+  liveCall: OrchestrationThreadActivity | null;
   firstSeenAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -269,6 +287,24 @@ function kindFromPayload(
     return "workflow_agent";
   }
   return "subagent";
+}
+
+function callIdOf(activity: OrchestrationThreadActivity): string | undefined {
+  return typeof activity.payload === "object" && activity.payload !== null
+    ? asString((activity.payload as Record<string, unknown>).toolCallId)
+    : undefined;
+}
+
+/** The helper a call's launch started, by the launch's call id. */
+function helperOfLaunch(
+  agents: ReadonlyMap<string, MutableAgent>,
+  parentToolUseId: string | undefined,
+): string | undefined {
+  if (parentToolUseId === undefined) return undefined;
+  for (const agent of agents.values()) {
+    if (agent.toolUseId === parentToolUseId) return agent.id;
+  }
+  return undefined;
 }
 
 /** Completion can create an agent (its start may have aged out of retention). */
@@ -306,6 +342,10 @@ function getOrCreate(
     phases: [],
     runHandles: null,
     recentActivity: [],
+    prompt: null,
+    toolUseId: null,
+    spawnedBy: null,
+    liveCall: null,
     firstSeenAt: at,
     startedAt: null,
     completedAt: null,
@@ -356,6 +396,15 @@ function fillMetadata(agent: MutableAgent, payload: Record<string, unknown>): vo
   }
   const outputFile = asString(payload.outputFile);
   if (outputFile) agent.outputFile = outputFile;
+  const prompt = asString(payload.prompt);
+  if (prompt) agent.prompt = bounded(prompt, WORDS_CHAR_LIMIT);
+  const toolUseId = asString(payload.toolUseId);
+  if (toolUseId) agent.toolUseId = toolUseId;
+  // Who started it: the helper it ran inside (an agent row's agentId), or a
+  // Codex child's parent child. A workflow's members are its phases', not this.
+  const spawnedBy =
+    payload.agentKind === "agent" ? (asString(payload.agentId) ?? parentAgentId) : parentAgentId;
+  if (spawnedBy && !agent.id.includes(":wf:")) agent.spawnedBy = spawnedBy;
   if (Array.isArray(payload.phases)) {
     const phases: SubagentWorkflowPhase[] = [];
     for (const entry of payload.phases) {
@@ -420,6 +469,7 @@ function applyStatus(agent: MutableAgent, status: RuntimeSubagentStatus, at: str
   if (isTerminal && agent.completedAt === null) {
     agent.completedAt = at;
   }
+  if (isTerminal) agent.liveCall = null;
   agent.status = status;
 }
 
@@ -523,7 +573,8 @@ export function foldSubagentActivities(
         ) {
           applyStatus(agent, "running", at);
         }
-        const summary = asString(payload.summary);
+        // A driver with no progress summaries describes the call in hand instead.
+        const summary = asString(payload.summary) ?? asString(payload.detail);
         if (summary) {
           agent.progress = bounded(summary);
           agent.recentActivity = appendActivity(agent.recentActivity, at, summary);
@@ -589,12 +640,14 @@ export function foldSubagentActivities(
         // dropped both). Fill-if-missing keeps duplicate completions from
         // replacing the first result.
         const summary = asString(payload.summary) ?? asString(payload.detail);
+        // Its report whole, where the server kept it so (`result`).
+        const report = asString(payload.result) ?? summary;
         if (isTerminalSubagentStatus(agent.status)) {
           if (summary) {
             if (agent.status === "failed") {
               agent.error = agent.error ?? bounded(summary);
             } else {
-              agent.result = agent.result ?? bounded(summary);
+              agent.result = agent.result ?? bounded(report ?? summary, WORDS_CHAR_LIMIT);
             }
           }
           agent.usage = mergeUsageMax(agent.usage, asUsage(payload.typedUsage));
@@ -606,11 +659,32 @@ export function foldSubagentActivities(
           if (status === "failed") {
             agent.error = agent.error ?? bounded(summary);
           } else {
-            agent.result = bounded(summary);
+            agent.result = bounded(report ?? summary, WORDS_CHAR_LIMIT);
           }
         }
         agent.usage = mergeUsageMax(agent.usage, asUsage(payload.typedUsage));
         agent.updatedAt = at;
+        break;
+      }
+      case "tool.started":
+      case "tool.updated":
+      case "tool.completed": {
+        // A helper's own call, tagged with its task — or its launch, while the
+        // server did not know its task yet: the open one is what it does now.
+        const tag = asString(payload.agentId);
+        const ownerId =
+          tag === undefined ? undefined : agents.has(tag) ? tag : helperOfLaunch(agents, tag);
+        const agent = ownerId === undefined ? undefined : agents.get(ownerId);
+        const toolCallId = asString(payload.toolCallId);
+        if (!agent || !toolCallId) break;
+        const open =
+          activity.kind !== "tool.completed" &&
+          (payload.status === undefined || payload.status === "inProgress");
+        if (open) {
+          if (!isTerminalSubagentStatus(agent.status)) agent.liveCall = activity;
+        } else if (agent.liveCall !== null && callIdOf(agent.liveCall) === toolCallId) {
+          agent.liveCall = null;
+        }
         break;
       }
       case "tool.progress": {
@@ -649,6 +723,7 @@ export function foldSubagentActivities(
         continue;
       }
       member.status = agent.status === "completed" ? "completed" : "interrupted";
+      member.liveCall = null;
       member.completedAt = member.completedAt ?? agent.completedAt ?? agent.updatedAt;
       member.updatedAt = agent.updatedAt;
     }
@@ -662,6 +737,7 @@ export function foldSubagentActivities(
       if (isActiveSubagentStatus(agent.status)) {
         agent.status = "interrupted";
         agent.completedAt = agent.completedAt ?? agent.updatedAt;
+        agent.liveCall = null;
       }
     }
   }

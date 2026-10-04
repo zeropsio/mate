@@ -166,13 +166,13 @@ import {
   selectThreadRightPanelState,
   type RightPanelSurface,
   useRightPanelStore,
-  serviceBrowserTabs,
 } from "../rightPanelStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
-import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
+import { ZeropsBrowserSurface } from "./zerops/ZeropsBrowserSurface";
+import { useMateAddresses } from "../zerops/useMateAddresses";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
@@ -409,6 +409,8 @@ import {
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./chat/conversationDock.logic";
+import { liveJobsOf } from "./chat/liveJobs.logic";
+import { useLiveJobs } from "./chat/useLiveJobs";
 import {
   environmentConnectionBannerItem,
   mateVoiceBannerItem,
@@ -3793,12 +3795,14 @@ export default function ChatView(props: ChatViewProps) {
     },
     [environmentId, navigate],
   );
+  // The launcher's availability decides who may open Diff; a workspace that
+  // is no repository reads the working tree as its latest turn (`resolveDiffSelection`).
   const addDiffSurface = useCallback(() => {
-    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    if (!activeThreadRef || !isServerThread) return;
     useDiffPanelStore.getState().selectGitScope(activeThreadRef, "unstaged");
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
-  }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
+  }, [activeThreadRef, isServerThread, onDiffPanelOpen]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -3835,22 +3839,13 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadRef],
   );
-  // Browser opens on what the project actually serves: a tab per service with
-  // a public route, first one focused. Only a project with nothing public
-  // falls back to the empty surface.
+  const mateAddresses = useMateAddresses(activeThreadEnvironmentId);
+  // Browser opens its own view and nothing else: each public address opens
+  // as its own tab only when a person picks it (the header's links, the view's list).
   const addBrowserSurface = useCallback(() => {
     if (!activeThreadRef) return;
-    const tabs = serviceBrowserTabs(zeropsTopology?.services ?? []);
-    if (tabs.length === 0) {
-      useRightPanelStore.getState().open(activeThreadRef, "browser");
-      return;
-    }
-    for (const tab of tabs) {
-      useRightPanelStore.getState().openService(activeThreadRef, tab.service, tab.url);
-    }
-    const first = tabs[0];
-    if (first) useRightPanelStore.getState().openService(activeThreadRef, first.service, first.url);
-  }, [activeThreadRef, zeropsTopology]);
+    useRightPanelStore.getState().open(activeThreadRef, "browser");
+  }, [activeThreadRef]);
   // D6: the one place a successful sign-in's signer is recorded, whichever
   // door it went through (the panel's card, the band's dialog, the empty
   // conversation); every row reads how it went by environment.
@@ -4427,7 +4422,8 @@ export default function ChatView(props: ChatViewProps) {
     setShowScrollToBottom(false);
     setTimelineAnchor(releaseChatTimelineAnchor);
     requestAnimationFrame(() => {
-      void legendListRef.current?.scrollToEnd?.({ animated });
+      // Under reduced motion the way there is a cut.
+      void legendListRef.current?.scrollToEnd?.({ animated: animated && !prefersReducedMotion() });
     });
   }, []);
   useLayoutEffect(() => {
@@ -4572,7 +4568,7 @@ export default function ChatView(props: ChatViewProps) {
         void list
           .scrollToIndex({
             index: anchorIndex,
-            animated: true,
+            animated: !prefersReducedMotion(),
             viewPosition: 0,
             viewOffset: CHAT_LIST_ANCHOR_OFFSET,
           })
@@ -4590,7 +4586,11 @@ export default function ChatView(props: ChatViewProps) {
   const onIsAtEndChange = useCallback(
     (
       isAtEnd: boolean,
-      scroll: { readonly byPerson: boolean; readonly direction: TimelineScrollDirection | null },
+      scroll: {
+        readonly byPerson: boolean;
+        readonly direction: TimelineScrollDirection | null;
+        readonly jumped?: boolean;
+      },
     ) => {
       const following =
         liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current;
@@ -5139,6 +5139,22 @@ export default function ChatView(props: ChatViewProps) {
   // turn is needed.
   const activeBackgroundLiveness =
     !isWorking && activeThread ? (activeThreadShell?.backgroundLiveness ?? null) : null;
+  // Which background jobs the server holds live: one it does not, unreported,
+  // never will report — one judgement for the band and the run cards.
+  const shellTaskIds = activeThreadShell?.backgroundTaskIds;
+  const shellLiveness = activeThreadShell?.backgroundLiveness ?? null;
+  const shellTaskKey = shellTaskIds === undefined ? null : shellTaskIds.join("\n");
+  const liveJobsNow = useMemo(
+    () =>
+      liveJobsOf({
+        backgroundTaskIds:
+          shellTaskKey === null ? undefined : shellTaskKey.split("\n").filter(Boolean),
+        backgroundLiveness: shellLiveness,
+        isWorking,
+      }),
+    [shellTaskKey, shellLiveness, isWorking],
+  );
+  const liveJobs = useLiveJobs(liveJobsNow);
   const [isStoppingBackgroundWork, setIsStoppingBackgroundWork] = useState(false);
   useEffect(() => {
     // "Stopping..." holds until the liveness clears; the interrupt command
@@ -5595,6 +5611,7 @@ export default function ChatView(props: ChatViewProps) {
         plan: activePlan ?? null,
         backgroundTasks,
         backgroundLiveness: activeBackgroundLiveness,
+        liveJobs,
         // The server's own pause when it keeps one; the thread's last words otherwise.
         pause: activeThreadShell?.usagePause
           ? { resetsAt: activeThreadShell.usagePause.resetsAt }
@@ -5603,6 +5620,7 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [
       standupsDone,
+      liveJobs,
       displayedTimeline.entries,
       isWorking,
       activeRunningTurnId,
@@ -8168,6 +8186,7 @@ export default function ChatView(props: ChatViewProps) {
               return (
                 <AgentsPanel
                   model={agentPanelModel}
+                  activities={threadActivities}
                   environmentId={activeThreadRef.environmentId}
                   threadId={activeThreadRef.threadId}
                 />
@@ -8184,7 +8203,7 @@ export default function ChatView(props: ChatViewProps) {
               );
             case "browser":
               return "url" in activeRightPanelSurface ? null : (
-                <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />
+                <ZeropsBrowserSurface threadRef={zeropsChrome.threadRef} />
               );
             case "data":
               // Every open Data tab stays mounted, the inactive ones hidden:
@@ -8431,6 +8450,7 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenAgents: addAgentsSurface,
                   working: dockModel,
                   afterTurnWork: activeBackgroundLiveness,
+                  liveJobs,
                   onStopBackgroundWork: stopBackgroundWork,
                   stoppingBackgroundWork: isStoppingBackgroundWork,
                   isWorking,
@@ -8496,10 +8516,15 @@ export default function ChatView(props: ChatViewProps) {
 
               {/* The way back to the end, once the person has scrolled away from
                   it: a round button floating over the timeline, always drawn and
-                  eased in and out, so it rises into place instead of popping. */}
+                  eased in and out, so it rises into place instead of popping. It
+                  stands beside the conversation's column, never on its words
+                  (Bodhi's audit), and at its right edge where there is no room. */}
               <div
-                className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-2"
-                style={{ bottom: composerOverlayHeight + 4 }}
+                className="pointer-events-none absolute z-30 flex justify-center py-2"
+                style={{
+                  bottom: composerOverlayHeight + 4,
+                  left: "min(calc(50% + 24rem + 0.75rem), calc(100% - 3rem))",
+                }}
               >
                 {/* Hidden, it is inert: out of the tab order and the tree the
                     reader hears, and a button still focused as it goes (a click
@@ -8902,6 +8927,8 @@ export default function ChatView(props: ChatViewProps) {
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             services={zeropsTopology?.services}
+            addresses={mateAddresses.addresses}
+            addressesKnown={mateAddresses.known}
           />
         </RightPanelTabs>
       ) : null}
@@ -8935,6 +8962,8 @@ export default function ChatView(props: ChatViewProps) {
               surfaces={rightPanelState.surfaces}
               activeSurfaceId={activeRightPanelSurface?.id ?? null}
               services={zeropsTopology?.services}
+              addresses={mateAddresses.addresses}
+              addressesKnown={mateAddresses.known}
             />
           </RightPanelTabs>
         </RightPanelSheet>
@@ -8977,5 +9006,14 @@ export default function ChatView(props: ChatViewProps) {
         />
       )}
     </ServiceBrowserScope>
+  );
+}
+
+/** Whether the person asked for less motion: a scroll's way then is a cut. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }

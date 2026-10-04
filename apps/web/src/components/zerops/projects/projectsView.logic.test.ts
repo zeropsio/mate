@@ -1,5 +1,4 @@
 import {
-  ADD_PRODUCTION_LABEL,
   groupFlow,
   type GroupFlowStop,
   type FlowPullRequest,
@@ -18,24 +17,17 @@ import {
   containersSummary,
   flowStepsAwaiting,
   groupFlowInputOf,
-  nextStepsPending,
   groupMemberFactsOf,
-  groupMetaLine,
   lastMergedCode,
-  mainCell,
-  productionCell,
-  pullRequestsLine,
   stopLine,
-  foldGroups,
-  groupPlacement,
-  foldUngrouped,
   nextStepAwaitsSomebody,
-  nextStepCell,
-  nextStepTone,
   parseProjectsSearch,
-  stripColumns,
-  talkSettled,
-  type FoldedGroupInput,
+  productionMark,
+  projectRowLine,
+  risenFirst,
+  rowRise,
+  rowMateActivitiesOf,
+  matesKnownOf,
 } from "./projectsView.logic";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
@@ -184,183 +176,18 @@ describe("flowStepsAwaiting — which steps hold a skeleton while a read is out"
   });
 });
 
-describe("nextStepsPending — the Next steps strip holds its place until every next step is known", () => {
-  const group = (awaiting: boolean, changesAwaiting: boolean) => ({ awaiting, changesAwaiting });
-  it.each([
-    { case: "no groups", groups: [], pending: false },
-    { case: "every group answered whole", groups: [group(false, false)], pending: false },
-    { case: "a group's flow unread", groups: [group(true, true)], pending: true },
-    {
-      // Its deploys answered first and its pull requests came 14 s later: the strip went away
-      // and came back with a step, and the table jumped 90 px twice (pass 30, 2026-10-02).
-      case: "a group's deploys answered, its changes not yet",
-      groups: [group(false, false), group(false, true)],
-      pending: true,
-    },
-  ])("$case", ({ groups, pending }) => {
-    expect(nextStepsPending(groups)).toBe(pending);
-  });
-});
-
 describe("parseProjectsSearch", () => {
   const cases: ReadonlyArray<
     [string, Record<string, unknown>, ReturnType<typeof parseProjectsSearch>]
   > = [
-    ["no view is the Overview", {}, {}],
-    ["view=projects opens the Projects view", { view: "projects" }, { view: "projects" }],
-    [
-      "a group scrolls the Projects view to its card",
-      { view: "projects", group: "g1" },
-      { view: "projects", group: "g1" },
-    ],
-    ["an unknown view is the Overview", { view: "table" }, {}],
-    ["an empty group names none", { view: "projects", group: "" }, { view: "projects" }],
+    ["nothing named", {}, {}],
+    ["a group opens its row", { group: "g1" }, { group: "g1" }],
+    ["an empty group names none", { group: "" }, {}],
     ["a group that is not a string names none", { group: 7 }, {}],
-    ["a group without a view is kept", { group: "g1" }, { group: "g1" }],
   ];
   for (const [name, raw, expected] of cases) {
     it(name, () => {
       expect(parseProjectsSearch(raw)).toEqual(expected);
-    });
-  }
-});
-
-describe("foldGroups", () => {
-  const STAGE = { ...PRODUCTION, projectId: "p-stage", name: "stage", tier: "stage" as const };
-  const settled = { read: true, talkSettled: true, placed: undefined };
-  const cases: ReadonlyArray<[string, FoldedGroupInput, "active" | "early", boolean]> = [
-    [
-      "a group with only a Mate nobody has spoken to folds into a tile",
-      { flow: FLOWS.firstTask, ...settled },
-      "early",
-      false,
-    ],
-    [
-      "a settled group folds by its facts, not by where it was",
-      { flow: FLOWS.firstTask, ...settled, placed: "row" },
-      "early",
-      false,
-    ],
-    [
-      "a settled group whose Mate was spoken to leaves the tiles",
-      { flow: FLOWS.none, ...settled, placed: "tile" },
-      "active",
-      false,
-    ],
-    [
-      "a group never placed stays a row while its flow is not read: unread is not empty",
-      { flow: FLOWS.firstTask, ...settled, read: false },
-      "active",
-      false,
-    ],
-    [
-      "a group never placed stays a row while a Mate's talk is unknown",
-      { flow: FLOWS.firstTask, ...settled, talkSettled: false },
-      "active",
-      false,
-    ],
-    [
-      "an unread flow keeps a tile a tile",
-      { flow: FLOWS.firstTask, ...settled, read: false, placed: "tile" },
-      "early",
-      false,
-    ],
-    [
-      "an unknown talk keeps a tile a tile",
-      { flow: FLOWS.firstTask, ...settled, talkSettled: false, placed: "tile" },
-      "early",
-      false,
-    ],
-    [
-      "an unknown talk keeps a row a row",
-      { flow: FLOWS.firstTask, ...settled, talkSettled: false, placed: "row" },
-      "active",
-      false,
-    ],
-    [
-      "a group with a stage is more than a Mate",
-      { flow: flowOf({ mates: [{ ...MATE, talked: false }], stops: [STAGE] }), ...settled },
-      "active",
-      false,
-    ],
-    [
-      "a group whose Mate was spoken to has work on it",
-      { flow: FLOWS.none, ...settled },
-      "active",
-      false,
-    ],
-    ["a merge waits in the strip", { flow: FLOWS.merge, ...settled }, "active", true],
-    ["a release waits in the strip", { flow: FLOWS.release, ...settled }, "active", true],
-    ["a Mate waiting waits in the strip", { flow: FLOWS.answer, ...settled }, "active", true],
-    [
-      "adding production is the row's offer, never a step in the strip",
-      { flow: FLOWS.addProduction, ...settled },
-      "active",
-      false,
-    ],
-  ];
-  for (const [name, entry, place, waits] of cases) {
-    it(name, () => {
-      const folded = foldGroups([entry]);
-      expect(folded.active.includes(entry)).toBe(place === "active");
-      expect(folded.early.includes(entry)).toBe(place === "early");
-      expect(folded.nextSteps.includes(entry)).toBe(waits);
-      expect(groupPlacement(entry)).toBe(place === "early" ? "tile" : "row");
-    });
-  }
-});
-
-describe("where a group's next step sits", () => {
-  const failing = (tier: "stage" | "production") =>
-    flowOf({
-      stops: [
-        {
-          ...PRODUCTION,
-          projectId: `p-${tier}`,
-          name: tier,
-          tier,
-          row: {
-            kind: "environment",
-            projectId: `p-${tier}`,
-            name: tier,
-            tier,
-            source: tier === "stage" ? "main" : "release",
-            commit: "e014b0e",
-            version: {
-              name: undefined,
-              commit: "e014b0e",
-              sha: undefined,
-              taggedBy: undefined,
-              label: "e014b0e",
-            },
-            versionRepository: undefined,
-            line: "",
-            tone: "bad",
-          },
-        },
-      ],
-    });
-  const cases: ReadonlyArray<
-    [string, GroupFlow, ReturnType<typeof nextStepCell>, ReturnType<typeof nextStepTone>]
-  > = [
-    ["a Mate waiting is answered in the Mates' cell", FLOWS.answer, "mates", "attention"],
-    // Its face waits as a question's does; the approved menu draws its dot red.
-    ["a Mate stopped on an error is the Mates' cell's, red", FLOWS.stopped, "mates", "failed"],
-    // The Mate itself is the way in to a first task: no verb in any cell.
-    ["a first task gives no cell a verb", FLOWS.firstTask, undefined, "off"],
-    ["a merge is the pull request's", FLOWS.merge, "pull-requests", "attention"],
-    ["a release is production's", FLOWS.release, "production", "busy"],
-    ["adding production is production's", FLOWS.addProduction, "production", "busy"],
-    ["a failed production deploy is production's", failing("production"), "production", "failed"],
-    // A failed stage is a failed stop too (owner, 2026-09-25): the stages sit
-    // in main's cell, so that is where fixing it waits.
-    ["a failed stage deploy is main's cell's", failing("stage"), "main", "failed"],
-    ["nothing to do sits nowhere", FLOWS.none, undefined, "off"],
-  ];
-  for (const [name, flow, cell, tone] of cases) {
-    it(name, () => {
-      expect(nextStepCell(flow)).toBe(cell);
-      expect(nextStepTone(flow.nextStep.kind)).toBe(tone);
     });
   }
 });
@@ -386,23 +213,6 @@ describe("nextStepAwaitsSomebody", () => {
   });
 });
 
-describe("stripColumns", () => {
-  it.each([
-    [1, 1],
-    [2, 2],
-    [3, 3],
-    [4, 2],
-    [5, 3],
-    [6, 3],
-    [7, 3],
-  ] as const)(
-    "lays %i steps out in %i columns, the rows as even as three columns allow",
-    (count, columns) => {
-      expect(stripColumns(count)).toBe(columns);
-    },
-  );
-});
-
 describe("the ungrouped containers' one line", () => {
   const cases: ReadonlyArray<
     [string, ReadonlyArray<Parameters<typeof containersSummary>[0][number]>, string, number]
@@ -421,6 +231,13 @@ describe("the ungrouped containers' one line", () => {
       0,
     ],
     [
+      // One folded group holds every project no group does: a project without a Mate is one.
+      "a project without a Mate is counted as one",
+      ["open", "set-up-mate", "set-up-mate"],
+      "Not in a project · 1 ready · 2 without a Mate",
+      0,
+    ],
+    [
       "the rest need a look — enable, remove, nothing to do",
       ["enable", "remove", "none"],
       "Not in a project · 3 need a look",
@@ -432,33 +249,6 @@ describe("the ungrouped containers' one line", () => {
       expect(containersSummary(kinds)).toEqual({ line, retry });
     });
   }
-});
-
-describe("foldUngrouped", () => {
-  it("keeps a project with no Mate container out of the containers, for its own quiet line", () => {
-    const rows = [
-      { id: "a", action: "open" as const },
-      { id: "ads", action: "set-up-mate" as const },
-      { id: "b", action: "retry-probe" as const },
-    ];
-    const folded = foldUngrouped(rows);
-    expect(folded.containers.map((row) => row.id)).toEqual(["a", "b"]);
-    expect(folded.withoutMate.map((row) => row.id)).toEqual(["ads"]);
-  });
-});
-
-describe("the pull requests' cell with none open", () => {
-  it.each([
-    ["None yet", flowOf()],
-    ["None open", flowOf({ merged: [pull({ merged: true })] })],
-  ] as const)("reads %s", (line, flow) => {
-    expect(pullRequestsLine(flow)).toBe(line);
-  });
-
-  // Gitea never answered for it: that, never "None yet" — it would claim what nobody read.
-  it("says Gitea did not answer where its read failed", () => {
-    expect(pullRequestsLine(flowOf(), true)).toBe("Gitea didn’t answer");
-  });
 });
 
 describe("lastMergedCode", () => {
@@ -473,68 +263,6 @@ describe("lastMergedCode", () => {
   });
 });
 
-describe("main's cell", () => {
-  const MAIN_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
-  const landed = pull({ number: 4, title: "Mate: weatherdev", merged: true });
-  const cases: ReadonlyArray<
-    [string, GroupFlow, FlowPullRequest | undefined, ReturnType<typeof mainCell>]
-  > = [
-    [
-      "nothing merged and nothing read is an empty step",
-      flowOf(),
-      undefined,
-      { empty: true, head: undefined, title: undefined, state: "Nothing merged" },
-    ],
-    [
-      "a change merged and not live names the change and how many wait",
-      flowOf({
-        merged: [landed],
-        mainHasCode: true,
-        mainHead: MAIN_SHA,
-        stops: [PRODUCTION],
-        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
-      }),
-      landed,
-      { empty: false, head: "055a7e8", title: "Mate: weatherdev (#4)", state: "1 change not live" },
-    ],
-    [
-      "code on main with nothing waiting says so",
-      flowOf({ mainHasCode: true, mainHead: MAIN_SHA }),
-      undefined,
-      { empty: false, head: "055a7e8", title: undefined, state: "Nothing waiting to release" },
-    ],
-    [
-      "several waiting are counted",
-      flowOf({
-        merged: [landed],
-        stops: [PRODUCTION],
-        release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 3 },
-      }),
-      landed,
-      {
-        empty: false,
-        head: undefined,
-        title: "Mate: weatherdev (#4)",
-        state: "3 changes not live",
-      },
-    ],
-  ];
-  for (const [name, flow, merged, expected] of cases) {
-    it(name, () => {
-      expect(mainCell(flow, merged)).toEqual(expected);
-    });
-  }
-
-  it("says Gitea did not answer where its changes' read failed, never Nothing merged", () => {
-    expect(mainCell(flowOf(), undefined, true)).toEqual({
-      empty: true,
-      head: undefined,
-      title: undefined,
-      state: "Gitea didn’t answer",
-    });
-  });
-});
-
 describe("a Mate being created", () => {
   it("reads as coming up while its press holds it", () => {
     expect(comingMateLine({})).toBe("Coming up. A few minutes.");
@@ -542,20 +270,6 @@ describe("a Mate being created", () => {
 
   it("whose creation stopped before the platform took it says so", () => {
     expect(comingMateLine({ failed: true })).toBe("Could not be set up.");
-  });
-});
-
-describe("groupMetaLine", () => {
-  it.each([
-    ["1 Mate", flowOf()],
-    [
-      "2 Mates · 1 open pull request",
-      flowOf({ mates: [MATE, { ...MATE, projectId: "p-2", name: "Ada" }], pullRequests: [pull()] }),
-    ],
-    ["2 open pull requests", flowOf({ mates: [], pullRequests: [pull(), pull({ number: 2 })] })],
-    ["No Mate yet", flowOf({ mates: [] })],
-  ] as const)("reads %s", (line, flow) => {
-    expect(groupMetaLine(flow)).toBe(line);
   });
 });
 
@@ -606,88 +320,6 @@ describe("a stop's line", () => {
     ],
   ] as const)("reads %j as %j", (over, expected) => {
     expect(stopLine(stop(over))).toEqual(expected);
-  });
-});
-
-describe("production's cell", () => {
-  it("before the first merge reads so, with nothing to press", () => {
-    expect(productionCell(flowOf({ mainHasCode: false }))).toEqual({
-      empty: true,
-      line: "After the first merge",
-      detail: undefined,
-      tone: "off",
-    });
-  });
-
-  it("is one line where production is not set up: whose it is to add is the verb's to say", () => {
-    expect(productionCell(FLOWS.addProduction)).toEqual({
-      empty: true,
-      line: "Not set up",
-      detail: undefined,
-      tone: "off",
-    });
-    expect(FLOWS.addProduction.nextStep.verb).toBe(ADD_PRODUCTION_LABEL);
-  });
-
-  it("names the release that would go, not how much it carries: main's line already counts it", () => {
-    expect(productionCell(FLOWS.release)).toEqual({
-      empty: false,
-      line: "Checking what runs here…",
-      detail: "v0.1.0 ready",
-      tone: "busy",
-    });
-  });
-
-  const RUNNING = {
-    name: "v0.1.0",
-    commit: "055a7e8",
-    sha: undefined,
-    taggedBy: undefined,
-    label: "v0.1.0",
-  };
-  // In flight, the word is line 1: a narrow row reads line 1 only, and what
-  // is happening is the one thing it must not lose.
-  it.each([
-    {
-      name: "a release on its way, what runs now beside it, and none offered",
-      flow: flowOf({
-        stops: [PRODUCTION],
-        release: {
-          gate: { allowed: false, reason: "Releasing v0.1.0…" },
-          suggestion: "v0.1.1",
-          waiting: 1,
-          inFlight: "v0.1.0",
-        },
-      }),
-      want: { line: "Releasing v0.1.0…", detail: "Checking what runs here…" },
-    },
-    {
-      name: "a production being created, setting up",
-      flow: flowOf({
-        pending: [{ projectId: "p-new", kind: "production", name: "prod" }],
-      }),
-      want: { line: "Setting up production…", detail: undefined },
-    },
-    {
-      name: "a deploy running, the version it deploys beside it",
-      flow: flowOf({
-        stops: [
-          {
-            ...PRODUCTION,
-            deployment: {
-              state: "known",
-              value: { kind: "deploying", version: RUNNING, previous: null },
-              asOf: { ordinal: 1, atMs: 0 },
-              coverage: "complete",
-              freshness: { kind: "live" },
-            },
-          },
-        ],
-      }),
-      want: { line: "Deploying…", detail: "v0.1.0" },
-    },
-  ])("reads $name as busy", ({ flow, want }) => {
-    expect(productionCell(flow)).toEqual({ empty: false, tone: "busy", ...want });
   });
 });
 
@@ -764,30 +396,6 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       expect(facts?.mate?.talked).toBe(talked);
     });
   }
-
-  it.each([
-    { talks: [], settled: true },
-    { talks: [true, false], settled: true },
-    { talks: [true, undefined], settled: false },
-  ])("a group whose Mates' talks are $talks is settled: $settled", ({ talks, settled }) => {
-    const members = talks.map((talked, index) => ({
-      projectId: `p-${index}`,
-      role: "dev" as const,
-      name: `m-${index}`,
-      mate: { name: `M${index}`, waiting: false, talked },
-      routes: [],
-      hostnames: [],
-    }));
-    const bare = {
-      projectId: "p-bare",
-      role: "stage" as const,
-      name: "stage",
-      mate: undefined,
-      routes: [],
-      hostnames: [],
-    };
-    expect(talkSettled([...members, bare])).toBe(settled);
-  });
 
   // A Mate asking waits on the viewer only when it is theirs (`mateIsViewers`): the overview's
   // "is waiting on an answer" step says what the group's detail and the menu say.
@@ -973,5 +581,257 @@ describe("groupFlowInputOf", () => {
       pending,
     });
     expect(input.pending).toEqual(pending);
+  });
+});
+
+describe("projectRowLine — a project row's second line", () => {
+  const quiet = { lastMerged: undefined, activities: [], settled: true } as const;
+  const RUNE_WORKING = {
+    name: "Wren",
+    working: true,
+    subject: "Add a health check",
+    at: "2026-10-03T10:00:00Z",
+  };
+  const RUNE_IDLE = { ...RUNE_WORKING, working: false };
+  const MERGED = pull({
+    number: 4,
+    title: "Ship the archive page",
+    merged: true,
+    mergedAt: "2026-10-02T10:00:00Z",
+  });
+  it.each([
+    [
+      "a pull request waits: the sentence, with its title, and the verb",
+      { flow: FLOWS.merge },
+      {
+        kind: "needs-you",
+        text: "Pull request #1 waits for your merge",
+        detail: "Greet with a fuller line",
+        tone: "attention",
+      },
+    ],
+    [
+      "a Mate stopped on an error: said even before the reads answer",
+      { flow: FLOWS.stopped, settled: false },
+      { kind: "needs-you", text: "Wren stopped on an error", tone: "failed" },
+    ],
+    [
+      "a release waits",
+      { flow: FLOWS.release },
+      { kind: "needs-you", text: FLOWS.release.nextStep.text, tone: "busy" },
+    ],
+    [
+      "the reads are out: nothing is claimed yet",
+      { flow: FLOWS.merge, settled: false },
+      { kind: "pending" },
+    ],
+    [
+      "a Mate works: what it is on, its face says the rest",
+      { flow: FLOWS.none, activities: [RUNE_WORKING] },
+      { kind: "mate", mate: "Wren", text: "Add a health check" },
+    ],
+    [
+      "quiet: the change that landed last",
+      { flow: FLOWS.none, lastMerged: MERGED },
+      { kind: "change", text: "Merged #4 Ship the archive page", at: "2026-10-02T10:00:00Z" },
+    ],
+    [
+      "quiet: the Mate's last task when it is newer than the last merge",
+      { flow: FLOWS.none, lastMerged: MERGED, activities: [RUNE_IDLE] },
+      { kind: "mate", mate: "Wren", text: "Add a health check", at: "2026-10-03T10:00:00Z" },
+    ],
+    [
+      "a Mate nobody has spoken to: its first task",
+      { flow: FLOWS.firstTask },
+      { kind: "first-task", text: "Give Wren a first task" },
+    ],
+    ["nothing known: no line at all", { flow: FLOWS.none }, { kind: "none" }],
+    // A failed read is not "nothing to do": a pull request may wait there unseen.
+    [
+      "Gitea did not answer: it says so",
+      { flow: FLOWS.none, lastMerged: MERGED, changesFailed: true },
+      { kind: "unread", text: "Gitea didn’t answer" },
+    ],
+    [
+      "Gitea did not answer, a Mate stopped on an error: the Mate first",
+      { flow: FLOWS.stopped, changesFailed: true },
+      { kind: "needs-you", text: "Wren stopped on an error", tone: "failed" },
+    ],
+    [
+      // Production is the person's to add from the menu: never a step that waits.
+      "production could be added: not a thing that needs you",
+      {
+        flow: flowOf({
+          merged: [MERGED],
+          productionAddable: true,
+          missing: [{ tier: "production" }],
+        }),
+        lastMerged: MERGED,
+      },
+      { kind: "change", text: "Merged #4 Ship the archive page", at: "2026-10-02T10:00:00Z" },
+    ],
+  ] as const)("%s", (_name, over, expected) => {
+    expect(projectRowLine({ ...quiet, ...over })).toEqual(expected);
+  });
+
+  it("a pull request open and not yet the person's: its title and where its checks stand", () => {
+    const flow = flowOf({
+      pullRequests: [
+        pull({
+          number: 9,
+          title: "Make the design system",
+          mergeability: "checking",
+          checkWord: "Running",
+        }),
+      ],
+    });
+    expect(projectRowLine({ ...quiet, flow })).toEqual({
+      kind: "change",
+      text: "#9 Make the design system",
+      detail: "Running",
+    });
+  });
+});
+
+describe("productionMark — production's version, only where production exists", () => {
+  it("no production: nothing at all", () => {
+    expect(productionMark(FLOWS.none)).toBeUndefined();
+  });
+  it("production runs a version: the version and its tone", () => {
+    const flow = {
+      ...FLOWS.none,
+      production: {
+        kind: "live",
+        line: "v0.1.59",
+        stop: {
+          projectId: "p-prod",
+          name: "production",
+          state: "deployed",
+          version: { label: "v0.1.59" },
+          source: "release",
+          route: undefined,
+        },
+      },
+    } as unknown as GroupFlow;
+    expect(productionMark(flow)).toEqual({ version: "v0.1.59", tone: "ok" });
+  });
+  it("production runs nothing yet: nothing to show", () => {
+    const flow = {
+      ...FLOWS.none,
+      production: {
+        kind: "empty",
+        line: "Nothing deployed",
+        stop: {
+          projectId: "p-prod",
+          name: "production",
+          state: "empty",
+          version: undefined,
+          source: "release",
+          route: undefined,
+        },
+      },
+    } as unknown as GroupFlow;
+    expect(productionMark(flow)).toBeUndefined();
+  });
+});
+
+describe("risenFirst — the rows that need the person rise, the custom order kept within", () => {
+  it.each([
+    ["none rise: the order as given", [false, false, false], ["a", "b", "c"]],
+    ["one rises", [false, true, false], ["b", "a", "c"]],
+    ["two rise: their own order kept", [false, true, true], ["b", "c", "a"]],
+  ] as const)("%s", (_name, rises, expected) => {
+    const rows = ["a", "b", "c"];
+    expect(risenFirst(rows, (row) => rises[rows.indexOf(row)] === true)).toEqual(expected);
+  });
+});
+
+describe("rowRise — a row whose answer is out stays where it was drawn", () => {
+  const NEEDS = { kind: "needs-you", text: "x", tone: "attention" } as const;
+  it.each([
+    ["needs you", NEEDS, undefined, true, { rises: true, known: true }],
+    // A Mate asking needs its link up: one reconnecting may be asking, so it is not known.
+    ["needs you, a Mate reconnecting", NEEDS, undefined, false, { rises: true, known: true }],
+    ["quiet", { kind: "none" }, true, true, { rises: false, known: true }],
+    [
+      "quiet while a Mate reconnects, last drawn risen: it stays",
+      { kind: "none" },
+      true,
+      false,
+      { rises: true, known: false },
+    ],
+    [
+      "quiet while a Mate reconnects, never drawn risen",
+      { kind: "none" },
+      undefined,
+      false,
+      { rises: false, known: false },
+    ],
+    ["pending, last drawn risen", { kind: "pending" }, true, true, { rises: true, known: false }],
+    ["pending, never drawn", { kind: "pending" }, undefined, true, { rises: false, known: false }],
+    [
+      "Gitea did not answer, last drawn risen: it stays",
+      { kind: "unread", text: "Gitea didn’t answer" },
+      true,
+      true,
+      { rises: true, known: false },
+    ],
+  ] as const)("%s", (_name, line, remembered, matesKnown, expected) => {
+    expect(rowRise(line, remembered, matesKnown)).toEqual(expected);
+  });
+});
+
+describe("a project row's Mates — read only while their links are up", () => {
+  const mate = (
+    group: ZeropsCandidate["group"],
+    registered: boolean,
+  ): ZeropsCandidate & { readonly connection?: unknown } =>
+    ({
+      key: "p-wren:zcp",
+      project: { id: "p-wren", name: "p-wren", status: "ACTIVE", tagList: ["mate", "mate:g:g"] },
+      group,
+      ...(group === "connected" ? { environmentId: "env-wren" as EnvironmentId } : {}),
+      ...(registered
+        ? { connection: { phase: group === "connected" ? "connected" : "connecting" } }
+        : {}),
+      service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+    }) as ZeropsCandidate & { readonly connection?: unknown };
+  const working: ZeropsAgentActivity = {
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "working",
+    status: null,
+    face: "working",
+    subject: "Add a health check",
+    at: "2026-09-24T10:00:00.000Z",
+    snippet: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
+  };
+
+  it.each([
+    [
+      "connected: what it is on",
+      "connected",
+      true,
+      [{ name: "Wren", working: true, subject: "Add a health check", at: working.at }],
+    ],
+    // A kept shell of a Mate gone quiet would say it works while its face sleeps.
+    ["not connected: nothing, whatever is kept", "ready", true, []],
+  ] as const)("%s", (_name, group, registered, expected) => {
+    const item = mate(group, registered);
+    expect(rowMateActivitiesOf([{ item, name: "Wren" }], () => working)).toEqual(expected);
+  });
+
+  it.each([
+    ["every Mate connected and read", "connected", true, true, true],
+    ["a Mate connected, its conversations not arrived", "connected", true, false, false],
+    // Its link held and not up: a restart, an update, a blip — it may be asking.
+    ["a Mate reconnecting", "ready", true, true, false],
+    // No link this tab holds: nothing to come back from.
+    ["a Mate this tab never linked", "ready", false, true, true],
+  ] as const)("matesKnown: %s", (_name, group, registered, read, expected) => {
+    expect(matesKnownOf([mate(group, registered)], () => read)).toBe(expected);
   });
 });

@@ -13,6 +13,7 @@ import {
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -29,6 +30,7 @@ import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { encodeThreadDetailPageCursor } from "../threadDetailCursor.ts";
 import { projectThreadDetailSnapshot } from "../ActivityPayloadProjection.ts";
+import { activityBudgetColumns } from "../../persistence/activityBudgetColumns.ts";
 import { makeSqlStatementCounter } from "../../../integration/SqlStatementCounter.integration.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -42,6 +44,18 @@ const encodeChatAttachments = Schema.encodeEffect(
 const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
 const encodeCrewOrigin = Schema.encodeEffect(Schema.fromJsonString(ThreadCrewOrigin));
 const encodeActivityPayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeActivityPayload = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
+// The columns the activity repository writes beside a payload, for rows a
+// test stores itself (`fillBudgetColumns` for rows stored by SQL).
+const budgetColumnsOf = (kind: string, payload: unknown) => {
+  const columns = activityBudgetColumns(kind, payload);
+  return {
+    agent_id: columns.agentId,
+    call_id: columns.callId,
+    task_id: columns.taskId,
+    used_tokens: columns.usedTokens,
+  };
+};
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -499,6 +513,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           hasPendingUserInput: false,
           hasActionableProposedPlan: false,
           backgroundLiveness: null,
+          backgroundTaskIds: [],
           planProgress: null,
           usagePause: null,
         },
@@ -2668,6 +2683,22 @@ it.effect(
   },
 );
 
+const fillBudgetColumns = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ activityId: string; kind: string; payload: string }>`
+    SELECT activity_id AS "activityId", kind, payload_json AS "payload"
+    FROM projection_thread_activities
+  `;
+  for (const row of rows) {
+    const columns = budgetColumnsOf(row.kind, yield* decodeActivityPayload(row.payload));
+    yield* sql`
+      UPDATE projection_thread_activities
+      SET ${sql.update(columns)}
+      WHERE activity_id = ${row.activityId}
+    `;
+  }
+});
+
 projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) => {
   // A thread shaped like real fan-out usage: user turns interleaved with
   // subagent turns (no user pending message), plus a turnless straggler user
@@ -3016,6 +3047,74 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
     }),
   );
 
+  // A helper's steps are many — one helper made 133 calls in 58 minutes — and
+  // never crowd the Mate's own record out of a snapshot; each helper keeps its
+  // latest steps on a budget of its own.
+  it.effect("keeps the Mate's record whole beside its helpers' steps", () =>
+    Effect.gen(function* () {
+      yield* seedFanOutThread();
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_thread_activities`;
+      // 400 rows of the Mate's own, then 2 × 300 rows of two helpers' steps.
+      yield* sql`
+        WITH RECURSIVE activity_rows(sequence) AS (
+          SELECT 1
+          UNION ALL
+          SELECT sequence + 1 FROM activity_rows WHERE sequence < 1000
+        )
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        )
+        SELECT
+          printf('activity-%04d', sequence),
+          'thread-w',
+          'turn-5',
+          'tool',
+          CASE WHEN sequence % 2 = 0 THEN 'tool.completed' ELSE 'tool.started' END,
+          'ran tool',
+          CASE
+            WHEN sequence <= 400 THEN json_object('itemType', 'command_execution')
+            ELSE json_object(
+              'itemType', 'command_execution',
+              'agentId', CASE WHEN sequence % 4 < 2 THEN 'helper-a' ELSE 'helper-b' END,
+              'parentToolUseId', 'toolu-parent'
+            )
+          END,
+          sequence,
+          '2026-03-01T00:04:00.000Z'
+        FROM activity_rows
+      `;
+      yield* fillBudgetColumns();
+
+      const reads = [
+        yield* snapshotQuery.getThreadDetailSnapshot(threadW),
+        yield* snapshotQuery.getThreadDetailSnapshot(threadW, { turnLimit: 2 }),
+      ];
+      for (const read of reads) {
+        assert.equal(read._tag, "Some");
+        if (read._tag !== "Some") continue;
+        const activities = read.value.thread.activities;
+        const owner = (activity: (typeof activities)[number]) =>
+          (activity.payload as { agentId?: string }).agentId ?? "mate";
+        const count = (who: string) => activities.filter((activity) => owner(activity) === who);
+        assert.equal(count("mate").length, 400);
+        assert.equal(count("helper-a").length, 150);
+        assert.equal(count("helper-b").length, 150);
+        // Each helper's newest steps.
+        assert.equal(count("helper-a").at(-1)?.id, asEventId("activity-1000"));
+        assert.equal(count("helper-b").at(-1)?.id, asEventId("activity-0999"));
+        // In the record's order.
+        const sequences = activities.map((activity) => activity.sequence ?? 0);
+        assert.deepStrictEqual(
+          sequences,
+          sequences.toSorted((left, right) => left - right),
+        );
+      }
+    }),
+  );
+
   it.effect("bounds activity hydration and preserves unresolved requests", () =>
     Effect.gen(function* () {
       yield* seedFanOutThread();
@@ -3119,6 +3218,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
           '2026-03-01T00:04:00.000Z'
         FROM activity_rows
       `;
+      yield* fillBudgetColumns();
 
       const fullDetail = yield* snapshotQuery.getThreadDetailById(threadW);
       assert.equal(fullDetail._tag, "Some");
@@ -3133,9 +3233,13 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
       });
       assert.equal(windowedDetail._tag, "Some");
       if (windowedDetail._tag === "Some") {
-        assert.equal(windowedDetail.value.thread.activities.length, 500);
-        assert.equal(windowedDetail.value.thread.activities[0]?.id, asEventId("activity-0002"));
-        assert.equal(windowedDetail.value.thread.activities.at(-1)?.id, asEventId("activity-0501"));
+        // A page holds its turn whole; only the reading a later one supersedes
+        // stays behind.
+        const ids = windowedDetail.value.thread.activities.map((activity) => activity.id);
+        assert.equal(ids.length, 500);
+        assert.equal(ids[0], asEventId("activity-0001"));
+        assert.equal(ids.at(-1), asEventId("activity-0501"));
+        assert.equal(ids.includes(asEventId("activity-0003")), false);
       }
 
       yield* sql`
@@ -3229,7 +3333,20 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
           snapshotSequence: fullSnapshot.value.snapshotSequence,
           thread: detailWithPinnedRequests.value,
         });
-        assert.deepStrictEqual(projectedFullSnapshot, projectedRawBaseline);
+        // The client's read reaches one row further back: the room the
+        // superseded reading no longer takes.
+        assert.deepStrictEqual(
+          {
+            ...projectedFullSnapshot,
+            thread: {
+              ...projectedFullSnapshot.thread,
+              activities: projectedFullSnapshot.thread.activities.filter(
+                (activity) => activity.id !== asEventId("activity-0001"),
+              ),
+            },
+          },
+          projectedRawBaseline,
+        );
 
         const rawActivitiesById = new Map(
           detailWithPinnedRequests.value.activities.map((activity) => [activity.id, activity]),
@@ -3325,6 +3442,314 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         assert.equal(snapshot.value.page?.hasMore, false);
         assert.equal(snapshot.value.page?.beforeCursor, null);
       }
+    }),
+  );
+});
+
+projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history", (it) => {
+  // A long run shaped like a real one: 28 asks, most with a handful of calls,
+  // two with forty; every third sends two helpers, whose results land in a
+  // turn of their own — one of them after the next ask. Each call streams an
+  // update and a context reading, and the turnless meter reads four times
+  // between calls: ~1,950 rows, 60% of them readings and updates a later row
+  // supersedes. A helper's progress is one row, updated in place as ingestion
+  // stores it; `legacyTicks` stores forty, as rows stored before that did.
+  // No row carries a sequence, as none does live.
+  const threadL = ThreadId.make("thread-l");
+  const ASKS = 28;
+
+  interface Card {
+    readonly userMessageId: string;
+    readonly steps: Set<string>;
+  }
+
+  const seedLongThread = Effect.fnUntraced(function* (
+    options: { readonly callsPerAsk?: number; readonly legacyTicks?: boolean } = {},
+  ) {
+    const { callsPerAsk, legacyTicks = false } = options;
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`DELETE FROM projection_projects`;
+    yield* sql`DELETE FROM projection_threads`;
+    yield* sql`DELETE FROM projection_turns`;
+    yield* sql`DELETE FROM projection_thread_messages`;
+    yield* sql`DELETE FROM projection_thread_activities`;
+    yield* sql`DELETE FROM projection_state`;
+    yield* sql`
+      INSERT INTO projection_projects (
+        project_id, title, workspace_root, scripts_json, created_at, updated_at, deleted_at
+      )
+      VALUES ('project-l', 'Long', '/tmp/project-l', '[]',
+        '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', NULL)
+    `;
+    yield* sql`
+      INSERT INTO projection_threads (
+        thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+        pending_approval_count, pending_user_input_count, has_actionable_proposed_plan,
+        created_at, updated_at, deleted_at
+      )
+      VALUES ('thread-l', 'project-l', 'Long thread',
+        '{"provider":"claudeAgent","model":"claude-opus"}', 'full-access', 'default',
+        0, 0, 0, '2026-05-01T00:00:00.000Z', '2026-05-01T05:00:00.000Z', NULL)
+    `;
+
+    let sequence = 0;
+    const pad = (value: number) => String(value).padStart(2, "0");
+    // Seconds into the day the conversation runs.
+    const at = (seconds: number) =>
+      `2026-05-01T${pad(Math.floor(seconds / 3600))}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}.000Z`;
+    const turns: Array<Record<string, unknown>> = [];
+    const messages: Array<Record<string, unknown>> = [];
+    const activities: Array<Record<string, unknown>> = [];
+    const cards: Card[] = [];
+    const activity = (
+      id: string,
+      turnId: string | null,
+      kind: string,
+      seconds: number,
+      payload: Record<string, unknown>,
+    ) => {
+      sequence += 1;
+      activities.push({
+        activity_id: id,
+        thread_id: "thread-l",
+        turn_id: turnId,
+        tone: "tool",
+        kind,
+        summary: kind,
+        payload_json: JSON.stringify(payload),
+        sequence: null,
+        created_at: at(seconds),
+        ...budgetColumnsOf(kind, payload),
+      });
+      return id;
+    };
+    const turn = (turnId: string, pendingMessageId: string | null, seconds: number) =>
+      turns.push({
+        thread_id: "thread-l",
+        turn_id: turnId,
+        pending_message_id: pendingMessageId,
+        state: "completed",
+        requested_at: at(seconds),
+        started_at: at(seconds),
+        completed_at: at(seconds + 590),
+        checkpoint_files_json: "[]",
+      });
+    const message = (id: string, turnId: string | null, role: string, seconds: number) =>
+      messages.push({
+        message_id: id,
+        thread_id: "thread-l",
+        turn_id: turnId,
+        role,
+        text: `${role} text`,
+        is_streaming: 0,
+        created_at: at(seconds),
+        updated_at: at(seconds),
+      });
+
+    const lateResults: Array<{ helper: string; card: Card }> = [];
+    for (let ask = 0; ask < ASKS; ask += 1) {
+      const base = ask * 600;
+      const turnId = `turn-${ask}`;
+      const card: Card = { userMessageId: `ask-${ask}`, steps: new Set() };
+      cards.push(card);
+      message(card.userMessageId, null, "user", base);
+      turn(turnId, card.userMessageId, base);
+      const calls = callsPerAsk ?? (ask === 4 || ask === 19 ? 40 : 6);
+      for (let call = 0; call < calls; call += 1) {
+        const seconds = base + 1 + call * 10;
+        const toolCallId = `call-${ask}-${call}`;
+        card.steps.add(
+          activity(`${toolCallId}-start`, turnId, "tool.started", seconds, { toolCallId }),
+        );
+        activity(`${toolCallId}-update`, turnId, "tool.updated", seconds + 1, { toolCallId });
+        card.steps.add(
+          activity(`${toolCallId}-done`, turnId, "tool.completed", seconds + 2, { toolCallId }),
+        );
+        activity(`${toolCallId}-usage`, turnId, "context-window.updated", seconds + 3, {
+          usedTokens: 1_000 * (call + 1),
+        });
+        for (let reading = 0; reading < 4; reading += 1) {
+          activity(
+            `${toolCallId}-meter-${reading}`,
+            null,
+            "context-window.updated",
+            seconds + 4 + reading,
+            {
+              usedTokens: 2_000 * (call + 1) + reading,
+            },
+          );
+        }
+      }
+      message(`${turnId}-reply`, turnId, "assistant", base + 500);
+      if (ask % 3 !== 0) continue;
+      const resultsTurn = `${turnId}-results`;
+      turn(resultsTurn, null, base + 520);
+      for (const helper of ["a", "b"]) {
+        const taskId = `task-${ask}-${helper}`;
+        card.steps.add(
+          activity(`${taskId}-start`, turnId, "task.started", base + 450, {
+            taskId,
+            agentKind: "agent",
+          }),
+        );
+        if (legacyTicks) {
+          for (let tick = 0; tick < 40; tick += 1) {
+            activity(`${taskId}-tick-${tick}`, null, "task.progress", base + 451 + tick, {
+              taskId,
+              summary: `tick ${tick}`,
+            });
+          }
+        } else {
+          activity(`${taskId}-progress`, null, "task.progress", base + 490, {
+            taskId,
+            summary: "tick 39",
+          });
+        }
+        if (helper === "b" && ask + 1 < ASKS) {
+          lateResults.push({ helper: taskId, card });
+          continue;
+        }
+        card.steps.add(
+          activity(`${taskId}-done`, resultsTurn, "task.completed", base + 521, { taskId }),
+        );
+      }
+    }
+    // A helper sent in one ask reports after the next one: its result is a
+    // turn of its own, in the later ask's group.
+    for (const { helper } of lateResults) {
+      const ask = Number(helper.split("-")[1]) + 1;
+      const resultsTurn = `${helper}-late`;
+      turn(resultsTurn, null, ask * 600 + 540);
+      activity(`${helper}-done`, resultsTurn, "task.completed", ask * 600 + 541, {
+        taskId: helper,
+      });
+    }
+
+    const insertChunks = (table: string, rows: ReadonlyArray<Record<string, unknown>>) =>
+      Effect.forEach(
+        Arr.chunksOf(rows, 200),
+        (chunk) => sql`INSERT INTO ${sql(table)} ${sql.insert(chunk)}`,
+      );
+    yield* insertChunks("projection_turns", turns);
+    yield* insertChunks("projection_thread_messages", messages);
+    yield* insertChunks("projection_thread_activities", activities);
+    for (const projector of Object.values(ORCHESTRATION_PROJECTOR_NAMES)) {
+      yield* sql`
+        INSERT INTO projection_state (projector, last_applied_sequence, updated_at)
+        VALUES (${projector}, ${sequence}, '2026-05-01T05:00:00.000Z')
+      `;
+    }
+    return { cards, activityCount: activities.length };
+  });
+
+  // Every page the client reads walking back: the first of 10 asks, then 20
+  // at a time, as `threads.ts` asks for them.
+  const readEveryPage = Effect.fnUntraced(function* () {
+    const snapshotQuery = yield* ProjectionSnapshotQuery;
+    const pages: Array<{ messages: Set<string>; activities: Set<string> }> = [];
+    let beforeCursor: string | undefined;
+    for (let read = 0; read < 50; read += 1) {
+      const snapshot = yield* snapshotQuery.getThreadDetailSnapshot(threadL, {
+        turnLimit: read === 0 ? 10 : 20,
+        ...(beforeCursor === undefined ? {} : { beforeCursor }),
+      });
+      if (snapshot._tag !== "Some") break;
+      pages.push({
+        messages: new Set(snapshot.value.thread.messages.map((entry) => entry.id)),
+        activities: new Set(snapshot.value.thread.activities.map((entry) => entry.id)),
+      });
+      const cursor = snapshot.value.page?.beforeCursor;
+      if (cursor === null || cursor === undefined) break;
+      beforeCursor = cursor;
+    }
+    return pages;
+  });
+
+  it.effect("every card keeps all its steps on the page that shows it", () =>
+    Effect.gen(function* () {
+      const { cards, activityCount } = yield* seedLongThread();
+      assert.isAbove(activityCount, 1_900);
+      const pages = yield* readEveryPage();
+
+      const wholeCards = cards.filter((card) => {
+        const page = pages.find((candidate) => candidate.messages.has(card.userMessageId));
+        return page !== undefined && [...card.steps].every((step) => page.activities.has(step));
+      });
+      assert.equal(wholeCards.length, ASKS);
+      // The newest page still opens on several asks, not one.
+      const firstPageAsks = cards.filter((card) => pages[0]?.messages.has(card.userMessageId));
+      assert.isAtLeast(firstPageAsks.length, 8);
+    }),
+  );
+
+  it.effect("a page too long for its asks holds fewer, each whole", () =>
+    Effect.gen(function* () {
+      // Fifty calls an ask: ten asks hold more steps than a page carries.
+      const { cards } = yield* seedLongThread({ callsPerAsk: 50 });
+      const pages = yield* readEveryPage();
+      const asksOn = (page: (typeof pages)[number]) =>
+        cards.filter((card) => page.messages.has(card.userMessageId));
+
+      const firstPageAsks = asksOn(pages[0]!);
+      assert.isAbove(firstPageAsks.length, 1);
+      assert.isBelow(firstPageAsks.length, 10);
+      // Every ask on exactly one page, every page's asks whole.
+      assert.deepEqual(
+        pages
+          .flatMap(asksOn)
+          .map((card) => card.userMessageId)
+          .toSorted(),
+        cards.map((card) => card.userMessageId).toSorted(),
+      );
+      for (const page of pages) {
+        for (const card of asksOn(page)) {
+          for (const step of card.steps) assert.isTrue(page.activities.has(step), step);
+        }
+      }
+    }),
+  );
+
+  it.effect("a helper's result keeps the start that sent it on its page", () =>
+    Effect.gen(function* () {
+      yield* seedLongThread({ callsPerAsk: 50 });
+      const pages = yield* readEveryPage();
+      let resultsAfterTheirAsk = 0;
+      for (const page of pages) {
+        for (const id of page.activities) {
+          if (!id.startsWith("task-") || !id.endsWith("-done")) continue;
+          const start = id.replace(/-done$/u, "-start");
+          assert.isTrue(page.activities.has(start), `${start} beside ${id}`);
+          const ask = id.split("-")[1];
+          if (!page.messages.has(`ask-${ask}`)) resultsAfterTheirAsk += 1;
+        }
+      }
+      // The page edge falls between an ask and the result it sent.
+      assert.isAbove(resultsAfterTheirAsk, 0);
+    }),
+  );
+
+  it.effect("a superseded reading or tick takes no step's place", () =>
+    Effect.gen(function* () {
+      yield* seedLongThread({ legacyTicks: true });
+      const [first] = yield* readEveryPage();
+      const ids = [...(first?.activities ?? [])];
+      // A helper's first tick and its latest six; each turn's latest reading;
+      // no update its completion supersedes.
+      const ticks = ids.filter((id) => id.startsWith("task-27-a-tick-"));
+      assert.deepEqual(
+        ticks.toSorted(),
+        ["0", "34", "35", "36", "37", "38", "39"]
+          .map((tick) => `task-27-a-tick-${tick}`)
+          .toSorted(),
+      );
+      assert.deepEqual(
+        ids.filter((id) => id.startsWith("call-27-") && id.endsWith("-usage")),
+        ["call-27-5-usage"],
+      );
+      assert.equal(
+        ids.some((id) => id.endsWith("-update")),
+        false,
+      );
     }),
   );
 });

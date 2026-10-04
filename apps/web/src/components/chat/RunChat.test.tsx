@@ -1,5 +1,9 @@
-import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
-import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import {
+  emptyAgentPanelModel,
+  type RuntimeSubagent,
+} from "@t3tools/client-runtime/state/subagentRuntime";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -11,7 +15,9 @@ import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
-import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
+import { MateFace } from "../zerops/primitives";
+import { useHelperFocus } from "./helperFocus";
+import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
@@ -1184,7 +1190,8 @@ describe("RunChat, as the person uses it", () => {
         step(command("w3", "pnpm w3")),
       ];
       draw(live(landed, []));
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // They hold the slot a moment for what comes next; then "Thinking" stands its minimum.
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + 100));
       draw(live(landed, ["w4"]));
       expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w4"]);
       expect(
@@ -1272,72 +1279,81 @@ describe("RunChat, as the person uses it", () => {
     expect(rising(renderer)).toBe(0);
   });
 
-  // A helper's one-line report opens only when the card's width cuts it, as
-  // measured on the page (A7, E17).
-  it.each([
-    { name: "cut at the card's width", scrollWidth: 480, opens: true },
-    { name: "whole on its line", scrollWidth: 120, opens: false },
-  ])("opens a helper's one-line report only when it is $name", ({ scrollWidth, opens }) => {
-    const agent = {
-      ...emptyAgentPanelModel(),
-      directAgents: [
-        {
-          id: "a1",
-          kind: "subagent" as const,
-          title: "Check the schema",
-          role: null,
-          model: null,
-          effort: null,
-          status: "completed" as const,
-          activationCount: 1,
-          usage: null,
-          progress: null,
-          lastToolName: null,
-          result: "Wrote three tests for the schema and its migrations",
-          error: null,
-          outputFile: null,
-          parentAgentId: null,
-          agentIndex: null,
-          phaseIndex: null,
-          phaseTitle: null,
-          attempt: null,
-          workflowName: null,
-          phases: [],
-          runHandles: null,
-          recentActivity: [],
-          firstSeenAt: at(1),
-          startedAt: at(1),
-          completedAt: at(2),
-          updatedAt: at(2),
-        },
-      ],
-      hasAgents: true,
+  // A helper's row says what it came to, and opens its own card in the
+  // helpers panel: its steps, its clock, its report whole.
+  /** A helper the panel knows: done, its report in one line. */
+  const helperAgent = (overrides: Partial<RuntimeSubagent> = {}): RuntimeSubagent => ({
+    id: "a1",
+    kind: "subagent" as const,
+    title: "Check the schema",
+    role: null,
+    model: null,
+    effort: null,
+    status: "completed" as const,
+    activationCount: 1,
+    usage: null,
+    progress: null,
+    lastToolName: null,
+    result: "Wrote three tests for the schema and its migrations",
+    error: null,
+    outputFile: null,
+    parentAgentId: null,
+    agentIndex: null,
+    phaseIndex: null,
+    phaseTitle: null,
+    attempt: null,
+    workflowName: null,
+    phases: [],
+    runHandles: null,
+    recentActivity: [],
+    prompt: null,
+    toolUseId: null,
+    spawnedBy: null,
+    liveCall: null,
+    firstSeenAt: at(1),
+    startedAt: at(1),
+    completedAt: at(2),
+    updatedAt: at(2),
+    ...overrides,
+  });
+  const helpersOf = (agent: RuntimeSubagent) => ({
+    ...emptyAgentPanelModel(),
+    directAgents: [agent],
+    hasAgents: true,
+  });
+  const helpersRow: RecordItem = {
+    kind: "helpers",
+    key: "helpers:h1",
+    at: at(1),
+    entry: {
+      ...command("h1", ""),
+      itemType: "collab_agent_tool_call",
+      agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
+    },
+  };
+
+  it("opens a helper's own card in the helpers panel", () => {
+    const agent = helpersOf(helperAgent());
+    const helpers = helpersRow;
+    const onOpenAgents = vi.fn();
+    const threadRef = {
+      environmentId: EnvironmentId.make("environment-local"),
+      threadId: ThreadId.make("thread-1"),
     };
-    const helpers: RecordItem = {
-      kind: "helpers",
-      key: "helpers:h1",
-      at: at(1),
-      entry: {
-        ...command("h1", ""),
-        itemType: "collab_agent_tool_call",
-        agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
-      },
-    };
+    const seen: Array<string | null> = [];
+    function Focus() {
+      seen.push(useHelperFocus(scopedThreadKey(threadRef))?.helperId ?? null);
+      return null;
+    }
     let renderer!: ReactTestRenderer;
     act(() => {
       renderer = mounted(
-        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: agent }}>
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: agent, threadRef, onOpenAgents }}>
           <TimelineRowActivityCtx value={ACTIVITY}>
             <RunChat row={record([helpers])} />
+            <Focus />
           </TimelineRowActivityCtx>
         </TimelineRowCtx>,
-        {
-          // The preview's line, as the page lays it out.
-          createNodeMock: (element) =>
-            element.type === "span"
-              ? { scrollWidth, clientWidth: 200, scrollHeight: 20, clientHeight: 20 }
-              : null,
-        },
       );
     });
     act(() =>
@@ -1345,15 +1361,75 @@ describe("RunChat, as the person uses it", () => {
         currentTarget: { closest: () => null },
       }),
     );
-    // The helper's own line: a button where it opens onto its report.
-    const title = renderer.root.find(
-      (node) => node.type === "span" && node.children.includes("Check the schema"),
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          typeof node.children[0] === "string" &&
+          node.children[0] === "Wrote three tests for the schema and its migrations",
+      ).length,
+    ).toBeGreaterThan(0);
+    act(() => button(renderer, "Check the schema: Done. Open its work").props.onClick());
+    expect(onOpenAgents).toHaveBeenCalledTimes(1);
+    expect(seen.at(-1)).toBe("a1");
+  });
+
+  // Its state, and its time only where it has one: never a dot left hanging.
+  it.each([
+    {
+      name: "an idle child with no end",
+      agent: { status: "idle" as const, completedAt: null },
+      state: "Idle",
+    },
+    {
+      name: "a helper done within a second",
+      agent: { completedAt: "2026-09-25T10:00:01.300Z", startedAt: "2026-09-25T10:00:01.000Z" },
+      state: "Done",
+    },
+  ])("says $name's state alone", ({ agent, state }) => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: helpersOf(helperAgent(agent)) }}>
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={record([helpersRow])} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+    });
+    act(() =>
+      button(renderer, "Started a helper").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
     );
-    let holder = title.parent;
-    while (holder !== null && holder.type !== "button" && holder.type !== "li") {
-      holder = holder.parent;
-    }
-    expect(holder?.type === "button").toBe(opens);
+    const words = renderer.root
+      .findAll((node) => node.type === "span" && node.children[0] === state)
+      .map((node) => node.children.filter((child) => typeof child === "string").join(""));
+    expect(words.length).toBeGreaterThan(0);
+    for (const said of words) expect(said).toBe(state);
+  });
+
+  // A helper's own run, in its card: it works under the Mate and wears no
+  // face of the Mate's, live or settled.
+  it.each([
+    { name: "at work", row: record([], { live: true, status: status() }) },
+    {
+      name: "settled",
+      row: record([thought("t1", "Looked at the schema.")], {
+        status: status({ live: false, endedAt: at(9), face: "idle" }),
+      }),
+    },
+  ])("a helper's run $name wears no face of the Mate's", ({ row }) => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, speaker: { ...SHARED.speaker, helper: true } }}>
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={row} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+    });
+    expect(renderer.root.findAllByType(MateFace)).toEqual([]);
   });
 
   it("opens what a step printed under its words, in place, and closes it again", () => {
@@ -1539,6 +1615,67 @@ describe("RunChat, as the person uses it", () => {
       expect(scrolls()).toHaveLength(0);
       expect(text(renderer)).not.toContain("Run the tests");
       expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+    });
+
+    // Bodhi's audit, 2026-10-04: a settled card opened at its end.
+    it("opens a long run's work at its first line with Show work", () => {
+      const steps = Array.from({ length: 60 }, (_, index) =>
+        step(command(`long${index}`, `echo line-${index}-done`)),
+      );
+      const renderer = mount(settledRun({ items: steps }));
+      act(() => button(renderer, "Show work").props.onClick());
+      expect(text(renderer)).toContain("echo line-0-done");
+      expect(text(renderer)).toContain("echo line-59-done");
+    });
+
+    // Bodhi: an opened card drew each picture in the step that looked at it
+    // and again in the result's strip right under it.
+    it.each([
+      { name: "the result's strip holds it: the step leaves it there", inStrip: true, drawn: 0 },
+      { name: "no strip holds it: the step draws it", inStrip: false, drawn: 1 },
+    ])("draws a picture an opened card looked at once: $name", ({ inStrip, drawn }) => {
+      setRunFold(CONVERSATION, "turn-1", "shown");
+      const look = step({
+        id: "v1",
+        createdAt: at(5),
+        label: "Viewed image",
+        tone: "tool",
+        itemType: "image_view",
+        viewedImagePath: "/srv/shots/home.png",
+        toolLifecycleStatus: "completed",
+      });
+      const outcome = {
+        ...outcomeOf([]),
+        pictures: inStrip
+          ? [{ kind: "file" as const, key: "f1", path: "/srv/shots/home.png", name: "home.png" }]
+          : [],
+      };
+      const markup = renderToStaticMarkup(
+        <TimelineRowCtx
+          value={{
+            ...SHARED,
+            threadRef: {
+              environmentId: EnvironmentId.make("environment-local"),
+              threadId: ThreadId.make("thread-1"),
+            },
+          }}
+        >
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat
+              row={record([look], {
+                status: status({ live: false, face: "produced", endedAt: at(80) }),
+                outcome,
+              })}
+            />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+      forgetRunFolds(CONVERSATION);
+      // Its line names it either way; the picture itself is drawn (here, read as gone) once.
+      expect(markup.replace(/<[^>]+>/gu, "")).toContain("Looked at home.png");
+      expect(markup.match(/home\.png is not there any more|Open home\.png/gu)?.length ?? 0).toBe(
+        drawn,
+      );
     });
 
     it("keeps even a lone word of its behind Show work", () => {
@@ -1759,9 +1896,11 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
-      // Seen only once it returned, it stands its minimum in the live slot,
-      // then plops into the history: the scroll's first line.
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // Seen only once it returned, it waits for "Thinking" to stand its
+      // minimum, stands its own and its hold in the live slot, then plops
+      // into the history: the scroll's first line.
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS));
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + SLOT_HOLD_MS + 100));
       expect(heard).toHaveLength(1);
       box.scrollHeight = 900;
       box.clientHeight = 440;

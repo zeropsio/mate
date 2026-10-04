@@ -28,6 +28,12 @@ export interface StepOutput {
  * edit, a search for a pattern alone.
  */
 export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
+  // A command sent to the background returned only that it went there: what
+  // it holds is what the job reported, once it did.
+  if (step.background !== undefined) {
+    const report = step.background.report;
+    return report === null ? [] : [{ key: "job", label: null, text: report }];
+  }
   const blocks: StepOutput[] = [];
   step.entries.forEach((entry, index) => {
     const command = (entry.rawCommand ?? entry.command)?.trim();
@@ -99,37 +105,6 @@ function askedPastTheLine(entry: WorkLogEntry, kind: WorkStep["kind"]): string[]
   ].filter((line): line is string => line !== null);
 }
 
-/**
- * Whether a helper's report says more than its line: its state word, its
- * first line under it — cut short at the card's width (`previewCut`, measured).
- */
-function helperReportAdds(report: string | null, state: string, previewCut: boolean): boolean {
-  const said = report?.trim() ?? "";
-  if (said.length === 0) return false;
-  const lines = said.split("\n").filter((line) => line.trim().length > 0);
-  if (lines.length > 1) return true;
-  if (said.replace(/[.!]$/u, "").toLowerCase() === state.toLowerCase()) return false;
-  return previewCut;
-}
-
-/** How long a helper's one line of report is guessed to stand whole, before it is measured. */
-export const HELPER_LINE_CHARS = 72;
-
-/**
- * The first line of a helper's report under its title while closed — none
- * where it repeats the state word beside it ("Done" under "Done").
- */
-export function helperReportPreview(report: string | null, state: string): string | null {
-  const said = report?.trim() ?? "";
-  const first =
-    said
-      .split("\n")
-      .find((line) => line.trim().length > 0)
-      ?.trim() ?? null;
-  if (first === null) return null;
-  return first.replace(/[.!]$/u, "").toLowerCase() === state.toLowerCase() ? null : first;
-}
-
 /** A control that opens, by what it would open and what its line already shows. */
 export type Opener =
   /** An operation's row or bar: its card's parts, its services' lines, a reason its line cut short. */
@@ -150,13 +125,6 @@ export type Opener =
       readonly checks: number;
       /** Takes with a picture, a read of the page or a reason it failed. */
       readonly shown: number;
-    }
-  /** A helper's report, under its title and state; its first line cut short at the card's width. */
-  | {
-      readonly control: "helper";
-      readonly report: string | null;
-      readonly state: string;
-      readonly previewCut: boolean;
     }
   /** A step: what it printed, past its code's four lines. */
   | { readonly control: "step"; readonly step: WorkStep; readonly codeCut: boolean }
@@ -183,8 +151,6 @@ export function opensOnto(opener: Opener): boolean {
       return opener.agents > 0;
     case "checks":
       return opener.checks > 1 || opener.shown > 0;
-    case "helper":
-      return helperReportAdds(opener.report, opener.state, opener.previewCut);
     case "step":
       return opener.codeCut || stepOutput(opener.step).length > 0;
     case "thought":

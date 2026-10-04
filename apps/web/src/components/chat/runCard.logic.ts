@@ -268,6 +268,41 @@ export function thoughtRunText(text: string): string {
 }
 
 /**
+ * The newest of a thought as the live slot shows it: whole sentences from the
+ * end, as many as fit in `chars`, so its first line never starts mid-sentence
+ * (Bodhi: "headless-specific rendering glitch. To pin…"). One sentence longer
+ * than that is the newest words, cut at a word.
+ */
+export function thoughtTail(run: string, chars: number): string {
+  if (run.length <= chars) return run;
+  const sentences = run.split(/(?<=[.!?…])\s+/u).filter((sentence) => sentence.length > 0);
+  let tail = "";
+  for (let index = sentences.length - 1; index >= 0; index -= 1) {
+    const next = tail.length === 0 ? sentences[index]! : `${sentences[index]!} ${tail}`;
+    if (next.length > chars) break;
+    tail = next;
+  }
+  if (tail.length > 0) return tail;
+  const words = run.slice(run.length - chars);
+  const at = words.indexOf(" ");
+  return `…${at < 0 ? words : words.slice(at + 1)}`;
+}
+
+/**
+ * A note as the card says it: one that ends on a colon announced what its
+ * next step shows — "Committing:", "Full error output:" — and said alone it
+ * points at nothing, so the colon goes once the note is whole (Bodhi). A
+ * colon inside, or closing a code block, stays.
+ */
+export function noteText(text: string, streaming: boolean): string {
+  if (streaming) return text;
+  const whole = text.trimEnd();
+  return whole.endsWith(":") && !whole.endsWith("::") && !/```[^`]*$/u.test(whole)
+    ? whole.slice(0, -1)
+    : text;
+}
+
+/**
  * The latest of a thought the Mate is thinking, for the now line's one muted
  * line: the last sentence of its last paragraph, however far it got.
  */
@@ -508,6 +543,58 @@ export function nowLineWords(line: NowLine): string {
       return "Condensing the context";
     case "worked":
       return line.words;
+  }
+}
+
+/**
+ * What a screen reader hears of the live slot: the words of what its first
+ * line shows, so they change when the slot does and never between (a probe
+ * read them flip to "Thinking" for 200 ms while a step still stood).
+ */
+export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
+  if (item === null) {
+    switch (filler.kind) {
+      case "waiting":
+        return nowLineWords({ kind: "waiting", on: filler.on });
+      case "thinking":
+        return nowLineWords({ kind: "thinking", thought: null });
+      default:
+        return nowLineWords({ kind: filler.kind });
+    }
+  }
+  switch (item.kind) {
+    case "step":
+      return stepNowWords(item.step);
+    case "operation":
+      return operationNowWords(item.operation);
+    case "strip": {
+      // The check it runs now, else its newest: "Checking /status in the browser".
+      const check =
+        item.strip.checks.findLast((candidate) => candidate.phase === "running") ??
+        item.strip.checks.at(-1);
+      return check === undefined ? "Checking in the browser" : operationNowWords(check);
+    }
+    case "question":
+      return nowLineWords({ kind: "waiting", on: "answer" });
+    case "person":
+      return "Your message reached it";
+    case "note":
+      return "Writing";
+    case "thought":
+      return "Thinking";
+    case "helpers":
+      return "Starting helpers";
+    case "task":
+      return `${item.entry.toolTitle ?? item.entry.label} reported back`;
+    case "plan":
+      return "Updating its plan";
+    case "incident":
+      return `${item.incident.hostname} needs attention`;
+    case "event":
+    case "crew-seam":
+    case "error":
+    case "call":
+      return "Working";
   }
 }
 

@@ -208,6 +208,28 @@ describe("collectZeropsCalls — the lattice properties", () => {
     expect(call!.agentInternal).toBe(true);
   });
 
+  // A helper's Zerops call is the helper's step, drawn in its own card: no
+  // operation card, no running operation of the Mate's.
+  it.each([
+    { name: "running", rows: () => [started({ id: "h1", payload: { agentId: "helper-1" } })] },
+    {
+      name: "settled",
+      rows: () => [
+        started({ id: "h1", payload: { agentId: "helper-1" } }),
+        completed({ id: "h2", payload: { agentId: "helper-1" } }),
+      ],
+    },
+  ])("a helper's $name deploy is no operation of the Mate's", ({ rows }) => {
+    const model = deriveZeropsThreadModel({
+      activities: rows(),
+      lifecycle: undefined,
+      runningTurnId: "t1",
+      nowMs: Date.parse("2026-09-01T00:00:03.000Z"),
+    });
+    expect(model.entries).toEqual([]);
+    expect(model.running).toBeUndefined();
+  });
+
   it("a running call whose turn is not the running turn is interrupted", () => {
     const activities = [started({ id: "a1", turnId: "t1" })];
     expect(collectZeropsCalls(activities, "t2")[0]!.status).toBe("interrupted");

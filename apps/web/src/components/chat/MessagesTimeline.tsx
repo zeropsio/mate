@@ -21,6 +21,7 @@ const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   classifyTimelineScroll,
+  jumpedAway,
   nextTimelineReading,
   nextPersonScrollSession,
   PERSON_SCROLL_IDLE,
@@ -44,6 +45,10 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { createEndFollow, takeOwnScroll, type EndFollow } from "./timelineEndFollow";
+import { revealBy } from "./timelineReveal.logic";
+import { usePace } from "./usePace";
+import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
@@ -111,7 +116,6 @@ import {
   rememberTimelinePosition,
   resolveTimelineRestoreTarget,
   resolveTimelineScrollAnchor,
-  shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
 import {
   isTimelineScrollTarget,
@@ -170,12 +174,18 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
-import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
+import {
+  LAST_WORDS_GRACE_MS,
+  latestFinishedWordsAt,
+  settlingWithoutWordsUntil,
+} from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import type { LiveJobs } from "./liveJobs.logic";
+import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { handedOverRecently } from "../../zerops/mateHandOver";
 import type { CarriedRow } from "./stepHeight";
@@ -246,15 +256,14 @@ function TimelineLoadEarlierHeader({
   );
 }
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
+/** The keys that scroll a list: pressed, a reveal in flight gives way. */
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+function reducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+/** How long after a person's click what they opened is brought into view, while it eases open. */
+const REVEAL_FOR_MS = 700;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
-const TIMELINE_MAINTAIN_SCROLL_AT_END = {
-  animated: false,
-  on: {
-    dataChange: true,
-    itemLayout: true,
-    layout: true,
-  },
-} as const;
 /**
  * How far from the end growth at the end is still followed, in viewports.
  * Following is ours to switch off — every gesture that moves the viewport
@@ -263,6 +272,11 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
  * pixels in a few frames, and LegendList's own tenth of a viewport lost it.
  */
 const TIMELINE_FOLLOW_THRESHOLD = 1;
+/** The rows a settle brings that enter one after another: the Mate's words and its background work. */
+function pacedRow(row: MessagesTimelineRow): boolean {
+  if (row.kind === "message") return row.message.role === "assistant";
+  return row.kind === "after-work" || row.kind === "background";
+}
 /** An input a person gave the list, before it moved it. */
 export type TimelinePersonInput =
   | { readonly kind: "wheel" | "key"; readonly direction: "up" | "down" }
@@ -279,6 +293,8 @@ interface MessagesTimelineProps {
   working?: DockModel | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /** The background jobs the server holds live, as watched (`useLiveJobs`). */
+  liveJobs?: LiveJobs | null;
   onStopBackgroundWork?: () => void;
   stoppingBackgroundWork?: boolean;
   isWorking: boolean;
@@ -324,6 +340,8 @@ interface MessagesTimelineProps {
     scroll: {
       readonly byPerson: boolean;
       readonly direction: TimelineScrollDirection | null;
+      /** It jumped far up by no change of its content (`jumpedAway`). */
+      readonly jumped?: boolean;
     },
   ) => void;
   /** A person's input on the list, as it comes: whether it leaves the end is the caller's to tell. */
@@ -371,6 +389,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenAgents = NOOP_OPEN_AGENTS,
   working: workingNow = null,
   afterTurnWork = null,
+  liveJobs = null,
   onStopBackgroundWork = NOOP_STOP_BACKGROUND_WORK,
   stoppingBackgroundWork = false,
   listRef,
@@ -424,6 +443,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const restoringReadingPosition = !positionRestored;
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
   const endRepinFrameRef = useRef<number | null>(null);
+
   const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
 
   useLayoutEffect(() => {
@@ -493,6 +513,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
     return () => clearTimeout(timer);
   }, [finishedWordsAt]);
+  // A turn the server settled before its words landed stays live for the
+  // last words' wait (`settlingWithoutWordsUntil`): derived again once it ran out.
+  const settlingUntil = useMemo(
+    () => settlingWithoutWordsUntil(timelineEntries, latestTurn ?? null, isWorking, nowMs),
+    [timelineEntries, latestTurn, isWorking, nowMs],
+  );
+  useEffect(() => {
+    if (settlingUntil === null) return;
+    const timer = setTimeout(
+      () => setNowMs(Math.max(Date.now(), settlingUntil + 1)),
+      Math.max(0, Math.min(LAST_WORDS_GRACE_MS, settlingUntil - Date.now())) + 20,
+    );
+    return () => clearTimeout(timer);
+  }, [settlingUntil]);
   // Which of the helpers one launch started woke a run: the panel knows when
   // each finished.
   const helperFinishes = useMemo(
@@ -516,6 +550,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         supportsConversationRollback,
         queuedMessages,
         afterTurnWork,
+        liveJobs,
         helperFinishes,
         alongside,
         provider,
@@ -532,12 +567,32 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       supportsConversationRollback,
       queuedMessages,
       afterTurnWork,
+      liveJobs,
       helperFinishes,
       alongside,
       provider,
     ],
   );
-  const rows = useStableRows(rawRows);
+  const stableRows = useStableRows(rawRows);
+  // What a settle brings at once — the answer, the background card, a
+  // background line — enters one after another (`usePace`); a card's own
+  // slices and the person's words enter as they come.
+  const pacedRowIds = useMemo(
+    () => stableRows.flatMap((row) => (pacedRow(row) ? [row.id] : [])),
+    [stableRows],
+  );
+  // Out of sight (a kept list), nobody watches: they are simply there.
+  const rowsHeld = usePace({
+    keys: pacedRowIds,
+    flush: syncing || restoringReadingPosition || !(kept?.shown ?? true),
+  });
+  const rowsHeldKey = [...rowsHeld].join("\n");
+  // Read by what they are: the list's data changes only when they do.
+  const rows = useMemo(() => {
+    if (rowsHeldKey === "") return stableRows;
+    const held = new Set(rowsHeldKey.split("\n"));
+    return stableRows.filter((row) => !held.has(row.id));
+  }, [stableRows, rowsHeldKey]);
   // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
   // only) is empty while it holds nothing but seams.
   const crew = use(CrewTimelineContext);
@@ -666,34 +721,56 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useLayoutEffect(() => {
     followingEndRef.current = followingEnd;
   }, [followingEnd]);
+  // What keeps the list at its end while it follows (`createEndFollow`): at
+  // once for growth that comes a few pixels a frame, by a glide for a step.
+  // The list's own keeping is off: it jumps.
+  const endFollowRef = useRef<EndFollow | null>(null);
+  useEffect(() => {
+    const endFollow = createEndFollow({
+      viewport: () => listRef.current?.getScrollableNode() ?? null,
+      // Whether it stands at its end is the follower's own judgement, from
+      // the scrolls it hears: the list's own reading goes stale mid-glide.
+      follows: () => followingEndRef.current,
+    });
+    endFollowRef.current = endFollow;
+    return () => {
+      endFollow.stop();
+      endFollowRef.current = null;
+    };
+  }, [listRef]);
+  const followEnd = useCallback(() => endFollowRef.current?.follow(), []);
+  // Rows arriving, and the viewport resizing, move the end too.
+  useLayoutEffect(() => {
+    if (!followingEnd || !listPlaced || rows.length === 0) return;
+    const frame = requestAnimationFrame(followEnd);
+    return () => cancelAnimationFrame(frame);
+  }, [followEnd, followingEnd, listPlaced, rows]);
+  useEffect(() => {
+    const viewport = timelineViewportElement;
+    if (viewport === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(followEnd);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [followEnd, timelineViewportElement]);
   // LegendList re-pins the end itself only for a measurement that moved a row
   // by more than 5 px, so a row easing taller is followed here too — on the
   // next frame, as LegendList does: the scroll range takes the growth once the
   // list has re-rendered its new size.
   const onItemSizeChanged = useCallback(
     ({ previous, size }: { readonly previous: number; readonly size: number }) => {
-      const list = listRef.current;
-      if (
-        endRepinFrameRef.current !== null ||
-        list === null ||
-        !shouldRepinTimelineEndAfterRowResize({
-          followingEnd: followingEndRef.current,
-          withinFollowThreshold: list.getState().isWithinMaintainScrollAtEndThreshold,
-          previousSize: previous,
-          size,
-        })
-      ) {
-        return;
-      }
+      if (!followingEndRef.current || size <= previous) return;
+      // In the frame the row grew, once the list has drawn its new size (its
+      // render runs in a microtask queued before this one), so nothing under
+      // the reader moves for a frame; and again on the next frame, for a
+      // render the list put off.
+      queueMicrotask(followEnd);
+      if (endRepinFrameRef.current !== null) return;
       endRepinFrameRef.current = requestAnimationFrame(() => {
         endRepinFrameRef.current = null;
-        const viewport = listRef.current?.getScrollableNode();
-        // A gesture since the growth handed the viewport to the person.
-        if (!followingEndRef.current || !viewport) return;
-        viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+        followEnd();
       });
     },
-    [listRef],
+    [followEnd],
   );
 
   // Where the person is, kept as they move, by row: the row at the reading
@@ -849,19 +926,120 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [listRef, notePersonSession, timelineViewportElement]);
 
+  // What a person opens comes into view (`revealBy`): for a moment after
+  // their click, while it eases open, the list glides by as much as shows
+  // its foot over the composer, never its opener off the top; a scroll of
+  // theirs ends it.
+  const insetEndRef = useRef(contentInsetEndAdjustment);
+  useLayoutEffect(() => {
+    insetEndRef.current = contentInsetEndAdjustment;
+  }, [contentInsetEndAdjustment]);
+  useEffect(() => {
+    const wrapper = timelineViewportElement;
+    if (!wrapper || typeof requestAnimationFrame !== "function") return;
+    let frame = 0;
+    let until = 0;
+    let last = 0;
+    let opener: HTMLElement | null = null;
+    const stop = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      opener = null;
+    };
+    const regionOf = (button: HTMLElement): HTMLElement | null => {
+      const id = button.getAttribute("aria-controls");
+      const controlled = id === null ? null : button.ownerDocument.getElementById(id);
+      return (
+        controlled ??
+        button.closest<HTMLElement>("[data-chat-row],[data-background-line],[data-timeline-row-id]")
+      );
+    };
+    const step = (now: number) => {
+      frame = 0;
+      const viewport = listRef.current?.getScrollableNode();
+      if (opener === null || !viewport || !opener.isConnected || now > until) {
+        stop();
+        return;
+      }
+      frame = requestAnimationFrame(step);
+      if (opener.getAttribute("aria-expanded") !== "true") return;
+      const region = regionOf(opener);
+      if (region === null) return;
+      const box = viewport.getBoundingClientRect();
+      // Inside a run's own scroll, what shows of it ends at that scroll's foot.
+      const inner = region.closest<HTMLElement>("[data-run-scroll]");
+      const bottom = Math.min(
+        region.getBoundingClientRect().bottom,
+        inner?.getBoundingClientRect().bottom ?? Number.POSITIVE_INFINITY,
+      );
+      const by = revealBy({
+        openerTop: opener.getBoundingClientRect().top,
+        regionBottom: bottom,
+        view: { top: box.top, bottom: box.bottom - insetEndRef.current },
+      });
+      const dt = last === 0 ? 1000 / 60 : now - last;
+      last = now;
+      if (by <= 0.5) return;
+      // Under reduced motion it stands there at once.
+      if (reducedMotion()) {
+        viewport.scrollTop += by;
+        stop();
+        return;
+      }
+      viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
+    };
+    const onClick = (event: globalThis.MouseEvent) => {
+      const button =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>("[aria-expanded]")
+          : null;
+      if (button === null || button.getAttribute("aria-expanded") === "true") return;
+      opener = button;
+      until = performance.now() + REVEAL_FOR_MS;
+      last = 0;
+      if (frame === 0) frame = requestAnimationFrame(step);
+    };
+    // Any scroll of the person's ends it: a wheel, a touch, the keys, the scrollbar.
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (SCROLL_KEYS.has(event.key)) stop();
+    };
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      if (event.target === listRef.current?.getScrollableNode()) stop();
+    };
+    wrapper.addEventListener("click", onClick, { capture: true });
+    wrapper.addEventListener("wheel", stop, { passive: true });
+    wrapper.addEventListener("touchmove", stop, { passive: true });
+    wrapper.addEventListener("pointerdown", onPointerDown, { passive: true });
+    wrapper.ownerDocument.addEventListener("keydown", onKey);
+    return () => {
+      stop();
+      wrapper.removeEventListener("click", onClick, { capture: true });
+      wrapper.removeEventListener("wheel", stop);
+      wrapper.removeEventListener("touchmove", stop);
+      wrapper.removeEventListener("pointerdown", onPointerDown);
+      wrapper.ownerDocument.removeEventListener("keydown", onKey);
+    };
+  }, [listRef, timelineViewportElement]);
+
   // Where the list stood at the last read: what tells which way it moved since.
   const lastReadingRef = useRef<TimelineScrollReading | null>(null);
 
   const readList = useCallback(
-    (personScrolling: boolean) => {
+    (personScrolling: boolean, own = false) => {
       const node = listRef.current?.getScrollableNode();
       const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
       const scroll = reading
-        ? classifyTimelineScroll({
-            previous: lastReadingRef.current,
-            current: reading,
-            personScrolling,
-          })
+        ? {
+            ...classifyTimelineScroll({
+              previous: lastReadingRef.current,
+              current: reading,
+              personScrolling,
+            }),
+            // A jump far up that no change of the content explains — find in
+            // page, a fragment link, focus moving — leaves the end, whoever
+            // made it; the page's own moves never do.
+            jumped: !own && jumpedAway({ previous: lastReadingRef.current, current: reading }),
+          }
         : { byPerson: false, direction: null };
       lastReadingRef.current = reading && nextTimelineReading(lastReadingRef.current, reading);
       notePersonSession({ type: "scrolled", at: performance.now(), byPerson: scroll.byPerson });
@@ -917,10 +1095,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       rows,
     ],
   );
-  const handleScroll = useCallback(
-    () => readList(personIsScrolling(personSessionRef.current, performance.now())),
-    [readList],
-  );
+  // A move the page made itself (`scrollOwn`: a glide, a fold) is never the
+  // person's, however recently they touched the list.
+  const handleScroll = useCallback(() => {
+    const node = listRef.current?.getScrollableNode();
+    const own = node !== null && node !== undefined && takeOwnScroll(node);
+    readList(!own && personIsScrolling(personSessionRef.current, performance.now()), own);
+  }, [listRef, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
   useEffect(() => {
@@ -1313,6 +1494,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // Whether the list follows its end: a run's fold then keeps its
             // line in place while the list catches up (`foldAway`).
             data-timeline-follows-end={followingEnd ? "" : undefined}
+            // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
+            data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
             data-timeline-placing={listPlaced ? undefined : ""}
             // Handed over from its Mate's own view, the rows take the place of
             // its Mate at work as they stand, with no fade.
@@ -1333,7 +1516,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               // Off, no band: an end scroll LegendList queued before the person
               // left is dropped once their scroll lands.
               maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
-              maintainScrollAtEnd={followingEnd ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
+              // The end is kept here (`createEndFollow`), never by the list: its keeping jumps.
+              maintainScrollAtEnd={false}
               onItemSizeChanged={onItemSizeChanged}
               maintainVisibleContentPosition={
                 restoringReadingPosition ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
@@ -1372,7 +1556,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 notePersonSession({ type: "input", at: performance.now() });
                 void listRef.current?.scrollToIndex({
                   index: item.rowIndex,
-                  animated: true,
+                  animated: !reducedMotion(),
                   viewOffset: 24,
                 });
               }}
@@ -2198,27 +2382,27 @@ function RecordTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "record"
 }
 
 /**
- * Background work that finished after its turn, or that woke the run under
- * it: one quiet line saying what finished — a helper, a task, or how many —
- * and the latest in its own words; what each reported opens under it.
+ * Background work as one quiet line (`backgroundLine.logic`): what a settled
+ * turn sent to the background, on its own card (`jobs:`), work that finished
+ * outside any turn, or what woke the run under it.
  */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
-  const lastLabel = row.title ? row.title.charAt(0).toUpperCase() + row.title.slice(1) : null;
-  const { failed } = row;
-  const finished =
-    row.tasks === 1
-      ? lastLabel !== null
-        ? `${lastLabel} ${failed > 0 ? "failed" : "finished"}`
-        : `${row.helpers ? "A helper" : "A background task"} ${failed > 0 ? "failed" : "finished"}`
-      : `${row.tasks} ${row.helpers ? "helpers" : "background tasks"} finished${failed > 0 ? `, ${failed} failed` : ""}`;
-  return (
-    <BackgroundLine
-      entries={row.entries}
-      failed={failed > 0}
-      where={row.helpers ? "helper" : "in the background"}
-      words={finished}
-    />
-  );
+  const items =
+    row.jobs !== undefined
+      ? jobItems(row.jobs)
+      : row.entries.length > 0
+        ? taskItems(row.entries)
+        : // A helper the panel says finished, with no report of its own here.
+          [
+            {
+              key: row.id,
+              title: row.title ?? (row.helpers ? "A helper" : "A background task"),
+              state: row.failed > 0 ? ("failed" as const) : ("done" as const),
+              report: null,
+              mono: false,
+            },
+          ];
+  return <BackgroundLine line={backgroundLineOf(items, row.helpers)} />;
 }
 
 function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {

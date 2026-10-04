@@ -695,6 +695,23 @@ function pictureLabel(picture: OutcomePicture): string {
  * again: a page checked since, or a file looked at since, is that run's
  * picture now.
  */
+/** At most this many tiles stand in the strip; the last says how many more the viewer holds. */
+export const STRIP_TILES = 6;
+
+/**
+ * The files a run's result surely draws: those among its strip's first
+ * tiles (a picture placed under a row only moves those after it forward).
+ * An opened card leaves those to the result and draws the rest in their
+ * steps — never a picture twice, never one only behind "+N".
+ */
+export function stripShowsFiles(outcome: OutcomeModel): ReadonlySet<string> {
+  return new Set(
+    resultPictures(outcome)
+      .slice(0, STRIP_TILES)
+      .flatMap((picture) => (picture.kind === "file" ? [picture.path] : [])),
+  );
+}
+
 export function resultPictures(outcome: OutcomeModel): ReadonlyArray<ResultPicture> {
   const { later } = outcome;
   return outcome.pictures.flatMap((picture) =>

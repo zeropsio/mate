@@ -21,6 +21,12 @@ export type TimelineFollowEvent =
       readonly atEnd: boolean;
       readonly byPerson: boolean;
       readonly direction: TimelineScrollDirection | null;
+      /**
+       * It moved far up by something other than the content changing — find
+       * in page, a fragment link, focus moving, an autoscroll (`jumpedAway`):
+       * whoever made it, the list left the end.
+       */
+      readonly jumped?: boolean;
     }
   /**
    * A person's input aimed at the list that moves it toward its end (a wheel
@@ -39,6 +45,7 @@ export function nextTimelineFollow(following: boolean, event: TimelineFollowEven
     case "left-end":
       return false;
     case "position":
+      if (following && event.jumped === true && !event.atEnd) return false;
       if (!event.byPerson || event.direction === null) return following;
       // Direction, not position: a step up whose first frame is still near
       // the end is leaving it, and a step down that reaches it is coming back.
@@ -90,6 +97,28 @@ export function classifyTimelineScroll(input: {
     byPerson: input.personScrolling && !explainedByContent,
     direction: moved > 0 ? "toward-end" : "away",
   };
+}
+
+/** Further than this up in one move, not covered by the content's own change, is a jump away. */
+const TIMELINE_JUMP_PX = 40;
+
+/**
+ * Whether the list jumped up since the last read by something other than its
+ * content changing — find in page, a fragment link, focus moving into an
+ * earlier control, an autoscroll — none of which the person's scroll session
+ * sees. The list re-anchoring as rows change or the view shrinks moves it a
+ * few pixels, or as far as the content changed: never a jump.
+ */
+export function jumpedAway(input: {
+  readonly previous: TimelineScrollReading | null;
+  readonly current: TimelineScrollReading;
+}): boolean {
+  const { previous, current } = input;
+  if (previous === null) return false;
+  const moved = current.scrollTop - previous.scrollTop;
+  if (moved > -TIMELINE_JUMP_PX) return false;
+  const grew = current.contentHeight - previous.contentHeight;
+  return !(grew < 0 && Math.abs(grew) >= Math.abs(moved) - 1);
 }
 
 /**

@@ -161,9 +161,9 @@ function entryOf(
       pending: [],
       ...over,
     }),
-    read,
-    talkSettled: true,
-    placed: undefined,
+    activities: [],
+    matesKnown: true,
+    changesFailed: false,
     awaiting: !read,
     changesAwaiting: !read,
     mates: new Map(mates.map((mate) => [mate.project.id, mate])),
@@ -249,7 +249,7 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
   isMate: (value) => value.mate === true,
   onRetryContainers: () => {},
   renderEnvironment: (value) => h("li", { "data-test-environment": value.project.id }),
-  renderGroupMenu: (group) => h("span", { "data-test-menu": group.groupId }),
+  renderGroupMenu: (value) => h("span", { "data-test-menu": value.group.groupId }),
   renderGroupRows: () => null,
   renderMate: (value, options) =>
     h("div", {
@@ -275,11 +275,9 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
       "data-test-pull": value.number,
       "data-test-with-merge": String(options.withMerge),
     }),
-  renderStopMenu: (value) => h("span", { "data-test-stop-menu": value.project.id }),
   renderTool: (value) => h("span", { "data-test-tool": value.project.id }),
   tools: [],
   ungrouped: [],
-  view: "overview",
 };
 
 /** A tree to press and to walk — the markup alone cannot say what a click does. */

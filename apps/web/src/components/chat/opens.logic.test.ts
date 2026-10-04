@@ -105,38 +105,6 @@ describe("opens — a control is drawn only when it opens onto something not on 
       opener: { control: "checks", checks: 2, shown: 0 },
       opens: true,
     },
-    // 6. A helper's report.
-    {
-      name: "a helper whose report is its state word",
-      opener: { control: "helper", report: "Done.", state: "Done", previewCut: false },
-      opens: false,
-    },
-    {
-      name: "a helper's one short line stands whole under its title",
-      opener: { control: "helper", report: "Wrote three tests", state: "Done", previewCut: false },
-      opens: false,
-    },
-    {
-      // Measured, not counted: a short line on a narrow card is cut too.
-      name: "a helper's one line cut short at the card's width opens onto the rest",
-      opener: { control: "helper", report: "Wrote three tests", state: "Done", previewCut: true },
-      opens: true,
-    },
-    {
-      name: "a helper's report of several lines opens onto them",
-      opener: {
-        control: "helper",
-        report: "Wrote three tests\nAll pass",
-        state: "Done",
-        previewCut: false,
-      },
-      opens: true,
-    },
-    {
-      name: "a helper with no report",
-      opener: { control: "helper", report: null, state: "Working", previewCut: false },
-      opens: false,
-    },
     // 7. A step.
     {
       name: "a one-file edit: its line names the file",
@@ -231,6 +199,34 @@ describe("opens — a control is drawn only when it opens onto something not on 
     expect(stepOutput(search({ pattern: "uptime", path: "src", glob: "*.ts" }))).toEqual([
       { key: "0:asked", label: "Asked", text: "glob     *.ts\nin       src" },
     ]);
+  });
+
+  // A command sent to the background returned only a notice that it went
+  // there, with the agent's own folder in it: it opens onto what the job
+  // reported, and onto nothing while it runs or when it said nothing more.
+  it.each([
+    { name: "running", job: { state: "running", report: null }, shown: [] },
+    { name: "finished, saying nothing more", job: { state: "done", report: null }, shown: [] },
+    {
+      name: "failed with its exit code",
+      job: { state: "failed", report: "Exit code 3" },
+      shown: [{ key: "job", label: null, text: "Exit code 3" }],
+    },
+  ] as const)("a command sent to the background opens onto its report: $name", ({ job, shown }) => {
+    const launched = command(
+      "Command running in background with ID: b1. Output is being written to: /tmp/x/b1.output",
+    );
+    const sent = {
+      ...launched,
+      background: {
+        key: launched.key,
+        title: "Soak",
+        startedAt: launched.startedAt,
+        endedAt: null,
+        ...job,
+      },
+    };
+    expect(stepOutput(sent)).toEqual(shown);
   });
 
   // An ACP agent's detail is what its call names, not what it returned; a

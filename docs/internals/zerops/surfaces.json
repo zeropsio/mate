@@ -134,7 +134,9 @@
       "id": "zerops-browser-panel",
       "title": "Zerops browser panel",
       "components": [
+        "apps/web/src/components/zerops/MateAddresses.tsx",
         "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsBrowserSurface.tsx",
         "packages/client-runtime/src/zerops/browserStream.ts"
       ],
       "entryPoints": [
@@ -835,8 +837,7 @@
         "apps/web/src/components/zerops/ZeropsGroupTree.logic.ts",
         "apps/web/src/components/zerops/projects/ZeropsProjectsFlow.tsx",
         "apps/web/src/components/zerops/projects/flowSteps.tsx",
-        "apps/web/src/components/zerops/projects/OverviewView.tsx",
-        "apps/web/src/components/zerops/projects/ProjectsView.tsx",
+        "apps/web/src/components/zerops/projects/ProjectList.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
         "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
         "apps/web/src/components/zerops/ZeropsDeployRun.tsx",

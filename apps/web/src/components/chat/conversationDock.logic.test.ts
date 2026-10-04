@@ -45,6 +45,10 @@ function agent(id: string, status: RuntimeSubagent["status"], title: string): Ru
     phases: [],
     runHandles: null,
     recentActivity: [],
+    prompt: null,
+    toolUseId: null,
+    spawnedBy: null,
+    liveCall: null,
     firstSeenAt: at(1),
     startedAt: at(1),
     completedAt: status === "completed" ? at(9) : null,
@@ -88,6 +92,31 @@ describe("dockHelpers", () => {
       { id: "h1", title: "Titan models", tone: "busy", word: "Working" },
       { id: "h2", title: "Fire and destruction", tone: "ok", word: "Done" },
     ]);
+  });
+
+  it.each([
+    {
+      name: "a working helper says what it does now",
+      helper: { ...agent("h1", "running", "tests"), progress: "Running the unit tests" },
+      word: "Running the unit tests",
+    },
+    {
+      name: "a working helper that says nothing yet is working",
+      helper: agent("h1", "running", "tests"),
+      word: "Working",
+    },
+    {
+      name: "a helper waiting for the person says so, whatever it did last",
+      helper: { ...agent("h1", "waiting", "tests"), progress: "Running the unit tests" },
+      word: "Waiting for you",
+    },
+    {
+      name: "a settled helper says how it ended",
+      helper: { ...agent("h1", "completed", "tests"), progress: "Running the unit tests" },
+      word: "Done",
+    },
+  ])("$name", ({ helper, word }) => {
+    expect(dockHelpers(panel([helper])).map((row) => row.word)).toEqual([word]);
   });
 
   it.each([
@@ -277,9 +306,11 @@ describe("deriveDock", () => {
     pause: null,
   };
 
-  // The band holds only what runs now (pass 35): a failure is told once, as
-  // its row in the record, red until a later step undoes it.
-  it("holds the background tasks that run now, this turn's and any from before, never a failed one", () => {
+  // Run 9 and Bodhi: a bar of running tasks only read full beside "0/3", and
+  // its count could fall. While one runs, the bar holds what this turn sent
+  // to the background and what runs or ended during it — never an earlier
+  // turn's finished task, whose count would fall when its sibling ended.
+  it("holds, while one runs, this turn's background tasks and any from before still running", () => {
     const dock = deriveDock({
       ...base,
       backgroundTasks: foldBackgroundTasks([
@@ -293,9 +324,102 @@ describe("deriveDock", () => {
         task("task.started", "b2", 4, { detail: "Test" }),
       ]),
     });
-    expect(dock?.background).toMatchObject({ running: 2, done: 0, failed: 0 });
-    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["old-running", "b2"]);
+    expect(dock?.background).toMatchObject({ running: 2, done: 1, failed: 1 });
+    expect(dock?.background?.tasks.map((item) => item.id)).toEqual([
+      "old-running",
+      "b1",
+      "b0",
+      "b2",
+    ]);
     expect(dock?.afterTurn).toBeNull();
+  });
+
+  // Review of pass 39: the band kept a job lost to a restart "running" while
+  // its card said it didn't report back. One judgement (`jobLost`) for both.
+  it.each([
+    { name: "held live", held: ["b1"], running: 1 },
+    { name: "held no longer: lost, not in the band", held: [] as string[], running: 0 },
+    { name: "only a newer session's job held", held: ["b9"], running: 1 },
+  ])("drops a job the server holds no longer: $name", ({ held, running }) => {
+    const dock = deriveDock({
+      ...base,
+      isWorking: false,
+      runningTurnId: null,
+      backgroundLiveness: "monitoring",
+      liveJobs: { ids: new Set(held) },
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Soak" }, "t0"),
+        ...(held.includes("b9") ? [task("task.started", "b9", 3, { detail: "Newer" })] : []),
+      ]),
+    });
+    expect(
+      dock?.background?.tasks.filter((item) => item.id === "b1" && item.state === "running")
+        .length ?? 0,
+    ).toBe(held.includes("b1") ? 1 : 0);
+    expect(dock?.background?.running ?? 0).toBe(running);
+  });
+
+  // Review of pass 39: "1/3" fell to "1/2" as an earlier turn's sibling ended,
+  // and with no turn start known an earlier task that ended mid-turn left.
+  it.each([
+    { name: "the turn's start known", turnStartedAt: at(2) as string | null, entries: [] },
+    {
+      name: "the turn's start read off its first entry",
+      turnStartedAt: null,
+      entries: [operation("o1", "t1", 2, { kind: "deploy", phase: "done" })],
+    },
+  ])("never lets a count fall as earlier turns' tasks end: $name", ({ turnStartedAt, entries }) => {
+    const steps = [
+      task("task.started", "a1", 0, { detail: "Old one" }, "t0"),
+      task("task.started", "a2", 0, { detail: "Old two" }, "t0"),
+      task("task.completed", "a1", 1, { status: "completed" }, "t0"),
+      task("task.started", "c1", 3, { detail: "New" }),
+      task("task.completed", "a2", 4, { status: "completed" }, "t0"),
+    ];
+    const counts = steps.map((_, index) => {
+      const background = deriveDock({
+        ...base,
+        turnStartedAt,
+        timelineEntries: entries,
+        backgroundTasks: foldBackgroundTasks(steps.slice(0, index + 1)),
+      })?.background;
+      return background == null
+        ? null
+        : [background.tasks.length - background.running, background.tasks.length];
+    });
+    expect(counts).toEqual([
+      [0, 1],
+      [0, 2],
+      [0, 1],
+      [0, 2],
+      [1, 2],
+    ]);
+  });
+
+  it("counts only up as a turn's background tasks finish", () => {
+    const steps = [
+      task("task.started", "b1", 2, { detail: "Soak" }),
+      task("task.started", "b2", 2, { detail: "Outdated" }),
+      task("task.started", "b3", 2, { detail: "Fails" }),
+      task("task.completed", "b2", 3, { status: "completed" }),
+      task("task.completed", "b3", 4, { status: "failed" }),
+    ];
+    const finished = steps.map((_, index) => {
+      const background = deriveDock({
+        ...base,
+        backgroundTasks: foldBackgroundTasks(steps.slice(0, index + 1)),
+      })?.background;
+      return background === null || background === undefined
+        ? null
+        : [background.tasks.length, background.done + background.failed];
+    });
+    expect(finished).toEqual([
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [3, 1],
+      [3, 2],
+    ]);
   });
 
   it("stays after the turn while work runs on in the background: what still runs, and nothing else", () => {
@@ -306,6 +430,8 @@ describe("deriveDock", () => {
       backgroundLiveness: "working",
       agentPanelModel: panel([agent("h1", "running", "Long work"), agent("h2", "completed", "b")]),
       backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b0", 1, { detail: "Build" }, "t0"),
+        task("task.completed", "b0", 2, { status: "completed" }, "t0"),
         task("task.started", "b1", 2, { detail: "Typecheck" }),
         task("task.completed", "b1", 3, { status: "completed" }),
         task("task.started", "b2", 4, { detail: "Watch the PR", taskType: "monitor" }),
@@ -316,6 +442,7 @@ describe("deriveDock", () => {
       operations: [],
       tasks: null,
       helpers: { working: 1, done: 0 },
+      // After the turn its card's line is the record: the band holds only what runs.
       background: { running: 1, done: 0, failed: 0 },
     });
     expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b2"]);

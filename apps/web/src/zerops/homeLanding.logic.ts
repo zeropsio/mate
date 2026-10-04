@@ -8,6 +8,8 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 
+import type { ZeropsOrganizationStatus } from "./ZeropsSessionProvider";
+
 export type HomeView =
   | { readonly kind: "opening"; readonly ref: ScopedThreadRef }
   | { readonly kind: "wait" }
@@ -32,6 +34,34 @@ export function homeView(input: {
     return { kind: "opening", ref: input.remembered };
   }
   return { kind: "wait" };
+}
+
+/**
+ * Which home `/` paints: the account's projects, the landing that moves on to a Mate, or the wait
+ * between. A cold load counts no environment until the account's Mates register, so "nothing to
+ * land on" is an answer only once the Mates are read whole (`useMatesSettled`), or once nothing
+ * will list them until something happens — no organization chosen (the projects page asks for
+ * one), the account's access unverified, the environment catalog unreadable (the projects page
+ * says which). Until then it waits with its guess, and lands nowhere: with no usable environment,
+ * a cached thread is a dead Mate's. Once painted, the projects page stays until a Mate is
+ * counted. Pure.
+ */
+export function homeDoor(input: {
+  /** The door counts no usable environment. */
+  readonly noEnvironments: boolean;
+  /** Every Mate this tab will register is registered or will not be. */
+  readonly matesSettled: boolean;
+  /** The projects page is what the home shows now. */
+  readonly projectsShown: boolean;
+  readonly organization: ZeropsOrganizationStatus;
+  /** The account's access failed to verify (`useZeropsInventory().error`). */
+  readonly accountTrouble: boolean;
+  readonly catalogFailed: boolean;
+}): "landing" | "wait" | "projects" {
+  if (!input.noEnvironments) return "landing";
+  const blocked =
+    input.organization === "needs-selection" || input.accountTrouble || input.catalogFailed;
+  return input.matesSettled || blocked || input.projectsShown ? "projects" : "wait";
 }
 
 /**

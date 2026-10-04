@@ -82,28 +82,28 @@ describe("right panel kinds", () => {
       {
         kind: "data",
         label: "Data",
-        description: "Browse the project's managed data services.",
+        description: "Browse databases and storage.",
         shortcut: "V",
         unavailableHint: "Available in a Zerops project.",
       },
       {
         kind: "git",
         label: "Git",
-        description: "Follow this Mate's branches and where they go.",
+        description: "Follow branches and where they go.",
         shortcut: "G",
         unavailableHint: "Available in a Zerops project.",
       },
       {
         kind: "crew",
         label: "Crew",
-        description: "Set up this Mate's crew and follow its tasks.",
+        description: "Set up a crew and follow its tasks.",
         shortcut: "C",
         unavailableHint: "Available in a Zerops project with crew mode on.",
       },
       {
         kind: "mcp",
         label: "MCP",
-        description: "Add and check the tools your agents can call.",
+        description: "Add and check your agents' tools.",
         shortcut: "M",
         unavailableHint: "Available from a conversation.",
       },
@@ -216,6 +216,28 @@ describe("right panel kinds", () => {
       expect(crew === undefined ? false : crew.available).toBe(card);
       // A hidden kind is no card at all: a disabled one would still show the tab exists.
       expect(crew === undefined).toBe(!card);
+    },
+  );
+
+  /**
+   * A Mate's workspace (`/var/www`) is no Git repository of its own, so Diff
+   * read "Available for Git repositories." on every Mate — yet each turn saves
+   * a diff of the services' checkouts below it (the owner: "the diff tab
+   * hasn't been working / doing anything for ages").
+   */
+  it.each([
+    { gitRepo: false, zeropsPanel: "available", serverThread: true, diff: "available" },
+    { gitRepo: false, zeropsPanel: "unknown", serverThread: true, diff: "unknown" },
+    { gitRepo: null, zeropsPanel: "unavailable", serverThread: true, diff: "unknown" },
+    { gitRepo: false, zeropsPanel: "unavailable", serverThread: true, diff: "unavailable" },
+    { gitRepo: false, zeropsPanel: "available", serverThread: false, diff: "unavailable" },
+  ] as const)(
+    "Diff with Git $gitRepo and the Zerops panel $zeropsPanel (server thread $serverThread): $diff",
+    ({ gitRepo, zeropsPanel, serverThread, diff }) => {
+      expect(
+        resolveRightPanelAvailability({ ...AVAILABLE_INPUT, gitRepo, zeropsPanel, serverThread })
+          .diff,
+      ).toBe(diff);
     },
   );
 
