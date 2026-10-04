@@ -153,7 +153,8 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
   project, nothing more (`api.ts:1791`, ADR 0003); a sensitive variable of its `zcp` service. A key
   the platform minted `ADMIN` is lowered by its harden (`hardenMate`), when a person finishes setting
   the Mate up — never on a page's read (step A, A11); a `READ_ONLY` grant on a sibling that an
-  earlier client gave a key stays until it is taken off by hand
+  earlier client gave a key is said by HQ, which reads the key the Mate names (`keyWider`), and its
+  menu offers _Finish setup_, whose harden takes it off (`planMateKey`, `findWiderMateKey`)
   - _Reaches:_ its own project — the door's role reads, zcp's every platform call, the challenge it
     writes for HQ
 - **a Mate credential** — issued by HQ for a challenge whose nonce it finds in the Mate's own

@@ -100,6 +100,12 @@ export interface HqMate extends HqMateRecord {
   readonly standupRequestedBy?: string | null;
   /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
   readonly closedOff?: boolean;
+  /**
+   * The key it last named reads other projects too — READ_ONLY grants on siblings an earlier client
+   * gave it (ADR 0003's fallout): it needs *Finish setup*, whose harden takes them off. Absent where
+   * it does not, and from an older HQ.
+   */
+  readonly keyWider?: boolean;
   /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
   readonly logins?: OverviewLogins;
   /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
@@ -261,6 +267,12 @@ export interface HqApi {
    * (`mate_not_found`).
    */
   readonly recordClosedOff: (projectId: string) => Promise<void>;
+  /**
+   * HQ reads the Mate's widened key again (`POST /api/mates/{projectId}/key-check`), asked by its
+   * project's admin once *Finish setup* took its sibling grants off: its record stops saying
+   * `keyWider` once the key reaches its own project alone.
+   */
+  readonly recheckKey: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
@@ -1094,6 +1106,13 @@ export function makeHqApi(input: {
     recordClosedOff: async (projectId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
+        { method: "POST" },
+        true,
+      );
+    },
+    recheckKey: async (projectId) => {
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/key-check`,
         { method: "POST" },
         true,
       );

@@ -53,6 +53,9 @@ vi.mock("./accountHq", () => ({
     recordClosedOff: async () => {
       hq.calls?.push("mark");
     },
+    recheckKey: async () => {
+      hq.calls?.push("recheck key");
+    },
     bindBirth: async () => undefined,
     attachProject: async (
       appId: string,
@@ -1305,6 +1308,64 @@ describe("finishMateSetup — the harden path", () => {
     hq.key = null;
     expect(await finishOld()).toMatchObject({ ok: true });
     expect(asked).toEqual(["token-7", undefined]);
+    forgetPress("p-old");
+  });
+
+  // ADR 0003's fallout: a Mate HQ holds whose key reads other projects is hardened by its Finish
+  // setup, which matches its widened key on the token list — HQ never takes that key for the
+  // Mate's — and then asks HQ to read the key again.
+  it("hardens a Mate whose key reads other projects, then asks HQ to read its key again", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const asked: Array<string | undefined> = [];
+    const matched = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            isolateProjectEnv: (_project: unknown, keyTokenId?: string) => {
+              asked.push(keyTokenId);
+              calls.push("harden");
+              return Effect.succeed({
+                value: {
+                  tokenLowered: true,
+                  keyNotLowered: null,
+                  delegationsDropped: 0,
+                  isolationSteps: 1,
+                  restarted: false,
+                },
+              });
+            },
+          },
+        },
+      },
+    };
+    hq.calls = calls;
+    hq.key = "token-own-earlier";
+    expect(
+      await finishMateSetup({
+        inputs: matched as never,
+        projectId: "p-old",
+        projectName: "Acme - Ada",
+        container: null,
+        registration: null,
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        harden: true,
+        keyWider: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    hq.key = null;
+    expect(asked).toEqual([undefined]);
+    expect(calls).toEqual(["harden", "recheck key", "mark"]);
     forgetPress("p-old");
   });
 

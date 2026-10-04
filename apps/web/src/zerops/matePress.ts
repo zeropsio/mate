@@ -1023,6 +1023,12 @@ export async function finishMateSetup(input: {
    * dropped and its key moved off the project's variables (`hardenMate`) before the steps run.
    */
   readonly harden?: boolean;
+  /**
+   * HQ says the Mate's key reads other projects too (`keyWider`, ADR 0003's fallout): its harden
+   * matches that widened key on the token list — HQ never takes it for the Mate's key — takes its
+   * sibling grants off, and asks HQ to read the key again.
+   */
+  readonly keyWider?: boolean;
   /** Each step's state as the press moves, for a dialog that stays on it. */
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** This browser's locks; the page's own where omitted. */
@@ -1068,6 +1074,21 @@ async function mateKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promis
   } catch {
     // HQ not answering, or not telling this person: the harden matches the token list instead.
     return null;
+  }
+}
+
+/**
+ * HQ asked to read the Mate's widened key again (`recheckKey`); HQ not answering leaves its word as
+ * it was, and Finish setup offered again — nothing of the Mate's waits on it.
+ */
+async function recheckKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<void> {
+  if (input.hq === null) return;
+  try {
+    await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey(
+      input.projectId,
+    );
+  } catch {
+    // Said again on its menu; the harden it asked for is done.
   }
 }
 
@@ -1150,8 +1171,9 @@ async function finishLocked(
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
     // The key its Mate named to HQ by its id, hardened by it alone (audit K3); matched on the token
-    // list only where the Mate named none, or HQ does not say.
-    const keyTokenId = await mateKeyAtHq(input);
+    // list only where the Mate named none, or HQ does not say — or where the key it holds reads
+    // other projects, which HQ never takes for its key.
+    const keyTokenId = input.keyWider === true ? null : await mateKeyAtHq(input);
     try {
       const hardened = await runZeropsCommand(
         input.inputs.data.runtime.commands.isolateProjectEnv(
@@ -1167,6 +1189,8 @@ async function finishLocked(
     if (keyNotLowered !== null && input.isCurrent()) {
       noteKeyNotLowered(input.projectId, keyNotLowered);
     }
+    // HQ reads the key again, and stops saying it reads other projects once it does not.
+    if (input.keyWider === true && keyNotLowered === null) await recheckKeyAtHq(input);
   }
   return runPress({
     organizationId: input.inputs.organizationId,
