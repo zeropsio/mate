@@ -4722,10 +4722,11 @@ describe("incomplete data says so, with its retry", () => {
       reads: { atFirst: 1, afterAMinute: 1, afterGrant: 2 },
     },
     {
-      // 1 s, 2 s, then the 10 s cap for good: a spent budget never falls back to fast rungs.
+      // 1 s, then the 10 s cap for good (a budget of two): a spent budget never falls back to
+      // fast rungs.
       name: "a 5xx backs off and is read again, staying at the cap",
       error: { kind: "server", status: 503 },
-      reads: { atFirst: 1, afterAMinute: 8, afterGrant: 8 },
+      reads: { atFirst: 1, afterAMinute: 7, afterGrant: 7 },
     },
   ] as const)("a failed entity read: $name", ({ error, reads }) =>
     Effect.gen(function* () {
@@ -4763,6 +4764,7 @@ describe("incomplete data says so, with its retry", () => {
         adapter,
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
         policy: makeZeropsDataPolicy({
           hydrationRetryLimit: 2,
           recoveryBackoffStartMs: 1_000,
@@ -4800,6 +4802,14 @@ describe("incomplete data says so, with its retry", () => {
       yield* settle;
       const afterGrant = afterAMinute + processReads - before;
       expect({ atFirst: atFirst > 0 ? 1 : 0, afterAMinute, afterGrant }).toEqual(reads);
+      // A read failing again under the new grant says so again: the round never hides it.
+      for (let second = 0; second < 2; second++) {
+        yield* TestClock.adjust("1 second");
+        yield* settle;
+      }
+      expect(registry.get(runtime.stateAtom).interests.get(lease.interest)?.interest.status).toBe(
+        "failed",
+      );
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);
@@ -6230,7 +6240,7 @@ describe("an interest that fails alone recovers alone", () => {
     ),
   );
 
-  it.effect("retries that churn past the released-subscription bound replace the socket", () =>
+  it.effect("refused retries never held a subscription: past the bound, the socket stays", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const rig = yield* refusing(3, { policy: { releasedRegistrationsPerReceiver: 2 } });
@@ -6246,7 +6256,8 @@ describe("an interest that fails alone recovers alone", () => {
           rig.states,
           (state) => state.interests.get(lease.interest)?.interest.status === "observing",
         );
-        expect(rig.harness.counts().opens).toBe(2);
+        // Each refusal the platform answered left nothing subscribed on the socket to release.
+        expect(rig.harness.counts().opens).toBe(1);
         yield* rig.runtime.shutdown("application-close");
         rig.stop();
         rig.registry.dispose();

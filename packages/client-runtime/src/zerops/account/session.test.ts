@@ -536,6 +536,37 @@ describe("makeZeropsSessionDriver", () => {
     expect(tab.events).toEqual(["open user-1"]);
   });
 
+  it.each([
+    ["the person's success answers first", [1, 0]],
+    ["the background failure answers first", [0, 1]],
+  ] as const)(
+    "a Verify again during a background retry is never undone by it: %s",
+    async (_name, order) => {
+      const origin = makeOrigin({ session: stored, owner: null });
+      const pending: Array<(verdict: ZeropsPrincipalVerdict) => void> = [];
+      const tab = origin.tab({
+        verify: () => new Promise<ZeropsPrincipalVerdict>((resolve) => pending.push(resolve)),
+      });
+      tab.driver.start();
+      await flush();
+      pending.shift()!(unavailable);
+      await flush();
+      expect(tab.driver.state().status).toBe("unavailable");
+      // The timed retry goes out in the background; the person presses Verify again meanwhile.
+      tab.advance(RETRY_RUNGS_MS[0]!);
+      await flush();
+      tab.driver.send({ type: "VERIFY_AGAIN" });
+      await flush();
+      const [backgroundCheck, ownCheck] = [pending[0]!, pending[1]!];
+      const answers = [() => backgroundCheck(unavailable), () => ownCheck(user(person))];
+      for (const index of order) {
+        answers[index]!();
+        await flush();
+      }
+      expect(tab.driver.state().status).toBe("signed-in");
+    },
+  );
+
   it("a Verify again while the retry waits is the one attempt: its timer sends no second", async () => {
     const origin = makeOrigin({ session: stored, owner: null });
     let calls = 0;
