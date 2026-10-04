@@ -380,7 +380,7 @@ process searches belong to an opened project or explicit action. Each demanded s
 subscription baselines with a direct anchor. Removing its surface releases demand. The access
 verifier shares an opened project's direct read and never uses navigation enumeration to renew
 access. A failed grant round or project check retries on the grant's ladders while the tab is
-visible (`account-lifecycle.md`). A failed registration, hydration or metadata read retries on its
+visible (`account-lifecycle.md`); a malformed answer waits for the manual action alone. A failed registration, hydration or metadata read retries on its
 bounded backoff while the tab is visible and its demand is held, never while hidden, beside the
 visible manual action that retries at once.
 
