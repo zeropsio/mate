@@ -80,6 +80,22 @@ function settling(shown: unknown) {
 }
 
 describe("readZeropsCell", () => {
+  it("an explicit again refreshes a held cell once before awaiting its answer", async () => {
+    let retried = 0;
+    const broker = {
+      acquire: () =>
+        Effect.succeed({
+          retry: Effect.sync(() => {
+            retried += 1;
+            return true;
+          }),
+          awaitSettled: Effect.sync(() => known(retried === 0 ? "old" : "fresh")),
+        }),
+    } as unknown as Parameters<typeof readZeropsCell>[0];
+    await expect(readZeropsCell(broker, {} as never, undefined, true)).resolves.toBe("fresh");
+    expect(retried).toBe(1);
+  });
+
   it("rejects a read that did not succeed, rather than answering nothing", async () => {
     await expect(readZeropsCell(settling(FAILED), {} as never)).rejects.toBeDefined();
     await expect(

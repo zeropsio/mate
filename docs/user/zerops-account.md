@@ -33,6 +33,11 @@ time proves it happened during the turn; otherwise the chat gives Mate's restart
 message to continue. Mate keeps the coding agent's saved conversation cursor, but recovery depends
 on that agent's saved session still being available.
 
+The projects page cleans up expired temporary sign-in tokens left by an interrupted sign-in.
+Cleanup progress and failures stay visible. Use **Clean up sign-in tokens** to find older
+leftovers, or **Try again** after a cleanup failure. Reloading preserves a failed cleanup and
+still requires **Try again**.
+
 Signing out locks every Mate tab sharing this browser login. It does not sign out other devices or
 stop work already running in a project. Signing out of the Zerops website is separate from revoking
 Mate's access; you can revoke Mate's token in Zerops account settings.

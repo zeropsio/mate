@@ -1,4 +1,5 @@
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
+import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
@@ -1927,9 +1928,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
 
-  // The throwaways this tab failed to delete, once they are past the door's
-  // window; it lists the organization's tokens for nothing else.
-  useZeropsThrowawaySweep({
+  // Persisted cleanup debt is restored after a crash, once inventory admits the account.
+  const throwawayCleanup = useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
     // Not on sign-in alone: deleting a token is a `project-write`, and the api
     // admits one only through the epoch's grant (`admitWritesThrough`), which
@@ -2591,6 +2591,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
+      {status === "signed-in" && activeOrganization !== null && !inventory.isLoading ? (
+        <ZeropsThrowawayCleanup view={throwawayCleanup} />
+      ) : null}
       {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
         // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
         <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />

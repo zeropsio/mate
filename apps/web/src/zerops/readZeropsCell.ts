@@ -14,15 +14,22 @@ import * as Effect from "effect/Effect";
  * until `signal` aborts — an unmount abandoning the flow releases the lease
  * immediately instead of holding it until the read finally settles. Rejects
  * unless the read that settled it succeeded: a failure, a withholding, or a
- * value whose revalidation failed.
+ * value whose revalidation failed. An explicit `again` refreshes the held cell before awaiting it.
  */
 export function readZeropsCell<Request extends ZeropsCellRequest>(
   cells: ZeropsCells,
   request: Request,
   signal?: AbortSignal,
+  again = false,
 ): Promise<ZeropsCellValue<Request>> {
   return Effect.runPromise(
-    Effect.scoped(cells.acquire(request).pipe(Effect.flatMap((lease) => lease.awaitSettled))),
+    Effect.scoped(
+      Effect.gen(function* () {
+        const lease = yield* cells.acquire(request);
+        if (again) yield* lease.retry;
+        return yield* lease.awaitSettled;
+      }),
+    ),
     signal === undefined ? undefined : { signal },
   ).then((shown) => {
     const answer = settledValue(shown);

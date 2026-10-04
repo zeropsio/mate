@@ -56,6 +56,9 @@ export interface ThrowawayDebt {
   readonly owe: (clientId: string, atMs: number, attempt?: string) => void;
   /** The newest outstanding attempt; null when this organization owes none. */
   readonly failedAt: (clientId: string) => number | null;
+  /** A sweep failed: subsequent loads require the person to ask again. */
+  readonly sweepFailed: (clientId: string) => boolean;
+  readonly failSweep: (clientId: string, atMs: number) => void;
   /** One mint was refused or its token deleted: other outstanding attempts remain owed. */
   readonly finish: (clientId: string, attempt: string) => void;
   /** A sweep settled attempts up to this time; later mints remain owed. */
@@ -134,6 +137,16 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
       for (const entry of owed.values())
         if (entry.clientId === clientId) at = Math.max(at ?? 0, entry.at);
       return at;
+    },
+    sweepFailed: (clientId) => {
+      read();
+      return owed.has(JSON.stringify([clientId, "sweep-failed"]));
+    },
+    failSweep: (clientId, at) => {
+      read();
+      const attempt = "sweep-failed";
+      owed.set(JSON.stringify([clientId, attempt]), { clientId, attempt, at });
+      told();
     },
     finish: (clientId, attempt) => {
       read();
