@@ -95,3 +95,9 @@ shows its accepted Zerops process and follows that process to its outcome; a fai
 the handle and a reason. Inspect that process before registering again. These actions belong to
 the member who signed the login in (or an operator when no signer was recorded). Mate never
 repeats failed checks or registration writes automatically.
+
+If HQ's live connection drops, Mate keeps the last projects shown with their as-of time and says
+**Reconnecting…** while it reconnects automatically. If HQ remains unavailable, the notice says
+it is retrying every 30 seconds and offers **Try again**. A session or permission refusal stops
+automatic reconnects and shows the reason; **Try again** starts a new attempt. Reconnecting the
+stream does not repeat your writes.

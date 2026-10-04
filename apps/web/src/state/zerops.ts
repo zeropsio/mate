@@ -107,8 +107,10 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
  * applications and the projects HQ places in them.
  */
 export interface HqStructureView {
-  /** A failed stream attempt, waiting for the person to ask again. */
+  /** A definitive refusal, or an outage whose reconnect backoff has reached its cap. */
   readonly failure?: string | null;
+  /** Connection recovery, kept visible while the last known data stands. */
+  readonly reconnecting?: { readonly delayMs: number; readonly capped: boolean } | null;
   readonly organizationId: string;
   /** Null while nothing is known: never read here, nothing remembered from before. */
   readonly structure: HqStructure | null;

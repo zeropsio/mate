@@ -116,9 +116,235 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
   };
 }
 
+describe("automatic HQ recovery", () => {
+  it("backs off to 30 s, keeps its outage and as-of time, and keeps trying at the cap", async () => {
+    vi.useFakeTimers();
+    const h = harness({ structure: ACME, readAt: 1 });
+    const api = streamingApi([{ events: [], end: "cut" }]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      for (const [index, delayMs] of [1000, 2000, 4000, 8000, 16000, 30000, 30000].entries()) {
+        expect(api.attempts()).toBe(index + 1);
+        expect(h.views.at(-1)).toMatchObject({
+          structure: ACME,
+          readAt: 1,
+          current: false,
+          unavailableSince: 10000,
+          reconnecting: { delayMs, capped: delayMs === 30000 },
+        });
+        expect(hqOutageLine(h.views.at(-1)!, "locale", 10000)).toContain(
+          delayMs === 30000 ? "Retrying every 30 seconds." : "Reconnecting…",
+        );
+        if (delayMs < 30000) expect(h.views.at(-1)?.failure).toBeNull();
+        h.tick(delayMs);
+        await vi.advanceTimersByTimeAsync(delayMs - 1);
+        expect(api.attempts()).toBe(index + 1);
+        await vi.advanceTimersByTimeAsync(1);
+      }
+      requestHqSnapshot("org-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.attempts()).toBe(9);
+      expect(h.views.at(-1)).toMatchObject({
+        reconnecting: { delayMs: 1000, capped: false },
+        failure: null,
+      });
+    } finally {
+      stop.abort();
+      await driving;
+      expect(vi.getTimerCount()).toBe(0);
+      vi.useRealTimers();
+    }
+  });
+
+  it("replaces the cap notice with quiet recovery while a manual reconnect awaits its snapshot", async () => {
+    vi.useFakeTimers();
+    const h = harness({ structure: ACME, readAt: 1 });
+    let attempts = 0;
+    const api = {
+      streamStructure: async (
+        _on: Parameters<HqApi["streamStructure"]>[0],
+        signal: AbortSignal,
+      ) => {
+        if (++attempts <= 6) throw new Error("Connection lost.");
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason)),
+        );
+      },
+    };
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(31000);
+      expect(h.views.at(-1)).toMatchObject({ reconnecting: { capped: true } });
+      requestHqSnapshot("org-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toBe(7);
+      expect(h.views.at(-1)).toMatchObject({
+        failure: null,
+        reconnecting: { delayMs: 0, capped: false },
+      });
+      expect(hqOutageLine(h.views.at(-1)!, "locale", 10000)).toContain("Reconnecting…");
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["session_required", "forbidden"])(
+    "does not reconnect a definitive %s refusal",
+    async (code) => {
+      vi.useFakeTimers();
+      const h = harness({ structure: ACME, readAt: 1 });
+      const refusal = new HqError({
+        kind: "refused",
+        code,
+        status: code === "forbidden" ? 403 : 401,
+        message: "Access ended.",
+      });
+      const api = {
+        streamStructure: vi.fn(async () => {
+          throw refusal;
+        }),
+      };
+      const stop = new AbortController();
+      const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+      try {
+        await vi.advanceTimersByTimeAsync(120000);
+        expect(api.streamStructure).toHaveBeenCalledTimes(1);
+        expect(h.views.at(-1)).toMatchObject({
+          structure: ACME,
+          readAt: 1,
+          failure: "Access ended.",
+          reconnecting: null,
+        });
+        requestHqSnapshot("org-1");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(api.streamStructure).toHaveBeenCalledTimes(2);
+      } finally {
+        stop.abort();
+        await driving;
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("reconnects a silent stream and resets backoff only when a fresh snapshot arrives", async () => {
+    vi.useFakeTimers();
+    const h = harness({ structure: ACME, readAt: 1 });
+    const handlers: Array<Parameters<HqApi["streamStructure"]>[0]> = [];
+    const api = {
+      streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0], signal: AbortSignal) => {
+        handlers.push(on);
+        if (handlers.length === 1 || handlers.length === 3)
+          await new Promise<void>((_resolve, reject) =>
+            signal.addEventListener("abort", () => reject(signal.reason)),
+          );
+        else {
+          on.onAlive();
+          throw new Error("Connection lost.");
+        }
+      },
+    };
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(h.views.at(-1)).toMatchObject({ reconnecting: { delayMs: 1000 } });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(h.views.at(-1)).toMatchObject({ readAt: 1, reconnecting: { delayMs: 2000 } });
+      await vi.advanceTimersByTimeAsync(2000);
+      handlers[2]!.onEvent({
+        kind: "snapshot",
+        structure: ACME,
+        changes: null,
+        appReads: null,
+        mates: null,
+        people: null,
+      });
+      expect(h.views.at(-1)).toMatchObject({
+        current: true,
+        failure: null,
+        unavailableSince: null,
+        reconnecting: null,
+      });
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(h.views.at(-1)).toMatchObject({ reconnecting: { delayMs: 1000 } });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores late callbacks from a failed attempt during backoff", async () => {
+    vi.useFakeTimers();
+    const h = harness({ structure: ACME, readAt: 1 });
+    let callbacks: Parameters<HqApi["streamStructure"]>[0] | undefined;
+    const api = {
+      streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0]) => {
+        callbacks = on;
+        throw new Error("Connection lost.");
+      },
+    };
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks!.onEvent({
+        kind: "snapshot",
+        structure: { ungrouped: [], apps: [BETA] },
+        changes: null,
+        appReads: null,
+        mates: null,
+        people: null,
+      });
+      expect(h.views.at(-1)).toMatchObject({
+        structure: ACME,
+        readAt: 1,
+        current: false,
+        reconnecting: { delayMs: 1000 },
+      });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("immediately reconnects 1001 once, then backs off repeated going-away without a snapshot", async () => {
+    vi.useFakeTimers();
+    const h = harness({ structure: ACME, readAt: 1 });
+    const api = {
+      streamStructure: vi.fn(async () => {
+        throw new HqError({
+          kind: "unavailable",
+          code: "socket_1001",
+          message: "HQ is restarting.",
+        });
+      }),
+    };
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.streamStructure).toHaveBeenCalledTimes(2);
+      expect(h.views.at(-1)).toMatchObject({ reconnecting: { delayMs: 1000 } });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(api.streamStructure).toHaveBeenCalledTimes(3);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("planned HQ segments", () => {
   it.each([1000, 1001, 1006, 1011, 4401, 4408])(
-    "keeps structure and Mates live through rotation, then surfaces close %i for manual again",
+    "keeps structure and Mates live through rotation, then marks close %i stale",
     async (code) => {
       const h = harness();
       const stop = new AbortController();
@@ -214,7 +440,7 @@ describe("HQ menu currency", () => {
     ).toMatch(/Last known · as of .* · Updating…/);
   });
   it.each(["fail", "close", "cut"] as const)(
-    "holds rows after %s until a manual again",
+    "holds rows during backoff after %s and allows manual reconnect",
     async (end) => {
       const h = harness({ structure: ACME, readAt: 1 });
       const controller = new AbortController();
@@ -244,7 +470,7 @@ describe("HQ menu currency", () => {
   );
 });
 describe("driveHqStructure", () => {
-  it("ends an initial failure visibly without retrying until explicitly asked", async () => {
+  it("automatically reconnects an initial failure with no data to show", async () => {
     vi.useFakeTimers();
     const api = streamingApi([
       { events: [], end: "fail" },
@@ -254,15 +480,10 @@ describe("driveHqStructure", () => {
     const stop = new AbortController();
     const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
     try {
-      await vi.advanceTimersByTimeAsync(30_000);
-      expect(api.attempts()).toBe(1);
-      expect(h.views.at(-1)).toMatchObject({
-        current: false,
-        unavailableSince: 10_000,
-        failure: "HQ could not be reached.",
-      });
-      requestHqSnapshot("org-1");
       await vi.advanceTimersByTimeAsync(0);
+      expect(api.attempts()).toBe(1);
+      expect(hqOutageLine(h.views.at(-1)!, "locale", 10000)).toBe("Reconnecting…");
+      await vi.advanceTimersByTimeAsync(1000);
       expect(api.attempts()).toBe(2);
     } finally {
       stop.abort();
@@ -271,42 +492,58 @@ describe("driveHqStructure", () => {
     }
   });
 
-  it("ends a lost socket visibly and waits for manual again", async () => {
+  it("reconnects an IPv4 cut at 120 s when pings kept the socket alive", async () => {
     vi.useFakeTimers();
-    const api = streamingApi([
-      {
-        events: [
-          {
-            kind: "snapshot",
-            structure: ACME,
-            changes: null,
-            appReads: null,
-            mates: null,
-            people: null,
-          },
-        ],
-        end: "cut",
-      },
-      { events: [], end: "fail" },
-      { events: [], end: "hang" },
-    ]);
     const h = harness();
     const stop = new AbortController();
+    let attempts = 0;
+    const api = {
+      streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0], signal: AbortSignal) => {
+        attempts++;
+        on.onEvent({
+          kind: "snapshot",
+          structure: ACME,
+          changes: null,
+          appReads: null,
+          mates: null,
+          people: null,
+        });
+        await new Promise<void>((_resolve, reject) => {
+          const ping = setInterval(() => {
+            h.tick(20000);
+            on.onAlive();
+          }, 20000);
+          const cut = setTimeout(() => {
+            clearInterval(ping);
+            reject(
+              new HqError({
+                kind: "unavailable",
+                code: "socket_1006",
+                message: "HQ's stream broke.",
+              }),
+            );
+          }, 120000);
+          signal.addEventListener("abort", () => {
+            clearInterval(ping);
+            clearTimeout(cut);
+            reject(signal.reason);
+          });
+        });
+      },
+    };
     const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
     try {
-      await vi.advanceTimersByTimeAsync(30_000);
-      expect(api.attempts()).toBe(1);
+      await vi.advanceTimersByTimeAsync(120000);
+      expect(attempts).toBe(1);
       expect(h.views.at(-1)).toMatchObject({
         structure: ACME,
         current: false,
-        failure: "HQ's stream broke.",
+        failure: null,
+        reconnecting: { delayMs: 1000 },
       });
-      requestHqSnapshot("org-1");
-      await vi.advanceTimersByTimeAsync(0);
-      expect(api.attempts()).toBe(2);
-      requestHqSnapshot("org-1");
-      await vi.advanceTimersByTimeAsync(0);
-      expect(api.attempts()).toBe(3);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(attempts).toBe(2);
+      expect(h.views.at(-1)).toMatchObject({ current: true, reconnecting: null });
     } finally {
       stop.abort();
       await driving;

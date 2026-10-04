@@ -4205,7 +4205,7 @@ export default function Sidebar() {
               notice={zeropsNotice}
               hqOutage={zeropsHqOutage}
               onHqAgain={
-                zeropsHqView?.unavailableSince == null
+                !zeropsHqView?.failure
                   ? undefined
                   : () => {
                       if (zeropsSession.activeOrganization)

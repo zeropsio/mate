@@ -119,7 +119,7 @@ describe("readBundledCore — Core as this build carries it", () => {
 
 // Step A, open question 1: the member list names the official HQ, and KRLS's took tens of seconds
 // to read. A browser keeps the verdict per account and organization, and reads the list again only
-// on first use, after HQ refuses as not official, or after an outage of more than ten minutes.
+// on first use, or after HQ refuses as not official.
 /** The anchor an org admin minted for the HQ at `address`: what the member list names it by. */
 const anchor = (projectId: string, address: string) =>
   ({
@@ -312,7 +312,7 @@ describe("useAccountHq — the official HQ this browser keeps", () => {
     ]);
   });
 
-  it("an outage of more than ten minutes reads the member list once", async () => {
+  it("a stream outage does not silently change the kept HQ verdict", async () => {
     const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
     keepHqVerdict({ account: scope.account, clientId: "org-out" }, HQ);
     const hq = await rendered(
@@ -323,8 +323,8 @@ describe("useAccountHq — the official HQ this browser keeps", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    // Read once for this outage, the same HQ kept again, and not read again while it lasts.
-    expect([hq.reads(), hq.last().hq]).toEqual([1, { kind: "official", ...HQ }]);
+    // Reconnecting the stream must not silently rediscover or change the official HQ.
+    expect([hq.reads(), hq.last().hq]).toEqual([0, { kind: "official", ...HQ }]);
   });
 });
 
