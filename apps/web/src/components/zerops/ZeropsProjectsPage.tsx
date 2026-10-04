@@ -204,6 +204,7 @@ import {
   productionAddable,
   talkSettled,
   withoutOfficialHq,
+  shownUngrouped,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
 import { deleteOffered, emptyApplications, groupIsEmpty } from "./projects/emptyApps.logic";
@@ -1034,7 +1035,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
       outsideHq:
-        candidate.service !== undefined &&
+        hasMate(candidate) &&
         mateOutsideHq(
           candidate.project,
           hqKnown,
@@ -2591,10 +2592,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? route.trouble ?? projectFlow.trouble;
-  const ungroupedRows = withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
-    item: candidate,
-    action: deriveZeropsRowAction(rowInput(candidate)).kind,
-  }));
+  const ungroupedRows = shownUngrouped(
+    withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
+      item: candidate,
+      action: deriveZeropsRowAction(rowInput(candidate)).kind,
+    })),
+  );
 
   return (
     // The page's end clears the app's fixed "Open main sidebar" control, so

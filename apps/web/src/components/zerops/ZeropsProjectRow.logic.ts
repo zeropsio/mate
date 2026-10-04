@@ -21,6 +21,7 @@ import {
   newMateTint,
   type OfferAsker,
   readZeropsToolKind,
+  readZeropsMembership,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type FlowReleaseRow,
@@ -535,7 +536,8 @@ export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowActio
 }
 
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
-  const { candidate, health, can, role } = input;
+  const { candidate, health, can } = input;
+  const role = input.role ?? readZeropsMembership(candidate.project).role;
   if (input.outsideHq) return { kind: "not-in-hq" };
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   // A verb the door would refuse is not offered (D5). The row says why in
@@ -554,7 +556,14 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       if (candidate.creationFailed !== undefined) {
         return can.remove ? { kind: "remove", label: "Remove" } : { kind: "none" };
       }
-      if (candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)) {
+      // Missing HQ membership cannot establish that an existing environment is a dev box.
+      // Only an explicit dev role or a declared Mate justifies setting up a container here.
+      if (
+        candidate.missingContainer === true &&
+        can.setUpMate &&
+        mateSetupOffered(role) &&
+        (role === "dev" || role === "devstage" || hasMate(candidate))
+      ) {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }
       if (transitionalStatus(candidate) !== undefined) return { kind: "none" };

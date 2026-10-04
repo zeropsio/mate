@@ -38,6 +38,7 @@ import {
   stripColumns,
   talkSettled,
   withoutOfficialHq,
+  shownUngrouped,
   type FoldedGroupInput,
 } from "./projectsView.logic";
 
@@ -1152,5 +1153,24 @@ describe("withoutOfficialHq — the page's projects, never the organization's HQ
     },
   ])("$case", ({ hq, ids }) => {
     expect(withoutOfficialHq(ROWS, hq).map(({ project }) => project.id)).toEqual(ids);
+  });
+});
+
+describe("the Overview's ungrouped projects", () => {
+  it("leaves foreign environments without a Mate out of the collapsed containers and setup list", () => {
+    const row = (id: string, tags: string[], container: boolean) => ({
+      item: {
+        key: id,
+        group: "unavailable" as const,
+        project: { id, name: id, status: "ACTIVE", tagList: tags },
+        ...(container ? { service: { id: "zcp", name: "zcp", status: "ACTIVE" } } : {}),
+      },
+      action: "none" as const,
+    });
+    const mate = row("foreign-mate", ["mate"], true);
+    const lostMate = row("lost-mate", ["mate"], false);
+    const production = row("foreign-prod", ["mate:g:foreign", "mate:role:prod"], false);
+    const ordinary = row("central-prometheus", [], false);
+    expect(shownUngrouped([production, ordinary, mate, lostMate])).toEqual([mate, lostMate]);
   });
 });

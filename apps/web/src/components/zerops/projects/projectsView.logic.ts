@@ -296,6 +296,13 @@ export function withoutOfficialHq<T extends { readonly project: { readonly id: s
   return rows.filter((row) => row.project.id !== hq.projectId);
 }
 
+/** Foreign environments without a Mate do not belong in the Overview's container or setup list. */
+export function shownUngrouped<T extends ZeropsCandidate>(
+  rows: ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }>,
+): ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }> {
+  return rows.filter(({ item, action }) => hasMate(item) || action === "set-up-mate");
+}
+
 /**
  * The ungrouped projects, split: the containers fold into one line, and a
  * project with no Mate container at all (*Set up Mate*) keeps a quiet line of
