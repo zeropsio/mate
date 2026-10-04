@@ -458,9 +458,10 @@ is never committed, at boot or at a turn's end: edits on it stop the task, "its 
 after its check", and stay where they are. A passed check records the tip it ran on, and Land
 refuses any other tip ("its copy moved after its check"), so nothing unchecked lands. A copy missing at boot or after a self-deploy comes back from its branch
 (`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
-tip remain, so no work is lost; otherwise the loss is named, the host stays frozen, and the copy
-offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
-never resets an existing directory. A turn the provider broke off (`api_error`, `model_error`,
+tip remain, so no work is lost; otherwise the loss is named and the copy offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
+never resets an existing directory. Nothing leaves a host frozen with no way out: a self-deploy's
+end thaws its host before the recovery, a recovery thaws it whatever it finds, and boot thaws a
+host whose deploy the restart cut off. Each landing is verified on the host it landed on. A turn the provider broke off (`api_error`, `model_error`,
 `turn_setup_failed`) saves its work in the turn's WIP commit and queues its task again once, the
 second time it stops; an overflowed context (`prompt_too_long`, `rapid_refill_breaker`) saves its
 work and rotates at once into a fresh conversation, which a running run carries the task on in, at

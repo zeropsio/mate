@@ -43,7 +43,7 @@
  * `recover` prunes worktrees, verifies every `crew/<handle>` and every
  * recorded landing's `Crew-Assignment:` trailer in H's first-parent history,
  * and re-adds the lanes only when nothing was lost - or names what was lost
- * and keeps the host frozen. The boot `sweep` re-derives lane state from git,
+ * and leaves those copies missing. Either way the host thaws. The boot `sweep` re-derives lane state from git,
  * not from the tables. `rebuild` re-adds one copy a person selects.
  *
  * @module CrewWorkspace
@@ -282,7 +282,7 @@ export interface CrewWorkspaceService {
   /**
    * After a self-deploy, a container replacement, or whenever a lane directory
    * is missing: prune, verify every branch and recorded landing, then re-add
-   * the lanes, set them up and unfreeze - or name the loss and stay frozen.
+   * the lanes and set them up - or name the loss. Either way the host thaws.
    */
   readonly recover: (
     host: string,
@@ -666,6 +666,8 @@ export const make = Effect.gen(function* () {
           lanes.filter((row) => branches.includes(row.lane)),
           (row) => store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "lost" })),
         );
+        // The loss is named; the copies left stay missing, and nothing keeps the host frozen.
+        yield* setFrozen(host, null);
         return { _tag: "lost", landings: lost, branches, wip } satisfies RecoverOutcome;
       }
       const readded = present.filter((lane) => !lane.dir).map((lane) => lane.handle);

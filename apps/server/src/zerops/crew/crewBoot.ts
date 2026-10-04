@@ -177,6 +177,9 @@ export const inspectBoot = (core: CrewCore) =>
  */
 const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
   Effect.gen(function* () {
+    // A self-deploy the restart cut off has nobody left to see it end: the host thaws, and
+    // the sweep and recovery below read what the deploy left.
+    yield* asRefusal(core.workspace.unfreeze(host));
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     const open = (handle: string) => openTaskOf(tasks, handle);
     const checked = new Set(

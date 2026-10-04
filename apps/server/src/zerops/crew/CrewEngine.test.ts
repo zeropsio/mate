@@ -1073,6 +1073,66 @@ describe("CrewEngine", () => {
       ),
   );
 
+  const deployEvent = (type: "item.started" | "item.completed") =>
+    spiEvent(
+      type,
+      "person-thread",
+      {
+        itemType: "mcp_tool_call",
+        status: type === "item.started" ? "inProgress" : "completed",
+      } as never,
+      {
+        itemId: "deploy-1",
+        toolCall: {
+          name: "zerops_deploy",
+          rawName: "mcp__zerops__zerops_deploy",
+          server: "zerops",
+          arguments: { targetService: "appdev" },
+        },
+      } as never,
+    );
+
+  it.live("a self-deploy that lost a copy's branch unfreezes the service and names the loss", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* world.publish(deployEvent("item.started"));
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
+        git(world.root, ["worktree", "prune"]);
+        git(world.root, ["branch", "-D", "-q", "crew/backend"]);
+        yield* world.publish(deployEvent("item.completed"));
+        const after = yield* snapshotWhere(
+          (snapshot) => snapshot.lastError?.includes("crew/backend") === true,
+        );
+        const lane = yield* (yield* CrewStore).getLane(CREW_ID, "backend");
+        assert.deepStrictEqual(
+          [after.crewmates[0]!.lane?.state === "frozen", Option.getOrThrow(lane).frozenSince],
+          [false, null],
+        );
+      }),
+    ),
+  );
+
+  it.live("a restart during a self-deploy does not leave the service frozen", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "ready");
+          yield* command({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
+        }),
+    ]),
+  );
+
   it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
     withCrewEngines([
       (world) =>

@@ -95,10 +95,16 @@ export const laneSpecsOn = (applied: AppliedCrew, host: string): ReadonlyArray<L
  * A host whose copies went missing (a self-deploy, a container replacement,
  * a restart): `recover` re-adds them only when every branch, recorded
  * landing and saved tip is still there, so no work is lost; otherwise it
- * names what was lost, keeps the host frozen, and the copies stay missing
- * for a person's Rebuild crew copy.
+ * names what was lost, and those copies stay missing for a person's Rebuild
+ * crew copy. The host thaws either way.
  */
 export const recoverLanes = (core: CrewCore, applied: AppliedCrew, host: string, when: string) =>
+  recoverLanesOnce(core, applied, host, when).pipe(
+    // A recovery that fails still thaws the host: nothing freezes it with no way out.
+    Effect.ensuring(core.workspace.unfreeze(host).pipe(Effect.ignore)),
+  );
+
+const recoverLanesOnce = (core: CrewCore, applied: AppliedCrew, host: string, when: string) =>
   Effect.gen(function* () {
     yield* core.repositories.refresh;
     const outcome = yield* asRefusal(core.workspace.recover(host, laneSpecsOn(applied, host)));
@@ -511,6 +517,8 @@ export const makeTurnHandler = (core: CrewCore) => {
           deploys.set(event.itemId, target);
           yield* freeze(applied, target);
         } else if (event.type === "item.completed" && deploys.delete(event.itemId)) {
+          yield* asRefusal(core.workspace.unfreeze(target));
+          yield* core.changed;
           yield* core.background(
             recoverLanes(core, applied, target, "came back from its deploy").pipe(
               Effect.andThen(advanceAll(core)),
