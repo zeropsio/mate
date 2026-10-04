@@ -31,9 +31,9 @@
  *   — Zerops not answering, git failing, the service not there, a key missing, dead or widened —
  *   ends it refused at once, in HQ's words, for a person's Run again.
  * - **A build is submitted once** (audit H6): Zerops takes no idempotency key, so the version HQ
- *   makes is recorded before its archive goes up, and its build's process once build-and-deploy
- *   answers. A lost answer is never submitted again: the job stays submitting and HQ reads the
- *   version it made. A build is followed by its process, else its version (`follow`) — Zerops'
+ *   makes is recorded before its archive goes up, its upload once it answered — only then is its
+ *   build asked for — and its build's process once build-and-deploy answers. A lost answer is
+ *   never submitted again: the job stays submitting and HQ reads the version it made. A build is followed by its process, else its version (`follow`) — Zerops'
  *   socket takes no token HQ holds (2026-10-03) — every 10 s for its first 20 min, then every
  *   minute, for at most 75 min — a build ends within Zerops' 1-hour limit — then HQ stops
  *   following it, refused.
@@ -129,8 +129,9 @@ export interface DeploysOptions {
   /** How long after its submission HQ follows a build at most; 75 min. */
   readonly followFor?: Duration.Duration;
   /**
-   * How long after its submission a version whose build-and-deploy went unanswered may still wait
-   * for its archive before HQ takes it that Zerops never took the submission; 1 min.
+   * How long after HQ's upload of its archive answered a version whose build-and-deploy went
+   * unanswered may still wait for its archive before HQ takes it that Zerops never took the build;
+   * 1 min. A delta's import, likewise, from its submission.
    */
   readonly untakenAfter?: Duration.Duration;
 }
@@ -265,6 +266,8 @@ interface Job {
   readonly by: string | null;
   /** How long ago its submission began, ms; none before. */
   readonly submitted_ms: number | null;
+  /** How long after its submission began HQ's upload of its archive answered, ms; none before. */
+  readonly uploaded_after_ms: number | null;
 }
 
 type DeployJob = Job & { readonly service: string; readonly repo: string; readonly sha: string };
@@ -374,7 +377,8 @@ const JOB_COLUMNS = `
   j.id::text AS id, j.rollout_id::text AS rollout_id, j.kind, j.project_id,
   e.app_id::text AS app_id, e.name AS env_name, e.tier, j.service, j.service_id, j.repo, j.sha,
   j.label, j.services, j.processes, j.state, j.app_version_id, j.process_id, r.cause, r.by,
-  (EXTRACT(EPOCH FROM (now() - j.submitted_at)) * 1000)::float8 AS submitted_ms`;
+  (EXTRACT(EPOCH FROM (now() - j.submitted_at)) * 1000)::float8 AS submitted_ms,
+  (EXTRACT(EPOCH FROM (j.uploaded_at - j.submitted_at)) * 1000)::float8 AS uploaded_after_ms`;
 const JOB_FROM = `
   hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
   JOIN hq_rollout r ON r.id = j.rollout_id`;
@@ -1015,9 +1019,10 @@ export const deploysLayer = (
        * build's process where HQ heard it, else by its version — every `pollEvery` while it is
        * younger than `slowAfter`, then every `slowPollEvery`, counted from its submission, so a
        * takeover resumes the same clock. Live once the service runs the version; the build's own
-       * failure; refused where Zerops never took the submission — its version still waits for its
-       * archive past `untakenAfter` — where Zerops no longer has the version, or, past `followFor`,
-       * where HQ stops. What cannot be read now is read again. It records nothing: its caller does.
+       * failure; refused where HQ asked for no build — its upload went unanswered — or Zerops never
+       * took it — its version still waits for its archive `untakenAfter` past HQ's upload — where
+       * Zerops no longer has the version, or, past `followFor`, where HQ stops. What cannot be read
+       * now is read again. It records nothing: its caller does.
        */
       const follow = (
         job: Job,
@@ -1049,16 +1054,27 @@ export const deploysLayer = (
               reason: `the deploy finished, but ${job.service ?? ""} runs ${other}`,
             } as const;
           });
-          /** Where it stands by its version's own status. */
+          /**
+           * Where it stands by its version's own status. One still waiting for its archive whose
+           * upload HQ never heard answer was never asked to build; one HQ uploaded is given
+           * `untakenAfter` from the upload to show its build taken.
+           */
           const byVersion = (age: number) =>
             Effect.gen(function* () {
               const { status } = yield* deploy.appVersion(versionId)(token);
               if (status === "UPLOADING") {
-                return age < untakenAfter
+                if (job.uploaded_after_ms === null) {
+                  return {
+                    state: "refused",
+                    reason:
+                      "HQ's upload of the deploy's archive went unanswered: no build was asked for",
+                  } as const;
+                }
+                return age - job.uploaded_after_ms < untakenAfter
                   ? undefined
                   : ({
                       state: "refused",
-                      reason: "Zerops did not take the deploy's submission",
+                      reason: "Zerops did not take the deploy's build",
                     } as const);
               }
               if (status === "ACTIVE" || status === "BACKUP") return yield* landed;
@@ -1161,8 +1177,8 @@ export const deploysLayer = (
       /**
        * A deploy job submitted, once: the key checked, the service read — one that runs what HQ
        * last made it run there is live at once — the commit read, and then its version made and
-       * recorded before anything is submitted with it, its archive uploaded and its build asked
-       * for, the build's process recorded. Whatever does not go through ends the job; an answer
+       * recorded before anything is submitted with it, its archive uploaded and the upload
+       * recorded, its build asked for, the build's process recorded. Whatever does not go through ends the job; an answer
        * lost after the version was made leaves it submitting, for its version tells (`follow`).
        */
       const submitDeploy = (job: DeployJob) =>
@@ -1205,22 +1221,27 @@ export const deploysLayer = (
             // Kept before anything is submitted with it: whatever answer is lost from here on,
             // HQ reads this version instead of making another (audit H6).
             yield* update(job, sql`app_version_id = ${version.id}`);
-            const started = yield* Effect.andThen(
-              deploy.upload(version.id, commit.archive)(token),
-              deploy.buildAndDeploy(version.id, commit.zeropsYaml, setup)(token),
-            ).pipe(
-              Effect.map(Option.some),
-              Effect.catchTag("ZeropsUnavailable", (error) =>
-                Effect.as(
-                  Effect.logWarning("a deploy's submission went unanswered", {
-                    environment: job.env_name,
-                    service: job.service,
-                    error,
-                  }),
-                  Option.none(),
+            const started = yield* deploy
+              .upload(
+                version.id,
+                commit.archive,
+              )(token)
+              .pipe(
+                // Its upload answered: from here on its build is asked for.
+                Effect.andThen(update(job, sql`uploaded_at = now()`)),
+                Effect.andThen(deploy.buildAndDeploy(version.id, commit.zeropsYaml, setup)(token)),
+                Effect.map(Option.some),
+                Effect.catchTag("ZeropsUnavailable", (error) =>
+                  Effect.as(
+                    Effect.logWarning("a deploy's submission went unanswered", {
+                      environment: job.env_name,
+                      service: job.service,
+                      error,
+                    }),
+                    Option.none(),
+                  ),
                 ),
-              ),
-            );
+              );
             if (Option.isSome(started)) {
               yield* update(job, sql`state = 'building', process_id = ${started.value.processId}`);
             }
