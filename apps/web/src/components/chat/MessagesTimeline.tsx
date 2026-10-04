@@ -1473,6 +1473,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // Whether the list follows its end: a run's fold then keeps its
             // line in place while the list catches up (`foldAway`).
             data-timeline-follows-end={followingEnd ? "" : undefined}
+            // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
+            data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
             data-timeline-placing={listPlaced ? undefined : ""}
             // Handed over from its Mate's own view, the rows take the place of
             // its Mate at work as they stand, with no fade.

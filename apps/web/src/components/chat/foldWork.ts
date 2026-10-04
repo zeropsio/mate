@@ -16,8 +16,11 @@ import { ROOM_TAU_MS, approach } from "./runMotion.logic";
 /** Frames the rows under the card are held after the fold, while the list catches up. */
 const HOLD_AFTER_FRAMES = 6;
 
-/** The most frames the fold waits for the conversation's glide to end. */
-const WAIT_AT_MOST_FRAMES = 40;
+/** The most frames the fold waits for the conversation to settle. */
+const WAIT_AT_MOST_FRAMES = 60;
+
+/** Frames the list takes to lay out the rows a settle brings, at the least. */
+const LIST_LAYS_OUT_FRAMES = 3;
 
 /** Said on the conversation's scroll while it glides to its end (`createEndFollow`). */
 export const GLIDING_ATTRIBUTE = "data-timeline-gliding";
@@ -84,8 +87,13 @@ export function foldWork({
       else release();
       return;
     }
-    // Waits for the conversation to stand at what the settle brought.
-    if (scroller?.hasAttribute(GLIDING_ATTRIBUTE) && waited < WAIT_AT_MOST_FRAMES) {
+    // Waits for the list to lay out what the settle brought, for it to enter
+    // and for the conversation to stand at it.
+    const busy =
+      waited < LIST_LAYS_OUT_FRAMES ||
+      scroller?.hasAttribute(GLIDING_ATTRIBUTE) === true ||
+      scroller?.closest("[data-timeline-arriving]") != null;
+    if (busy && waited < WAIT_AT_MOST_FRAMES) {
       waited += 1;
       frame = requestAnimationFrame(step);
       return;
