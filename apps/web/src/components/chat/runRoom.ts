@@ -44,6 +44,9 @@ export interface Rooms {
   readonly stop: () => void;
 }
 
+/** Said on a box while it holds a height of its own: what it holds is read without it. */
+const EASING = "data-room-easing";
+
 /** Said on the root of a set of rooms: what holds it leaves what changes inside to it. */
 const ROOM_ROOT = "data-room-root";
 
@@ -103,13 +106,28 @@ export function easeRooms({
     box.shown = height;
     box.element.style.height = height === null ? "" : `${height}px`;
     if (box.clips) box.element.style.clipPath = height === null ? "" : CLIP_BELOW;
+    box.element.toggleAttribute(EASING, height !== null);
   };
-  /** The box's height as laid out with what it holds, the boxes inside it as they show. */
+  /**
+   * The box's height as laid out with what it holds, the boxes inside it as
+   * they show — and the boxes holding it, of any set, let go for the reading,
+   * so a height they hold for a moment never squeezes it.
+   */
   const natural = (box: Box) => {
-    if (box.shown === null) return heightOf(box.element);
+    const held: Array<readonly [HTMLElement, string]> = [];
+    for (
+      let holder = box.element.parentElement?.closest<HTMLElement>(`[${EASING}]`) ?? null;
+      holder !== null;
+      holder = holder.parentElement?.closest<HTMLElement>(`[${EASING}]`) ?? null
+    ) {
+      held.push([holder, holder.style.height]);
+      holder.style.height = "";
+    }
+    const own = box.element.style.height;
     box.element.style.height = "";
     const height = heightOf(box.element);
-    box.element.style.height = `${box.shown}px`;
+    box.element.style.height = own;
+    for (const [holder, height] of held) holder.style.height = height;
     return height;
   };
   const release = (box: Box) => {
@@ -123,6 +141,9 @@ export function easeRooms({
     let easing = false;
     for (const box of boxes.values()) {
       if (box.shown === null) continue;
+      // What it holds may have moved on since (a box inside it easing, a
+      // height animated in it): it eases to that.
+      box.target = natural(box);
       const next = approach(box.shown, box.target, dt, ROOM_TAU_MS);
       if (next === box.target) {
         release(box);
