@@ -3475,7 +3475,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       const before = slotHolds(from);
       const leaving = [...before].filter((key) => !after.has(key));
       // What enters makes its room too: the history glides as the slot grows.
-      const entering = to.entries.some((entry) => !before.has(entry.key));
+      // Entering is against what the slot drew, not what it held: an item
+      // held behind "Thinking" (`pending`) enters on a settle all the same.
+      const drawn = new Set(from.entries.map((entry) => entry.key));
+      const entering = to.entries.some((entry) => !drawn.has(entry.key));
       if (leaving.length === 0 && !entering) return;
       // Where things stood as last painted: a change heard right after a draw
       // that already moved them (a check that ended as it was due, drawn as
