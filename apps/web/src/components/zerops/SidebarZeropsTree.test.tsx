@@ -1173,6 +1173,43 @@ describe("a Mate's face follows its work in the menu", () => {
 
   // HQ holds a Mate's link open, so it is up, though this tab holds no socket to it and no chat of
   // its says anything yet (t12, 2026-10-03): its presence wakes its face, not a main chat.
+  it("keeps the application and its open work when its last Mate leaves the listing", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    registry.set(hqStructureAtom, {
+      organizationId: organization.organizationId,
+      structure: { apps: [{ id: "aaa", name: "Beviro CRM", projects: [] }], ungrouped: [] },
+      changes: null,
+      appReads: null,
+      readAt: Date.now(),
+      current: true,
+      unavailableSince: null,
+    });
+    const html = renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          getFlow={() => ({
+            pullRequests: [pull(7, { mateProjectId: "gone-mate" })],
+            environments: new Map(),
+            releaseOffered: false,
+          })}
+        />
+      </RegistryContext.Provider>,
+    );
+    expect(html).toContain("Beviro CRM");
+    expect(html).toContain("#7 Change 7 · gone-mate");
+    expect(html).not.toContain("No Zerops projects yet");
+    registry.dispose();
+  });
+
   it("says a foreign Mate is outside this HQ instead of inventing a sign-in state", () => {
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {
@@ -1512,16 +1549,6 @@ describe("the project's flow under it", () => {
     expect(three.match(/data-zerops-surface="sidebar-pull-request"/gu)).toHaveLength(3);
   });
 
-  // Only Mates open changes (SPEC §5.4): one whose Mate the menu does not hold is drawn nowhere.
-  it("draws no row for a change of a Mate the menu does not hold", () => {
-    const html = withFlow(
-      [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(7, { mateProjectId: "gone-dev" })] }),
-    );
-    expect(html).not.toContain("#7 Change 7");
-    expect(html).not.toContain("sidebar-pull-request");
-  });
-
   // Production and stage leave the list (M1): the chip on the heading
   // carries them, so no stop is ever a row among the Mates.
   it("draws no row for a stop, and with nothing read no change, dot or verb", () => {
@@ -1531,6 +1558,14 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("sidebar-pull-request");
     expect(html).not.toContain("status-dot");
     expect(html).not.toContain("Release");
+  });
+
+  it("keeps a missing Mate's open change in a separate block with Review and its identity", () => {
+    const missing = pull(7, { mateProjectId: "gone-mate" });
+    const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [missing] }));
+    expect(html).toContain('data-zerops-surface="sidebar-other-pull-requests"');
+    expect(html).toContain("#7 Change 7 · gone-mate");
+    expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
   });
 
   it("keeps the recipe change counted by the Overview under its Mate", () => {
@@ -3884,7 +3919,10 @@ describe("what the jump box finds in the menu", () => {
         change.mateProjectId,
         change.whose,
       ]),
-    ).toEqual([["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name]]);
+    ).toEqual([
+      ["appdev#4", "#4 Add a search box", "links-dev", index()?.mates[0]?.name],
+      ["appdev#6", "#6 Bump the linter", "gone-dev", "gone-dev"],
+    ]);
     expect(index()?.stops.map((stop) => [stop.projectId, stop.title])).toEqual([
       ["links-stage", "Links - stage"],
       ["links-prod", "Links - production"],
@@ -3900,7 +3938,7 @@ describe("what the jump box finds in the menu", () => {
     stored.collapsed = new Set(["links"]);
     mount(tree());
     expect(index()?.mates).toHaveLength(1);
-    expect(index()?.changes).toHaveLength(1);
+    expect(index()?.changes).toHaveLength(2);
     expect(index()?.stops).toHaveLength(2);
   });
 

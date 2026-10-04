@@ -336,20 +336,26 @@ export function byNewest(left: FlowPullRequest, right: FlowPullRequest): number 
 }
 
 /**
- * Each listed Mate's open pull requests, newest first. Only Mates open changes (SPEC §5.4), so
- * every change is one's; a Mate the caller does not list has none here.
+ * Each listed Mate's changes, newest first, and those whose Mate is no longer listed.
+ * Open work belongs to the application even after its container leaves.
  */
 export function pullRequestsByMate(
   pulls: ReadonlyArray<FlowPullRequest>,
   mateProjectIds: ReadonlyArray<string>,
-): ReadonlyMap<string, ReadonlyArray<FlowPullRequest>> {
+): {
+  readonly byMate: ReadonlyMap<string, ReadonlyArray<FlowPullRequest>>;
+  readonly others: ReadonlyArray<FlowPullRequest>;
+} {
   const byMate = new Map<string, Array<FlowPullRequest>>(
     mateProjectIds.map((projectId) => [projectId, []]),
   );
+  const others: Array<FlowPullRequest> = [];
   for (const pull of [...pulls].sort(byNewest)) {
-    byMate.get(pull.mateProjectId)?.push(pull);
+    const own = byMate.get(pull.mateProjectId);
+    if (own === undefined) others.push(pull);
+    else own.push(pull);
   }
-  return byMate;
+  return { byMate, others };
 }
 
 /** How many pull requests a Mate shows before its list folds. */

@@ -616,6 +616,16 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   shown,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
+  const structureView = useAtomValue(hqStructureAtom);
+  const placements = useAtomValue(hqPlacementsAtom);
+  const appsWithWork =
+    placements === null || structureView === null || structureView.structure === null
+      ? []
+      : structureView.structure.apps.filter(
+          (app) =>
+            (getFlow?.(app.id)?.pullRequests.length ?? remembered?.changes(app.id)?.length ?? 0) >
+            0,
+        );
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
     : mateEnvironmentsEmptyReason(candidates);
@@ -838,7 +848,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   drawnForMemory.current = NOTHING_DRAWN;
 
   // A Mate being created is one to draw, whatever the listing holds yet.
-  const nothing = births.some((birth) => birth.placement.kind === "mate") ? undefined : emptyReason;
+  const nothing =
+    appsWithWork.length > 0 || births.some((birth) => birth.placement.kind === "mate")
+      ? undefined
+      : emptyReason;
 
   // Nothing to draw, and the listing may not say "none" yet: its notice, at
   // the menu's own left edge, never an empty state it has not earned.
@@ -896,6 +909,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     ...mates,
   ];
   const view = buildZeropsGroupTree(everyEnvironment, {
+    apps: appsWithWork,
     rank: rankZeropsCandidateForListing,
     order: projectOrder.order,
     ...(projectOrder.customOrder === undefined ? {} : { customOrder: projectOrder.customOrder }),
@@ -986,7 +1000,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       // A hidden Mate's changes are drawn nowhere, so they are found nowhere.
       for (const { item } of mateEntries) {
         const mateProjectId = item.project.id;
-        for (const pull of grouped.get(mateProjectId) ?? []) {
+        for (const pull of grouped.byMate.get(mateProjectId) ?? []) {
           jumpChanges.push({
             key: changeRowKey(pull),
             groupId: id,
@@ -998,6 +1012,20 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             whose: names.get(mateProjectId),
           });
         }
+      }
+    }
+    if (input.changesDrawn) {
+      for (const pull of grouped.others) {
+        jumpChanges.push({
+          key: changeRowKey(pull),
+          groupId: id,
+          repository: pull.repository,
+          number: pull.number,
+          projectName: groupName,
+          label: sidebarChangeLabel(pull, grouped.others),
+          mateProjectId: pull.mateProjectId,
+          whose: pull.mateProjectId,
+        });
       }
     }
     jumpStops.push(...input.stops);
@@ -1427,7 +1455,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           };
         }
         const { item } = slot;
-        const pulls = grouped.get(item.project.id) ?? [];
+        const pulls = grouped.byMate.get(item.project.id) ?? [];
         const listKey = `${id}:${item.project.id}`;
         const appUrl = projectFlow.mates.find(
           (mate) => mate.projectId === item.project.id,
@@ -1484,6 +1512,22 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         };
       },
     );
+    const otherChanges =
+      grouped.others.length === 0 || changeRows === undefined ? null : (
+        <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
+          {grouped.others.map((pull) => (
+            <PullRequestRow
+              among={grouped.others}
+              groupId={id}
+              key={changeRowKey(pull)}
+              onOpenChange={changeRows.onOpenChange}
+              pull={pull}
+              remembered={changeRows.remembered === true}
+              whose={pull.mateProjectId}
+            />
+          ))}
+        </ul>
+      );
     return (
       <>
         {header}
@@ -1500,6 +1544,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               {block.node}
             </div>
           ))}
+          {otherChanges === null ? null : <div className="mt-2.5">{otherChanges}</div>}
         </SidebarProjectFold>
       </>
     );
@@ -3549,7 +3594,9 @@ function PullRequestRow({
   groupId,
   onOpenChange,
   remembered = false,
+  whose,
 }: {
+  readonly whose?: string;
   readonly pull: FlowPullRequest;
   /** The rows drawn with it: where its opener's span repositories, each names its own. */
   readonly among: ReadonlyArray<FlowPullRequest>;
@@ -3560,7 +3607,8 @@ function PullRequestRow({
   readonly remembered?: boolean;
 }) {
   const openReview = useOpenReview();
-  const label = sidebarChangeLabel(pull, among);
+  const name = sidebarChangeLabel(pull, among);
+  const label = whose === undefined ? name : `${name} · ${whose}`;
   const tone = changeMarkTone(pull, remembered);
   return (
     <li
