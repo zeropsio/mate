@@ -1,11 +1,12 @@
 /**
  * How a person picks one of a Mate's public addresses (`mateAddresses`): a
  * pick opens it in the panel's Browser, and the browser's own new-tab
- * gestures — ⌘/ctrl/shift-click, a middle click — open it in a new tab.
+ * gestures — ⌘/ctrl/shift-click, a middle click — open it in a new tab. Any
+ * other button (`auxclick` fires for the right one too) opens nothing.
  */
 import type { MateAddressRole } from "~/zerops/mateAddresses.logic";
 
-export type MateAddressOpenTarget = "panel" | "new-tab";
+export type MateAddressOpenTarget = "panel" | "new-tab" | "none";
 
 export function mateAddressOpenTarget(
   event:
@@ -18,6 +19,7 @@ export function mateAddressOpenTarget(
     | undefined,
 ): MateAddressOpenTarget {
   if (event === undefined) return "panel";
+  if (event.button > 1) return "none";
   return event.button === 1 || event.metaKey || event.ctrlKey || event.shiftKey
     ? "new-tab"
     : "panel";
