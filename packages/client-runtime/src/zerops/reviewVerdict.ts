@@ -151,15 +151,7 @@ export type ReviewPress =
   | { readonly kind: "running" }
   | { readonly kind: "refused"; readonly reason: string }
   /** Done: where HQ answered the deploys it asked for stand, where it answered (`hqDeploys`). */
-  | {
-      readonly kind: "done";
-      readonly deploys?: HqDeployAnswer | undefined;
-      /**
-       * When it was pressed: a release or a roll back HQ accepted and never lists has no time of
-       * its own, and its wait is measured from this (`releaseFollows`).
-       */
-      readonly at?: string | undefined;
-    };
+  | { readonly kind: "done"; readonly deploys?: HqDeployAnswer | undefined };
 
 /**
  * Closing a change without merging, as the caller holds it: asked — the review is its one

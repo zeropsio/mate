@@ -3900,10 +3900,8 @@ no-cache`.
   - _Why:_ 0.13 dropped the tag fallback, so a login made before the record began (v0.11.79) was
     refused for everyone, its signer too.
 - **2026-10-04** — **A change's conversation holds its comments' room while it reads them** (HQ counts a
-  change's comments). **A release HQ accepted but never lists ends its wait 30 min from the press,**
-  and **a stage HQ holds for a deploy key says that, never "coming up"**.
-  - _Why:_ layout shift; a review stuck on "redeploys" forever; and "coming up" for a stage nothing
-    will bring up.
+  change's comments), and **a stage HQ holds for a deploy key says that, never "coming up"**.
+  - _Why:_ layout shift; and "coming up" for a stage nothing will bring up.
 - **2026-10-04** — **Crew work carries on after a restart, from the stage it recorded.**
   - 0.13's operations persist their stage before each side effect. At boot the engine carries each
     interrupted one on from that stage:

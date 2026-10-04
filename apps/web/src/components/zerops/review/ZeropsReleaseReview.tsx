@@ -345,12 +345,10 @@ function ReleaseData({
     setHeld({ ...facts, tag: chosen.tag });
     setMade(chosen.tag);
     setPress({ kind: "running" });
-    // A release HQ accepts and never lists waits from here (`releaseFollows`).
-    const at = new Date(now).toISOString();
     const answer = await flowValue.release(flow.groupId, chosen.tag);
     setPress(
       answer.ok
-        ? { kind: "done", deploys: answer.deploys, at }
+        ? { kind: "done", deploys: answer.deploys }
         : { kind: "refused", reason: answer.reason },
     );
     // The tag it made is the one the review follows from here.
@@ -710,7 +708,6 @@ function RollbackData({
     releasing: done,
     stalled: done && follows.stalled,
     superseded: done ? follows.superseded : undefined,
-    pressedAt: press.kind === "done" ? press.at : undefined,
     pressing: false,
     tag: made ?? suggestion,
     clockMs,
@@ -746,12 +743,10 @@ function RollbackData({
     if (flowValue === null) return;
     setAsked({ runs: flow.release.runs, tag: flow.release.suggestion });
     setPress({ kind: "running" });
-    // A roll back HQ accepts and never lists waits from here (`releaseFollows`).
-    const at = new Date(now).toISOString();
     const answer = await flowValue.rollBack(flow.groupId, tag);
     setPress(
       answer.ok
-        ? { kind: "done", deploys: answer.deploys, at }
+        ? { kind: "done", deploys: answer.deploys }
         : { kind: "refused", reason: answer.reason },
     );
     if (answer.ok) setMade(answer.tag);
