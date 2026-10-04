@@ -46,6 +46,7 @@ import {
 } from "react";
 import { createEndFollow, type EndFollow } from "./timelineEndFollow";
 import { revealBy } from "./timelineReveal.logic";
+import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { FileDiff } from "@pierre/diffs/react";
@@ -266,6 +267,11 @@ const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "d
  * pixels in a few frames, and LegendList's own tenth of a viewport lost it.
  */
 const TIMELINE_FOLLOW_THRESHOLD = 1;
+/** The rows a settle brings that enter one after another: the Mate's words and its background work. */
+function pacedRow(row: MessagesTimelineRow): boolean {
+  if (row.kind === "message") return row.message.role === "assistant";
+  return row.kind === "after-work" || row.kind === "background";
+}
 /** An input a person gave the list, before it moved it. */
 export type TimelinePersonInput =
   | { readonly kind: "wheel" | "key"; readonly direction: "up" | "down" }
@@ -560,7 +566,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       provider,
     ],
   );
-  const rows = useStableRows(rawRows);
+  const stableRows = useStableRows(rawRows);
+  // What a settle brings at once — the answer, the background card, a
+  // background line — enters one after another (`usePace`); a card's own
+  // slices and the person's words enter as they come.
+  const pacedRowIds = useMemo(
+    () => stableRows.flatMap((row) => (pacedRow(row) ? [row.id] : [])),
+    [stableRows],
+  );
+  // Out of sight (a kept list), nobody watches: they are simply there.
+  const rowsHeld = usePace({
+    keys: pacedRowIds,
+    flush: syncing || restoringReadingPosition || !(kept?.shown ?? true),
+  });
+  const rowsHeldKey = [...rowsHeld].join("\n");
+  // Read by what they are: the list's data changes only when they do.
+  const rows = useMemo(() => {
+    if (rowsHeldKey === "") return stableRows;
+    const held = new Set(rowsHeldKey.split("\n"));
+    return stableRows.filter((row) => !held.has(row.id));
+  }, [stableRows, rowsHeldKey]);
   // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
   // only) is empty while it holds nothing but seams.
   const crew = use(CrewTimelineContext);
