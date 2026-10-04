@@ -123,8 +123,6 @@ export type ExchangeCause =
   | { readonly kind: "identity-unavailable" }
   /** The descriptor reports `zerops.identity = "failed"`: the Mate could not check who you are. */
   | { readonly kind: "identity-failed" }
-  /** The Mate kept refusing freshly exchanged credentials. */
-  | { readonly kind: "rejected" }
   /** The exchanged credential could not be registered or rotated in this tab. */
   | { readonly kind: "install" };
 
@@ -141,6 +139,11 @@ export type RefusalReason =
    * environment: re-exchanging does not change it, and each round mints a throwaway.
    */
   | { readonly kind: "configuration" }
+  /**
+   * The Mate refused the credential: its door turned the exchange's away, or the link kept
+   * rejecting freshly exchanged ones (`AUTH_LOOP_REJECTIONS`).
+   */
+  | { readonly kind: "credential" }
   /** `identityMint` refused for a reason no later round changes. */
   | {
       readonly kind: "access";
@@ -391,7 +394,7 @@ export const DESCRIPTOR_DEADLINE_MS = 8_000;
 /** After this many consecutive automatic failures, retries slow to `CAPPED_RETRY_MS`. */
 export const RETRY_CAP = 5;
 export const CAPPED_RETRY_MS = 5 * 60_000;
-/** This many auth rejections inside `AUTH_LOOP_WINDOW_MS` back off instead of re-exchanging. */
+/** This many auth rejections inside `AUTH_LOOP_WINDOW_MS` refuse instead of re-exchanging. */
 export const AUTH_LOOP_REJECTIONS = 3;
 export const AUTH_LOOP_WINDOW_MS = 2 * 60_000;
 /** This many unexplained configuration blocks in a row refuse instead of re-exchanging. */
@@ -730,7 +733,7 @@ const onBlocked = (
           kind: "log",
           diagnostic: { kind: "auth-loop", rejections: authRejections.length },
         });
-        return backoff(next, { kind: "rejected" }, next.linkLostAt !== null, ctx);
+        return refuse(next, { kind: "credential" }, out);
       }
       // A reconnect only once a link was lost; a first link blocked is still a first connect.
       return { ...next, credential: { kind: "none", reconnect: next.linkLostAt !== null } };

@@ -104,13 +104,16 @@ function mateState(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePr
         },
         notice,
       );
+    // A definitive refusal: its reason, and the person's Try again — nothing asks again on its own.
+    case "refused-role":
     case "refused-configuration":
+    case "refused-credential":
       return withNotice(
         {
           label: "Unavailable",
           tone: "off",
           pulsing: false,
-          action: "Try now",
+          action: "Try again",
           section: "unavailable",
         },
         notice,
@@ -123,7 +126,6 @@ function mateState(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePr
     case "container":
     case "gone":
     case "replaced":
-    case "refused-role":
     case "update-required":
     case "update-unavailable":
     case "no-address":

@@ -17,6 +17,7 @@ import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.t
 import { ZeropsApiError } from "./api.ts";
 import { mateDiagnostics } from "./diagnostics.ts";
 import {
+  exchangeFailureOf,
   exchangeAtDoor,
   exchangeZeropsContainerIdentity,
   installDoorRegistration,
@@ -869,4 +870,40 @@ describe("installDoorRegistration", () => {
       expect(yield* install(false)).toEqual([`rotate:${ENV}`, `register:${ENV}`]);
     }),
   );
+});
+
+// The owner (2026-10-05): a transient failure is recovered on its own, a definitive refusal never
+// is — it ends visibly with its reason and the person's Try again.
+describe("exchangeFailureOf — transient or definitive", () => {
+  it.each([
+    ["no answer", new ZeropsApiError("No answer.", "network"), "retryable"],
+    [
+      "the door's timeout",
+      new ConnectionBlockedError({ reason: "configuration", detail: "x" }),
+      "retryable",
+    ],
+    [
+      "the door refused the role",
+      new ConnectionBlockedError({ reason: "permission", detail: "x" }),
+      "refusal",
+    ],
+    [
+      "the door refused the credential",
+      new ConnectionBlockedError({ reason: "authentication", detail: "x" }),
+      "refusal",
+    ],
+    [
+      "the server below the floor",
+      new ConnectionBlockedError({ reason: "unsupported", detail: "x" }),
+      "refusal",
+    ],
+  ] as const)("%s", (_case, cause, failureClass) => {
+    expect(exchangeFailureOf(cause).class).toBe(failureClass);
+  });
+
+  it("names a refused credential as its own reason", () => {
+    expect(
+      exchangeFailureOf(new ConnectionBlockedError({ reason: "authentication", detail: "x" })),
+    ).toEqual({ class: "refusal", reason: { kind: "credential" } });
+  });
 });

@@ -239,7 +239,7 @@ export function exchangeFailureOf(cause: unknown): ExchangeFailure {
       case "unsupported":
         return refusalFailure({ kind: "version" });
       case "authentication":
-        return retryableFailure({ kind: "rejected" });
+        return refusalFailure({ kind: "credential" });
       case "configuration":
         // The door's endpoint was missing or refused the request's shape.
         return retryableFailure({ kind: "descriptor-unreachable" });

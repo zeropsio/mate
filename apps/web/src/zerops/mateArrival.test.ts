@@ -102,6 +102,38 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
     expect(you).toEqual({ id: "you", label: "Wren's agent is ready", state: "done" });
   });
 });
+// Inside a Zerops project the Mate's setup is always served: a read turned away, or answered with
+// something else, is a failure the arrival says — never a Mate that has no setup to tell.
+describe("arrivalSteps — a setup that can't be read", () => {
+  it.each([
+    {
+      failure: "refused",
+      why: "Its container turned the read of its setup away.",
+    },
+    {
+      failure: "invalid",
+      why: "Its container answered with something that isn't its setup.",
+    },
+  ] as const)("says why where its setup was $failure", ({ failure, why }) => {
+    const steps = arrivalSteps(
+      { ...deriveBirthProgress(CREATING, NOW), setupFailure: failure },
+      WREN,
+      NOW,
+    );
+    expect(steps.map((step) => `${step.id}:${step.state}`)).toEqual([
+      "copy:done",
+      "workspace:active",
+      "setup:failed",
+      "you:you",
+    ]);
+    expect(steps.find((step) => step.id === "setup")).toEqual({
+      id: "setup",
+      label: "Wren's setup",
+      state: "failed",
+      why,
+    });
+  });
+});
 // A New project's first Mate has no stand-up, so its Git access is the one place its HQ says it
 // cannot come: failed, with why and what the person can do — and done once it is granted.
 describe("arrivalSteps — Git access that failed", () => {

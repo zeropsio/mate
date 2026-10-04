@@ -180,7 +180,9 @@ vi.mock("~/zerops/useZeropsBirthProgress", async () => {
           },
   };
 });
-vi.mock("~/zerops/useMateSetup", () => ({ useMateSetup: () => undefined }));
+vi.mock("~/zerops/useMateSetup", () => ({
+  useMateSetup: () => ({ setup: undefined, failure: undefined }),
+}));
 vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));
@@ -351,6 +353,27 @@ describe("a Mate's own view while its link is made", () => {
       tree?.root
         .findAllByType("button")
         .find((node) => node.children.join("") === "Try now")
+        ?.props.onClick(),
+    );
+    expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
+  });
+
+  // The owner, 2026-10-05: a definitive refusal is never asked again on its own — its reason, and
+  // the person's Try again.
+  it("offers Try again where its Mate refused its credential, which asks it again", () => {
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: { kind: "refused-credential" },
+    } satisfies MateLink;
+    openView();
+    expect(said()).toContain("This Mate didn't accept the sign-in.");
+    expect(buttons()).toEqual(["Try again"]);
+    app.connect.mockClear();
+    act(() =>
+      tree?.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Try again")
         ?.props.onClick(),
     );
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });

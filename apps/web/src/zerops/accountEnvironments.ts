@@ -19,6 +19,7 @@ import {
   environmentTarget,
   isTerminalReachability,
   reachabilityPhrase,
+  resolveEnvironment,
   selectReachability,
   type ConnectOutcome,
   type ContainerMachine,
@@ -314,6 +315,7 @@ const TERMINAL_CONNECT: ReadonlySet<string> = new Set([
   "replaced",
   "refused-role",
   "refused-configuration",
+  "refused-credential",
   "update-required",
   "update-unavailable",
   "no-address",
@@ -391,6 +393,61 @@ export async function connectMate(input: {
   }
   if (input.environments === null) return connectResult({ _tag: "Closed" });
   return connectResult(await input.environments.connect(key, input.reason));
+}
+
+/**
+ * The listed Mate of the project HQ names for an environment: its service's target, never the
+ * project's own row, whose key is the project alone.
+ */
+export function hqNamedTarget(
+  machines: ReadonlyMap<TargetKey, EnvironmentMachine>,
+  projectId: string | null,
+): { readonly key: TargetKey; readonly machine: EnvironmentMachine } | undefined {
+  if (projectId === null) return undefined;
+  for (const [key, machine] of machines) {
+    if (key.startsWith(`${projectId}:`)) return { key, machine };
+  }
+  return undefined;
+}
+
+/**
+ * The target a Mate link's verdict speaks for, as the route gate finds it: the one a machine or a
+ * descriptor names for the environment, else the listed Mate of the project HQ names for it.
+ */
+export function tryAgainTarget(input: {
+  readonly machines: ReadonlyMap<TargetKey, EnvironmentMachine>;
+  readonly index: DescriptorIndex;
+  readonly environmentId: EnvironmentId;
+  /** The project HQ names for the environment (`hqProjectOf`); null where it names none. */
+  readonly hqProject: string | null;
+}): TargetKey | undefined {
+  return (
+    resolveEnvironment(input.machines, input.index, input.environmentId)?.key ??
+    hqNamedTarget(input.machines, input.hqProject)?.key
+  );
+}
+
+/**
+ * A Mate link's *Try now* and *Try again*, by the environment a surface shows: the user's Connect
+ * on the target its verdict speaks for (`tryAgainTarget`) — its exchange started over, or its link
+ * asked again. Nothing while no target names it.
+ */
+export function useTryMateAgain(): (environmentId: EnvironmentId) => void {
+  const environments = useAccountEnvironments();
+  const atoms = useContext(RegistryContext);
+  return useCallback(
+    (environmentId: EnvironmentId) => {
+      if (environments === null) return;
+      const key = tryAgainTarget({
+        machines: environments.machines(),
+        index: environments.index(),
+        environmentId,
+        hqProject: hqProjectOf(atoms.get(hqMatesAtom), environmentId),
+      });
+      if (key !== undefined) void environments.connect(key, "user");
+    },
+    [atoms, environments],
+  );
 }
 
 /** The user's Connect as a surface asks it; `reason` names the exchange in diagnostics. */

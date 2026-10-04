@@ -514,7 +514,7 @@ describe("environment machine (DESIGN §4.4)", () => {
       { kind: "network" },
       { kind: "server", status: 502 },
       { kind: "timeout" },
-      { kind: "rejected" },
+      { kind: "install" },
       { kind: "descriptor-unreachable" },
     ];
     let run = started;
@@ -579,7 +579,7 @@ describe("environment machine (DESIGN §4.4)", () => {
     });
   });
 
-  it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {
+  it("counts one auth rejection per rotated credential and refuses on the third within two minutes", () => {
     /** The link rejects the held credential; the re-exchange succeeds and installs a new one. */
     const rejectAndRotate = (machine: EnvironmentMachine, nowMs: number): Run => {
       const rejected = drive(
@@ -613,11 +613,20 @@ describe("environment machine (DESIGN §4.4)", () => {
       [{ type: "LINK", link: { phase: "blocked", reason: "authentication" } }],
       second.nowMs,
     );
-    expect(third.machine.credential).toMatchObject({
-      kind: "backoff",
-      last: { kind: "rejected" },
-      reconnect: true,
-    });
+    // Its freshly exchanged credentials keep being refused: a definitive answer, never retried on
+    // its own — no timer, no wake; the person's Try again exchanges again.
+    expect(third.machine.credential).toEqual({ kind: "refused", reason: { kind: "credential" } });
+    expect(third.machine.timer).toBeNull();
+    expect(selectReachability(third.machine, ENV_A)).toEqual({ kind: "refused-credential" });
+    const waited = drive(third.machine, [
+      { type: "TICK" },
+      { type: "WAKE", visible: true },
+      { type: "ONLINE" },
+    ]);
+    expect(waited.machine.credential.kind).toBe("refused");
+    expect(drive(waited.machine, [{ type: "USER_RETRY" }]).machine.credential.kind).toBe(
+      "exchanging",
+    );
     expect(third.effects).toContainEqual({
       kind: "log",
       diagnostic: { kind: "auth-loop", rejections: 3 },

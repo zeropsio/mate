@@ -137,7 +137,7 @@ function manualClock(): ExchangeClock & { readonly advance: (ms: number) => Prom
 }
 
 describe("repair is the exchange driver's", () => {
-  it("re-exchanges on every rejection, with backoff inside the loop window", async () => {
+  it("re-exchanges on a rejection, and past the loop window is refused until the person asks again", async () => {
     const clock = manualClock();
     const exchanges: Array<number> = [];
     let driver!: ExchangeDriver;
@@ -190,21 +190,31 @@ describe("repair is the exchange driver's", () => {
     await clock.advance(0);
     expect(exchanges).toEqual([0]);
 
-    // Ten rejections, ten seconds apart: every one is followed by a fresh credential; from the
-    // third inside two minutes on, after a backoff first.
-    for (let rejection = 1; rejection <= 10; rejection += 1) {
+    // Rejections ten seconds apart: the first two are each followed by a fresh credential at once.
+    for (let rejection = 1; rejection <= 2; rejection += 1) {
       await clock.advance(10_000);
       const phase = linkPhaseOf(rejected(rejection));
       if (phase !== null) driver.link(ENVIRONMENT_ID, phase);
       await clock.advance(0);
-      if (rejection <= 2) expect(exchanges).toHaveLength(1 + rejection);
-      await clock.advance(5_000);
       expect(exchanges).toHaveLength(1 + rejection);
       expect(driver.machine(KEY)?.credential).toMatchObject({ kind: "held" });
     }
-    const gaps = exchanges.slice(1).map((at, index) => at - (10_000 * (index + 1) + 5_000 * index));
-    expect(gaps.slice(0, 2)).toEqual([0, 0]);
-    expect(gaps.slice(2).every((gap) => gap >= 2_000)).toBe(true);
+    // The third inside two minutes is the Mate's definitive no: nothing asks again on its own.
+    await clock.advance(10_000);
+    const phase = linkPhaseOf(rejected(3));
+    if (phase !== null) driver.link(ENVIRONMENT_ID, phase);
+    await clock.advance(0);
+    await clock.advance(10 * 60_000);
+    expect(exchanges).toHaveLength(3);
+    expect(driver.machine(KEY)?.credential).toEqual({
+      kind: "refused",
+      reason: { kind: "credential" },
+    });
+
+    driver.retry(KEY);
+    await clock.advance(0);
+    expect(exchanges).toHaveLength(4);
+    expect(driver.machine(KEY)?.credential).toMatchObject({ kind: "held" });
   });
 });
 

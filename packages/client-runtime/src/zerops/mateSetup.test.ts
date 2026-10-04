@@ -107,12 +107,34 @@ describe("readMateSetup", () => {
     expect(asked).toEqual([{ url: `${ORIGIN}/mate/setup.json`, init: { redirect: "manual" } }]);
   });
 
+  /** A manual redirect as a browser hands it over: opaque, status 0. */
+  const redirected = (): Response => {
+    const response = new Response(null, { status: 200 });
+    Object.defineProperty(response, "type", { value: "opaqueredirect" });
+    return response;
+  };
+
   it.each([
-    { case: "a 404: an older Mate", response: new Response("", { status: 404 }), kind: "absent" },
     {
-      case: "a page in its place: an older server's catch-all",
-      response: new Response("<!doctype html>", { status: 200 }),
+      case: "a 404: a server outside a Zerops project, which has no setup",
+      response: new Response("", { status: 404 }),
       kind: "absent",
+    },
+    { case: "a redirect: turned away before the route", response: redirected(), kind: "refused" },
+    {
+      case: "a refusal of the read",
+      response: new Response("", { status: 403 }),
+      kind: "refused",
+    },
+    {
+      case: "a page in its place",
+      response: new Response("<!doctype html>", { status: 200 }),
+      kind: "invalid",
+    },
+    {
+      case: "JSON that is not the setup document",
+      response: new Response(JSON.stringify({ version: 0 }), { status: 200 }),
+      kind: "invalid",
     },
     {
       case: "a server error: on its way up",

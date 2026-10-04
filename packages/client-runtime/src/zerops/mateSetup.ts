@@ -24,12 +24,10 @@
  * A step that has not run is never `done`: a Mate nobody asked a stand-up of (a New project's
  * first) says `none`, as its runtimes do with nothing to import.
  *
- * It carries no names, no error text and no secrets. A `404` is an older Mate, whose server has
- * no such route — and so is an answer that is not this document: an older server's catch-all
- * answers any path with its page, or with no CORS header at all, which a browser reports as no
- * answer. Its caller falls back to `/mate/healthz` on anything but a `setup` reading. A step or a
- * state this build does not know is ignored, never guessed at — a field is only ever added with
- * a `version` bump.
+ * It carries no names, no error text and no secrets. A `404` is a server outside a Zerops project,
+ * which has no setup to tell; inside one, a redirect or a refusal, and an answer that is not this
+ * document, are failures of their own, never an absence. A step or a state this build does not
+ * know is ignored, never guessed at — a field is only ever added with a `version` bump.
  *
  * Read as `containerHealth.ts` reads: a plain header-less GET with `redirect: "manual"`, which
  * forces no CORS preflight.
@@ -142,10 +140,20 @@ function gitFailureOf(step: {
 
 export type MateSetupReading =
   | { readonly kind: "setup"; readonly setup: MateSetup }
-  /** An older Mate: no such route. The caller reads `/mate/healthz`. */
+  /** `404`: a server outside a Zerops project, which has no setup. */
   | { readonly kind: "absent" }
-  /** No answer it can read: down, still starting, or refused. */
+  /** Turned away: a redirect before the route, or a refusal of the read. */
+  | { readonly kind: "refused" }
+  /** An answer that is not this document. */
+  | { readonly kind: "invalid" }
+  /** No answer: down, or still starting. */
   | { readonly kind: "unreachable" };
+
+/** Why a Mate's setup can't be read, where it is served. */
+export type MateSetupFailure = Extract<
+  MateSetupReading,
+  { readonly kind: "refused" | "invalid" }
+>["kind"];
 
 export async function readMateSetup(
   origin: string,
@@ -162,15 +170,16 @@ export async function readMateSetup(
   } catch {
     return { kind: "unreachable" };
   }
-  // A redirect is the cookie gate: not a route this container serves.
-  if (response.status === 404 || response.type === "opaqueredirect") return { kind: "absent" };
-  if (!response.ok) return { kind: "unreachable" };
+  if (response.status === 404) return { kind: "absent" };
+  if (response.type === "opaqueredirect") return { kind: "refused" };
+  if (response.status >= 500) return { kind: "unreachable" };
+  if (!response.ok) return { kind: "refused" };
   let body: unknown;
   try {
     body = await response.json();
   } catch {
-    return { kind: "absent" };
+    return { kind: "invalid" };
   }
   const setup = parseMateSetup(body);
-  return setup === undefined ? { kind: "absent" } : { kind: "setup", setup };
+  return setup === undefined ? { kind: "invalid" } : { kind: "setup", setup };
 }

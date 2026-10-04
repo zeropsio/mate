@@ -106,7 +106,7 @@ const ROWS: ReadonlyArray<{
     target: resolved({ kind: "refused-role" }, "live"),
     gate: { kind: "unavailable", reachability: { kind: "refused-role" } },
     text: "You can see this project in Zerops but can't operate its Mate.",
-    actions: [],
+    actions: ["try-again"],
   },
   {
     row: "RG6",
