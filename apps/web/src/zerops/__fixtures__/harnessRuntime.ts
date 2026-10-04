@@ -33,7 +33,24 @@ export function harnessRuntime(
 ): MakeZeropsDataRuntime {
   let opaque = 0;
   return ({ scope, client, registry, scheduler, signals, signal }) => {
-    const rest: Partial<ZeropsDataAdapter> = {};
+    const reads = makeZeropsDataAdapter({
+      client,
+      makeSocket: () => {
+        throw new Error("Harness reads do not open sockets.");
+      },
+      timers: {
+        setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+        clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      },
+    });
+    const rest: Partial<ZeropsDataAdapter> = {
+      read: (ticket, context) =>
+        ticket.target.kind === "project" ||
+        (ticket.target.kind === "query" &&
+          ticket.target.descriptor.kind === "projects-of-organization")
+          ? reads.read(ticket, context)
+          : datastream.adapter.read(ticket, context),
+    };
     if (options.overRest === true) {
       const adapter = makeZeropsDataAdapter({
         client,

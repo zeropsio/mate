@@ -32,7 +32,6 @@ const FEEDER = interestKeyOf({ kind: "organization-inventory", organization });
 const OTHER = interestKeyOf({
   kind: "project-topology",
   project: project(),
-  includeCurrentMetrics: false,
 });
 
 const establishing = (key: InterestState["identity"]["key"]): InterestState => ({
@@ -40,15 +39,6 @@ const establishing = (key: InterestState["identity"]["key"]): InterestState => (
   identity: { ...identity(), key },
   startedAtMs: 0,
   deadlineMs: 60_000,
-  progress,
-});
-
-const recovering = (key: InterestState["identity"]["key"]): InterestState => ({
-  status: "recovering",
-  identity: { ...identity(), key },
-  reason: "disconnect",
-  attempt: 2,
-  nextRetryAtMs: 90_000,
   progress,
 });
 
@@ -139,15 +129,15 @@ describe("candidateListingsAtom: a read with no value yet", () => {
   });
 
   it("keeps the moment it began waiting when a new read still waits the same way", () => {
-    const account = listingsOver(projectsRead([recovering(FEEDER)]));
+    const account = listingsOver(projectsRead([establishing(FEEDER)]));
     const before = account.listings();
-    expect(account.listing()).toEqual({ state: "reading", sinceMs: 1_000, attempt: 2 });
+    expect(account.listing()).toEqual({ state: "reading", sinceMs: 0, attempt: 1 });
 
     vi.setSystemTime(5_000);
-    account.read(projectsRead([recovering(FEEDER)]));
+    account.read(projectsRead([establishing(FEEDER)]));
 
     expect(account.listings()).toBe(before);
-    expect(account.listing()).toEqual({ state: "reading", sinceMs: 1_000, attempt: 2 });
+    expect(account.listing()).toEqual({ state: "reading", sinceMs: 0, attempt: 1 });
   });
 });
 

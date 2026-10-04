@@ -270,6 +270,7 @@ export function ZeropsDataProvider({
             data: created,
             verifier: makeRestAccessVerifier({
               client,
+              readProject: created.readProjectForAccess,
               account: scope.account,
               concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
               onUser: (verified) => verifiedMemberships(verified),

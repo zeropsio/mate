@@ -2,7 +2,7 @@
  * What a service runs and whether it serves Zerops Mate, as the account's store states them —
  * never read per service. The service's own row, from its organization's search and stream, names
  * its active version and, while a push states it, that version's source; the organization's active
- * versions (`organization-versions`) state every source; its variables (`organization-variables`)
+ * versions (`project-versions`) state every source; its variables (`project-variables`)
  * name the deploy the service last started (A11) and carry its Mate flag (H9).
  */
 import { readsAsEnabled } from "../api.ts";
@@ -38,16 +38,17 @@ const UNREAD = { state: "unread", waitingFor: null } as const;
 /** The stream an organization-wide fact waits on, failed: its failure; otherwise `null`. */
 function streamFailure(
   state: ZeropsDataState,
-  kind: Extract<
-    RuntimeInterestDescriptor["kind"],
-    "organization-versions" | "organization-variables"
-  >,
+  kind: Extract<RuntimeInterestDescriptor["kind"], "project-versions" | "project-variables">,
   service: ServiceRef,
 ): Shown<never> | null {
   const organization = organizationKeyOf(service.project.organization);
   for (const desired of state.interests.values()) {
     const descriptor = desired.descriptor;
-    if (descriptor.kind !== kind || organizationKeyOf(descriptor.organization) !== organization)
+    if (
+      descriptor.kind !== kind ||
+      organizationKeyOf(descriptor.project.organization) !== organization ||
+      !descriptor.serviceIds.includes(service.serviceId)
+    )
       continue;
     const interest = desired.interest;
     if (interest.status === "failed")
@@ -100,7 +101,7 @@ export function selectDeployedVersion(
   const organization = service.project.organization;
   let source = deploy.source;
   if (source === null) {
-    const version = activeVersionOf(state.table, organization, deploy.id);
+    const version = activeVersionOf(state.table, organization, deploy.id, service.serviceId);
     // A version not listed active yet is one the list has not caught up with: it waits. One a
     // read by id found absent too is unknown until its next look.
     if (!version.known || version.row === null) {
@@ -113,7 +114,7 @@ export function selectDeployedVersion(
           attempt: 1,
           retryAtMs: absent.retryAtMs,
         };
-      return streamFailure(state, "organization-versions", service) ?? UNREAD;
+      return streamFailure(state, "project-versions", service) ?? UNREAD;
     }
     source = version.row.source;
   }
@@ -122,7 +123,7 @@ export function selectDeployedVersion(
     // The push's own name stands until the variables answer; with none, the name waits for them.
     if (deploy.name !== null)
       return known({ activeId: deploy.id, source, name: deploy.name }, facet.stamp);
-    return streamFailure(state, "organization-variables", service) ?? UNREAD;
+    return streamFailure(state, "project-variables", service) ?? UNREAD;
   }
   if (trimmed(started.content) !== deploy.id) {
     // Variables that may trail the service are being read again: what it runs is checked, not
@@ -131,7 +132,7 @@ export function selectDeployedVersion(
       id: deploy.id,
       stamp: facet.stamp,
     });
-    if (trailing !== null) return streamFailure(state, "organization-variables", service) ?? UNREAD;
+    if (trailing !== null) return streamFailure(state, "project-variables", service) ?? UNREAD;
     return known({ activeId: deploy.id, source, name: null }, facet.stamp);
   }
   const name = trimmed(
@@ -173,6 +174,15 @@ export function wantStaleVariables(
 ): ZeropsDataState {
   let table = state.table;
   for (const record of state.inventory.services.values()) {
+    if (
+      ![...state.interests.values()].some(
+        ({ descriptor, leases }) =>
+          leases > 0 &&
+          descriptor.kind === "project-variables" &&
+          descriptor.serviceIds.includes(record.ref.serviceId),
+      )
+    )
+      continue;
     const facet = record.deployment;
     if (facet.knowledge !== "observed") continue;
     const deploy = facet.fields.activeDeploy;
@@ -183,7 +193,7 @@ export function wantStaleVariables(
     if (!started.known || trimmed(started.content) === deploy.id) continue;
     const ids = trailingVariables(table, serviceId, { id: deploy.id, stamp: facet.stamp });
     if (ids !== null)
-      table = rereadTableRows(table, "user-data", organization, ids, receipt, nowMs);
+      table = rereadTableRows(table, "user-data", organization, ids, receipt, nowMs, [serviceId]);
   }
   return table === state.table ? state : { ...state, table };
 }
@@ -221,7 +231,7 @@ export function selectSetupMarker(
     if (marker.content !== null) return true;
     return containerTooYoungToSay(state, service) ? "unread" : false;
   }
-  return streamFailure(state, "organization-variables", service) === null ? "unread" : "unknown";
+  return streamFailure(state, "project-variables", service) === null ? "unread" : "unknown";
 }
 
 /** How young a container is, at the list's answer, whose variables may still be on their way. */
@@ -256,5 +266,5 @@ export function selectMateFlag(
     "ZCP_MATE_ENABLED",
   );
   if (flag.known) return flag.content !== null && readsAsEnabled(flag.content);
-  return streamFailure(state, "organization-variables", service) === null ? "unread" : "unknown";
+  return streamFailure(state, "project-variables", service) === null ? "unread" : "unknown";
 }

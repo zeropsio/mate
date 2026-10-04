@@ -121,8 +121,8 @@ describe("Zerops activity model", () => {
     const id = identity();
     const ref = process();
     const descriptor = {
-      kind: "running-processes-of-organization" as const,
-      organization: project().organization,
+      kind: "running-processes-of-project" as const,
+      project: project(),
       statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const,
       schemaVersion: 1 as const,
     };
@@ -261,8 +261,8 @@ describe("a project's running processes after its organization's running read", 
     const id = identity();
     const ref = process("build");
     const descriptor = {
-      kind: "running-processes-of-organization" as const,
-      organization: project().organization,
+      kind: "running-processes-of-project" as const,
+      project: project(),
       statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const,
       schemaVersion: 1 as const,
     };
@@ -329,7 +329,7 @@ describe("a project's running processes after its organization's running read", 
 // per open: it has to know when that read landed, or failed (pass 36).
 describe("selectActivity — where the project's newest process history read stands", () => {
   const history = (
-    status: "establishing" | "observing" | "failed" | "paused" | "recovering" | null,
+    status: "establishing" | "observing" | "failed" | "paused" | null,
     descriptor: { readonly projectId?: string; readonly before?: string | null } = {},
   ) => {
     const state = makeInitialZeropsDataState(scope());
@@ -348,22 +348,7 @@ describe("selectActivity — where the project's newest process history read sta
             }
           : status === "failed"
             ? { status, identity: id, reason: "boom", retryable: true, attempts: 1, retryAtMs: 9 }
-            : status === "paused"
-              ? { status, identity: id, reason: "no-leases" as const }
-              : {
-                  status,
-                  identity: id,
-                  reason: "disconnect" as const,
-                  attempt: 1,
-                  nextRetryAtMs: 9,
-                  progress: {
-                    requiredRegistrations: 1,
-                    completedRegistrations: 0,
-                    requiredReads: 1,
-                    completedReads: 0,
-                    crossedReceiptOrdinal: ReceiptOrdinal.make(0),
-                  },
-                };
+            : { status, identity: id, reason: "no-leases" as const };
     return reduce(state, {
       kind: "interest-upserted",
       interest: {
@@ -381,7 +366,6 @@ describe("selectActivity — where the project's newest process history read sta
   it.each([
     { name: "nobody asks for it", state: history(null), read: "unread" },
     { name: "being read", state: history("establishing"), read: "reading" },
-    { name: "read again after a drop", state: history("recovering"), read: "reading" },
     { name: "read", state: history("observing"), read: "read" },
     { name: "its read failed", state: history("failed"), read: "failed" },
     { name: "let go", state: history("paused"), read: "unread" },

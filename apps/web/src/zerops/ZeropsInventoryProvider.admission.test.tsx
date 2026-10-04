@@ -77,13 +77,13 @@ describe("ZeropsInventoryProvider first admission", () => {
     const tab: MountedTab = await mounting;
 
     expect(tab.session().status).toBe("signed-in");
-    expect(round.waiting()).toBe(1);
-    expect(tab.text()).not.toContain(CHILD);
+    expect(round.waiting()).toBe(0);
+    expect(tab.text()).toContain(CHILD);
 
     await tab.run(() => round.release());
 
     expect(harness.rest.requests().map(({ route }) => route)).toEqual(
-      expect.arrayContaining(["GET /user/info", "GET /client/org-1/project", "GET /project/p1"]),
+      expect.arrayContaining(["GET /user/info"]),
     );
     expect(tab.text()).toContain(CHILD);
     expect(accessAtMount).toEqual(["verified"]);
@@ -97,7 +97,7 @@ describe("ZeropsInventoryProvider first admission", () => {
 
   // An organization's project list failing fails the whole round, today and
   // after one project's failure stops failing it (DESIGN G1).
-  it("shows a failed first admission with one retry, and the retry admits", async () => {
+  it("shows a failed navigation read with a manual retry while the product stays mounted", async () => {
     const harness = signedInHarness();
     const listing = harness.rest.hold("GET /client/org-1/project");
     const { mounting, accessAtMount } = mountProduct(harness);
@@ -106,9 +106,9 @@ describe("ZeropsInventoryProvider first admission", () => {
 
     await tab.run(() => listing.fail(503));
 
-    expect(tab.text()).toContain("Could not load your Zerops projects.");
-    expect(tab.text()).not.toContain(CHILD);
-    const retries = buttonsLabelled(tab.container(), "Try again");
+    expect(tab.text()).toContain("Zerops isn't answering.");
+    expect(tab.text()).toContain(CHILD);
+    const retries = buttonsLabelled(tab.container(), "Try now");
     expect(retries).toHaveLength(1);
 
     await tab.run(() => press(retries[0]!));
@@ -118,7 +118,7 @@ describe("ZeropsInventoryProvider first admission", () => {
     );
 
     expect(tab.text()).toContain(CHILD);
-    expect(tab.text()).not.toContain("Could not load your Zerops projects.");
+    expect(tab.text()).not.toContain("Zerops isn't answering.");
     expect(accessAtMount).toEqual(["verified"]);
   });
 });
@@ -176,7 +176,7 @@ describe("ZeropsInventoryProvider grants", () => {
           return `grants ${JSON.stringify(projects.map(({ id, userRoles }) => [id, userRoles ?? null]))}`;
         }
         return (
-          <AccountProduct datastream={harness.datastream}>
+          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
             <Grants />
           </AccountProduct>
         );
@@ -235,7 +235,7 @@ describe("ZeropsInventoryProvider grants", () => {
           return `offers ${JSON.stringify({ comment, merge, close })} owner ${owner?.clientUserId ?? "none"}`;
         }
         return (
-          <AccountProduct datastream={harness.datastream}>
+          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
             <Developer />
           </AccountProduct>
         );
@@ -278,7 +278,7 @@ describe("ZeropsInventoryProvider grants", () => {
           return `rows ${JSON.stringify(rows.map(({ project }) => [project.id, project.userRoles ?? null]))}`;
         }
         return (
-          <AccountProduct datastream={harness.datastream}>
+          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
             <Rows />
           </AccountProduct>
         );
@@ -311,7 +311,7 @@ describe("ZeropsInventoryProvider grants", () => {
           return `owner ${owner?.clientUserId ?? "none"}`;
         }
         return (
-          <AccountProduct datastream={harness.datastream}>
+          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
             <Owner />
           </AccountProduct>
         );

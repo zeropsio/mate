@@ -32,6 +32,10 @@ export const heldEvidence = (grant: GrantMachine): Evidence | null =>
 export interface InventoryDemandInput {
   readonly activeOrganizationId: string | null;
   readonly grant: GrantMachine;
+  readonly openedServices: ReadonlyArray<{
+    readonly project: ProjectRef;
+    readonly serviceIds: ReadonlyArray<string>;
+  }>;
 }
 export function inventoryDemand(
   input: InventoryDemandInput,
@@ -46,6 +50,16 @@ export function inventoryDemand(
       kind: "organization-inventory",
       organization,
     })),
+    ...input.openedServices
+      .filter(
+        ({ project, serviceIds }) =>
+          project.organization.organizationId === input.activeOrganizationId &&
+          serviceIds.length > 0,
+      )
+      .flatMap(({ project, serviceIds }): ReadonlyArray<RuntimeInterestDescriptor> => [
+        { kind: "project-versions", project, serviceIds },
+        { kind: "project-variables", project, serviceIds },
+      ]),
   ];
 }
 
@@ -66,6 +80,24 @@ export const holdInventoryDemand = (input: {
       inventoryDemand({
         activeOrganizationId: get(input.activeOrganization),
         grant: get(data.access.view).machine,
+        openedServices: [...get(data.stateAtom).interests.values()]
+          .filter(
+            ({ descriptor, leases }) =>
+              leases > 0 &&
+              (descriptor.kind === "project-inventory" || descriptor.kind === "project-topology"),
+          )
+          .flatMap(({ descriptor }) => {
+            if (!("project" in descriptor)) return [];
+            const services = get(data.reads.servicesOf(descriptor.project));
+            return [
+              {
+                project: descriptor.project,
+                serviceIds: services.value.flatMap((value) =>
+                  value.knowledge === "observed" ? [value.record.ref.serviceId] : [],
+                ),
+              },
+            ];
+          }),
       }),
     );
     const wanted = yield* Queue.sliding<ReadonlyArray<RuntimeInterestDescriptor>>(1);

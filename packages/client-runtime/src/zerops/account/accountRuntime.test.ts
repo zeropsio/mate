@@ -110,8 +110,6 @@ const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
     switch (query.kind) {
       case "projects-of-organization":
         return mates.map(({ project }) => project);
-      case "services-of-organization":
-        return mates.map(({ service }) => service);
       case "services-of-project":
         return mates
           .filter(({ projectId }) => projectId === query.project.projectId)
@@ -887,10 +885,10 @@ describe("the account runtime", () => {
             serviceId: ZeropsServiceId.make("service-1"),
           };
 
-          yield* built.data.acquire({ kind: "project-inventory", project: service.project });
           yield* built.data.acquire({
-            kind: "organization-variables",
-            organization: service.project.organization,
+            kind: "project-variables",
+            project: service.project,
+            serviceIds: [service.serviceId],
           });
           yield* clock.advance(SECOND);
           yield* settle;
@@ -1013,10 +1011,10 @@ describe("the account runtime", () => {
             serviceId: ZeropsServiceId.make("service-1"),
           };
 
-          yield* built.data.acquire({ kind: "project-inventory", project: service.project });
           yield* built.data.acquire({
-            kind: "organization-variables",
-            organization: service.project.organization,
+            kind: "project-variables",
+            project: service.project,
+            serviceIds: [service.serviceId],
           });
           yield* clock.advance(SECOND);
           yield* settle;
@@ -1118,9 +1116,7 @@ describe("the account runtime", () => {
               [...state.interests.values()]
                 .filter(({ interest }) => interest.status === "observing")
                 .map(({ descriptor }) => descriptor.kind)
-                .filter(
-                  (kind) => kind === "organization-versions" || kind === "organization-variables",
-                )
+                .filter((kind) => kind === "project-versions" || kind === "project-variables")
                 .toSorted(),
             );
           expect(yield* streamed()).toEqual([]);
@@ -1653,7 +1649,6 @@ describe("the post-grant stage's Mate environments", () => {
             yield* built.data.acquire({
               kind: "project-topology",
               project: project(projectId),
-              includeCurrentMetrics: false,
             });
           }
           yield* settle;
@@ -1694,8 +1689,8 @@ describe("the post-grant stage's Mate environments", () => {
           expect(opens).toBe(before.opens);
           yield* clock.advance(1_000);
           yield* settle;
-          expect(opens).toBe(before.opens + 1);
-          expect(registrations).toBeGreaterThan(before.registrations);
+          expect(opens).toBe(before.opens);
+          expect(registrations).toBe(before.registrations);
         }),
       ),
   );
@@ -2046,7 +2041,7 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-organization"]);
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
           const { rig, built, registry, environments } = yield* granted(
             [REMEMBERED_A],
             [A_MATE],
@@ -2508,7 +2503,7 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-organization"]);
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
           const { rig, environments } = yield* granted([REMEMBERED_A], [A_MATE], platform.adapter);
           environments.setRoute(ENV_A);
           yield* settle;
@@ -2567,7 +2562,7 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-organization"]);
+        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
         const projects = heldQueries(services.adapter, ["projects-of-organization"]);
         const { rig, environments } = yield* granted(
           records.filter(({ environmentId }) => environmentId !== environment),
@@ -2596,7 +2591,7 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-organization"]);
+        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
         const { rig, environments } = yield* granted([], mates, services.adapter);
         environments.setRoute(environment);
         yield* settle;

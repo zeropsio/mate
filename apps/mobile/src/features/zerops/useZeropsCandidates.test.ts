@@ -135,9 +135,11 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
-function render(): ReturnType<typeof useZeropsCandidates> {
+function render(
+  openedProjectId: string | null = "project-a",
+): ReturnType<typeof useZeropsCandidates> {
   hooks.beginRender();
-  return useZeropsCandidates();
+  return useZeropsCandidates(openedProjectId);
 }
 
 const listenerOf = (atom: unknown): (() => void) | undefined =>
@@ -154,6 +156,14 @@ describe("candidate inventory demand", () => {
       request.kind === "organization-inventory" ? [request.organization.organizationId] : [],
     );
     expect(organizations).toEqual(id === null ? [] : [id]);
+  });
+
+  it("keeps the project picker free of service detail until a project opens", async () => {
+    render(null);
+    await settle();
+    expect(
+      runtime.acquire.mock.calls.filter(([request]) => request.kind === "project-inventory"),
+    ).toEqual([]);
   });
 
   beforeEach(() => {
@@ -474,9 +484,9 @@ describe("candidate inventory demand", () => {
       { case: "first seen: on its way", afterMs: 0, group: "provisioning" },
       { case: "a moment on: still on its way", afterMs: 5_000, group: "provisioning" },
       {
-        case: "its wait over: as the platform leaves it",
+        case: "elapsed time supplies no new platform fact",
         afterMs: ADDRESS_GRACE_MS,
-        group: "unavailable",
+        group: "provisioning",
       },
     ])("$case", async ({ afterMs, group }) => {
       render();

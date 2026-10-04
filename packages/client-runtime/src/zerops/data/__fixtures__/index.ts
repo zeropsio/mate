@@ -90,7 +90,7 @@ export const desiredInterest = (
   requiredReads = 0,
   required = true,
 ): DesiredInterestState => ({
-  descriptor: { kind: "project-topology", project: project(), includeCurrentMetrics: true },
+  descriptor: { kind: "project-topology", project: project() },
   key: id.key,
   leases: 1,
   required,
@@ -128,7 +128,12 @@ export const entityRegistration = <Entity extends "project" | "service" | "proce
   ({
     identity: id,
     subscriptionName: ZeropsWireSubscriptionName.make(`wire-${entity}`),
-    descriptor: { kind: "entity-updates", entity, organization },
+    descriptor: {
+      kind: "entity-updates",
+      entity,
+      organization,
+      ...(entity === "project" ? {} : { project: project() }),
+    },
     baselineTicket: null,
   }) as RegistrationRequest & {
     readonly descriptor: {
@@ -178,8 +183,8 @@ export const directTicket = <Target extends ReadTarget>(
     startedAtMs: start,
     ...(target.kind === "query" &&
     (target.descriptor.kind === "projects-of-organization" ||
-      target.descriptor.kind === "services-of-organization" ||
-      target.descriptor.kind === "running-processes-of-organization" ||
+      target.descriptor.kind === "services-of-project" ||
+      target.descriptor.kind === "running-processes-of-project" ||
       target.descriptor.kind === "process-history-window")
       ? { membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(receipt) }
       : {}),

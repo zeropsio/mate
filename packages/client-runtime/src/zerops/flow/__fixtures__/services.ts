@@ -112,8 +112,8 @@ export function servicesRead(
   const coverage = options.coverage ?? COMPLETE;
   const owner = options.project ?? project();
   const descriptor = {
-    kind: "services-of-organization" as const,
-    organization: owner.organization,
+    kind: "services-of-project" as const,
+    project: owner,
     schemaVersion: 1 as const,
   };
   const common = {

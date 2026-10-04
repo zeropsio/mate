@@ -182,10 +182,10 @@ export const selectService = (
 });
 
 type ProjectQuery = Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>;
-type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>;
+type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>;
 type RunningQuery = Extract<
   EntityQueryDescriptor,
-  { readonly kind: "running-processes-of-organization" }
+  { readonly kind: "running-processes-of-project" }
 >;
 
 const unresolvedProjectQuery = (
@@ -237,10 +237,10 @@ export function selectProjectsOf(
   };
 }
 
-const unresolvedServiceQuery = (organization: OrganizationRef): QueryState<ServiceQuery> => {
+const unresolvedServiceQuery = (project: ProjectRef): QueryState<ServiceQuery> => {
   const descriptor: ServiceQuery = {
-    kind: "services-of-organization",
-    organization,
+    kind: "services-of-project",
+    project,
     schemaVersion: 1,
   };
   return {
@@ -293,13 +293,13 @@ export function selectServicesOf(
 ): CollectionRead<ServiceRecord> {
   const projectKey = projectKeyOf(project);
   const descriptor: ServiceQuery = {
-    kind: "services-of-organization",
-    organization: project.organization,
+    kind: "services-of-project",
+    project: project,
     schemaVersion: 1,
   };
   const query =
     (state.inventory.queries.get(queryKeyOf(descriptor)) as QueryState<ServiceQuery> | undefined) ??
-    unresolvedServiceQuery(project.organization);
+    unresolvedServiceQuery(project);
   const relationshipKeys = new Set<ServiceKey>();
   for (const key of query.memberKeys) {
     const ref = state.inventory.memberRefs.get(key);
@@ -322,10 +322,10 @@ export function selectServicesOf(
 
 const RUNNING_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
 
-const unresolvedRunningQuery = (organization: OrganizationRef): QueryState<RunningQuery> => {
+const unresolvedRunningQuery = (project: ProjectRef): QueryState<RunningQuery> => {
   const descriptor: RunningQuery = {
-    kind: "running-processes-of-organization",
-    organization,
+    kind: "running-processes-of-project",
+    project,
     statuses: RUNNING_STATUSES,
     schemaVersion: 1,
   };
@@ -347,14 +347,14 @@ export function selectRunningProcessesOf(
   project: ProjectRef,
 ): CollectionRead<ProcessRecord> {
   const descriptor: RunningQuery = {
-    kind: "running-processes-of-organization",
-    organization: project.organization,
+    kind: "running-processes-of-project",
+    project: project,
     statuses: RUNNING_STATUSES,
     schemaVersion: 1,
   };
   const query =
     (state.activity.queries.get(queryKeyOf(descriptor)) as QueryState<RunningQuery> | undefined) ??
-    unresolvedRunningQuery(project.organization);
+    unresolvedRunningQuery(project);
   // The organization's read of what runs is the word on a process it does not carry: one whose
   // status was last said before that read began finished meanwhile — a build that ended while the
   // socket was down, whose FINISHED was never pushed. Only a status said after the read stands.

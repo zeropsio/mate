@@ -64,10 +64,7 @@ describe("Zerops data runtime policy", () => {
     expect(DEFAULT_ZEROPS_DATA_POLICY.retainedCommandAttemptsPerAccount).toBe(1_000);
   });
 
-  it.each([
-    ["recoveryConcurrency", 4],
-    ["registrationConcurrency", 6],
-  ] as const)(
+  it.each([["registrationConcurrency", 6]] as const)(
     "bounds %s at %i by default, overridable with any positive integer",
     (name, value) => {
       expect(DEFAULT_ZEROPS_DATA_POLICY[name]).toBe(value);
@@ -83,8 +80,8 @@ describe("Zerops data runtime policy", () => {
 
   it("accepts bounded overrides and rejects contradictory limits", () => {
     expect(makeZeropsDataPolicy({ hydrationConcurrency: 2 }).hydrationConcurrency).toBe(2);
-    expect(() => makeZeropsDataPolicy({ recoveryAttemptLimit: 0 })).toThrow(
-      "recoveryAttemptLimit must be a positive safe integer",
+    expect(() => makeZeropsDataPolicy({ hydrationConcurrency: 0 })).toThrow(
+      "hydrationConcurrency must be a positive safe integer",
     );
     expect(() =>
       makeZeropsDataPolicy({ ingressMaxBytesPerAccount: 10, ingressMaxFrameBytes: 11 }),

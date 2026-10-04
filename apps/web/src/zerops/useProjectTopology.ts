@@ -15,8 +15,7 @@ import { useZeropsDataInterest } from "./zeropsDataContext";
 export function useProjectTopology(environmentId: EnvironmentId | null): ProjectTopologySnapshot {
   const project = useEnvironmentProjectRef(environmentId);
   const topologyDescriptor = useMemo<RuntimeInterestDescriptor | null>(
-    () =>
-      project === null ? null : { kind: "project-topology", project, includeCurrentMetrics: false },
+    () => (project === null ? null : { kind: "project-topology", project }),
     [project],
   );
   const metricsDescriptor = useMemo<RuntimeInterestDescriptor | null>(

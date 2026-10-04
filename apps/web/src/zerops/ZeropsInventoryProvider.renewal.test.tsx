@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mountTab, preloadTabs, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
-import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 
 preloadTabs(() => import("./__fixtures__/accountProduct"));
 
@@ -86,7 +85,7 @@ async function admittedProduct(
   if (firstRead !== null) {
     expect(firstRead.waiting()).toBe(1);
     await pass(options.firstRoundMs!);
-    expect(tab.text()).not.toContain(CHILD);
+    expect(tab.text()).toContain(CHILD);
     await tab.run(() => firstRead.release());
     await pass(0);
   }
@@ -157,7 +156,9 @@ describe("ZeropsInventoryProvider renewal", () => {
     await expect(write()).resolves.toMatchObject({ id: "p1" });
 
     await tab.run(() => renewal.release());
-    await pass(2 * MINUTE_MS);
+    const [again] = buttonsLabelled(tab.container(), "Try now");
+    await tab.run(() => press(again!));
+    await pass(INVALIDATION_COALESCE_MS);
     expect(rounds()).toBeGreaterThan(before);
     await expect(write()).resolves.toMatchObject({ id: "p1" });
   });
@@ -274,7 +275,9 @@ describe("ZeropsInventoryProvider renewal", () => {
         await pass(30_000);
         seen.push(tab.readable());
       }
-      expect(new Set(seen).size).toBe(1);
+      expect(
+        seen.every((text) => text.includes(CHILD) && text.includes("Zerops isn't answering.")),
+      ).toBe(true);
       expect(seen[0]).toContain(CHILD);
       expect(seen[0]).toContain("Zerops isn't answering.");
       // "Try now" joins a running round; pressed between rounds, it starts one at once. It is
@@ -291,8 +294,9 @@ describe("ZeropsInventoryProvider renewal", () => {
       }
       expect(rounds()).toBe(before + 1);
       expect(said[0]!.match(/Try (again|now)|Trying…|Sign out/g)).toEqual(["Trying…", "Sign out"]);
-      await pass(TRY_NOW_SETTLE_MS);
-      expect(tab.readable()).toContain("Still not answering.");
+      await pass(60_000);
+      expect(tab.readable()).toContain("Zerops isn't answering.");
+      expect(buttonsLabelled(tab.container(), "Try now")).toHaveLength(1);
       expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now", "Sign out"]);
     },
   );

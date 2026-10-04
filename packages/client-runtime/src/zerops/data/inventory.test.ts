@@ -89,8 +89,8 @@ describe("Zerops inventory model", () => {
     const id = identity();
     const ref = service();
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: project().organization,
+      kind: "services-of-project" as const,
+      project: project(),
       schemaVersion: 1 as const,
     };
     const direct = directTicket({ kind: "service", ref }, id, 2, 1, 2);
@@ -178,8 +178,8 @@ describe("Zerops inventory model", () => {
     const id = identity();
     const ref = service();
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: project().organization,
+      kind: "services-of-project" as const,
+      project: project(),
       schemaVersion: 1 as const,
     };
     const direct = directTicket({ kind: "service", ref }, id, 2, 1, 2);
@@ -220,8 +220,8 @@ describe("Zerops inventory model", () => {
     const a = service("a");
     const b = service("b");
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: p.organization,
+      kind: "services-of-project" as const,
+      project: p,
       schemaVersion: 1 as const,
     };
     const older = queryTicket(descriptor, id, 1, 1, 1);
@@ -296,8 +296,8 @@ describe("Zerops inventory model", () => {
     const p = project();
     const a = service("a");
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: p.organization,
+      kind: "services-of-project" as const,
+      project: p,
       schemaVersion: 1 as const,
     };
     let state = reduce(makeInitialZeropsDataState(scope()), {

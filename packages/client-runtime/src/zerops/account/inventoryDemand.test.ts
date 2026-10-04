@@ -105,7 +105,7 @@ describe("inventoryDemand", () => {
         },
       ]);
       expect(
-        inventoryDemand({ activeOrganizationId, grant }).map((row) =>
+        inventoryDemand({ activeOrganizationId, grant, openedServices: [] }).map((row) =>
           "organization" in row
             ? row.organization.organizationId
             : row.project.organization.organizationId,
@@ -204,6 +204,7 @@ it("does not turn admitted navigation projects into detail or deploy demand", ()
     inventoryDemand({
       activeOrganizationId: organization.organizationId,
       grant: drive(granted),
+      openedServices: [],
     }).map(({ kind }) => kind),
   ).toEqual(["organization-inventory"]);
 });

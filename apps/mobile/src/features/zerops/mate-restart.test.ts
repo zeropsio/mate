@@ -99,7 +99,7 @@ const platform = () => {
   const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> =>
     query.kind === "projects-of-organization"
       ? [projectRow]
-      : query.kind === "services-of-organization"
+      : query.kind === "services-of-project"
         ? [serviceRow()]
         : [];
   const adapter: ZeropsDataAdapter = {

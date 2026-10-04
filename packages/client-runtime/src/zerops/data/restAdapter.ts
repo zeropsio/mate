@@ -19,8 +19,6 @@ import {
   decodeStartServiceResponse,
   decodeSearchListPage,
   isRowIssue,
-  rememberMemberProjects,
-  type MemberProjectOf,
   type ProtocolDecodeIssue,
 } from "./platformProtocol.ts";
 import { mateDiagnostics } from "../diagnostics.ts";
@@ -31,7 +29,6 @@ import type {
   PlatformCommandReceipt,
   PlatformObservation,
   ProcessRef,
-  ProjectRef,
   PlatformReadRequest,
   PlatformReadResult,
   ReceiverEvent,
@@ -282,7 +279,7 @@ function reportDroppedRows(issues: ReadonlyArray<ProtocolDecodeIssue>): void {
 }
 
 function queryOrganizationId(query: EntityQueryDescriptor): string {
-  return query.kind === "process-history-window" || query.kind === "services-of-project"
+  return "project" in query
     ? query.project.organization.organizationId
     : query.organization.organizationId;
 }
@@ -293,8 +290,7 @@ function registrationOrganization(request: RegistrationRequest) {
   return descriptor.kind === "entity-updates" || descriptor.kind === "table-updates"
     ? descriptor.organization
     : descriptor.kind === "query-membership"
-      ? descriptor.query.kind === "process-history-window" ||
-        descriptor.query.kind === "services-of-project"
+      ? "project" in descriptor.query
         ? descriptor.query.project.organization
         : descriptor.query.organization
       : descriptor.query.project.organization;
@@ -317,11 +313,11 @@ function searchTerms(
   const terms: Array<Readonly<Record<string, unknown>>> = [
     { name: "clientId", operator: "eq", value: queryOrganizationId(query) },
   ];
-  if (query.kind === "process-history-window" || query.kind === "services-of-project")
+  if ("project" in query)
     terms.push({ name: "projectId", operator: "eq", value: query.project.projectId });
   if (query.kind === "projects-of-organization" && query.statuses.length)
     terms.push({ name: "status", operator: "in", value: query.statuses });
-  if (query.kind === "running-processes-of-organization") {
+  if (query.kind === "running-processes-of-project") {
     terms.push({ name: "status", operator: "in", value: query.statuses });
     terms.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
   }
@@ -345,7 +341,8 @@ function tableSearch(query: TableQueryDescriptor) {
     body: {
       search: [
         { name: "clientId", operator: "eq", value: query.organization.organizationId },
-        query.kind === "active-versions-of-organization"
+        { name: "serviceStackId", operator: "in", value: query.serviceIds },
+        query.kind === "active-versions-of-services"
           ? { name: "status", operator: "eq", value: "ACTIVE" }
           : { name: "key", operator: "in", value: query.keys },
         ...(query.ids === undefined ? [] : [{ name: "id", operator: "in", value: query.ids }]),
@@ -368,6 +365,7 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
       body: {
         search: [
           { name: "clientId", operator: "eq", value: descriptor.organization.organizationId },
+          { name: "serviceStackId", operator: "in", value: descriptor.serviceIds },
         ],
         sort: [],
         ...common,
@@ -387,6 +385,9 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
       body: {
         search: [
           { name: "clientId", operator: "eq", value: descriptor.organization.organizationId },
+          ...("project" in descriptor
+            ? [{ name: "projectId", operator: "eq", value: descriptor.project.projectId }]
+            : []),
           ...(descriptor.entity === "process"
             ? [{ name: "executorTag", operator: "ne", value: "L7_MASTER" }]
             : []),
@@ -402,7 +403,7 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
     const entity =
       descriptor.query.kind === "projects-of-organization"
         ? "project"
-        : descriptor.query.kind === "services-of-organization"
+        : descriptor.query.kind === "services-of-project"
           ? "service-stack"
           : "process";
     return {
@@ -452,8 +453,8 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
     return { path: `/process/${target.ref.processId}`, method: "GET" as const };
   const query = target.descriptor;
   if (
-    query.kind === "active-versions-of-organization" ||
-    query.kind === "service-variables-of-organization"
+    query.kind === "active-versions-of-services" ||
+    query.kind === "service-variables-of-services"
   ) {
     const search = tableSearch(query);
     return {
@@ -467,12 +468,9 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
       path: `/client/${query.organization.organizationId}/project?limit=500${offset ? `&offset=${offset}` : ""}`,
       method: "GET" as const,
     };
-  if (
-    query.kind === "services-of-organization" ||
-    query.kind === "running-processes-of-organization"
-  )
+  if (query.kind === "running-processes-of-project")
     return {
-      path: query.kind === "services-of-organization" ? "/service-stack/search" : "/process/search",
+      path: "/process/search",
       method: "POST" as const,
       body: {
         search: searchTerms(query),
@@ -519,40 +517,27 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
   if (ticket.target.kind !== "query") return decodeEntityDirectResponse(ticket, body);
   switch (ticket.target.descriptor.kind) {
     case "projects-of-organization":
-    case "services-of-organization":
     case "services-of-project":
-    case "running-processes-of-organization":
+    case "running-processes-of-project":
     case "process-history-window":
       return decodeEntityQueryResponse(ticket.target.descriptor, ticket, body, "direct-read");
     case "current-metrics-of-project":
     case "metric-history-of-project":
       return decodeMetricRead(ticket, body);
-    case "active-versions-of-organization":
-    case "service-variables-of-organization":
+    case "active-versions-of-services":
+    case "service-variables-of-services":
       return decodeTableSearch(ticket, body);
   }
 }
 
 /**
  * Creates the low-level account transport. The runtime owns receiver replacement,
- * desired-interest leases, retries and ingestion ordering.
+ * desired-interest leases, manual attempts and ingestion ordering.
  */
 export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): ZeropsDataAdapter {
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
   const tags = makeProjectTagWriter({ source: options.client, locks: options.locks });
   const openReceivers = new WeakMap<ReceiverHandle, OpenReceiverInternals>();
-  /**
-   * Whose every service and process this account's rows named: an organization-wide membership
-   * frame carries bare ids, and is placed by these (`decodeNativeFrame`).
-   */
-  const memberProjects = new Map<string, ProjectRef>();
-  const memberProjectOf: MemberProjectOf = (entity, id) => memberProjects.get(`${entity}:${id}`);
-  const remember = <Decoded extends { readonly observations: ReadonlyArray<PlatformObservation> }>(
-    decoded: Decoded,
-  ): Decoded => {
-    rememberMemberProjects(memberProjects, decoded.observations);
-    return decoded;
-  };
   let accountBufferedEvents = 0;
   let accountBufferedBytes = 0;
 
@@ -704,9 +689,8 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           );
           return;
         }
-        const decoded = decodeNativeFrame(data, registrations, memberProjectOf);
+        const decoded = decodeNativeFrame(data, registrations);
         if (decoded.kind === "observations") {
-          remember(decoded);
           reportDroppedRows(decoded.issues);
         }
         if (decoded.kind === "pong") {
@@ -940,18 +924,17 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     ).pipe(
       Effect.flatMap((body) => restOfOrganizationSearch(request, http, body, context)),
       Effect.flatMap((body) => {
-        const decoded = remember(
+        const decoded =
           Array.isArray(body) &&
-            request.descriptor.kind === "query-membership" &&
-            request.baselineTicket !== null
+          request.descriptor.kind === "query-membership" &&
+          request.baselineTicket !== null
             ? decodeEntityQueryPages(
                 request.descriptor.query,
                 request.baselineTicket,
                 body,
                 "indexed-search",
               )
-            : decodeRegistrationResponse(request, body),
-        );
+            : decodeRegistrationResponse(request, body);
         reportDroppedRows(decoded.issues);
         const fatal = decoded.issues.find((issue) => !isRowIssue(issue));
         if (fatal !== undefined) return Effect.fail(adapterError("malformed", fatal.message));
@@ -1034,23 +1017,17 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       });
     const result = Effect.gen(function* () {
       const descriptor = ticket.target.kind === "query" ? ticket.target.descriptor : null;
-      if (
-        descriptor !== null &&
-        (descriptor.kind === "services-of-organization" ||
-          descriptor.kind === "running-processes-of-organization")
-      ) {
-        // The platform has no lag-free list of an organization's services or processes: its
+      if (descriptor !== null && descriptor.kind === "running-processes-of-project") {
+        // The platform has no lag-free list of a project's running processes: its
         // search is the read, as the platform's own app reads them.
         const pages = yield* traversePages(perform, decodeSearchListPage);
-        const decoded = remember(
-          decodeEntityQueryPages(descriptor, ticket, pages, "indexed-search"),
-        );
+        const decoded = decodeEntityQueryPages(descriptor, ticket, pages, "indexed-search");
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       if (descriptor !== null && descriptor.kind === "services-of-project") {
         // The lag-free list of one project's services: the confirming read (§9 C19).
         const pages = yield* traversePages(perform, decodeDirectListPage);
-        const decoded = remember(decodeEntityQueryPages(descriptor, ticket, pages, "direct-read"));
+        const decoded = decodeEntityQueryPages(descriptor, ticket, pages, "direct-read");
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       if (descriptor !== null && descriptor.kind === "projects-of-organization") {
@@ -1072,10 +1049,13 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       const body = yield* perform();
-      const decoded = remember(decodeRead(ticket, body));
+      const decoded = decodeRead(ticket, body);
       if (decoded.issues.length && decoded.observations.length === 0)
         return yield* Effect.fail(adapterError("malformed", decoded.issues[0]!.message));
-      return { observations: decoded.observations } satisfies PlatformReadResult;
+      return {
+        observations: decoded.observations,
+        ...(decoded.project === undefined ? {} : { project: decoded.project }),
+      } satisfies PlatformReadResult;
     });
     return result.pipe(
       Effect.catch((error) => {
