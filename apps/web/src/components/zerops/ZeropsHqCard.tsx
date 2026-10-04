@@ -123,7 +123,16 @@ export function ZeropsHqCard() {
         ? undefined
         : {
             kind: "read",
-            state: hqUpdateState({ service, processes: builds.processes, carried }),
+            // Weighed against the Core HQ answers with now: a new answer needs no new read.
+            state: hqUpdateState({
+              service,
+              processes: builds.processes,
+              carried,
+              answering:
+                standing.kind === "healthy" || standing.kind === "unchecked"
+                  ? standing.build
+                  : undefined,
+            }),
           };
   const view = hqCardView({
     admin,

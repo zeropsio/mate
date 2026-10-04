@@ -1,6 +1,7 @@
 /**
  * HQ's card reads Zerops once each time an admin opens it, never while it is closed and never
- * again on its own; a read that failed says so.
+ * again on its own — not when HQ answers with another Core, which it weighs its read against
+ * anew; a read that failed says so.
  */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { act } from "react";
@@ -15,6 +16,8 @@ const CARRIED = "20261004T100000Z.0123456789ab";
 const zerops = vi.hoisted(() => ({
   listProjectProcesses: vi.fn<(projectId: string) => Promise<ReadonlyArray<ActivityProcess>>>(),
 }));
+/** The Core HQ's health answers with. */
+const health = vi.hoisted(() => ({ build: "20261003T080500Z.ba9876543210" }));
 
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
@@ -27,7 +30,7 @@ vi.mock("~/zerops/accountHq", () => ({
   useAccountHq: () => ({
     hq: { kind: "official", projectId: "hq1", address: "https://hq.example.test" },
   }),
-  useHqStanding: () => ({ kind: "healthy", build: RUNS, parts: { quarantined: [] } }),
+  useHqStanding: () => ({ kind: "healthy", build: health.build, parts: { quarantined: [] } }),
   useCarriedCoreBuild: () => CARRIED,
   readBundledCore: () => Promise.reject(new Error("no Core in this test")),
 }));
@@ -43,7 +46,8 @@ vi.mock("~/zerops/inventoryContext", () => ({
               id: "s-hq",
               name: "hq",
               status: "ACTIVE",
-              activeAppVersion: { name: `hq-core.${RUNS}` },
+              // As Zerops' service list embeds it: no name (KRLS, 2026-10-04).
+              activeAppVersion: { id: "av-runs" },
             },
           ],
         },
@@ -71,6 +75,7 @@ const mounted: ReactTestRenderer[] = [];
 afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
   zerops.listProjectProcesses.mockReset();
+  health.build = RUNS;
 });
 
 async function mount(): Promise<ReactTestRenderer> {
@@ -117,6 +122,21 @@ describe("ZeropsHqCard — HQ's builds", () => {
     expect(zerops.listProjectProcesses).toHaveBeenCalledTimes(1);
     await press(tree);
     expect(zerops.listProjectProcesses).toHaveBeenCalledTimes(2);
+  });
+
+  it("are weighed anew, not read again, once HQ answers with the Core being deployed", async () => {
+    zerops.listProjectProcesses.mockResolvedValue([BUILDING]);
+    const tree = await mount();
+    await press(tree);
+    expect(text(tree)).toContain("Updating");
+
+    health.build = CARRIED;
+    await act(async () => {
+      tree.update(<ZeropsHqCard />);
+    });
+    expect(text(tree)).toContain("Healthy");
+    expect(text(tree)).not.toContain("Updating");
+    expect(zerops.listProjectProcesses).toHaveBeenCalledTimes(1);
   });
 
   it("that could not be read say so, and are not read again", async () => {
