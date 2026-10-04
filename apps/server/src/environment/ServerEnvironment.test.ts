@@ -113,6 +113,33 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
     }),
   );
 
+  // What an update came to is the server a client reconnects to: the same version on another boot
+  // is an update that did not take, the same boot a server not restarted yet.
+  it.effect(
+    "names its boot: the same for every descriptor of one process, another after a restart",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-server-environment-test-",
+        });
+
+        const { first, again } = yield* Effect.gen(function* () {
+          const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+          const first = yield* serverEnvironment.getDescriptor;
+          return { first, again: yield* serverEnvironment.getDescriptor };
+        }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+        const restarted = yield* Effect.gen(function* () {
+          const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+          return yield* serverEnvironment.getDescriptor;
+        }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+
+        expect(first.bootId).toEqual(expect.any(String));
+        expect(again.bootId).toBe(first.bootId);
+        expect(restarted.bootId).not.toBe(first.bootId);
+      }),
+  );
+
   // A client that loaded the app from the wrong prefix reaches a server that
   // answers, so the descriptor has to say which prefix it is actually published
   // under; the SPA catch-all makes the failure silent otherwise.
