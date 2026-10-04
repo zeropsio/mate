@@ -116,6 +116,16 @@ describe("hqUpdateState", () => {
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
     {
+      // No id is no match: a build that failed, its version without one, never names what runs.
+      name: "is not answering, its active version without an id",
+      answering: undefined,
+      active: { status: "ACTIVE", source: "CLI" },
+      processes: [
+        build({ status: "FAILED", failReason: "boom", appVersion: { name: `hq-core.${OLDER}` } }),
+      ],
+      state: { kind: "failed", running: "", carried: CARRIED, reason: "boom" },
+    },
+    {
       // HQ's health may name the new Core a few seconds before Zerops ends the build (KRLS).
       name: "already answers with the Core a build still under way deploys",
       answering: CARRIED,
@@ -196,11 +206,11 @@ describe("hqUpdateState", () => {
       processes: [build({ status: "RUNNING", actionName: "stack.restart" })],
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
-  ])("HQ that $name", ({ answering, processes, state }) => {
+  ])("HQ that $name", ({ answering, active = ACTIVE, processes, state }) => {
     expect(
       hqUpdateState({
         // As `GET /project/{id}/service-stack` embeds it: no name (KRLS, 2026-10-04).
-        service: { id: "svc-hq", activeAppVersion: ACTIVE },
+        service: { id: "svc-hq", activeAppVersion: active },
         processes,
         carried: CARRIED,
         answering,

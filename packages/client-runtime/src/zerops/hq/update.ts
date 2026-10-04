@@ -93,9 +93,14 @@ export function hqUpdateState(input: {
     .sort((left, right) => Date.parse(right.created) - Date.parse(left.created));
   const newest = deploys[0];
   const activeId = input.service.activeAppVersion?.id;
+  // No id names no build: an active version without one matches none, never one without one.
   const answered =
     input.answering ??
-    namedCore(deploys.find((process) => process.appVersion?.id === activeId)?.appVersion?.name);
+    namedCore(
+      activeId === undefined
+        ? undefined
+        : deploys.find((process) => process.appVersion?.id === activeId)?.appVersion?.name,
+    );
   // A deploy of a newer Core that FINISHED runs it, though HQ may answer with the one before it
   // for a few seconds (KRLS, 2026-10-04).
   const deployed = newest?.status === "FINISHED" ? namedCore(newest.appVersion?.name) : "";
