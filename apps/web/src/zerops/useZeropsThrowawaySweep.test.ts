@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off -- fake timers own `Date.now()`; the sweep and the platform read it.
-import { act, createElement } from "react";
+import { act, createElement, useLayoutEffect } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -46,10 +46,15 @@ vi.mock("./readZeropsCell", () => ({
   },
 }));
 
+let cleanup: ReturnType<typeof useZeropsThrowawaySweep>;
+
 /** The sweep mounted over the organization `clientId`, as the projects page mounts it. */
 async function mounted(clientId: string) {
   function Probe() {
-    useZeropsThrowawaySweep({ clientId, enabled: true });
+    const view = useZeropsThrowawaySweep({ clientId, enabled: true });
+    useLayoutEffect(() => {
+      cleanup = view;
+    }, [view]);
     return null;
   }
   let root: ReturnType<typeof create> | undefined;
@@ -80,7 +85,7 @@ describe("useZeropsThrowawaySweep", () => {
     }
   });
 
-  it("sweeps once after this browser failed a delete", async () => {
+  it("a failed door delete stays visible until one manual delete again", async () => {
     vi.useFakeTimers({
       now: Date.parse("2026-10-03T10:00:00.000Z"),
       toFake: ["Date", "setTimeout", "clearTimeout"],
@@ -112,15 +117,25 @@ describe("useZeropsThrowawaySweep", () => {
         await vi.advanceTimersByTimeAsync(THROWAWAY_SWEEP_AGE_MS);
       });
       expect(mock.reads).toEqual([]);
-      // Past it, listed once and taken back; then owed no longer.
+      // Passing the window never retries the failed deletion.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(THROWAWAY_SWEEP_AGE_MS);
       });
-      expect([mock.reads, mock.deleted]).toEqual([["org-left"], ["door-1"]]);
+      expect([mock.reads, mock.deleted]).toEqual([[], []]);
+      expect(cleanup).toMatchObject({ state: "failed", failure: "refused" });
+      await act(async () => {
+        cleanup.again();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect([mock.reads, mock.deleted]).toEqual([[], ["door-1"]]);
+      expect(cleanup.state).toBe("done");
       await act(async () => {
         await vi.advanceTimersByTimeAsync(THROWAWAY_SWEEP_AGE_MS * 3);
       });
-      expect(mock.reads).toEqual(["org-left"]);
+      expect(mock.reads).toEqual([]);
+      expect(mock.deleted).toEqual(["door-1"]);
     } finally {
       await act(async () => root.unmount());
     }

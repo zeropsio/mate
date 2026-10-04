@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -6,6 +6,7 @@ import {
   THROWAWAY_SWEEP_AGE_MS,
   type ThrowawayDebt,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 import { useZeropsThrowawaySweep } from "./useZeropsThrowawaySweep";
 
 const NOW = Date.parse("2026-10-04T10:00:00Z");
@@ -37,7 +38,10 @@ vi.mock("./ZeropsSessionProvider", () => {
 let tree: ReactTestRenderer | undefined;
 let shown: ReturnType<typeof useZeropsThrowawaySweep>;
 function Probe({ enabled = true, clientId = "org-1" }: { enabled?: boolean; clientId?: string }) {
-  shown = useZeropsThrowawaySweep({ enabled, clientId });
+  const view = useZeropsThrowawaySweep({ enabled, clientId });
+  useLayoutEffect(() => {
+    shown = view;
+  }, [view]);
   return null;
 }
 const tokens = [
@@ -81,6 +85,105 @@ async function again() {
 }
 
 describe("inventory throwaway cleanup", () => {
+  it.each(["failed", "unknown"] as const)(
+    "shows an immediate %s deletion outcome and deletes its exact fresh target only on again",
+    async (state) => {
+      await mount();
+      await act(async () => {
+        mocks.debt!.owe("org-1", NOW, "mate-door:fresh:n1");
+        mocks.debt!.failCleanup("org-1", NOW, {
+          attempt: "mate-door:fresh:n1",
+          tokenId: "fresh",
+          state,
+          reason: "Zerops refused the deletion.",
+        });
+      });
+      expect(shown).toMatchObject({ state, failure: "Zerops refused the deletion." });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60_000);
+      });
+      expect(mocks.read).not.toHaveBeenCalled();
+      expect(mocks.remove).not.toHaveBeenCalled();
+      mocks.remove.mockRejectedValueOnce(new Error("Delete failed again."));
+      await again();
+      expect(mocks.remove).toHaveBeenCalledTimes(1);
+      expect(mocks.remove).toHaveBeenCalledWith(
+        { clientId: "org-1", tokenId: "fresh" },
+        expect.any(AbortSignal),
+      );
+      expect(shown.failure).toBe("Delete failed again.");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60_000);
+      });
+      expect(mocks.remove).toHaveBeenCalledTimes(1);
+      await again();
+      expect(mocks.remove).toHaveBeenCalledTimes(2);
+      expect(mocks.read).not.toHaveBeenCalled();
+      expect(shown.state).toBe("done");
+      expect(mocks.debt!.failedAt("org-1")).toBeNull();
+    },
+  );
+
+  it("keeps a manual cleanup running until all of its exact targets have ended", async () => {
+    for (const tokenId of ["first", "second"]) {
+      mocks.debt!.failCleanup("org-1", NOW, {
+        attempt: `mate-door:${tokenId}:n1`,
+        tokenId,
+        state: "failed",
+        reason: "refused",
+      });
+    }
+    let finish: (() => void) | undefined;
+    mocks.remove.mockResolvedValueOnce(undefined).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await mount();
+    await again();
+    expect(mocks.remove).toHaveBeenCalledTimes(2);
+    expect(shown.state).toBe("running");
+    await again();
+    expect(mocks.remove).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      finish!();
+    });
+    expect(shown.state).toBe("done");
+    expect(mocks.debt!.failedAt("org-1")).toBeNull();
+  });
+
+  it("confirms deletion when Delete again finds the token already absent", async () => {
+    mocks.debt!.failCleanup("org-1", NOW, {
+      attempt: "mate-door:absent:n1",
+      tokenId: "absent",
+      state: "unknown",
+      reason: "Answer lost.",
+    });
+    mocks.remove.mockRejectedValueOnce(new ZeropsApiError("Token not found.", "not-found", 404));
+    await mount();
+    await again();
+    expect(mocks.remove).toHaveBeenCalledTimes(1);
+    expect(shown.state).toBe("done");
+    expect(mocks.debt!.failedAt("org-1")).toBeNull();
+  });
+
+  it("shows a new failed deletion even after this inventory already completed cleanup", async () => {
+    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001);
+    await mount();
+    expect(shown.state).toBe("done");
+    await act(async () => {
+      mocks.debt!.failCleanup("org-1", NOW, {
+        attempt: "mate-door:later:n1",
+        tokenId: "later",
+        state: "failed",
+        reason: "refused",
+      });
+    });
+    expect(shown).toMatchObject({ state: "failed", failure: "refused" });
+    expect(mocks.remove).toHaveBeenCalledTimes(1);
+  });
+
   it("restores crash debt and sweeps once after inventory is granted, then settles it durably", async () => {
     const entries = new Map<string, string>();
     const storage = {

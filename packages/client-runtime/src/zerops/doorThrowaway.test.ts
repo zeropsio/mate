@@ -841,6 +841,51 @@ describe("throwaway hygiene", () => {
     expect(debt.failedAt("org-1")).toBe(Date.now());
   });
 
+  it.each([
+    { kind: "forbidden" as const, status: 403, state: "failed" },
+    { kind: "network" as const, status: null, state: "unknown" },
+  ])("persists a $state cleanup outcome and its exact target without credentials", async (row) => {
+    const entries = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => entries.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        entries.set(key, value);
+      },
+      removeItem: (key: string) => {
+        entries.delete(key);
+      },
+    };
+    const debt = makeThrowawayDebt(storage);
+    const remove = vi
+      .fn()
+      .mockRejectedValue(new ZeropsApiError("Delete refused.", row.kind, row.status));
+    const client = {
+      mintThrowaway: async () => ({
+        id: "receipt-token",
+        token: "throwaway-secret",
+        mintingToken: "account-secret",
+      }),
+      deleteThrowaway: remove,
+    } as unknown as ZeropsApiClient;
+    const platform = zeropsThrowawayPlatform(client, { debt });
+    await platform.mint({ clientId: "org-receipt", name: "mate-door:receipt:n1" });
+    await expect(
+      platform.remove({ clientId: "org-receipt", tokenId: "receipt-token" }),
+    ).rejects.toThrow("Delete refused.");
+    const restored = makeThrowawayDebt(storage);
+    expect(restored.cleanupFailures("org-receipt")).toEqual([
+      {
+        attempt: "mate-door:receipt:n1",
+        tokenId: "receipt-token",
+        state: row.state,
+        reason: "Delete refused.",
+      },
+    ]);
+    expect(restored.sweepFailed("org-receipt")).toBe(true);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify([...entries.values()])).not.toContain("secret");
+  });
+
   it("ends a failed delete after one attempt and leaves visible debt for the sweep", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
@@ -858,6 +903,7 @@ describe("throwaway hygiene", () => {
     await settle();
     expect(debt.failedAt("org-1")).toBe(Date.now());
     await outcome;
+    expect(debt.sweepFailed("org-1")).toBe(true);
     await vi.advanceTimersByTimeAsync(90_000);
     expect(tab.rest.orphanTokens()).toHaveLength(1);
   });
