@@ -1399,19 +1399,27 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       ),
     );
 
+  // A client folds task lifecycles into its helper roster and background work.
+  // Unlike ordinary work-log rows, they must survive the recent-activity cap:
+  // otherwise opening or reloading a thread loses helpers a live stream retained.
   const listThreadActivityIdsByThread = SqlSchema.findAll({
     Request: ThreadIdLookupInput,
     Result: ProjectionThreadActivityIdRowSchema,
     execute: ({ threadId }) =>
       sql`
-        SELECT activity_id AS "activityId"
-        FROM projection_thread_activities
-        WHERE thread_id = ${threadId}
-        ORDER BY
-          sequence DESC,
-          created_at DESC,
-          activity_id DESC
-        LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        WITH scoped_activities AS (
+          SELECT activity_id, kind, sequence, created_at
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+        )
+        SELECT activity_id AS "activityId" FROM scoped_activities
+        WHERE kind IN ('task.started', 'task.progress', 'task.updated', 'task.completed')
+        UNION
+        SELECT activity_id AS "activityId" FROM (
+          SELECT activity_id FROM scoped_activities
+          ORDER BY sequence DESC, created_at DESC, activity_id DESC
+          LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        )
       `,
   });
 
@@ -1864,40 +1872,45 @@ pending_approval_requests AS (
     Result: ProjectionThreadActivityIdRowSchema,
     execute: ({ threadId, minAnchorAt, minTurnKey, beforeAnchorAt, beforeTurnKey }) =>
       sql`
-        SELECT activity_id AS "activityId"
-        FROM projection_thread_activities
-        WHERE thread_id = ${threadId}
-          AND (
-            turn_id IN (
-              SELECT turn_id FROM projection_turns
-              WHERE thread_id = ${threadId}
-                AND turn_id IS NOT NULL
-                AND (
-                  requested_at > ${minAnchorAt}
-                  OR (
-                    requested_at = ${minAnchorAt}
-                    AND turn_id >= ${minTurnKey}
+        WITH scoped_activities AS (
+          SELECT activity_id, kind, sequence, created_at
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND (
+              turn_id IN (
+                SELECT turn_id FROM projection_turns
+                WHERE thread_id = ${threadId}
+                  AND turn_id IS NOT NULL
+                  AND (
+                    requested_at > ${minAnchorAt}
+                    OR (
+                      requested_at = ${minAnchorAt}
+                      AND turn_id >= ${minTurnKey}
+                    )
                   )
-                )
-                AND (
-                  requested_at < ${beforeAnchorAt}
-                  OR (
-                    requested_at = ${beforeAnchorAt}
-                    AND turn_id < ${beforeTurnKey}
+                  AND (
+                    requested_at < ${beforeAnchorAt}
+                    OR (
+                      requested_at = ${beforeAnchorAt}
+                      AND turn_id < ${beforeTurnKey}
+                    )
                   )
-                )
+              )
+              OR (
+                turn_id IS NULL
+                AND created_at >= ${minAnchorAt}
+                AND created_at < ${beforeAnchorAt}
+              )
             )
-            OR (
-              turn_id IS NULL
-              AND created_at >= ${minAnchorAt}
-              AND created_at < ${beforeAnchorAt}
-            )
-          )
-        ORDER BY
-          sequence DESC,
-          created_at DESC,
-          activity_id DESC
-        LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        )
+        SELECT activity_id AS "activityId" FROM scoped_activities
+        WHERE kind IN ('task.started', 'task.progress', 'task.updated', 'task.completed')
+        UNION
+        SELECT activity_id AS "activityId" FROM (
+          SELECT activity_id FROM scoped_activities
+          ORDER BY sequence DESC, created_at DESC, activity_id DESC
+          LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        )
       `,
   });
 
