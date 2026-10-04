@@ -132,7 +132,7 @@ import {
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
-import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
+import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach } from "./runMotion.logic";
 import { easeRooms, noteScrollTop, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
@@ -4457,23 +4457,8 @@ const PLOP_MS = 340;
 const PLOP_SETTLE_PX = 1.5;
 /** The settle starts this far into the plop, and swings once past the place and back. */
 const PLOP_SETTLE_FROM = 0.42;
-/** How many frames the plop is drawn in: WAAPI eases linearly between them. */
-const PLOP_FRAMES = 24;
-
-/** The strong ease-out, `cubic-bezier(0.23, 1, 0.32, 1)`, at progress `t`. */
-function strongEaseOut(t: number): number {
-  const [x1, y1, x2, y2] = [0.23, 1, 0.32, 1];
-  const at = (a: number, b: number, u: number) =>
-    3 * a * u * (1 - u) * (1 - u) + 3 * b * u * u * (1 - u) + u * u * u;
-  let low = 0;
-  let high = 1;
-  for (let step = 0; step < 24; step += 1) {
-    const middle = (low + high) / 2;
-    if (at(x1, x2, middle) < t) low = middle;
-    else high = middle;
-  }
-  return at(y1, y2, (low + high) / 2);
-}
+/** The plop is drawn a frame at a time: WAAPI goes linearly between them. */
+const PLOP_FRAME_MS = 1000 / 60;
 
 /**
  * A row that left the live slot lands where the history drew it: it starts
@@ -4499,17 +4484,27 @@ function plop(row: HTMLElement, from: number) {
   }
   // Past its place on the side it travels towards, and back.
   const past = travel > 0 ? -PLOP_SETTLE_PX : PLOP_SETTLE_PX;
-  const frames = Array.from({ length: PLOP_FRAMES + 1 }, (_, frame) => {
-    const progress = frame / PLOP_FRAMES;
+  // Its way, a frame at a time, on the card's own curve (`approach`): a long
+  // travel goes at the card's top speed, never a 40 px frame.
+  const way = [travel];
+  while (way.at(-1) !== 0 && way.length < 120) {
+    way.push(approach(way.at(-1)!, 0, PLOP_FRAME_MS, ROOM_TAU_MS));
+  }
+  const steps = Math.max(1, way.length - 1);
+  const frames = way.map((at, frame) => {
+    const progress = frame / steps;
     const settle =
       progress > PLOP_SETTLE_FROM
         ? Math.sin((Math.PI * (progress - PLOP_SETTLE_FROM)) / (1 - PLOP_SETTLE_FROM))
         : 0;
-    return { translate: `0 ${travel * (1 - strongEaseOut(progress)) + past * settle}px` };
+    return { translate: `0 ${at + past * settle}px` };
   });
   // In effect from this frame: a new animation waits a frame for its start
   // time, and the row would stand a frame at its place before travelling.
-  row.animate(frames, { duration: PLOP_MS, easing: "linear" }).currentTime = 0;
+  row.animate(frames, {
+    duration: Math.max(PLOP_MS, steps * PLOP_FRAME_MS),
+    easing: "linear",
+  }).currentTime = 0;
   const fade = mark?.animate([{ opacity: 0 }, { opacity: 1 }], {
     duration: 240,
     delay: 60,
