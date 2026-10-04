@@ -392,13 +392,13 @@ describe("takenBotNames", () => {
       name: "a complete listing before HQ's structure is known is not all of them",
       listing: known([named("a", "Fen"), row("b", "known", ["mate"])]),
       structureKnown: false,
-      taken: { names: ["Fen", "b"], complete: false },
+      taken: { names: ["Fen"], complete: false },
     },
     {
-      // A name planted in a tag is nobody's name: the project's own is the Mate's.
-      name: "a name a project's tags carry is no Mate's",
+      // The marker is the Zerops GUI's and a name planted in a tag is nobody's: HQ places Mates.
+      name: "a project only its tags call a Mate names nobody",
       listing: known([row("a", "known", ["mate", "mate:bot:Fen"])]),
-      taken: { names: ["a"], complete: true },
+      taken: { names: [], complete: true },
     },
     {
       name: "a complete listing whose list held a member it may not read is not all of them",
