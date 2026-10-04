@@ -229,11 +229,6 @@ export interface NewMateRecord extends MateRecord {
 export interface MateView {
   readonly birthId?: string;
   readonly signers?: Readonly<Record<string, string>>;
-  /**
-   * Its project's name in Zerops as HQ's view of the org has it, never HQ's own (D3): what a client
-   * from before D3 reads a Mate's name from.
-   */
-  readonly name: string;
   readonly face: string;
   /**
    * Who made it: whoever set its record up, by their session (`createMate`, `attachProject`) —
@@ -1233,7 +1228,7 @@ export const structureLayer = (options: {
               readonly project_id: string;
               readonly app_id: string;
               readonly kind: string;
-              readonly mate: Omit<MateView, "name"> | null;
+              readonly mate: MateView | null;
             }>`
               SELECT p.project_id, p.app_id::text AS app_id, p.kind,
                      CASE WHEN m.project_id IS NULL THEN NULL ELSE jsonb_build_object(
@@ -1244,7 +1239,7 @@ export const structureLayer = (options: {
               ORDER BY p.seq`;
             const alone = yield* sql<{
               readonly project_id: string;
-              readonly mate: Omit<MateView, "name">;
+              readonly mate: MateView;
             }>`
               SELECT m.project_id, jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
@@ -1339,10 +1334,6 @@ export const structureLayer = (options: {
             });
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
             const projects = new Map(view.projects.map((project) => [project.id, project]));
-            const named = (projectId: string, mate: Omit<MateView, "name">): MateView => ({
-              name: names.get(projectId) ?? "",
-              ...mate,
-            });
             const person = { kind: "person", userId } as const;
             const reads = (projectId: string) =>
               can(person, "read_project", { projectId }, view).allow;
@@ -1356,7 +1347,7 @@ export const structureLayer = (options: {
                 .map((row) => ({
                   projectId: row.project_id,
                   name: names.get(row.project_id) ?? "",
-                  mate: named(row.project_id, row.mate),
+                  mate: row.mate,
                 })),
               apps: apps
                 .map((app) => ({
@@ -1382,7 +1373,7 @@ export const structureLayer = (options: {
                       projectId: row.project_id,
                       name: names.get(row.project_id) ?? "",
                       kind: row.kind,
-                      mate: row.mate === null ? null : named(row.project_id, row.mate),
+                      mate: row.mate,
                     })),
                   environments: can(
                     person,

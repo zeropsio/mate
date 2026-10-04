@@ -624,7 +624,7 @@ describe("structure", () => {
                     projectId: "P_MATE",
                     name: "name of P_MATE",
                     kind: "devstage",
-                    mate: { name: "name of P_MATE", ...mate, madeBy: "owner", ...UNBORN },
+                    mate: { ...mate, madeBy: "owner", ...UNBORN },
                   },
                   { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
                 ],
@@ -644,7 +644,7 @@ describe("structure", () => {
                     projectId: "P_OWNED",
                     name: "name of P_OWNED",
                     kind: "devstage",
-                    mate: { name: "name of P_OWNED", face: "face-1", madeBy: "maker", ...UNBORN },
+                    mate: { face: "face-1", madeBy: "maker", ...UNBORN },
                   },
                 ],
                 environments: [environmentRow("P_TEAM", "stage", "name-of-p-team", 1)],
@@ -789,7 +789,7 @@ describe("structure", () => {
             const read = yield* structure.read("owner");
             assert.deepStrictEqual(
               read.apps[0]?.projects.find((project) => project.projectId === "P_OWN")?.mate,
-              { name: "name of P_OWN", face: "face-3", madeBy: "owner", ...UNBORN },
+              { face: "face-3", madeBy: "owner", ...UNBORN },
             );
           }),
         ),
@@ -849,14 +849,12 @@ describe("structure", () => {
                   (read) => read.ungrouped.find((entry) => entry.projectId === projectId)?.mate,
                 );
               assert.deepStrictEqual(yield* mateOf("P_MATE"), {
-                name: "name of P_MATE",
                 face: "face-3",
                 madeBy: null,
                 standupRequestedBy: null,
                 closedOff: true,
               });
               assert.deepStrictEqual(yield* mateOf("P_OWN"), {
-                name: "name of P_OWN",
                 face: "face-1",
                 madeBy: "owner",
                 ...UNBORN,
@@ -889,7 +887,6 @@ describe("structure", () => {
           const mateOf = (userId: string) =>
             Effect.map(structure.read(userId), (read) => read.ungrouped[0]?.mate);
           assert.deepStrictEqual(yield* mateOf("reader"), {
-            name: "name of P_MATE",
             face: "face-3",
             madeBy: "owner",
             standupRequestedBy: "owner",
@@ -904,7 +901,6 @@ describe("structure", () => {
           assert.isTrue(Option.isSome(yield* Fiber.join(told)));
 
           assert.deepStrictEqual(yield* mateOf("reader"), {
-            name: "name of P_MATE",
             face: "face-3",
             madeBy: "owner",
             standupRequestedBy: "owner",
@@ -922,7 +918,7 @@ describe("structure", () => {
           const structure = yield* Structure;
           yield* structure.createMate("owner", { projectId: "P_MATE", face: "face-3" });
           const named = Effect.all([
-            Effect.map(structure.read("reader"), (read) => read.ungrouped[0]?.mate.name),
+            Effect.map(structure.read("reader"), (read) => read.ungrouped[0]?.name),
             Effect.map(structure.mateState("P_MATE"), (state) =>
               Option.map(state, (mate) => mate.name),
             ),
@@ -1191,8 +1187,8 @@ describe("structure", () => {
           );
           const mates = (yield* structure.read("owner")).apps[0]?.projects.map((p) => p.mate);
           assert.deepStrictEqual(mates, [
-            { name: "name of P_MATE", face: "rose:seal", madeBy: "owner", ...UNBORN },
-            { name: "name of P_OWNED", face: "olive:clover", madeBy: "owner", ...UNBORN },
+            { face: "rose:seal", madeBy: "owner", ...UNBORN },
+            { face: "olive:clover", madeBy: "owner", ...UNBORN },
             null,
           ]);
         }),
@@ -2096,7 +2092,7 @@ describe("structure", () => {
               {
                 projectId: "P_OWNED",
                 name: "name of P_OWNED",
-                mate: { name: "name of P_OWNED", face: "rose:seal", madeBy: "maker", ...UNBORN },
+                mate: { face: "rose:seal", madeBy: "maker", ...UNBORN },
               },
             ];
             assert.deepStrictEqual(yield* ungrouped("maker"), listed);
@@ -2204,7 +2200,7 @@ describe("structure", () => {
             projectId: "P_MATE",
             name: "name of P_MATE",
             kind: "mate",
-            mate: { name: "name of P_MATE", face: "face-3", madeBy: "owner", ...UNBORN },
+            mate: { face: "face-3", madeBy: "owner", ...UNBORN },
           });
 
           yield* Ref.update(view, (current) => ({
