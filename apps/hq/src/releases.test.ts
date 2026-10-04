@@ -196,6 +196,10 @@ const withReleases = <A, E>(
             PATH: process.env["PATH"] ?? "/usr/bin:/bin",
             GIT_CONFIG_NOSYSTEM: "1",
             GIT_CONFIG_GLOBAL: "/dev/null",
+            GIT_AUTHOR_NAME: AUTHOR.name,
+            GIT_AUTHOR_EMAIL: AUTHOR.email,
+            GIT_COMMITTER_NAME: AUTHOR.name,
+            GIT_COMMITTER_EMAIL: AUTHOR.email,
           },
         },
       ).trim();

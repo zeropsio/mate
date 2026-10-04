@@ -1333,26 +1333,29 @@ describe("deploys", () => {
           Effect.orDie,
         );
       /** Shop's stage tier first seen with `web`, then merged adding `api`. */
-      const addApi = (
-        appId: string,
-        tiers: Map<string, RecipeTierResponse>,
-        commit: Rig["commit"],
-      ) =>
+      const addApi = ({
+        appId,
+        tiers,
+        commit,
+        planned,
+      }: Pick<Rig, "appId" | "tiers" | "commit" | "planned">) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web")));
           const api = yield* commit("api", { "zerops.yaml": zeropsYaml("api") });
           yield* commit("group", { "README.md": "# Shop\n" });
+          // The tier is read when a rollout is planned: the first must see it before it changes.
+          yield* planned;
           tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web"), ...runtime(appId, "api")));
           yield* commit("group", { "README.md": "# Shop, with an api\n" });
           return api;
         });
 
       it.effect("asks for the services' deploys only once its import ended", () =>
-        withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until, planned }) =>
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             world.importOutcome = () => "RUNNING";
-            const api = yield* addApi(appId, tiers, commit);
+            const api = yield* addApi({ appId, tiers, commit, planned });
             yield* deltaIs(sql, "building");
             yield* Effect.sleep(Duration.millis(200));
             assert.deepStrictEqual(
@@ -1367,11 +1370,11 @@ describe("deploys", () => {
       );
 
       it.effect("fails a delta whose import failed, asking for no deploy", () =>
-        withDeploys(({ appId, world, tiers, commit, deploys }) =>
+        withDeploys(({ appId, world, tiers, commit, deploys, planned }) =>
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             world.importOutcome = () => "FAILED";
-            yield* addApi(appId, tiers, commit);
+            yield* addApi({ appId, tiers, commit, planned });
             yield* deltaIs(sql, "failed");
             assert.deepStrictEqual(yield* deltas(sql), [
               {
@@ -1390,11 +1393,11 @@ describe("deploys", () => {
       // H6 for an import: one whose answer was lost is never asked again — what the project lists
       // says how it went.
       it.effect("reads an import whose answer was lost from what the project lists", () =>
-        withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until, planned }) =>
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             world.lost.add("importServices");
-            const api = yield* addApi(appId, tiers, commit);
+            const api = yield* addApi({ appId, tiers, commit, planned });
             yield* deltaIs(sql, "submitting");
             yield* Effect.sleep(Duration.millis(100));
             assert.lengthOf(world.imports, 1);
@@ -1426,6 +1429,8 @@ describe("deploys", () => {
             tierOf(...runtime(appId, "web"), ...runtime(appId, "worker")),
           );
           yield* commit("group", { "README.md": "# Shop\n" });
+          // The tier is read when a rollout is planned: the first must see it before it changes.
+          yield* planned;
           tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web", "    minContainers: 2")));
           const changed = yield* commit("group", { "README.md": "# Shop, scaled\n" });
           yield* planned;
@@ -1466,6 +1471,8 @@ describe("deploys", () => {
             const queue = ["  - hostname: queue", "    type: nats@2.10"];
             tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web")));
             yield* commit("group", { "README.md": "# Shop\n" });
+            // The tier is read when a rollout is planned: the first must see it before it changes.
+            yield* planned;
             // The key gone: the merge that added the cache cannot import it.
             const kept = world.tokens.get("key-stage")!;
             world.tokens.delete("key-stage");
