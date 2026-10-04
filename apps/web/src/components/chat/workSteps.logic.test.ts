@@ -10,6 +10,7 @@ import {
   taskReportWords,
   trackCommands,
   unwrapShell,
+  type TrackedCommands,
 } from "./workSteps.logic";
 
 function entry(partial: Partial<WorkLogEntry> & { id: string }): WorkLogEntry {
@@ -544,12 +545,13 @@ describe("backgroundJobOf", () => {
   // The session that ran it is gone (a restart, the session ended): nothing
   // will report, and "running in the background" would stand forever.
   it.each([
-    { name: "its session is gone, its turn settled", gone: true, live: false, state: "lost" },
-    { name: "its session lives", gone: false, live: false, state: "running" },
-    { name: "its own turn still runs", gone: true, live: true, state: "running" },
-  ])("a job that never reported: $name", ({ gone, live, state }) => {
+    { name: "the server holds it no longer", held: [], live: false, state: "lost" },
+    { name: "the server holds it", held: ["b94"], live: false, state: "running" },
+    { name: "only a newer session's job lives", held: ["b7"], live: false, state: "lost" },
+    { name: "its own turn still runs", held: [], live: true, state: "running" },
+  ])("a job that never reported: $name", ({ held, live, state }) => {
     const run = command("1", "sleep 40; exit 2", { sentToBackground: "b94" });
-    const tracked = { ...trackCommands([run]), backgroundGone: gone };
+    const tracked: TrackedCommands = { ...trackCommands([run]), liveJobs: { ids: new Set(held) } };
     expect(backgroundJobOf(run, tracked, live)?.state).toBe(state);
   });
 
@@ -605,6 +607,21 @@ describe("a read of a background job's output", () => {
   ])("$name", ({ path, words }) => {
     const reading = read(path);
     expect(stepOf(reading, trackCommands([reading, job]), false).words).toBe(words);
+  });
+
+  // Review of pass 39: a running job's task is not in the log until it ends;
+  // the command that sent it away names it.
+  it("names a job still running by the command that sent it away", () => {
+    const sent = command("9", "sleep 60", {
+      callInput: { description: "Sleep a minute" },
+      sentToBackground: "zz9",
+    });
+    const reading = read(
+      "/tmp/claude-1000/-srv/0a1b2c3d-1111-4222-8333-444455556666/tasks/zz9.output",
+    );
+    expect(stepOf(reading, trackCommands([sent, reading]), false).words).toBe(
+      "Read the output of Sleep a minute",
+    );
   });
 });
 

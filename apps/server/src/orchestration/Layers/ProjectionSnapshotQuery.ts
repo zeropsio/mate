@@ -2849,6 +2849,9 @@ pending_approval_requests AS (
                       backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                         row.threadId,
                       ),
+                      backgroundTaskIds: threadBackgroundLiveness.getThreadLiveTaskIds(
+                        row.threadId,
+                      ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                       ...liveStepField(row.threadId, sessionByThread.get(row.threadId) ?? null),
                       usagePause: mapUsagePause(row),
@@ -3019,6 +3022,7 @@ pending_approval_requests AS (
                 backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                   row.threadId,
                 ),
+                backgroundTaskIds: threadBackgroundLiveness.getThreadLiveTaskIds(row.threadId),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                 usagePause: mapUsagePause(row),
                 ...(row.crew === null ? {} : { crew: row.crew }),
@@ -3338,6 +3342,7 @@ pending_approval_requests AS (
         backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
           threadRow.value.threadId,
         ),
+        backgroundTaskIds: threadBackgroundLiveness.getThreadLiveTaskIds(threadRow.value.threadId),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
         ...liveStepField(threadRow.value.threadId, session),
         usagePause: mapUsagePause(threadRow.value),

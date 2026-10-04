@@ -21,6 +21,7 @@ export function useLiveSlot({
   record,
   final,
   syncing = false,
+  quietFrom,
   onChange,
 }: {
   readonly live: ReadonlyArray<string>;
@@ -32,6 +33,8 @@ export function useLiveSlot({
    * history at once, never an arrival that stands or plops (`slotResync`).
    */
   readonly syncing?: boolean;
+  /** When the quiet began, from the data (`SlotOffer.quietFrom`). */
+  readonly quietFrom?: number;
   /**
    * Hears a change before it is drawn. `redrawn`: heard right after a draw of
    * the card, which may have moved things already — where they stood is what
@@ -39,7 +42,9 @@ export function useLiveSlot({
    */
   readonly onChange?: (from: LiveSlot, to: LiveSlot, redrawn: boolean) => void;
 }): LiveSlot {
-  const [slot, setSlot] = useState(() => slotStart({ live, record, at: Date.now() }));
+  const [slot, setSlot] = useState(() =>
+    slotStart({ live, record, at: Date.now(), ...(quietFrom === undefined ? {} : { quietFrom }) }),
+  );
   const slotRef = useRef(slot);
   const move = (next: LiveSlot, redrawn: boolean) => {
     const from = slotRef.current;
@@ -51,7 +56,12 @@ export function useLiveSlot({
   const offer = useEffectEvent(() => {
     if (syncing && !final) {
       // Nobody watched it: no landing to draw.
-      const next = slotResync(slotRef.current, { live, record, at: Date.now() });
+      const next = slotResync(slotRef.current, {
+        live,
+        record,
+        at: Date.now(),
+        ...(quietFrom === undefined ? {} : { quietFrom }),
+      });
       if (next === slotRef.current) return;
       slotRef.current = next;
       setSlot(next);

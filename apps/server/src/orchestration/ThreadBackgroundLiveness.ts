@@ -69,6 +69,12 @@ export class ThreadBackgroundLivenessService extends Context.Service<
      * "monitoring" only when watch loops are the ONLY live work.
      */
     readonly getThreadBackgroundLiveness: (threadId: string) => ThreadBackgroundLiveness;
+
+    /**
+     * The task ids held live, sorted: a client tells a background job that
+     * will never report (its session gone) from one still running by them.
+     */
+    readonly getThreadLiveTaskIds: (threadId: string) => ReadonlyArray<string>;
   }
 >()("t3/orchestration/ThreadBackgroundLiveness/ThreadBackgroundLivenessService") {}
 
@@ -151,6 +157,11 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
 
     clearThreadLiveness: (threadId) => {
       stateByThreadId.delete(threadId);
+    },
+
+    getThreadLiveTaskIds: (threadId) => {
+      const state = stateByThreadId.get(threadId);
+      return state === undefined ? [] : [...state.agents, ...state.monitors].toSorted();
     },
 
     getThreadBackgroundLiveness: (threadId) => {

@@ -514,6 +514,7 @@ const TASK_BAR: Record<DockBackgroundTask["state"], BarTone> = {
   done: "done",
   failed: "failed",
   stopped: "waiting",
+  lost: "waiting",
 };
 
 const TASK_STATE: Record<
@@ -524,6 +525,7 @@ const TASK_STATE: Record<
   done: { tone: "ok", word: "Done" },
   failed: { tone: "failed", word: "Failed" },
   stopped: { tone: "off", word: "Stopped" },
+  lost: { tone: "off", word: "Didn't report back" },
 };
 
 /** Whether anything in the dock runs alongside the Mate: a bar of its own under the live line. */

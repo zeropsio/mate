@@ -180,6 +180,7 @@ import { ConversationAfterWork, ConversationWorking, dockDraws } from "./Convers
 import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { handedOverRecently } from "../../zerops/mateHandOver";
@@ -214,32 +215,6 @@ import {
   parseReviewCommentMessageSegments,
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
-
-/** How long the server must say nothing lives in the background before a job reads as lost. */
-const BACKGROUND_GONE_AFTER_MS = 3000;
-
-/**
- * Whether nothing lives in the background any more: the thread idle and the
- * server holding no live background work — its session is gone (a restart,
- * the session ended). Found so on first sight, at once; turned so while the
- * page watches, only after it held `BACKGROUND_GONE_AFTER_MS`, so a job's
- * report arriving a moment after the server's word never shows it lost
- * first. A turn running says nothing either way: it keeps what was found.
- */
-function useBackgroundGone(
-  isWorking: boolean,
-  afterTurnWork: "working" | "monitoring" | null,
-): boolean {
-  const idleAndEmpty = !isWorking && afterTurnWork === null;
-  const [gone, setGone] = useState(idleAndEmpty);
-  if (!isWorking && afterTurnWork !== null && gone) setGone(false);
-  useEffect(() => {
-    if (!idleAndEmpty || gone) return;
-    const timer = setTimeout(() => setGone(true), BACKGROUND_GONE_AFTER_MS);
-    return () => clearTimeout(timer);
-  }, [idleAndEmpty, gone]);
-  return gone;
-}
 
 /** What hands the page back to the person while earlier turns are being placed. */
 const GESTURES = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
@@ -310,6 +285,8 @@ interface MessagesTimelineProps {
   working?: DockModel | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /** The background jobs the server holds live, as watched (`useLiveJobs`). */
+  liveJobs?: LiveJobs | null;
   onStopBackgroundWork?: () => void;
   stoppingBackgroundWork?: boolean;
   isWorking: boolean;
@@ -402,6 +379,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenAgents = NOOP_OPEN_AGENTS,
   working: workingNow = null,
   afterTurnWork = null,
+  liveJobs = null,
   onStopBackgroundWork = NOOP_STOP_BACKGROUND_WORK,
   stoppingBackgroundWork = false,
   listRef,
@@ -544,8 +522,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => helperFinishesOf(agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL),
     [agentPanelModel],
   );
-  // Whether the session that ran the background jobs is gone (`backgroundGone`).
-  const backgroundGone = useBackgroundGone(isWorking, afterTurnWork);
   // Whether something runs alongside the live run: its card is then drawn a
   // slice a row, its panel one of them.
   const alongside = dockDraws(working);
@@ -563,7 +539,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         supportsConversationRollback,
         queuedMessages,
         afterTurnWork,
-        backgroundGone,
+        liveJobs,
         helperFinishes,
         alongside,
         provider,
@@ -580,7 +556,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       supportsConversationRollback,
       queuedMessages,
       afterTurnWork,
-      backgroundGone,
+      liveJobs,
       helperFinishes,
       alongside,
       provider,

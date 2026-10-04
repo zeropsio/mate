@@ -123,6 +123,7 @@ import {
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
+import { stripShowsFiles } from "./runResult.logic";
 import {
   backgroundItemWord,
   reportsInline,
@@ -1252,7 +1253,8 @@ function PhraseWords({ phrase }: { readonly phrase: StepPhrase }) {
  * that looked at one names it on its line and leaves the picture to the
  * strip, so an opened card never shows it twice (Bodhi, run 9).
  */
-const ResultPicturesContext = createContext<ReadonlySet<string>>(new Set());
+const NO_PATHS: ReadonlySet<string> = new Set();
+const ResultPicturesContext = createContext<ReadonlySet<string>>(NO_PATHS);
 
 /** The pictures a step looked at, as themselves: small, each one opening the picture viewer. */
 function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
@@ -3285,16 +3287,14 @@ function LiveSlot({
   const clock = slotClock(
     slot,
     firstDrawn === undefined ? null : { key: firstDrawn.entry.key, at: firstDrawn.item.at },
+    status.waitingSince,
   );
+  // The thing's own time: what the run waited elsewhere is the run's clock's
+  // to leave out, and a wait on the person is counted as itself.
   const ticker: RunStatus | null =
     clock === null
       ? null
-      : {
-          ...status,
-          startedAt: clock.from,
-          waitedMs: 0,
-          waitingSince: clock.stopped ?? status.waitingSince,
-        };
+      : { ...status, startedAt: clock.from, waitedMs: 0, waitingSince: clock.stopped };
   // Which card each call stands in, kept from draw to draw (`slotEntries`).
   const [cards, setCards] = useState<ReadonlyMap<string, string>>(NO_CARDS);
   const slotted = slotEntries(lines, cards);
@@ -3387,7 +3387,8 @@ function LiveSlot({
           </ChatShownContext>
         </SlotStandsOpenContext>
       </InSlotContext>
-      <span className="run-slot-clock">
+      <span className="run-slot-clock" data-run-clock-waiting={clock?.waiting ? "" : undefined}>
+        {clock?.waiting ? <span className="sr-only">Waiting for you </span> : null}
         {ticker === null ? null : <RunTicker status={ticker} />}
       </span>
       {/* What a screen reader hears: what the slot shows, as it changes. */}
@@ -3463,6 +3464,13 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [row.items],
   );
   const slotRef = useRef<HTMLDivElement>(null);
+  // When the quiet began, from the data: the record's newest line, else the
+  // run's start — a reload or a catch-up never restarts "Thinking".
+  const quietFrom = useMemo(() => {
+    const ats = row.items.map((item) => Date.parse(item.at)).filter(Number.isFinite);
+    const start = row.status === null ? Number.NaN : Date.parse(row.status.startedAt);
+    return ats.length > 0 ? Math.max(...ats) : start;
+  }, [row.items, row.status]);
   // Where each row leaving the slot stood, and each line of the history, read
   // before they move: the plop starts there, and the history glides from there.
   const [landing, setLanding] = useState<Landing | null>(null);
@@ -3471,12 +3479,16 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     record: recordKeys,
     final: !slotted,
     syncing: ctx.syncing,
+    quietFrom,
     onChange: (from, to, redrawn) => {
       const after = slotHolds(to);
       const before = slotHolds(from);
       const leaving = [...before].filter((key) => !after.has(key));
       // What enters makes its room too: the history glides as the slot grows.
-      const entering = to.entries.some((entry) => !before.has(entry.key));
+      // Entering is against what the slot drew, not what it held: an item
+      // held behind "Thinking" (`pending`) enters on a settle all the same.
+      const drawn = new Set(from.entries.map((entry) => entry.key));
+      const entering = to.entries.some((entry) => !drawn.has(entry.key));
       if (leaving.length === 0 && !entering) return;
       // Where things stood as last painted: a change heard right after a draw
       // that already moved them (a check that ended as it was due, drawn as
@@ -3608,15 +3620,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         {...(above ? { readingRef } : {})}
       />
     );
-  const outcomePictures = settled ? row.outcome?.pictures : undefined;
+  const settledOutcome = settled ? row.outcome : null;
   const resultPictures = useMemo(
-    () =>
-      new Set(
-        (outcomePictures ?? []).flatMap((picture) =>
-          picture.kind === "file" ? [picture.path] : [],
-        ),
-      ),
-    [outcomePictures],
+    () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(settledOutcome)),
+    [settledOutcome],
   );
   return (
     // One container for the chat and its now line: the Mate's column keeps
