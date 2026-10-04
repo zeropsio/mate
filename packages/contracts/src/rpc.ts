@@ -338,6 +338,7 @@ export const WS_METHODS = {
 
   // Zerops feeds
   zeropsLifecycleGet: "zerops.lifecycle.get",
+  zeropsStandUpRetry: "zerops.standUp.retry",
   zeropsAgentLoginStart: "zerops.agentLogin.start",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsAgentLoginSubmitCode: "zerops.agentLogin.submitCode",
@@ -982,6 +983,13 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
+/** One explicit retry of a failed stand-up send, authorized as the authenticated asker. */
+const WsZeropsStandUpRetryRpc = Rpc.make(WS_METHODS.zeropsStandUpRetry, {
+  payload: Schema.Struct({}),
+  success: Schema.Boolean,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsZeropsLifecycleGetRpc = Rpc.make(WS_METHODS.zeropsLifecycleGet, {
   payload: ZeropsLifecycleGetInput,
   success: ZeropsLifecycle,
@@ -1261,6 +1269,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
   WsZeropsLifecycleGetRpc,
+  WsZeropsStandUpRetryRpc,
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
   WsZeropsAgentLoginStartRpc,

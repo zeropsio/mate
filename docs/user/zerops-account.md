@@ -46,3 +46,10 @@ history and agent work belong to the container; the browser cache is not a backu
 
 If an operation's response is lost, inspect the project and its services before starting it again.
 Mate reports uncertainty rather than assuming the operation failed or creating another project.
+
+Creation progress and failures survive a reload of the same tab. A request interrupted before
+Mate heard its answer is shown as uncertain; check the projects before starting again.
+
+A Mate added from a recipe starts development after its asker signs an agent in. A Mate with no
+recipe waits for you to say what to build. If the stand-up message fails to send, Mate says so and
+offers **Try again**. It never sends another attempt automatically.

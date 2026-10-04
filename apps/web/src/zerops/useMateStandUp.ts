@@ -5,7 +5,11 @@
  */
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useAtomCommand } from "../state/use-atom-command";
+import { zeropsCommands } from "../state/zeropsCommands";
+import { useRegistrationRecord } from "./registrationRecords";
+import { useMateSetup, refreshMateSetup } from "./useMateSetup";
 
 import { useThreadShells } from "../state/entities";
 import { zeropsMateAt } from "./mateIdentities";
@@ -48,7 +52,13 @@ export function useMateStandUp(input: {
   readonly threadRef: ScopedThreadRef | null;
   /** The messages it holds, as read live. */
   readonly messageCount: number;
-}): { readonly holdsComposer: boolean } {
+}): {
+  readonly holdsComposer: boolean;
+  readonly sendFailed: boolean;
+  readonly failed: boolean;
+  readonly retrying: boolean;
+  readonly retry: () => Promise<void>;
+} {
   const { environmentId, threadRef, messageCount } = input;
   const directory = useZeropsMateDirectory();
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
@@ -66,5 +76,28 @@ export function useMateStandUp(input: {
   );
   const conversation: MateStandUpConversation =
     threadRef === null || !main ? "unknown" : messageCount === 0 ? "empty" : "started";
-  return { holdsComposer: mateStandUpHoldsComposer({ marker, viewer, conversation }) };
+  const origin = useRegistrationRecord(environmentId)?.origin ?? undefined;
+  const own = marker !== undefined && marker.by === viewer;
+  const setup = useMateSetup(own && messageCount === 0 ? origin : undefined);
+  const failed = own && main && setup?.standup === "failed" && conversation !== "started";
+  const sendFailed = failed && setup?.standupFailure === "send_failed";
+  const [retrying, setRetrying] = useState(false);
+  const sendAgain = useAtomCommand(zeropsCommands.standUpRetry, "stand-up retry");
+  const retry = async () => {
+    if (!sendFailed || environmentId === null || retrying) return;
+    setRetrying(true);
+    try {
+      await sendAgain({ environmentId, input: {} });
+      if (origin !== undefined) refreshMateSetup(origin);
+    } finally {
+      setRetrying(false);
+    }
+  };
+  return {
+    holdsComposer: mateStandUpHoldsComposer({ marker, viewer, conversation }),
+    failed,
+    sendFailed,
+    retrying,
+    retry,
+  };
 }

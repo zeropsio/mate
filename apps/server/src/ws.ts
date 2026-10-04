@@ -1,3 +1,4 @@
+import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
@@ -648,6 +649,7 @@ const makeWsRpcLayer = (
       const zeropsLifecycle = yield* ZeropsLifecycle.ZeropsLifecycle;
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
       const turnAdmission = yield* ZeropsTurnAdmission;
+      const zeropsSetup = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsSetup));
       // A Mate's own server starts its stand-up; absent where no Zerops layer runs.
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsLogins = yield* ZeropsLoginsModule.ZeropsLogins;
@@ -2225,6 +2227,7 @@ const makeWsRpcLayer = (
             "rpc.aggregate": "server",
           }),
         ...registerZeropsRpc({
+          zeropsSetup,
           zeropsLifecycle,
           zeropsAgentAuth,
           zeropsAgentLogin,

@@ -13,7 +13,23 @@ const world = vi.hoisted(() => ({
   viewer: "u-ada" as string | undefined,
   standUp: { by: "u-ada" } as { readonly by: string } | undefined,
   threads: [] as ReadonlyArray<Record<string, unknown>>,
+  failed: false,
+  retry: vi.fn(async (_input: unknown) => ({ _tag: "Success", value: true })),
 }));
+
+vi.mock("./registrationRecords", () => ({
+  useRegistrationRecord: () => ({ origin: "https://mate.test" }),
+}));
+vi.mock("./useMateSetup", () => ({
+  useMateSetup: () => ({
+    at: "",
+    standup: world.failed ? "failed" : "waiting",
+    ...(world.failed ? { standupFailure: "send_failed" } : {}),
+  }),
+  refreshMateSetup: vi.fn(),
+}));
+vi.mock("../state/zeropsCommands", () => ({ zeropsCommands: { standUpRetry: {} } }));
+vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => world.retry }));
 
 vi.mock("./useZeropsMates", () => ({
   useZeropsMateDirectory: () =>
@@ -51,7 +67,11 @@ function shell(ref: ScopedThreadRef, createdAt: string) {
 }
 
 /** What the composer reads of the stand-up, for the conversation as `threadRef` holds it. */
-async function holdsComposer(threadRef: ScopedThreadRef | null, messageCount: number) {
+async function holdsComposer(
+  threadRef: ScopedThreadRef | null,
+  messageCount: number,
+  again = false,
+) {
   const document = new TestNode("#document", null, 9);
   vi.stubGlobal("document", document);
   vi.stubGlobal("window", {
@@ -66,19 +86,23 @@ async function holdsComposer(threadRef: ScopedThreadRef | null, messageCount: nu
   const { createRoot } = await import("react-dom/client");
   const { useMateStandUp } = await import("./useMateStandUp");
   const held: Array<boolean> = [];
+  const readings: Array<ReturnType<typeof useMateStandUp>> = [];
   function View() {
-    held.push(
-      useMateStandUp({ environmentId: ENVIRONMENT, threadRef, messageCount }).holdsComposer,
-    );
+    const state = useMateStandUp({ environmentId: ENVIRONMENT, threadRef, messageCount });
+    readings.push(state);
+    held.push(state.holdsComposer);
     return null;
   }
   const root = createRoot(document.createElement("div") as unknown as Element);
   await act(async () => root.render(createElement(View)));
+  if (again) await act(async () => readings.at(-1)?.retry());
   await act(async () => root.unmount());
-  return held.at(-1);
+  return { holds: held.at(-1), failed: readings.at(-1)?.sendFailed };
 }
 
 beforeEach(() => {
+  world.failed = false;
+  world.retry.mockClear();
   world.viewer = ADA;
   world.standUp = { by: ADA };
   world.threads = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
@@ -91,20 +115,34 @@ afterEach(() => {
 // The Mate's server sends the ask; the conversation only waits on it while its person does.
 describe("useMateStandUp", () => {
   it("holds the composer for its person while the main conversation is empty", async () => {
-    expect(await holdsComposer(MAIN, 0)).toBe(true);
+    expect((await holdsComposer(MAIN, 0)).holds).toBe(true);
   });
 
   it("gives the composer back once the conversation holds a message", async () => {
-    expect(await holdsComposer(MAIN, 1)).toBe(false);
+    expect((await holdsComposer(MAIN, 1)).holds).toBe(false);
   });
 
   it("holds nothing for a colleague, whose ask it is not", async () => {
     world.viewer = "u-otto";
-    expect(await holdsComposer(MAIN, 0)).toBe(false);
+    expect((await holdsComposer(MAIN, 0)).holds).toBe(false);
   });
 
   it("holds nothing on a Mate HQ names nobody as asking for", async () => {
     world.standUp = undefined;
-    expect(await holdsComposer(MAIN, 0)).toBe(false);
+    expect((await holdsComposer(MAIN, 0)).holds).toBe(false);
   });
+});
+
+it("shows a failed send only for its asker in the empty main conversation", async () => {
+  world.failed = true;
+  expect((await holdsComposer(MAIN, 0)).failed).toBe(true);
+  expect(world.retry).not.toHaveBeenCalled();
+  world.viewer = "u-colleague";
+  expect((await holdsComposer(MAIN, 0)).failed).toBe(false);
+});
+
+it("Try again issues one explicit attempt to this Mate and no attempt on its own", async () => {
+  world.failed = true;
+  await holdsComposer(MAIN, 0, true);
+  expect(world.retry).toHaveBeenCalledExactlyOnceWith({ environmentId: ENVIRONMENT, input: {} });
 });

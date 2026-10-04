@@ -22,6 +22,8 @@
  * then the slot says it is checking, or why it could not.
  */
 import { signInReadSettled } from "@t3tools/client-runtime/zerops/conversationWriter";
+import { useMateStandUp } from "../../zerops/useMateStandUp";
+import { Button } from "../ui/button";
 import { mateArriving, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
   birthRuntimesFacts,
@@ -79,6 +81,7 @@ export function ZeropsMateEmptyState({
       agentReady={state.agentReady}
       mate={mate}
       phase={state.phase}
+      standUpFailure={state.standUpFailure}
       runtimes={state.runtimes}
       signIn={state.signIn}
       signInRequired={state.signInRequired}
@@ -91,6 +94,7 @@ export function ZeropsMateEmptyState({
 export interface MateEmptyState {
   /** The stand-up's phase for this viewer, or `null` where it is not theirs. */
   readonly phase: MateStandUpPhase | null;
+  readonly standUpFailure?: { readonly retrying: boolean; readonly retry: () => void } | undefined;
   /** The sign-in, once the agents' sign-in is known; null before. */
   readonly signIn: ReactNode | null;
   readonly signInRequired: boolean;
@@ -155,6 +159,7 @@ export function useMateEmptyState({
     viewerSubject !== undefined &&
     mateStandUpSignedIn(agentAuth, viewerSubject);
   const agentReady = !viewerSignedIn && zeropsOtherAgentReady(providers);
+  const standUp = useMateStandUp({ environmentId, threadRef, messageCount: 0 });
   const phase = mateStandUpPhase({
     marker: mate.standUp,
     viewer: viewerSubject,
@@ -188,6 +193,14 @@ export function useMateEmptyState({
 
   return {
     phase,
+    standUpFailure: standUp.sendFailed
+      ? {
+          retrying: standUp.retrying,
+          retry: () => {
+            void standUp.retry();
+          },
+        }
+      : undefined,
     signIn:
       agentAuth === null ? null : (
         <ZeropsAgentSignIn
@@ -273,6 +286,7 @@ const SIGN_IN_KINDS: ReadonlySet<ArrivalKind> = new Set([
 export function MateEmptyStateView({
   mate,
   phase,
+  standUpFailure,
   signIn,
   signInRequired,
   unknown,
@@ -284,6 +298,7 @@ export function MateEmptyStateView({
 }: {
   readonly mate: DrawnMate;
   readonly phase: MateStandUpPhase | null;
+  readonly standUpFailure?: { readonly retrying: boolean; readonly retry: () => void } | undefined;
   /** The sign-in, once the agents' sign-in is known; null before. */
   readonly signIn: ReactNode | null;
   /** No agent is signed in: nothing typed here could be acted on. */
@@ -313,7 +328,12 @@ export function MateEmptyStateView({
     if (holder !== null && holder !== document.body) return;
     headline.current?.focus({ preventScroll: true });
   }, [focusOnArrival]);
-  const kind = mateArrivalKind({ coming, phase, signInRequired, addedBy });
+  const kind = mateArrivalKind({
+    coming,
+    phase: standUpFailure === undefined ? phase : null,
+    signInRequired,
+    addedBy,
+  });
   // The minute clock its pose reads: it wakes only while it arrives (`mateArriving`).
   const nowMs = useNowMs();
   const clauses = arrivalHeadlineClauses(mate, kind);
@@ -321,7 +341,26 @@ export function MateEmptyStateView({
     coming !== null && coming.over !== true && coming.sentence !== undefined
       ? coming.sentence
       : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined, agentReady });
-  const slot = arrivalSlot({ kind, coming, signIn, unknown, runtimes });
+  const slot =
+    standUpFailure === undefined
+      ? arrivalSlot({ kind, coming, signIn, unknown, runtimes })
+      : {
+          id: "stand-up-failed",
+          node: (
+            <div className="flex flex-col items-center gap-3" role="status">
+              <p>The message to {mate.name} didn't go through.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={standUpFailure.retrying}
+                onClick={standUpFailure.retry}
+              >
+                {standUpFailure.retrying ? "Trying again…" : "Try again"}
+              </Button>
+            </div>
+          ),
+        };
+
   // A press's words change while its steps run, stop and go again: on a narrow screen each holds
   // two lines' room, so none of it moves the rows under them.
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;

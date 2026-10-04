@@ -9,7 +9,8 @@
  * did (`/mate/healthz`).
  */
 import { readMateSetup, type MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+import { onAccountLifetimeClose } from "./accountLifetime";
 
 /** How often a Mate's setup is read while something in it is still to happen. */
 export const MATE_SETUP_POLL_MS = 4_000;
@@ -31,30 +32,100 @@ export function mateSetupSettled(setup: MateSetup): boolean {
   );
 }
 
-export function useMateSetup(origin: string | undefined): MateSetup | undefined {
-  const [read, setRead] = useState<{ readonly origin: string; readonly setup: MateSetup } | null>(
-    null,
-  );
-  useEffect(() => {
-    if (origin === undefined) return;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const ask = async () => {
-      const reading = await readMateSetup(origin, undefined, controller.signal);
-      if (controller.signal.aborted) return;
-      // An older Mate answers no setup: nothing is ever going to.
-      if (reading.kind === "absent") return;
-      if (reading.kind === "setup") {
-        setRead({ origin, setup: reading.setup });
-        if (mateSetupSettled(reading.setup)) return;
-      }
-      timer = setTimeout(() => void ask(), MATE_SETUP_POLL_MS);
-    };
-    void ask();
-    return () => {
-      controller.abort();
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [origin]);
-  return read !== null && read.origin === origin ? read.setup : undefined;
+interface SetupObservation {
+  readonly origin: string;
+  readonly listeners: Set<() => void>;
+  setup: MateSetup | undefined;
+  controller: AbortController | undefined;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  inFlight: boolean;
+  dirty: boolean;
 }
+const observations = new Map<string, SetupObservation>();
+function observation(origin: string): SetupObservation {
+  let held = observations.get(origin);
+  if (held === undefined) {
+    held = {
+      origin,
+      listeners: new Set(),
+      setup: undefined,
+      controller: undefined,
+      timer: undefined,
+      inFlight: false,
+      dirty: false,
+    };
+    observations.set(origin, held);
+  }
+  return held;
+}
+
+async function ask(held: SetupObservation): Promise<void> {
+  if (held.inFlight || held.listeners.size === 0) return;
+  const controller = held.controller ?? new AbortController();
+  held.controller = controller;
+  held.inFlight = true;
+  const reading = await readMateSetup(held.origin, undefined, controller.signal);
+  if (controller.signal.aborted || held.controller !== controller) return;
+  held.inFlight = false;
+  if (reading.kind === "setup") {
+    held.setup = reading.setup;
+    for (const listener of held.listeners) listener();
+  }
+  if (held.dirty) {
+    held.dirty = false;
+    void ask(held);
+  } else if (
+    reading.kind !== "absent" &&
+    !(reading.kind === "setup" && mateSetupSettled(reading.setup))
+  ) {
+    held.timer = setTimeout(() => {
+      held.timer = undefined;
+      void ask(held);
+    }, MATE_SETUP_POLL_MS);
+  }
+}
+
+/** Re-read after an explicit action. Never clears the last answer. */
+export function refreshMateSetup(origin: string): void {
+  const held = observations.get(origin);
+  if (held === undefined) return;
+  if (held.timer !== undefined) clearTimeout(held.timer);
+  held.timer = undefined;
+  if (held.inFlight) held.dirty = true;
+  else void ask(held);
+}
+
+function stop(held: SetupObservation): void {
+  held.controller?.abort();
+  held.controller = undefined;
+  held.inFlight = false;
+  held.dirty = false;
+  if (held.timer !== undefined) clearTimeout(held.timer);
+  held.timer = undefined;
+}
+
+export function useMateSetup(origin: string | undefined): MateSetup | undefined {
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      if (origin === undefined) return () => undefined;
+      const held = observation(origin);
+      held.listeners.add(listener);
+      if (held.listeners.size === 1) void ask(held);
+      return () => {
+        held.listeners.delete(listener);
+        if (held.listeners.size === 0) stop(held);
+      };
+    },
+    [origin],
+  );
+  const snapshot = useCallback(
+    () => (origin === undefined ? undefined : observations.get(origin)?.setup),
+    [origin],
+  );
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
+}
+
+onAccountLifetimeClose(() => {
+  for (const held of observations.values()) stop(held);
+  observations.clear();
+});
