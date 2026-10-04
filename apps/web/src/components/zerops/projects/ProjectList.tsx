@@ -20,7 +20,6 @@ import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
-import { ENVIRONMENT_ROW_GRID_CLASS } from "../ZeropsEnvironmentRow";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import {
   ComingMateCard,
@@ -471,14 +470,14 @@ export function QuietEnd<T>({ props }: { readonly props: ZeropsProjectsFlowProps
   return (
     <section data-zerops-surface="quiet-end">
       <ul className="flex flex-col px-3">
-        <li className={ENVIRONMENT_ROW_GRID_CLASS} data-zerops-tools="true">
+        <li className="flex min-h-10 items-center gap-x-4 py-1.5" data-zerops-tools="true">
           <MicroLabel className="text-muted-foreground">Tools</MicroLabel>
-          <span className="col-span-2 flex min-w-0 flex-wrap items-center gap-3 text-xs sm:col-span-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
             {props.tools.map(({ item, kind }) => (
               <Fragment key={props.getKey(item)}>{props.renderTool(item, kind)}</Fragment>
             ))}
           </span>
-          <span className="col-start-2 row-start-1 flex justify-end sm:col-start-3">
+          <span className="ms-auto flex justify-end">
             {offerGitea ? (
               <button
                 className={QUIET_BUTTON_CLASS}
