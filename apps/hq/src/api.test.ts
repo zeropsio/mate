@@ -113,6 +113,12 @@ const APP_ALLOWED = each(
   ["read_change", "comment_change", "merge_change", "close_change", "redeploy", "release"],
   ALLOW,
 );
+const KINDS = ["mate", "devstage", "stage", "production"];
+/** What an org owner may do with a Mate, and where they may move it: anywhere, as anything. */
+const MATE_OWNED = (...appIds: ReadonlyArray<string>) => ({
+  can: { observe_mate: ALLOW, edit_mate_record: ALLOW, detach: ALLOW },
+  moveTo: Object.fromEntries([...appIds, "new"].map((id) => [id, KINDS])),
+});
 /** What an org owner may do with an application that holds no project: nobody develops it. */
 const OWNER_EMPTY_APP = {
   ...APP_ALLOWED,
@@ -192,6 +198,7 @@ describe("HQ API", () => {
           assert.strictEqual(attached.status, 201);
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session })).body, {
             can: ORG_ALLOWED,
+            unheld: {},
             ungrouped: [],
             apps: [
               {
@@ -210,6 +217,7 @@ describe("HQ API", () => {
                       standupRequestedBy: null,
                       closedOff: false,
                     },
+                    ...MATE_OWNED(appId),
                   },
                 ],
                 environments: [],
@@ -658,6 +666,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session: dev })).body, {
             can: ORG_REFUSED,
+            unheld: {},
             ungrouped: [],
             apps: [],
           });
@@ -951,6 +960,7 @@ describe("HQ API", () => {
                     standupRequestedBy: null,
                     closedOff: false,
                   },
+                  ...MATE_OWNED(appId),
                 },
               ],
               environments: [],
@@ -1158,6 +1168,8 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(timeless(yield* owner.next("snapshot")), {
             can: ORG_ALLOWED,
+            // P_MATE is HQ's nowhere yet: its owner may set its Mate up.
+            unheld: { P_MATE: { create_mate_record: ALLOW } },
             ungrouped: [],
             apps: [],
             changes: {},
@@ -1173,7 +1185,10 @@ describe("HQ API", () => {
             standupRequestedBy: null,
             closedOff: false,
           };
-          const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: adaView }];
+          /** The Mate in no application, movable into each of `appIds` or a new one. */
+          const lone = (...appIds: ReadonlyArray<string>) => [
+            { projectId: "P_MATE", name: "P_MATE", mate: adaView, ...MATE_OWNED(...appIds) },
+          ];
 
           const setUp = yield* call("POST", "/api/mates", {
             session,
@@ -1183,14 +1198,23 @@ describe("HQ API", () => {
             [setUp.status, setUp.body],
             [201, { projectId: "P_MATE", ...ada }],
           );
-          assert.deepStrictEqual(yield* owner.next("change"), { key: "ungrouped", value: lone });
+          assert.deepStrictEqual(yield* owner.next("change"), {
+            key: "ungrouped",
+            value: lone(),
+          });
 
           const appId = (
             (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
               readonly id: string;
             }
           ).id;
-          yield* owner.next("change");
+          // The new application, and the Mate's way into it.
+          assert.sameDeepMembers(
+            [yield* owner.next("change"), yield* owner.next("change")].map(
+              (message) => (message as { readonly key: string }).key,
+            ),
+            ["ungrouped", appId],
+          );
           const renamed = yield* call("PATCH", `/api/apps/${appId}`, {
             session,
             body: { name: "Store" },
@@ -1231,7 +1255,15 @@ describe("HQ API", () => {
                   name: "Store",
                   can: APP_ALLOWED,
                   contents: { empty: false, deletingProjectIds: [] },
-                  projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
+                  projects: [
+                    {
+                      projectId: "P_MATE",
+                      name: "P_MATE",
+                      kind: "mate",
+                      mate: adaView,
+                      ...MATE_OWNED(appId),
+                    },
+                  ],
                   environments: [],
                   births: [],
                 },
@@ -1249,7 +1281,7 @@ describe("HQ API", () => {
           assert.sameDeepMembers(
             [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
             [
-              { key: "ungrouped", value: lone },
+              { key: "ungrouped", value: lone(appId) },
               {
                 key: appId,
                 value: {
@@ -1277,6 +1309,7 @@ describe("HQ API", () => {
         const devSocket = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`);
         assert.deepStrictEqual(timeless(yield* devSocket.next("snapshot")), {
           can: ORG_REFUSED,
+          unheld: {},
           ungrouped: [],
           apps: [],
           changes: {},
@@ -1377,6 +1410,8 @@ describe("HQ API", () => {
         });
         assert.deepStrictEqual(timeless(snapshot), {
           can: ORG_REFUSED,
+          // The org reader reads P_MATE, held nowhere, and may not write its Mate's record.
+          unheld: { P_MATE: { create_mate_record: refusedFor("not_project_admin") } },
           ungrouped: [],
           apps: [
             {
@@ -1452,6 +1487,7 @@ describe("HQ API", () => {
           const opened = yield* socket(`/api/structure/ws?ticket=${ticket}`);
           assert.deepStrictEqual(timeless(yield* opened.next("snapshot")), {
             can: ORG_ALLOWED,
+            unheld: { P_MATE: { create_mate_record: ALLOW } },
             ungrouped: [],
             apps: [],
             changes: {},

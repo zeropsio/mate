@@ -225,8 +225,9 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
 
 /** Applications as their records, without what they offer the reader (`offers.test.ts`). */
 const recordsOf = (apps: StructureRead["apps"]) =>
-  apps.map(({ can: _offers, environments, ...app }) => ({
+  apps.map(({ can: _offers, environments, projects, ...app }) => ({
     ...app,
+    projects: projects.map(({ can: _mate, moveTo: _choices, ...project }) => project),
     environments: environments.map(({ can: _offered, ...environment }) => environment),
   }));
 
@@ -2270,7 +2271,9 @@ describe("structure", () => {
               ["forbidden", "project_not_found", "invalid", "invalid", "ok", "conflict", "ok"],
             );
             const ungrouped = (userId: string) =>
-              Effect.map(structure.read(userId), (read) => read.ungrouped);
+              Effect.map(structure.read(userId), (read) =>
+                read.ungrouped.map(({ can: _offers, moveTo: _choices, ...entry }) => entry),
+              );
             const listed = [
               {
                 projectId: "P_OWNED",
@@ -2379,7 +2382,7 @@ describe("structure", () => {
           assert.deepStrictEqual(yield* seen("dev"), ["Shop: P_MATE"]);
           assert.deepStrictEqual(yield* seen("nobody"), []);
           assert.deepStrictEqual(yield* seen("stranger"), []);
-          assert.deepStrictEqual((yield* structure.read("owner")).apps[0]?.projects[0], {
+          assert.deepStrictEqual(recordsOf((yield* structure.read("owner")).apps)[0]?.projects[0], {
             projectId: "P_MATE",
             name: "name of P_MATE",
             kind: "mate",

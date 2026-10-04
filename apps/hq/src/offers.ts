@@ -4,9 +4,12 @@
  * which the writes call too — and over the org as HQ last read it (`Roles.view`). The write is
  * decided again at the press, over facts read for it, and its refusal wins.
  *
- * - **The organization**, once: making, renaming and deleting an application.
+ * - **The organization**, once: making, renaming and deleting an application; and for each project
+ *   the reader reads that HQ holds nowhere, writing its Mate's record.
  * - **An application**: its changes' verbs, a deploy asked again, and a release.
  * - **An environment**: its deploy token handed to HQ.
+ * - **A Mate**: following it (who its door opens for), its record, leaving its application, and
+ *   where it may go (`moveTo`): each application, or a new one, with the kinds it may take there.
  *
  * @module offers
  */
@@ -15,11 +18,14 @@ import {
   type Decision,
   type Facts,
   type FactsFor,
+  type Held,
+  type PlacementTarget,
   type ReleaseTarget,
   type Targets,
   type Verb,
   can,
 } from "@t3tools/shared/zeropsPermissions";
+import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 
 /** A project an application holds, as `hq_app_project` has it. */
 export interface AppProjectRow {
@@ -92,4 +98,62 @@ export const environmentOffers = (
   facts: Facts,
 ): HqOffersOf<"keep_deploy_token"> => ({
   keep_deploy_token: offer(userId, "keep_deploy_token", { projectId }, facts),
+});
+
+/** A project placed into an application of `appProjects` as `to`: what a move is decided on. */
+export const moveTarget = (
+  projectId: string,
+  held: Held,
+  to: string,
+  appProjects: ReadonlyArray<Pick<AppProjectRow, "project_id">>,
+): PlacementTarget => ({ projectId, held, to, appProjectIds: appTarget(appProjects).projectIds });
+
+export type MateVerb = "observe_mate" | "edit_mate_record" | "detach";
+
+/** What the person may do with the Mate of `projectId`, held as `held`. */
+export const mateOffers = (
+  userId: string,
+  projectId: string,
+  held: Held,
+  facts: Facts,
+): HqOffersOf<MateVerb> => ({
+  observe_mate: offer(userId, "observe_mate", { projectId }, facts),
+  edit_mate_record: offer(userId, "edit_mate_record", { projectId, held }, facts),
+  detach: offer(userId, "detach", { projectId, held }, facts),
+});
+
+const KINDS: ReadonlyArray<RoleProjectKind> = ["mate", "devstage", "stage", "production"];
+
+/**
+ * Where a Mate may be moved, by the write's own rule: each application by id — and `new`, one the
+ * person makes for it — with the kinds it may take there, none where it may take none. A Mate kind
+ * only for a Mate HQ holds a record of (`mate_record_missing`).
+ */
+export const moveOffers = (
+  userId: string,
+  mate: { readonly projectId: string; readonly held: Held; readonly recorded: boolean },
+  apps: ReadonlyArray<{ readonly id: string; readonly projects: ReadonlyArray<AppProjectRow> }>,
+  facts: Facts,
+): Readonly<Record<string, ReadonlyArray<RoleProjectKind>>> => {
+  const kindsInto = (appProjects: ReadonlyArray<AppProjectRow>) =>
+    KINDS.filter(
+      (kind) =>
+        (mate.recorded || !isMateKind(kind)) &&
+        offer(userId, "move", moveTarget(mate.projectId, mate.held, kind, appProjects), facts)
+          .allow,
+    );
+  const into = [
+    ...apps.map((app) => [app.id, kindsInto(app.projects)] as const),
+    ...(offer(userId, "create_app", null, facts).allow ? [["new", kindsInto([])] as const] : []),
+  ];
+  return Object.fromEntries(into.filter(([, kinds]) => kinds.length > 0));
+};
+
+/** Whether the person may write the record of a Mate on `projectId`, which HQ holds nowhere. */
+export const recordOffers = (
+  userId: string,
+  projectId: string,
+  facts: Facts,
+): HqOffersOf<"create_mate_record"> => ({
+  create_mate_record: offer(userId, "create_mate_record", { projectId, held: "none" }, facts),
 });

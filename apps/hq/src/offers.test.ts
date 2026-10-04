@@ -7,9 +7,14 @@ import {
   appOffers,
   appTarget,
   environmentOffers,
+  mateOffers,
+  moveOffers,
   orgOffers,
+  recordOffers,
   releaseTarget,
 } from "./offers.ts";
+
+const KINDS = ["mate", "devstage", "stage", "production"];
 
 const member = (userId: string, roleCode: string, status = "ACTIVE"): FactMember => ({
   userId,
@@ -159,5 +164,70 @@ describe("HQ's offers", () => {
         expect([offered[verb], enforced(verb)]).toEqual([expected[verb], expected[verb]]);
       },
     );
+  });
+});
+
+describe("HQ's offers on a Mate", () => {
+  /** maker: org No access who can create projects, Owner of the Mate they made; ada: its admin. */
+  const FACTS: Facts = {
+    freshness: "cached",
+    members: [
+      { ...member("maker", "NO_ACCESS"), canCreateProjects: true },
+      member("ada", "BASIC_USER"),
+      member("owner", "OWNER"),
+      member("reader", "READ_ONLY"),
+    ],
+    projects: [
+      { id: "P_MADE", userRoles: [{ clientUserId: "C-maker", roleCode: "OWNER" }] },
+      { id: "P_SEEN", userRoles: [{ clientUserId: "C-maker", roleCode: "READ_ONLY" }] },
+      { id: "P_OTHER", userRoles: [] },
+      { id: "P_ADA", userRoles: [{ clientUserId: "C-ada", roleCode: "ADMIN" }] },
+    ],
+  };
+  const APPS = [
+    { id: "app-seen", projects: [{ project_id: "P_SEEN", kind: "stage" }] },
+    { id: "app-other", projects: [{ project_id: "P_OTHER", kind: "stage" }] },
+  ];
+
+  it.each<[string, string, string, boolean, Record<string, ReadonlyArray<string>>]>([
+    // Their own Mate goes as a Mate into an application they see, never as an environment.
+    ["the Mate's maker", "maker", "P_MADE", true, { "app-seen": ["mate", "devstage"] }],
+    // A Mate HQ holds no record of takes no Mate kind anywhere.
+    ["a Mate without its record", "maker", "P_MADE", false, {}],
+    // A writer moves it anywhere, as anything, or into a new application.
+    [
+      "the org's owner",
+      "owner",
+      "P_MADE",
+      true,
+      { "app-seen": KINDS, "app-other": KINDS, new: KINDS },
+    ],
+    ["a reader", "reader", "P_MADE", true, {}],
+  ])("moves for %s as the write decides", (_, userId, projectId, recorded, expected) => {
+    expect(moveOffers(userId, { projectId, held: "mate", recorded }, APPS, FACTS)).toEqual(
+      expected,
+    );
+  });
+
+  it.each<[string, string, Record<string, Decision>]>([
+    ["its project's admin", "ada", { observe_mate: ALLOW, edit_mate_record: ALLOW, detach: ALLOW }],
+    [
+      "an org reader",
+      "reader",
+      {
+        observe_mate: no("not_mate_operator"),
+        edit_mate_record: no("not_project_admin"),
+        detach: no("not_project_admin"),
+      },
+    ],
+  ])("offers %s its Mate's verbs as the write decides", (_, userId, expected) => {
+    expect(mateOffers(userId, "P_ADA", "mate", FACTS)).toEqual(expected);
+  });
+
+  it("offers writing a record of a Mate HQ holds nowhere to its project's admin alone", () => {
+    expect([recordOffers("ada", "P_ADA", FACTS), recordOffers("reader", "P_ADA", FACTS)]).toEqual([
+      { create_mate_record: ALLOW },
+      { create_mate_record: no("not_project_admin") },
+    ]);
   });
 });

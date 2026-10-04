@@ -57,11 +57,16 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import {
   type AppVerb,
+  type MateVerb,
   type OrgVerb,
   appOffers,
   appTarget,
   environmentOffers,
+  mateOffers,
+  moveOffers,
+  moveTarget,
   orgOffers,
+  recordOffers,
 } from "./offers.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
@@ -256,16 +261,32 @@ export interface MateView {
   readonly closedOff: boolean;
 }
 
+/**
+ * What the reader may do with a Mate (`offers.ts`), and where it may go: each application by id,
+ * and `new`, with the kinds it may take there.
+ */
+export interface MateOffers {
+  readonly can: HqOffersOf<MateVerb>;
+  readonly moveTo: Readonly<Record<string, ReadonlyArray<RoleProjectKind>>>;
+}
+
 export interface StructureRead {
   /** What the reader may do with the organization's applications (`offers.ts`). */
   readonly can: HqOffersOf<OrgVerb>;
+  /**
+   * Each project the reader reads that HQ holds nowhere, by id, with whether they may write its
+   * Mate's record (`offers.ts`).
+   */
+  readonly unheld: Readonly<Record<string, HqOffersOf<"create_mate_record">>>;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
-  /** The Mates in no application: their project's name in Zerops and their record. */
-  readonly ungrouped: ReadonlyArray<{
-    readonly projectId: string;
-    readonly name: string;
-    readonly mate: MateView;
-  }>;
+  /** The Mates in no application: their project's name in Zerops, their record and offers. */
+  readonly ungrouped: ReadonlyArray<
+    {
+      readonly projectId: string;
+      readonly name: string;
+      readonly mate: MateView;
+    } & MateOffers
+  >;
   readonly apps: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
@@ -275,12 +296,15 @@ export interface StructureRead {
       /** Projects still held here, deleting or absent in HQ's Zerops view. */
       readonly deletingProjectIds: ReadonlyArray<string>;
     };
-    readonly projects: ReadonlyArray<{
-      readonly projectId: string;
-      readonly name: string;
-      readonly kind: string;
-      readonly mate: MateView | null;
-    }>;
+    /** Its projects the reader reads; each Mate with what the reader may do with it. */
+    readonly projects: ReadonlyArray<
+      {
+        readonly projectId: string;
+        readonly name: string;
+        readonly kind: string;
+        readonly mate: MateView | null;
+      } & Partial<MateOffers>
+    >;
     /** What the reader may do with it: its changes, its deploys, its release (`offers.ts`). */
     readonly can: HqOffersOf<AppVerb>;
     /**
@@ -1043,17 +1067,7 @@ export const structureLayer = (options: {
                 Effect.gen(function* () {
                   yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
-                  yield* allowed(
-                    userId,
-                    "move",
-                    {
-                      projectId,
-                      held,
-                      to: kind,
-                      appProjectIds: target.map((row) => row.project_id),
-                    },
-                    view,
-                  );
+                  yield* allowed(userId, "move", moveTarget(projectId, held, kind, target), view);
                   if (isMateKind(kind)) {
                     const mates = yield* sql`SELECT 1 FROM hq_mate WHERE project_id = ${projectId}`;
                     if (mates.length === 0) {
@@ -1420,8 +1434,27 @@ export const structureLayer = (options: {
             const reads = (projectId: string) =>
               can(person, "read_project", { projectId }, view).allow;
             const visible = rows.filter((row) => reads(row.project_id));
+            const placed = apps.map((app) => ({
+              id: app.id,
+              projects: rows.filter((row) => row.app_id === app.id),
+            }));
+            /** What the reader may do with a Mate held as `held`, and where it may go. */
+            const mateCan = (projectId: string, held: string, recorded: boolean) => ({
+              can: mateOffers(userId, projectId, held, view),
+              moveTo: moveOffers(userId, { projectId, held, recorded }, placed, view),
+            });
+            const held = new Set([
+              options.hqProjectId,
+              ...rows.map((row) => row.project_id),
+              ...alone.map((row) => row.project_id),
+            ]);
             return {
               can: orgOffers(userId, view),
+              unheld: Object.fromEntries(
+                view.projects
+                  .filter((project) => !held.has(project.id) && reads(project.id))
+                  .map((project) => [project.id, recordOffers(userId, project.id, view)]),
+              ),
               ...(tools.length === 0
                 ? {}
                 : { tools: tools.filter((tool) => reads(tool.projectId)) }),
@@ -1431,6 +1464,7 @@ export const structureLayer = (options: {
                   projectId: row.project_id,
                   name: names.get(row.project_id) ?? "",
                   mate: row.mate,
+                  ...mateCan(row.project_id, "mate", true),
                 })),
               apps: apps
                 .map((app) => {
@@ -1461,6 +1495,9 @@ export const structureLayer = (options: {
                         name: names.get(row.project_id) ?? "",
                         kind: row.kind,
                         mate: row.mate,
+                        ...(isMateKind(row.kind)
+                          ? mateCan(row.project_id, row.kind, row.mate !== null)
+                          : {}),
                       })),
                     environments: can.read_change.allow
                       ? environments

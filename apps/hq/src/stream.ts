@@ -3,9 +3,10 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", can, ungrouped, apps, changes, appReads, mates, people, rolesAnsweredAt }`
- *   — what `GET /api/structure` answers, with what the caller may do with the organization, each
- *   application and each environment (`can`, `offers.ts`); beside it when Zerops answered the org
+ * - `{ type: "snapshot", can, unheld, ungrouped, apps, changes, appReads, mates, people,
+ *   rolesAnsweredAt }` — what `GET /api/structure` answers, with what the caller may do with the
+ *   organization, each project HQ holds nowhere, each application, environment and Mate (`can`,
+ *   `moveTo`, `offers.ts`); beside it when Zerops answered the org
  *   view those offers are decided over, and the changes of every application the caller may read
  *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
  *   those applications' releases, repository heads and stage/production recipes (`hqAppReads`); and
@@ -18,8 +19,9 @@
  * - `{ type: "change", key, value }` — one application by id as the caller now sees it (`value:
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
- * - `{ type: "org", can, rolesAnsweredAt }` — what the caller may do with the organization, and
- *   when Zerops answered the view its offers are decided over, whenever either moves;
+ * - `{ type: "org", can, rolesAnsweredAt, unheld }` — what the caller may do with the
+ *   organization and with each project they read that HQ holds nowhere, and when Zerops answered
+ *   the view its offers are decided over, whenever any of it moves;
  * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
  *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
@@ -54,7 +56,6 @@ import type {
   HqPeople,
   MateLiveChange,
 } from "@t3tools/shared/hqMates";
-import { can } from "@t3tools/shared/zeropsPermissions";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -105,6 +106,7 @@ export type StructureMessage =
       readonly type: "org";
       readonly can: StructureRead["can"];
       readonly rolesAnsweredAt: string | null;
+      readonly unheld: StructureRead["unheld"];
     }
   | HqMatesMessage;
 
@@ -139,11 +141,17 @@ const partsOf = (entry: MateOverviewEntry): Record<string, unknown> => ({
 const encodedParts = (entry: MateOverviewEntry) =>
   new Map(Object.entries(partsOf(entry)).map(([part, value]) => [part, toJson(value)]));
 
-/** Every Mate the view lists, by project, with its record. */
+/** Every Mate the view lists, by project, with its record and whether the reader may follow it. */
 const matesIn = (view: StructureRead) => [
-  ...view.ungrouped.map(({ projectId, mate }) => ({ projectId, mate })),
+  ...view.ungrouped.map(({ projectId, mate, can }) => ({
+    projectId,
+    mate,
+    observes: can.observe_mate.allow,
+  })),
   ...view.apps.flatMap((app) =>
-    app.projects.flatMap(({ projectId, mate }) => (mate === null ? [] : [{ projectId, mate }])),
+    app.projects.flatMap(({ projectId, mate, can }) =>
+      mate === null ? [] : [{ projectId, mate, observes: can?.observe_mate.allow === true }],
+    ),
   ),
 ];
 
@@ -222,7 +230,6 @@ export const structureMessages = <R>(
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
-      const person = { kind: "person", userId } as const;
       const one = yield* Semaphore.make(1);
       /** When Zerops answered the last view HQ read of the org, as `roles.views` said it. */
       const answered = yield* Ref.make<number | null>(null);
@@ -339,9 +346,7 @@ export const structureMessages = <R>(
         const facts = yield* roles.view;
         const listed = matesIn(view);
         const observable = new Set(
-          listed
-            .filter(({ projectId }) => can(person, "observe_mate", { projectId }, facts).allow)
-            .map(({ projectId }) => projectId),
+          listed.filter(({ observes }) => observes).map(({ projectId }) => projectId),
         );
         const mates = observed(observable, yield* overviews.all);
         const named = new Set([
@@ -352,7 +357,7 @@ export const structureMessages = <R>(
         ]);
         const people = peopleOf(namedBy(named, mates), facts.members);
         const now: Sent = {
-          org: toJson({ can: view.can, rolesAnsweredAt }),
+          org: toJson({ can: view.can, rolesAnsweredAt, unheld: view.unheld }),
           structure: new Map([
             [UNGROUPED, toJson(view.ungrouped)],
             ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
@@ -412,7 +417,7 @@ export const structureMessages = <R>(
           })),
           ...(now.org === before.org
             ? []
-            : [{ type: "org" as const, can: view.can, rolesAnsweredAt }]),
+            : [{ type: "org" as const, can: view.can, rolesAnsweredAt, unheld: view.unheld }]),
           ...[...new Set([...before.mates.keys(), ...mates.keys()])].flatMap((projectId) => {
             const message = mateMessage(
               projectId,

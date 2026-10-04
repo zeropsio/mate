@@ -32,6 +32,7 @@ import type { AppReadValue } from "@t3tools/shared/hqAppReads";
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
+import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
 import { type OrgSeen, type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
@@ -78,9 +79,10 @@ const OWNER_CAN: StructureRead["can"] = {
   delete_app: { allow: true },
 };
 
-/** One Mate in no application, made by the owner. */
+/** One Mate in no application, made by the owner; what each reader may do with it is read's. */
 const STRUCTURE: StructureRead = {
   can: OWNER_CAN,
+  unheld: {},
   ungrouped: [
     {
       projectId: "P_MATE",
@@ -91,6 +93,12 @@ const STRUCTURE: StructureRead = {
         standupRequestedBy: "dev",
         closedOff: false,
       },
+      can: {
+        observe_mate: { allow: false, reason: "not_mate_operator" },
+        edit_mate_record: { allow: false, reason: "not_project_admin" },
+        detach: { allow: false, reason: "not_project_admin" },
+      },
+      moveTo: {},
     },
   ],
   apps: [],
@@ -144,11 +152,19 @@ const streamFor = (
       Layer.succeed(
         Structure,
         Structure.of({
-          read: () =>
-            Effect.andThen(
-              Ref.update(reads, (n) => n + 1),
-              Effect.map(Ref.get(orgCan), (can) => ({ ...STRUCTURE, can })),
-            ),
+          read: (reader: string) =>
+            Effect.gen(function* () {
+              yield* Ref.update(reads, (n) => n + 1);
+              const facts = yield* Ref.get(view);
+              return {
+                ...STRUCTURE,
+                can: yield* Ref.get(orgCan),
+                ungrouped: STRUCTURE.ungrouped.map((entry) => ({
+                  ...entry,
+                  can: mateOffers(reader, entry.projectId, "mate", facts),
+                })),
+              };
+            }),
           changes: SubscriptionRef.changes(version),
         } as unknown as Structure["Service"]),
       ),
@@ -241,7 +257,12 @@ describe("the structure stream", () => {
         });
         yield* Effect.repeat(Effect.yieldNow, { times: 50 });
         assert.deepStrictEqual(h.sent.slice(1), [
-          { type: "org", can: demoted, rolesAnsweredAt: "2026-10-04T10:00:00.000Z" },
+          {
+            type: "org",
+            can: demoted,
+            rolesAnsweredAt: "2026-10-04T10:00:00.000Z",
+            unheld: {},
+          },
         ]);
       }),
     ),
