@@ -214,9 +214,23 @@ describe("mergeBuildLogLines", () => {
     expect(mergeBuildLogLines([a], [b, aAgain])).toEqual([b, aAgain]);
   });
 
+  it("counts a line the stream replays under another id once", () => {
+    const fetched = line({ id: "http-1", at: "2026-09-02T10:00:00.123456Z", text: "ready" });
+    const replayed = line({ id: "stream-1", at: "2026-09-02T10:00:00.123456Z", text: "ready" });
+    expect(mergeBuildLogLines([fetched], [replayed])).toEqual([fetched]);
+    expect(mergeBuildLogLines([fetched, replayed], [])).toEqual([fetched]);
+  });
+
+  it("keeps distinct lines that share a timestamp or a text", () => {
+    const a = line({ id: "l1", text: "a" });
+    const b = line({ id: "l2", text: "b" });
+    const c = line({ id: "l3", at: "2026-09-02T10:00:01.000Z", text: "a" });
+    expect(mergeBuildLogLines([], [a, b, c])).toEqual([a, b, c]);
+  });
+
   it("breaks a same-timestamp tie by id", () => {
-    const a = line({ id: "l2", at: "2026-09-02T10:00:00.000Z" });
-    const b = line({ id: "l1", at: "2026-09-02T10:00:00.000Z" });
+    const a = line({ id: "l2", at: "2026-09-02T10:00:00.000Z", text: "a" });
+    const b = line({ id: "l1", at: "2026-09-02T10:00:00.000Z", text: "b" });
     expect(mergeBuildLogLines([], [a, b])).toEqual([b, a]);
   });
 

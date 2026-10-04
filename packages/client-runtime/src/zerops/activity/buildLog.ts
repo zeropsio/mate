@@ -210,7 +210,7 @@ function compareLines(a: BuildLogLine, b: BuildLogLine): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/** Dedupes by id, orders by `at` then `id`, and tail-trims to the newest `cap` lines. */
+/** Dedupes by id and by timestamp+severity+text, orders by `at` then `id`, and tail-trims to the newest `cap` lines. */
 export function mergeBuildLogLines(
   existing: ReadonlyArray<BuildLogLine>,
   incoming: ReadonlyArray<BuildLogLine>,
@@ -223,7 +223,17 @@ export function mergeBuildLogLines(
   for (const line of incoming) {
     byId.set(line.id, line);
   }
-  const merged = [...byId.values()].sort(compareLines);
+  // The stream and the HTTP page (or a reconnect's replay) can hand the same
+  // line out under different ids: one timestamped line of one text is one
+  // line, and the first id seen (the retained one) stays.
+  const seen = new Set<string>();
+  const merged = [...byId.values()].filter((line) => {
+    const fingerprint = `${line.at}\0${line.severity}\0${line.text}`;
+    if (seen.has(fingerprint)) return false;
+    seen.add(fingerprint);
+    return true;
+  });
+  merged.sort(compareLines);
   return merged.length > cap ? merged.slice(merged.length - cap) : merged;
 }
 
