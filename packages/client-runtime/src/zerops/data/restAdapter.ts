@@ -55,7 +55,7 @@ import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
 import type {
   ZeropsCellAdapter,
   ZeropsCellSourceError,
-  ZeropsIntegrationTokenGrantMetadata,
+  ZeropsIntegrationTokenMetadata,
 } from "./cells.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
@@ -1412,24 +1412,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           }),
           Effect.mapError(uncertainCommandError),
         );
-      case "read-integration-token-grant":
-        return executeApi(context, (signal) =>
-          options.client.readIntegrationToken(
-            command.organization.organizationId,
-            command.tokenId,
-            signal,
-          ),
-        ).pipe(
-          Effect.map((token): PlatformCommandReceipt => ({
-            processRefs: [],
-            observations: [],
-            result: {
-              kind: command.kind,
-              value: token === undefined ? null : tokenGrantMetadata(token),
-            },
-          })),
-          Effect.mapError(uncertainCommandError),
-        );
       case "delete-project":
         return executeApi(context, (signal) =>
           options.client.deleteProject(command.projectId, signal, context.beforeProjectWrite),
@@ -1471,60 +1453,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           })),
           Effect.mapError(uncertainCommandError),
         );
-      case "list-token-delegations":
-        return executeApi(context, (signal) =>
-          options.client.listIntegrationTokenDelegations(
-            { clientId: command.organization.organizationId, tokenId: command.tokenId },
-            signal,
-          ),
-        ).pipe(
-          Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
-            observations: [],
-            result: { kind: command.kind, value },
-          })),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "delete-token-delegation":
-        return executeApi(context, (signal) =>
-          options.client.deleteIntegrationTokenDelegation(
-            {
-              clientId: command.organization.organizationId,
-              tokenId: command.tokenId,
-              delegationId: command.delegationId,
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
-        ).pipe(
-          Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
-            observations: [],
-            result: { kind: command.kind, value },
-          })),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "set-integration-token-projects":
-        return executeApi(context, (signal) =>
-          options.client.setIntegrationTokenProjects(
-            {
-              clientId: command.organization.organizationId,
-              tokenId: command.tokenId,
-              name: command.name,
-              projects: command.projects,
-              ...(command.roleCode === undefined ? {} : { roleCode: command.roleCode }),
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
-        ).pipe(
-          Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
-            observations: [],
-            result: { kind: command.kind, value },
-          })),
-          Effect.mapError(uncertainCommandError),
-        );
     }
   };
 
@@ -1546,15 +1474,11 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   };
 }
 
-/** A token as grant metadata: a token's value never leaves the API client. */
-const tokenGrantMetadata = (
-  token: ZeropsIntegrationToken,
-): ZeropsIntegrationTokenGrantMetadata => ({
+/** A token as metadata: its value never leaves the API client, its grants are not read here. */
+const tokenMetadata = (token: ZeropsIntegrationToken): ZeropsIntegrationTokenMetadata => ({
   tokenId: token.id,
   name: token.name,
-  grants: token.projects ?? [],
   ...(token.created === undefined ? {} : { created: token.created }),
-  ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
   ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
 });
 
@@ -1716,17 +1640,15 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
           return { enabled: "unknown" as const };
         }
       }),
-    readOrganizationIntegrationTokenGrants: (input, context) =>
+    readOrganizationIntegrationTokens: (input, context) =>
       cellRead(async () =>
         (
           await client.listIntegrationTokens(input.organization.organizationId, context.abortSignal)
-        ).map(tokenGrantMetadata),
+        ).map(tokenMetadata),
       ),
     readOrganizationMembers: (input, context) =>
       cellRead(() =>
         client.listOrganizationMembers(input.organization.organizationId, context.abortSignal),
       ),
-    readServiceVariableNames: (input, context) =>
-      cellRead(() => client.listServiceVariableNames(input.service.serviceId, context.abortSignal)),
   };
 }

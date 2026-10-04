@@ -486,7 +486,32 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
   });
 
-  it("lowers a reused key still ADMIN on its project, keeping every other grant it holds", async () => {
+  it("lowers a reused key still ADMIN on its project to its own project alone", async () => {
+    const { client, requests } = platformClient({
+      tokens: [
+        {
+          id: "token-old",
+          name: "zcp-Acme Docs - Ada",
+          roleCode: "NO_ACCESS",
+          projects: [{ projectId: "project-9", roleCode: "ADMIN" }],
+        },
+      ],
+    });
+
+    await client.importDevelopmentContainer(INPUT);
+
+    const write = requests.find(
+      (request) =>
+        request.method === "PUT" && request.url === "/client/org-1/integration-token/token-old",
+    );
+    expect(JSON.parse(write?.body ?? "{}")).toMatchObject({
+      projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+    });
+  });
+
+  // ADR 0003: a key found by its name that reaches another project is not taken for the Mate's —
+  // neither narrowed nor handed to its container; the press mints a key of its own beside it.
+  it("mints a key of its own beside a press's key that reaches another project", async () => {
     const { client, requests } = platformClient({
       tokens: [
         {
@@ -503,16 +528,34 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
 
     await client.importDevelopmentContainer(INPUT);
 
-    const write = requests.find(
-      (request) =>
-        request.method === "PUT" && request.url === "/client/org-1/integration-token/token-old",
-    );
-    expect(JSON.parse(write?.body ?? "{}")).toMatchObject({
-      projects: [
-        { projectId: "project-9", roleCode: "BASIC_USER" },
-        { projectId: "project-stage", roleCode: "READ_ONLY" },
-      ],
-    });
+    expect(writesOf(requests)).toEqual([
+      "POST /client/org-1/integration-token",
+      "PUT /project/project-9/first-class-recipe/development-container",
+    ]);
+  });
+
+  // Found by its name, a key widened between the list and the read under its lock is not the
+  // Mate's by then: the press says so and neither narrows it nor hands it to the container.
+  it("refuses to reuse a key that reaches another project by the time it is read under its lock", async () => {
+    const own = {
+      id: "token-old",
+      name: "zcp-Acme Docs - Ada",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-9", roleCode: "ADMIN" }],
+    };
+    const state: { tokens: ReadonlyArray<Record<string, unknown>>; holdToken: TokenWriteHold } = {
+      tokens: [own],
+      holdToken: async (_tokenId, run) => {
+        state.tokens = [
+          { ...own, projects: [...own.projects, { projectId: "stage", roleCode: "READ_ONLY" }] },
+        ];
+        return run();
+      },
+    };
+    const { client, requests } = platformClient(state);
+
+    await expect(client.importDevelopmentContainer(INPUT)).rejects.toThrow(/not reused/u);
+    expect(writesOf(requests)).toEqual([]);
   });
 
   // A zcp the platform is still creating holds the key already: regenerating it would cut the

@@ -236,13 +236,13 @@ describe("a git push's words — a deploy only once the build it triggered lande
 
   it.each([
     {
-      name: "the pull request the branch lands through",
+      name: "the change the branch lands through",
       outcome: "pushed",
       context: { branch: "mate/fen", pullRequest: 8 },
       closing: "Pushed to change #8.",
     },
     {
-      name: "the branch, without a pull request",
+      name: "the branch, without a change",
       outcome: "pushed",
       context: { branch: "main" },
       closing: "Pushed to main.",

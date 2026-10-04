@@ -796,8 +796,8 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
     ],
     [
       "refused",
-      { press: { kind: "refused", reason: "Gitea would not create the tag." } },
-      { state: "rollback-refused", tone: "attention", why: "Gitea would not create the tag." },
+      { press: { kind: "refused", reason: "HQ would not create the tag." } },
+      { state: "rollback-refused", tone: "attention", why: "HQ would not create the tag." },
       "Production keeps running v0.1.57.",
     ],
   ])("%s", (_name, over, verdict, consequence) => {

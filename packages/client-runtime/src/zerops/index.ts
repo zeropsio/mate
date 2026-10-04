@@ -236,6 +236,7 @@ export {
   makeTokenWriteLock,
   planMateKey,
   tokenWriteLockName,
+  type MateKeyPlan,
   TOKEN_WRITE_HOLD_MS,
   type TokenWriteHold,
   type TokenWriteLocks,
@@ -267,12 +268,7 @@ export {
   type PullRequestBlocked,
 } from "./gitTab.ts";
 export { linkedChanges, linksChange } from "./changeLinks.ts";
-export {
-  branchLabel,
-  mateBotLogin,
-  mateProjectOfBranch,
-  mateProjectOfLogin,
-} from "./mateIdentity.ts";
+export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   MATE_ARRIVAL_WINDOW_MS,
