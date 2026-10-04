@@ -573,9 +573,10 @@ project. They use the existing inventory identity and leave the organization's r
 registrations alone. Actual receiver failures publish a failed state and require a manual attempt.
 
 HQ supplies application load data with its first structure snapshot, and fresh values when each
-application's release revision moves. Recomputes reuse unchanged revisions. Stage/production creation
-forms use those same recipe values; only the Mate recipe, which the snapshot does not carry, is
-read when its detail opens. An explicit recipe retry asks the stream owner for a fresh snapshot.
+application's release revision moves. Recomputes reuse unchanged revisions. _Add Mate_ and the
+stage/production creation forms use those same recipe values, every tier from the snapshot; a recipe
+landing moves the revision and its tiers come down the stream. An explicit recipe retry asks the
+stream owner for a fresh snapshot.
 
 **Polling is a backstop, and this is the complete list.**
 
@@ -586,9 +587,11 @@ read when its detail opens. An explicit recipe retry asks the stream owner for a
 | Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                   | —                                   |
 | An application's releases and repositories        | None: values in HQ's snapshot and release-revision messages (`useZeropsAppReleases`)           | An official HQ is known             |
 | HQ's structure, environments and a Mate's changes | None: HQ's stream, its snapshot again only on manual request after failure                     | —                                   |
-| A recipe's tiers on `main`                        | None: stage/production in the same snapshot and messages; Mate tier on detail demand           | —                                   |
+| HQ's standing (the projects page's HQ line)       | None: HQ's stream; `/health` read once per failed stream attempt                               | The tab is visible                  |
+| A recipe's tiers on `main`                        | None: Mate, stage and production tiers in the same snapshot and messages                       | —                                   |
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`) | Still wanted                        |
 | Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                    | Demanded                            |
+| A Mate's setup (`/mate/setup.json`)               | 4 s while a step is still to happen (`useMateSetup`); a read due while hidden waits            | A view shows it, the tab is visible |
 | Container probe                                   | The container machine's cadence                                                                | Its state requires it               |
 | Throwaway sweep                                   | Once for durable debt past the door window; failed sweeps require explicit again               | The projects screen is open         |
 

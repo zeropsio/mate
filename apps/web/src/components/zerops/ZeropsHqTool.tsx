@@ -1,17 +1,15 @@
 /**
  * The organization's HQ on the Tools row (SPEC §3.1, §4): healthy; serving while it cannot check
  * Zerops right now, which is no outage; or unavailable since when — the rest of the page still
- * drawn from what was read last. Nothing before its health is first read.
+ * drawn from what was read last. Nothing before HQ's stream first says. Read off HQ's stream
+ * (`hqStandingAtom`), never polled.
  */
-import { useAccountHq, useHqStanding } from "~/zerops/accountHq";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { useAtomValue } from "@effect/atom-react";
+
+import { hqStandingAtom } from "~/state/zerops";
 
 export function ZeropsHqTool() {
-  const { activeOrganization } = useZeropsSession();
-  const accountHq = useAccountHq(activeOrganization?.id);
-  const standing = useHqStanding(
-    accountHq.hq.kind === "official" ? accountHq.hq.address : undefined,
-  );
+  const standing = useAtomValue(hqStandingAtom);
 
   switch (standing.kind) {
     case "unknown":

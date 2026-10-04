@@ -10,8 +10,9 @@
  *   not served with is presented again on the next, while young, and mints nothing. One API per account, org and
  *   HQ for the account's lifetime; its session is kept across loads as the Mates' are
  *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
- * - **Whether it answers:** `/health`, read while a surface shows it. An HQ that stops answering
- *   is `unavailable` from the first read that failed, and says so with that time (SPEC §4).
+ * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves, and
+ *   after it failed, `/health` read once per failed attempt while the tab is visible. An HQ that
+ *   stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
  * - **Its birth's ports:** Core comes from this very build, same-origin under `hq-core/`
  *   (`apps/hq/scripts/pack-core.ts`).
  */
@@ -39,7 +40,6 @@ import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-
 import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 import { useCallback, useContext, useEffect, useMemo } from "react";
-import { create } from "zustand";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
@@ -252,7 +252,7 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
   );
 }
 
-/** Where an HQ stands, as this tab last read it. */
+/** Where an HQ stands, as its stream last said it (`hqStandingAtom`). */
 export type HqStanding =
   | { readonly kind: "unknown" }
   | { readonly kind: "healthy" }
@@ -265,48 +265,6 @@ export type HqStanding =
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
   if (health.kind === "healthy" || health.kind === "unchecked") return { kind: health.kind };
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
-}
-
-/** How often a shown HQ's health is read. */
-export const HQ_HEALTH_EVERY_MS = 30_000;
-
-const useHqStandings = create<{ readonly byAddress: Readonly<Record<string, HqStanding>> }>(() => ({
-  byAddress: {},
-}));
-onAccountLifetimeClose(() => useHqStandings.setState({ byAddress: {} }));
-
-/** The HQ at `address`, read now and every {@link HQ_HEALTH_EVERY_MS} while shown. */
-export function useHqStanding(address: string | undefined): HqStanding {
-  const standing = useHqStandings((state) =>
-    address === undefined ? undefined : state.byAddress[address],
-  );
-  useEffect(() => {
-    if (address === undefined) return;
-    const controller = new AbortController();
-    const read = () =>
-      void readHqHealth((input, init) => fetch(input, init), address, controller.signal).then(
-        (health) => {
-          if (controller.signal.aborted) return;
-          useHqStandings.setState((state) => ({
-            byAddress: {
-              ...state.byAddress,
-              [address]: nextHqStanding(
-                state.byAddress[address] ?? { kind: "unknown" },
-                health,
-                Date.now(),
-              ),
-            },
-          }));
-        },
-      );
-    read();
-    const timer = setInterval(read, HQ_HEALTH_EVERY_MS);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [address]);
-  return standing ?? { kind: "unknown" };
 }
 
 /**

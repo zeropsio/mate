@@ -6,7 +6,7 @@
  * - `{ type: "snapshot", ungrouped, apps, changes, appReads, mates, people }` — what
  *   `GET /api/structure` answers; beside it the changes of every application the caller may read
  *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
- *   those applications' releases, repository heads and stage/production recipes (`hqAppReads`); and
+ *   those applications' releases, repository heads and Mate/stage/production recipes (`hqAppReads`); and
  *   every Mate the caller may observe (`observe_mate`) as HQ holds it, by project, with the people
  *   the view names (`@t3tools/shared/hqMates`);
  * - `{ type: "changes", appId, changes }` — one application's changes as the caller now reads them
@@ -281,11 +281,12 @@ export const structureMessages = <R>(
           appReads[appId] = yield* Effect.gen(function* () {
             const records = yield* releases.list(userId, appId);
             const repos = yield* changes.listRepos(userId, appId);
+            const mate = yield* changes.readRecipe(userId, appId, "mate");
             const stage = yield* changes.readRecipe(userId, appId, "stage");
             const production = yield* changes.readRecipe(userId, appId, "production");
             return {
               revision,
-              value: { releases: records, repos, recipes: { stage, production } },
+              value: { releases: records, repos, recipes: { mate, stage, production } },
               failure: null,
             };
           }).pipe(

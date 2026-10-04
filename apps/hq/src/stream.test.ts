@@ -28,6 +28,7 @@ const linkedMate = (overviews: MateOverviews["Service"]) =>
     return link;
   });
 import type { AppReadValue } from "@t3tools/shared/hqAppReads";
+import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
@@ -118,6 +119,7 @@ const streamFor = (
               { name: "group", mainHead: "a".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" },
             ],
             recipes: {
+              mate: { state: "absent" as const },
               stage: { state: "absent" as const },
               production: { state: "absent" as const },
             },
@@ -151,10 +153,10 @@ const streamFor = (
               appReadCalls.push(`${appId}:repos`);
               return (yield* Ref.get(appReads)).get(appId)!.repos;
             }),
-          readRecipe: (_userId: string, appId: string, tier: "stage" | "production") =>
+          readRecipe: (_userId: string, appId: string, tier: RecipeTier) =>
             Effect.gen(function* () {
               appReadCalls.push(`${appId}:${tier}`);
-              return (yield* Ref.get(appReads)).get(appId)!.recipes[tier];
+              return (yield* Ref.get(appReads)).get(appId)!.recipes[tier]!;
             }),
           changes: Stream.never,
         } as unknown as Changes["Service"]),
@@ -190,7 +192,7 @@ const streamFor = (
   });
 
 describe("the structure stream", () => {
-  it.effect("carries the four load reads for readable apps, and re-reads only the moved app", () =>
+  it.effect("carries the five load reads for readable apps, and re-reads only the moved app", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const h = yield* streamFor("owner", undefined, { "app-shop": [], "app-team": [] });
@@ -200,7 +202,7 @@ describe("the structure stream", () => {
           "app-shop": { revision: null, value: shop, failure: null },
           "app-team": { revision: null, value: team, failure: null },
         });
-        assert.strictEqual(h.appReadCalls.length, 8);
+        assert.strictEqual(h.appReadCalls.length, 10);
         h.appReadCalls.length = 0;
         const fresh: AppReadValue = {
           releases: [
@@ -219,6 +221,11 @@ describe("the structure stream", () => {
             { name: "group", mainHead: "b".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" },
           ],
           recipes: {
+            mate: {
+              state: "present",
+              mainHead: "b".repeat(40),
+              importYaml: "services:\n  - hostname: appdev\n",
+            },
             stage: {
               state: "present",
               mainHead: "b".repeat(40),
@@ -249,6 +256,7 @@ describe("the structure stream", () => {
           },
         ]);
         assert.deepStrictEqual(h.appReadCalls.toSorted(), [
+          "app-shop:mate",
           "app-shop:production",
           "app-shop:releases",
           "app-shop:repos",
