@@ -1550,6 +1550,56 @@ describe("RunChat, as the person uses it", () => {
       expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
     });
 
+    // Bodhi: an opened card drew each picture in the step that looked at it
+    // and again in the result's strip right under it.
+    it.each([
+      { name: "the result's strip holds it: the step leaves it there", inStrip: true, drawn: 0 },
+      { name: "no strip holds it: the step draws it", inStrip: false, drawn: 1 },
+    ])("draws a picture an opened card looked at once: $name", ({ inStrip, drawn }) => {
+      setRunFold(CONVERSATION, "turn-1", "shown");
+      const look = step({
+        id: "v1",
+        createdAt: at(5),
+        label: "Viewed image",
+        tone: "tool",
+        itemType: "image_view",
+        viewedImagePath: "/srv/shots/home.png",
+        toolLifecycleStatus: "completed",
+      });
+      const outcome = {
+        ...outcomeOf([]),
+        pictures: inStrip
+          ? [{ kind: "file" as const, key: "f1", path: "/srv/shots/home.png", name: "home.png" }]
+          : [],
+      };
+      const markup = renderToStaticMarkup(
+        <TimelineRowCtx
+          value={{
+            ...SHARED,
+            threadRef: {
+              environmentId: EnvironmentId.make("environment-local"),
+              threadId: ThreadId.make("thread-1"),
+            },
+          }}
+        >
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat
+              row={record([look], {
+                status: status({ live: false, face: "produced", endedAt: at(80) }),
+                outcome,
+              })}
+            />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+      forgetRunFolds(CONVERSATION);
+      // Its line names it either way; the picture itself is drawn (here, read as gone) once.
+      expect(markup.replace(/<[^>]+>/gu, "")).toContain("Looked at home.png");
+      expect(markup.match(/home\.png is not there any more|Open home\.png/gu)?.length ?? 0).toBe(
+        drawn,
+      );
+    });
+
     it("keeps even a lone word of its behind Show work", () => {
       const markup = draw(
         record(

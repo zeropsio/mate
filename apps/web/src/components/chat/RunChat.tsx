@@ -1235,14 +1235,22 @@ function PhraseWords({ phrase }: { readonly phrase: StepPhrase }) {
   );
 }
 
+/**
+ * The pictures the settled run's result draws in its strip, by path: a step
+ * that looked at one names it on its line and leaves the picture to the
+ * strip, so an opened card never shows it twice (Bodhi, run 9).
+ */
+const ResultPicturesContext = createContext<ReadonlySet<string>>(new Set());
+
 /** The pictures a step looked at, as themselves: small, each one opening the picture viewer. */
 function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
-  if (paths.length === 0) return null;
+  const inResult = use(ResultPicturesContext);
   const { threadRef, onImageExpand } = use(TimelineRowCtx);
-  if (threadRef === null) return null;
+  const shown = paths.filter((path) => !inResult.has(path));
+  if (shown.length === 0 || threadRef === null) return null;
   return (
     <span className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-1.75">
-      {paths.map((path) => (
+      {shown.map((path) => (
         <StepPicture key={path} onOpen={onImageExpand} path={path} threadRef={threadRef} />
       ))}
     </span>
@@ -3549,82 +3557,95 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         {...(above ? { readingRef } : {})}
       />
     );
+  const outcomePictures = settled ? row.outcome?.pictures : undefined;
+  const resultPictures = useMemo(
+    () =>
+      new Set(
+        (outcomePictures ?? []).flatMap((picture) =>
+          picture.kind === "file" ? [picture.path] : [],
+        ),
+      ),
+    [outcomePictures],
+  );
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
     // scroll the person watched is the one that folds away.
     <CarriedOpenContext value={carriedOpen}>
-      <div
-        ref={rootRef}
-        className="@container/chat min-w-0"
-        data-run-chat
-        data-run-fold={settled ? fold : undefined}
-        // The shared height holds through the settle's fold: dropped in the
-        // commit the fold measures, the history jumped to its own height first.
-        data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
-        style={
-          { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
-        }
-      >
-        {above && scroll !== null ? (
-          <div
-            key="above"
-            ref={aboveRef}
-            className="run-above"
-            data-folding={fold === "folding" ? "" : undefined}
-          >
-            {scroll}
-            {/* The hairline over the line, folding away with the work. */}
-            {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
+      <ResultPicturesContext value={resultPictures}>
+        <div
+          ref={rootRef}
+          className="@container/chat min-w-0"
+          data-run-chat
+          data-run-fold={settled ? fold : undefined}
+          // The shared height holds through the settle's fold: dropped in the
+          // commit the fold measures, the history jumped to its own height first.
+          data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
+          style={
+            { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
+          }
+        >
+          {above && scroll !== null ? (
+            <div
+              key="above"
+              ref={aboveRef}
+              className="run-above"
+              data-folding={fold === "folding" ? "" : undefined}
+            >
+              {scroll}
+              {/* The hairline over the line, folding away with the work. */}
+              {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
+            </div>
+          ) : null}
+          {row.status === null ? null : settled ? (
+            <NowLine
+              key="line"
+              answering={false}
+              outcome={row.outcome}
+              end={
+                // A chat opens from its first thing the Mate did (`chatLines`),
+                // and only onto a line that shows something.
+                shows.toggle !== null &&
+                opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
+                  <WorkToggle
+                    onToggle={() => {
+                      hold(folded);
+                      // Watched to its end and still open over its line: it
+                      // folds into the line as a run settling does.
+                      if (fold === "watched") {
+                        foldNow();
+                        return;
+                      }
+                      fromHeightRef.current =
+                        feedRef.current?.getBoundingClientRect().height ?? null;
+                      setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+                    }}
+                    open={!folded}
+                  />
+                ) : null
+              }
+              now={null}
+              status={row.status}
+            />
+          ) : (
+            <LiveSlot
+              key="slot"
+              ref={slotRef}
+              items={row.items}
+              live={model.live}
+              filler={model.filler}
+              now={row.now}
+              answering={row.answering}
+              slot={slot}
+              status={row.status}
+              undone={undone}
+            />
+          )}
+          <div key="below" ref={feedRef} className="run-later-feed">
+            {above ? null : scroll}
           </div>
-        ) : null}
-        {row.status === null ? null : settled ? (
-          <NowLine
-            key="line"
-            answering={false}
-            outcome={row.outcome}
-            end={
-              // A chat opens from its first thing the Mate did (`chatLines`),
-              // and only onto a line that shows something.
-              shows.toggle !== null &&
-              opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
-                <WorkToggle
-                  onToggle={() => {
-                    hold(folded);
-                    // Watched to its end and still open over its line: it
-                    // folds into the line as a run settling does.
-                    if (fold === "watched") {
-                      foldNow();
-                      return;
-                    }
-                    fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
-                    setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
-                  }}
-                  open={!folded}
-                />
-              ) : null
-            }
-            now={null}
-            status={row.status}
-          />
-        ) : (
-          <LiveSlot
-            key="slot"
-            ref={slotRef}
-            items={row.items}
-            live={model.live}
-            filler={model.filler}
-            now={row.now}
-            answering={row.answering}
-            slot={slot}
-            status={row.status}
-            undone={undone}
-          />
-        )}
-        <div key="below" ref={feedRef} className="run-later-feed">
-          {above ? null : scroll}
         </div>
-      </div>
+      </ResultPicturesContext>
     </CarriedOpenContext>
   );
 }
