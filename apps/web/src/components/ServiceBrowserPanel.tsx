@@ -161,31 +161,52 @@ export function ServiceBrowserPanel({
   );
 }
 
+const NO_ADDRESSES: ReadonlyArray<{ readonly url: string }> = [];
+
+const hostnameOf = (href: string): string | null => {
+  try {
+    return new URL(href).hostname;
+  } catch {
+    return null;
+  }
+};
+
 /** Keep each page mounted while switching tabs, preserving forms and in-page navigation. */
 export function ServiceBrowserPanels({
   surfaces,
   activeSurfaceId,
   services,
+  addresses = NO_ADDRESSES,
 }: {
   surfaces: RightPanelSurface[];
   activeSurfaceId: string | null;
   services: readonly ZeropsTopologyService[] | undefined;
+  /** The Mate's addresses outside its own project — its group's stage and production. */
+  addresses?: ReadonlyArray<{ readonly url: string }>;
 }) {
   return surfaces.map((surface) => {
     if (surface.kind !== "browser" || !("url" in surface)) return null;
     const owner = serviceForPreview(surface.url, services);
+    const host = hostnameOf(surface.url);
+    const known =
+      owner !== null ||
+      (host !== null && addresses.some((address) => hostnameOf(address.url) === host));
     return (
       <div
         key={`${surface.id}:${surface.url}`}
         className={surface.id === activeSurfaceId ? "h-full min-h-0" : "hidden"}
       >
-        {owner ? (
+        {known ? (
           <ServiceBrowserPanel
             service={surface.service}
             url={surface.url}
-            deployedVersion={deployedVersionKey(
-              services?.find((service) => service.hostname === owner)?.deploy,
-            )}
+            deployedVersion={
+              owner === null
+                ? undefined
+                : deployedVersionKey(
+                    services?.find((service) => service.hostname === owner)?.deploy,
+                  )
+            }
           />
         ) : (
           <p className="p-4 text-sm text-muted-foreground">
