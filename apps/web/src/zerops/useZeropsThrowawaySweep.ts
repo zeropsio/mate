@@ -6,8 +6,11 @@
 import {
   planThrowawaySweep,
   THROWAWAY_SWEEP_AGE_MS,
+  throwawayCleanupFailureState,
+  type ThrowawayCleanupFailure,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { readZeropsCell } from "./readZeropsCell";
 import { accountThrowawayDebt } from "./throwawayDebt";
@@ -18,7 +21,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 const PAST_THE_WINDOW_MS = 1_000;
 
 type CleanupState = {
-  readonly state: "idle" | "waiting" | "running" | "done" | "failed";
+  readonly state: "idle" | "waiting" | "running" | "done" | "failed" | "unknown";
   readonly failure: string | null;
 };
 export interface ThrowawaySweepView extends CleanupState {
@@ -35,8 +38,26 @@ export function useZeropsThrowawaySweep(input: {
   const { organizationRef, runtime } = useZeropsData();
   const { clientId, enabled } = input;
   const debt = accountThrowawayDebt(client);
-  const owed = () => (clientId === undefined ? null : debt.failedAt(clientId));
-  const failedAt = useSyncExternalStore(debt.subscribe, owed, owed);
+  // Mint and deletion can finish in the same millisecond: the outcome, not just its time,
+  // must wake the presentation and cancel any queued inventory cleanup.
+  const snapshot = () =>
+    clientId === undefined
+      ? ""
+      : JSON.stringify([
+          debt.failedAt(clientId),
+          debt.cleanupFailures(clientId),
+          debt.sweepFailed(clientId),
+        ]);
+  const cleanupSnapshot = useSyncExternalStore(debt.subscribe, snapshot, snapshot);
+  const [failedAt, failures, needsAgain] = useMemo(
+    () =>
+      JSON.parse(cleanupSnapshot || "[null,[],false]") as readonly [
+        number | null,
+        ReadonlyArray<ThrowawayCleanupFailure>,
+        boolean,
+      ],
+    [cleanupSnapshot],
+  );
   const [ask, setAsk] = useState<{
     readonly debt: typeof debt;
     readonly clientId: string | undefined;
@@ -49,16 +70,17 @@ export function useZeropsThrowawaySweep(input: {
     readonly debt: typeof debt;
     readonly clientId: string;
     readonly asked: number;
+    running: boolean;
   } | null>(null);
-  const again = useCallback(
-    () =>
-      setAsk((value) => ({
-        debt,
-        clientId,
-        n: value?.debt === debt && value.clientId === clientId ? value.n + 1 : 1,
-      })),
-    [clientId, debt],
-  );
+  const again = useCallback(() => {
+    const active = attempted.current;
+    if (active?.running && active.debt === debt && active.clientId === clientId) return;
+    setAsk((value) => ({
+      debt,
+      clientId,
+      n: value?.debt === debt && value.clientId === clientId ? value.n + 1 : 1,
+    }));
+  }, [clientId, debt]);
 
   // A new mint updates the queue without aborting a cleanup already in flight. An organization
   // or account change does abort it, before its next delete or any settlement of the old debt.
@@ -73,19 +95,34 @@ export function useZeropsThrowawaySweep(input: {
     if (!enabled || clientId === undefined || controller === null || controller.signal.aborted)
       return;
     const previous = attempted.current;
-    if (previous?.debt === debt && previous.clientId === clientId && previous.asked === asked)
-      return;
-    const explicit = asked > 0;
+    const alreadyAttempted =
+      previous?.debt === debt && previous.clientId === clientId && previous.asked === asked;
+    if (alreadyAttempted && previous.running) return;
+    const explicit = asked > 0 && !alreadyAttempted;
     if (failedAt === null && !explicit) return;
     const publish = (next: CleanupState) => {
       if (!controller.signal.aborted) setView({ debt, clientId, ...next });
     };
-    if (!explicit && debt.sweepFailed(clientId)) {
-      publish({ state: "failed", failure: "Sign-in cleanup failed. Try again." });
+    const publishOutstandingFailure = () => {
+      const failure = debt.cleanupFailures(clientId)[0];
+      publish({
+        state: failure?.state ?? "failed",
+        failure: failure?.reason ?? "Sign-in cleanup failed. Delete again.",
+      });
+    };
+    if (!explicit && needsAgain) {
+      const failure = failures[0];
+      if (failure === undefined && alreadyAttempted) return;
+      publish({
+        state: failure?.state ?? "failed",
+        failure: failure?.reason ?? "Sign-in cleanup failed. Delete again.",
+      });
       return;
     }
+    if (alreadyAttempted) return;
     const sweep = async () => {
-      attempted.current = { debt, clientId, asked };
+      const attempt = { debt, clientId, asked, running: true };
+      attempted.current = attempt;
       publish({ state: "running", failure: null });
       // Capture the eligible debt before the list read: a mint arriving meanwhile stays owed.
       const upToMs = Math.min(
@@ -93,6 +130,40 @@ export function useZeropsThrowawaySweep(input: {
         Date.now() - THROWAWAY_SWEEP_AGE_MS - 1,
       );
       try {
+        const targets = explicit ? failures : [];
+        if (targets.length > 0 && targets.every((target) => target.tokenId !== undefined)) {
+          for (const target of targets) {
+            if (controller.signal.aborted || target.tokenId === undefined) return;
+            try {
+              await client.deleteIntegrationToken(
+                { clientId, tokenId: target.tokenId },
+                controller.signal,
+              );
+            } catch (cause) {
+              if (controller.signal.aborted) return;
+              if (!(cause instanceof ZeropsApiError && cause.kind === "not-found")) {
+                const state = throwawayCleanupFailureState(cause);
+                const failure =
+                  cause instanceof Error ? cause.message : "Zerops did not confirm cleanup.";
+                debt.failCleanup(clientId, Date.now(), { ...target, state, reason: failure });
+                publish({ state, failure });
+                return;
+              }
+            }
+            if (controller.signal.aborted) return;
+            debt.finish(clientId, target.attempt);
+          }
+          const outstanding = debt.cleanupFailures(clientId)[0];
+          publish(
+            outstanding === undefined
+              ? { state: "done", failure: null }
+              : {
+                  state: outstanding.state,
+                  failure: outstanding.reason,
+                },
+          );
+          return;
+        }
         const request = {
           kind: "tokens",
           account: runtime.scope,
@@ -115,9 +186,17 @@ export function useZeropsThrowawaySweep(input: {
         });
         for (const tokenId of stale) {
           if (controller.signal.aborted) return;
+          if (!explicit && debt.sweepFailed(clientId)) {
+            publishOutstandingFailure();
+            return;
+          }
           await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
         }
         if (controller.signal.aborted) return;
+        if (!explicit && debt.sweepFailed(clientId)) {
+          publishOutstandingFailure();
+          return;
+        }
         debt.settle(clientId, upToMs);
         publish({ state: "done", failure: null });
       } catch (cause) {
@@ -128,6 +207,8 @@ export function useZeropsThrowawaySweep(input: {
           state: "failed",
           failure: cause instanceof Error ? cause.message : "Zerops did not confirm cleanup.",
         });
+      } finally {
+        attempt.running = false;
       }
     };
     const wait = explicit
@@ -136,7 +217,18 @@ export function useZeropsThrowawaySweep(input: {
     if (wait > 0) publish({ state: "waiting", failure: null });
     const timer = setTimeout(() => void sweep(), wait);
     return () => clearTimeout(timer);
-  }, [asked, client, clientId, debt, enabled, failedAt, organizationRef, runtime]);
+  }, [
+    asked,
+    client,
+    clientId,
+    debt,
+    enabled,
+    failedAt,
+    failures,
+    needsAgain,
+    organizationRef,
+    runtime,
+  ]);
 
   return { ...(view.debt === debt && view.clientId === clientId ? view : IDLE), again };
 }

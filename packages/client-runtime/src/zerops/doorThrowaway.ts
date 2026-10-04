@@ -28,7 +28,8 @@
  * refuses to remove a member who still holds tokens (measured 2026-09-15), so
  * the rows are not harmless. Cleanup is owed before every mint ({@link ThrowawayDebt})
  * and settled only after its token is deleted or Zerops refused the mint. A delete
- * is attempted once; a failed delete or a crash stays owed, and only then does the app
+ * is attempted once; a failed delete keeps its exact target and failed/unknown reason
+ * until the person asks to delete again. A crash stays owed, and only then does the app
  * list the organization's tokens and delete the person's own `mate-door:*`
  * tokens older than five minutes, and the `gitea-signin:*` ones main's client
  * leaves. {@link planThrowawaySweep}
@@ -57,6 +58,16 @@ export interface ThrowawayCleanupFailure {
   readonly tokenId?: string;
   readonly state: "failed" | "unknown";
   readonly reason: string;
+}
+
+/** A refused deletion failed; a lost or server-error answer may have applied. */
+export function throwawayCleanupFailureState(cause: unknown): ThrowawayCleanupFailure["state"] {
+  return cause instanceof ZeropsApiError &&
+    cause.kind !== "network" &&
+    cause.kind !== "uncertain" &&
+    (cause.status === null || cause.status < 500)
+    ? "failed"
+    : "unknown";
 }
 
 interface ThrowawayDebtEntry {
@@ -399,7 +410,8 @@ const heldForDoor = new Map<
  * once when `asked`, the person having asked for this Mate — and a
  * 429 holds that budget's background mints; `signal` ends the wait and the mint — never the delete,
  * which runs once on its own deadline with the token the mint carried. A failed
- * delete or a mint whose answer was lost stays owed to the organization’s sweep.
+ * delete stays visible in the captured account's debt until Delete again. A mint whose
+ * answer was lost stays owed to the organization's sweep.
  *
  * A throwaway its door did not take is held for the door's next try for
  * {@link THROWAWAY_REUSE_MS} from its mint (`hold`), and the next mint for that
@@ -447,13 +459,7 @@ export function zeropsThrowawayPlatform(
       (throwaway?.debt ?? debt).failCleanup(input.clientId, nowMs(), {
         attempt: throwaway?.name ?? input.tokenId,
         tokenId: input.tokenId,
-        state:
-          cause instanceof ZeropsApiError &&
-          cause.kind !== "network" &&
-          cause.kind !== "uncertain" &&
-          (cause.status === null || cause.status < 500)
-            ? "failed"
-            : "unknown",
+        state: throwawayCleanupFailureState(cause),
         reason: cause instanceof Error ? cause.message : "Zerops did not confirm cleanup.",
       });
       throw cause;
