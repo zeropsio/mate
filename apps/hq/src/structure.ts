@@ -123,20 +123,6 @@ export interface AttachInput {
   readonly created?: boolean;
 }
 
-/** Facts carried by the one-off project-tag port; project names and roles remain Zerops's. */
-export interface ProjectMetadataPort {
-  readonly projectId: string;
-  readonly mate?: boolean;
-  readonly face?: string;
-  readonly madeBy?: string;
-  readonly birthId?: string;
-  readonly nameSource?: "picked" | "project";
-  readonly standupRequestedBy?: string;
-  readonly closedOff?: boolean;
-  readonly signers?: Readonly<Record<string, string>>;
-  readonly tool?: "gitea";
-}
-
 /**
  * A Mate's birth intent, recorded before its Zerops project exists: where it goes and with which
  * face. Its project is created tagged with its id, so whoever finishes the Mate attaches it so.
@@ -358,11 +344,6 @@ export class Structure extends Context.Service<
       projectId: string,
       signers: Readonly<Record<string, string>>,
     ) => Effect.Effect<void, NotLeader | SqlError>;
-    /** Sets a Mate up: its record, in no application until it is moved into one, and its ask. */
-    readonly portProjectMetadata: (
-      userId: string,
-      facts: ProjectMetadataPort,
-    ) => Effect.Effect<void, WriteError>;
     readonly bindBirth: (
       userId: string,
       birthId: string,
@@ -1145,40 +1126,6 @@ export const structureLayer = (options: {
             );
             yield* changed;
             return { id: rows[0]!.id, face: birth.face };
-          }),
-        ),
-
-        portProjectMetadata: confirmed((userId, facts) =>
-          Effect.gen(function* () {
-            if (facts.face !== undefined && !fitsFace(facts.face))
-              return yield* refuse("invalid", "face_length");
-            const view = yield* roles.forWrite;
-            yield* allowed(userId, "create_app", null, view);
-            if (!view.projects.some((project) => project.id === facts.projectId))
-              return yield* refuse("project_not_found", "project_gone");
-            yield* leader.write(
-              Effect.gen(function* () {
-                if (facts.tool !== undefined)
-                  yield* sql`
-                INSERT INTO hq_tool (project_id, kind) VALUES (${facts.projectId}, ${facts.tool}) ON CONFLICT DO NOTHING`;
-                if (facts.mate === true)
-                  yield* sql`
-                INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, closed_off_at)
-                VALUES (${facts.projectId}, ${facts.face ?? ""}, ${facts.madeBy ?? null}, ${facts.standupRequestedBy ?? null},
-                  CASE WHEN ${facts.closedOff === true} THEN now() END) ON CONFLICT DO NOTHING`;
-                yield* sql`
-                UPDATE hq_mate SET
-                  face = CASE WHEN face = '' THEN COALESCE(${facts.face ?? null}, face) ELSE face END,
-                  made_by = COALESCE(made_by, ${facts.madeBy ?? null}),
-                  standup_requested_by = COALESCE(standup_requested_by, ${facts.standupRequestedBy ?? null}),
-                  birth_id = COALESCE(birth_id, ${facts.birthId ?? null}::uuid),
-                  name_source = COALESCE(name_source, ${facts.nameSource ?? null}),
-                  signers = ${encodeSigners(facts.signers ?? {})}::jsonb || signers
-                WHERE project_id = ${facts.projectId}`;
-              }),
-            );
-            yield* changed;
-            yield* PubSub.publish(mateChanged, facts.projectId);
           }),
         ),
 

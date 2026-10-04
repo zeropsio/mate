@@ -1051,36 +1051,15 @@ describe("structure", () => {
         ),
     );
 
-    it.effect("ports missing Mate facts into HQ once, preserving facts HQ already holds", () =>
+    it.effect("reads the tool projects HQ holds", () =>
       withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
           const sql = yield* SqlClient.SqlClient;
-          yield* structure.createMate("owner", { projectId: "P_OWN", face: "rose:seal" });
-          yield* structure.portProjectMetadata("owner", {
-            projectId: "P_OWN",
-            face: "sky:flower",
-            signers: { codex: "owner" },
-          });
-          yield* structure.portProjectMetadata("owner", {
-            projectId: "P_OWN",
-            signers: { codex: "maker" },
-          });
-          const rows = yield* sql<{
-            readonly face: string;
-            readonly signers: Record<string, string>;
-          }>`SELECT face, signers FROM hq_mate WHERE project_id = 'P_OWN'`;
-          assert.deepStrictEqual(rows[0], { face: "rose:seal", signers: { codex: "owner" } });
-          yield* structure.portProjectMetadata("owner", { projectId: "P_TEAM", tool: "gitea" });
+          yield* sql`INSERT INTO hq_tool (project_id, kind) VALUES ('P_TEAM', 'gitea')`;
           assert.deepStrictEqual((yield* structure.read("owner")).tools, [
             { projectId: "P_TEAM", kind: "gitea" },
           ]);
-          assert.strictEqual(
-            yield* reasonOf(
-              structure.portProjectMetadata("maker", { projectId: "P_TEAM", tool: "gitea" }),
-            ),
-            "not_structure_writer",
-          );
         }),
       ),
     );
