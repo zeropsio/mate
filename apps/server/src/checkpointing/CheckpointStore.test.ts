@@ -492,6 +492,57 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
       );
     }
 
+    /**
+     * Untracked dependency directories of the other common ecosystems are not
+     * walked either — a checkout without a .gitignore lost every turn's diff to
+     * them as it did to node_modules — while a committed vendor tree is the
+     * project's own and stays recorded.
+     */
+    it.effect("skips untracked vendor, target and virtualenv trees before the path budget", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const fs = yield* FileSystem.FileSystem;
+        for (const directory of ["vendor/acme", "target/debug", ".venv/lib", "src/__pycache__"]) {
+          yield* fs.makeDirectory(NodePath.join(tmp, directory), { recursive: true });
+          for (let index = 0; index < 8; index += 1) {
+            yield* writeTextFile(
+              NodePath.join(tmp, directory, `generated-file-number-${index}.bin`),
+              "generated",
+            );
+          }
+        }
+        yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
+        const store = yield* CheckpointStore.CheckpointStore;
+        const snapshot = yield* store.captureSnapshot({
+          cwd: tmp,
+          checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/ecosystems/before"),
+          policy: { maxPathBytes: 64 },
+        });
+        const listed = yield* git(tmp, ["ls-tree", "-r", "--name-only", snapshot.oid]);
+        expect(listed.split("\n").toSorted()).toEqual(["README.md", "app.js"]);
+      }),
+    );
+
+    it.effect("keeps a committed vendor tree recorded", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const fs = yield* FileSystem.FileSystem;
+        yield* fs.makeDirectory(NodePath.join(tmp, "vendor", "acme"), { recursive: true });
+        yield* writeTextFile(NodePath.join(tmp, "vendor", "acme", "lib.php"), "<?php");
+        yield* git(tmp, ["add", "vendor"]);
+        yield* git(tmp, ["commit", "-m", "vendor"]);
+        const store = yield* CheckpointStore.CheckpointStore;
+        const snapshot = yield* store.captureSnapshot({
+          cwd: tmp,
+          checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/vendored/before"),
+        });
+        const listed = yield* git(tmp, ["ls-tree", "-r", "--name-only", snapshot.oid]);
+        expect(listed.split("\n")).toContain("vendor/acme/lib.php");
+      }),
+    );
+
     /** A filter that fails must fail the snapshot, never record a short one as captured. */
     it.effect("refuses the snapshot when filtering the candidates fails", () =>
       Effect.gen(function* () {

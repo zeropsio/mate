@@ -70,8 +70,9 @@ bounded_list() {
   [ "$(cat "$scratch/status")" = 0 ] || fail 'candidate enumeration failed'
   [ "$(cat "$scratch/filter")" -le 1 ] || fail 'candidate filtering failed'
 }
-# Untracked dependency directories are not walked at all.
-bounded_list git ls-files -z --cached --others --exclude-standard --exclude=node_modules/ --exclude=.venv/ --exclude=venv/ --exclude=__pycache__/ --exclude=.next/ --exclude=.nuxt/ --exclude=.svelte-kit/ --exclude=.turbo/ --exclude=.cache/
+# Untracked dependency and build directories are not walked at all — those of
+# the other ecosystems too (vendor/, target/), which stay recorded where tracked.
+bounded_list git ls-files -z --cached --others --exclude-standard --exclude=node_modules/ --exclude=.venv/ --exclude=venv/ --exclude=__pycache__/ --exclude=.next/ --exclude=.nuxt/ --exclude=.svelte-kit/ --exclude=.turbo/ --exclude=.cache/ --exclude=vendor/ --exclude=target/
 cat "$scratch/part" > "$scratch/all"
 if git rev-parse --verify --quiet HEAD >/dev/null; then
   bounded_list git ls-tree -r -z --name-only HEAD
