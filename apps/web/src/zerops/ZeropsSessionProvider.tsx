@@ -369,7 +369,9 @@ export function ZeropsSessionProvider({
       },
       signOut: async () => {
         setLastRegistration(null);
-        await client.logout();
+        // Local only: the token is the Zerops app's own session, and logging
+        // it out would sign the person out there too.
+        await client.signOutLocally();
       },
       lastRegistration,
       clearLastRegistration: () => {

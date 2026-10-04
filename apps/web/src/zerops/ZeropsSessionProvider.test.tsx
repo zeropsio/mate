@@ -147,11 +147,15 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(JSON.parse(storedSession(harness)!)).toEqual({ accessToken: handedOver });
   });
 
-  it("signs out: closes the account, clears the stored session, revokes the token it carried", async () => {
-    const harness = harnessWith({ signedIn: "user-1" });
-    const token = JSON.parse(storedSession(harness)!).accessToken as string;
-    const tab = await mountTab(harness, harness.browser.openTab());
-    expect(tab.session().status).toBe("signed-in");
+  // The handed-over token is the Zerops app's own session: logging it out
+  // would sign the person out there too. Sign-out forgets it here, and the
+  // account's close ends every HQ and Mate session it kept.
+  it("signs out locally: closes the account, forgets the token, never calls /auth/logout", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });
+    const handedOver = harness.rest.issueSession("user-1").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token: handedOver, zcpClaimed: false }));
+    expect(tab.accountId()).toBe("user-1");
 
     await tab.run(() => tab.session().signOut());
 
@@ -159,9 +163,9 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(tab.session().user).toBeNull();
     expect(tab.accountId()).toBeNull();
     expect(storedSession(harness)).toBeNull();
-    expect(
-      harness.rest.requests().filter(({ route }) => route === "POST /auth/logout"),
-    ).toMatchObject([{ token }]);
+    expect(harness.rest.requests().filter(({ route }) => route === "POST /auth/logout")).toEqual(
+      [],
+    );
   });
 
   it("signs out when another tab signs out", async () => {
