@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import type {
@@ -286,7 +287,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     expected: {
       region: "value",
       message: {
-        text: `Reconnecting… Last data as of ${new Date(1_000).toLocaleTimeString()}. Changes while disconnected may be missing.`,
+        text: `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(1_000), { timeStyle: "medium" })}. Changes while disconnected may be missing.`,
         afterMs: 0,
         tone: "notice",
       },

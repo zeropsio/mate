@@ -5,6 +5,8 @@
  * A message names the cause only (R-K3); the affordance is a separate field the component renders
  * exactly once. Negative domain copy comes only from a complete known value (R-K1).
  */
+import * as DateTime from "effect/DateTime";
+
 import type {
   FailureReason,
   Known,
@@ -300,7 +302,7 @@ function staleMarker<T>(
       return {
         message: say(
           reason.coverageGap
-            ? `Reconnecting… Last data as of ${new Date(asOfMs).toLocaleTimeString()}. Changes while disconnected may be missing.`
+            ? `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(asOfMs), { timeStyle: "medium" })}. Changes while disconnected may be missing.`
             : "Reconnecting…",
           "notice",
         ),

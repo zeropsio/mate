@@ -1011,9 +1011,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   /** The access the build logs and the cells were last reconciled with. */
   let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
-  // Demand arrives from independently run UI effects; workers retain the account scheduler.
+  // Demand arrives from independently run UI effects; workers retain the account clock and scheduler.
   const forkOwned = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(Effect.forkIn(runtimeScope), Effect.provideService(Scheduler.Scheduler, scheduler));
+    effect.pipe(
+      Effect.forkIn(runtimeScope),
+      Effect.provideService(Clock.Clock, clock),
+      Effect.provideService(Scheduler.Scheduler, scheduler),
+    );
   const closed = yield* Ref.make(false);
   /** Open while the tab is online: offline, no establishment starts, so no socket login is sent. */
   const network = yield* Latch.make(true);

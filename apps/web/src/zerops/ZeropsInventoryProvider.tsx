@@ -620,7 +620,7 @@ export function ZeropsInventoryProvider({
       lapse: lapseSentence === null ? null : { sentence: lapseSentence, retry: lapseRetry },
       trouble: voice,
       running:
-        projected.reading ||
+        (phase.phase !== "lapsed" && projected.reading) ||
         phase.phase === "verifying" ||
         ((phase.phase === "granted" || phase.phase === "lapsed") &&
           phase.renewal.status === "running"),
