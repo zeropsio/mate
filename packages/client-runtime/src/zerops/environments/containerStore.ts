@@ -638,28 +638,11 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
 
 /**
  * Joins the store to the exchange driver of the same epoch: each target's container verdict
- * reaches its environment machine (region C, whose `ready` kicks a link in backoff), and each
+ * reaches its environment machine (region C), and each
  * machine's link, wanted exchange and route demand reach the store. Returns what unbinds them.
  */
 export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver): () => void {
   const toDriver = () => {
-    // A Mate found answering again after its reads went unanswered, while its exchange or its
-    // link waits out a backoff, is tried at once rather than at the ladder's next rung.
-    for (const [key, machine] of store.machines()) {
-      const reading = machine.reading?.reading.kind;
-      if (reading === undefined) continue;
-      const now = reading === "ready";
-      const before = answering.get(key);
-      answering.set(key, now);
-      const environment = driver.machine(key);
-      if (
-        before === false &&
-        now &&
-        environment !== undefined &&
-        (environment.credential.kind === "backoff" || environment.link.phase === "backoff")
-      )
-        driver.retry(key);
-    }
     // Only a target the driver already knows: its record is read when the driver first sees it.
     const targets = [...store.machines()]
       .filter(([key]) => driver.machine(key) !== undefined)
@@ -673,9 +656,6 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
   };
   const exchanging = new Set<TargetKey>();
   const failing = new Set<TargetKey>();
-  const backingOff = new Set<TargetKey>();
-  /** Whether each target's last read found its Mate answering. */
-  const answering = new Map<TargetKey, boolean>();
   /** Reads the container once each time `now` turns true for the key. */
   const onEdge = (seen: Set<TargetKey>, key: TargetKey, now: boolean, ask: ProbeAsk) => {
     if (now && !seen.has(key)) store.request(key, ask);
@@ -697,8 +677,6 @@ export function bindContainerStore(store: ContainerStore, driver: ExchangeDriver
       onEdge(exchanging, key, machine.credential.kind === "exchanging", { fresh: false });
       // A connect failing, connected before or not, reads it again: ready is never terminal.
       onEdge(failing, key, machine.link.phase === "backoff", { fresh: true });
-      // So does an exchange backing off: the read that finds the Mate back ends the wait.
-      onEdge(backingOff, key, machine.credential.kind === "backoff", { fresh: true });
     }
   };
   const unsubscribeStore = store.subscribe(toDriver);

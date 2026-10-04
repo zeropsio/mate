@@ -109,7 +109,6 @@ function manualClock(): ExchangeClock & { readonly advance: (ms: number) => Prom
   };
   return {
     now: () => ({ wall: now, mono: now }),
-    random: () => 0.5,
     setTimer: (delayMs, fire) => {
       const id = nextId;
       nextId += 1;
@@ -137,7 +136,7 @@ function manualClock(): ExchangeClock & { readonly advance: (ms: number) => Prom
 }
 
 describe("repair is the exchange driver's", () => {
-  it("re-exchanges on every rejection, with backoff inside the loop window", async () => {
+  it("ends an authentication rejection until a manual Connect again", async () => {
     const clock = manualClock();
     const exchanges: Array<number> = [];
     let driver!: ExchangeDriver;
@@ -190,21 +189,21 @@ describe("repair is the exchange driver's", () => {
     await clock.advance(0);
     expect(exchanges).toEqual([0]);
 
-    // Ten rejections, ten seconds apart: every one is followed by a fresh credential; from the
-    // third inside two minutes on, after a backoff first.
-    for (let rejection = 1; rejection <= 10; rejection += 1) {
-      await clock.advance(10_000);
-      const phase = linkPhaseOf(rejected(rejection));
-      if (phase !== null) driver.link(ENVIRONMENT_ID, phase);
-      await clock.advance(0);
-      if (rejection <= 2) expect(exchanges).toHaveLength(1 + rejection);
-      await clock.advance(5_000);
-      expect(exchanges).toHaveLength(1 + rejection);
-      expect(driver.machine(KEY)?.credential).toMatchObject({ kind: "held" });
-    }
-    const gaps = exchanges.slice(1).map((at, index) => at - (10_000 * (index + 1) + 5_000 * index));
-    expect(gaps.slice(0, 2)).toEqual([0, 0]);
-    expect(gaps.slice(2).every((gap) => gap >= 2_000)).toBe(true);
+    const phase = linkPhaseOf(rejected(1));
+    if (phase !== null) driver.link(ENVIRONMENT_ID, phase);
+    await clock.advance(10 * 60_000);
+
+    await clock.advance(0);
+    expect(exchanges).toHaveLength(1);
+    expect(driver.machine(KEY)?.credential).toMatchObject({
+      kind: "failed",
+      last: { kind: "rejected" },
+    });
+    driver.retry(KEY);
+    await clock.advance(0);
+    expect(exchanges).toHaveLength(2);
+    expect(driver.machine(KEY)?.credential).toMatchObject({ kind: "held" });
+    driver.dispose();
   });
 });
 

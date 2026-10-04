@@ -249,7 +249,6 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
   const ports: AccountEnvironmentPorts = {
     clock: {
       now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
-      random: () => 0.5,
       setTimer: (delayMs, fire) => {
         const timer = { delayMs, fire };
         timers.add(timer);

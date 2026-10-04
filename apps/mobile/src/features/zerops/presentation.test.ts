@@ -114,19 +114,19 @@ describe("zeropsCandidatePresentation", () => {
       section: "waiting",
     },
     {
-      name: "a Mate between two tries",
+      name: "a failed Mate connection",
       candidate: candidate({
         reachability: {
-          kind: "retrying",
-          retryAtMs: NOW_MS + 4_000,
+          kind: "failed",
+          stage: "exchange",
           last: { kind: "network" },
           restart: false,
         },
         connectable: false,
       }),
-      label: "Connecting",
-      action: "Try now",
-      section: "waiting",
+      label: "Unavailable",
+      action: "Connect again",
+      section: "unavailable",
     },
     {
       name: "a Mate whose door refused the role",

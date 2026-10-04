@@ -7,9 +7,6 @@ import { DOOR_MINT_BURST, DOOR_MINT_PACE, DOOR_MINT_THROTTLE_MS } from "../doorT
 import { descriptorFacts, exchangeAtDoor } from "../identityExchange.ts";
 import { makeFakeMate, type FakeMate, type FakeMateCredential } from "../testing/fakeMate.ts";
 import {
-  AUTH_LOOP_REJECTIONS,
-  CAPPED_RETRY_MS,
-  RETRY_CAP,
   type ContainerVerdict,
   type EnvironmentDiagnostic,
   type Presence,
@@ -57,7 +54,6 @@ function manualClock(): ExchangeClock & { readonly advance: (ms: number) => Prom
   const timers = new Map<number, { readonly at: number; readonly fire: () => void }>();
   return {
     now: () => ({ wall: mono + wallOffset, mono }),
-    random: () => 0.5,
     setTimer: (delayMs, fire) => {
       const id = nextId;
       nextId += 1;
@@ -133,8 +129,6 @@ function rig(
     readonly throttledMints?: number;
     /** The targets whose session an earlier load kept, and their Mates still hold. */
     readonly kept?: ReadonlySet<TargetKey>;
-    /** Each target's backoff cap as loads keep it, wall ms: read and written by the driver. */
-    readonly capped?: Map<TargetKey, number>;
   } = {},
 ): Rig {
   const platform = platformThrottling(options.throttledMints ?? 0);
@@ -177,17 +171,6 @@ function rig(
       );
     },
     kept: (key) => options.kept?.has(key) ?? false,
-    ...(options.capped === undefined
-      ? {}
-      : {
-          capped: {
-            until: (key: TargetKey) => options.capped!.get(key) ?? null,
-            remember: (key: TargetKey, until: number | null) => {
-              if (until === null) options.capped!.delete(key);
-              else options.capped!.set(key, until);
-            },
-          },
-        }),
     install: async ({ key, environmentId, credential }) => {
       installs.push({ key, credential });
       const failure = failedInstalls.shift();
@@ -271,27 +254,29 @@ const connectHeld = (driver: ExchangeDriver, key: TargetKey, reason: "user") => 
 };
 
 describe("exchange driver (DESIGN §4.4)", () => {
-  it("a door 500 on reload retries and connects", async () => {
+  it("ends one failed Connect visibly until Connect again starts exactly one attempt", async () => {
     const shop = mate("shop");
     shop.scriptDoor("500", "500");
-    const { driver, clock, exchanges, installs, start, reach } = rig([shop]);
-
-    await start({ records: [shop], route: shop });
-    expect(exchanges).toHaveLength(1);
-    expect(reach(shop)).toMatchObject({ kind: "retrying", last: { kind: "server", status: 500 } });
-
-    await clock.advance(2_000);
-    expect(exchanges).toHaveLength(2);
-    await clock.advance(4_000);
-    expect(exchanges).toHaveLength(3);
-
-    expect(installs).toHaveLength(1);
-    expect(driver.machine(keyOf(shop))?.credential).toMatchObject({
-      kind: "held",
-      environmentId: EnvironmentId.make("env-shop"),
+    const { driver, clock, exchanges, start, reach } = rig([shop]);
+    await start({});
+    await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toMatchObject({
+      _tag: "NotConnected",
+      reachability: { kind: "failed", stage: "exchange", last: { kind: "server", status: 500 } },
     });
-    expect(reach(shop)).toEqual({ kind: "ready", notice: null });
-    expect(exchanges.map((request) => request.reason)).toEqual(["restore", "restore", "restore"]);
+    await clock.advance(10 * 60_000);
+
+    driver.setDemand("route", [keyOf(shop)]);
+    driver.setAccount({ ...GRANTED, grantVerifiedAtMs: clock.now().wall });
+    await flush();
+    expect(exchanges).toHaveLength(1);
+    expect(reach(shop)).toMatchObject({ kind: "failed", stage: "exchange" });
+    await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toMatchObject({
+      _tag: "NotConnected",
+      reachability: { kind: "failed" },
+    });
+    expect(exchanges).toHaveLength(2);
+    await clock.advance(10 * 60_000);
+    expect(exchanges).toHaveLength(2);
   });
 
   describe("a refusal waits for an input change and names it", () => {
@@ -303,7 +288,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       readonly change: (rig: Rig, target: FakeMate) => void;
     }> = [
       {
-        name: "the door refuses the role; the presence changes",
+        name: "the door refuses the role; Connect again",
         target: () => {
           const target = mate("ro");
           target.scriptDoor("read-only");
@@ -311,24 +296,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
         },
         refused: { kind: "refused", reason: { kind: "role" } },
         verdict: { kind: "refused-role" },
-        change: ({ driver }, target) => {
-          driver.setTargets([
-            {
-              key: keyOf(target),
-              presence: { kind: "transitioning", status: "RESTARTING" },
-              container: { level: "ready" },
-              record: null,
-            },
-          ]);
-          driver.setTargets([
-            {
-              key: keyOf(target),
-              presence: { kind: "present", origin: target.origin },
-              container: { level: "ready" },
-              record: null,
-            },
-          ]);
-        },
+        change: ({ driver }, target) => driver.retry(keyOf(target)),
       },
       {
         name: "the server is below the floor; the user retries",
@@ -348,8 +316,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
 
       // Time, wakes and the network coming back change nothing a refusal waits on.
       await setup.clock.advance(10 * 60_000);
-      setup.driver.wake(true);
-      setup.driver.online();
+
       await flush();
       const before = setup.exchanges.length;
       expect(setup.driver.machine(keyOf(target))?.credential).toEqual(row.refused);
@@ -375,14 +342,14 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges[0]!.signal.aborted).toBe(false);
     expect(driver.machine(keyOf(cafe))).toMatchObject({
       credential: { kind: "waiting", on: "access" },
-      failures: 0,
+      failuresSinceConnect: 0,
     });
 
     // Shop's mint waited the round out inside its attempt; its answer is installed.
     await release();
     expect(driver.machine(keyOf(shop))).toMatchObject({
       credential: { kind: "held" },
-      failures: 0,
+      failuresSinceConnect: 0,
     });
 
     // The round is admitted: cafe's exchange starts, on its first attempt.
@@ -392,7 +359,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     await release();
     expect(driver.machine(keyOf(cafe))).toMatchObject({
       credential: { kind: "held" },
-      failures: 0,
+      failuresSinceConnect: 0,
     });
   });
 
@@ -469,37 +436,6 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges.at(-1)?.key).toBe(keyOf(remembered[0]!));
   });
 
-  it("a revoked session re-exchanges with backoff, repeatedly", async () => {
-    const shop = mate("shop");
-    const { driver, clock, exchanges, installs, logs, start, reach } = rig([shop]);
-    await start({ records: [shop] });
-    const environmentId = EnvironmentId.make("env-shop");
-    expect(reach(shop)).toEqual({ kind: "ready", notice: null });
-
-    // Revoked every 30 s: from the third rejection on, the loop window holds three of them.
-    for (let revocation = 1; revocation <= 6; revocation += 1) {
-      shop.revokeSessions();
-      driver.link(environmentId, { phase: "blocked", reason: "authentication" });
-      // The supervisor re-attempts with the revoked credential while the new one is exchanged.
-      driver.link(environmentId, { phase: "blocked", reason: "authentication" });
-      await flush();
-      if (revocation >= AUTH_LOOP_REJECTIONS) {
-        expect(exchanges).toHaveLength(revocation);
-        expect(reach(shop)).toMatchObject({ kind: "retrying", last: { kind: "rejected" } });
-        await clock.advance(2_000);
-      }
-      expect(exchanges).toHaveLength(1 + revocation);
-      expect(installs).toHaveLength(1 + revocation);
-      expect(reach(shop)).toEqual({ kind: "ready", notice: null });
-      await clock.advance(30_000);
-    }
-    expect(exchanges.slice(1).every((request) => request.reason === "repair")).toBe(true);
-    expect(logs).toContainEqual({
-      key: keyOf(shop),
-      diagnostic: { kind: "auth-loop", rejections: AUTH_LOOP_REJECTIONS },
-    });
-  });
-
   it("lapse → wake → grant → exchange with no user action", async () => {
     const shop = mate("shop");
     const { driver, exchanges, start, reach } = rig([shop]);
@@ -510,7 +446,6 @@ describe("exchange driver (DESIGN §4.4)", () => {
       on: "access",
     });
 
-    driver.wake(true);
     await flush();
     expect(exchanges).toHaveLength(0);
 
@@ -529,7 +464,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     await clock.advance(20_000);
     expect(exchanges[0]!.signal.aborted).toBe(true);
     expect(driver.machine(keyOf(shop))?.credential).toMatchObject({
-      kind: "backoff",
+      kind: "failed",
       last: { kind: "timeout" },
     });
 
@@ -577,68 +512,6 @@ describe("exchange driver (DESIGN §4.4)", () => {
 
   // E2E 2026-10-03: an old Mate whose door answered 500 cost five exchanges in each load's first
   // minute — the ladder starts over with every load. Its cap is kept across loads, by target.
-  describe("a Mate's backoff cap outlives the load that reached it", () => {
-    const WALL = 1_800_000_000_000;
-
-    it("waits out a cap an earlier load kept before the background asks it again", async () => {
-      const old = mate("old");
-      const capped = new Map([[keyOf(old), WALL + 60_000]]);
-      const { clock, exchanges, start } = rig([old], { capped });
-      await start({ demand: { reason: "recent", mates: [old] } });
-      expect(exchanges).toHaveLength(0);
-
-      await clock.advance(59_999);
-      expect(exchanges).toHaveLength(0);
-      await clock.advance(1);
-      expect(exchanges).toHaveLength(1);
-    });
-
-    it("asks the Mate the route names at once, whatever an earlier load kept", async () => {
-      const old = mate("old");
-      const { exchanges, start } = rig([old], {
-        capped: new Map([[keyOf(old), WALL + 60_000]]),
-      });
-      await start({ route: old });
-      expect(exchanges).toHaveLength(1);
-    });
-
-    it("keeps the cap its ladder reaches, and forgets it once the Mate connects", async () => {
-      const old = mate("old");
-      old.scriptDoor(...Array.from({ length: RETRY_CAP }, () => "500" as const));
-      const capped = new Map<TargetKey, number>();
-      const { clock, driver, exchanges, start } = rig([old], { capped });
-      await start({ demand: { reason: "recent", mates: [old] } });
-      await clock.advance(2_000 + 4_000 + 8_000 + 15_000);
-      expect(exchanges).toHaveLength(RETRY_CAP);
-      const capAt = clock.now().wall + CAPPED_RETRY_MS;
-      expect(capped.get(keyOf(old))).toBe(capAt);
-
-      await clock.advance(CAPPED_RETRY_MS);
-      expect(exchanges).toHaveLength(RETRY_CAP + 1);
-      expect(driver.machine(keyOf(old))?.credential).toMatchObject({ kind: "held" });
-      expect(capped.has(keyOf(old))).toBe(false);
-    });
-
-    it("caps again at once a Mate whose kept cap ended and whose door still fails", async () => {
-      const old = mate("old");
-      old.scriptDoor("500", "500");
-      const capped = new Map([[keyOf(old), WALL + 1_000]]);
-      const { clock, exchanges, start } = rig([old], { capped });
-      await start({ demand: { reason: "recent", mates: [old] } });
-      await clock.advance(1_000);
-      expect(exchanges).toHaveLength(1);
-      expect(capped.get(keyOf(old))).toBe(WALL + 1_000 + CAPPED_RETRY_MS);
-
-      // The ladder's two seconds are not the background's: the cap holds it.
-      await clock.advance(CAPPED_RETRY_MS - 1);
-      expect(exchanges).toHaveLength(1);
-      await clock.advance(1);
-      expect(exchanges).toHaveLength(2);
-    });
-  });
-
-  // E2E 2026-10-03: the first write after a fresh load failed while the background minted and
-  // deleted throwaways on the same token list the press reads.
   it("holds the background's mints while a press is in flight, never the person's or a kept one", async () => {
     const background = mate("bg");
     const routed = mate("route");
@@ -729,7 +602,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     await start({ demand: { reason: "recent", mates: [records[0]!] } });
     expect(exchanges).toHaveLength(1);
     expect(reach(records[0]!)).toMatchObject({
-      kind: "retrying",
+      kind: "failed",
       last: { kind: "mint", status: 429 },
     });
 
@@ -742,29 +615,11 @@ describe("exchange driver (DESIGN §4.4)", () => {
     await clock.advance(DOOR_MINT_THROTTLE_MS + 2 * GAP - 1);
     expect(exchanges).toHaveLength(2);
     await clock.advance(1);
-    expect(exchanges.slice(2).map((request) => request.key)).toEqual([keyOf(records[0]!)]);
+    expect(exchanges.slice(2).map((request) => request.key)).toEqual([keyOf(records[1]!)]);
     await clock.advance(GAP);
     expect(exchanges.slice(2).map((request) => request.key)).toEqual(
-      records.slice(0, 2).map(keyOf),
+      records.slice(1, 3).map(keyOf),
     );
-  });
-
-  it("a container turning ready kicks a link in backoff", async () => {
-    const shop = mate("shop");
-    const { driver, retriedLinks, start } = rig([shop]);
-    await start({ records: [shop] });
-    const environmentId = EnvironmentId.make("env-shop");
-    driver.link(environmentId, { phase: "backoff", retryAtMs: null });
-    const target = (container: ContainerVerdict) => ({
-      key: keyOf(shop),
-      presence: { kind: "present", origin: shop.origin } as const,
-      container,
-      record: environmentId,
-    });
-    driver.setTargets([target({ level: "booting", overdue: false })]);
-    driver.setTargets([target({ level: "ready" })]);
-    await flush();
-    expect(retriedLinks).toEqual([environmentId]);
   });
 
   it("a target retired on absence starts over when the inventory names it again", async () => {
@@ -884,7 +739,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(reach(shop)).toEqual({ kind: "ready", notice: null });
   });
 
-  describe("a credential this tab could not install backs off, and the user's Connect says why", () => {
+  describe("a failed install stays ended until Connect again", () => {
     it.each(["answers", "throws"] as const)("the install %s", async (failure) => {
       const shop = mate("shop");
       const { driver, clock, exchanges, installs, start, reach } = rig([shop], {
@@ -894,18 +749,19 @@ describe("exchange driver (DESIGN §4.4)", () => {
 
       await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toMatchObject({
         _tag: "NotConnected",
-        reachability: { kind: "retrying", last: { kind: "install" } },
+        reachability: { kind: "failed", last: { kind: "install" } },
       });
       expect(installs).toHaveLength(1);
 
-      await clock.advance(2_000);
+      await clock.advance(10 * 60_000);
+      expect(exchanges).toHaveLength(1);
+      await connectHeld(driver, keyOf(shop), "user");
       expect(exchanges).toHaveLength(2);
       expect(installs).toHaveLength(2);
       expect(reach(shop)).toEqual({ kind: "ready", notice: null });
-      // The registry took the second one: the ladder starts over.
+      // The registry took the credential from the manual attempt.
       expect(driver.machine(keyOf(shop))).toMatchObject({
         credential: { kind: "held", installed: true },
-        failures: 0,
       });
     });
   });
