@@ -434,6 +434,7 @@ describe("ZeropsProjectFlowProvider", () => {
     const demanded = new Set<string>();
     const listeners = new Set<(project: ProjectRef) => void>();
     const deployments = {
+      again: () => undefined,
       demand: (project: ProjectRef) => {
         demanded.add(project.projectId);
         for (const listener of listeners) listener(project);
@@ -522,6 +523,7 @@ describe("ZeropsProjectFlowProvider", () => {
     const demanded = new Set<string>();
     const unbind = bindAccountFlow({
       deployments: {
+        again: () => undefined,
         demand: (project: ProjectRef) => {
           demanded.add(project.projectId);
           return () => demanded.delete(project.projectId);

@@ -171,7 +171,10 @@ describe("stopView", () => {
       for (const entry of ROWS) {
         const view = stopView({ deployment: shown, row: entry.row, nowMs: NOW });
         const earned =
-          shown.state === "known" && shown.coverage === "complete" && shown.value.kind === "none";
+          shown.state === "known" &&
+          shown.freshness.kind !== "stale" &&
+          shown.coverage === "complete" &&
+          shown.value.kind === "none";
         const says = [view.word, view.line].some((text) => text.includes(NOTHING_DEPLOYED));
         expect(says, `${name}, ${entry.name}`).toBe(earned);
       }
@@ -339,13 +342,17 @@ describe("stopView", () => {
     });
   });
 
-  it("takes a version the deploy half read as running while the platform is still unread", () => {
+  it("waits for the platform instead of presenting a historical version as running", () => {
     const view = stopView({
       deployment: { state: "unread", waitingFor: null },
       row: ROWS[2]!.row,
       nowMs: NOW,
     });
-    expect(view).toMatchObject({ tone: "good", word: "Deployed", line: "3f9c1b2", afterMs: 0 });
+    expect(view).toMatchObject({
+      tone: "neutral",
+      word: "Checking what runs here…",
+      version: undefined,
+    });
   });
 });
 
@@ -985,15 +992,15 @@ describe("a deploy of a commit only moves forward", () => {
       step: "the platform's answer goes unknown on a reconnect, the stale read standing",
       deployment: { state: "reading", sinceMs: 0, attempt: 1 },
       row: read(NEW, "queued"),
-      word: "Deployed",
-      state: "deployed",
+      word: "Checking what runs here…",
+      state: "checking",
     },
     {
       step: "the active version arrives unstated, the stale read standing",
       deployment: { state: "unread", waitingFor: null },
       row: read(NEW, "queued"),
-      word: "Deployed",
-      state: "deployed",
+      word: "Checking what runs here…",
+      state: "checking",
     },
     {
       step: "HQ's record of it going live lands",
@@ -1036,7 +1043,7 @@ describe("a deploy of a commit only moves forward", () => {
   it.each(STEPS)("$step: $word", ({ deployment, row, word, state }) => {
     expect(stopView({ deployment, row, nowMs: NOW }).word).toBe(word);
     expect(flowState(deployment, row)).toBe(state);
-    expect(deployWord(stopTone(deployment, row))).toBe(word);
+    expect(deployWord(stopTone(deployment, row))).toBe(state === "checking" ? undefined : word);
   });
 });
 
@@ -1096,4 +1103,46 @@ describe("heldThroughRecheck — a re-check keeps the last answer only where it 
     expect(heldThroughRecheck(stopOf(deployment("running")), READING, NOW)).toEqual(READING);
     expect(heldThroughRecheck(stopOf(deployment("none")), PAUSED, NOW)).toEqual(PAUSED);
   });
+});
+
+// A historical release is not proof that its version still runs.
+it.each(["unread", "failed"] as const)(
+  "stopView preserves a %s runtime answer over HQ's version",
+  (state) => {
+    const deployment: Shown<Deployment> =
+      state === "unread"
+        ? { state, waitingFor: null }
+        : {
+            state,
+            failure: { kind: "transport", detail: "closed" },
+            atMs: 0,
+            attempt: 1,
+            retryAtMs: null,
+          };
+    const row = ROWS.find(({ row }) => row?.version.label !== undefined)!.row;
+    const view = stopView({ deployment, row, nowMs: NOW });
+    expect(view.version).toBeUndefined();
+    expect(view.line).toBe(
+      state === "unread"
+        ? "Checking what runs here…"
+        : "Couldn't read what runs here. Zerops didn't answer.",
+    );
+  },
+);
+
+it("a failed recheck reports the failure beside Again rather than presenting its stale runtime as healthy", () => {
+  const deployment = known(RUNNING, "complete", {
+    kind: "stale",
+    sinceMs: NOW,
+    reason: {
+      kind: "revalidation-failed",
+      failure: { kind: "transport", detail: "closed" },
+      attempt: 1,
+      retryAtMs: null,
+    },
+  });
+  expect(stopView({ deployment, row: ROWS[2]!.row, nowMs: NOW }).line).toContain(
+    "Zerops didn't answer.",
+  );
+  expect(stopTone(deployment, ROWS[2]!.row)).toBe("neutral");
 });

@@ -608,7 +608,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, [groupProjects, heldEnvironments, recipes, stated]);
 
   const detailProjects = useDetailProjects();
-  /** Deployment facts follow active detail scopes; cached sidebar rows hold no receivers. */
+  /** Detail owns its demand; visible production/stage chips hold their own leases. Observe all refs. */
   const stops = useMemo(() => {
     const inactive = new Set(
       inventory.projects.filter(({ status }) => status !== "ACTIVE").map(({ id }) => id),
@@ -621,7 +621,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         : [ref];
     });
   }, [detailProjects, inventory.authority, inventory.projectRefs, inventory.projects]);
-  const stopDeployments = useStopDeployments(stops);
+  const stopDeployments = useStopDeployments([...inventory.projectRefs.values()], stops);
   // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12), demanded
   // or not.
   const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(

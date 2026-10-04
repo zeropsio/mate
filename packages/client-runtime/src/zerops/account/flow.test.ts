@@ -57,7 +57,7 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     expect(asked).toEqual([target, target]);
   });
 
-  it("follows a stop, and hears what its organization's versions and variables say", () => {
+  it("a visible stop owns its service and process demand, and hears its versions and variables", () => {
     const listing = Atom.make(null);
     const state = Atom.make({ table: { rows: 1 } });
     const acquired: Array<string> = [];
@@ -80,7 +80,7 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     );
 
     // The organization's versions and variables are the account's, streamed for its session.
-    expect(acquired).toEqual(["project-activity"]);
+    expect(acquired).toEqual(["project-topology"]);
     registry.set(state, { table: { rows: 2 } });
     expect(changes).toBe(1);
     unfollow();

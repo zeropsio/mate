@@ -38,6 +38,7 @@ import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
 import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
+import { hqStructureAtom } from "../state/zerops";
 import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
 
 const encodeWireFrame = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
@@ -419,6 +420,7 @@ const mountInventory = Effect.fn(function* (
   const initialReceiverCount = receivers.length;
   return {
     container,
+    registry,
     runtime: actual,
     client,
     user,
@@ -1135,6 +1137,58 @@ it.live(
           "organization-inventory",
           "project-inventory",
         ]);
+      }),
+    ),
+);
+
+// HQ's id is an operable ref even when the organization search has not named it.
+it.live(
+  "HQ-linked production and stage refs reach the inventory without starting hidden reads",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* mountInventory();
+        yield* harness.advance(250);
+        expect(harness.inventory()?.isLoading).toBe(false);
+        const before = harness.registerCalls();
+        yield* actEffect(
+          Effect.sync(() =>
+            harness.registry.set(hqStructureAtom, {
+              organizationId: "org",
+              structure: {
+                ungrouped: [],
+                apps: [
+                  {
+                    id: "app",
+                    name: "Ada",
+                    projects: [],
+                    environments: ["prod", "stage"].map((projectId) => ({
+                      projectId,
+                      tier: projectId === "prod" ? ("production" as const) : ("stage" as const),
+                      name: projectId,
+                      sources: [],
+                      order: 1,
+                      keyHeld: true,
+                      keyInvalid: false,
+                      jobs: [],
+                    })),
+                  },
+                ],
+              },
+              changes: null,
+              appReads: null,
+              readAt: 1,
+              current: true,
+              unavailableSince: null,
+            }),
+          ),
+        );
+        yield* harness.advance(0);
+        expect(
+          [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId),
+        ).toEqual(["kept", "prod", "stage"]);
+        expect(harness.registerCalls()).toBe(before);
+        expect(harness.inventory()?.isLoading).toBe(false);
       }),
     ),
 );

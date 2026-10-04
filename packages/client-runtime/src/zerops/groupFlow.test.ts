@@ -613,6 +613,34 @@ describe("groupFlow", () => {
       production: productionOf({}),
       expected: { kind: "empty", line: "Nothing deployed yet", stop: { state: "empty" } },
     },
+    ...(
+      [
+        { deployment: { state: "unread", waitingFor: null }, line: "Checking what runs here…" },
+        {
+          deployment: {
+            state: "failed",
+            failure: { kind: "transport", detail: "closed" },
+            atMs: 0,
+            attempt: 1,
+            retryAtMs: null,
+          },
+          line: "Couldn't read what runs here. Zerops didn't answer.",
+        },
+      ] as const
+    ).map(({ deployment, line }) => ({
+      case: `HQ release history cannot replace the runtime answer: ${deployment.state}`,
+      production: productionOf({
+        row: declared({
+          projectId: "p-prod",
+          name: "production",
+          tier: "production",
+          appVersionName: released,
+          status: "live",
+        }),
+        deployment,
+      }),
+      expected: { kind: "checking", line, stop: { state: "checking", version: undefined } },
+    })),
     {
       case: "checking: the platform has not answered and the row names nothing",
       production: productionOf({
@@ -654,9 +682,9 @@ describe("groupFlow", () => {
       expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
     },
     {
-      case: "the row's name stands for a deploy while the platform's answer is on its way",
+      case: "HQ history cannot stand for a deploy while the platform answer is on its way",
       production: productionOf({ deployment: undefined }),
-      expected: { kind: "live", line: "055a7e8", stop: { state: "deployed" } },
+      expected: { kind: "checking", line: "Checking what runs here…", stop: { state: "checking" } },
     },
   ])("reads production as $case", ({ production, expected }) => {
     expect(production).toMatchObject(expected);

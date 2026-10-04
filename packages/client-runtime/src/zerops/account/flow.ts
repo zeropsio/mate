@@ -36,12 +36,11 @@ export function deploymentStorePorts(
     services: (project: ProjectRef) => atomRegistry.get(data.reads.servicesOf(project)),
     processes: (project: ProjectRef) => atomRegistry.get(data.reads.runningProcessesOf(project)),
     follow: (project, changed, refused) => {
-      // The running processes are read only while their demand is held; the services are the
-      // account's inventory demand's. A demand the platform refuses is never read: the store
-      // hears why, so the stop fails what it could not prove.
+      // A visible stop owns both listings. Navigation holds no project service demand (R7),
+      // and an HQ-linked stop may not have appeared in the organization's search yet.
       const lease = run(
         Effect.scoped(
-          data.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
+          data.acquire({ kind: "project-topology", project }).pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.catch((error) => Effect.sync(() => refused(error.reason)))),
       );
       // What a pushed version runs comes from the organization's active versions and variables,
@@ -60,7 +59,6 @@ export function deploymentStorePorts(
     },
     deployedVersion: (service) => atomRegistry.get(data.reads.deployedVersion(service)),
     nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
-    random: Math.random,
     setTimer: (delayMs, fire) => {
       const timer = run(
         Effect.sleep(Duration.millis(delayMs)).pipe(Effect.andThen(Effect.sync(fire))),

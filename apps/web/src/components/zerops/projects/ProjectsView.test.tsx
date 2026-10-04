@@ -73,6 +73,18 @@ describe("the Projects card", () => {
     expect(html).not.toContain("No Mate yet");
   });
 
+  it("shows production and stage runtime while HQ changes and releases are pending", () => {
+    const value = {
+      ...entry([WREN, STAGE, PROD], { stops: [STAGE_STOP, PRODUCTION_STOP] }),
+      awaiting: true,
+      changesAwaiting: true,
+    };
+    const html = card(value);
+    expect(html).toContain('data-zerops-surface="flow-stage"');
+    expect(html).toContain("Checking what runs here…");
+    expect(html).not.toMatch(/data-zerops-step="production"[^>]*data-zerops-step-pending/u);
+  });
+
   it("names the next step in its header, without the verb", () => {
     const header = between(card(MERGING), "<header", "</header>");
     expect(header).toContain(">Change #1 waits for your merge<");

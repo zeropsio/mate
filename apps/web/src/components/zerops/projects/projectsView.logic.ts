@@ -510,7 +510,7 @@ export function stopLine(stop: GroupFlowStop): {
     return { word: STAGE_SETTING_UP, version: undefined, tone: "busy" };
   switch (stop.state) {
     case "checking":
-      return { word: CHECKING_WHAT_RUNS, version: undefined, tone };
+      return { word: stop.readLine ?? CHECKING_WHAT_RUNS, version: undefined, tone };
     case "empty": {
       // A stage that runs nothing says where its first deploy stands, where one was asked for.
       const first = firstDeployLine(stop.firstDeploy);

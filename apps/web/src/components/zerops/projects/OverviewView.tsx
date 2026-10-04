@@ -35,6 +35,7 @@ import {
   OVERVIEW_GRID_CLASS,
   PendingStep,
   ProductionStep,
+  StageLines,
   PullRequestsStep,
   releaseVerbFor,
   VerbSlot,
@@ -343,13 +344,21 @@ function OverviewRow<T>({
         </StepPlace>
         <StepPlace label="main">
           {entry.changesAwaiting ? (
-            <PendingStep density="line" step="main" />
+            <>
+              <PendingStep density="line" step="main" />
+              <StageLines
+                groupId={flow.groupId}
+                stages={flow.stages}
+                creating={flow.creatingStages}
+                density="line"
+              />
+            </>
           ) : (
             <MainStep density="line" entry={entry} verb={verbIn("main")} />
           )}
         </StepPlace>
         <StepPlace label="Production">
-          {entry.awaiting ? (
+          {entry.awaiting && flow.production.kind === "absent" ? (
             <PendingStep density="line" step="production" />
           ) : (
             <ProductionStep

@@ -160,9 +160,11 @@ const UNBOUND: Shown<never> = { state: "unread", waitingFor: "access-grant" };
  */
 export function useStopDeployments(
   projects: ReadonlyArray<ProjectRef>,
+  visible: ReadonlyArray<ProjectRef> = projects,
 ): ReadonlyMap<string, Shown<Deployment>> {
   const flow = useAccountFlow();
   const stopKeys = JSON.stringify(projects);
+  const visibleKeys = JSON.stringify(visible);
 
   // The store's answers as of its counter: read through the store, never memoised on the stops.
   // Subscribed before the stops are demanded, so what a demand publishes at once is heard.
@@ -184,7 +186,7 @@ export function useStopDeployments(
   useEffect(() => {
     if (flow === null) return;
     const drawn = new Map<string, ProjectRef>(
-      (JSON.parse(stopKeys) as ReadonlyArray<ProjectRef>).map((project) => [
+      (JSON.parse(visibleKeys) as ReadonlyArray<ProjectRef>).map((project) => [
         projectKeyOf(project),
         project,
       ]),
@@ -198,7 +200,7 @@ export function useStopDeployments(
     for (const [key, project] of drawn) {
       if (!releases.has(key)) releases.set(key, flow.deployments.demand(project));
     }
-  }, [flow, stopKeys]);
+  }, [flow, visibleKeys]);
 
   return stops;
 }
@@ -243,4 +245,9 @@ function stopServicesSnapshot(
     }
     return read.services;
   };
+}
+
+/** Restarts a refused visible demand only when the person asks. The runtime refresh is the caller's. */
+export function againStopDeployment(project: ProjectRef): void {
+  bound?.deployments.again(project);
 }

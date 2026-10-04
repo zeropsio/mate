@@ -34,7 +34,14 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 
-import { detailTrail, groupMateOf, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
+import {
+  detailTrail,
+  groupMateOf,
+  ZeropsGroupPane,
+  ZeropsStopPane,
+  ZeropsRuntimeStops,
+  runtimeStopsOf,
+} from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -152,6 +159,61 @@ function render(
 const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) =>
   ({ deployments }) as unknown as ZeropsProjectFlowValue;
 
+describe("runtime without HQ detail", () => {
+  it("keeps the inventory's placed stop identities when HQ has no environment read", () => {
+    const projects = ["production", "stage", "mate"].map((kind) => ({
+      id: kind,
+      name: kind,
+      status: "ACTIVE",
+      hq: {
+        appId: "shop",
+        appName: "Shop",
+        kind: kind as "production" | "stage" | "mate",
+        mate: null,
+      },
+    }));
+    expect(runtimeStopsOf("shop", projects, undefined)).toEqual([
+      { projectId: "production", name: "production", tier: "production" },
+      { projectId: "stage", name: "stage", tier: "stage" },
+    ]);
+  });
+  it.each([
+    {
+      deployment: { state: "unread", waitingFor: null } as Shown<Deployment>,
+      words: "Checking what runs here…",
+    },
+    {
+      deployment: {
+        state: "failed",
+        failure: { kind: "transport", detail: "closed" },
+        atMs: 0,
+        attempt: 1,
+        retryAtMs: null,
+      } as Shown<Deployment>,
+      words: "read what runs here. Zerops didn",
+    },
+    {
+      deployment: {
+        state: "known",
+        value: { kind: "running", version: deployedVersion("v0.1.0"), activatedAt: null },
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+      } as Shown<Deployment>,
+      words: "v0.1.0",
+    },
+  ])("shows the shared runtime answer: $words", ({ deployment, words }) => {
+    const html = renderToStaticMarkup(
+      <ZeropsRuntimeStops
+        stops={[{ projectId: "prod", name: "Production", tier: "production" }]}
+        deployments={new Map([["prod", deployment]])}
+      />,
+    );
+    expect(html).toContain("Production");
+    expect(html).toContain(words);
+  });
+});
+
 describe("ZeropsGroupPane", () => {
   it("draws every line's content", () => {
     const markup = render();
@@ -177,7 +239,7 @@ describe("ZeropsGroupPane", () => {
     expect(markup).toContain("production");
     expect(markup).toContain(CHECKING);
     expect(markup).not.toContain("Harbor live");
-    expect(markup.match(/3f9c1b2/g)).toHaveLength(1);
+    expect(markup).not.toContain("3f9c1b2");
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
   });
 
@@ -225,14 +287,26 @@ describe("ZeropsGroupPane", () => {
       /<span class="truncate text-end font-mono[^"]*">([^<]*)<\/span>/u.exec(markup)?.[1];
 
     it.each([
-      { name: "checking while nothing has answered", deployment: undefined, expected: "Checking" },
-      { name: "checking while what runs is read", deployment: UNREAD, expected: "Checking" },
+      {
+        name: "checking while nothing has answered",
+        deployment: undefined,
+        expected: "Checking what runs here…",
+      },
+      {
+        name: "checking while what runs is read",
+        deployment: UNREAD,
+        expected: "Checking what runs here…",
+      },
       {
         name: "the version the platform names before the row does",
         deployment: running("main 6aeae99"),
         expected: "6aeae99",
       },
-      { name: "none once the platform says nothing runs", deployment: NONE, expected: "none" },
+      {
+        name: "none once the platform says nothing runs",
+        deployment: NONE,
+        expected: "Nothing deployed yet",
+      },
     ])("$name", ({ deployment, expected }) => {
       const markup = render(
         undefined,
@@ -497,7 +571,18 @@ function renderStop(input: StopCase): string {
     keyInvalid: input.keyInvalid ?? false,
   };
   const stop = environmentRow(declared);
-  const view = stopView({ deployment: input.deployment ?? UNREAD, row: stop, nowMs: NOW });
+  const deployment: Shown<Deployment> =
+    input.deployment ??
+    (input.services.length === 0
+      ? UNREAD
+      : {
+          state: "known",
+          value: { kind: "running", activatedAt: null, version: stop.version },
+          asOf: { ordinal: 1, atMs: NOW },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        });
+  const view = stopView({ deployment, row: stop, nowMs: NOW });
   const rows = serviceRows({
     environment: name,
     services: input.services,

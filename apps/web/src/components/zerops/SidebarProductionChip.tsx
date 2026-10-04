@@ -13,6 +13,11 @@
  *
  * What it says is `SidebarProductionChip.logic.ts`'s; this draws it.
  */
+import { useContext } from "react";
+import { ZeropsDataContext } from "~/zerops/zeropsDataContext";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
+import { useStopDeployments } from "~/zerops/accountForge";
+import { StopReadAgain } from "./StopReadAgain";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
@@ -81,6 +86,15 @@ export function SidebarProductionChip({
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: OpenStop;
 }) {
+  const data = useContext(ZeropsDataContext);
+  const organizationId = useZeropsSessionOptional()?.activeOrganization?.id;
+  // A remembered, visible chip still names real project ids absent from the navigation listing.
+  // Its own lease reaches account access/projection; a hidden heading owns no lease.
+  useStopDeployments(
+    data === null || organizationId === undefined
+      ? []
+      : stops.map((id) => data.projectRef(organizationId, id)),
+  );
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const face = chipFace(chip);
@@ -260,6 +274,7 @@ function StopGroup({
           {row}
         </button>
       )}
+      {stop.projectId === undefined ? null : <StopReadAgain projectId={stop.projectId} />}
       {stop.note === undefined ? null : (
         <p className="zerops-envpop-note" data-zerops-surface="sidebar-production-note">
           {stop.note}

@@ -20,6 +20,9 @@ reason and **Again**. Press **Again** to make one new attempt.
 Mate lists projects your account can operate. Changes made elsewhere appear when the inventory
 refreshes. A removed project or lost permission does not reopen from an old local list. If a
 platform read fails, Mate shows a retry state instead of pretending your projects were deleted.
+Production and stage rows show what Zerops reports running, across Overview, Projects, the app
+flow, the detail page and the sidebar. A read that fails says why and offers **Again** for one
+manual check. A saved release name alone does not mean production is healthy.
 The projects page shows the version reported by each reachable Mate server. GUI and server versions
 do not have to match. If a server is below the GUI's minimum supported version, Mate shows both
 versions and **Restart and check for updates** before connecting. Confirming restarts
