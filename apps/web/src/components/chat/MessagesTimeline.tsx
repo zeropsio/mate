@@ -674,7 +674,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ({ previous, size }: { readonly previous: number; readonly size: number }) => {
       const list = listRef.current;
       if (
-        endRepinFrameRef.current !== null ||
         list === null ||
         !shouldRepinTimelineEndAfterRowResize({
           followingEnd: followingEndRef.current,
@@ -685,12 +684,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       ) {
         return;
       }
-      endRepinFrameRef.current = requestAnimationFrame(() => {
-        endRepinFrameRef.current = null;
+      const pin = () => {
         const viewport = listRef.current?.getScrollableNode();
         // A gesture since the growth handed the viewport to the person.
         if (!followingEndRef.current || !viewport) return;
         viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+      };
+      // In the frame the row grew, once the list has drawn its new size (its
+      // render runs in a microtask queued before this one), so nothing under
+      // the reader moves for a frame; and again on the next frame, for a
+      // render the list put off.
+      queueMicrotask(pin);
+      if (endRepinFrameRef.current !== null) return;
+      endRepinFrameRef.current = requestAnimationFrame(() => {
+        endRepinFrameRef.current = null;
+        pin();
       });
     },
     [listRef],
