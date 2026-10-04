@@ -24,3 +24,9 @@ not create a release, even when you give the agent a version.
 
 Open the Mate's application on the projects page, choose **Review release**, review what it
 carries, then press **Release** with the version shown. HQ creates the release for you.
+
+If production is missing, choose **Add production**. Review and **Merge** any still-open changes
+you want included. A blocked release review tells you what needs doing first.
+
+HQ deploys production from approved releases. The agent's handoff has not checked whether
+production is set up or ready for a release; read those facts in Mate.
