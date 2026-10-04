@@ -7,8 +7,8 @@
  * A standby that could not, beside a Core that leads, answers 503: the deploy waits, and the old
  * Core serves on until the new one could lead or the deploy fails. 503 otherwise. A Core that holds the lock
  * serving nothing says why (`reason`, `leader.ts` `hold`). `git` is where git stands on this Core —
- * open, opening (leading, its takeover not through), closed or failed — and `quarantined` the
- * repositories it withholds until an operator repairs them and starts HQ again (`gitHost.ts`). `db` is a fresh `SELECT 1` on the pool,
+ * open, opening (leading, its takeover not through) or closed — and `quarantined` the repositories
+ * it withholds until they converge, if any (`gitHost.ts`). `db` is a fresh `SELECT 1` on the pool,
  * `backup` the newest set's outcome (`backup.ts` `BackupStatus`), `keys` where HQ's key for its
  * deploy tokens stands (`deployKeys.ts` `KeysStatus`), `loop` the event loop's delay and
  * its newest stall (`loopWatch.ts`), and `recomputes` the structure sockets' views computed in the

@@ -62,7 +62,6 @@ const getHealth = (
         Layer.mergeAll(
           Layer.succeed(Leader, {
             status: Effect.succeed(status),
-            failure: Effect.never,
             changes: Stream.make(status),
             write: () => Effect.die("no writes"),
             release: Effect.void,
@@ -82,7 +81,6 @@ const getHealth = (
             Effect.map(Queue.unbounded<never>(), (pushes) =>
               GitHost.of({
                 git: Effect.die("no git"),
-                failure: Effect.never,
                 status: Effect.succeed(git),
                 opened: () => Effect.die("no git"),
                 serve: () => Effect.die("no git"),

@@ -11,7 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Scope from "effect/Scope";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -64,7 +64,10 @@ const hostWithChanges = (
     const sql = Context.get(context, SqlClient.SqlClient);
     yield* untilActive.pipe(Effect.provide(context));
     const host = Context.get(context, GitHost);
-    const git = yield* host.opened(Duration.seconds(10));
+    const git = yield* host.git.pipe(
+      Effect.retry(Schedule.spaced(Duration.millis(50))),
+      Effect.timeout(Duration.seconds(10)),
+    );
     /** `write`, once the host has recorded it: main's move judged its open changes again. */
     const recorded = <A, E>(write: Effect.Effect<A, E>) =>
       Effect.gen(function* () {
@@ -130,7 +133,7 @@ const hostWithChanges = (
 
 describe("gitHost", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect("ends a failed volume opening; only starting another Core opens it again", () =>
+    it.effect("opens git again with backoff while it leads, once opening can succeed", () =>
       Effect.gen(function* () {
         const url = yield* (yield* TempPostgres).createDatabase;
         const dir = yield* Effect.acquireRelease(
@@ -140,36 +143,27 @@ describe("gitHost", () => {
         // The volume is a file, not a directory: no repository root can be made under it.
         const volume = NodePath.join(dir, "vol");
         NodeFS.writeFileSync(volume, "");
-        const scope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
-          Scope.close(scope, Exit.void),
-        );
-        const context = yield* Layer.buildWithScope(
+        const context = yield* Layer.build(
           gitHostLayer({
             rootDir: NodePath.join(volume, "git"),
+            openBackoff: Duration.millis(20),
           }).pipe(Layer.provideMerge(rolloutsLayer), Layer.provideMerge(activeCoreLayer(url))),
-          scope,
         );
         yield* untilActive.pipe(Effect.provide(context));
         const host = Context.get(context, GitHost);
-        const failure = yield* Effect.flip(host.failure);
-        assert.match(failure.message, /volume/u);
-        assert.strictEqual((yield* host.status).git, "failed");
+        yield* Effect.sleep(Duration.millis(300));
         assert.isTrue(Exit.isFailure(yield* Effect.exit(host.git)), "git opened on a file");
         NodeFS.rmSync(volume);
-        assert.isTrue(Exit.isFailure(yield* Effect.exit(host.git)));
-        yield* Scope.close(scope, Exit.void);
-        const restarted = yield* Layer.build(
-          gitHostLayer({ rootDir: NodePath.join(volume, "git") }).pipe(
-            Layer.provideMerge(rolloutsLayer),
-            Layer.provideMerge(activeCoreLayer(url)),
-          ),
+        yield* host.git.pipe(
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
         );
-        yield* Context.get(restarted, GitHost).opened(Duration.seconds(10));
       }),
     );
 
-    // A failed takeover closes its resources and names the failed stage.
-    it.effect("ends a failed takeover without serving or re-entering it", () =>
+    // H2: the takeover is the barrier before git serves. One that fails opens nothing, and is tried
+    // again while this Core leads.
+    it.effect("opens no git while its takeover fails, and opens once it succeeds", () =>
       Effect.gen(function* () {
         const url = yield* (yield* TempPostgres).createDatabase;
         const root = yield* Effect.acquireRelease(
@@ -178,7 +172,7 @@ describe("gitHost", () => {
         );
         const lead = Effect.gen(function* () {
           const context = yield* Layer.build(
-            gitHostLayer({ rootDir: root }).pipe(
+            gitHostLayer({ rootDir: root, openBackoff: Duration.millis(20) }).pipe(
               Layer.provideMerge(rolloutsLayer),
               Layer.provideMerge(activeCoreLayer(url)),
             ),
@@ -194,21 +188,24 @@ describe("gitHost", () => {
           Effect.flatMap(lead, ({ sql }) => sql`ALTER TABLE hq_release RENAME TO hq_release_aside`),
         );
         const next = yield* lead;
-        assert.match((yield* Effect.flip(next.host.failure)).message, /takeover/u);
+        yield* Effect.sleep(Duration.millis(300));
         assert.isTrue(
           Exit.isFailure(yield* Effect.exit(next.host.git)),
           "git opened past a failed takeover",
         );
-        assert.strictEqual((yield* next.host.status).git, "failed");
+        assert.strictEqual((yield* next.host.status).git, "opening");
         yield* next.sql`ALTER TABLE hq_release_aside RENAME TO hq_release`;
-        assert.isTrue(Exit.isFailure(yield* Effect.exit(next.host.git)));
-        assert.strictEqual((yield* next.host.status).git, "failed");
+        yield* next.host.git.pipe(
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
+        );
+        assert.strictEqual((yield* next.host.status).git, "open");
       }),
     );
 
     // H2: one repository that does not converge is quarantined — refused, reads and writes, why
-    // named — while the others serve; repair alone does not reopen it.
-    it.effect("keeps a repaired repository quarantined until an operator starts another Core", () =>
+    // named — while the others serve; it is tried again, and served once it converges.
+    it.effect("quarantines a repository that does not converge, and serves it once it does", () =>
       Effect.gen(function* () {
         const url = yield* (yield* TempPostgres).createDatabase;
         const root = yield* Effect.acquireRelease(
@@ -216,25 +213,19 @@ describe("gitHost", () => {
           (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
         );
         const lead = Effect.gen(function* () {
-          const scope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
-            Scope.close(scope, Exit.void),
-          );
-          const context = yield* Layer.buildWithScope(
-            gitHostLayer({ rootDir: root }).pipe(
+          const context = yield* Layer.build(
+            gitHostLayer({ rootDir: root, quarantineRetry: Duration.millis(50) }).pipe(
               Layer.provideMerge(rolloutsLayer),
               Layer.provideMerge(activeCoreLayer(url)),
             ),
-            scope,
           );
           yield* untilActive.pipe(Effect.provide(context));
           const host = Context.get(context, GitHost);
-          const git = yield* host.opened(Duration.seconds(10));
-          return {
-            host,
-            git,
-            sql: Context.get(context, SqlClient.SqlClient),
-            stop: Scope.close(scope, Exit.void),
-          };
+          const git = yield* host.git.pipe(
+            Effect.retry(Schedule.spaced(Duration.millis(50))),
+            Effect.timeout(Duration.seconds(10)),
+          );
+          return { host, git, sql: Context.get(context, SqlClient.SqlClient) };
         });
         const appId = yield* Effect.scoped(
           Effect.gen(function* () {
@@ -264,7 +255,7 @@ describe("gitHost", () => {
         const good = NodeFS.readFileSync(config);
         NodeFS.rmSync(config);
         NodeFS.mkdirSync(config);
-        const { host, git, stop } = yield* lead;
+        const { host, git } = yield* lead;
         const web = { appId, id: "web" };
         const status = yield* host.status;
         assert.strictEqual(status.git, "open");
@@ -281,12 +272,12 @@ describe("gitHost", () => {
         );
         NodeFS.rmdirSync(config);
         NodeFS.writeFileSync(config, good);
-        assert.strictEqual((yield* Effect.flip(git.branches(web))).reason, "unavailable");
-        assert.deepStrictEqual((yield* host.status).quarantined, status.quarantined);
-        yield* stop;
-        const restarted = yield* lead;
-        yield* restarted.git.branches(web);
-        assert.deepStrictEqual((yield* restarted.host.status).quarantined, []);
+        // Git opens again around it: each try asks for the layer anew, as every caller does.
+        yield* Effect.flatMap(host.git, (layer) => layer.branches(web)).pipe(
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(10)),
+        );
+        assert.deepStrictEqual((yield* host.status).quarantined, []);
       }),
     );
 

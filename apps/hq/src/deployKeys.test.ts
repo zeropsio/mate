@@ -114,6 +114,7 @@ const leading = (url: string, secret: KeySecret | null, migrations?: ReadonlyArr
         migrations: migrations ?? (secret === null ? beforeSealing() : treeMigrations()),
         ...(secret === null ? {} : { afterMigrations: sealPlainTokens(secret) }),
         heartbeat: Duration.millis(100),
+        retryAfter: Duration.millis(100),
       }).pipe(
         Layer.provideMerge(PgClient.layer({ url: databaseUrl })),
         Layer.provide(

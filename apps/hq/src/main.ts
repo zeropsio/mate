@@ -38,7 +38,7 @@ import * as Option from "effect/Option";
 
 import { directoryStore, setsIn } from "./backup.ts";
 import { BUCKET_ENV, bucketFromEnv, bucketStore } from "./bucketStore.ts";
-import { type CoreOptions, coreApp, runCore } from "./core.ts";
+import { type CoreOptions, coreApp } from "./core.ts";
 import { USAGE, checkCommand, importArgs, queueCommand } from "./importCli.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
 import { restoreSet } from "./restore.ts";
@@ -189,5 +189,5 @@ if (command === "import") {
     : restore(set, new Set(flags))
   ).pipe(NodeRuntime.runMain);
 } else {
-  runCore(core).pipe(NodeRuntime.runMain);
+  Layer.launch(core).pipe(NodeRuntime.runMain);
 }
