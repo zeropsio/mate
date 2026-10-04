@@ -2036,8 +2036,22 @@ export function deriveMessagesTimelineRows(input: {
         : [],
     ),
   );
+  // One that finished while a run worked was that run's to take in, never
+  // what woke a later one (run 9: a helper done mid-run woke a run twenty
+  // minutes on, as a line of its own).
+  const working = structure.turns.map((turn) => {
+    const end = turn.stretches.at(-1)?.endedAt ?? null;
+    return [
+      Date.parse(turn.stretches[0]?.startedAt ?? ""),
+      end === null ? Number.POSITIVE_INFINITY : Date.parse(end),
+    ] as const;
+  });
+  const takenIn = (finish: HelperFinish) => {
+    const finishedMs = Date.parse(finish.finishedAt);
+    return working.some(([from, to]) => finishedMs >= from && finishedMs <= to);
+  };
   const helperQueue = (input.helperFinishes ?? [])
-    .filter((finish) => gathered.has(finish.id) && !reported.has(finish.id))
+    .filter((finish) => gathered.has(finish.id) && !reported.has(finish.id) && !takenIn(finish))
     .toSorted((left, right) => Date.parse(left.finishedAt) - Date.parse(right.finishedAt));
   /** The next gathered helper that finished before a run nothing else woke began, taken. */
   const helperWoke = (startedAt: string): HelperFinish | null => {

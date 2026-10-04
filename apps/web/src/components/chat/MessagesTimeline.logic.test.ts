@@ -1453,6 +1453,33 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  // Run 9: a helper that finished during the run that launched it was taken
+  // in by that run, yet woke a run twenty minutes later, as a line of its own.
+  it("never says a helper woke a run when it finished while the run before still worked", () => {
+    const launch = tool("l1", "t1", 2, {
+      label: "List routes",
+      toolTitle: "List routes",
+      taskId: "task-routes",
+      agentRole: "Explore",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      agentSpawn: { workflowId: null, agentTaskIds: ["task-routes", "task-components"] },
+    });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started them."),
+      launch,
+      assistant("a2", "t1", 4, "Both are back."),
+      assistant("a3", "t2", 20, "Something else came in."),
+    ];
+    const helperFinishes: ReadonlyArray<HelperFinish> = [
+      { id: "task-routes", title: "List routes", finishedAt: at(3), failed: false },
+      { id: "task-components", title: "Count components", finishedAt: at(3, 30), failed: false },
+    ];
+    const list = rows({ entries, settled: "t2", helperFinishes });
+    expect(list.some((row) => row.id.startsWith("woke:"))).toBe(false);
+  });
+
   it("says which of the helpers one launch started woke each run, in the order they finished", () => {
     const launch = tool("l1", "t1", 2, {
       label: "List routes",
