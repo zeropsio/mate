@@ -11,7 +11,7 @@ import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
-import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
+import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
   TimelineRowActivityCtx,
@@ -1184,7 +1184,8 @@ describe("RunChat, as the person uses it", () => {
         step(command("w3", "pnpm w3")),
       ];
       draw(live(landed, []));
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // They hold the slot a moment for what comes next; then "Thinking" stands its minimum.
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + 100));
       draw(live(landed, ["w4"]));
       expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w4"]);
       expect(

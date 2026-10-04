@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  SLOT_HOLD_MS,
   SLOT_MIN_SHOW_MS,
   slotDue,
   slotHolds,
@@ -69,24 +70,62 @@ describe("the live slot's schedule", () => {
     readonly plopped: Record<string, number>;
   }>([
     {
-      name: "a quick read stands its minimum, then plops",
+      name: "a quick read with nothing after it stands its hold past its end, then plops",
       moments: [
         { at: 0, live: ["read"], record: [] },
         { at: 300, live: [], record: ["read"] },
       ],
-      until: 2000,
+      until: 3000,
       shown: { read: 0 },
-      plopped: { read: SLOT_MIN_SHOW_MS },
+      plopped: { read: 300 + SLOT_HOLD_MS },
     },
     {
-      name: "a long command plops as it ends",
+      name: "a long command with nothing after it stands its hold past its end",
       moments: [
         { at: 0, live: ["build"], record: [] },
         { at: 2000, live: [], record: ["build"] },
       ],
-      until: 3000,
+      until: 5000,
       shown: { build: 0 },
-      plopped: { build: 2000 },
+      plopped: { build: 2000 + SLOT_HOLD_MS },
+    },
+    {
+      // Run 9: the slot read step, Thinking, step, Thinking, every 1–4 s.
+      name: "an item that ended holds the slot until the next takes its place: no Thinking between",
+      moments: [
+        { at: 0, live: ["a"], record: [] },
+        { at: 300, live: [], record: ["a"] },
+        { at: 1400, live: ["b"], record: ["a"] },
+        { at: 5000, live: [], record: ["a", "b"] },
+      ],
+      until: 8000,
+      shown: { a: 0, b: 1400 },
+      plopped: { a: 1400, b: 5000 + SLOT_HOLD_MS },
+    },
+    {
+      name: "the next waits for the one that ended to stand its minimum",
+      moments: [
+        { at: 0, live: ["a"], record: [] },
+        { at: 100, live: [], record: ["a"] },
+        { at: 400, live: ["b"], record: ["a"] },
+        { at: 5000, live: [], record: ["a", "b"] },
+      ],
+      until: 8000,
+      shown: { a: 0, b: SLOT_MIN_SHOW_MS },
+      plopped: { a: SLOT_MIN_SHOW_MS, b: 5000 + SLOT_HOLD_MS },
+    },
+    {
+      // "Thinking" said for a moment is a flicker: once said, it stands.
+      name: "past its hold the slot says Thinking, which stands its minimum before the next enters",
+      moments: [
+        { at: 0, live: ["a"], record: [] },
+        { at: 300, live: [], record: ["a"] },
+        { at: 1600, live: ["b"], record: ["a"] },
+        { at: 6000, live: [], record: ["a", "b"] },
+      ],
+      until: 9000,
+      shown: { a: 0, b: 300 + SLOT_HOLD_MS + SLOT_MIN_SHOW_MS },
+      plopped: { a: 300 + SLOT_HOLD_MS, b: 6000 + SLOT_HOLD_MS },
     },
     {
       // The board's burst: six reads start and end in half a second, then the
@@ -103,9 +142,14 @@ describe("the live slot's schedule", () => {
         { at: 550, live: ["tests"], record: ["r1", "r2", "r3"] },
         { at: 6550, live: [], record: ["r1", "r2", "r3", "tests"] },
       ],
-      until: 8000,
+      until: 9000,
       shown: { r1: 0, tests: SLOT_MIN_SHOW_MS },
-      plopped: { r1: 800, r2: 800, r3: 800, tests: 6550 },
+      plopped: {
+        r1: SLOT_MIN_SHOW_MS,
+        r2: SLOT_MIN_SHOW_MS,
+        r3: SLOT_MIN_SHOW_MS,
+        tests: 6550 + SLOT_HOLD_MS,
+      },
     },
     {
       name: "calls at once show together, each plopping on its own",
@@ -114,9 +158,10 @@ describe("the live slot's schedule", () => {
         { at: 1000, live: ["b"], record: ["a"] },
         { at: 3000, live: [], record: ["a", "b"] },
       ],
-      until: 4000,
+      until: 6000,
       shown: { a: 0, b: 0 },
-      plopped: { a: 1000, b: 3000 },
+      // One ending while another runs never empties the slot: no hold.
+      plopped: { a: SLOT_MIN_SHOW_MS, b: 3000 + SLOT_HOLD_MS },
     },
     {
       // The answer rises in under the question, and the pair plops as one.
@@ -125,9 +170,12 @@ describe("the live slot's schedule", () => {
         { at: 0, live: ["question:q"], record: ["question:q"] },
         { at: 5000, live: [], record: ["question:q", "person:a"] },
       ],
-      until: 7000,
+      until: 8000,
       shown: { "question:q": 0 },
-      plopped: { "question:q": 5800, "person:a": 5800 },
+      plopped: {
+        "question:q": 5000 + SLOT_MIN_SHOW_MS,
+        "person:a": 5000 + SLOT_MIN_SHOW_MS,
+      },
     },
     {
       // L3b: a call whose completion never came goes stale as the newer batch
@@ -150,9 +198,13 @@ describe("the live slot's schedule", () => {
         { at: 1000, live: [], record: ["c1", "c2"] },
         { at: 1300, live: [], record: ["c1", "c2", "note"] },
       ],
-      until: 3000,
+      until: 4000,
       shown: { c1: 1000 },
-      plopped: { c1: 1800, c2: 1800, note: 1800 },
+      plopped: {
+        c1: 1000 + SLOT_HOLD_MS,
+        c2: 1000 + SLOT_HOLD_MS,
+        note: 1000 + SLOT_HOLD_MS,
+      },
     },
     {
       name: "the run's end puts everything into the history at once",

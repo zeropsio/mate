@@ -2744,21 +2744,33 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
   const ref = useRef<HTMLSpanElement>(null);
   // What it last showed: it never counts back (`calmClockMs`).
   const last = useRef<{ readonly run: string; readonly ms: number } | null>(null);
+  const { startedAt, waitingSince, waitedMs } = status;
+  const elapsed = () => {
+    const now = waitingSince === null ? Date.now() : Date.parse(waitingSince);
+    return now - Date.parse(startedAt) - waitedMs;
+  };
   const read = () => {
-    const start = Date.parse(status.startedAt);
-    const now = status.waitingSince === null ? Date.now() : Date.parse(status.waitingSince);
-    const ms = calmClockMs(last.current, status.startedAt, now - start - status.waitedMs);
-    last.current = { run: status.startedAt, ms };
+    const ms = calmClockMs(last.current, startedAt, elapsed());
+    last.current = { run: startedAt, ms };
     return formatClock(ms);
   };
-  useEffect(() => {
-    const update = () => {
-      if (ref.current) ref.current.textContent = read();
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
+  // A steady clock: each second turns on the run's own second, however often
+  // the card draws — a draw never restarts the count, so no second is ever
+  // skipped or held twice.
+  const paint = useEffectEvent((): number => {
+    if (ref.current) ref.current.textContent = read();
+    const into = elapsed() % 1000;
+    return Number.isFinite(into) && into >= 0 ? into : 0;
   });
+  useEffect(() => {
+    if (waitingSince !== null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      timer = setTimeout(tick, 1000 - paint() + 5);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [startedAt, waitingSince, waitedMs]);
   return (
     <span ref={ref} className="run-now-clock" data-work-line-clock>
       {read()}
@@ -3147,6 +3159,11 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
  */
 const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
 
+/** What the empty slot says, as a key: the same words are no change. */
+function fillerKey(filler: SlotFiller): string {
+  return filler.kind === "waiting" ? `waiting:${filler.on}` : filler.kind;
+}
+
 function LiveSlot({
   ref,
   slot,
@@ -3172,7 +3189,9 @@ function LiveSlot({
 }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
-  const latest = nowLineOf({
+  // What the face and a screen reader say stands its dwell, as the slot's
+  // items do: a call of 180 ms between two thoughts never flips them.
+  const doing = nowLineOf({
     status,
     now,
     answering,
@@ -3180,7 +3199,10 @@ function LiveSlot({
     speaker: ctx.speaker.name,
     effort: null,
   });
+  const latest = useCalmLine(doing, nowLineWords(doing), !status.live);
   const face = nowLineFace(latest, status);
+  // "Thinking", "Writing", a wait: what the empty slot says stands its dwell too.
+  const said = useCalmLine(filler, fillerKey(filler), !status.live);
   // What each entry last showed live: one that ended with no line of its own
   // in the record yet stands its minimum as it last showed, never a gap.
   const [lastLive, setLastLive] = useState<ReadonlyMap<string, RecordItem>>(NO_ITEMS);
@@ -3257,7 +3279,7 @@ function LiveSlot({
   useLayoutEffect(() => {
     placeSlot(listRef.current);
     // Read when what it shows changed, never on every draw.
-  }, [slot, live, items, filler, lines.length]);
+  }, [slot, live, items, said, lines.length]);
   // A row opened or shut in place, or the page resized: the room it takes
   // changes with no change of what it shows.
   useEffect(() => {
@@ -3271,7 +3293,7 @@ function LiveSlot({
     <div
       ref={ref}
       className="run-slot"
-      data-run-now={lines.length === 0 ? filler.kind : "items"}
+      data-run-now={lines.length === 0 ? said.kind : "items"}
       data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
       data-work-line={status.face}
     >
@@ -3291,12 +3313,12 @@ function LiveSlot({
           <ChatShownContext value={shownRef}>
             <ol ref={listRef} className="run-slot-list">
               {lines.length === 0 ? (
-                <li key={`filler:${filler.kind}`} className="run-slot-filler">
+                <li key={`filler:${said.kind}`} className="run-slot-filler">
                   <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
                     <span className="flex h-[1lh] items-center" />
                   </span>
                   <span className="run-now-words">
-                    <SlotFillerWords filler={filler} />
+                    <SlotFillerWords filler={said} />
                   </span>
                 </li>
               ) : (
