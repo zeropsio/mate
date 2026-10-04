@@ -68,7 +68,7 @@ import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { madeRepo } from "./reconcile.ts";
 import { appTarget } from "./offers.ts";
-import { Roles, confirmingRefusal } from "./roles.ts";
+import { Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
 import { addRollout } from "./rollouts.ts";
 import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
@@ -538,8 +538,13 @@ export const changesLayer: Layer.Layer<
         const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
         if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
       });
-      // A read is decided over the cached view; a write as every write is (F22).
-      return verb === "read_change" ? check : confirmingRefusal(check);
+      // A read is decided over the cached view; a write that can be undone as every such write is
+      // (F22); a merge or a close, which cannot, over roles read for it alone.
+      return verb === "read_change"
+        ? check
+        : verb === "merge_change" || verb === "close_change"
+          ? decidedFresh(check)
+          : confirmingRefusal(check);
     };
 
     /** A change of the application, or `change_not_found`. */

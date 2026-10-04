@@ -8,11 +8,17 @@
  * stalled 25 s, and went with its client at 20 s). The decisions themselves are `can`'s
  * (`permissions.ts`); nothing about people is stored in HQ.
  *
+ * A write that cannot be taken back — a merge, a release, a deletion, a move out of an
+ * application, a deploy — is decided inside `decidedFresh` instead: over a read begun after it was
+ * asked, alone. Zerops leaving it unanswered within those 35 s refuses it before anything is
+ * written (`ROLES_UNANSWERED`, the owner, 2026-10-05): an aged view never allows one. Every
+ * write's unanswered roles are that refusal.
+ *
  * While Zerops does not answer, `view` serves the last good view for five minutes from its read,
  * at once, and asks Zerops again behind it at most every 30 s (E2E 2026-10-03: KRLS's member list
  * missing HQ's 10 s answered every read of a new application `503` for a minute). A read that
  * Zerops leaves 3 s unanswered — counted from when the read under way began — takes it too, as
- * does a write's first pass; a write's confirmation never (F22, option A, 2026-10-03: KRLS's
+ * does a reversible write's first pass; a confirmation never (F22, option A, 2026-10-03: KRLS's
  * member list went unanswered for minutes at a time, and every release and read waited on it).
  * Past the five minutes a read fails as a write does.
  *
@@ -136,6 +142,26 @@ export const confirmingRefusal = <A, E, R>(write: Effect.Effect<A, E, R>): Effec
         write.pipe(Effect.provideService(WriteConfirm, { fresh: true, until })),
       ),
     );
+  });
+
+/**
+ * The operation a write's `ZeropsUnavailable` names when Zerops did not answer its roles: nothing
+ * was written, and HQ answers it `503 zerops_unanswered` (`api.ts`), never as a write that may have
+ * landed.
+ */
+export const ROLES_UNANSWERED = "roles";
+
+/**
+ * A write that cannot be taken back — a merge, a release, a deletion, a move out of an
+ * application, a deploy — decided over roles Zerops answers for it, read after it was asked: never
+ * over a view kept from before (the owner, 2026-10-05). A slow answer within `WRITE_BUDGET` decides
+ * it; none refuses it before anything is written ({@link ROLES_UNANSWERED}). The writes that can be
+ * undone keep `confirmingRefusal`'s last good view.
+ */
+export const decidedFresh = <A, E, R>(write: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    const until = (yield* Clock.currentTimeMillis) + Duration.toMillis(WRITE_BUDGET);
+    return yield* write.pipe(Effect.provideService(WriteConfirm, { fresh: true, until }));
   });
 
 /** How long after its read the last good view is served while Zerops does not answer. */
@@ -297,11 +323,17 @@ export const rolesLayer = (options: {
             orElse: () =>
               Effect.fail(
                 new ZeropsUnavailable({
-                  operation: "write",
+                  operation: ROLES_UNANSWERED,
                   message: "Zerops did not answer within the write's budget.",
                 }),
               ),
           }),
+          // Whatever Zerops did not answer, the write is refused before it writes anything.
+          Effect.mapError((error) =>
+            error._tag === "ZeropsUnavailable"
+              ? new ZeropsUnavailable({ operation: ROLES_UNANSWERED, message: error.message })
+              : error,
+          ),
         );
         return { ...read, freshness: fresh ? "fresh" : "recent" } as OrgView<WriteFreshness>;
       });

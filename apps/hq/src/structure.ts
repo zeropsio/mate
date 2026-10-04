@@ -62,7 +62,7 @@ import {
   orgOffers,
   recordOffers,
 } from "./offers.ts";
-import { Roles, confirmingRefusal } from "./roles.ts";
+import { Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
@@ -681,17 +681,24 @@ export const structureLayer = (options: {
         );
       }
 
-      /** A write's method, decided over the org as `confirmingRefusal` decides one (F22). */
+      /** A write's method that can be undone, decided as `confirmingRefusal` decides one (F22). */
       const confirmed =
         <Args extends ReadonlyArray<unknown>, A, E, R>(
           method: (...args: Args) => Effect.Effect<A, E, R>,
         ) =>
         (...args: Args) =>
           confirmingRefusal(method(...args));
+      /** A write's method that cannot be undone, decided over roles read for it alone. */
+      const fresh =
+        <Args extends ReadonlyArray<unknown>, A, E, R>(
+          method: (...args: Args) => Effect.Effect<A, E, R>,
+        ) =>
+        (...args: Args) =>
+          decidedFresh(method(...args));
 
       return Structure.of({
         reconcile,
-        prepareProjectDeletion: confirmed((userId, projectId) =>
+        prepareProjectDeletion: fresh((userId, projectId) =>
           Effect.gen(function* () {
             const view = yield* roles.forWrite;
             yield* allowed(
@@ -707,7 +714,7 @@ export const structureLayer = (options: {
             return `${sealed.keyId}.${NodeBuffer.Buffer.from(sealed.sealed).toString("base64url")}`;
           }),
         ),
-        completeProjectDeletion: (userId, projectId, completion) =>
+        completeProjectDeletion: fresh((userId, projectId, completion) =>
           Effect.gen(function* () {
             const view = yield* roles.forWrite;
             if (
@@ -736,10 +743,11 @@ export const structureLayer = (options: {
             yield* overviews.forget(gone);
             yield* changed;
           }),
+        ),
         changes: SubscriptionRef.changes(version),
         mateChanges: Stream.fromPubSub(mateChanged),
         mateState: stateOf,
-        keepDeployToken: confirmed((userId, appId, name, token) =>
+        keepDeployToken: fresh((userId, appId, name, token) =>
           Effect.gen(function* () {
             const view = yield* roles.forWrite;
             // Whether the application has an environment of that name is told only to whoever sees
@@ -866,7 +874,7 @@ export const structureLayer = (options: {
           }),
         ),
 
-        deleteApp: confirmed((userId, appId) =>
+        deleteApp: fresh((userId, appId) =>
           Effect.gen(function* () {
             yield* allowed(userId, "delete_app", null, yield* roles.forWrite);
             yield* leader.write(
@@ -888,110 +896,116 @@ export const structureLayer = (options: {
           }),
         ),
 
-        attachProject: confirmed((userId, appId, input) =>
-          Effect.gen(function* () {
-            if (isMateKind(input.kind) !== (input.mate !== undefined)) {
-              return yield* refuse("invalid", "mate_record_with_kind");
-            }
-            if (input.birth !== undefined && !isMateKind(input.kind)) {
-              return yield* refuse("invalid", "birth_with_kind");
-            }
-            if (input.mate !== undefined && !fitsFace(input.mate.face)) {
-              return yield* refuse("invalid", "face_length");
-            }
-            const tier = tierOf(input.kind);
-            if (input.environment !== undefined) {
-              if (tier === undefined) return yield* refuse("invalid", "environment_with_kind");
-              const problem = environmentNameProblem(input.environment.name);
-              if (problem !== undefined) return yield* refuse("invalid", problem);
-            }
-            if (input.projectId === options.hqProjectId) {
-              return yield* refuse("invalid", "hq_project");
-            }
-            const view = yield* roles.forWrite;
-            /**
-             * `can`'s answer on the application's projects and the project's kind as they stand:
-             * whether the application has its project of this kind already counts too — a
-             * devstage is its stage, and a project Zerops no longer has holds no place.
-             */
-            const decided = Effect.gen(function* () {
-              const appProjects = yield* sql<{
-                readonly project_id: string;
-                readonly kind: string;
-              }>`SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
-              const sameKind = (kind: string) =>
-                kind === input.kind || (input.kind === "stage" && kind === "devstage");
-              yield* allowed(
-                userId,
-                "attach",
-                {
-                  projectId: input.projectId,
-                  held: yield* heldOf(sql, input.projectId),
-                  to: input.kind,
-                  appProjectIds: appProjects.map((row) => row.project_id),
-                  slotTaken: appProjects.some(
-                    (row) =>
-                      sameKind(row.kind) &&
-                      view.projects.some((project) => project.id === row.project_id),
-                  ),
-                },
-                view,
-              );
-            });
-            // Decided first on the structure as it stands, so a refusal spends nothing of Zerops;
-            // then again in the write, under the application's lock.
-            yield* decided;
-            // What this write would conflict with or take over — the project in any application,
-            // the application's environments of its tier. A row whose project Zerops no longer has
-            // (asked by its id) stops counting and goes with this write, its environment taken
-            // over; one Zerops cannot answer for refuses it.
-            const holders = yield* sql<{ readonly project_id: string }>`
+        // A Mate attached can be moved out again; an environment attached is deployed to, which
+        // cannot be taken back.
+        attachProject: (userId, appId, input) =>
+          (tierOf(input.kind) === undefined ? confirmingRefusal : decidedFresh)(
+            Effect.gen(function* () {
+              if (isMateKind(input.kind) !== (input.mate !== undefined)) {
+                return yield* refuse("invalid", "mate_record_with_kind");
+              }
+              if (input.birth !== undefined && !isMateKind(input.kind)) {
+                return yield* refuse("invalid", "birth_with_kind");
+              }
+              if (input.mate !== undefined && !fitsFace(input.mate.face)) {
+                return yield* refuse("invalid", "face_length");
+              }
+              const tier = tierOf(input.kind);
+              if (input.environment !== undefined) {
+                if (tier === undefined) return yield* refuse("invalid", "environment_with_kind");
+                const problem = environmentNameProblem(input.environment.name);
+                if (problem !== undefined) return yield* refuse("invalid", problem);
+              }
+              if (input.projectId === options.hqProjectId) {
+                return yield* refuse("invalid", "hq_project");
+              }
+              const view = yield* roles.forWrite;
+              /**
+               * `can`'s answer on the application's projects and the project's kind as they stand:
+               * whether the application has its project of this kind already counts too — a
+               * devstage is its stage, and a project Zerops no longer has holds no place.
+               */
+              const decided = Effect.gen(function* () {
+                const appProjects = yield* sql<{
+                  readonly project_id: string;
+                  readonly kind: string;
+                }>`SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
+                const sameKind = (kind: string) =>
+                  kind === input.kind || (input.kind === "stage" && kind === "devstage");
+                yield* allowed(
+                  userId,
+                  "attach",
+                  {
+                    projectId: input.projectId,
+                    held: yield* heldOf(sql, input.projectId),
+                    to: input.kind,
+                    appProjectIds: appProjects.map((row) => row.project_id),
+                    slotTaken: appProjects.some(
+                      (row) =>
+                        sameKind(row.kind) &&
+                        view.projects.some((project) => project.id === row.project_id),
+                    ),
+                  },
+                  view,
+                );
+              });
+              // Decided first on the structure as it stands, so a refusal spends nothing of Zerops;
+              // then again in the write, under the application's lock.
+              yield* decided;
+              // What this write would conflict with or take over — the project in any application,
+              // the application's environments of its tier. A row whose project Zerops no longer has
+              // (asked by its id) stops counting and goes with this write, its environment taken
+              // over; one Zerops cannot answer for refuses it.
+              const holders = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project
               WHERE project_id = ${input.projectId}
                  OR (${tier ?? null}::text IS NOT NULL AND kind = ${input.kind}
                      AND app_id::text = ${appId})`;
-            const gone = yield* goneOf(holders.map((row) => row.project_id));
-            yield* conflictOnUnique(
-              leader.write(
-                Effect.gen(function* () {
-                  // The project, then the application's row, locked: attaches of one project, or
-                  // into one application, are decided one after another, each on what the one
-                  // before left — two never take one place. The row lock lets a reference to the
-                  // application pass.
-                  yield* lockProject(sql, input.projectId);
-                  const apps = yield* sql`
+              const gone = yield* goneOf(holders.map((row) => row.project_id));
+              yield* conflictOnUnique(
+                leader.write(
+                  Effect.gen(function* () {
+                    // The project, then the application's row, locked: attaches of one project, or
+                    // into one application, are decided one after another, each on what the one
+                    // before left — two never take one place. The row lock lets a reference to the
+                    // application pass.
+                    yield* lockProject(sql, input.projectId);
+                    const apps = yield* sql`
                     SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
-                  yield* decided;
-                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
-                  const replaced = (yield* environmentRows(gone)).find((row) => row.tier === tier);
-                  yield* dropRows(gone);
-                  yield* sql`
+                    yield* decided;
+                    if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                    const replaced = (yield* environmentRows(gone)).find(
+                      (row) => row.tier === tier,
+                    );
+                    yield* dropRows(gone);
+                    yield* sql`
                     INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
                     VALUES (${input.projectId}, ${appId}::uuid, ${input.kind}, ${userId})`;
-                  if (tier !== undefined) {
-                    yield* recordEnvironment({
-                      projectId: input.projectId,
-                      appId,
-                      tier,
-                      userId,
-                      name: input.environment?.name,
-                      projectName:
-                        view.projects.find((project) => project.id === input.projectId)?.name ?? "",
-                      replaced,
-                    });
-                    if (input.created === true) {
-                      yield* sql`
+                    if (tier !== undefined) {
+                      yield* recordEnvironment({
+                        projectId: input.projectId,
+                        appId,
+                        tier,
+                        userId,
+                        name: input.environment?.name,
+                        projectName:
+                          view.projects.find((project) => project.id === input.projectId)?.name ??
+                          "",
+                        replaced,
+                      });
+                      if (input.created === true) {
+                        yield* sql`
                         INSERT INTO hq_subdomain_intent (project_id) VALUES (${input.projectId})
                         ON CONFLICT DO NOTHING`;
+                      }
                     }
-                  }
-                  // A Mate set up already keeps its record: changing its face is its admin's
-                  // (`edit_mate_record`), not an attacher's. One born under an intent was made by
-                  // whoever started its birth, whose sign-in it waits for, whoever finishes it, and
-                  // asked for its stand-up by them where they asked: the record and its ask are one
-                  // write (B3). One with no intent carries its own ask.
-                  if (input.mate !== undefined) {
-                    yield* sql`
+                    // A Mate set up already keeps its record: changing its face is its admin's
+                    // (`edit_mate_record`), not an attacher's. One born under an intent was made by
+                    // whoever started its birth, whose sign-in it waits for, whoever finishes it, and
+                    // asked for its stand-up by them where they asked: the record and its ask are one
+                    // write (B3). One with no intent carries its own ask.
+                    if (input.mate !== undefined) {
+                      yield* sql`
                       INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, birth_id)
                       SELECT ${input.projectId}, ${input.mate.face},
                         COALESCE(intent.made_by, ${userId}),
@@ -1005,23 +1019,23 @@ export const structureLayer = (options: {
                       LEFT JOIN hq_birth_intent AS intent
                         ON intent.id::text = ${input.birth ?? null} AND intent.app_id::text = ${appId}
                       ON CONFLICT (project_id) DO NOTHING`;
-                  }
-                  // The intent it was born under is done with, as its application's.
-                  if (input.birth !== undefined) {
-                    yield* sql`
+                    }
+                    // The intent it was born under is done with, as its application's.
+                    if (input.birth !== undefined) {
+                      yield* sql`
                       DELETE FROM hq_birth_intent
                       WHERE id::text = ${input.birth} AND app_id::text = ${appId}`;
-                  }
-                }),
-              ),
-              "placed_or_production_taken",
-            );
-            yield* changedAsking;
-            yield* PubSub.publish(mateChanged, input.projectId);
-          }),
-        ),
+                    }
+                  }),
+                ),
+                "placed_or_production_taken",
+              );
+              yield* changedAsking;
+              yield* PubSub.publish(mateChanged, input.projectId);
+            }),
+          ),
 
-        moveProject: confirmed((userId, projectId, { appId, kind }) =>
+        moveProject: fresh((userId, projectId, { appId, kind }) =>
           Effect.gen(function* () {
             if (projectId === options.hqProjectId) {
               return yield* refuse("invalid", "hq_project");
