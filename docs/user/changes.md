@@ -16,3 +16,11 @@ control is available beside a service on its stage or production page, including
 completed deploys. **Build log** under the build step opens the log in a dialog. **Hide deploy**
 closes the inspection and stops its read. Inspection uses the job's recorded process or version;
 if Zerops no longer includes it in the project's recent process history, the inspection says so.
+
+## Releasing to production
+
+A release is your action in Mate. An agent's release request hands the decision to you; it does
+not create a release, even when you give the agent a version.
+
+Open the Mate's application on the projects page, choose **Review release**, review what it
+carries, then press **Release** with the version shown. HQ creates the release for you.
