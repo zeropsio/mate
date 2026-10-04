@@ -69,7 +69,6 @@ import {
   type ZeropsOrgMember,
 } from "@t3tools/shared/mateAccess";
 import { ZEROPS_ACTIVE_MEMBER_STATUS, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -77,7 +76,7 @@ import * as Schema from "effect/Schema";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
-import { readMemberEntries, ZeropsOrgRead, type OwnKeyRead } from "./ZeropsOrgRead.ts";
+import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import {
   readJson,
@@ -95,23 +94,6 @@ export const DOOR_THROWAWAY_PREFIX = "mate-door";
 
 /** How far a throwaway's `created` may be from the API's own clock. */
 export const DOOR_THROWAWAY_MAX_AGE_MS = 5 * 60 * 1000;
-
-/**
- * How many times step 6's member-list read is attempted before this Mate
- * gives up on it, and how long it waits between attempts.
- *
- * Measured 2026-09-22 on a live Mate container, with the Mate's own valid
- * key: `GET /client/{org}/user/list` answered `200` seven times out of eight
- * and once `400 userNotFound` — a platform flake, not a verdict, since the
- * very next call was `200`. Before this retry, that flake turned into a 500
- * at the door for whoever's throwaway happened to land on it. `401`/`403`
- * are never worth a second attempt here — they already get their own
- * re-resolve-and-retry-once in `requestWithMateKey` (`ZeropsMateKey.ts`).
- */
-export const DOOR_MEMBER_LIST_RETRY_ATTEMPTS = 3;
-
-/** The delay between member-list retries — short enough that a caller who is really waiting barely notices it. */
-export const DOOR_MEMBER_LIST_RETRY_DELAY = Duration.millis(300);
 
 /**
  * Which rule the presented credential broke.
@@ -235,11 +217,6 @@ export function findOrgMember(
   return readOrgMembers(entries).find((member) => member.userId === userId) ?? null;
 }
 
-/** A member-list answer worth asking again: no key to read with, or a status that is no verdict. */
-const isMemberListFlake = (read: OwnKeyRead): boolean =>
-  read.kind === "no-key" ||
-  (read.kind === "answered" && read.status !== 200 && read.status !== 401 && read.status !== 403);
-
 /**
  * Proves that the presented credential is a throwaway minted for this Mate,
  * and resolves the role of the person who minted it.
@@ -354,13 +331,8 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
     return yield* refused("stale");
   }
 
-  // 6. Its creator, and whether the org still knows them, from the member
-  //    list this Mate reads once for the door, the watch and the signers
-  //    (`ZeropsOrgRead`). Asked again up to DOOR_MEMBER_LIST_RETRY_ATTEMPTS
-  //    times when the platform's answer is neither 200 nor 401/403 — a live
-  //    flake must not read as "not a member" (see
-  //    DOOR_MEMBER_LIST_RETRY_ATTEMPTS). A failed read is never kept, so each
-  //    asking reads again.
+  // 6. Resolve its creator with one member-list read. A failed read stays
+  // unavailable; the caller or the next membership sample owns another read.
   if (record.createdByUser.length === 0) return yield* refused("not_member");
   // HQ's relay while it holds (`ZeropsProjectAccess`, R6): a creator it opens for is let in,
   // and the member list is not read. Whomever it lists or leaves out, the read below decides —
@@ -376,16 +348,7 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
       role: opened.role,
     } satisfies ZeropsThrowawayCaller;
   }
-  const readMembers = orgRead.members({ apiBaseUrl, clientId: project.clientId });
-  let members = yield* readMembers;
-  for (
-    let attempt = 2;
-    attempt <= DOOR_MEMBER_LIST_RETRY_ATTEMPTS && isMemberListFlake(members);
-    attempt++
-  ) {
-    yield* Effect.sleep(DOOR_MEMBER_LIST_RETRY_DELAY);
-    members = yield* readMembers;
-  }
+  const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
   if (members.kind === "unreachable") return yield* unavailable(members.reason);
   if (members.kind !== "answered" || members.status !== 200) {
     return yield* unavailable(
