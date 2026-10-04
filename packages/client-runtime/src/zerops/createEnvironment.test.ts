@@ -76,7 +76,12 @@ describe("planEnvironmentCreation", () => {
   it("gives production no agent container by default", () => {
     const plan = planEnvironmentCreation(BASE);
     if (!plan.ok) throw new Error("expected a plan");
-    expect(stepKinds(plan.steps)).toEqual(["create-project", "import-recipe", "await-ready"]);
+    expect(stepKinds(plan.steps)).toEqual([
+      "create-project",
+      "import-recipe",
+      "register",
+      "await-ready",
+    ]);
   });
 
   it("gives a dev environment its agent, its key with it, and closes it off before the press returns", () => {
@@ -87,6 +92,7 @@ describe("planEnvironmentCreation", () => {
     if (!plan.ok) throw new Error("expected a plan");
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
+      "register",
       "import-container",
       "close-off",
       "await-ready",
@@ -102,21 +108,16 @@ describe("planEnvironmentCreation", () => {
   it.each([
     {
       case: "a Mate",
-      input: { role: "dev" as const, name: "dev", register: true },
+      input: { role: "dev" as const, name: "dev" },
       // Its record in its application before its container (F6b, 2026-10-03): a press that stops
-      // after leaves a Mate HQ holds there, which any browser finishes under its name. Closed off
-      // after, as before: a refused registration never keeps a Mate open.
+      // after leaves a Mate HQ holds there, which any browser finishes under its name. A refused
+      // registration stops the press before any container.
       steps: ["create-project", "register", "import-container", "close-off", "await-ready"],
     },
     {
       case: "a production",
-      input: { register: true },
+      input: {},
       steps: ["create-project", "import-recipe", "register", "await-ready"],
-    },
-    {
-      case: "a Mate whose person may not write the registry",
-      input: { role: "dev" as const, name: "dev", register: false },
-      steps: ["create-project", "import-container", "close-off", "await-ready"],
     },
   ])("registers $case in the press, before anything is waited on", ({ input, steps }) => {
     const plan = planEnvironmentCreation({ ...BASE, ...input });
@@ -189,6 +190,7 @@ describe("environmentCreationStepLabel", () => {
     expect(plan.steps.map(environmentCreationStepLabel)).toEqual([
       "Creating the environment",
       "Adding the managed services",
+      "Registering it in its project",
       "Adding the agent container",
       "Closing the project off",
       "Waiting for the agent",
@@ -317,6 +319,7 @@ describe("the recipe choice", () => {
     if (!plan.ok) throw new Error(plan.reason);
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
+      "register",
       "import-container",
       "close-off",
       "await-ready",
@@ -357,7 +360,7 @@ services:
     priority: 10
 `;
   const SERVICES_ONLY = MATE_TIER.replace(/^project:\n(?: {2}.*\n)+/mu, "");
-  const CONTAINER_STEPS = ["import-container", "close-off"] as const;
+  const CONTAINER_STEPS = ["register", "import-container", "close-off"] as const;
 
   function plan(yaml: string, extra: Partial<EnvironmentCreationInput> = {}) {
     const result = planEnvironmentCreation({
@@ -528,7 +531,7 @@ services:
 
   it("creates the project and its services in one call", () => {
     const steps = plan(WHOLE);
-    expect(steps.map((step) => step.kind)).toEqual(["import-project", "await-ready"]);
+    expect(steps.map((step) => step.kind)).toEqual(["import-project", "register", "await-ready"]);
   });
 
   it("carries the tier's project-level env through", () => {
@@ -544,6 +547,7 @@ services:
   it("still adds the agent's container after it", () => {
     expect(plan(WHOLE, { withAgent: true }).map((step) => step.kind)).toEqual([
       "import-project",
+      "register",
       "import-container",
       "close-off",
       "await-ready",
@@ -554,6 +558,7 @@ services:
     expect(plan(SERVICES_ONLY).map((step) => step.kind)).toEqual([
       "create-project",
       "import-recipe",
+      "register",
       "await-ready",
     ]);
   });
@@ -565,6 +570,7 @@ services:
     expect(steps.map((step) => step.kind)).toEqual([
       "create-project",
       "import-recipe",
+      "register",
       "await-ready",
     ]);
     // Into a project that exists, services only: the platform refuses a

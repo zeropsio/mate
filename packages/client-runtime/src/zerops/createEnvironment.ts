@@ -90,11 +90,6 @@ export interface EnvironmentCreationInput {
    */
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /**
-   * The press writes the environment's registration in the organization's HQ (`register`), which
-   * decides who may: an owner or an admin, or a member attaching their own new Mate.
-   */
-  readonly register?: boolean;
-  /**
    * The birth intent HQ holds of the Mate (`recordBirth`), recorded before its project: the
    * project handle is bound to it at HQ before its attach.
    */
@@ -285,11 +280,11 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     );
   }
 
-  // A Mate's record in its application before its container (F6b, 2026-10-03): a press that
-  // stops after it leaves a Mate HQ holds there, which any browser finishes under its name. A
-  // registration refused — a member who may not write the registry — stops nothing: the
-  // container and the close-off still run, and the Mate waits for an owner, bare.
-  if (withAgent && input.register === true) steps.push({ kind: "register" });
+  // Every environment is registered in the organization's HQ, which decides who may: an owner or
+  // an admin, or a member attaching their own new Mate. A Mate's record in its application comes
+  // before its container (F6b, 2026-10-03): a press that stops after it leaves a Mate HQ holds
+  // there, which any browser finishes under its name. A registration HQ refuses stops the press.
+  if (withAgent) steps.push({ kind: "register" });
   if (withAgent) {
     steps.push({
       kind: "import-container",
@@ -299,7 +294,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   }
   // The close-off after the container: it is what makes the Mate need no browser.
   if (withAgent) steps.push({ kind: "close-off" });
-  if (!withAgent && input.register === true) steps.push({ kind: "register" });
+  if (!withAgent) steps.push({ kind: "register" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
   steps.push({ kind: "await-ready", withAgent });

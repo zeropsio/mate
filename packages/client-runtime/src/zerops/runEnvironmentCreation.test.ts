@@ -27,7 +27,6 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
     },
     role,
     agents: ["claude-code"],
-    register: true,
   });
   if (!result.ok) throw new Error(result.reason);
   return result.steps;
@@ -245,7 +244,7 @@ describe("runEnvironmentCreation", () => {
     ]);
   });
 
-  it("hands over at the wait for the agent with no runtimes and nothing to register", async () => {
+  it("hands over at the wait for the agent with no runtimes", async () => {
     const { platform } = fakePlatform();
     const steps = planEnvironmentCreation({
       clientId: "client-1",
