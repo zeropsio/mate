@@ -1096,8 +1096,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ];
     },
     [
+      activeOrganization,
       busyKey,
       changeFace,
+      checkKey,
       deleting,
       move,
       finishSetup,
@@ -1109,6 +1111,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       start,
       hqVerbsOf,
       platformVerbsOf,
+      user,
     ],
   );
 
