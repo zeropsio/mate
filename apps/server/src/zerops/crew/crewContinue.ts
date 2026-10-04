@@ -1,3 +1,4 @@
+import type { CrewOperation } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -14,6 +15,7 @@ import {
   principalUser,
   runningRun,
   type CrewCore,
+  type CrewMember,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { updateOperation, withOperation, operationStep } from "./crewOperations.ts";
@@ -27,11 +29,15 @@ const readDispatchEnding = Schema.decodeUnknownOption(
 
 const readDirtyDispatch = Schema.decodeUnknownOption(Schema.TaggedStruct("dirty", {}));
 
-const readLandedEvidence = Schema.decodeUnknownOption(
+const readLandedEvidenceOption = Schema.decodeUnknownOption(
   Schema.TaggedStruct("already-landed", {
     commit: Schema.String,
   }),
 );
+
+/** The landed commit a landing's boot inspection recorded, if any. */
+export const readLandedEvidence = (result: unknown) =>
+  Option.getOrUndefined(readLandedEvidenceOption(result));
 
 /** A selected ending, guarded against a changed task, a running turn, or a newer operation. */
 const selected = (core: CrewCore, handle: string, id: string) =>
@@ -73,6 +79,33 @@ const selected = (core: CrewCore, handle: string, id: string) =>
     return { operation, related, task, applied, member: yield* requireMember(applied, handle) };
   });
 
+/**
+ * A git write the interrupted operations finished on the service after the
+ * Mate stopped — a WIP or merge commit carrying their trailer, a dispatch's
+ * reset to your tree, or their landing — becomes the copy's recorded tip, so
+ * nothing parks on an outcome the operation itself produced.
+ */
+export const adoptOwnWrites = (
+  core: CrewCore,
+  member: CrewMember,
+  operations: ReadonlyArray<CrewOperation>,
+  landed?: string,
+) =>
+  Effect.gen(function* () {
+    if (member.row.kind !== "writer") return;
+    const key = { crew: CREW_ID, handle: member.row.handle };
+    for (const operation of operations) {
+      if (operation.kind === "rebuild") continue;
+      const outcome = yield* asRefusal(
+        core.workspace.adopt(key, {
+          operation: operation.id,
+          landed: operation.kind === "landing" ? landed : undefined,
+        }),
+      );
+      if (outcome._tag === "adopted") return;
+    }
+  });
+
 /** The selected work continues from its recorded stage: a person's press, or the engine's own after a restart. */
 export const continueOperation = (
   core: CrewCore,
@@ -97,7 +130,7 @@ export const continueOperation = (
       for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
       return;
     }
-    let evidence = readLandedEvidence(operation.result);
+    let evidence = readLandedEvidenceOption(operation.result);
     // The inspection may still be running at the first press. Read this exact landing before any git writes.
     if (
       operation.kind === "landing" &&
@@ -112,6 +145,12 @@ export const continueOperation = (
       );
       if (commit !== null) evidence = Option.some({ _tag: "already-landed" as const, commit });
     }
+    yield* adoptOwnWrites(
+      core,
+      member,
+      related,
+      Option.isSome(evidence) && operation.kind === "landing" ? evidence.value.commit : undefined,
+    );
     if (operation.kind === "landing" && Option.isSome(evidence)) {
       yield* saveTask(core, {
         ...task,

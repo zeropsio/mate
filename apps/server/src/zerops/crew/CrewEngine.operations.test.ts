@@ -5,6 +5,7 @@ import * as NodeSqlite from "node:sqlite";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { CrewStore } from "./CrewStore.ts";
@@ -633,6 +634,110 @@ it.live("a graceful shutdown during a check leaves it for the next boot to carry
           (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
             .length,
           1,
+        );
+      }),
+  ]);
+});
+
+it.live("a WIP commit its checkpoint finished after the Mate stopped is adopted, not parked", () =>
+  withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const copy = NodePath.join(world.root, ".crew/backend");
+        yield* firstTurn(world, () => write(copy, "ok.txt", "saved work\n"));
+        const store = yield* CrewStore;
+        const [dispatch] = yield* store.operations(CREW_ID);
+        yield* store.putOperation({ ...dispatch!, status: "succeeded" });
+        yield* store.putOperation({
+          ...dispatch!,
+          id: "crashed-checkpoint",
+          kind: "checkpoint",
+          stage: "committing",
+          confirmedStage: "prepared",
+          status: "running",
+        });
+        // The commit landed on the service; the Mate died before recording its tip.
+        git(copy, ["add", "-A"]);
+        git(copy, [
+          "commit",
+          "-q",
+          "-m",
+          "wip(a): turn 1",
+          "-m",
+          "Crew-Operation: crashed-checkpoint",
+        ]);
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        const settled = yield* snapshotWhere(
+          (frame) =>
+            !frame.operations?.some((row) => row.id === "crashed-checkpoint") &&
+            frame.board.tasks[0]?.attempts === 2,
+        );
+        const copy = NodePath.join(world.root, ".crew/backend");
+        const lane = yield* (yield* CrewStore).getLane(CREW_ID, "backend");
+        assert.deepStrictEqual(
+          [
+            settled.board.tasks[0]!.state,
+            lane._tag === "Some" ? lane.value.state : null,
+            lane._tag === "Some" ? lane.value.recordedTip : null,
+          ],
+          ["working", "ready", git(copy, ["rev-parse", "HEAD"])],
+        );
+      }),
+  ]),
+);
+
+it.live("a landing the service finished after the Mate stopped moves the copy to it", () => {
+  let landedHead = "";
+  return withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const copy = NodePath.join(world.root, ".crew/backend");
+        const thread = yield* firstTurn(world, () => write(copy, "ok.txt", "ok\n"));
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const ready = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+        const store = yield* CrewStore;
+        const before = (yield* store.getLane(CREW_ID, "backend")).pipe(Option.getOrThrow);
+        const hold = yield* world.holdSsh((script) => script.includes("commit-tree"));
+        const landing = yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id }).pipe(
+          Effect.forkChild,
+        );
+        yield* hold.reached;
+        const operation = (yield* store.operations(CREW_ID)).find((row) => row.kind === "landing")!;
+        yield* hold.release;
+        yield* Fiber.join(landing);
+        landedHead = git(world.root, ["rev-parse", "HEAD"]);
+        // The Mate died after your branch took the landing, before the copy moved to it.
+        git(copy, ["reset", "-q", "--keep", before.recordedTip!]);
+        yield* store.updateLane(CREW_ID, "backend", (lane) => ({
+          ...lane,
+          recordedTip: before.recordedTip,
+          lastLanding: before.lastLanding,
+        }));
+        const [task] = yield* store.assignments(CREW_ID);
+        yield* store.putAssignment({ ...task!, state: "landing", landedCommit: null });
+        yield* store.putOperation({ ...operation, status: "running", stage: "landing" });
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "landed");
+        const copy = NodePath.join(world.root, ".crew/backend");
+        yield* eventually(
+          Effect.map(
+            (yield* CrewStore).getLane(CREW_ID, "backend"),
+            (lane) => Option.getOrThrow(lane).recordedTip === landedHead,
+          ),
+        );
+        const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
+        assert.deepStrictEqual(
+          [lane.state, lane.lastLanding, git(copy, ["rev-parse", "HEAD"])],
+          ["ready", landedHead, landedHead],
         );
       }),
   ]);

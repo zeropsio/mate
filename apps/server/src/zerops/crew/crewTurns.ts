@@ -144,6 +144,7 @@ export const commitAndPolice = (
           core.workspace.commitTurn(key, {
             assignment: task?.assignment ?? "idle",
             turn: core.memory.turns.get(turnKey) ?? 1,
+            operation: operation.id,
           }),
         ),
       );

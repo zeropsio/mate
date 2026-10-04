@@ -77,7 +77,7 @@ import {
   type CrewLaneRow,
   type CrewStoreError,
 } from "./CrewStore.ts";
-import { landedAssignmentsScript } from "./crewTrailers.ts";
+import { landedAssignmentsScript, OPERATION_TRAILER, operationMessage } from "./crewTrailers.ts";
 
 /** The integration HEAD a lane script read into `$H`. */
 const H = shellVariable("H");
@@ -141,7 +141,19 @@ export interface TurnCommit {
   readonly assignment: string;
   readonly turn: number;
   readonly maxBlobBytes?: number | undefined;
+  /** The operation the commit belongs to, as its `Crew-Operation:` trailer. */
+  readonly operation?: string | undefined;
 }
+
+/**
+ * What a resume found on a lane against its recorded tip: commits only the
+ * interrupted operation wrote (its trailer), its landing, or its dispatch's
+ * reset to your tree are adopted as the recorded tip; anything else is not
+ * the engine's and is left for the ordinary tip check.
+ */
+export type AdoptOutcome =
+  | { readonly _tag: "adopted"; readonly tip: string }
+  | { readonly _tag: "unchanged" | "foreign" | "lane-missing" };
 
 /** Why a lane stopped: a guard tripped, or its tip is not one the engine wrote. */
 export type LaneParkReason = "dependencies" | "secrets" | "size" | "unknown-tip";
@@ -297,6 +309,15 @@ export interface CrewWorkspaceService {
     key: LaneKey,
     turn: TurnCommit,
   ) => Effect.Effect<LaneCommit, CrewWorkspaceError>;
+  /**
+   * A git write that finished on the service after the Mate stopped: the
+   * interrupted `operation`'s own commits (or its `landed` commit, which the
+   * copy then moves to) become the recorded tip.
+   */
+  readonly adopt: (
+    key: LaneKey,
+    input: { readonly operation: string; readonly landed?: string | undefined },
+  ) => Effect.Effect<AdoptOutcome, CrewWorkspaceError>;
 }
 
 export class CrewWorkspace extends Context.Service<CrewWorkspace, CrewWorkspaceService>()(
@@ -437,11 +458,69 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((row) =>
           commitLane(
             row,
-            `wip(${turn.assignment}): turn ${turn.turn}`,
+            operationMessage(`wip(${turn.assignment}): turn ${turn.turn}`, turn.operation),
             turn.maxBlobBytes ?? DEFAULT_MAX_BLOB_BYTES,
           ),
         ),
       );
+
+  const adopt: CrewWorkspaceService["adopt"] = (key, input) =>
+    Effect.gen(function* () {
+      const row = yield* store.requireLane(key.crew, key.handle);
+      if (row.recordedTip === null) return { _tag: "foreign" } satisfies AdoptOutcome;
+      const lg = laneGit(row.lane);
+      const recorded = shellQuote(row.recordedTip);
+      const own = shellQuote(input.operation);
+      const landed = input.landed === undefined ? "" : shellQuote(input.landed);
+      const out = yield* runLane(
+        row.host,
+        "adopt",
+        `[ -d ${shellQuote(laneDirectory(row.lane))} ] || { printf 'status\tlane-missing\n'; exit 0; }
+` +
+          `tip=$(${lg(["rev-parse", "HEAD"])}) || exit 1
+` +
+          (input.landed === undefined
+            ? `[ "$tip" != ${recorded} ] || { printf 'status\tunchanged\n'; exit 0; }
+` +
+              `${lg(["merge-base", "--is-ancestor", row.recordedTip ?? "", shellVariable("tip")])} 2>/dev/null || { printf 'status\tforeign\n'; exit 0; }
+` +
+              // A dispatch's reset to your tree, from the copy's last landing.
+              (row.recordedTip !== null && row.recordedTip === row.lastLanding
+                ? `if ${git("integration", ["merge-base", "--is-ancestor", shellVariable("tip"), "HEAD"])} 2>/dev/null; then printf 'status\tadopted\ntip\t%s\n' "$tip"; exit 0; fi
+`
+                : "") +
+              `for c in $(${lg(["rev-list", "--first-parent", `${row.recordedTip ?? ""}..HEAD`])}); do
+` +
+              `  ${lg(["log", "-1", `--format=%(trailers:key=${OPERATION_TRAILER},valueonly)`, shellVariable("c")])} | grep -qxF ${own} || { printf 'status\tforeign\n'; exit 0; }
+` +
+              `done
+` +
+              `printf 'status\tadopted\ntip\t%s\n' "$tip"
+`
+            : `if [ "$tip" != ${landed} ]; then
+` +
+              `  [ "$tip" = ${recorded} ] || { printf 'status\tforeign\n'; exit 0; }
+` +
+              `  ${lg(["reset", "-q", "--keep", input.landed])} || exit 1
+` +
+              `fi
+` +
+              `printf 'status\tadopted\ntip\t%s\n' ${landed}
+`),
+      );
+      const status = field(out, "status");
+      if (status !== "adopted")
+        return {
+          _tag: status === "lane-missing" || status === "foreign" ? status : "unchanged",
+        } satisfies AdoptOutcome;
+      const tip = field(out, "tip") ?? "";
+      yield* store.updateLane(row.crew, row.lane, (lane) => ({
+        ...lane,
+        recordedTip: tip,
+        ...(input.landed === undefined ? {} : { lastLanding: tip }),
+      }));
+      return { _tag: "adopted", tip } satisfies AdoptOutcome;
+    });
 
   const keepAndReset: CrewWorkspaceService["keepAndReset"] = (key, input) =>
     Effect.gen(function* () {
@@ -873,6 +952,7 @@ export const make = Effect.gen(function* () {
     cleanup,
     orphanScan,
     commitTurn,
+    adopt,
     keepAndReset,
   });
 });

@@ -14,6 +14,12 @@ import { git, script, type CrewScript } from "./CrewShell.ts";
 
 export const LANE_TRAILER = "Crew-Lane";
 export const ASSIGNMENT_TRAILER = "Crew-Assignment";
+/** On every lane commit the engine writes: the operation whose step wrote it (`crew_operation`). */
+export const OPERATION_TRAILER = "Crew-Operation";
+
+/** A lane commit's message, its operation named in a trailer when it has one. */
+export const operationMessage = (message: string, operation: string | undefined): string =>
+  operation === undefined ? message : `${message}\n\n${OPERATION_TRAILER}: ${operation}`;
 
 /** The trailer paragraph of a landing's message. */
 export const landingTrailers = (lane: string, assignment: string): string =>

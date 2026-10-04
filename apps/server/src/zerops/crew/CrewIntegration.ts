@@ -58,7 +58,7 @@ import {
   type CrewLaneRow,
   type CrewStoreError,
 } from "./CrewStore.ts";
-import { landingTrailers } from "./crewTrailers.ts";
+import { landingTrailers, operationMessage } from "./crewTrailers.ts";
 import { EXCLUDE_LINE, type LaneKey } from "./CrewWorkspace.ts";
 
 export type CrewIntegrationError =
@@ -136,7 +136,11 @@ export interface CrewIntegrationService {
     host: string,
     assignment: string,
   ) => Effect.Effect<string | null, CrewIntegrationError>;
-  readonly mergeIn: (key: LaneKey) => Effect.Effect<MergeOutcome, CrewIntegrationError>;
+  /** `operation` names the merge commit's `Crew-Operation:` trailer. */
+  readonly mergeIn: (
+    key: LaneKey,
+    operation?: string,
+  ) => Effect.Effect<MergeOutcome, CrewIntegrationError>;
   readonly land: (input: LandInput) => Effect.Effect<LandOutcome, CrewIntegrationError>;
   /** Dispatch: record the lane's policed refs. */
   readonly snapshotRefs: (
@@ -194,7 +198,7 @@ export const make = Effect.gen(function* () {
           ? { _tag: "unknown-tip", tip: field(out, "tip") ?? "" }
           : undefined;
 
-  const mergeIn: CrewIntegrationService["mergeIn"] = (key) =>
+  const mergeIn: CrewIntegrationService["mergeIn"] = (key, operation) =>
     Effect.gen(function* () {
       const row = yield* store.requireLane(key.crew, key.handle);
       if (row.frozenSince !== null) return { _tag: "frozen" } satisfies MergeOutcome;
@@ -207,7 +211,7 @@ export const make = Effect.gen(function* () {
           `printf 'head\\t%s\\n' "$H"\n` +
           `${lg(["merge-base", H, "HEAD"])} >/dev/null || { printf 'status\\tunrelated\\n'; exit 0; }\n` +
           `if ${lg(["merge-base", "--is-ancestor", H, "HEAD"])}; then printf 'status\\tcurrent\\n'; exit 0; fi\n` +
-          `if ${lg(["merge", "-q", "--no-edit", "--no-verify", H])} >/dev/null 2>&1; then\n` +
+          `if ${lg(["merge", "-q", "--no-verify", "-m", operationMessage("Merge your tree", operation), H])} >/dev/null 2>&1; then\n` +
           `  printf 'status\\tmerged\\ntip\\t%s\\n' "$(${lg(["rev-parse", "HEAD"])})"\n` +
           `  ${lg(["diff", "--name-only", shellVariable("tip"), "HEAD", "--", ...LOCKFILES.map((name) => `:(glob)**/${name}`)])} | sed 's/^/lockfile\t/'\n` +
           `elif ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null; then\n` +

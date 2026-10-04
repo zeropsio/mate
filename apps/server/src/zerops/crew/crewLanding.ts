@@ -272,7 +272,7 @@ const integrateMerging = (core: CrewCore, taskId: string, inCopy: InCopy, setupA
                 core,
                 operation.id,
                 "merging",
-                asRefusal(core.integration.mergeIn(key)),
+                asRefusal(core.integration.mergeIn(key, operation.id)),
               );
               if (!["merged", "current"].includes(merged._tag))
                 yield* updateOperation(core, operation.id, {

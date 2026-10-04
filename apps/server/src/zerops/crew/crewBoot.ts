@@ -40,6 +40,7 @@ import { beginOperation, updateOperation } from "./crewOperations.ts";
 import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
 import { runOnAfterRestart } from "./crewRuns.ts";
 import { repairUnsetCopies } from "./CrewStints.ts";
+import { adoptOwnWrites, readLandedEvidence } from "./crewContinue.ts";
 import { recoverLanes } from "./crewTurns.ts";
 
 /** A task whose turn was running when the server stopped: its session died with it. */
@@ -193,6 +194,25 @@ export const carryOnAtBoot = (core: CrewCore) =>
     const applied = yield* core.applied;
     if (applied === undefined) return;
     yield* runOnAfterRestart(core);
+    // A git write an interrupted operation finished after the Mate stopped is its own, not a stranger's.
+    const interrupted = (yield* asRefusal(core.store.operations(CREW_ID))).filter((row) =>
+      core.memory.resumeAtBoot.has(row.id),
+    );
+    for (const handle of applied.members.keys()) {
+      const member = memberOf(applied, handle);
+      const own = interrupted.filter((row) => row.handle === handle);
+      if (member === undefined || own.length === 0) continue;
+      const landed = own
+        .map((row) => readLandedEvidence(row.result))
+        .find((evidence) => evidence !== undefined)?.commit;
+      yield* adoptOwnWrites(core, member, own, landed).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            core.memory.lastError = failureWords(error);
+          }),
+        ),
+      );
+    }
     for (const host of applied.repositories.keys()) {
       yield* sweepHost(core, applied, host).pipe(
         Effect.catch((error) =>
