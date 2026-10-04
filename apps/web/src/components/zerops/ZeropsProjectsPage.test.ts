@@ -41,7 +41,7 @@ import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import gitPageSource from "./ZeropsGitPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
-import newProjectSource from "./ZeropsNewProjectHost.tsx?raw";
+import newProjectPortsSource from "../../zerops/useNewProjectBirthPorts.ts?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
 import historyViewSource from "./ZeropsHistoryView.tsx?raw";
@@ -862,8 +862,10 @@ describe("a creation under way on the projects page", () => {
   it("lists the organization again the moment a creation is accepted, as New project does", () => {
     expect(creationSource).toContain("beginPress(");
     expect(creationSource).toContain('invalidateZerops({ topic: "inventory"');
-    expect(newProjectSource).toContain("beginPress(");
-    expect(newProjectSource).toContain('invalidateZerops({ topic: "inventory", organization });');
+    expect(newProjectPortsSource).toContain("beginPress(");
+    expect(newProjectPortsSource).toContain(
+      'invalidateZerops({ topic: "inventory", organization });',
+    );
   });
 
   it("says why a merge or a release was refused, in the page's own trouble line", () => {
