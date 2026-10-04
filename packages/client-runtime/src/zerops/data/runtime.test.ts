@@ -1647,6 +1647,7 @@ describe("makeZeropsDataRuntime", () => {
         adapter: {
           ...adapter,
           cells: {
+            readProjectPublicAccess: () => Effect.never,
             readOrganizationLocations: () => unused,
             readServiceAuthorizedAgents: () =>
               Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
@@ -2013,6 +2014,7 @@ describe("makeZeropsDataRuntime", () => {
             return () => listeners.delete(listener);
           },
           cells: {
+            readProjectPublicAccess: () => Effect.never,
             readOrganizationLocations: () => unused,
             readServiceAuthorizedAgents: () => unused,
             readServiceMateFlag: () => unused,
@@ -5174,4 +5176,67 @@ it.effect.each(["release", "shutdown", "refresh"] as const)(
         registry.dispose();
       }),
     ),
+);
+
+it.effect("publishing a subdomain refreshes the drawn stop's public access once", () =>
+  Effect.gen(function* () {
+    const registry = AtomRegistry.make();
+    const ref = topologyDescriptor.project;
+    const target: ServiceRef = {
+      kind: "service",
+      project: ref,
+      serviceId: ZeropsServiceId.make("app"),
+    };
+    let reads = 0;
+    const base = makeAdapterHarness();
+    const runtime = yield* makeZeropsDataRuntime({
+      scope: runtimeScope,
+      atomRegistry: registry,
+      makeOpaqueId: makeIdFactory(),
+      initialAccess: {
+        status: "verified",
+        account: runtimeScope.account,
+        accountEpoch: runtimeScope.epoch,
+        verifiedAtMs: 0,
+        deadlineMs: Number.MAX_SAFE_INTEGER,
+        mutationsAllowed: true,
+        organizations: [{ organization: ref.organization, mutationsAllowed: true }],
+        projects: [{ project: ref, role: "ADMIN", mutationsAllowed: true }],
+      },
+      adapter: {
+        ...base.adapter,
+        execute: () =>
+          Effect.succeed({
+            processRefs: [],
+            observations: [],
+            result: { kind: "enable-subdomain-access", value: undefined },
+          }),
+        cells: {
+          readProjectPublicAccess: () =>
+            Effect.sync(() => {
+              reads++;
+              return { routes: [], offers: [] };
+            }),
+          readOrganizationLocations: () => Effect.never,
+          readServiceAuthorizedAgents: () => Effect.never,
+          readServiceMateFlag: () => Effect.never,
+          readOrganizationIntegrationTokenGrants: () => Effect.never,
+          readOrganizationMembers: () => Effect.never,
+          readServiceVariableNames: () => Effect.never,
+        },
+      },
+    });
+    const lease = yield* runtime.cells.acquire({
+      kind: "public-access",
+      account: runtimeScope,
+      project: ref,
+    });
+    yield* lease.awaitSettled;
+    expect(reads).toBe(1);
+    yield* runtime.commands.enableSubdomainAccess(target);
+    yield* lease.awaitSettled;
+    expect(reads).toBe(2);
+    yield* runtime.shutdown("application-close");
+    registry.dispose();
+  }),
 );

@@ -1243,6 +1243,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
         enablingServiceId={route.enablingServiceId}
         label={`More for ${candidate.project.name}`}
+        projectId={tags.role === "prod" || tags.role === "stage" ? candidate.project.id : undefined}
         offers={candidate.routeOffers}
         onEnableRoute={(offer) => {
           void route.enable(candidate.project.id, offer.serviceId);

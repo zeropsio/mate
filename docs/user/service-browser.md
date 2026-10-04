@@ -9,3 +9,5 @@ This is your interactive view of the public website. The **Browser** tab continu
 A known service can still redirect to another site or prohibit embedding. Browser origin restrictions prevent Mate from reliably detecting those cases; use **Open in new tab** if the preview cannot load.
 
 Signing in, a cart and anything else a site keeps in cookies usually needs **Open in new tab**. The preview shows the site inside Mate, so it counts as a different site, and browsers block most cookies it sets there. The panel says so once; **Got it** hides the note in this browser.
+
+Production and stage public addresses are also available from their sidebar popovers, Overview and Projects menus, and stop detail pages. These include enabled Zerops subdomains and configured domains. Mate reads addresses when their stop is visible. While a read is pending, it says **Reading public addresses**; if the read fails, it shows **Again** so you can retry once. A failed recheck keeps previously known links alongside the failure.

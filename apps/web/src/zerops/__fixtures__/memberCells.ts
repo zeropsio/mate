@@ -35,6 +35,7 @@ export function makeMemberCells(input: {
       }),
       adapter: {
         readOrganizationMembers: () => Effect.promise(input.members),
+        readProjectPublicAccess: () => Effect.never,
         readOrganizationLocations: () => unused,
         readServiceAuthorizedAgents: () => unused,
         readServiceMateFlag: () => unused,

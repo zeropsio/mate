@@ -16,6 +16,7 @@ import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import { Atom } from "effect/unstable/reactivity";
 
+import type { ZeropsPublicAccess } from "../publicRoutes.ts";
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "../groupReach.ts";
 import {
@@ -88,7 +89,14 @@ export interface MateFlagCellRequest {
   readonly service: ServiceRef;
 }
 
+export interface PublicAccessCellRequest {
+  readonly kind: "public-access";
+  readonly account: AccountScope;
+  readonly project: ProjectRef;
+}
+
 export type ZeropsCellRequest =
+  | PublicAccessCellRequest
   | LocationsCellRequest
   | AgentsCellRequest
   | MateFlagCellRequest
@@ -112,6 +120,7 @@ export interface ZeropsIntegrationTokenGrantMetadata {
 }
 
 export interface ZeropsCellValues {
+  readonly "public-access": ZeropsPublicAccess;
   readonly locations: ReadonlyArray<ZeropsLocation>;
   readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
@@ -131,6 +140,7 @@ export interface ZeropsCellValues {
  * (`invalidate`) whatever its age. `0` re-reads on every new demand.
  */
 export const CELL_FRESH_MS: Readonly<Record<ZeropsCellKind, number>> = {
+  "public-access": 60_000,
   locations: 0,
   agents: 0,
   "mate-flag": 0,
@@ -146,6 +156,7 @@ export const CELL_FRESH_MS: Readonly<Record<ZeropsCellKind, number>> = {
  * as long as it did. A kind not named waits as long as its source does.
  */
 const CELL_READ_DEADLINE_MS: Readonly<Partial<Record<ZeropsCellKind, number>>> = {
+  "public-access": 30_000,
   tokens: 30_000,
   members: 30_000,
 };
@@ -182,6 +193,10 @@ export interface ZeropsCellReadContext {
  * before their Effects succeed.
  */
 export interface ZeropsCellAdapter {
+  readonly readProjectPublicAccess: (
+    request: PublicAccessCellRequest,
+    context: ZeropsCellReadContext,
+  ) => Effect.Effect<ZeropsCellValues["public-access"], ZeropsCellSourceError>;
   readonly readOrganizationLocations: (
     request: LocationsCellRequest,
     context: ZeropsCellReadContext,
@@ -349,6 +364,8 @@ const usableGrant = (access: AccessState): VerifiedAccessGrant | null => {
 
 const organizationOf = (request: ZeropsCellRequest): OrganizationRef => {
   switch (request.kind) {
+    case "public-access":
+      return request.project.organization;
     case "locations":
     case "tokens":
     case "members":
@@ -363,6 +380,8 @@ const organizationOf = (request: ZeropsCellRequest): OrganizationRef => {
 /** The project a cell belongs to; an organization's cell belongs to none. */
 const projectOf = (request: ZeropsCellRequest): ProjectRef | null => {
   switch (request.kind) {
+    case "public-access":
+      return request.project;
     case "locations":
     case "tokens":
     case "members":
@@ -387,6 +406,8 @@ const denialCovers = (scope: AccessDenialScope, request: ZeropsCellRequest): boo
 
 export function zeropsCellKeyOf(request: ZeropsCellRequest): ZeropsCellKey {
   switch (request.kind) {
+    case "public-access":
+      return `${request.kind}:${projectKeyOf(request.project)}` as ZeropsCellKey;
     case "locations":
     case "tokens":
     case "members":
@@ -464,6 +485,8 @@ function readCell(
   context: ZeropsCellReadContext,
 ): Effect.Effect<AnyCellValue, ZeropsCellSourceError> {
   switch (request.kind) {
+    case "public-access":
+      return adapter.readProjectPublicAccess(request, context);
     case "locations":
       return adapter.readOrganizationLocations(request, context);
     case "agents":
@@ -1009,6 +1032,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
 
   const diagnostics: Effect.Effect<ZeropsCellDiagnostics> = Effect.sync(() => {
     const byKind: Record<ZeropsCellKind, number> = {
+      "public-access": 0,
       locations: 0,
       agents: 0,
       "mate-flag": 0,

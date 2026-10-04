@@ -23,6 +23,15 @@ Again renews access when refused, renews the visible demand and asks the data ru
 chip with a failed runtime answer cannot inherit a remembered healthy label. While serving status
 is unread, it keeps its remembered facts until a new answer arrives.
 
+Public addresses have their own account-scoped `public-access` cell, keyed by the drawn stop's
+project id. Sidebar chips, Overview/Projects menus and stop detail mount that cell independently of
+the navigation candidate listing. One read obtains `/project/:id`, `/project/:id/service-stack` and
+`/project/:id/public-http-routing`; the projection joins configured domain locations to services by
+id and includes enabled HTTP subdomains. Concurrent surfaces share the same answer and demand.
+An unread answer says reading; a failed answer offers Again and never claims there are no addresses.
+A failed recheck retains its previous links with the failure. Publishing a subdomain invalidates the
+cell once. Unmounting the last surface releases demand; there is no polling or automatic retry.
+
 Desktop uses the same web surfaces. Mobile does not currently render these group-flow or stop-detail
 surfaces; the shared runtime's demand and failure behavior applies to its consumers too. No wire
 contract changes are needed.

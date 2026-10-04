@@ -13,10 +13,8 @@
  *
  * What it says is `SidebarProductionChip.logic.ts`'s; this draws it.
  */
-import { useContext } from "react";
-import { ZeropsDataContext } from "~/zerops/zeropsDataContext";
-import { useZeropsSessionOptional } from "~/zerops/sessionContext";
-import { useStopDeployments } from "~/zerops/accountForge";
+import { useStopPublicAccess, useStopPublicAccesses } from "~/zerops/useStopPublicAccess";
+import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -86,15 +84,7 @@ export function SidebarProductionChip({
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: OpenStop;
 }) {
-  const data = useContext(ZeropsDataContext);
-  const organizationId = useZeropsSessionOptional()?.activeOrganization?.id;
-  // A remembered, visible chip still names real project ids absent from the navigation listing.
-  // Its own lease reaches account access/projection; a hidden heading owns no lease.
-  useStopDeployments(
-    data === null || organizationId === undefined
-      ? []
-      : stops.map((id) => data.projectRef(organizationId, id)),
-  );
+  useStopPublicAccesses(stops);
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const face = chipFace(chip);
@@ -243,6 +233,7 @@ function StopGroup({
   readonly onOpenStop: OpenStop;
   readonly ownZerops: boolean;
 }) {
+  const publicAccess = useStopPublicAccess(stop.projectId);
   const opens = stop.projectId === undefined ? undefined : onOpenStop(stop.projectId);
   const row = (
     <>
@@ -289,25 +280,28 @@ function StopGroup({
           projectId={stop.projectId}
         />
       )}
-      {routeMenuEntries(stop.routes).map((entry) => (
-        <a
-          className="zerops-envpop-link"
-          data-zerops-surface="sidebar-production-link"
-          href={entry.url}
-          key={entry.key}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <span className="zerops-envpop-service">
-            {entry.service}
-            {entry.port === undefined ? null : (
-              <span className="zerops-envpop-port">:{entry.port}</span>
-            )}
-          </span>
-          <span className="min-w-0 truncate">{entry.host}</span>
-          <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0" />
-        </a>
-      ))}
+      <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
+      {routeMenuEntries(publicAccess.bound ? publicAccess.access.routes : stop.routes).map(
+        (entry) => (
+          <a
+            className="zerops-envpop-link"
+            data-zerops-surface="sidebar-production-link"
+            href={entry.url}
+            key={entry.key}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span className="zerops-envpop-service">
+              {entry.service}
+              {entry.port === undefined ? null : (
+                <span className="zerops-envpop-port">:{entry.port}</span>
+              )}
+            </span>
+            <span className="min-w-0 truncate">{entry.host}</span>
+            <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0" />
+          </a>
+        ),
+      )}
       {ownZerops && stop.projectId !== undefined ? (
         <OpenInZerops projectId={stop.projectId} />
       ) : null}

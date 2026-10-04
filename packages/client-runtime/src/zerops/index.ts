@@ -136,6 +136,8 @@ export {
 export {
   derivePublicRouteOffers,
   derivePublicRoutes,
+  derivePublicAccess,
+  type ZeropsPublicAccess,
   type ZeropsPublicRoute,
   type ZeropsRouteOffer,
 } from "./publicRoutes.ts";

@@ -1,3 +1,5 @@
+import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAccess";
 /**
  * A project group's page, and one stop's, in place of the thread.
  *
@@ -55,7 +57,6 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsProject,
-  type ZeropsRouteOffer,
   sameCommit,
   firstDeployLine,
   firstDeployTone,
@@ -398,32 +399,6 @@ function useGroupMates(groupId: string): {
   return { mates, notice, refresh };
 }
 
-/**
- * Where a stop answers from, and what it could answer from.
- *
- * Both, because the section that lists the addresses is the section somebody
- * would add one from — and it could only list them: the ask lived on the
- * projects screen's row menu, so an environment's own page showed a service
- * that serves HTTP to nobody and no way to open it.
- */
-function useStopRoutes(projectId: string): {
-  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly offers: ReadonlyArray<ZeropsRouteOffer>;
-} {
-  const { listing } = useZeropsCandidates();
-  return useMemo(() => {
-    const found = findCandidate(listing, (entry) => entry.project.id === projectId);
-    const candidate = found.kind === "found" ? found.row : undefined;
-    return {
-      routes: candidate?.routes ?? EMPTY_ROUTES,
-      offers: candidate?.routeOffers ?? EMPTY_OFFERS,
-    };
-  }, [listing, projectId]);
-}
-
-const EMPTY_ROUTES: ReadonlyArray<ZeropsPublicRoute> = [];
-const EMPTY_OFFERS: ReadonlyArray<ZeropsRouteOffer> = [];
-
 /** Opens a Mate's own conversation, as selecting its row in the menu does (`useOpenMate`). */
 function useOpenMateOf(): (projectId: string) => void {
   const openMate = useOpenMate();
@@ -654,19 +629,22 @@ export function ZeropsRuntimeStops({
             </>
           );
           return (
-            <li className="flex min-w-0 items-center gap-3" key={stop.projectId}>
-              {onOpen === undefined ? (
-                <span className="flex min-w-0 items-center gap-3">{words}</span>
-              ) : (
-                <button
-                  className="flex min-w-0 items-center gap-3 text-left"
-                  type="button"
-                  onClick={() => onOpen(stop.projectId)}
-                >
-                  {words}
-                </button>
-              )}
-              <StopReadAgain projectId={stop.projectId} />
+            <li className="flex min-w-0 flex-col gap-2" key={stop.projectId}>
+              <div className="flex min-w-0 items-center gap-3">
+                {onOpen === undefined ? (
+                  <span className="flex min-w-0 items-center gap-3">{words}</span>
+                ) : (
+                  <button
+                    className="flex min-w-0 items-center gap-3 text-left"
+                    type="button"
+                    onClick={() => onOpen(stop.projectId)}
+                  >
+                    {words}
+                  </button>
+                )}
+                <StopReadAgain projectId={stop.projectId} />
+              </div>
+              <RuntimeStopPublicAccess projectId={stop.projectId} />
             </li>
           );
         })}
@@ -1036,7 +1014,9 @@ export function ZeropsStopDetailPage({
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName });
   const names = useHistoryNames();
-  const { routes, offers } = useStopRoutes(projectId);
+  const publicAccess = useStopPublicAccess(projectId);
+  const routes = publicAccess.access.routes;
+  const offers = publicAccess.access.offers;
   const route = useEnableRoute();
   const inventory = useZeropsInventory();
   const platform = useStopServices(
@@ -1129,6 +1109,7 @@ export function ZeropsStopDetailPage({
   return (
     <>
       <StopReadAgain projectId={projectId} />
+      <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
       <ZeropsStopPane
         readFailures={
           <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
@@ -1732,6 +1713,7 @@ function StopServiceLine({
   /** What the verdict over the rows already says: HQ's words for a failure, never said twice. */
   readonly said: string | undefined;
 }) {
+  const publicAccess = useStopPublicAccess(projectId);
   const dot = STOP_DOT_TONE[row.tone];
   // HQ's live commit, asked again over a version HQ did not deploy, where HQ takes the ask.
   const again = row.drift?.redeploy;
@@ -1776,9 +1758,12 @@ function StopServiceLine({
           )}
         </span>
         <span className="col-span-2 col-start-1 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-4 sm:row-start-1">
-          {row.routes.length === 0 && offers.length === 0 ? (
+          {(!publicAccess.bound || publicAccess.access.state === "ready") &&
+          row.routes.length === 0 &&
+          offers.length === 0 ? (
             <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
           ) : null}
+          <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
           {row.routes.map((route) => (
             <a
               className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline"

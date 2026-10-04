@@ -16,7 +16,11 @@ function placed(appId: string, kind: HqPlacement["kind"] = "mate", appName = "")
 
 function candidate(
   name: string,
-  where: { readonly hq?: HqPlacement; readonly tagList?: ReadonlyArray<string> } = {},
+  where: {
+    readonly hq?: HqPlacement;
+    readonly hqTool?: ZeropsProject["hqTool"];
+    readonly tagList?: ReadonlyArray<string>;
+  } = {},
   connected = false,
   created?: string,
 ): Candidate {
@@ -27,6 +31,7 @@ function candidate(
       status: "ACTIVE",
       tagList: where.tagList ?? [],
       ...(where.hq === undefined ? {} : { hq: where.hq }),
+      ...(where.hqTool === undefined ? {} : { hqTool: where.hqTool }),
       ...(created === undefined ? {} : { created }),
     },
     connected,
@@ -37,7 +42,7 @@ const CRM_DEV = candidate("crm-dev", { hq: placed("aaa", "mate", "Beviro CRM") }
 const CRM_PROD = candidate("crm-prod", { hq: placed("aaa", "production", "Beviro CRM") });
 const SHOP_DEV = candidate("shop-dev", { hq: placed("bbb") });
 const LOOSE = candidate("loose");
-const GITEA = candidate("mate-gitea", { tagList: ["mate:tool:gitea"] });
+const GITEA = candidate("mate-gitea", { hqTool: "gitea" });
 
 describe("buildZeropsGroupTree", () => {
   it("hangs each carrier on its place in the tree", () => {
@@ -69,7 +74,7 @@ describe("buildZeropsGroupTree", () => {
   });
 
   it("keeps a tool out of the groups even when HQ places it in one", () => {
-    const confused = candidate("confused", { hq: placed("aaa"), tagList: ["mate:tool:gitea"] });
+    const confused = candidate("confused", { hq: placed("aaa"), hqTool: "gitea" });
     const view = buildZeropsGroupTree([CRM_DEV, confused], { order: "name" });
 
     expect(view.tools).toHaveLength(1);

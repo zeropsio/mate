@@ -61,6 +61,7 @@ const inertAdapter: ZeropsDataAdapter = {
 
 /** Every service resource reads as one agent; nothing else is asked for. */
 const cellAdapter: ZeropsCellAdapter = {
+  readProjectPublicAccess: () => Effect.never,
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed(["codex"]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
