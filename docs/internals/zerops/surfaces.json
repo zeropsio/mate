@@ -847,6 +847,7 @@
         "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
         "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx",
         "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectRenameMenu.tsx",
         "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
         "apps/web/src/components/zerops/ZeropsThrowawayCleanup.tsx",

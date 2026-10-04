@@ -171,7 +171,7 @@ import {
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
-import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
+import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
@@ -1200,13 +1200,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     ],
   );
 
-  // The quiet actions: rename an agent, move a project, rename a group. Each
+  // The quiet actions: rename an agent, move a project. Each
   // runs through the account-scoped command layer; observations update the model.
   const [rowDialog, setRowDialog] = useState<
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
-    | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
     | { readonly kind: "delete-group"; readonly group: ZeropsGroup }
     | null
   >(null);
@@ -2296,15 +2295,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * that is silent for most groups.
    */
   const renderGroupMenu = (group: ZeropsGroup) => (
-    <ZeropsProjectMenu
+    <ZeropsProjectRenameMenu
       actions={[
-        {
-          id: "rename-group",
-          label: groupNameIsPlaceholder(group) ? "Name this project" : "Rename project",
-          onSelect: () => {
-            setRowDialog({ kind: "rename-group", group });
-          },
-        },
         // A project with nothing in it is offered its first Mate, and nothing more.
         ...(groupIsEmpty(group)
           ? [
@@ -2375,7 +2367,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             ]
           : []),
       ]}
-      label={`More for ${group.name}`}
+      group={group}
     />
   );
 
@@ -2703,15 +2695,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         view={search.view ?? "overview"}
       />
       {mateActions.dialogs}
-      {rowDialog?.kind === "rename-group" ? (
-        <ZeropsRenameProjectDialog
-          group={rowDialog.group}
-          key={`rename-group:${rowDialog.group.groupId}`}
-          onClose={() => {
-            setRowDialog(null);
-          }}
-        />
-      ) : null}
       {rowDialog?.kind === "delete-group" ? (
         <ZeropsDeleteProjectDialog
           group={rowDialog.group}
