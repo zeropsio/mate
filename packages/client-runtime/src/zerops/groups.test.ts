@@ -323,12 +323,13 @@ describe("deriveZeropsGroups", () => {
     ]);
   });
 
-  it("falls back to the group id when its application has no name, and says so", () => {
+  // HQ refuses an application without a name: one read blank is a read problem, its id the handle.
+  it("says the name is unread when its application's name reads blank, the id as its handle", () => {
     const result = deriveZeropsGroups([project("crm-dev", { hq: placed("aaa", "mate") })], {
       order: "name",
     });
 
-    expect(result.groups[0]).toMatchObject({ name: "aaa", nameSource: "id" });
+    expect(result.groups[0]).toMatchObject({ name: "aaa", nameSource: "unread" });
   });
 
   it("orders groups by display name, case-insensitively", () => {

@@ -26,7 +26,7 @@ export function ZeropsProjectRenameMenu({
             ? [
                 {
                   id: "rename-group",
-                  label: group.nameSource === "id" ? "Name this project" : "Rename project",
+                  label: "Rename project",
                   onSelect: () => setRenaming(true),
                 },
               ]

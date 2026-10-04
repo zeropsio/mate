@@ -56,7 +56,7 @@ describe("environmentRoleTag", () => {
 });
 
 describe("groupNameIsPlaceholder", () => {
-  it("is true for a group HQ holds no name for", () => {
+  it("is true for a group whose name reads blank: a read problem, HQ holding none blank", () => {
     const [group] = buildZeropsGroupTree([item("x", "zzz", "", "mate")], { order: "name" }).groups;
     expect(groupNameIsPlaceholder(group!.group)).toBe(true);
   });

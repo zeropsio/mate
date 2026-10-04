@@ -52,12 +52,12 @@ export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): str
 }
 
 /**
- * Whether the group's name is a real name or the id standing in for one. A
- * group named by its id is one the user should be invited to name — the tree
+ * Whether the group's name could not be read and its id stands in for it. HQ
+ * holds no application without a name, so this is a read problem: the tree
  * marks it rather than pretending `7k2m9qx4vb1c` is a title.
  */
 export function groupNameIsPlaceholder(group: ZeropsGroup): boolean {
-  return group.nameSource === "id";
+  return group.nameSource === "unread";
 }
 
 /**

@@ -52,10 +52,10 @@ function mount(group = GROUP, actions: ReadonlyArray<ZeropsMenuEntry> = []) {
 
 describe("project rename in the row and detail menu", () => {
   it.each(["NO_ACCESS", "READ_ONLY", "BASIC_USER", "unknown"])(
-    "offers no rename or naming form to %s, even with project creation rights",
+    "offers no rename form to %s, even with project creation rights",
     (roleCode) => {
       mock.organization!.roleCode = roleCode;
-      for (const nameSource of ["hq", "id"] as const) {
+      for (const nameSource of ["hq", "unread"] as const) {
         mount({ ...GROUP, nameSource });
         expect(mock.actions).toEqual([]);
         expect(tree!.root.findAllByType("button")).toHaveLength(0);
@@ -77,9 +77,9 @@ describe("project rename in the row and detail menu", () => {
     expect(tree!.root.findAllByType("button")).toHaveLength(0);
   });
 
-  it("offers naming an unnamed project to a writer", () => {
-    mount({ ...GROUP, nameSource: "id" });
-    expect(mock.actions).toMatchObject([{ id: "rename-group", label: "Name this project" }]);
+  it("offers a project whose name could not be read the same rename, never a naming", () => {
+    mount({ ...GROUP, nameSource: "unread" });
+    expect(mock.actions).toMatchObject([{ id: "rename-group", label: "Rename project" }]);
   });
 
   it.each(["user", "organization"] as const)("offers nothing without its %s", (missing) => {

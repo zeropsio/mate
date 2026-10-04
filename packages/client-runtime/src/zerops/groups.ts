@@ -194,11 +194,12 @@ export interface ZeropsGroupEnvironment {
 }
 
 /**
- * Where a group's displayed name came from — its application in HQ, the creation under way in it,
- * or nothing at all. The UI wants this: a group named `"id"` is one the user should be invited to
- * name, and a group named `"birth"` is one HQ has not placed a project of yet.
+ * Where a group's displayed name came from — its application in HQ, or the creation under way in
+ * it — or that it could not be read. HQ holds no application without a name, so a group whose
+ * name reads blank is a read problem, drawn as one with its id as the handle, never an invitation
+ * to name it; a group named from its `"birth"` is one HQ has not placed a project of yet.
  */
-export type ZeropsGroupNameSource = "hq" | "birth" | "id";
+export type ZeropsGroupNameSource = "hq" | "birth" | "unread";
 
 /**
  * Where an environment being created stands in the account's projects, as the press that made it
@@ -253,7 +254,7 @@ export interface ZeropsGroupPendingMember {
 
 export interface ZeropsGroup {
   readonly groupId: string;
-  /** Its application's name in HQ, else the creation's under way, else the id. */
+  /** Its application's name in HQ, else the creation's under way, else — unread — its id. */
   readonly name: string;
   readonly nameSource: ZeropsGroupNameSource;
   readonly environments: ReadonlyArray<ZeropsGroupEnvironment>;
@@ -470,7 +471,7 @@ export function deriveZeropsGroups(
         ? [named, "hq"]
         : created !== undefined
           ? [created, "birth"]
-          : [groupId, "id"];
+          : [groupId, "unread"];
     return {
       groupId,
       name,
