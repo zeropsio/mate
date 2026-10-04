@@ -1201,6 +1201,84 @@ describe("CrewEngine", () => {
     );
   }
 
+  it.live("a restart leaves a frozen host's interrupted work untouched until its deploy ends", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* firstTurn(world, () => write(world.root, ".crew/backend/a.txt", "work\n"));
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          const copy = NodePath.join(world.root, ".crew/backend");
+          yield* Ref.set(world.processes, [
+            { serviceStacks: [{ name: "appdev" }], status: "RUNNING" },
+          ]);
+          yield* (yield* ServerCommandReadiness).complete;
+          yield* snapshotWhere(
+            (snapshot) => snapshot.lastError?.includes("still redeploying") === true,
+          );
+          yield* Effect.sleep("500 millis");
+          const head = git(copy, ["rev-parse", "HEAD"]);
+          assert.deepStrictEqual(
+            [
+              (yield* dispatchedOf(world, "thread.turn.start")).length,
+              git(copy, ["status", "--porcelain"]),
+            ],
+            [1, "?? a.txt"],
+          );
+          yield* Ref.set(world.processes, []);
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 2),
+          );
+          assert.notStrictEqual(git(copy, ["rev-parse", "HEAD"]), head);
+        }),
+    ]),
+  );
+
+  it.live("an unreadable redeploy is asked less and less, then offered to the person to thaw", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* Ref.set(world.processes, "unreadable");
+          yield* (yield* ServerCommandReadiness).complete;
+          const offered = yield* snapshotWhere((snapshot) =>
+            snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+          );
+          // Asked at boot, then after 50, 100, 200, 200 ms: a handful, not one every tick.
+          assert.isAtMost(yield* Ref.get(world.processReads), 8);
+          const frames = yield* (yield* CrewEngine).snapshot.pipe(
+            Stream.interruptWhen(Effect.sleep("700 millis")),
+            Stream.runCount,
+          );
+          // Nothing moved meanwhile: the feed holds still, its current frame alone.
+          assert.isAtMost(frames, 1);
+          assert.strictEqual(
+            offered.attention.find((need) => need.kind === "deploy-unreadable")!.host,
+            TEST_HOST,
+          );
+          yield* command({ _tag: "thawHost", host: TEST_HOST });
+          yield* snapshotWhere(
+            (snapshot) =>
+              snapshot.crewmates[0]!.lane?.state === "ready" &&
+              !snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+          );
+          // Thawed, it stops asking.
+          const after = yield* Ref.get(world.processReads);
+          yield* Effect.sleep("600 millis");
+          assert.strictEqual(yield* Ref.get(world.processReads), after);
+        }),
+    ]),
+  );
+
   it.live(
     "a deploy's end recovers the copies before it thaws: a press meanwhile waits its turn",
     () =>

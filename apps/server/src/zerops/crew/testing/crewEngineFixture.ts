@@ -33,14 +33,15 @@ import {
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
-import { ZeropsRestartRead } from "../../ZeropsRestartRead.ts";
-import { unavailable } from "../../zeropsApiRead.ts";
+import { CrewDeployPoll } from "../crewBoot.ts";
+import { CrewPlatformProcesses } from "../crewDeployState.ts";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
@@ -120,6 +121,8 @@ export interface CrewWorld {
   readonly missingAgents: Ref.Ref<ReadonlySet<string>>;
   /** The project's processes as the platform lists them (`ZeropsRestartRead`); `unreadable` fails the read. */
   readonly processes: Ref.Ref<ReadonlyArray<unknown> | "unreadable">;
+  /** How many times the engine read the project's processes. */
+  readonly processReads: Ref.Ref<number>;
   /**
    * Hands the engine a provider event and returns once the engine has handled
    * it: its next pull of the bus comes only after its handler for this one.
@@ -343,17 +346,10 @@ const fakes = (
           }),
         ),
     }),
-    Layer.mock(ZeropsRestartRead)({
-      read: Effect.flatMap(Ref.get(world.processes), (processes) =>
-        processes === "unreadable"
-          ? Effect.fail(unavailable("Zerops did not answer."))
-          : Effect.succeed({
-              name: "Mate",
-              projectId: "project-1",
-              serviceId: "zcp-1",
-              processes,
-              containerStartedAt: null,
-            }),
+    Layer.succeed(CrewPlatformProcesses, {
+      read: Ref.update(world.processReads, (count) => count + 1).pipe(
+        Effect.andThen(Ref.get(world.processes)),
+        Effect.map((processes) => (processes === "unreadable" ? undefined : processes)),
       ),
     }),
     Layer.mock(ZeropsLogins)({
@@ -528,6 +524,7 @@ export const withCrewEngines = <E>(
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
       missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
       processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
+      processReads: yield* Ref.make(0),
       publish: (event) =>
         Effect.gen(function* () {
           const handled = yield* Deferred.make<void>();
@@ -562,6 +559,12 @@ export const withCrewEngines = <E>(
             fakes(world, events, signIns),
             countingSsh(world.sshCalls, holds),
             Layer.succeed(DevServerPidFile, world.devServerPidFile),
+            // A deploy's state is asked again within moments, not minutes.
+            Layer.succeed(CrewDeployPoll, {
+              first: Duration.millis(50),
+              max: Duration.millis(200),
+              unreadable: Duration.millis(600),
+            }),
             ServerConfig.layer({
               cwd: workspace,
               attachmentsDir: NodePath.join(workspace, "attachments"),

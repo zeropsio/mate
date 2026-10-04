@@ -50,8 +50,7 @@ import { OrchestrationEngineService } from "../../orchestration/Services/Orchest
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../../spi/providerInstances.ts";
 import { ZeropsLogins } from "../ZeropsLogins.ts";
-import { ZeropsRestartRead } from "../ZeropsRestartRead.ts";
-import { deployStateOf, type DeployState } from "./crewDeployState.ts";
+import { CrewPlatformProcesses, deployStateOf, type DeployState } from "./crewDeployState.ts";
 import { withPermitWithin } from "./crewLockWait.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../ZeropsRepositorySource.ts";
 import {
@@ -125,6 +124,10 @@ export interface EngineMemory {
   readonly resumeAtBoot: Set<string>;
   /** Crewmates whose copies the boot sweep or a deploy's recovery holds right now. */
   readonly sweeping: Set<string>;
+  /** Hosts a deploy the restart cut off may still replace: frozen, their work untouched. */
+  readonly deployHeld: Set<string>;
+  /** Of those, the ones whose deploy could not be read for long: offered to the person to thaw. */
+  readonly deployUnreadable: Set<string>;
   readonly apps: Map<string, "running" | "stopped">;
   readonly context: Map<string, { readonly tokens: number; readonly window: number }>;
   readonly delivered: Set<string>;
@@ -238,6 +241,8 @@ export const makeMemory = (): EngineMemory => ({
   missingLanes: new Set(),
   resumeAtBoot: new Set(),
   sweeping: new Set(),
+  deployHeld: new Set(),
+  deployUnreadable: new Set(),
   apps: new Map(),
   context: new Map(),
   delivered: new Set(),
@@ -354,8 +359,8 @@ export const makeCrewCore = Effect.gen(function* () {
   const shell = yield* CrewShell;
   const instances = yield* ProviderInstances;
   const logins = yield* ZeropsLogins;
-  // The platform's process list, where this Mate can read it (a Zerops container).
-  const restartRead = yield* Effect.serviceOption(ZeropsRestartRead);
+  // The platform's process list, where the wiring gives it (a Zerops container).
+  const platformProcesses = yield* Effect.serviceOption(CrewPlatformProcesses);
   const cache = yield* Ref.make<AppliedCrew | undefined>(undefined);
 
   /** The coding agent a login runs, read off its instance's adapter. */
@@ -637,12 +642,13 @@ export const makeCrewCore = Effect.gen(function* () {
       }),
     /** Whether a self-deploy onto `host` may still run, as the platform's processes say. */
     deployState: (host: string, serviceId: string | undefined): Effect.Effect<DeployState> =>
-      Option.match(restartRead, {
+      Option.match(platformProcesses, {
         onNone: () => Effect.succeed<DeployState>("unknown"),
         onSome: (reader) =>
           reader.read.pipe(
-            Effect.map((evidence) => deployStateOf(evidence.processes, { host, serviceId })),
-            Effect.orElseSucceed((): DeployState => "unknown"),
+            Effect.map((processes): DeployState =>
+              processes === undefined ? "unknown" : deployStateOf(processes, { host, serviceId }),
+            ),
           ),
       }),
     now: Effect.map(DateTime.now, DateTime.formatIso),

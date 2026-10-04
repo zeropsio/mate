@@ -569,6 +569,8 @@ const runRef = { runId: CrewRunId } as const;
 export const CrewCommand = Schema.TaggedUnion({
   apply: {},
   rebuildCopy: { ...handleRef },
+  /** Thaws a host whose redeploy could not be read: the person says it ended. */
+  thawHost: { host: Schema.String },
   operationContinue: { ...handleRef, operationId: Schema.String },
   operationDiscard: { ...handleRef, operationId: Schema.String },
   useCrewCopy: { ...handleRef, threadId: ThreadId, expectedPath: Schema.NullOr(Schema.String) },
@@ -720,6 +722,7 @@ export function crewCommandReach(command: CrewCommand): CrewCommandReach {
     case "resume":
     case "finish":
     case "briefSave":
+    case "thawHost":
       return { kind: "crew" };
     case "apply":
       return { kind: "home" };

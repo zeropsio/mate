@@ -238,6 +238,16 @@ export function crewNeedActions(
             },
           ];
     }
+    case "deploy-unreadable":
+      return row.host === null
+        ? []
+        : [
+            {
+              kind: "command",
+              ...labelled("thawHost", mateName),
+              command: { _tag: "thawHost", host: row.host },
+            },
+          ];
     case "conversation-copy":
       return handle === null || row.copyAssignment === undefined
         ? []
