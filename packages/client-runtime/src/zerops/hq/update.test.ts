@@ -139,6 +139,19 @@ describe("hqUpdateState", () => {
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
     {
+      // Measured on KRLS, 2026-10-04: the build FINISHED while the active version still read the old.
+      name: "finished deploying the carried Core before Zerops shows it active",
+      active: `hq-core.${OLDER}`,
+      processes: [build({ appVersion: { name: `hq-core.${CARRIED}` } })],
+      state: { kind: "current", running: CARRIED },
+    },
+    {
+      name: "finished deploying an older Core than it shows active",
+      active: `hq-core.${CARRIED}`,
+      processes: [build({ appVersion: { name: `hq-core.${OLDER}` } })],
+      state: { kind: "current", running: CARRIED },
+    },
+    {
       name: "has another service building",
       active: `hq-core.${OLDER}`,
       processes: [build({ status: "RUNNING", serviceStackIds: ["svc-db"] })],

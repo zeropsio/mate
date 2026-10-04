@@ -91,7 +91,11 @@ export function hqUpdateState(input: {
     const target = namedCore(newest.appVersion?.name);
     return { kind: "updating", target: target === "" ? undefined : target };
   }
-  const running = namedCore(input.service.activeAppVersion?.name);
+  const active = namedCore(input.service.activeAppVersion?.name);
+  // A deploy of a newer Core that FINISHED runs it, though the active version may still name the
+  // one before it for a few seconds (KRLS, 2026-10-04).
+  const deployed = newest?.status === "FINISHED" ? namedCore(newest.appVersion?.name) : "";
+  const running = hqUpdateOffered(active, deployed) ? deployed : active;
   if (!hqUpdateOffered(running, carried)) return { kind: "current", running };
   if (newest !== undefined && FAILED_STATUSES.has(newest.status)) {
     return {
