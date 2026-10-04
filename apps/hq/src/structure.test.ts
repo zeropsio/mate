@@ -187,6 +187,7 @@ const environmentRow = (
   keyHeld: false,
   keyInvalid: false,
   jobs: [],
+  release: null,
 });
 
 /**
@@ -1746,6 +1747,124 @@ describe("structure", () => {
             jobs.map((job) => Number(job.id)),
             jobs.map((job) => Number(job.id)).toSorted((left, right) => right - left),
           );
+        }),
+      ),
+    );
+
+    // Release end (H2): each production carries where its newest release's rollout stands —
+    // planned, ended once every job it asked for there ended and every job of a commit it left out
+    // as under way ended too — however many jobs came after; a stage carries none.
+    it.effect("carries where a production's newest release stands, however many jobs it has", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { face: "face-1" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_STAGE",
+            kind: "stage",
+            environment: { name: "stage" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_PROD",
+            kind: "production",
+            environment: { name: "production" },
+          });
+          const sha = "4".repeat(40);
+          const release = (tag: string, planned: boolean) =>
+            Effect.map(
+              sql<{ readonly id: string }>`
+                INSERT INTO hq_rollout (app_id, cause, tag, planned_at)
+                VALUES (${shop.id}::uuid, 'release', ${tag},
+                  ${sql.literal(planned ? "now()" : "NULL")})
+                RETURNING id::text AS id`,
+              (rows) => rows[0]!.id,
+            );
+          const jobs = (rolloutId: string, state: string, count: number) =>
+            sql<{ readonly id: string }>`
+              INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+                ended_at)
+              SELECT ${rolloutId}::bigint, 'deploy', 'P_PROD', 'api', 'api', ${sha}, ${state},
+                ${sql.literal(state === "queued" || state === "building" ? "NULL" : "now()")}
+              FROM generate_series(1, ${count})
+              RETURNING id::text AS id`;
+          const end = (jobId: string) => sql`
+            UPDATE hq_deploy_job SET state = 'live', ended_at = now(), updated_at = now()
+            WHERE id = ${jobId}::bigint`;
+          const standing = Effect.map(structure.read("dev"), (read) =>
+            read.apps
+              .flatMap((app) => app.environments)
+              .map(({ projectId, release: rollout }) => [
+                projectId,
+                rollout === null
+                  ? null
+                  : [
+                      rollout.tag,
+                      rollout.planned,
+                      rollout.ended,
+                      rollout.endedAt === null ? null : typeof rollout.endedAt,
+                      rollout.leftOut.map((left) => [left.service, left.job]),
+                    ],
+              ]),
+          );
+
+          // Asked for and not planned yet: on its way.
+          const first = yield* release("v0.1.0", false);
+          assert.deepStrictEqual(yield* standing, [
+            ["P_STAGE", null],
+            ["P_PROD", ["v0.1.0", false, false, null, []]],
+          ]);
+          // Planned into more jobs than the view lists: its last job, newest, still waits.
+          yield* sql`UPDATE hq_rollout SET planned_at = now() WHERE id = ${first}::bigint`;
+          yield* jobs(first, "refused", JOBS_SHOWN + 5);
+          const [last] = yield* jobs(first, "queued", 1);
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.1.0", true, false, null, []],
+          ]);
+          yield* end(last!.id);
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.1.0", true, true, "string", []],
+          ]);
+
+          // A newer release that left a service out, its commit building under a merge's job: it
+          // runs until that job ends, however its own jobs ended.
+          const [merge] = yield* sql<{ readonly id: string }>`
+            INSERT INTO hq_rollout (app_id, cause, repo, sha, planned_at)
+            VALUES (${shop.id}::uuid, 'merge', 'web', ${sha}, now())
+            RETURNING id::text AS id`;
+          const [building] = yield* jobs(merge!.id, "building", 1);
+          const second = yield* release("v0.2.0", true);
+          yield* jobs(second, "live", 1);
+          yield* sql`
+            UPDATE hq_rollout SET left_out = jsonb_build_array(
+              jsonb_build_object('project_id', 'P_PROD', 'service', 'web', 'sha', ${sha}::text,
+                'job', ${building!.id}::text, 'reason', 'under way'),
+              jsonb_build_object('project_id', 'P_OTHER', 'service', 'web', 'sha', ${sha}::text,
+                'job', NULL, 'reason', 'elsewhere'))
+            WHERE id = ${second}::bigint`;
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.2.0", true, false, null, [["web", building!.id]]],
+          ]);
+          yield* end(building!.id);
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.2.0", true, true, "string", [["web", building!.id]]],
+          ]);
+
+          // One planned into no job there — every service already runs it — ended as planned.
+          yield* release("v0.3.0", true);
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.3.0", true, true, "string", []],
+          ]);
         }),
       ),
     );

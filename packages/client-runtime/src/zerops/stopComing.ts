@@ -52,8 +52,8 @@ export type FirstDeploy =
   /** HQ holds no deploy key that works for the stage: it deploys nothing until one is minted. */
   | { readonly kind: "held" }
   /**
-   * A build of it was seen to end with nothing running (`Deployment.afterBuild`), or HQ says its
-   * build failed, or HQ refused it.
+   * Zerops ended a build of it HQ did not make failed with nothing running
+   * (`Deployment.failedBuild`), or HQ says its build failed, or HQ refused it.
    */
   | { readonly kind: "failed"; readonly reason?: string | undefined };
 
@@ -333,7 +333,7 @@ export function firstDeployTone(first: FirstDeploy | undefined): "busy" | "faile
 /** A stage's line while its creation, or its own import, is under way. */
 export const STAGE_SETTING_UP = "Setting up a stage…";
 
-/** A stage whose first build was seen to end with nothing running. */
+/** A stage whose first deploy failed: its build, as Zerops or HQ ended it, or HQ refusing it. */
 export const FIRST_DEPLOY_FAILED = "First deploy failed";
 
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */

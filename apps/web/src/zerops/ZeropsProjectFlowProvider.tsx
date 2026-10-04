@@ -31,6 +31,7 @@ import {
   nameStopByRelease,
   readZeropsMembership,
   releaseDeploys,
+  releaseEnded,
   releaseInFlight,
   releaseCandidate,
   releaseOffer,
@@ -84,7 +85,6 @@ import {
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
-import { useNowMs } from "./useNowMs";
 import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
 import { useZeropsAppReleases } from "./useZeropsAppReleases";
@@ -313,8 +313,6 @@ export function joinProjectFlows(input: {
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
   readonly changesFailure: string | undefined;
-  /** The clock a release in flight is bounded by (`releaseInFlight`). */
-  readonly nowMs: number;
   /** Why the grant withholds a project, by project id, for each project it withholds alone. */
   readonly withheld: ReadonlyMap<string, string>;
 }): ReadonlyMap<string, ZeropsProjectFlow> {
@@ -346,20 +344,20 @@ export function joinProjectFlows(input: {
         return notice === undefined ? [] : [[projectId, notice] as const];
       }),
     );
-    const { production, failed } = releaseDeploys(stops?.environments ?? []);
-    const inFlight = releaseInFlight({
-      newest: records?.[0] === undefined ? undefined : flowReleaseOf(records[0]),
-      production,
-      failed,
-      nowMs: input.nowMs,
-    });
+    const { rollouts } = releaseDeploys(stops?.environments ?? []);
+    const newest = records?.[0] === undefined ? undefined : flowReleaseOf(records[0]);
+    const deploy = {
+      inFlight: releaseInFlight({ newest, rollouts }),
+      ended: releaseEnded({ newest, rollouts }),
+    };
     const repos = input.repos.get(group.groupId);
     const recipe = input.recipes.get(group.groupId);
     const permission = input.permissions.get(group.groupId);
     const live = input.live.get(group.groupId) ?? NOT_ASKED;
     const key = JSON.stringify([
       group.groupId,
-      inFlight ?? null,
+      deploy.inFlight ?? null,
+      deploy.ended ?? null,
       changes === undefined ? (input.changesFailure ?? null) : null,
       [...withheld],
       repos ?? null,
@@ -375,7 +373,7 @@ export function joinProjectFlows(input: {
         group,
         { stops, records, changes, changesFailure: input.changesFailure },
         { repos, recipe, permission, live },
-        inFlight,
+        deploy,
         withheld,
       );
       byGroup.set(key, flow);
@@ -420,7 +418,8 @@ function projectFlow(
     readonly permission: ReleaseGate | undefined;
     readonly live: ReleaseLive;
   },
-  inFlight: string | undefined,
+  /** The newest release on its way to production, or ended there (`releaseInFlight`, `releaseEnded`). */
+  deploy: { readonly inFlight: string | undefined; readonly ended: string | undefined },
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
@@ -455,7 +454,7 @@ function projectFlow(
     permission: read === undefined ? undefined : permission,
     candidate: read === undefined ? NOTHING_TO_LIST : read.candidate,
     production: sides.production,
-    inFlight,
+    inFlight: deploy.inFlight,
     tags: releaseList.map(({ tag }) => tag),
     live: live.moved,
   });
@@ -481,7 +480,7 @@ function projectFlow(
             comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
             permission,
             groupHead: read?.groupHead,
-            inFlight,
+            ...deploy,
             untold: live.untold,
             runs: live.runs,
             repositories: recipe?.productionRepositories,
@@ -493,7 +492,7 @@ function projectFlow(
             groupHead: undefined,
             comparison: [],
             entries: [],
-            inFlight,
+            ...deploy,
             contents: [],
             untold: [],
             runs: undefined,
@@ -669,8 +668,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [inventory],
   );
 
-  // A release in flight stops holding Release back once it is old enough (`releaseInFlight`).
-  const nowMs = useNowMs();
   // A Mate's changes, down the organization's HQ stream, linked at its official address: the
   // flows stand on them wherever HQ answers.
   const accountHq = useAccountHq(clientId);
@@ -799,7 +796,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             live,
             changes,
             changesFailure,
-            nowMs,
             withheld,
           })
         : EMPTY_FLOWS,
@@ -810,7 +806,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flowGroups,
       groupStops,
       live,
-      nowMs,
       permissions,
       recipes,
       releaseRecords,

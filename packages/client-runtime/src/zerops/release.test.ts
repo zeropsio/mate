@@ -10,6 +10,7 @@ import {
   releaseEntries,
   releaseGate,
   releaseCandidate,
+  releaseEnded,
   releaseInFlight,
   releaseInFlightReason,
   releaseOffer,
@@ -23,6 +24,7 @@ import {
   type FlowReleaseRow,
 } from "./release.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
+import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 /** What goes live, compared: nothing beyond what each case's own entries say. */
@@ -689,8 +691,6 @@ describe("the release a stop is named by", () => {
 });
 
 describe("a release in flight", () => {
-  const TAGGED = "2026-09-24T10:00:00Z";
-  const at = (minutes: number) => Date.parse(TAGGED) + minutes * 60_000;
   const newest = {
     tag: "v0.1.3",
     verdict: "approved" as const,
@@ -698,56 +698,92 @@ describe("a release in flight", () => {
       { service: "api", commit: API },
       { service: "web", commit: WEB },
     ],
-    taggedAt: TAGGED,
+    taggedAt: "2026-09-24T10:00:00Z",
   };
-  const notYet = new Map([
-    ["api", OLD],
-    ["web", WEB],
-  ]);
+  const rollout = (tag: string, ended: boolean): ReleaseRollout => ({
+    id: "7",
+    tag,
+    planned: true,
+    ended,
+    endedAt: ended ? "2026-09-24T11:20:00Z" : null,
+    leftOut: [],
+  });
 
+  // HQ's rollout of the newest release says when it ends, in each production; no clock does.
   it.each([
     {
-      name: "Release is not offered while production does not run the newest release yet",
+      name: "on its way while HQ's rollout of it has not ended",
       release: newest,
-      production: notYet,
-      nowMs: at(2),
+      rollouts: [rollout("v0.1.3", false)],
       inFlight: "v0.1.3",
+      ended: undefined,
     },
     {
-      name: "a release production runs is done",
+      name: "on its way while any production's rollout of it has not ended",
       release: newest,
-      production: new Map([
-        ["api", API],
-        ["web", WEB],
-      ]),
-      nowMs: at(2),
-      inFlight: undefined,
+      rollouts: [rollout("v0.1.3", true), rollout("v0.1.3", false)],
+      inFlight: "v0.1.3",
+      ended: undefined,
     },
     {
-      name: "Release is offered again over a release HQ refused",
+      name: "on its way before HQ streams its rollout: an older release's is no end of it",
+      release: newest,
+      rollouts: [rollout("v0.1.2", true)],
+      inFlight: "v0.1.3",
+      ended: undefined,
+    },
+    {
+      name: "on its way before HQ planned it",
+      release: newest,
+      rollouts: [null],
+      inFlight: "v0.1.3",
+      ended: undefined,
+    },
+    {
+      name: "ended once HQ ended its rollout in every production",
+      release: newest,
+      rollouts: [rollout("v0.1.3", true)],
+      inFlight: undefined,
+      ended: "v0.1.3",
+    },
+    {
+      name: "neither where the project has no production environment to deploy it to",
+      release: newest,
+      rollouts: [],
+      inFlight: undefined,
+      ended: undefined,
+    },
+    {
+      name: "neither where HQ tells no release's end",
+      release: newest,
+      rollouts: [undefined],
+      inFlight: undefined,
+      ended: undefined,
+    },
+    {
+      name: "neither for a release HQ refused",
       release: { ...newest, verdict: "refused" as const },
-      production: notYet,
-      nowMs: at(2),
+      rollouts: [rollout("v0.1.3", false)],
       inFlight: undefined,
+      ended: undefined,
     },
     {
-      name: "a release older than 30 minutes production still does not run stops counting",
-      release: newest,
-      production: notYet,
-      nowMs: at(31),
+      name: "neither for a snapshot, which deploys nothing",
+      release: { ...newest, snapshot: true },
+      rollouts: [null],
       inFlight: undefined,
+      ended: undefined,
     },
     {
-      name: "no release at all",
+      name: "neither without a release",
       release: undefined,
-      production: notYet,
-      nowMs: at(2),
+      rollouts: [rollout("v0.1.3", false)],
       inFlight: undefined,
+      ended: undefined,
     },
-  ])("$name", ({ release, production, nowMs, inFlight }) => {
-    expect(releaseInFlight({ newest: release, production, failed: new Map(), nowMs })).toBe(
-      inFlight,
-    );
+  ])("$name", ({ release, rollouts, inFlight, ended }) => {
+    expect(releaseInFlight({ newest: release, rollouts })).toBe(inFlight);
+    expect(releaseEnded({ newest: release, rollouts })).toBe(ended);
   });
 
   it("keeps Release from being offered, and says which tag is on its way", () => {
@@ -797,28 +833,6 @@ describe("a production whose version names spell short shas", () => {
     expect(releaseRunBy([listing("v1.1.0", OLD), listing("v1.0.0")], RUNS)).toBe("v1.0.0");
   });
 
-  it("holds no release in flight once production runs every commit it lists", () => {
-    expect(
-      releaseInFlight({
-        newest: listing("v1.0.0"),
-        production: RUNS,
-        failed: new Map(),
-        nowMs: Date.parse(TAGGED) + 60_000,
-      }),
-    ).toBeUndefined();
-  });
-
-  it("ends the hold when a listed commit's short name failed after the tag", () => {
-    expect(
-      releaseInFlight({
-        newest: listing("v1.1.0", OLD),
-        production: RUNS,
-        failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
-        nowMs: Date.parse(TAGGED) + 60_000,
-      }),
-    ).toBeUndefined();
-  });
-
   it("reads a failure under the short name as the listed commit's", () => {
     const release = listing("v1.1.0", OLD);
     const row = releaseRow(release, 0, {
@@ -829,21 +843,4 @@ describe("a production whose version names spell short shas", () => {
     });
     expect(row.standing).toBe("deploy-failed");
   });
-});
-
-it("a snapshot never waits for a production deployment", () => {
-  expect(
-    releaseInFlight({
-      newest: {
-        tag: "v0.1.0",
-        verdict: "approved",
-        entries: [{ service: "api", commit: API }],
-        taggedAt: "2026-09-29T10:00:00Z",
-        snapshot: true,
-      },
-      production: new Map(),
-      failed: new Map(),
-      nowMs: Date.parse("2026-09-29T10:00:01Z"),
-    }),
-  ).toBeUndefined();
 });

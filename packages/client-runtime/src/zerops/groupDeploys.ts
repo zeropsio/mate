@@ -25,6 +25,8 @@
  * @module groupDeploys
  */
 
+import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
+
 import {
   environmentTierForRole,
   missingEnvironmentRows,
@@ -65,6 +67,8 @@ export interface GroupEnvironmentRowInput {
    * not read (audit D2: a service the project lacks is a person's to add).
    */
   readonly recipeServices?: ReadonlyArray<string> | undefined;
+  /** A production's newest release as HQ's rollout of it stands there (`HqEnvironment.release`). */
+  readonly release?: ReleaseRollout | null | undefined;
 }
 
 /**
@@ -209,6 +213,7 @@ export function environmentRowInputsOf(input: {
           ...unlisted.map((hostname) => state(hostname)),
         ],
         ...(recipeServices === undefined ? {} : { recipeServices }),
+        ...(environment.release === undefined ? {} : { release: environment.release }),
       };
     });
 }
@@ -287,6 +292,8 @@ export interface ReleaseDeploys {
   readonly production: ReadonlyMap<string, string>;
   /** `{service}@{sha}` → when it failed, for each production service whose newest deploy failed. */
   readonly failed: ReadonlyMap<string, string>;
+  /** Each production's newest release rollout, as HQ told it (`releaseInFlight`). */
+  readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
 }
 
 /**
@@ -303,8 +310,10 @@ export function releaseDeploys(
 ): ReleaseDeploys {
   const production = new Map<string, string>();
   const failed = new Map<string, string>();
+  const rollouts: Array<ReleaseRollout | null | undefined> = [];
   for (const environment of environments) {
     if (environment.tier !== "production") continue;
+    rollouts.push(environment.release);
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
       if (latest !== undefined && latest.sha !== null && jobFailed(latest)) {
@@ -315,7 +324,7 @@ export function releaseDeploys(
       production.set(service.hostname, sha);
     }
   }
-  return { production, failed };
+  return { production, failed, rollouts };
 }
 
 /**

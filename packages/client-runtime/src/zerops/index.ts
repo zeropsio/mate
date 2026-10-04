@@ -286,6 +286,7 @@ export {
   releaseRunBy,
   nameStopByRelease,
   releaseEntries,
+  releaseEnded,
   releaseGate,
   releaseInFlight,
   releaseInFlightReason,

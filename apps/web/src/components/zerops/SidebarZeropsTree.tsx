@@ -838,12 +838,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     };
   }, [activeProjectId]);
   // What each stop runs, read once per render and handed to `groupFlow`, so
-  // the chip and the page never read two different answers for one project;
-  // and whether HQ's releases are coming at all — where no HQ is open, a chip
-  // settles on the platform's facts alone.
+  // the chip and the page never read two different answers for one project.
   const projectFlows = useZeropsProjectFlowOptional();
   const deployments = projectFlows?.deployments;
-  const releasesComing = projectFlows !== null && projectFlows.hqAddress !== undefined;
 
   // Until the rows below are drawn, the jump box finds nothing here, and the
   // memory learns nothing new.
@@ -1120,12 +1117,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             routes: item.routes ?? [],
           });
     const downOf = (serving: StopServing) => (serving.kind === "down" ? serving.services : []);
+    // Until HQ's releases are read, a chip is only what the platform alone says: partial.
     const releases: ReleasesAnswer =
       flow !== undefined && flow.releasesKnown !== false
         ? { kind: "answered", failure: flow.releaseFailure }
-        : releasesComing
-          ? { kind: "waiting" }
-          : { kind: "absent" };
+        : { kind: "waiting" };
     const stopName = (stop: GroupFlowStop) => stopItem(stop.projectId)?.project.name ?? stop.name;
     const stages = projectFlow.stages.map((stop) => ({
       name: stopName(stop),

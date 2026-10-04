@@ -50,8 +50,11 @@ const NONE_RECHECKED: Shown<Deployment> = {
   ...NONE,
   ...(NONE.state === "known" ? { freshness: { kind: "revalidating", sinceMs: 0 } } : {}),
 } as Shown<Deployment>;
-/** A build was seen to end and nothing it built runs (`afterBuild`). */
-const FAILED_BUILD = known({ kind: "none", afterBuild: true });
+/** A build HQ did not make that Zerops ended failed: nothing it built runs (`failedBuild`). */
+const FAILED_BUILD = known({
+  kind: "none",
+  failedBuild: { processId: "process-manual", reason: "Zerops reports its build failed" },
+});
 const DEPLOYING = known({ kind: "deploying", version: deployedVersion(SHA), previous: null });
 const RUNNING = known({ kind: "running", activatedAt: null, version: deployedVersion(SHA) });
 

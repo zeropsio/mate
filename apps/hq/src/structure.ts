@@ -27,6 +27,7 @@ import {
 } from "@t3tools/shared/zeropsPermissions";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
@@ -202,6 +203,11 @@ export interface EnvironmentView {
    * beside them where it is older.
    */
   readonly jobs: ReadonlyArray<JobView>;
+  /**
+   * A production's: where its application's newest release stands there, from that release's
+   * rollout and its jobs whatever {@link JOBS_SHOWN} lists; none before a release, and for a stage.
+   */
+  readonly release: ReleaseRollout | null;
 }
 
 /** How many of an environment's newest jobs its view carries. */
@@ -1305,6 +1311,71 @@ export const structureLayer = (options: {
               WHERE j.place <= ${JOBS_SHOWN}
                  OR (j.kind = 'deploy' AND j.state = 'live' AND j.live_place = 1)
               ORDER BY j.project_id, j.id DESC`;
+            // Each production's newest release, as its rollout stands there: ended once every job
+            // it asked for there ended, and every job of a commit it left out as under way there.
+            const rollouts = yield* sql<{
+              readonly project_id: string;
+              readonly id: string;
+              readonly tag: string;
+              readonly planned: boolean;
+              readonly ended: boolean;
+              readonly ended_at: string | null;
+              readonly left_out: ReleaseRollout["leftOut"];
+            }>`
+              WITH newest AS (
+                SELECT DISTINCT ON (r.app_id) r.id, r.app_id, r.tag, r.planned_at, r.left_out
+                FROM hq_rollout r WHERE r.cause = 'release'
+                ORDER BY r.app_id, r.id DESC
+              ),
+              left_out AS (
+                SELECT n.id AS rollout_id, l.project_id, l.service, l.sha, l.job, l.reason
+                FROM newest n,
+                     jsonb_to_recordset(n.left_out)
+                       AS l(project_id text, service text, sha text, job text, reason text)
+              ),
+              ends AS (
+                SELECT j.rollout_id, j.project_id, j.ended_at
+                FROM hq_deploy_job j JOIN newest n ON n.id = j.rollout_id
+                UNION ALL
+                SELECT l.rollout_id, l.project_id, j.ended_at
+                FROM left_out l JOIN hq_deploy_job j ON j.id = l.job::bigint
+              ),
+              standing AS (
+                SELECT e.project_id, n.id, n.tag, n.planned_at,
+                       n.planned_at IS NOT NULL AND NOT EXISTS (
+                         SELECT 1 FROM ends x
+                         WHERE x.rollout_id = n.id AND x.project_id = e.project_id
+                           AND x.ended_at IS NULL) AS ended,
+                       (SELECT max(x.ended_at) FROM ends x
+                        WHERE x.rollout_id = n.id AND x.project_id = e.project_id) AS last_ended
+                FROM hq_environment e JOIN newest n ON n.app_id = e.app_id
+                WHERE e.tier = 'production'
+              )
+              SELECT s.project_id, s.id::text AS id, s.tag, s.planned_at IS NOT NULL AS planned,
+                     s.ended,
+                     CASE WHEN s.ended
+                       THEN ${sql.literal(iso("GREATEST(s.planned_at, s.last_ended)"))} END
+                       AS ended_at,
+                     COALESCE((
+                       SELECT jsonb_agg(jsonb_build_object('service', l.service, 'sha', l.sha,
+                                'job', l.job, 'reason', l.reason))
+                       FROM left_out l
+                       WHERE l.rollout_id = s.id AND l.project_id = s.project_id
+                     ), '[]'::jsonb) AS left_out
+              FROM standing s`;
+            const releaseOf = (projectId: string): ReleaseRollout | null => {
+              const row = rollouts.find((rollout) => rollout.project_id === projectId);
+              return row === undefined
+                ? null
+                : {
+                    id: row.id,
+                    tag: row.tag,
+                    planned: row.planned,
+                    ended: row.ended,
+                    endedAt: row.ended_at,
+                    leftOut: row.left_out,
+                  };
+            };
             const environmentView = (row: (typeof environments)[number]): EnvironmentView => ({
               projectId: row.project_id,
               tier: row.tier,
@@ -1331,6 +1402,7 @@ export const structureLayer = (options: {
                   endedAt: job.ended_at,
                   supersededBy: job.superseded_by,
                 })),
+              release: releaseOf(row.project_id),
             });
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
             const projects = new Map(view.projects.map((project) => [project.id, project]));
