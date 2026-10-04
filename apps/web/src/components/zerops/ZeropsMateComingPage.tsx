@@ -176,7 +176,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Which agent this project's other Mates use, read while it comes up: its sign-in is ready in it.
   useUsualAgent(projectId);
   const { organizationRef, runtime } = useZeropsData();
-  const { listing, refresh: rereadListing } = useZeropsCandidates();
+  const { listing, wholeForPerson, refresh: rereadListing } = useZeropsCandidates();
   const held = useMemo(() => heldCandidates(listing), [listing]);
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
   // What this tab pressed for it, while it holds it.
@@ -259,10 +259,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       ? firstBuildState(firstBuildProcesses, candidate?.service?.id)
       : undefined,
   });
+  // An absent project is decided by the person's project scope. Unopened projects' container
+  // reads cannot keep an ungranted direct link waiting after that scope has answered.
   const page = mateComingPage({
     coming,
     candidate,
-    complete: held.complete && press === undefined && (creation === undefined || listingLacksIt),
+    complete:
+      (held.complete || wholeForPerson) &&
+      press === undefined &&
+      (creation === undefined || listingLacksIt),
     linked: link.environmentId !== undefined,
     reachability: link.reachability,
   });
