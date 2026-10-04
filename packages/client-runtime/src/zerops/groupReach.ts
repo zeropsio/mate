@@ -11,7 +11,8 @@
  * production's unmarked secrets — a database's `connectionString` in plain
  * text — for anybody with a terminal in the Mate, and somebody had to keep
  * writing it as the application changed (ADR 0003). An agent reaches past its
- * project through HQ instead, later. So this client adds no grant beside a
+ * project through HQ instead: zerops_observe reads permitted stage and
+ * production status, active versions and logs. So this client adds no grant beside a
  * Mate's own: not at the key's mint, not at a birth, not on a screen's read.
  * A grant a key already holds is not taken away here; a separate step
  * removes it.

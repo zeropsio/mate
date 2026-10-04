@@ -2,7 +2,7 @@
  * ADR 0003: a Mate observes its application's environments through HQ, never a sibling grant.
  * Every person its door opens for must be a reader of the environment: a shared terminal cannot
  * safely inherit just one controller's reach. Only runtime facts leave here; no env, userData,
- * deploy credential or platform DTO. Permission facts are recent, never the outage fallback.
+ * deploy credential or platform DTO. Permission facts are read for this call, never the outage fallback.
  */
 import {
   type EnvironmentLogs,
@@ -18,7 +18,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { DeployKeys } from "./deployKeys.ts";
 import { reachesOnly } from "./deployTokens.ts";
-import { Roles, type OrgView } from "./roles.ts";
+import { Roles, WriteConfirm, type OrgView } from "./roles.ts";
 import { ZeropsApi, ZeropsObservation, type ZeropsError } from "./zerops/api.ts";
 
 export class ObservationRefused extends Schema.TaggedError<ObservationRefused>()(
@@ -88,7 +88,9 @@ export const observationLayer = Layer.effect(
     const refused = (reason: ObservationRefused["reason"]) => new ObservationRefused({ reason });
     const scopeOf = (mateProjectId: string) =>
       Effect.gen(function* () {
-        const view = yield* roles.recent;
+        const view = yield* roles.forWrite.pipe(
+          Effect.provideService(WriteConfirm, { fresh: true, until: undefined }),
+        );
         const [placement] = yield* sql<{ readonly app_id: string }>`
       SELECT app_id FROM hq_app_project WHERE project_id = ${mateProjectId} AND kind IN ('mate', 'devstage')`;
         if (placement === undefined || !view.projects.some((p) => p.id === mateProjectId)) {

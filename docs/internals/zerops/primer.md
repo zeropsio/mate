@@ -1063,9 +1063,12 @@ lands.
    git-push or repository pass, its open pull request continued as its change (zcp `38c4695c6`);
    not yet run live — the migration of Snap in Mate s.r.o. is its first run. Its code goes once no
    Mate has such a pair.
-3. **An agent's reach past its own project** comes only through HQ, later (ADR 0003): a zcp tool
-   that asks HQ, and HQ's rule over what the people who control the Mate may see. Until then an
-   agent sees its own project alone.
+3. **An agent's reach past its own project** comes only through HQ (ADR 0003):
+   `zerops_observe` lists permitted stage and production environments, then reads their status,
+   active versions and bounded service logs. HQ checks current placement and the people who can
+   operate the Mate on every call, then reads with the environment's deploy key. No sibling
+   Zerops grant or environment variables reach the agent. See `observation.ts` and the zcp spec
+   §10.8; live verification remains part of the release gate.
 4. **T13 — the exporter and the rehearsal.** The exporter reads the old Gitea as the migrating admin
    and waits for the owner's token; the rehearsal runs on a `mate-rig-*` HQ. An admin mints every
    environment's deploy key anew after the import.
