@@ -11,10 +11,10 @@
  * up (`core.ts`), so no git of this instance outlives its lead.
  *
  * The takeover is the barrier before git serves: one that fails opens nothing, and the opening is
- * tried again while this Core leads. A repository that does not converge is quarantined, not the
- * whole of git: it refuses every read and write (`unavailable`, its reason named), the takeover
- * judges nothing in it, `/health` lists it, and it is tried again every `quarantineRetry` — once it
- * converges, git opens again and the takeover judges it with the rest.
+ * failed visibly; the process stops and the operator starts HQ again in Zerops. A repository that
+ * does not converge is quarantined, not the whole of git: it refuses every read and write
+ * (`unavailable`, its reason named), the takeover judges nothing in it and `/health` lists it. After repair, an operator starts another Core
+ * through Zerops service controls; its one opening judges the repository with the rest.
  *
  * Every ref the layer writes reaches the durable log through its events: a change branch's push
  * moves the change's head, `main` moving moves the repository's. Each also judges again whether a
@@ -37,6 +37,7 @@ import {
 } from "@t3tools/hq-git";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Exit from "effect/Exit";
@@ -44,7 +45,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -66,8 +66,8 @@ export interface PushedChange {
   readonly number: number;
 }
 
-/** Where git stands on this Core: open, opening (leading, its takeover not through), or closed. */
-export type GitState = "open" | "opening" | "closed";
+/** Git is open, opening, closed, or failed for this Core; only a new Core clears failure. */
+export type GitState = "open" | "opening" | "closed" | "failed";
 
 /** A repository withheld from every read and write until it converges, and why. */
 export interface Quarantined {
@@ -87,6 +87,8 @@ export class GitHost extends Context.Service<
      * operation fails `unavailable`, its reason the message.
      */
     readonly git: Effect.Effect<HqGit, NotLeader>;
+    /** A failed opening ends Core in production; Zerops service controls own Start again. */
+    readonly failure: Effect.Effect<never, Error>;
     /** Where git stands, and the repositories it withholds. */
     readonly status: Effect.Effect<{
       readonly git: GitState;
@@ -170,10 +172,6 @@ export const gitHostLayer = (options: {
   readonly rootDir: string;
   /** Where a repository may be imported from on disk: the migration's bundles (`importJob.ts`). */
   readonly importRoots?: ReadonlyArray<string>;
-  /** The first pause before opening git again after it failed, doubling up to 30 s; 1 s. */
-  readonly openBackoff?: Duration.Duration;
-  /** How often a quarantined repository is tried again; 1 min. */
-  readonly quarantineRetry?: Duration.Duration;
 }): Layer.Layer<GitHost, never, Leader | Rollouts | SqlClient.SqlClient> =>
   Layer.effect(
     GitHost,
@@ -187,7 +185,9 @@ export const gitHostLayer = (options: {
       const principals = new WeakMap<NodeHttp.IncomingMessage, Principal>();
       const readers = new WeakMap<Principal, (repo: Repo) => Effect.Effect<boolean>>();
 
-      const state = yield* Ref.make<GitState>("closed");
+      const state = yield* SubscriptionRef.make<GitState>("closed");
+      const failure = yield* Deferred.make<never, Error>();
+      const stage = yield* Ref.make<"volume" | "takeover">("volume");
       /** The quarantined repositories by `<appId>/<repo>`, and why. */
       const quarantined = yield* Ref.make<ReadonlyMap<string, string>>(new Map());
       const keyOf = (repo: Repo) => `${repo.appId}/${repo.id}`;
@@ -391,7 +391,9 @@ export const gitHostLayer = (options: {
           if ((yield* Ref.get(stopped)) || Option.isSome(yield* Ref.get(current))) return;
           // Only while leading: the lead may have gone since the opening was asked for.
           if ((yield* leader.status).state !== "active") return;
-          yield* Ref.set(state, "opening");
+          if ((yield* SubscriptionRef.get(state)) === "failed") return;
+          yield* Ref.set(stage, "volume");
+          yield* SubscriptionRef.set(state, "opening");
           const scope = yield* Scope.make();
           // Events come only after a write, so never before the layer is here.
           const opened: { git?: HqGit } = {};
@@ -428,15 +430,20 @@ export const gitHostLayer = (options: {
               opened.git === undefined ? undefined : run(record(opened.git, event)),
           }).pipe(
             Effect.provideService(Scope.Scope, scope),
-            Effect.tapError(() => Scope.close(scope, Exit.void)),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit) ? Scope.close(scope, Exit.void) : Effect.void,
+            ),
           );
           opened.git = git;
-          // The takeover is the barrier: one that fails opens nothing, and the opening is tried again.
+          // The takeover is the barrier: one that fails opens nothing.
+          yield* Ref.set(stage, "takeover");
           const open = yield* takeover(git).pipe(
-            Effect.tapError(() => Scope.close(scope, Exit.void)),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit) ? Scope.close(scope, Exit.void) : Effect.void,
+            ),
           );
           yield* Ref.set(current, Option.some({ git, scope }));
-          yield* Ref.set(state, "open");
+          yield* SubscriptionRef.set(state, "open");
           yield* Effect.logInfo("git open");
           // Judged once the layer serves: what the last lead left open is judged again.
           yield* Queue.offerAll(pushes, open);
@@ -449,7 +456,7 @@ export const gitHostLayer = (options: {
       )(
         Effect.gen(function* () {
           const open = yield* Ref.getAndSet(current, Option.none());
-          yield* Ref.set(state, "closed");
+          yield* SubscriptionRef.set(state, "closed");
           // What the next takeover quarantines is its own to say.
           yield* Ref.set(quarantined, new Map());
           if (Option.isSome(open)) {
@@ -459,15 +466,25 @@ export const gitHostLayer = (options: {
         }),
       );
 
-      // A failed opening is tried again while this Core leads, its pauses growing to 30 s; a change
-      // of the lead cuts the pauses short, never an opening or a closing half done.
-      const backoff = Schedule.min([
-        Schedule.exponential(options.openBackoff ?? Duration.seconds(1)),
-        Schedule.spaced(Duration.seconds(30)),
-      ]);
-      const openWhileLeading = Effect.uninterruptible(
-        open.pipe(Effect.tapError((error) => Effect.logError("git open failed", error))),
-      ).pipe(Effect.retry(backoff), Effect.ignore);
+      // One opening per leadership generation. A failed attempt ends visibly, including defects.
+      const openWhileLeading = Effect.uninterruptible(open).pipe(
+        Effect.catchCause((cause) =>
+          Effect.gen(function* () {
+            const failedStage = yield* Ref.get(stage);
+            yield* SubscriptionRef.set(state, "failed");
+            yield* Effect.logError(
+              "git open failed; start HQ again through Zerops service controls",
+              { stage: failedStage, cause },
+            );
+            yield* Deferred.fail(
+              failure,
+              new Error(
+                `HQ git opening failed at ${failedStage}; start HQ again through Zerops service controls.`,
+              ),
+            );
+          }),
+        ),
+      );
       yield* Effect.forkScoped(
         leader.changes.pipe(
           Stream.switchMap((status) =>
@@ -479,31 +496,6 @@ export const gitHostLayer = (options: {
         ),
       );
       yield* Effect.addFinalizer(() => shut);
-
-      // A quarantined repository is tried again; once it converges, git opens again, so the
-      // takeover judges it with the rest before it serves.
-      yield* Effect.forkScoped(
-        Effect.gen(function* () {
-          const opened = yield* Ref.get(current);
-          const withheld = yield* Ref.get(quarantined);
-          if (Option.isNone(opened) || withheld.size === 0) return;
-          for (const key of withheld.keys()) {
-            const [appId = "", id = ""] = key.split("/");
-            if (Exit.isSuccess(yield* Effect.exit(opened.value.git.convergeRepo({ appId, id })))) {
-              yield* Effect.logInfo("quarantined repository converged: git opens again", { key });
-              yield* Effect.uninterruptible(shut);
-              yield* Effect.uninterruptible(open).pipe(
-                Effect.tapError((error) => Effect.logError("git open failed", error)),
-                Effect.retry(backoff),
-              );
-              return;
-            }
-          }
-        }).pipe(
-          Effect.catch((error) => Effect.logError("git open failed", error)),
-          Effect.repeat(Schedule.spaced(options.quarantineRetry ?? Duration.minutes(1))),
-        ),
-      );
 
       /** `git` refusing every operation on a quarantined repository. */
       const guarded = (git: HqGit): HqGit =>
@@ -540,16 +532,22 @@ export const gitHostLayer = (options: {
       );
       return GitHost.of({
         git,
+        failure: Deferred.await(failure),
         status: Effect.gen(function* () {
           const withheld = yield* Ref.get(quarantined);
           return {
-            git: yield* Ref.get(state),
+            git: yield* SubscriptionRef.get(state),
             quarantined: [...withheld].map(([repo, reason]) => ({ repo, reason })),
           };
         }),
         opened: (wait) =>
-          git.pipe(
-            Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Stream.runHead(
+            Stream.filter(
+              SubscriptionRef.changes(state),
+              (state) => state === "open" || state === "failed",
+            ),
+          ).pipe(
+            Effect.andThen(git),
             Effect.timeoutOrElse({
               duration: wait,
               orElse: () => Effect.fail(new NotLeader({ reason: "standby" })),

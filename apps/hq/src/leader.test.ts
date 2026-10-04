@@ -10,14 +10,20 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
-import { LOCK_KEY, Leader, type LeaderStatus, NotLeader, leaderLayer } from "./leader.ts";
+import {
+  LOCK_KEY,
+  Leader,
+  type LeaderStatus,
+  type LeaderOptions,
+  NotLeader,
+  leaderLayer,
+} from "./leader.ts";
 import { type Migration, MIGRATIONS_TABLE } from "./migrations.ts";
 import { Official, officialLayer } from "./official.ts";
 import { rolesLayer } from "./roles.ts";
@@ -27,7 +33,6 @@ import { ZeropsApi } from "./zerops/api.ts";
 const FAST = {
   heartbeat: Duration.millis(100),
   heartbeatTimeout: Duration.seconds(1),
-  retryAfter: Duration.millis(100),
 };
 
 /**
@@ -38,6 +43,7 @@ const startInstance = (
   url: string,
   migrations: ReadonlyArray<Migration> = treeMigrations(),
   allowed?: Ref.Ref<boolean>,
+  afterMigrations?: LeaderOptions["afterMigrations"],
 ) =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
@@ -51,7 +57,12 @@ const startInstance = (
       inherit: () => Effect.void,
     });
     const context = yield* Layer.buildWithScope(
-      leaderLayer({ databaseUrl, migrations, ...FAST }).pipe(
+      leaderLayer({
+        databaseUrl,
+        migrations,
+        ...FAST,
+        ...(afterMigrations === undefined ? {} : { afterMigrations }),
+      }).pipe(
         Layer.provideMerge(PgClient.layer({ url: databaseUrl })),
         Layer.provide(Layer.succeed(Official, official)),
       ),
@@ -141,11 +152,10 @@ const startReading = (url: string, world: FakeWorld, projectId = "P1") =>
     };
   });
 
-/** Polls the status until `matches` holds; fails the test after ten seconds. */
+/** Follows the session status until the requested outcome; fails after ten seconds. */
 const statusWhere = (leader: Leader["Service"], matches: (status: LeaderStatus) => boolean) =>
-  leader.status.pipe(
-    Effect.filterOrFail(matches),
-    Effect.retry(Schedule.spaced(Duration.millis(50))),
+  Stream.runHead(Stream.filter(leader.changes, matches)).pipe(
+    Effect.map(Option.getOrThrow),
     Effect.timeout(Duration.seconds(10)),
   );
 
@@ -220,31 +230,32 @@ describe("leaderLayer", () => {
         }),
     );
 
-    it.effect(
-      "falls back to standby when its lock session is killed, and leads again once the lock is free",
-      () =>
-        Effect.gen(function* () {
-          const url = yield* (yield* TempPostgres).createDatabase;
-          const core = yield* startInstance(url);
-          yield* statusWhere(core.leader, (status) => status.state === "active");
+    it.effect("ends a lost lock session visibly; a manually started Core takes the free lock", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const core = yield* startInstance(url);
+        yield* statusWhere(core.leader, (status) => status.state === "active");
 
-          // Another session takes the lock the moment the holder's backend is gone.
-          const rival = yield* Scope.make();
-          const other = yield* PgConnection.make({ url: Redacted.make(url) }).pipe(
-            Scope.provide(rival),
-          );
-          yield* other.query(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'hq-leader'",
-          );
-          yield* other.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
-          const standby = yield* statusWhere(core.leader, (status) => status.state === "standby");
-          assert.deepStrictEqual(standby, { state: "standby", epoch: null });
+        // Another session takes the lock the moment the holder's backend is gone.
+        const rival = yield* Scope.make();
+        const other = yield* PgConnection.make({ url: Redacted.make(url) }).pipe(
+          Scope.provide(rival),
+        );
+        yield* other.query(
+          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'hq-leader'",
+        );
+        yield* other.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
+        yield* Effect.flip(core.leader.failure);
+        assert.deepStrictEqual(yield* core.leader.status, { state: "failed", epoch: null });
 
-          yield* Scope.close(rival, Exit.void);
-          const status = yield* statusWhere(core.leader, (status) => status.state === "active");
-          assert.deepStrictEqual(status, { state: "active", epoch: 2 });
-          yield* core.stop;
-        }),
+        yield* Scope.close(rival, Exit.void);
+        assert.deepStrictEqual(yield* core.leader.status, { state: "failed", epoch: null });
+        const restarted = yield* startInstance(url);
+        const status = yield* statusWhere(restarted.leader, (status) => status.state === "active");
+        assert.deepStrictEqual(status, { state: "active", epoch: 2 });
+        yield* restarted.stop;
+        yield* core.stop;
+      }),
     );
 
     it.effect(
@@ -270,15 +281,47 @@ describe("leaderLayer", () => {
           yield* admin.query(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'hq-leader'",
           );
-          yield* statusWhere(core.leader, (status) => status.state === "failed");
+          yield* Effect.flip(core.leader.failure);
 
           yield* admin.query(`ALTER DATABASE ${database} WITH ALLOW_CONNECTIONS true`);
-          const status = yield* statusWhere(core.leader, (status) => status.state === "active");
-          assert.deepStrictEqual(status, { state: "active", epoch: 2 });
+          assert.deepStrictEqual(yield* core.leader.status, { state: "failed", epoch: null });
           yield* core.stop;
         }),
     );
 
+    it.effect(
+      "names a migration failure and leaves the next attempt to a manually started Core",
+      () =>
+        Effect.gen(function* () {
+          const url = yield* (yield* TempPostgres).createDatabase;
+          let attempts = 0;
+          const migrate = Effect.gen(function* () {
+            attempts += 1;
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`SELECT 1 / 0`;
+          });
+          const broken = yield* startInstance(url, treeMigrations(), undefined, migrate);
+          const failure = yield* Effect.flip(broken.leader.failure);
+          assert.match(failure.message, /migrations/u);
+          assert.strictEqual(attempts, 1);
+          assert.deepStrictEqual(yield* broken.leader.status, { state: "failed", epoch: null });
+          yield* broken.stop;
+          const restarted = yield* startInstance(
+            url,
+            treeMigrations(),
+            undefined,
+            Effect.sync(() => {
+              attempts += 1;
+            }),
+          );
+          assert.deepStrictEqual(
+            yield* statusWhere(restarted.leader, (status) => status.state === "active"),
+            { state: "active", epoch: 1 },
+          );
+          assert.strictEqual(attempts, 2);
+          yield* restarted.stop;
+        }),
+    );
     it.effect(
       "stays failed and never leads while a migration fails, and leaves the lock to others",
       () =>
@@ -324,10 +367,7 @@ describe("leaderLayer", () => {
           yield* rival.query(`SELECT pg_advisory_unlock(${String(LOCK_KEY)})`);
 
           yield* Ref.set(allowed, true);
-          assert.deepStrictEqual(
-            yield* statusWhere(core.leader, (status) => status.state === "active"),
-            { state: "active", epoch: 2 },
-          );
+          assert.deepStrictEqual(yield* core.leader.status, { state: "standby", epoch: null });
           yield* core.stop;
         }),
     );
