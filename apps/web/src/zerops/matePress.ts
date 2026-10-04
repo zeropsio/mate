@@ -1167,7 +1167,7 @@ async function finishLocked(
     hq: input.hq,
     readObservedServices: async () => [],
   });
-  if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
+  // The harden first, whatever plan this tab keeps: a kept plan never skips the key's lowering.
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
     // The key its Mate named to HQ by its id, hardened by it alone (audit K3); matched on the token
@@ -1192,6 +1192,7 @@ async function finishLocked(
     // HQ reads the key again, and stops saying it reads other projects once it does not.
     if (input.keyWider === true && keyNotLowered === null) await recheckKeyAtHq(input);
   }
+  if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
   return runPress({
     organizationId: input.inputs.organizationId,
     steps,

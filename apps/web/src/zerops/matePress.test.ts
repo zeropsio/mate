@@ -1256,6 +1256,24 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
+  // Security review 8: a stopped press this tab keeps resumes where it stopped, and its Finish
+  // setup still hardens first — the kept plan never skips the key's lowering.
+  it("hardens before it resumes a stopped press this tab keeps", async () => {
+    begin();
+    const calls: Array<string> = [];
+    settlePress(
+      "p-old",
+      { kind: "failed", step: "close-off", reason: "No.", retry: null },
+      async () => {
+        calls.push("resume");
+        return { ok: true, projectId: "p-old" } as never;
+      },
+    );
+    expect(await finish(() => true, calls)).toMatchObject({ ok: true });
+    expect(calls).toEqual(["harden", "resume"]);
+    forgetPress("p-old");
+  });
+
   // Key by id (audit K3): an adopted Mate's key is hardened by the id the Mate named to HQ, where
   // it named one; matched on the token list only where it did not.
   it("hardens an adopted Mate's key by the id HQ names", async () => {
@@ -1510,7 +1528,8 @@ describe("finishMateSetup — the harden path", () => {
         sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true, serviceName: "zcp" });
-    expect(calls).toEqual(["register", "container", "failed mark", "mark"]);
+    // Its harden runs first: a kept plan never skips the key's lowering (security review 8).
+    expect(calls).toEqual(["register", "container", "failed mark", "harden", "mark"]);
     forgetPress("p-old");
   });
 
