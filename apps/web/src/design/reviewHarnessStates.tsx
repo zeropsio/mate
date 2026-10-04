@@ -379,7 +379,7 @@ function recipeDiff(tiers: ReadonlyArray<string>): string {
         "+",
         "+  - hostname: mail",
         "+    type: nodejs@22",
-        "+    buildFromGit: https://gitea.example/snap/mail",
+        `+    buildFromGit: ${HARNESS_HQ}/git/g-snap/mail.git`,
         "+    zeropsSetup: mail",
         "+    enableSubdomainAccess: true",
       ];
@@ -678,7 +678,7 @@ function Settling({
   );
 }
 
-/** How long a settling review's reads take, as a slow Gitea answers. */
+/** How long a settling review's reads take, as a slow HQ answers. */
 const SETTLE_MS = 1_500;
 
 /** Immediate deploy answers, before the same jobs arrive in HQ's stream. */
@@ -1178,12 +1178,12 @@ export function ReviewStage({
   );
 }
 
-/** How long the dialog's change takes to read its files, as a quick Gitea answers. */
+/** How long the dialog's change takes to read its files, as a quick HQ answers. */
 const TRY_READ_MS = 600;
 
 /**
  * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
- * arriving a moment after it opens, as they do from Gitea.
+ * arriving a moment after it opens, as they do from HQ.
  */
 export function ReviewDialogTry() {
   const [from, setFrom] = useState<HTMLElement | null>(null);

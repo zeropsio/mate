@@ -12,7 +12,7 @@
  *
  * It is the app's own palette — the same field, list and keys row
  * (`CommandPaletteContent`) — with the menu's own glyphs in its rows: a
- * Mate's face, a change's checks, a stop's badge. `>` hands over to the
+ * Mate's face, a stop's badge; a change's row is its title and whose it is. `>` hands over to the
  * palette's commands.
  *
  * `useJumpBoxState` keeps what is typed and which Mate the words are for,

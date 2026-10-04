@@ -16,6 +16,7 @@ import { createRoot } from "react-dom/client";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import { enrollmentRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import * as Stream from "effect/Stream";
 
@@ -1293,12 +1294,11 @@ function Harness() {
         {[
           {
             label: "A stand-up that failed before any service, its reason cut short",
-            reason:
-              "Git access has not reached this Mate: GITEA_URL, MATE_BROKER_URL, GITEA_TOKEN are unset in its container, so it cannot push the recipe's repositories",
+            reason: enrollmentRefusalWords("not_this_projects_mate"),
           },
           {
             label: "A stand-up that failed before any service, its reason whole",
-            reason: "Git access has not reached this Mate.",
+            reason: enrollmentRefusalWords("project_gone"),
           },
         ].map(({ label, reason }) => (
           <State key={label} label={label} note="Opening adds only what its line cut short.">

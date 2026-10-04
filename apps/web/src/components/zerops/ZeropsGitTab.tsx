@@ -10,9 +10,9 @@
  * is `gitTab.ts`, which this file does not second-guess.
  *
  * Which repositories there are comes from the project's own topology: a runtime
- * service is a codebase, its hostname is its repository's name in the group's
- * org (`docs/group-repo.md`), and its checkout is `/var/www/{hostname}` — the
- * path zcp mounts every sibling service at.
+ * service is a codebase, its hostname is the name of its repository in the
+ * Mate's application at HQ (`/git/<appId>/<hostname>.git`), and its checkout
+ * is `/var/www/{hostname}` — the path zcp mounts every sibling service at.
  *
  * Checkout-side verbs (`vcs.*`) run in the container as the agent's user, so
  * they are the Mate's owner's alone (D11); *Review* is offered to whoever can
@@ -95,7 +95,7 @@ export interface ZeropsGitTabProps {
   readonly threadRef: ScopedThreadRef | null;
   /** The Mate's application in HQ, which is its group. */
   readonly appId: string | undefined;
-  /** `environments.yaml` on the group repo, when it could be read. */
+  /** The application's environments as HQ records them, when they could be read. */
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   /**
    * The project's changes as its flow carries them, once HQ's stream has told them; `undefined`

@@ -194,11 +194,9 @@ interface Moment {
   readonly services?: ReadonlyArray<ReturnType<typeof app>>;
   readonly deployment: Shown<Deployment> | undefined;
   readonly routes?: number;
-  /** The runner's status in the Gitea project. */
-
   /** The code changes merged by then. */
   readonly merged?: ReadonlyArray<FlowPullRequest>;
-  /** `main`'s head of `appdev` and its statuses, as the deploy half last read them. */
+  /** HQ's deploy job of `main`'s head of `appdev`, as the deploy half last read it. */
   readonly deploy?: HqJob;
 }
 
@@ -329,8 +327,6 @@ function said(moment: Moment) {
 /** The phase another surface's words name, before the first build. */
 function otherPhase(words: string): string {
   if (words.startsWith("Setting up")) return "import";
-  if (words.startsWith("Waiting for the runner"))
-    return `runner: ${words.split(" · ")[1]?.replace(/\.$/u, "") ?? ""}`;
   if (words.startsWith("First deploy on its way")) return "on its way";
   if (words.startsWith("Nothing deployed yet") || words.startsWith("Not deployed yet"))
     return "awaited";
@@ -342,7 +338,6 @@ function otherPhase(words: string): string {
 function linePhase(line: string | null): string {
   if (line === null) return "up";
   if (/making the project|adding the database|adding the app/u.test(line)) return "import";
-  if (line.includes("awaits the runner")) return `runner: ${line.split(" · ")[1] ?? ""}`;
   if (line.includes("first deploy on its way")) return "on its way";
   if (line.includes("awaiting a first deploy")) return "awaited";
   if (line.includes("its first deploy failed")) return "failed";
@@ -354,7 +349,6 @@ function linePhase(line: string | null): string {
 /** The phase a cell names. */
 function cellPhase(cell: string): string {
   if (cell === "Setting up a stage…") return "import";
-  if (cell.startsWith("Waiting for the runner")) return `runner: ${cell.split(" · ")[1] ?? ""}`;
   if (cell === "First deploy on its way") return "on its way";
   if (cell === "Nothing deployed yet") return "awaited";
   if (cell === "First deploy failed") return "failed";
@@ -375,7 +369,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       cell: "Setting up a stage…",
     },
     {
-      // The project listed active, its app not listed yet: still being made, never the runner.
+      // The project listed active, its app not listed yet: still being made.
       t: 696.1,
       services: [],
       deployment: NONE,
@@ -384,7 +378,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       cell: "Setting up a stage…",
     },
     {
-      // The import's own no-code deploy runs (+699.5 → +710.5 s): the cell said the runner.
+      // The import's own no-code deploy runs (+699.5 → +710.5 s): still the import, not a first deploy.
       t: 700.8,
       services: [app("CREATING")],
       deployment: NONE,

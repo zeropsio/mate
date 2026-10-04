@@ -16,7 +16,6 @@
  */
 import { crewLandingWords } from "@t3tools/client-runtime/zerops/crew/phrases";
 
-import { crewCatalogNamesCapability } from "./CrewEditors.logic";
 import type { CrewCommand, CrewLandingMode, CrewRun, ServerProvider } from "@t3tools/contracts";
 
 /** A limit is an amount or *No limit*; the amount keeps its text while *No limit* is picked. */
@@ -99,17 +98,15 @@ function limitOf(kind: CrewLimitKind, typed: string): number | "unlimited" | nul
 /**
  * Why this crew can't keep a dollar budget, when a crewmate's agent doesn't
  * report what it spends (`threadProfile.reportsSpend`); `null` when every one
- * does, the catalog isn't read yet, or it comes from a server older than the
- * capability (the server refuses such a budget itself).
+ * does, or the catalog isn't read yet — the server refuses such a budget itself.
  */
 export function crewSpendBlocker(
   loginIds: ReadonlyArray<string>,
   providers: ReadonlyArray<ServerProvider> | undefined,
 ): string | null {
-  // A server older than the capability kept every budget; so does its dialog.
-  if (providers === undefined || !crewCatalogNamesCapability(providers)) return null;
+  if (providers === undefined) return null;
   for (const loginId of loginIds) {
-    const provider = providers?.find((candidate) => candidate.instanceId === loginId);
+    const provider = providers.find((candidate) => candidate.instanceId === loginId);
     if (provider !== undefined && provider.threadProfile?.reportsSpend !== true) {
       return `${provider.displayName ?? loginId} doesn't report what it spends, so this crew can't keep a budget.`;
     }

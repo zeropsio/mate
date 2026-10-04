@@ -1,21 +1,17 @@
 /**
- * The left menu's tree as it last stood — each organization's projects and Mates, with what a row
- * needs to paint: ids, names, tags (the face, the group, the role), the container, the link —
- * remembered in this browser so a reload paints the menu at once, not an empty one that fills
- * when the listing lands (loading-states pass, 2026-10-03). The rows' words, changes, chips and
- * members stay `menuMemory.ts`'s; this is the tree they hang on.
+ * The left menu's tree as it last stood — each organization's Mates, with the environment each
+ * one's conversation opened in — remembered in this browser so the open row keeps its highlight
+ * while its link is not made again (`projectOpenedIn`). Which rows the menu draws is HQ's
+ * (`useZeropsMenu.tsx`), from the structure `menuMemory.ts` remembers; the rows' words, changes,
+ * chips and members are `menuMemory.ts`'s too.
  *
  * Kept per account (`accountLocalStorage`: another person on this browser reads nothing) and per
  * organization, bounded — a few organizations, the newest kept, a cap on rows and bytes — and
  * forgotten when the account closes. Nothing live is kept: a row's dots, timers and status come
  * from its conversation, which a remembered row has not heard yet.
  */
-import { placementsOf, placeProject } from "@t3tools/client-runtime/zerops/hq";
-import { menuMemory } from "./menuMemory";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { CandidateRow, HeldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import * as Schema from "effect/Schema";
 
 import { accountLocalStorage, currentAccountId, onAccountLifetimeClose } from "./accountLifetime";
@@ -133,23 +129,6 @@ export function skeletonRowOf(
   };
 }
 
-/** A remembered row as the candidate it was: as read when it was drawn. */
-export function candidateOfSkeleton(row: SkeletonRow): CandidateRow {
-  return {
-    key: row.key,
-    group: row.group,
-    presence: "known",
-    ...optional("missingContainer", row.missingContainer),
-    ...optional(
-      "creationFailed",
-      row.creationFailed === undefined ? undefined : { message: row.creationFailed.message },
-    ),
-    ...optional("service", row.service),
-    ...optional("containerOrigin", row.containerOrigin),
-    project: row.project,
-  };
-}
-
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -223,149 +202,6 @@ export function decodeMenuSkeleton(stored: string | null): MenuSkeleton {
   }
 }
 
-/** What the menu draws of its listing and its memory (`menuRowsOf`). */
-export interface MenuRowsInput<Row extends CandidateRow> {
-  readonly listing: Shown<ReadonlyArray<Row>>;
-  readonly held: HeldCandidates<Row>;
-  /** The organization's tree as this browser remembers it (`rememberedMenuCandidates`). */
-  readonly remembered: ReadonlyArray<Row> | undefined;
-  /**
-   * The listing is the organization's in view: false for the moment a switch of organization
-   * leaves the listing on the last one's.
-   */
-  readonly current: boolean;
-  /**
-   * The grace `menuWiring` keys has run out (`STILL_READING_PATIENCE_MS`): a known listing not
-   * whole and read holds what there is — a project withheld for good, or one whose container is
-   * never read — and a read failed for good says so alone.
-   */
-  readonly graceOver: boolean;
-  /**
-   * The listing lacks nothing still on its way for this person (`listingWholeForPerson`): every
-   * project it does not show is one they can never see or that can never be read.
-   */
-  readonly whole: boolean;
-}
-
-export interface MenuRows<Row> {
-  readonly rows: ReadonlyArray<Row>;
-  /** Nothing is missing from `rows`: the one licence to say "none". Never from memory. */
-  readonly complete: boolean;
-  /** Some of `rows` are this browser's memory: what the menu draws teaches its memory nothing. */
-  readonly fromMemory: boolean;
-  /** The tree to remember of this draw, once its listing is whole; null until then. */
-  readonly toRemember: ReadonlyArray<Row> | null;
-}
-
-/**
- * The rows the menu draws:
- * - while the listing holds no rows — unread, being read, its read failed and retrying, its
- *   access not verified yet — the tree it last drew, where it remembers one, so a first read
- *   that keeps failing never takes it back between retries (its notice stands under the rows);
- * - a known listing draws its rows, each one whose container is not read yet as remembered, and,
- *   while it is known only in part, the remembered projects it does not hold yet — none vanishes
- *   to come back — until its grace is over, when it is what there is;
- * - a whole, read listing replaces the memory in place, and a lapse says so as it always did;
- * - and for the moment the listing is the last organization's, the tree of the one in view.
- * Only a whole listing is remembered — its rows read, and as remembered those not read yet — so a
- * project never read keeps neither the menu still nor the organization's other changes unkept.
- */
-export function menuRowsOf<Row extends CandidateRow>(input: MenuRowsInput<Row>): MenuRows<Row> {
-  const { listing, held } = input;
-  const remembered = input.remembered ?? [];
-  const live: MenuRows<Row> = {
-    rows: held.rows,
-    complete: held.complete,
-    fromMemory: false,
-    toRemember: null,
-  };
-  const fromMemory: MenuRows<Row> = {
-    rows: remembered,
-    complete: false,
-    fromMemory: true,
-    toRemember: null,
-  };
-  if (!input.current)
-    return remembered.length === 0 ? { ...live, rows: [], complete: false } : fromMemory;
-  if (listing.state !== "known") {
-    const holds =
-      listing.state === "unread" ||
-      listing.state === "reading" ||
-      (listing.state === "failed" && (listing.retryAtMs !== null || !input.graceOver)) ||
-      (listing.state === "withheld" && listing.reason === "access-unverified");
-    return holds && remembered.length > 0 ? fromMemory : live;
-  }
-  const rememberedOf = (projectId: string) =>
-    remembered.filter((row) => row.project.id === projectId);
-  const wholeList = listing.coverage === "complete" || input.whole;
-  const toRemember = wholeList
-    ? held.rows.flatMap((row) => (row.presence === "known" ? [row] : rememberedOf(row.project.id)))
-    : null;
-  if (held.complete || input.graceOver || remembered.length === 0) return { ...live, toRemember };
-  let kept = false;
-  const rows = held.rows.flatMap((row) => {
-    if (row.presence === "known") return [row];
-    const same = rememberedOf(row.project.id);
-    if (same.length === 0) return [row];
-    kept = true;
-    return same;
-  });
-  if (!wholeList) {
-    const listed = new Set(held.rows.map((row) => row.project.id));
-    const unlisted = remembered.filter((row) => !listed.has(row.project.id));
-    if (unlisted.length > 0) {
-      kept = true;
-      rows.push(...unlisted);
-    }
-  }
-  return kept ? { rows, complete: false, fromMemory: true, toRemember } : { ...live, toRemember };
-}
-
-/** How the menu reads its listing against the organization in view (`menuWiring`). */
-export interface MenuWiring {
-  /** The listing is the organization's in view (`MenuRowsInput.current`). */
-  readonly current: boolean;
-  /** The organization what the menu draws is remembered under: the listing's, while current. */
-  readonly rememberUnder: string | null;
-  /**
-   * What the grace before a listing is taken as it is counts for — its organization and what it
-   * waits through — so a switch, or a wait of another kind, starts one of its own; null while
-   * nothing waits.
-   */
-  readonly graceKey: string | null;
-}
-
-/**
- * Which organization the listing is — the inventory's, a commit behind the session's on a
- * switch — and what its grace counts for: a known listing not whole and read, or a read failed
- * for good.
- */
-export function menuWiring(input: {
-  /** The organization in view (the session's). */
-  readonly organizationId: string | undefined;
-  /** The organization the listing is of (the inventory's). */
-  readonly listingOrganizationId: string | undefined;
-  readonly listing: Shown<ReadonlyArray<unknown>>;
-  /** The listing is whole and every row read (`HeldCandidates.complete`). */
-  readonly complete: boolean;
-}): MenuWiring {
-  const organization = input.organizationId;
-  const current = organization !== undefined && input.listingOrganizationId === organization;
-  if (!current) return { current: false, rememberUnder: null, graceKey: null };
-  const { listing } = input;
-  const waits =
-    listing.state === "known" && !input.complete
-      ? "known"
-      : listing.state === "failed" && listing.retryAtMs === null
-        ? "failed"
-        : null;
-  return {
-    current,
-    rememberUnder: organization,
-    graceKey: waits === null ? null : `${organization}:${waits}`,
-  };
-}
-
 // ── This browser's memory ───────────────────────────────────────────────────────────────────
 
 let held: { readonly account: string; skeleton: MenuSkeleton } | null = null;
@@ -388,11 +224,6 @@ let pending = new Map<
   { readonly candidates: ReadonlyArray<ZeropsCandidate>; readonly atMs: number }
 >();
 let writing: ReturnType<typeof setTimeout> | null = null;
-const drawn = new WeakMap<
-  ReadonlyArray<SkeletonRow>,
-  { readonly structure: unknown; readonly candidates: ReadonlyArray<CandidateRow> }
->();
-
 function readStored(): MenuSkeleton {
   try {
     return decodeMenuSkeleton(accountLocalStorage.getItem(MENU_SKELETON_STORAGE_KEY));
@@ -410,37 +241,6 @@ export function menuSkeletonSnapshot(): MenuSkeleton {
   if (account === null) return EMPTY_MENU_SKELETON;
   if (held?.account !== account) held = { account, skeleton: readStored() };
   return held.skeleton;
-}
-
-/** The tree this browser remembers drawing for the organization, as candidates — the same array each call. */
-export function rememberedMenuCandidates(
-  organizationId: string | undefined,
-): ReadonlyArray<CandidateRow> | undefined {
-  return rememberedCandidatesOf(menuSkeletonSnapshot(), organizationId);
-}
-
-/** An organization's remembered tree in a memory, as candidates — the same array for the same rows. */
-export function rememberedCandidatesOf(
-  skeleton: MenuSkeleton,
-  organizationId: string | undefined,
-): ReadonlyArray<CandidateRow> | undefined {
-  if (organizationId === undefined) return undefined;
-  const rows = skeleton.organizations[organizationId]?.rows;
-  if (rows === undefined) return undefined;
-  const structure = menuMemory().structures[organizationId];
-  const cached = drawn.get(rows);
-  let candidates = cached?.structure === structure ? cached?.candidates : undefined;
-  if (candidates === undefined) {
-    const placements = structure === undefined ? null : placementsOf(structure);
-    candidates = rows.map((row) => {
-      const candidate = candidateOfSkeleton(row);
-      return placements === null
-        ? candidate
-        : { ...candidate, project: placeProject(candidate.project, placements) };
-    });
-    drawn.set(rows, { structure, candidates });
-  }
-  return candidates;
 }
 
 /**

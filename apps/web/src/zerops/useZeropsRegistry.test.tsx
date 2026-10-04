@@ -133,7 +133,7 @@ describe("useZeropsRegistry", () => {
       expected: { registry: KNOWN_REGISTRY, loading: false },
     },
     {
-      name: "an organization with no HQ has the empty registry, known",
+      name: "an empty structure from HQ is the empty registry, known",
       views: [view({ structure: { ungrouped: [], apps: [] } })],
       expected: { registry: { groups: [] }, loading: false },
     },

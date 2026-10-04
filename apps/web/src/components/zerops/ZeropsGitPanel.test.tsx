@@ -8,7 +8,7 @@ const BLOCK: GitBlock = {
   repository: "api",
   branch: "feature/invoices",
   baseBranch: "main",
-  verdict: { tone: "ok", text: "The checks passed. Nothing is stopping it.", ask: undefined },
+  verdict: { tone: "off", text: "Nothing is stopping it.", ask: undefined },
   checkoutLine: "feature/invoices ↑3",
   state: "in-review",
   changed: [],

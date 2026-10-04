@@ -465,9 +465,9 @@ describe("resultRows", () => {
         notDone: [
           {
             key: "op:i1",
-            subject: "gitea",
+            subject: "cache",
             word: "Import failed",
-            reason: "Gitea isn't connected yet",
+            reason: "Zerops has no service type valkey@9",
             at: at(2),
           },
         ],
@@ -475,7 +475,7 @@ describe("resultRows", () => {
       }),
       facts: {},
       rows: [
-        ["waiting", "attention", "gitea", "Import failed", "Gitea isn't connected yet"],
+        ["waiting", "attention", "cache", "Import failed", "Zerops has no service type valkey@9"],
         ["waiting", "attention", "Write the tests", "Not done"],
       ],
     },
@@ -483,7 +483,7 @@ describe("resultRows", () => {
       name: "once the person writes again, what waited on them is answered",
       outcome: outcome({
         notDone: [
-          { key: "op:i1", subject: "gitea", word: "Import failed", reason: null, at: at(2) },
+          { key: "op:i1", subject: "cache", word: "Import failed", reason: null, at: at(2) },
         ],
         planLeft: ["Write the tests"],
         later: later({ answered: true }),
@@ -785,18 +785,18 @@ describe("resultRows", () => {
         notDone: [
           {
             key: "op:i1",
-            subject: "gitea",
+            subject: "cache",
             word: "Import failed",
-            reason: "Gitea isn't connected yet",
+            reason: "Zerops has no service type valkey@9",
             at: at(2),
           },
         ],
       }),
       facts: {},
       problem: {
-        what: "Import failed: gitea",
+        what: "Import failed: cache",
         at: at(2),
-        error: "Gitea isn't connected yet",
+        error: "Zerops has no service type valkey@9",
         ask: "Find out why it didn't go through, fix it, and try again.",
       },
     },

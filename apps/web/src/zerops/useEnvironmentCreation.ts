@@ -198,7 +198,6 @@ export function useEnvironmentCreation(): (
         agents: await readGroupAgents(request.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
-        register: true,
         ...(intent === undefined ? {} : { birth: intent }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };

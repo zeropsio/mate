@@ -146,11 +146,11 @@ describe("a first-deploy failure delivered by HQ", () => {
         ...emptyDeploy,
         sha: "old",
         state: "refused",
-        reason: "No workflow",
+        reason: "stage's deploy token was refused: userUnauthorized",
         at: iso(0),
         endedAt: iso(0),
       }).first,
-    ).toEqual({ kind: "failed", reason: "No workflow" });
+    ).toEqual({ kind: "failed", reason: "stage's deploy token was refused: userUnauthorized" });
   });
   it("calls nothing failed of a job HQ skipped", () => {
     expect(

@@ -442,9 +442,9 @@ const service = (
 ): EnvironmentServiceState => ({
   hostname,
   repository: `${hostname}dev`,
-  appVersionName: [fullSha(seed), name, name === undefined ? undefined : "gitea"]
-    .filter((part) => part !== undefined)
-    .join(" "),
+  // As HQ names the version it made (`versionName`): its release tag, else its branch, and the
+  // commit's short sha.
+  appVersionName: `${name ?? "main"} ${fullSha(seed).slice(0, 7)}`,
   deploy: { latest: deployRecord(fullSha(seed), state), live: null },
 });
 
