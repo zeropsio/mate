@@ -185,6 +185,36 @@ describe("a project renamed by the project's one writer", () => {
     expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate"]]);
   });
 
+  // Security review 12: a rename puts back the tags of its own fresh read, under the lock, and its
+  // read-back checks the Mate's marker too — a whole-record write from another browser in between
+  // that dropped it fails visibly, never as a rename that went through.
+  it("fails visibly where another writer's record dropped the Mate's marker", async () => {
+    let project: ZeropsProject = {
+      id: "p1",
+      name: "One",
+      status: "ACTIVE",
+      tagList: ["mate", "person:own"],
+    };
+    const log: Array<string> = [];
+    const writer = makeProjectTagWriter({
+      source: {
+        fetchProject: async () => {
+          log.push("GET");
+          return project;
+        },
+        writeProject: async (_read, record) => {
+          log.push("PUT");
+          // Ours lands, then another browser's record: our name, its tags without the marker.
+          project = { ...project, name: record.name, tagList: ["person:own"] };
+          return project;
+        },
+      },
+    });
+
+    await expect(writer.rename("p1", "Nova")).rejects.toMatchObject({ kind: "rejected" });
+    expect(log).toEqual(["GET", "PUT", "GET"]);
+  });
+
   it("names it again where another writer's record replaced the name", async () => {
     const rest = platform(["mate"], { afterWrite: (tags: ReadonlyArray<string>) => tags });
     const writer = makeProjectTagWriter({ source: rest.source });
