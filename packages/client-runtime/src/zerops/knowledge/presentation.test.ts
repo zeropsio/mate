@@ -56,6 +56,16 @@ interface CopyRow {
 /** DESIGN §3.4, one row per line of the rendering table. */
 const RENDERING: ReadonlyArray<CopyRow> = [
   {
+    name: "queued admission: Waiting for a data slot, without pretending a read started",
+    shown: { state: "unread", waitingFor: "data-slot" },
+    expected: {
+      region: "message",
+      message: { text: "Waiting for a data slot…", afterMs: 0, tone: "quiet" },
+      affordance: null,
+      current: false,
+    },
+  },
+  {
     name: "unread: a placeholder, nothing for 400 ms, then Checking…",
     shown: { state: "unread", waitingFor: null },
     expected: {
@@ -367,6 +377,7 @@ const PREREQUISITES: ReadonlyArray<Prerequisite | null> = [
   "presence",
   "visible",
   "online",
+  "data-slot",
 ];
 const EVIDENCE: ReadonlyArray<AbsenceEvidence> = [
   "direct-not-found",

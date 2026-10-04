@@ -295,13 +295,11 @@ export interface StopReads {
   readonly stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>;
 }
 
-/** The platform took no demand for a stop's running processes: why, and when it is asked again. */
+/** The platform took no demand for a stop's running processes, until a manual Again. */
 export interface ProcessRefusal {
   readonly reason: LeaseAdmissionError["reason"];
   /** How many times in a row it refused. */
   readonly attempt: number;
-  /** `null` for a demand it will never admit. */
-  readonly retryAtMs: number | null;
 }
 
 /** A `stack.build` the platform reports running, and the app version it builds (A11). */
@@ -550,7 +548,7 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
             kind: "failed",
             failure: { kind: "refused", code: reads.refused.reason, words: "" },
             attempts: reads.refused.attempt,
-            retryAtMs: reads.refused.retryAtMs,
+            retryAtMs: null,
           },
     nowMs,
   };

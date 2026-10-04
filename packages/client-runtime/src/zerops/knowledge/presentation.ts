@@ -110,6 +110,7 @@ const WAITING_FOR: Record<Prerequisite, string> = {
   "mate-session": "Waiting for this Mate to connect…",
   presence: "Looking for this Mate…",
   visible: "Paused while this tab is in the background.",
+  "data-slot": "Waiting for a data slot…",
   online: "Waiting for a connection…",
 };
 
@@ -185,7 +186,11 @@ export function knownPresentation<T>(
     case "unread":
       return shown.waitingFor === null
         ? checking(surface)
-        : { ...NOTHING, message: say(WAITING_FOR[shown.waitingFor], "quiet") };
+        : {
+            ...NOTHING,
+            region: shown.waitingFor === "data-slot" ? "message" : "placeholder",
+            message: say(WAITING_FOR[shown.waitingFor], "quiet"),
+          };
     case "reading":
       return checking(surface);
     case "failed":

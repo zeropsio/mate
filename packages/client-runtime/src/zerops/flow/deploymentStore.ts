@@ -156,7 +156,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       () => publish(entry),
       (reason) => {
         if (disposed || entries.get(projectKeyOf(entry.project)) !== entry) return;
-        entry.refused = { reason, attempt: ++entry.refusals, retryAtMs: null };
+        entry.refused = { reason, attempt: ++entry.refusals };
         publish(entry);
       },
     );
