@@ -26,6 +26,7 @@ import { deleteMateConfirmed, type DeleteMateWords } from "./ZeropsDeleteMateDia
 
 export function ZeropsDeleteMateForm({
   name,
+  cleanup = false,
   words,
   pending,
   error,
@@ -35,6 +36,8 @@ export function ZeropsDeleteMateForm({
   /** The Mate's name, as the field asks for it. */
   readonly name: string;
   readonly words: DeleteMateWords;
+  /** The project is gone; this press retires only its retained access key. */
+  readonly cleanup?: boolean;
   /** The platform is answering the press. */
   readonly pending: boolean;
   /** The platform's reason for refusing the last press; `null` where it did not. */
@@ -44,7 +47,7 @@ export function ZeropsDeleteMateForm({
 }) {
   const id = useId();
   const [typed, setTyped] = useState("");
-  const confirmed = deleteMateConfirmed(typed, name);
+  const confirmed = cleanup || deleteMateConfirmed(typed, name);
 
   return (
     <form
@@ -57,26 +60,34 @@ export function ZeropsDeleteMateForm({
       }}
     >
       <DialogHeader>
-        <DialogTitle>{words.title}</DialogTitle>
+        <DialogTitle>{cleanup ? `${name} was deleted` : words.title}</DialogTitle>
         <DialogDescription>
-          <span className="block text-pretty">{words.body}</span>
+          <span className="block text-pretty">
+            {cleanup
+              ? "Its Zerops access key could not be retired. Try again to finish removing its access."
+              : words.body}
+          </span>
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-name`}>{words.label}</Label>
-          <Input
-            aria-describedby={`${id}-reason`}
-            autoComplete="off"
-            autoFocus
-            id={`${id}-name`}
-            onChange={(event) => {
-              setTyped(event.target.value);
-            }}
-            readOnly={pending}
-            spellCheck={false}
-            value={typed}
-          />
+          {!cleanup ? (
+            <>
+              <Label htmlFor={`${id}-name`}>{words.label}</Label>
+              <Input
+                aria-describedby={`${id}-reason`}
+                autoComplete="off"
+                autoFocus
+                id={`${id}-name`}
+                onChange={(event) => {
+                  setTyped(event.target.value);
+                }}
+                readOnly={pending}
+                spellCheck={false}
+                value={typed}
+              />
+            </>
+          ) : null}
           <p className="min-h-4 text-xs text-status-failed-text" id={`${id}-reason`} role="alert">
             {error}
           </p>
@@ -84,7 +95,7 @@ export function ZeropsDeleteMateForm({
       </DialogPanel>
       <DialogFooter>
         <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
-          Cancel
+          {cleanup ? "Close" : "Cancel"}
         </Button>
         <Button
           aria-busy={pending || undefined}
@@ -94,10 +105,10 @@ export function ZeropsDeleteMateForm({
         >
           <span className="grid">
             <span className={cn("col-start-1 row-start-1", pending && "invisible")}>
-              {words.submit}
+              {cleanup ? "Try again" : words.submit}
             </span>
             <span className={cn("col-start-1 row-start-1", !pending && "invisible")}>
-              {words.pending}
+              {cleanup ? "Retiring access…" : words.pending}
             </span>
           </span>
         </Button>

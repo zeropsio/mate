@@ -50,3 +50,7 @@ Mate reports uncertainty rather than assuming the operation failed or creating a
 If a provider sign-in says it could not be recorded, that attempt did not finish. Press **Try again**
 to sign in again after the server can write its record. The login cannot start personal turns until
 its signer is recorded.
+
+Deleting a Mate also retires the Zerops key its container used. If HQ cannot identify that key,
+the dialog shows the failure before deleting the project. If key retirement fails after the project
+is deleted, the dialog says the Mate was deleted and keeps **Try again** for retiring that key only.
