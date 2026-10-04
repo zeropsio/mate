@@ -29,6 +29,7 @@ import {
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { HQ_PROJECT_NAME, type HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -60,6 +61,8 @@ export function mateOutsideHq(
 export const NOT_IN_HQ_LINE = "Not in this HQ";
 
 export interface ZeropsRowInput {
+  /** What says a project is its person's own (`plainZeropsProject`); none, and nothing is. */
+  readonly plainEvidence?: PlainProjectEvidence | undefined;
   /** A current HQ structure places no record here, and no local birth is in progress. */
   readonly outsideHq?: boolean;
   readonly candidate: ZeropsRowCandidate;
@@ -341,17 +344,70 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
 }
 
 /**
- * An existing plain Zerops project: no Mate, no place in HQ, and none of the `mate:` tags an
- * earlier group or the organization's HQ (`mate:hq`) carries — a project its person made for
- * themselves, like "shop", which *Set up Mate* may bring a Mate into (the 09-05 offer).
+ * What says a project is its person's own — evidence the caller gathers once for the page: HQ's
+ * records, its anchors, its age and this tab's own presses (`plainZeropsProject`).
  */
-export function plainZeropsProject(project: ZeropsCandidate["project"]): boolean {
+export interface PlainProjectEvidence {
+  /** Every project HQ's structure holds any record of (`hqRecordedProjects`). */
+  readonly hqRecords: ReadonlySet<string>;
+  /** The projects the organization's HQ anchors name, official or not: the HQ carries no tag. */
+  readonly hqAnchors: ReadonlySet<string>;
+  /**
+   * When the organization's HQ project was made; undefined where it is not known. A project made
+   * since may be a stage or a production 0.13 made — they carry no tag, and attach to HQ only in
+   * a later step that may not have landed, or been undone.
+   */
+  readonly hqBornAt: string | undefined;
+  /** The projects this tab is making or finishing. */
+  readonly local: ReadonlySet<string>;
+}
+
+/**
+ * An existing plain Zerops project, on positive evidence only (security review 1, 11): no Mate, no
+ * place in HQ and no record of it there at all, none of the `mate:` tags an earlier group carries,
+ * not the organization's HQ by its anchors or its name, not one this tab is making, and made
+ * before the organization's HQ — so no flow of 0.13's can have made it a stage or a production.
+ * Anything nothing can tell apart is not plain.
+ */
+export function plainZeropsProject(
+  project: ZeropsCandidate["project"],
+  evidence: PlainProjectEvidence | undefined,
+): boolean {
+  if (evidence === undefined || evidence.hqBornAt === undefined) return false;
+  const created = Date.parse(project.created ?? "");
+  const hqBorn = Date.parse(evidence.hqBornAt);
   return (
     project.hq === undefined &&
     !(project.tagList ?? []).some(
       (tag) => tag === MATE_MARKER_TAG || tag.startsWith(`${MATE_MARKER_TAG}:`),
-    )
+    ) &&
+    project.name !== HQ_PROJECT_NAME &&
+    !evidence.hqRecords.has(project.id) &&
+    !evidence.hqAnchors.has(project.id) &&
+    !evidence.local.has(project.id) &&
+    !Number.isNaN(created) &&
+    !Number.isNaN(hqBorn) &&
+    created < hqBorn
   );
+}
+
+/**
+ * Every project HQ's structure holds any record of: placed in an application or none, a tool, a
+ * birth bound to it, an environment, or one whose removal HQ has not finished.
+ */
+export function hqRecordedProjects(structure: HqStructure): ReadonlySet<string> {
+  const recorded = new Set<string>();
+  for (const tool of structure.tools ?? []) recorded.add(tool.projectId);
+  for (const mate of structure.ungrouped) recorded.add(mate.projectId);
+  for (const app of structure.apps) {
+    for (const project of app.projects) recorded.add(project.projectId);
+    for (const id of app.contents?.deletingProjectIds ?? []) recorded.add(id);
+    for (const environment of app.environments ?? []) recorded.add(environment.projectId);
+    for (const birth of app.births ?? []) {
+      if (birth.projectId != null) recorded.add(birth.projectId);
+    }
+  }
+  return recorded;
 }
 
 /**
@@ -593,7 +649,8 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
         (role === "dev" ||
           role === "devstage" ||
           hasMate(candidate) ||
-          (can.setUpPlainProject === true && plainZeropsProject(candidate.project)))
+          (can.setUpPlainProject === true &&
+            plainZeropsProject(candidate.project, input.plainEvidence)))
       ) {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }

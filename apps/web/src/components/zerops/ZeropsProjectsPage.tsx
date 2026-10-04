@@ -183,6 +183,7 @@ import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
+import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
@@ -226,6 +227,8 @@ import {
   groupAddsOffered,
   isZeropsToolCandidate,
   mateRowCan,
+  hqRecordedProjects,
+  type PlainProjectEvidence,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -999,6 +1002,31 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The organization's HQ, where the registry lives: its project is no project of the page's.
   const accountHq = useAccountHq(activeOrganization?.id);
   const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
+  // What says a project is its person's own, for Set up Mate on it (`plainZeropsProject`): HQ's
+  // records of every kind, its anchors, its age, and what this tab is making — none while HQ's
+  // structure is not known, so nothing is plain then.
+  const knownStructure = hqStructure?.structure ?? null;
+  const plainEvidence = useMemo((): PlainProjectEvidence | undefined => {
+    if (!hqKnown || knownStructure === null) return undefined;
+    const anchors =
+      accountHq.hq.kind === "official"
+        ? [accountHq.hq.projectId]
+        : accountHq.hq.kind === "unclear"
+          ? accountHq.hq.projectIds
+          : [];
+    const official = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
+    return {
+      hqRecords: hqRecordedProjects(knownStructure),
+      hqAnchors: new Set(anchors),
+      hqBornAt: candidates.find((candidate) => candidate.project.id === official)?.project.created,
+      local: new Set([
+        ...presses.map((press) => press.projectId),
+        ...Object.values(made).flatMap((birth) =>
+          birth.projectId === null ? [] : [birth.projectId],
+        ),
+      ]),
+    };
+  }, [accountHq.hq, candidates, hqKnown, knownStructure, made, presses]);
 
   const rowInput = (
     candidate: ZeropsCandidatePresentation,
@@ -1026,6 +1054,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
       can: mateRowCan(asker, candidate.project.id, hqKnown),
+      plainEvidence,
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),
@@ -1033,6 +1062,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   };
 
   const [settingUpKey, setSettingUpKey] = useState<string | null>(null);
+  /** The project a Set up Mate waits on its confirm for (`ZeropsSetUpMateDialog`). */
+  const [confirmingSetUp, setConfirmingSetUp] = useState<ZeropsCandidate | null>(null);
 
   /**
    * The agents a group's existing environments are signed in with, so a Mate
@@ -1430,8 +1461,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         }
         open(candidate);
         return;
+      // On an existing project: what it adds and what restarts, confirmed first.
       case "set-up-mate":
-        void setUpMate(candidate);
+        setConfirmingSetUp(candidate);
         return;
       // A harmless re-probe (H9) — `unreachable`/`stalled` cannot be told
       // apart from `predates-mate` by a browser, so nothing here writes;
@@ -2661,6 +2693,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         ungrouped={ungroupedRows}
       />
       {mateActions.dialogs}
+      {confirmingSetUp === null ? null : (
+        <ZeropsSetUpMateDialog
+          name={confirmingSetUp.project.name}
+          onCancel={() => setConfirmingSetUp(null)}
+          onConfirm={() => {
+            const candidate = confirmingSetUp;
+            setConfirmingSetUp(null);
+            void setUpMate(candidate);
+          }}
+        />
+      )}
       {rowDialog?.kind === "delete-group" ? (
         <ZeropsDeleteProjectDialog
           group={rowDialog.group}
