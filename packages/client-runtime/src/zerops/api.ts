@@ -13,6 +13,7 @@
  */
 
 import { isThrowawayName } from "../authorization/zeropsThrowaway.ts";
+import { readProjectProcesses, type ActivityProcess } from "./activity/dto.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
@@ -2631,6 +2632,29 @@ export class ZeropsApiClient {
       { operationKind: "project-write" },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /**
+   * `GET /project/{id}/process` — the project's newest twenty processes, each with its app version
+   * and why it failed: what HQ's update reads of its `hq` service's deploys (`hq/update.ts`).
+   */
+  async listProjectProcesses(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ActivityProcess>> {
+    const document = await this.#request<unknown>(
+      `/project/${projectId}/process?limit=20`,
+      { signal: signal ?? null },
+      { operationKind: "read" },
+    );
+    const processes = readProjectProcesses(document);
+    if (processes === undefined) {
+      throw new ZeropsApiError(
+        "Zerops answered the project's processes in an unknown shape.",
+        "unexpected",
+      );
+    }
+    return processes;
   }
 
   /** `GET /process/{id}` — where one process stands (`PENDING`, `RUNNING`, `FINISHED`, …). */

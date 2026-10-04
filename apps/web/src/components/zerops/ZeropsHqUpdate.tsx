@@ -1,0 +1,177 @@
+/**
+ * HQ's update, for an owner or an admin (`ZeropsHqTool`): offered when HQ's health names an older
+ * Core than this app carries, so the offer costs no read of its own. Opened, it reads where HQ
+ * stands from Zerops — its `hq` service's app version and builds — and offers the one action that
+ * fits. *Update HQ* deploys the carried Core with the person's own token and follows that deploy;
+ * once it ends Zerops is read again. Nothing reads or retries while it is closed.
+ */
+import {
+  readHqUpdate,
+  runHqUpdate,
+  type HqUpdateOutcome,
+  type HqUpdateState,
+} from "@t3tools/client-runtime/zerops/hq";
+import { useCallback, useEffect, useState } from "react";
+
+import { readBundledCore } from "~/zerops/accountHq";
+import { appBasePath } from "~/basePath";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import { hqUpdateWords } from "./ZeropsHqUpdate.logic";
+
+type Read =
+  | { readonly kind: "reading" }
+  | { readonly kind: "read"; readonly state: HqUpdateState }
+  | { readonly kind: "unread"; readonly reason: string };
+
+export function ZeropsHqUpdatePanel({
+  read,
+  run,
+  onBusy,
+}: {
+  /** Where HQ stands, read from Zerops. */
+  readonly read: () => Promise<HqUpdateState>;
+  /** Deploys the carried Core and follows it to its end. */
+  readonly run: () => Promise<HqUpdateOutcome>;
+  readonly onBusy?: (busy: boolean) => void;
+}) {
+  const [shown, setShown] = useState<Read>({ kind: "reading" });
+  const [running, setRunning] = useState(false);
+  const [stopped, setStopped] = useState<string | null>(null);
+
+  /** Zerops' answer, as the panel shows it. */
+  const settle = useCallback(
+    () =>
+      read().then(
+        (state): Read => ({ kind: "read", state }),
+        (cause: unknown): Read => ({
+          kind: "unread",
+          reason: cause instanceof Error ? cause.message : "Zerops could not be reached.",
+        }),
+      ),
+    [read],
+  );
+
+  useEffect(() => {
+    let live = true;
+    void settle().then((next) => {
+      if (live) setShown(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, [settle]);
+
+  const update = async () => {
+    setRunning(true);
+    setStopped(null);
+    onBusy?.(true);
+    const outcome = await run();
+    setStopped(outcome.ok ? null : outcome.reason);
+    setRunning(false);
+    onBusy?.(false);
+    setShown({ kind: "reading" });
+    setShown(await settle());
+  };
+
+  const words = shown.kind === "read" ? hqUpdateWords(shown.state) : null;
+  const line = running
+    ? "Updating HQ… It keeps serving until the new Core answers."
+    : shown.kind === "reading"
+      ? "Reading HQ from Zerops…"
+      : shown.kind === "unread"
+        ? `Couldn't read HQ from Zerops: ${shown.reason}`
+        : words!.line;
+  const action = words?.action ?? null;
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Update HQ</DialogTitle>
+        <DialogDescription>
+          HQ moves to the Core this app carries. It keeps serving while the new Core starts, and
+          stays on the Core it runs if the new one does not start.
+        </DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <div className="space-y-2">
+          <p className="text-sm" role="status">
+            {line}
+          </p>
+          {stopped === null ? null : (
+            <p className="text-sm text-destructive-foreground">{stopped}</p>
+          )}
+        </div>
+      </DialogPanel>
+      <DialogFooter>
+        <DialogClose render={<Button disabled={running} variant="ghost" />}>Close</DialogClose>
+        {action === null ? null : (
+          <Button data-hq-update-action disabled={running} onClick={() => void update()}>
+            {action}
+          </Button>
+        )}
+      </DialogFooter>
+    </>
+  );
+}
+
+/** The offer on the Tools row, and the dialog it opens. */
+export function ZeropsHqUpdate({
+  projectId,
+  carried,
+}: {
+  /** HQ's project. */
+  readonly projectId: string;
+  /** The Core this app carries. */
+  readonly carried: string;
+}) {
+  const { client } = useZeropsSession();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const read = useCallback(
+    () => readHqUpdate({ platform: client, projectId, carried }),
+    [carried, client, projectId],
+  );
+  const run = useCallback(
+    () =>
+      runHqUpdate({
+        platform: client,
+        projectId,
+        core: () =>
+          readBundledCore((input, init) => fetch(input, init), `${appBasePath()}/hq-core`),
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        now: () => Date.now(),
+      }),
+    [client, projectId],
+  );
+  return (
+    <>
+      <Button onClick={() => setOpen(true)} size="xs" variant="link">
+        Update available
+      </Button>
+      <Dialog
+        onOpenChange={(next) => {
+          // An update under way is seen through: its end has somewhere to land.
+          if (!next && busy) return;
+          setOpen(next);
+        }}
+        open={open}
+      >
+        <DialogPopup className="max-w-md">
+          {open ? <ZeropsHqUpdatePanel onBusy={setBusy} read={read} run={run} /> : null}
+        </DialogPopup>
+      </Dialog>
+    </>
+  );
+}

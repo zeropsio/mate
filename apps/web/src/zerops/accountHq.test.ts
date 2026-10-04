@@ -38,7 +38,12 @@ describe("nextHqStanding", () => {
   const down = { kind: "unreachable" } as const;
   const unchecked = { kind: "unchecked", build: "b1" } as const;
   it.each<[string, HqStanding, Parameters<typeof nextHqStanding>[1], HqStanding]>([
-    ["a first answer as the official HQ", { kind: "unknown" }, healthy, { kind: "healthy" }],
+    [
+      "a first answer as the official HQ",
+      { kind: "unknown" },
+      healthy,
+      { kind: "healthy", build: "b1" },
+    ],
     [
       "a first read that fails: unavailable from now",
       { kind: "unknown" },
@@ -51,20 +56,32 @@ describe("nextHqStanding", () => {
       { kind: "not-ready", state: "standby", official: "unknown" },
       { kind: "unavailable", since: 1_000 },
     ],
-    ["HQ back", { kind: "unavailable", since: 1_000 }, healthy, { kind: "healthy" }],
+    ["HQ back", { kind: "unavailable", since: 1_000 }, healthy, { kind: "healthy", build: "b1" }],
     // An HQ that serves but cannot check Zerops right now is no outage: everything keeps using it.
-    ["an HQ that cannot check Zerops", { kind: "healthy" }, unchecked, { kind: "unchecked" }],
+    [
+      "an HQ that cannot check Zerops",
+      { kind: "healthy", build: "b1" },
+      unchecked,
+      { kind: "unchecked", build: "b1" },
+    ],
     [
       "an HQ answering again, Zerops still unchecked",
       { kind: "unavailable", since: 1_000 },
       unchecked,
-      { kind: "unchecked" },
+      { kind: "unchecked", build: "b1" },
     ],
     [
       "an unchecked HQ that stops answering: unavailable from now",
-      { kind: "unchecked" },
+      { kind: "unchecked", build: "b1" },
       down,
       { kind: "unavailable", since: 5_000 },
+    ],
+    // The build it runs, as its health says it, so an offered update costs no read of its own.
+    [
+      "a new build answering",
+      { kind: "healthy", build: "b1" },
+      { kind: "healthy", build: "b2" },
+      { kind: "healthy", build: "b2" },
     ],
   ])("%s", (_name, previous, health, expected) => {
     expect(nextHqStanding(previous, health, 5_000)).toEqual(expected);
@@ -85,12 +102,15 @@ describe("readBundledCore — Core as this build carries it", () => {
         new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip")),
       ).arrayBuffer(),
     );
-  /** A server answering the build's two files; `archive` as the browser hands its body over. */
+  /** A server answering the build's three files; `archive` as the browser hands its body over. */
   const served = (archive: Uint8Array<ArrayBuffer>) => {
     const asked: Array<string> = [];
     const fetch = async (input: RequestInfo | URL) => {
       const path = String(input);
       asked.push(path);
+      if (path.endsWith("/build.json")) {
+        return new Response(JSON.stringify({ build: "20261004T100000Z.0123456789ab" }));
+      }
       return path.endsWith("/zerops.yml")
         ? new Response("zerops:\n  - setup: hq\n")
         : new Response(archive);
@@ -113,7 +133,8 @@ describe("readBundledCore — Core as this build carries it", () => {
     const { asked, fetch } = served(archive);
     const core = await readBundledCore(fetch, "/hq-core");
     expect(core.archive).toEqual(archive);
-    expect(asked).toEqual(["/hq-core/core.tgz.bin", "/hq-core/zerops.yml"]);
+    expect(core.build).toBe("20261004T100000Z.0123456789ab");
+    expect(asked).toEqual(["/hq-core/core.tgz.bin", "/hq-core/zerops.yml", "/hq-core/build.json"]);
   });
 });
 
