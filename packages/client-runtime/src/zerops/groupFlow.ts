@@ -335,6 +335,12 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
       version: runningVersion(deployment.value.version, row),
     };
   }
+  if (!deploymentReadFailed(deployment) && row?.version.label !== undefined)
+    return {
+      ...base,
+      state: runningState(runningTone(undefined, row)),
+      version: runningVersion(undefined, row),
+    };
   return {
     ...base,
     state: "checking",
