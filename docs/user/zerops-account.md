@@ -52,4 +52,5 @@ Mate heard its answer is shown as uncertain; check the projects before starting 
 
 A Mate added from a recipe starts development after its asker signs an agent in. A Mate with no
 recipe waits for you to say what to build. If the stand-up message fails to send, Mate says so and
-offers **Try again**. It never sends another attempt automatically.
+offers **Try again** and gives you the composer back so you can type instead. It never sends another
+attempt automatically.

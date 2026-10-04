@@ -46,14 +46,16 @@ function askedOf(marker: MateStandUpMarker, viewer: string | undefined): boolean
  * Whether the stand-up holds the composer back: while the person who asked it waits on it, the
  * conversation's one message is the stand-up's headline, and nothing may be typed over it (the
  * owner, 2026-09-29: "textarea should be hidden"). A conversation known to be under way gives the
- * composer back.
+ * composer back, as does a failed attempt.
  */
 export function mateStandUpHoldsComposer(input: {
   readonly marker: MateStandUpMarker;
   readonly viewer: string | undefined;
   readonly conversation: MateStandUpConversation;
+  /** Its server reported a terminal failure: the person can write instead. */
+  readonly failed?: boolean;
 }): boolean {
-  return askedOf(input.marker, input.viewer) && input.conversation !== "started";
+  return !input.failed && askedOf(input.marker, input.viewer) && input.conversation !== "started";
 }
 
 /**

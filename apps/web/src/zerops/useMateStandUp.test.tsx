@@ -146,3 +146,23 @@ it("Try again issues one explicit attempt to this Mate and no attempt on its own
   await holdsComposer(MAIN, 0, true);
   expect(world.retry).toHaveBeenCalledExactlyOnceWith({ environmentId: ENVIRONMENT, input: {} });
 });
+
+it("returns the composer after a failed send while the main conversation remains empty", async () => {
+  world.failed = true;
+  expect((await holdsComposer(MAIN, 0)).holds).toBe(false);
+});
+
+it("holds no other chat's composer while the Mate's main stand-up waits", async () => {
+  const second = scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-second"));
+  world.threads = [
+    { ...shell(MAIN, "2026-09-29T10:00:00.000Z"), pinnedAt: "2026-09-29T10:00:00.000Z" },
+    shell(second, "2026-09-29T10:01:00.000Z"),
+  ];
+  expect((await holdsComposer(second, 0)).holds).toBe(false);
+});
+
+it("keeps manual recovery visible when dispatch failed before creating its main conversation", async () => {
+  world.failed = true;
+  world.threads = [];
+  expect((await holdsComposer(null, 0)).failed).toBe(true);
+});

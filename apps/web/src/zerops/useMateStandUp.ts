@@ -78,8 +78,14 @@ export function useMateStandUp(input: {
     threadRef === null || !main ? "unknown" : messageCount === 0 ? "empty" : "started";
   const origin = useRegistrationRecord(environmentId)?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
-  const setup = useMateSetup(own && messageCount === 0 ? origin : undefined);
-  const failed = own && main && setup?.standup === "failed" && conversation !== "started";
+  const setup = useMateSetup(
+    own && (main || threadRef === null) && messageCount === 0 ? origin : undefined,
+  );
+  const failed =
+    own &&
+    (main || threadRef === null) &&
+    setup?.standup === "failed" &&
+    conversation !== "started";
   const sendFailed = failed && setup?.standupFailure === "send_failed";
   const [retrying, setRetrying] = useState(false);
   const sendAgain = useAtomCommand(zeropsCommands.standUpRetry, "stand-up retry");
@@ -94,7 +100,12 @@ export function useMateStandUp(input: {
     }
   };
   return {
-    holdsComposer: mateStandUpHoldsComposer({ marker, viewer, conversation }),
+    holdsComposer: mateStandUpHoldsComposer({
+      marker: threadRef !== null && !main ? undefined : marker,
+      viewer,
+      conversation,
+      failed,
+    }),
     failed,
     sendFailed,
     retrying,

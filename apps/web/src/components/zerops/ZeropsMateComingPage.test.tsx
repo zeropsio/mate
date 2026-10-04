@@ -68,6 +68,8 @@ const MAIN = {
 };
 
 const app = vi.hoisted(() => ({
+  standUpFailed: false,
+  standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
   connect: vi.fn(async (_target: unknown) => ({ _tag: "Success" as const })),
   onScreen: vi.fn((_projectId: string | null) => undefined),
@@ -164,6 +166,7 @@ vi.mock("~/zerops/inventoryContext", () => ({
 }));
 vi.mock("./ZeropsMateEmptyState", () => ({
   useMateEmptyState: () => ({
+    standUpFailure: app.standUpFailed ? { retrying: false, retry: app.standUpRetry } : undefined,
     phase: null,
     signIn: null,
     signInRequired: false,
@@ -175,10 +178,21 @@ vi.mock("./ZeropsMateEmptyState", () => ({
   MateEmptyStateView: ({
     coming,
     mate,
+    standUpFailure,
   }: {
+    readonly standUpFailure?: { retry: () => void };
     readonly coming: { readonly kind: string; readonly below: ReactNode };
     readonly mate: { readonly name: string };
-  }) => h("section", { "data-kind": coming.kind }, mate.name, coming.below),
+  }) =>
+    h(
+      "section",
+      { "data-kind": coming.kind },
+      mate.name,
+      coming.below,
+      standUpFailure === undefined
+        ? null
+        : h("button", { onClick: standUpFailure.retry }, "Try again"),
+    ),
 }));
 vi.mock("../chat/ConversationStrip", () => ({
   // What the header's line says after the Mate's name: what it is on.
@@ -245,6 +259,8 @@ beforeEach(() => {
   app.refresh.mockClear();
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
+  app.standUpFailed = false;
+  app.standUpRetry.mockClear();
   app.threads = [];
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
@@ -1070,4 +1086,16 @@ describe("an added Mate's own view, after its hand-over", () => {
     act(() => forgetPress(PROJECT));
     expect(rows()).toEqual(held);
   });
+});
+
+it("keeps the failed stand-up's recovery visible before a conversation exists", () => {
+  app.standUpFailed = true;
+  app.link = { key: KEY, environmentId: ENV_QUINN, reachability: null };
+  openView();
+  const again = tree?.root
+    .findAllByType("button")
+    .find((node) => node.children.join("") === "Try again");
+  expect(again).toBeDefined();
+  act(() => again?.props.onClick());
+  expect(app.standUpRetry).toHaveBeenCalledOnce();
 });
