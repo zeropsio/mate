@@ -299,7 +299,7 @@ export const startCore = (
             return value === undefined ? Effect.fail(what) : Effect.succeed(value);
           }).pipe(
             Effect.retry(Schedule.spaced(Duration.millis(20))),
-            Effect.timeout(Duration.seconds(5)),
+            Effect.timeout(Duration.seconds(15)),
             Effect.orDie,
           );
         const next = (type: string) =>
