@@ -88,6 +88,7 @@ const PARK_WORDS: Readonly<Record<string, string>> = {
   infrastructure: "its turn broke off twice",
   "empty-merge-base": "your tree's history was rewritten",
   "disk-full": "the service's disk is full",
+  "missing-object": "an object its landing needs is missing, twice",
 };
 
 export const requireTask = (core: CrewCore, taskId: string) =>

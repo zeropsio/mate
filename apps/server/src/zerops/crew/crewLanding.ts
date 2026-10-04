@@ -712,8 +712,15 @@ const landReady = (
                     landing,
                     "an object the landing needs was missing; it lands again",
                   );
-                  const missing = yield* stepTask(core, landing, { type: "missing-object" });
-                  return { next: "land", assignment: missing.assignment } as const;
+                  const key = `${landing.assignment}:${landing.attempt}`;
+                  const missing = yield* stepTask(core, landing, {
+                    type: "missing-object",
+                    retried: core.memory.landRetried.has(key),
+                  });
+                  core.memory.landRetried.add(key);
+                  return missing.state === "ready"
+                    ? ({ next: "land", assignment: missing.assignment } as const)
+                    : undefined;
                 }
                 case "park":
                   if (refusal.kind === "no-space") {

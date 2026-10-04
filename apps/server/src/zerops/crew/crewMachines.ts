@@ -246,7 +246,8 @@ export type TaskEvent =
   | { readonly type: "dirty-tree" }
   | { readonly type: "untracked-in-way" }
   | { readonly type: "index-lock" }
-  | { readonly type: "missing-object" }
+  /** `retried`: this landing already took its one retry after a missing object. */
+  | { readonly type: "missing-object"; readonly retried: boolean }
   | { readonly type: "disk-full" }
   | { readonly type: "tree-clean" }
   | { readonly type: "wait-expired" }
@@ -528,18 +529,19 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
     case "fast-forward":
       return from === "landing" ? to("landed") : illegal;
     case "head-moved":
+    case "not-fast-forward":
       if (from !== "landing") return illegal;
       return counters.remerges >= CREW_REMERGES_MAX
         ? rework()
         : to("merging", { ...counters, remerges: counters.remerges + 1 });
-    case "not-fast-forward":
-      return from === "landing" ? to("merging") : illegal;
     case "dirty-tree":
     case "untracked-in-way":
       return from === "landing" ? to("waiting-on-you") : illegal;
     case "index-lock":
-    case "missing-object":
       return from === "landing" ? to("ready") : illegal;
+    case "missing-object":
+      if (from !== "landing") return illegal;
+      return event.retried ? park("missing-object") : to("ready");
     case "disk-full":
       return from === "landing" ? park("disk-full") : illegal;
     case "tree-clean":

@@ -143,6 +143,8 @@ export interface EngineMemory {
   readonly landWhenReady: Map<string, TurnPrincipal>;
   /** Tasks a run's own landing is queued or running for: one at a time per task. */
   readonly autoLanding: Set<string>;
+  /** Landings (`<assignment>:<attempt>`) that took their one retry after a missing object. */
+  readonly landRetried: Set<string>;
   /** Each dev service's Show-on-dev claim, as the gate's `holdsClaim` reads it. */
   readonly claims: Map<string, MemoryClaim>;
   /** What each dev service's dev server served when last read. */
@@ -244,6 +246,7 @@ export const makeMemory = (): EngineMemory => ({
   integrateAgain: new Set(),
   landWhenReady: new Map(),
   autoLanding: new Set(),
+  landRetried: new Set(),
   claims: new Map(),
   served: new Map(),
   integration: new Map(),
