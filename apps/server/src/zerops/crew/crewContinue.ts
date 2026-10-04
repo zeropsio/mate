@@ -73,7 +73,7 @@ const selected = (core: CrewCore, handle: string, id: string) =>
     return { operation, related, task, applied, member: yield* requireMember(applied, handle) };
   });
 
-/** Only this person's selected work continues; the restart-paused crew stays paused. */
+/** The selected work continues from its recorded stage: a person's press, or the engine's own after a restart. */
 export const continueOperation = (
   core: CrewCore,
   principal: TurnPrincipal,
