@@ -9,7 +9,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { jobInFlight, type HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { Release } from "@t3tools/shared/hqRelease";
+import type { Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
 import { joinProjectFlows, snapshotReleasePlan } from "./ZeropsProjectFlowProvider";
@@ -30,7 +30,6 @@ const stopsOf = (environments: ReadonlyArray<GroupEnvironmentRowInput> = []): Gr
   missing: [],
 });
 
-const NOW = Date.parse("2026-09-24T10:05:00Z");
 const NOTHING_WITHHELD: ReadonlyMap<string, string> = new Map();
 
 /** A release HQ approved of `entries` (`{service: sha}`), made at `at`. */
@@ -90,7 +89,6 @@ function join(input: {
     live: input.live ?? new Map(),
     changes: null,
     changesFailure: undefined,
-    nowMs: NOW,
     withheld: input.withheld ?? NOTHING_WITHHELD,
   });
 }
@@ -359,7 +357,11 @@ describe("joinProjectFlows", () => {
   const RUNNING = "1".repeat(40);
   const MERGED = "2".repeat(40);
   const TAGGED_AT = "2026-09-24T10:00:00Z";
-  function flowWithProductionDeploy(latest: HqJob | undefined, productionRuns = RUNNING) {
+  function flowWithProductionDeploy(
+    latest: HqJob | undefined,
+    productionRuns = RUNNING,
+    release: ReleaseRollout | null = null,
+  ) {
     return join({
       stops: new Map([
         [
@@ -373,6 +375,7 @@ describe("joinProjectFlows", () => {
               environment: "production",
               keyHeld: true,
               keyInvalid: false,
+              release,
               services: [
                 {
                   hostname: "app",
@@ -423,39 +426,60 @@ describe("joinProjectFlows", () => {
     expect(rowsOf(flowWithProductionDeploy(latest, runs))).toEqual(rows);
   });
 
-  it("holds the newest release in flight until production runs it", () => {
-    expect(flowWithProductionDeploy(undefined, RUNNING)?.release.inFlight).toBe("v0.1.1");
-    expect(flowWithProductionDeploy(undefined, MERGED)?.release.inFlight).toBe(undefined);
+  // HQ's rollout of the newest release says whether it is on its way; no clock and no guess from
+  // what production runs or which job failed does.
+  const rollout = (tag: string, ended: boolean): ReleaseRollout => ({
+    id: "7",
+    tag,
+    planned: true,
+    ended,
+    endedAt: ended ? "2026-09-24T11:20:00Z" : null,
+    leftOut: [],
   });
-
   it.each([
     {
-      name: "a failure newer than the tag ends the hold",
+      name: "a release HQ has not streamed the rollout of is on its way",
+      latest: undefined,
+      runs: RUNNING,
+      release: null,
+      inFlight: "v0.1.1",
+      ended: undefined,
+    },
+    {
+      name: "a rollout HQ still follows holds it, whatever production runs",
+      latest: record(MERGED, "live", "2026-09-24T10:01:00Z"),
+      runs: MERGED,
+      release: rollout("v0.1.1", false),
+      inFlight: "v0.1.1",
+      ended: undefined,
+    },
+    {
+      name: "a job failed and the rollout runs on: still on its way",
       latest: record(MERGED, "failed", "2026-09-24T10:01:00Z"),
-      inFlight: undefined,
-    },
-    {
-      name: "a failure older than the tag does not end the hold",
-      latest: record(MERGED, "failed", "2026-09-24T09:59:00Z"),
+      runs: RUNNING,
+      release: rollout("v0.1.1", false),
       inFlight: "v0.1.1",
+      ended: undefined,
     },
     {
-      name: "HQ refusing it after the tag ends the hold",
+      name: "HQ ended its rollout: no longer on its way",
       latest: record(MERGED, "refused", "2026-09-24T10:01:00Z"),
+      runs: RUNNING,
+      release: rollout("v0.1.1", true),
       inFlight: undefined,
+      ended: "v0.1.1",
     },
     {
-      name: "a job HQ waits to try again holds it",
-      latest: { ...record(MERGED, "queued", "2026-09-24T10:01:00Z"), attempt: 2 },
+      name: "an older release's ended rollout is no end of the newest",
+      latest: undefined,
+      runs: RUNNING,
+      release: rollout("v0.1.0", true),
       inFlight: "v0.1.1",
+      ended: undefined,
     },
-    {
-      name: "a job HQ builds holds it",
-      latest: record(MERGED, "building", "2026-09-24T10:01:00Z"),
-      inFlight: "v0.1.1",
-    },
-  ])("$name", ({ latest, inFlight }) => {
-    expect(flowWithProductionDeploy(latest)?.release.inFlight).toBe(inFlight);
+  ])("$name", ({ latest, runs, release, inFlight, ended }) => {
+    const flow = flowWithProductionDeploy(latest, runs, release);
+    expect([flow?.release.inFlight, flow?.release.ended]).toEqual([inFlight, ended]);
   });
 });
 

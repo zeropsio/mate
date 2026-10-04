@@ -60,6 +60,7 @@ function environment(
     keyHeld: true,
     keyInvalid: false,
     jobs: [],
+    release: null,
     ...overrides,
   };
 }
@@ -94,6 +95,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         environment: "stage",
         keyHeld: true,
         keyInvalid: true,
+        release: null,
         services: [
           {
             hostname: "api",
@@ -113,6 +115,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         environment: "production",
         keyHeld: true,
         keyInvalid: false,
+        release: null,
         services: [{ hostname: "api", repository: "apidev", serviceId: "s3" }],
       },
     ]);
@@ -200,6 +203,36 @@ describe("what a release compares, from HQ's records", () => {
     const { failed, production } = releaseDeploys(inputs);
     expect([...failed]).toEqual([[`api@${API}`, "2026-10-02T10:04:00.000Z"]]);
     expect([...production]).toEqual([["api", OLD.slice(0, 7)]]);
+  });
+
+  it("carries each production's newest release rollout, as HQ told it, and no stage's", () => {
+    const rollout = {
+      id: "7",
+      tag: "v0.1.3",
+      planned: true,
+      ended: false,
+      endedAt: null,
+      leftOut: [],
+    };
+    const { rollouts } = releaseDeploys(
+      environmentRowInputsOf({
+        environments: [
+          environment({ projectId: "p-stage", tier: "stage", name: "stage" }),
+          environment({
+            projectId: "p-prod",
+            tier: "production",
+            name: "production",
+            order: 2,
+            release: rollout,
+          }),
+          environment({ projectId: "p-prod2", tier: "production", name: "unreleased", order: 3 }),
+        ],
+        projectNames: new Map(),
+        services,
+        versions: new Map(),
+      }),
+    );
+    expect(rollouts).toEqual([rollout, null]);
   });
 
   it.each([

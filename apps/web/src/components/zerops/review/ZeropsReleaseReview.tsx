@@ -272,9 +272,9 @@ function ReleaseData({
     held,
     press,
     inFlight: flow.release.inFlight,
+    ended: flow.release.ended,
     suggestion: chosen.tag ?? flow.release.suggestion,
     releases: flow.releases,
-    nowMs: now,
   });
   const clockMs = useSecondsNowMs(follows.ticking);
 
@@ -695,9 +695,9 @@ function RollbackData({
     held: undefined,
     press,
     inFlight: undefined,
+    ended: flow.release.ended,
     suggestion,
     releases: flow.releases,
-    nowMs: now,
   });
   const tagged = made === undefined ? undefined : follows.tagged;
   const done = press.kind === "done";

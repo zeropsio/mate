@@ -13,6 +13,7 @@
  *
  * @module hq/environments
  */
+import { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -87,6 +88,8 @@ export const HqEnvironment = Schema.Struct({
   keyInvalid: Schema.Boolean,
   /** Its newest jobs, newest first, and each service's newest live one where it is older. */
   jobs: Schema.Array(HqJob),
+  /** A production's: where its application's newest release stands there; none before one, and for a stage. */
+  release: Schema.NullOr(ReleaseRollout),
 });
 export type HqEnvironment = typeof HqEnvironment.Type;
 

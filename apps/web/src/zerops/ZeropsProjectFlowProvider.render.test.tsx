@@ -333,6 +333,7 @@ function environment(projectId: string, tier: HqEnvironment["tier"]): HqEnvironm
     keyHeld: true,
     keyInvalid: false,
     jobs: [],
+    release: null,
   };
 }
 

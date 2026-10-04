@@ -37,6 +37,7 @@ const STAGE: HqEnvironment = {
   keyHeld: true,
   keyInvalid: false,
   jobs: [],
+  release: null,
 };
 
 describe("jobsByService — each service's newest job and newest live one, from HQ's newest first", () => {
@@ -100,6 +101,24 @@ describe("environmentsOf", () => {
   it("reads an environment with its jobs", () => {
     const environment = { ...STAGE, jobs: [job("1", "app", "live")] };
     expect(environmentsOf([environment])).toEqual([environment]);
+  });
+
+  it("reads a production with where its newest release stands", () => {
+    const production: HqEnvironment = {
+      ...STAGE,
+      projectId: "p-prod",
+      tier: "production",
+      sources: ["release"],
+      release: {
+        id: "7",
+        tag: "v0.1.3",
+        planned: true,
+        ended: false,
+        endedAt: null,
+        leftOut: [{ service: "api", sha: A, job: "5", reason: "a job of aaaaaaa is under way" }],
+      },
+    };
+    expect(environmentsOf([production])).toEqual([production]);
   });
 
   // HQ and the client ship together: a set in the shape before jobs is one this build cannot read.
