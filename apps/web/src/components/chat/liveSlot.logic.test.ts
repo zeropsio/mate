@@ -200,11 +200,27 @@ describe("the live slot's schedule", () => {
         { at: 1300, live: [], record: ["c1", "c2", "note"] },
       ],
       until: 4000,
-      shown: { c1: 1000 },
+      // "Thinking" from the first draw stands its minimum before c1 takes its place.
+      shown: { c1: SLOT_MIN_SHOW_MS },
       plopped: {
-        c1: 1000 + SLOT_HOLD_MS,
-        c2: 1000 + SLOT_HOLD_MS,
-        note: 1000 + SLOT_HOLD_MS,
+        c1: SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
+        c2: SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
+        note: SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
+      },
+    },
+    {
+      // Run 9 on this build: a note placed 1 s into "Thinking" took its place at once.
+      name: "what is first seen whole waits for Thinking to stand its minimum too",
+      moments: [
+        { at: 0, live: ["a"], record: [] },
+        { at: 300, live: [], record: ["a"] },
+        { at: 1700, live: [], record: ["a", "note"] },
+      ],
+      until: 6000,
+      shown: { a: 0, note: 300 + SLOT_HOLD_MS + SLOT_MIN_SHOW_MS },
+      plopped: {
+        a: 300 + SLOT_HOLD_MS,
+        note: 300 + SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
       },
     },
     {
@@ -323,6 +339,7 @@ describe("slotClock", () => {
     live: [],
     seen: new Set(),
     quietSince,
+    pending: [],
   });
   it.each<{
     readonly name: string;

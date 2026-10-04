@@ -66,6 +66,11 @@ export interface LiveSlot {
    * Null while an item stands.
    */
   readonly quietSince: number | null;
+  /**
+   * What arrived whole while "Thinking" had not stood its minimum: it takes
+   * the slot once it has, the first standing, the rest riding with it.
+   */
+  readonly pending: ReadonlyArray<string>;
 }
 
 /** What the caller offers: what is live, what the record holds, and whether the run is over. */
@@ -142,6 +147,7 @@ export function slotStart(offer: Omit<SlotOffer, "final">): LiveSlot {
     live: offer.live,
     seen: new Set(offer.record),
     quietSince: quietAfter(entries, null, offer.at),
+    pending: [],
   };
 }
 
@@ -167,13 +173,33 @@ export function slotResync(slot: LiveSlot, offer: Omit<SlotOffer, "final">): Liv
     offer.live.length === slot.live.length &&
     offer.live.every((key, index) => slot.live[index] === key) &&
     seen.size === slot.seen.size;
-  return same
+  return same && slot.pending.length === 0
     ? slot
-    : { entries, live: offer.live, seen, quietSince: quietAfter(entries, null, offer.at) };
+    : {
+        entries,
+        live: offer.live,
+        seen,
+        quietSince: quietAfter(entries, null, offer.at),
+        pending: [],
+      };
 }
 
 /** Plops what has ended and stood its minimum, and lets in what waited. */
 export function slotSettle(slot: LiveSlot, at: number): LiveSlot {
+  // What arrived whole during a young "Thinking" takes the slot once it stood.
+  if (
+    slot.pending.length > 0 &&
+    slot.entries.length === 0 &&
+    (slot.quietSince === null || at >= slot.quietSince + SLOT_MIN_SHOW_MS)
+  ) {
+    const [first, ...along] = slot.pending;
+    return {
+      ...slot,
+      entries: [{ key: first!, shownAt: at, endedAt: at, riders: along }],
+      quietSince: null,
+      pending: [],
+    };
+  }
   const plopping = slot.entries.filter((entry) => {
     const due = plopsAt(slot, entry);
     return due !== null && at >= due;
@@ -205,9 +231,11 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
       live: [],
       seen: new Set([...slot.seen, ...offer.record]),
       quietSince: null,
+      pending: [],
     };
   }
   const live = new Set(offer.live);
+  let pending = slot.pending;
   let entries = slot.entries.map((entry) =>
     entry.endedAt === null && !live.has(entry.key) ? { ...entry, endedAt: offer.at } : entry,
   );
@@ -219,7 +247,13 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
     // returned: it rides with the ended item that stands, else it stands
     // its own minimum in the slot and what arrived with it rides along.
     const host = entries.findLast((entry) => entry.endedAt !== null);
-    if (host !== undefined && unseen.length > 0) {
+    const young =
+      entries.length === 0 &&
+      slot.quietSince !== null &&
+      offer.at < slot.quietSince + SLOT_MIN_SHOW_MS;
+    if (unseen.length > 0 && (young || slot.pending.length > 0) && entries.length === 0) {
+      pending = [...slot.pending, ...unseen];
+    } else if (host !== undefined && unseen.length > 0) {
       entries = entries.map((entry) =>
         entry === host ? { ...entry, riders: [...entry.riders, ...unseen] } : entry,
       );
@@ -232,7 +266,10 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
     offer.live.length === slot.live.length &&
     offer.live.every((key, index) => slot.live[index] === key);
   const changed =
-    fresh.length > 0 || !sameLive || entries.some((entry, index) => entry !== slot.entries[index]);
+    fresh.length > 0 ||
+    !sameLive ||
+    pending !== slot.pending ||
+    entries.some((entry, index) => entry !== slot.entries[index]);
   if (!changed) return slotSettle(slot, offer.at);
   return slotSettle(
     {
@@ -240,6 +277,7 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
       live: offer.live,
       seen: fresh.length === 0 ? slot.seen : new Set([...slot.seen, ...fresh]),
       quietSince: entries.length > 0 ? null : slot.quietSince,
+      pending,
     },
     offer.at,
   );
@@ -266,7 +304,11 @@ export function slotDue(slot: LiveSlot): number | null {
     if (at !== null && (due === null || at < due)) due = at;
   }
   // An item waits while "Thinking" stands its minimum.
-  if (slot.entries.length === 0 && slot.quietSince !== null && waits(slot)) {
+  if (
+    slot.entries.length === 0 &&
+    slot.quietSince !== null &&
+    (waits(slot) || slot.pending.length > 0)
+  ) {
     const at = slot.quietSince + SLOT_MIN_SHOW_MS;
     if (due === null || at < due) due = at;
   }
@@ -278,7 +320,11 @@ export function slotDue(slot: LiveSlot): number | null {
  * with them, and what is live — a question waits in the record and the slot.
  */
 export function slotHolds(slot: LiveSlot): ReadonlySet<string> {
-  return new Set([...slot.entries.flatMap((entry) => [entry.key, ...entry.riders]), ...slot.live]);
+  return new Set([
+    ...slot.entries.flatMap((entry) => [entry.key, ...entry.riders]),
+    ...slot.live,
+    ...slot.pending,
+  ]);
 }
 
 /**

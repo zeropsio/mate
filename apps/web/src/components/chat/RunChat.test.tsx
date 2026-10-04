@@ -1818,9 +1818,11 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
-      // Seen only once it returned, it stands its minimum in the live slot,
-      // then plops into the history: the scroll's first line.
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      // Seen only once it returned, it waits for "Thinking" to stand its
+      // minimum, stands its own and its hold in the live slot, then plops
+      // into the history: the scroll's first line.
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS));
+      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + SLOT_HOLD_MS + 100));
       expect(heard).toHaveLength(1);
       box.scrollHeight = 900;
       box.clientHeight = 440;
