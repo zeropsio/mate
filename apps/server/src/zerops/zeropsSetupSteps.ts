@@ -96,9 +96,17 @@ export interface StandUpService {
   readonly error: string;
 }
 
+/**
+ * The zcp MCP server running a stand-up: its PID and its start time, which tells it from a later
+ * process under the same PID (`/proc/<pid>/stat`'s field 22; empty where zcp could not read it).
+ */
+export interface ZcpProcess {
+  readonly pid: number;
+  readonly start: string;
+}
+
 /** `ZCP_STATUS_FILE`, version 1, as far as this build reads it. */
 export interface ZcpStatus {
-  readonly updatedAt: string;
   readonly runtimes:
     | {
         /** A state this build does not know reads as `undefined`. */
@@ -110,12 +118,12 @@ export interface ZcpStatus {
   readonly standup:
     | {
         readonly state: StandUpState | undefined;
-        /** zcp's heartbeat for this section; empty from a zcp that writes only the file's. */
-        readonly updatedAt: string;
         readonly phase: string;
         readonly startedAt: string;
         readonly endedAt: string;
         readonly services: ReadonlyArray<StandUpService>;
+        /** Its process; `undefined` from a zcp that names none. */
+        readonly process: ZcpProcess | undefined;
       }
     | undefined;
 }
@@ -157,10 +165,17 @@ const readService = (value: unknown): StandUpService | undefined => {
   };
 };
 
+const readProcess = (value: unknown): ZcpProcess | undefined => {
+  const row = record(value);
+  const pid = row?.["pid"];
+  if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0) return undefined;
+  return { pid, start: text(row?.["start"]) };
+};
+
 /**
  * zcp's status file, tolerantly: unknown fields are ignored, and a file of
- * another version is not read at all — a field only ever arrives with a
- * version bump.
+ * another version is not read at all — a field a reader may ignore arrives
+ * within the version, one it must understand with a bump.
  */
 export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
   const file = record(raw);
@@ -168,7 +183,6 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
   const runtimes = record(file["runtimes"]);
   const standup = record(file["standup"]);
   return {
-    updatedAt: text(file["updatedAt"]),
     runtimes:
       runtimes === undefined
         ? undefined
@@ -182,7 +196,6 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
         ? undefined
         : {
             state: oneOf(STAND_UP_STATES, standup["state"]),
-            updatedAt: text(standup["updatedAt"]),
             phase: text(standup["phase"]),
             startedAt: text(standup["startedAt"]),
             endedAt: text(standup["endedAt"]),
@@ -192,22 +205,31 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
                 return read === undefined ? [] : [read];
               },
             ),
+            process: readProcess(standup["process"]),
           },
   };
 };
 
 /**
- * zcp refreshes its file's `updatedAt` every 15 s while a stand-up runs; one
- * left `running` and not refreshed for longer than this lost its MCP server.
+ * The process of a stand-up the file says runs: the one whose end, provably gone, is the
+ * stand-up's death. `undefined` when none runs, or zcp names none.
  */
-export const STAND_UP_STALE_AFTER_MS = 2 * 60_000;
+export const runningStandUpProcess = (status: ZcpStatus | undefined): ZcpProcess | undefined =>
+  status?.standup?.state === "running" ? status.standup.process : undefined;
 
-/** A stand-up the file says runs, from a zcp that stopped writing it. */
-export const isStaleStandUp = (status: ZcpStatus | undefined, nowMs: number): boolean => {
-  if (status?.standup?.state !== "running") return false;
-  // The section's own heartbeat, else the file's.
-  const updated = Date.parse(status.standup.updatedAt || status.updatedAt);
-  return Number.isFinite(updated) && nowMs - updated > STAND_UP_STALE_AFTER_MS;
+/**
+ * A process's start time from its `/proc/<pid>/stat` line, as zcp reads it: field 22, counted
+ * after the last `)` — the command before it may hold spaces and parentheses. `undefined` for a
+ * line that does not read.
+ */
+export const procStartTime = (stat: string): string | undefined => {
+  const close = stat.lastIndexOf(")");
+  if (close < 0) return undefined;
+  // Field 3 (the state) is the first after the command; field 22 is the 20th from there.
+  return stat
+    .slice(close + 1)
+    .trim()
+    .split(/\s+/)[22 - 3];
 };
 
 /* ------------------------------------------------------------ the document */
@@ -223,10 +245,17 @@ export interface SetupStep {
    * Why a waiting stand-up waits, where the server knows ({@link StandUpWait}); why the Git
    * access failed ({@link GitAccess}).
    */
-  readonly reason?: StandUpWait["reason"] | "refused" | "send_failed";
+  readonly reason?: StandUpWait["reason"] | StandUpShort | "refused" | "send_failed";
   /** HQ's refusal code, with `not_enrolled` or `refused`. */
   readonly code?: string;
 }
+
+/**
+ * Why a stand-up ended short: its zcp MCP process provably gone while zcp's word was `running`;
+ * its own turn over while zcp waited for the call that builds the stages — development stands,
+ * the stages were not built.
+ */
+export type StandUpShort = "process_gone" | "stage_not_built";
 
 /**
  * Why a stand-up nothing started waits, as far as the server knows: zcp found no official HQ;
@@ -295,6 +324,8 @@ export interface SetupFacts {
    * runs, or how it ended; `undefined` where it is not read (no record that ran, its thread gone).
    */
   readonly standUpTurn: "running" | "done" | "failed" | undefined;
+  /** The process zcp names as running its stand-up is provably gone ({@link runningStandUpProcess}). */
+  readonly standUpProcessGone: boolean;
 }
 
 const RUNTIMES_STEP: Readonly<Record<RuntimesState, string>> = {
@@ -318,42 +349,66 @@ const runtimesStep = (status: ZcpStatus | undefined): SetupStep => {
   return { id: "runtimes", state, at };
 };
 
+interface ZcpStandUp {
+  readonly state: Exclude<StandUpState, "idle">;
+  readonly short?: StandUpShort;
+}
+
 /**
  * What zcp's stand-up section says of the whole stand-up. A zcp before its stage-call fix ends
  * its first call `done` and leaves the stage halves `pending` for a second call; while the
  * stand-up this server recorded still runs its own turn, that is not the stand-up's end. Anywhere
  * else — a stand-up settled as never due, its own turn over or not read — zcp's word stands: a
  * newer zcp keeps its section `running` between the two calls itself.
+ *
+ * zcp's `running` is not its word once the owners of its end have answered: its MCP process is
+ * provably gone, or — waiting in the `stage` phase for the call that builds the stages, no half
+ * running — the stand-up's own turn is over, which zcp cannot see.
  */
-const zcpStandUpState = (facts: SetupFacts): Exclude<StandUpState, "idle"> | undefined => {
-  if (isStaleStandUp(facts.status, Date.parse(facts.now))) return "failed";
+const zcpStandUpState = (facts: SetupFacts): ZcpStandUp | undefined => {
   const standup = facts.status?.standup;
   const state = standup?.state;
   if (state !== "running" && state !== "done" && state !== "failed") return undefined;
+  if (state === "running" && facts.standUpProcessGone)
+    return { state: "failed", short: "process_gone" };
+  const ownTurnRan = facts.record?.ran === true;
+  const awaitsStageCall =
+    standup!.phase === "stage" && !standup!.services.some((service) => service.state === "running");
+  if (
+    state === "running" &&
+    awaitsStageCall &&
+    ownTurnRan &&
+    (facts.standUpTurn === "done" || facts.standUpTurn === "failed")
+  )
+    return { state: "failed", short: "stage_not_built" };
   const halvesLeft = standup!.services.some((service) => service.state === "pending");
-  const ownTurnRuns = facts.record?.ran === true && facts.standUpTurn === "running";
-  return state === "done" && halvesLeft && ownTurnRuns ? "running" : state;
+  const ownTurnRuns = ownTurnRan && facts.standUpTurn === "running";
+  return { state: state === "done" && halvesLeft && ownTurnRuns ? "running" : state };
 };
+
+const zcpStep = (zcp: ZcpStandUp, at: string): SetupStep =>
+  zcp.short === undefined
+    ? { id: "standup", state: zcp.state, at }
+    : { id: "standup", state: zcp.state, at: "", reason: zcp.short };
 
 const standUpStep = (facts: SetupFacts): SetupStep | null => {
   const standup = facts.status?.standup;
   if (facts.record?.failed === true)
     return { id: "standup", state: "failed", at: facts.record.startedAt, reason: "send_failed" };
-  const zcpState = zcpStandUpState(facts);
+  const zcp = zcpStandUpState(facts);
   // Settled as never due: nothing ran here, so nothing is done — unless zcp ran one.
   if (facts.record !== undefined && !facts.record.ran) {
-    return { id: "standup", state: zcpState ?? "none", at: "" };
+    return zcp === undefined ? { id: "standup", state: "none", at: "" } : zcpStep(zcp, "");
   }
   if (facts.record === undefined) {
-    if (zcpState !== undefined)
-      return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };
+    if (zcp !== undefined) return zcpStep(zcp, standup?.startedAt ?? "");
     // Nothing asked and nothing started: a Mate with no stand-up to run, as HQ's record says.
     if (facts.nobodyAsked === true) return { id: "standup", state: "none", at: "" };
     return { id: "standup", state: "waiting", at: "", ...facts.standUpWait };
   }
   // zcp's word, else its own turn's; with neither — its thread gone, its turn not found, and a
   // zcp that writes nothing — the server cannot say, and says nothing rather than running for good.
-  const state = zcpState ?? facts.standUpTurn;
+  const state = zcp?.state ?? facts.standUpTurn;
   // Claimed and not sent yet, its turn is still to come; only a stand-up confirmed out whose turn
   // is gone leaves the step out.
   if (state === undefined)
@@ -361,7 +416,7 @@ const standUpStep = (facts: SetupFacts): SetupStep | null => {
   const ended = state === "done" || state === "failed";
   const at =
     (ended ? standup?.endedAt : standup?.startedAt) || (ended ? "" : facts.record.startedAt);
-  return { id: "standup", state, at };
+  return zcp === undefined ? { id: "standup", state, at } : zcpStep({ ...zcp, state }, at);
 };
 
 const gitStep = (git: GitAccess): SetupStep => {

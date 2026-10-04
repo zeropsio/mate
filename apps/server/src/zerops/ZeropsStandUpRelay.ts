@@ -27,7 +27,6 @@ import {
   type SpiEvent,
   type TurnId,
 } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -39,7 +38,7 @@ import * as Stream from "effect/Stream";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
-import { isStaleStandUp, type ZcpStatus } from "./zeropsSetupSteps.ts";
+import type { ZcpStatus } from "./zeropsSetupSteps.ts";
 
 /** The stand-up tool, as the event's tool call names it (its `mcp__…__` prefix stripped). */
 export const STAND_UP_TOOL_NAME = "zerops_standup";
@@ -169,7 +168,7 @@ export const make = Effect.gen(function* () {
 
   /**
    * Writes the call's progress when it changed since the last write; whether
-   * the file went stale (its MCP server died), which leaves the last write.
+   * the stand-up's MCP process is provably gone, which leaves the last write.
    */
   const relayOnce = (
     event: SpiEvent,
@@ -177,7 +176,7 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const status = yield* setup.status;
-      if (isStaleStandUp(status, yield* Clock.currentTimeMillis)) return true;
+      if (yield* setup.standUpGone(status)) return true;
       const progress = standUpProgressOf(status, call.startedAt);
       if (progress === undefined) return false;
       const written = progressKey(progress);

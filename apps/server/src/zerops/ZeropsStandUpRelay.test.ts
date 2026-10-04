@@ -10,8 +10,6 @@ import {
   type OrchestrationEvent,
   type SpiEvent,
 } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,7 +21,7 @@ import { OrchestrationEngineService } from "../orchestration/Services/Orchestrat
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
 import { layer as relayLayer, standUpProgressOf } from "./ZeropsStandUpRelay.ts";
-import { isStaleStandUp, parseZcpStatus, type ZcpStatus } from "./zeropsSetupSteps.ts";
+import { parseZcpStatus, type ZcpStatus } from "./zeropsSetupSteps.ts";
 
 const CALL_AT = "2026-10-01T10:00:00.000Z";
 
@@ -92,45 +90,6 @@ const standUpEvent = (
     toolCall: { name: "zerops_standup", rawName: "mcp__zerops__zerops_standup" },
   }) as unknown as SpiEvent;
 
-describe("isStaleStandUp", () => {
-  const at = (updatedAt: string, state = "running") =>
-    isStaleStandUp(
-      parseZcpStatus({ version: 1, updatedAt, standup: { state } }),
-      Date.parse("2026-10-01T10:10:00Z"),
-    );
-  it("a running stand-up whose file zcp stopped refreshing over 2 minutes ago is stale", () => {
-    assert.deepStrictEqual(
-      [
-        at("2026-10-01T10:07:59Z"),
-        at("2026-10-01T10:08:00Z"),
-        at("2026-10-01T10:07:59Z", "done"),
-        at(""),
-      ],
-      [true, false, false, false],
-    );
-  });
-});
-
-describe("isStaleStandUp: the section's own heartbeat first", () => {
-  const NOW = Date.parse("2026-10-01T10:10:00Z");
-  const file = (top: string, own: string | undefined) =>
-    parseZcpStatus({
-      version: 1,
-      updatedAt: top,
-      standup: { state: "running", ...(own === undefined ? {} : { updatedAt: own }) },
-    });
-  it("reads the section's updatedAt, else the file's", () => {
-    assert.deepStrictEqual(
-      [
-        isStaleStandUp(file("2026-10-01T10:00:00Z", "2026-10-01T10:09:50Z"), NOW),
-        isStaleStandUp(file("2026-10-01T10:09:50Z", "2026-10-01T10:00:00Z"), NOW),
-        isStaleStandUp(file("2026-10-01T10:00:00Z", undefined), NOW),
-      ],
-      [false, true, true],
-    );
-  });
-});
-
 describe("ZeropsStandUpRelay", () => {
   it.live("relays each change of the call's section into one progress row, then stops", () =>
     Effect.gen(function* () {
@@ -148,7 +107,10 @@ describe("ZeropsStandUpRelay", () => {
               events: Stream.fromQueue(events),
               enrichmentFailures: Stream.empty,
             }),
-            Layer.mock(ZeropsSetup)({ status: Ref.get(status) }),
+            Layer.mock(ZeropsSetup)({
+              status: Ref.get(status),
+              standUpGone: () => Effect.succeed(false),
+            }),
             Layer.mock(OrchestrationEngineService)({
               dispatch: (command) =>
                 Ref.update(appended, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
@@ -225,7 +187,10 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
               events: Stream.fromQueue(events),
               enrichmentFailures: Stream.empty,
             }),
-            Layer.mock(ZeropsSetup)({ status: Ref.get(status) }),
+            Layer.mock(ZeropsSetup)({
+              status: Ref.get(status),
+              standUpGone: () => Effect.succeed(false),
+            }),
             Layer.mock(OrchestrationEngineService)({
               dispatch: (command) =>
                 Ref.update(appended, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
@@ -263,10 +228,11 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
 });
 
 describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
-  it.live("stops following it and leaves the card's last state", () =>
+  it.live("stops following it once its process is gone, and leaves the card's last state", () =>
     Effect.gen(function* () {
       const events = yield* Queue.unbounded<SpiEvent>();
-      const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
+      const status = yield* Ref.make<ZcpStatus | undefined>(section());
+      const gone = yield* Ref.make(false);
       const appended = yield* Ref.make(0);
       const layer = relayLayer.pipe(
         Layer.provide(
@@ -276,7 +242,10 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
               events: Stream.fromQueue(events),
               enrichmentFailures: Stream.empty,
             }),
-            Layer.mock(ZeropsSetup)({ status: Ref.get(status) }),
+            Layer.mock(ZeropsSetup)({
+              status: Ref.get(status),
+              standUpGone: () => Ref.get(gone),
+            }),
             Layer.mock(OrchestrationEngineService)({
               dispatch: () =>
                 Ref.update(appended, (count) => count + 1).pipe(Effect.as({ sequence: 1 })),
@@ -286,28 +255,21 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
           ),
         ),
       );
-      const refreshed = (agoMs: number, state: string) =>
-        Effect.map(Clock.currentTimeMillis, (nowMs) =>
-          parseZcpStatus({
-            version: 1,
-            updatedAt: DateTime.formatIso(DateTime.makeUnsafe(nowMs - agoMs)),
-            standup: {
-              state: "running",
-              startedAt: "2026-10-01T10:00:01Z",
-              services: [{ hostname: "api", step: "build", state }],
-            },
-          }),
-        );
       yield* Effect.gen(function* () {
-        yield* Ref.set(status, yield* refreshed(0, "running"));
         yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
         yield* Effect.sleep(Duration.millis(200));
         assert.strictEqual(yield* Ref.get(appended), 1);
-        yield* Ref.set(status, yield* refreshed(3 * 60_000, "done"));
+        yield* Ref.set(gone, true);
+        yield* Ref.set(status, section({ state: "running", phase: "stage" }));
         yield* Effect.sleep(Duration.millis(2_500));
-        yield* Ref.set(status, yield* refreshed(0, "failed"));
+        yield* Ref.set(gone, false);
+        yield* Ref.set(status, section({ state: "failed" }));
         yield* Effect.sleep(Duration.millis(2_500));
-        assert.strictEqual(yield* Ref.get(appended), 1, "a stale section is never written");
+        assert.strictEqual(
+          yield* Ref.get(appended),
+          1,
+          "a dead stand-up's section is never written",
+        );
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
   );
@@ -327,7 +289,10 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
             events: Stream.fromQueue(events),
             enrichmentFailures: Stream.empty,
           }),
-          Layer.mock(ZeropsSetup)({ status: Ref.get(status) }),
+          Layer.mock(ZeropsSetup)({
+            status: Ref.get(status),
+            standUpGone: () => Effect.succeed(false),
+          }),
           Layer.mock(OrchestrationEngineService)({
             dispatch: (command) =>
               Ref.update(appended, (all) => [
