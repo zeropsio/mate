@@ -127,12 +127,17 @@ export const pressCrewmate = <A, E, R>(
           onNone: () =>
             core.memory.sweeping.has(handle)
               ? core
-                  .crewmate(handle)(effect)
+                  .crewmateWithin(
+                    handle,
+                    SWEEP_WAIT,
+                  )(effect)
                   .pipe(
-                    Effect.timeoutOrElse({
-                      duration: SWEEP_WAIT,
-                      orElse: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
-                    }),
+                    Effect.flatMap(
+                      Option.match({
+                        onNone: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+                        onSome: (value) => Effect.succeed(value),
+                      }),
+                    ),
                   )
               : Effect.fail(refuse("wrong-state", busyWords(handle))),
           onSome: (value) => Effect.succeed(value),

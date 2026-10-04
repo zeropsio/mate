@@ -303,6 +303,9 @@ export const resumeAfterRestart = (core: CrewCore, handle: string) =>
     if (pending.size === 0) return;
     const applied = yield* core.applied;
     if (applied === undefined || isWorking(core, applied, handle)) return;
+    // A copy on a host a deploy may still replace waits for the deploy's end (`thawAfterDeploy`).
+    const host = applied.members.get(handle)?.host;
+    if (host !== null && host !== undefined && core.memory.deployHeld.has(host)) return;
     const rows = (yield* asRefusal(core.store.operations(CREW_ID))).filter(
       (row) => row.handle === handle && pending.has(row.id),
     );

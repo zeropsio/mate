@@ -4,8 +4,19 @@
  * restart cuts off the turn that watched the deploy; the host's copies stay
  * frozen until the platform says its deploy ended.
  *
+ * The platform's process list reaches crew through its own port,
+ * {@link CrewPlatformProcesses}, which the wiring provides (`zeropsFeedsLayer`).
+ *
  * @module crewDeployState
  */
+import * as Context from "effect/Context";
+import type * as Effect from "effect/Effect";
+
+/** The project's processes as the platform lists them; `undefined` when it cannot say. */
+export class CrewPlatformProcesses extends Context.Service<
+  CrewPlatformProcesses,
+  { readonly read: Effect.Effect<ReadonlyArray<unknown> | undefined> }
+>()("t3/zerops/crew/crewDeployState/CrewPlatformProcesses") {}
 
 /** `running`: a process on the service has not ended; `unknown`: the platform could not say. */
 export type DeployState = "running" | "settled" | "unknown";

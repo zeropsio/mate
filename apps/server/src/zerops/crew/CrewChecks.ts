@@ -88,6 +88,27 @@ export class CrewChecks extends Context.Service<CrewChecks, CrewChecksService>()
   "t3/zerops/crew/CrewChecks",
 ) {}
 
+/**
+ * A check judges the committed tree, the one that lands: the copy's untracked
+ * (not ignored) files are set aside while it runs and put back after, so none
+ * can make it pass. Ignored files — dependencies, build caches — stay.
+ */
+const SET_ASIDE_UNTRACKED =
+  `aside=\n` +
+  `if [ "$(git rev-parse --show-toplevel 2>/dev/null)" = "$(pwd -P)" ]; then\n` +
+  `  aside=$(mktemp -d) || exit 1\n` +
+  `  git -c core.quotePath=false ls-files --others --exclude-standard > "$aside/list" || exit 1\n` +
+  `  if [ -s "$aside/list" ]; then\n` +
+  `    tar -cf "$aside/files.tar" -T "$aside/list" || exit 1\n` +
+  `    while IFS= read -r f; do rm -f -- "$f"; done < "$aside/list"\n` +
+  `  fi\n` +
+  `fi\n`;
+const PUT_BACK_UNTRACKED =
+  `if [ -n "$aside" ]; then\n` +
+  `  [ ! -f "$aside/files.tar" ] || tar -xf "$aside/files.tar"\n` +
+  `  rm -rf "$aside"\n` +
+  `fi\n`;
+
 export const make = Effect.gen(function* () {
   const shell = yield* CrewShell;
 
@@ -98,9 +119,11 @@ export const make = Effect.gen(function* () {
       const body = script(
         `cd ${shellQuote(laneDirectory(input.lane))} 2>/dev/null || { printf '%s\\n' ${LANE_MISSING_MARKER}; exit 0; }\n` +
           laneEnvironment(input.crewPort, input.env) +
+          (input.kind === "check" ? SET_ASIDE_UNTRACKED : "") +
           `log=$(mktemp) || exit 1\n` +
           `timeout -k 5 ${seconds} sh -c ${shellQuote(input.command)} > "$log" 2>&1 < /dev/null\n` +
           `code=$?\n` +
+          (input.kind === "check" ? PUT_BACK_UNTRACKED : "") +
           `printf '%s %s\\n' ${EXIT_MARKER} "$code"\n` +
           `tail -c ${CHECK_TAIL_BYTES} "$log"\n` +
           `rm -f "$log"\n`,

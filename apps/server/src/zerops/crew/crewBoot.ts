@@ -17,6 +17,8 @@
  *
  * @module crewBoot
  */
+import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -31,6 +33,7 @@ import {
   failureWords,
   feedWhenUnattended,
   memberOf,
+  refuse,
   type AppliedCrew,
   type CrewCore,
 } from "./crewCore.ts";
@@ -234,8 +237,22 @@ const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
     if (missing.length > 0) yield* recoverLanes(core, applied, host, "came back from a restart");
   });
 
-/** How often a host frozen by a deploy the restart cut off asks the platform again. */
-const DEPLOY_RECHECK = Duration.seconds(15);
+/**
+ * How a host frozen by a deploy the restart cut off asks the platform again:
+ * from `first`, doubling to `max`; after `unreadable` of answers it cannot
+ * read, the person is offered a thaw. Tests shorten it.
+ */
+export const CrewDeployPoll = Context.Reference<{
+  readonly first: Duration.Duration;
+  readonly max: Duration.Duration;
+  readonly unreadable: Duration.Duration;
+}>("t3/zerops/crew/CrewDeployPoll", {
+  defaultValue: () => ({
+    first: Duration.seconds(15),
+    max: Duration.minutes(5),
+    unreadable: Duration.minutes(30),
+  }),
+});
 
 const serviceIdOf = (applied: AppliedCrew, host: string) =>
   applied.repositories.get(host)?.identity?.serviceId;
@@ -251,52 +268,9 @@ const frozenWords = (host: string, state: DeployState) =>
     ? `${host} is still redeploying; its crew copies stay frozen until the deploy ends.`
     : `Mate could not read whether ${host}'s deploy still runs; its crew copies stay frozen, and Mate tries again.`;
 
-/**
- * A host frozen by a deploy the restart cut off: asked again until the
- * platform says the deploy ended, then thawed after its copies are recovered
- * and swept, holding them meanwhile. An answer that cannot be read keeps it
- * frozen with words, and Mate tries again; it never thaws on a guess.
- */
-const awaitDeployEnd = (core: CrewCore, host: string) =>
+/** Adopts what the host's crewmates' interrupted operations finished after the Mate stopped. */
+const adoptOnHosts = (core: CrewCore, applied: AppliedCrew, held: ReadonlySet<string>) =>
   Effect.gen(function* () {
-    while (true) {
-      yield* Effect.sleep(DEPLOY_RECHECK);
-      const applied = yield* core.applied;
-      if (applied === undefined) return;
-      const state = yield* core.deployState(host, serviceIdOf(applied, host));
-      if (state !== "settled") {
-        core.memory.lastError = frozenWords(host, state);
-        yield* core.changed;
-        continue;
-      }
-      if (
-        core.memory.lastError === frozenWords(host, "running") ||
-        core.memory.lastError === frozenWords(host, "unknown")
-      )
-        core.memory.lastError = null;
-      yield* core.holdingCopies(
-        writersOn(applied, host),
-        recoverLanes(core, applied, host, "came back from its deploy").pipe(
-          Effect.andThen(sweepHost(core, applied, host)),
-        ),
-      );
-      yield* advanceAll(core);
-      yield* core.changed;
-      return;
-    }
-  });
-
-/**
- * Once the server accepts commands: the run's clock counts again, every free
- * crewmate carries its interrupted work on, and a running run takes up what
- * waits on it.
- */
-export const carryOnAtBoot = (core: CrewCore) =>
-  Effect.gen(function* () {
-    const applied = yield* core.applied;
-    if (applied === undefined) return;
-    yield* runOnAfterRestart(core);
-    // A git write an interrupted operation finished after the Mate stopped is its own, not a stranger's.
     const interrupted = (yield* asRefusal(core.store.operations(CREW_ID))).filter((row) =>
       core.memory.resumeAtBoot.has(row.id),
     );
@@ -304,6 +278,8 @@ export const carryOnAtBoot = (core: CrewCore) =>
       const member = memberOf(applied, handle);
       const own = interrupted.filter((row) => row.handle === handle);
       if (member === undefined || own.length === 0) continue;
+      // A copy on a host a deploy may still replace is touched only once the deploy ends.
+      if (member.row.host !== null && held.has(member.row.host)) continue;
       const landed = own
         .map((row) => readLandedEvidence(row.result))
         .find((evidence) => evidence !== undefined)?.commit;
@@ -315,19 +291,127 @@ export const carryOnAtBoot = (core: CrewCore) =>
         ),
       );
     }
-    for (const host of applied.repositories.keys()) {
-      // A self-deploy the restart cut off may still run: its host stays frozen until it ends.
+  });
+
+/**
+ * The deploy a restart cut off ended (or a person thaws its host): the host's
+ * interrupted writes are adopted, its copies recovered and swept while held,
+ * and only then does the host thaw and its crewmates' work carry on.
+ */
+export const thawAfterDeploy = (core: CrewCore, host: string) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    if (applied === undefined || !core.memory.deployHeld.delete(host)) return;
+    core.memory.deployUnreadable.delete(host);
+    if (
+      core.memory.lastError === frozenWords(host, "running") ||
+      core.memory.lastError === frozenWords(host, "unknown")
+    )
+      core.memory.lastError = null;
+    yield* adoptOnHosts(core, applied, core.memory.deployHeld);
+    yield* core.holdingCopies(
+      writersOn(applied, host),
+      recoverLanes(core, applied, host, "came back from its deploy").pipe(
+        Effect.andThen(sweepHost(core, applied, host)),
+      ),
+    );
+    yield* advanceAll(core);
+    yield* core.changed;
+  });
+
+/**
+ * A host frozen by a deploy the restart cut off: asked again, backing off,
+ * until the platform says the deploy ended — then `thawAfterDeploy` — or no
+ * copy on it is frozen any more. Each answer moves the feed only when it
+ * differs from the last. An answer that cannot be read keeps it frozen, with
+ * words; after long enough the person is offered to thaw it. It never thaws
+ * on a guess.
+ */
+const awaitDeployEnd = (core: CrewCore, host: string, first: DeployState) =>
+  Effect.gen(function* () {
+    const poll = yield* CrewDeployPoll;
+    let wait = poll.first;
+    let last: DeployState = first;
+    let unknownSince = first === "unknown" ? yield* Clock.currentTimeMillis : null;
+    while (core.memory.deployHeld.has(host)) {
+      yield* Effect.sleep(wait);
+      wait = Duration.min(Duration.times(wait, 2), poll.max);
+      if (!core.memory.deployHeld.has(host)) return;
+      const applied = yield* core.applied;
+      if (applied === undefined) return;
       const frozen = (yield* asRefusal(core.store.lanesOnHost(host))).some(
         (lane) => lane.frozenSince !== null,
       );
-      if (frozen) {
-        const state = yield* core.deployState(host, serviceIdOf(applied, host));
-        if (state !== "settled") {
-          core.memory.lastError = frozenWords(host, state);
-          yield* core.background(awaitDeployEnd(core, host));
-          continue;
-        }
+      if (!frozen) {
+        core.memory.deployHeld.delete(host);
+        core.memory.deployUnreadable.delete(host);
+        yield* advanceAll(core);
+        yield* core.changed;
+        return;
+      }
+      const state = yield* core.deployState(host, serviceIdOf(applied, host));
+      if (state === "settled") {
         yield* asRefusal(core.workspace.unfreeze(host));
+        return yield* thawAfterDeploy(core, host);
+      }
+      const nowMs = yield* Clock.currentTimeMillis;
+      unknownSince = state === "unknown" ? (unknownSince ?? nowMs) : null;
+      const offer =
+        unknownSince !== null && nowMs - unknownSince >= Duration.toMillis(poll.unreadable);
+      if (state === last && offer === core.memory.deployUnreadable.has(host)) continue;
+      last = state;
+      core.memory.lastError = frozenWords(host, state);
+      if (offer) core.memory.deployUnreadable.add(host);
+      else core.memory.deployUnreadable.delete(host);
+      yield* core.changed;
+    }
+  });
+
+/**
+ * A person thaws a host whose redeploy could not be read for long: they say it
+ * ended. Only a host offered so (`deploy-unreadable`) thaws.
+ */
+export const thawHost = (core: CrewCore, host: string) =>
+  Effect.gen(function* () {
+    if (!core.memory.deployUnreadable.has(host))
+      return yield* refuse("wrong-state", `${host} is not waiting to be thawed.`);
+    yield* asRefusal(core.workspace.unfreeze(host));
+    yield* thawAfterDeploy(core, host);
+  });
+
+/**
+ * Once the server accepts commands: the run's clock counts again, every free
+ * crewmate carries its interrupted work on, and a running run takes up what
+ * waits on it. A host a deploy may still replace is left frozen and untouched
+ * until it ends.
+ */
+export const carryOnAtBoot = (core: CrewCore) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    if (applied === undefined) return;
+    yield* runOnAfterRestart(core);
+    // A self-deploy the restart cut off may still run: its host stays frozen and untouched until it ends.
+    const states = new Map<string, DeployState>();
+    for (const host of applied.repositories.keys()) {
+      const frozen = (yield* asRefusal(core.store.lanesOnHost(host))).some(
+        (lane) => lane.frozenSince !== null,
+      );
+      if (!frozen) continue;
+      const state = yield* core.deployState(host, serviceIdOf(applied, host));
+      if (state === "settled") yield* asRefusal(core.workspace.unfreeze(host));
+      else {
+        core.memory.deployHeld.add(host);
+        core.memory.lastError = frozenWords(host, state);
+        states.set(host, state);
+      }
+    }
+    // A git write an interrupted operation finished after the Mate stopped is its own, not a stranger's.
+    yield* adoptOnHosts(core, applied, core.memory.deployHeld);
+    for (const host of applied.repositories.keys()) {
+      const state = states.get(host);
+      if (state !== undefined) {
+        yield* core.background(awaitDeployEnd(core, host, state));
+        continue;
       }
       // Every copy on the host is held while it is swept: a person's press waits its turn.
       yield* core.holdingCopies(writersOn(applied, host), sweepHost(core, applied, host)).pipe(

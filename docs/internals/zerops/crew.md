@@ -460,14 +460,21 @@ relative, a dirty lane's work saved as a WIP commit, an unreadable ref or a tip 
 write parked. A copy whose task passed its check (`ready`, `review`, `landing`, `waiting-on-you`)
 is never committed, at boot or at a turn's end: a tracked edit on it stops the task, "its copy has
 edits made after its check", and stays where it is; untracked files are neither edits nor landed. A
-landing that went through is landed, whatever its copy holds. A passed check records the tip it ran on, and Land
+landing that went through is landed, whatever its copy holds. A check judges the committed tree:
+the copy's untracked files are set aside while it runs and put back after (`CrewChecks`), so none
+can make it pass for a tree that lands without them. A passed check records the tip it ran on, and Land
 refuses any other tip ("its copy moved after its check"), so nothing unchecked lands. A copy missing at boot or after a self-deploy comes back from its branch
 (`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
 tip remain, so no work is lost; otherwise the loss is named and the copy offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
 never resets an existing directory. Nothing leaves a host frozen with no way out: a self-deploy's
 end recovers its copies while holding them and then thaws the host, whatever the recovery finds;
-boot asks the platform whether a deploy the restart cut off still runs (`crewDeployState.ts`) and
-keeps its host frozen, with words, until the platform says it ended, never thawing on a guess.
+boot asks the platform whether a deploy the restart cut off still runs (`crewDeployState.ts`,
+through crew's `CrewPlatformProcesses` port) and keeps its host frozen, with words, its crewmates'
+interrupted work neither adopted nor resumed, until the platform says it ended; then the work is
+adopted, recovered, swept and carried on. It asks again from 15 s, doubling to 5 min, moves the
+feed only when the answer changes, and stops once no copy on the host is frozen. After 30 min of
+answers it cannot read, a `deploy-unreadable` row offers the person _Thaw it_ (`thawHost`); it
+never thaws on a guess.
 While the boot sweep or a deploy's recovery holds a crewmate's copy (`CrewCore.holdingCopies`), a
 person's press waits its turn, up to two minutes, and the crewmate's turn end queues behind it
 instead of holding up the crew's events. Each landing is verified on the host it landed on. A turn the provider broke off (`api_error`, `model_error`,

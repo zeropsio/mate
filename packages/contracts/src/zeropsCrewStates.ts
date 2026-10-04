@@ -99,6 +99,8 @@ export const CrewAttentionKind = Schema.Literals([
   "copy-missing",
   "conversation-copy",
   "interrupted",
+  /** A redeploy a restart cut off that could not be read for long: its host may be thawed by hand. */
+  "deploy-unreadable",
 ]);
 export type CrewAttentionKind = typeof CrewAttentionKind.Type;
 

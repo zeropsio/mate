@@ -441,6 +441,7 @@ describe("a row's words", () => {
     expect(Object.values(CREW_ROW_VERBS)).toEqual([
       "Rebuild crew copy",
       "Use crew copy",
+      "Thaw it",
       "Answer",
       "Review",
       "Review what it has",

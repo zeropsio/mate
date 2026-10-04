@@ -66,7 +66,7 @@ import {
   type Activate,
 } from "./crewApply.ts";
 import { conversationCopies, useCrewCopy } from "./CrewStints.ts";
-import { boot, carryOnAtBoot, inspectBoot } from "./crewBoot.ts";
+import { boot, carryOnAtBoot, inspectBoot, thawHost } from "./crewBoot.ts";
 import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
 import {
@@ -300,6 +300,16 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
           at: now,
         })),
         ...(applied === undefined ? [] : yield* conversationCopies(core, applied)),
+        ...[...core.memory.deployUnreadable].map((host) => ({
+          id: `deploy-unreadable:${host}`,
+          kind: "deploy-unreadable" as const,
+          handle: null,
+          taskId: null,
+          text: `The redeploy of ${host} can't be read. Thaw it if it ended.`,
+          paths: [],
+          host,
+          at: now,
+        })),
       ],
     };
   });
@@ -311,6 +321,9 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
     switch (command._tag) {
       case "apply":
         yield* apply(core, principal, activate);
+        return done;
+      case "thawHost":
+        yield* thawHost(core, command.host);
         return done;
       case "rebuildCopy":
         yield* pressCrewmate(core, command.handle, rebuildCopy(core, principal, command.handle));
