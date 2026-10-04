@@ -90,7 +90,6 @@ function ZeropsHandoverCallback() {
 
     void adoptHandover({
       token: outcome.token,
-      clientId: outcome.clientId,
       zcpClaimed: outcome.zcpClaimed,
     })
       .then(() => window.location.replace(accountReturnPath()))

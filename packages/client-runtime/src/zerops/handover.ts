@@ -147,8 +147,6 @@ export type ZeropsHandoverOutcome =
        * app.zerops.io session, or (TRANSITION, old FL) a personal token.
        */
       readonly token: string;
-      /** The organization the platform signed in, or null when it named none. */
-      readonly clientId: string | null;
       /** True when a pool project was claimed, so the picker can be skipped. */
       readonly zcpClaimed: boolean;
     }
@@ -198,11 +196,9 @@ export function readZeropsHandover(
     return { kind: "declined", code: ZEROPS_HANDOVER_INVALID_CODE };
   }
 
-  const clientId = params.get("clientId")?.trim() ?? "";
   return {
     kind: "session",
     token,
-    clientId: clientId || null,
     zcpClaimed: params.get("zcpClaimed") === "true",
   };
 }

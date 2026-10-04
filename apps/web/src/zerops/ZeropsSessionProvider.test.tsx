@@ -135,17 +135,13 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });
 
     await expect(
-      tab.run(() =>
-        tab.session().adoptHandover({ token: "revoked", clientId: null, zcpClaimed: false }),
-      ),
+      tab.run(() => tab.session().adoptHandover({ token: "revoked", zcpClaimed: false })),
     ).rejects.toThrow();
     expect(tab.session().status).toBe("signed-out");
     expect(storedSession(harness)).toBeNull();
 
     const handedOver = harness.rest.issueSession("user-1").accessToken;
-    await tab.run(() =>
-      tab.session().adoptHandover({ token: handedOver, clientId: "org-1", zcpClaimed: false }),
-    );
+    await tab.run(() => tab.session().adoptHandover({ token: handedOver, zcpClaimed: false }));
     expect(tab.session().status).toBe("signed-in");
     expect(tab.session().activeOrganization?.id).toBe("org-1");
     expect(JSON.parse(storedSession(harness)!)).toEqual({ accessToken: handedOver });

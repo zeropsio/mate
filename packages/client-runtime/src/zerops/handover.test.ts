@@ -80,12 +80,9 @@ describe("readZeropsHandover", () => {
   it("returns the credential only when the nonce matches the request this tab made", () => {
     const outcome = readZeropsHandover(`#${session()}`, "nonce-1");
 
-    expect(outcome).toEqual({
-      kind: "session",
-      token: "rt-abc",
-      clientId: "org-1",
-      zcpClaimed: false,
-    });
+    // `clientId` was always null and is gone from the contract: an org a
+    // fragment names is never read.
+    expect(outcome).toEqual({ kind: "session", token: "rt-abc", zcpClaimed: false });
   });
 
   it("carries the pool claim so the picker can be skipped for a fresh account", () => {
@@ -94,14 +91,6 @@ describe("readZeropsHandover", () => {
 
     const notClaimed = readZeropsHandover(`#${session({ zcpClaimed: "false" })}`, "nonce-1");
     expect(notClaimed).toMatchObject({ kind: "session", zcpClaimed: false });
-  });
-
-  it("reports no organization rather than an empty one when the platform named none", () => {
-    const outcome = readZeropsHandover(
-      `#${new URLSearchParams({ token: "rt", nonce: "n" }).toString()}`,
-      "n",
-    );
-    expect(outcome).toMatchObject({ kind: "session", clientId: null });
   });
 
   it("tolerates a fragment with or without its leading hash", () => {

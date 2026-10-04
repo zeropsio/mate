@@ -82,8 +82,6 @@ export interface ZeropsSessionValue {
   readonly adoptHandover: (input: {
     /** A personal access token minted for this client by app.zerops.io. */
     readonly token: string;
-    /** Organization selected on app.zerops.io, when the hand-over named one. */
-    readonly clientId: string | null;
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
@@ -258,7 +256,7 @@ export function ZeropsSessionProvider({
   );
 
   // The platform GUI persists the exact clientUser membership. Restore it per
-  // Zerops user, while letting an explicit hand-over clientId override stale
+  // Zerops user, while letting a registration's clientId override stale
   // local state. Multiple new memberships deliberately require a choice.
   useEffect(() => {
     if (!user) {
@@ -337,28 +335,17 @@ export function ZeropsSessionProvider({
       selectOrganization,
       updateVerifiedMemberships,
       verifyAgain: () => driver.send({ type: "VERIFY_AGAIN" }),
-      adoptHandover: async ({ token, clientId, zcpClaimed }) => {
-        preferredClientIdRef.current = clientId;
-        try {
-          const session = await client.adoptPersonalToken(token);
-          const adopted = await client.fetchUser();
-          driver.signedIn(adopted);
-          if (zcpClaimed) {
-            // The picker reads this to enter the provisioning wait for the
-            // project the claim handed over, instead of waiting for a candidate
-            // list to say so. It is a registration response in every way that
-            // consumer looks at: the org comes from `user`, the claim from the
-            // flag.
-            setLastRegistration({
-              auth: session,
-              user: adopted,
-              ...(clientId ? { clientId } : {}),
-              zcpClaimed: true,
-            });
-          }
-        } catch (cause) {
-          preferredClientIdRef.current = null;
-          throw cause;
+      adoptHandover: async ({ token, zcpClaimed }) => {
+        const session = await client.adoptPersonalToken(token);
+        const adopted = await client.fetchUser();
+        driver.signedIn(adopted);
+        if (zcpClaimed) {
+          // The picker reads this to enter the provisioning wait for the
+          // project the claim handed over, instead of waiting for a candidate
+          // list to say so. It is a registration response in every way that
+          // consumer looks at: the org comes from `user`, the claim from the
+          // flag.
+          setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
         }
       },
       signIn: async (email, password) => {

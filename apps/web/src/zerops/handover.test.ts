@@ -87,14 +87,13 @@ describe("completeZeropsHandover", () => {
   it("accepts a callback answering the nonce this browser stored", () => {
     const store = fakeStore("nonce-1");
     const outcome = completeZeropsHandover({
-      fragment: "#token=rt-1&nonce=nonce-1&clientId=org-1&zcpClaimed=true",
+      fragment: "#token=rt-1&nonce=nonce-1&zcpClaimed=true",
       store,
     });
 
     expect(outcome).toEqual({
       kind: "session",
       token: "rt-1",
-      clientId: "org-1",
       zcpClaimed: true,
     });
   });
@@ -188,7 +187,7 @@ describe("reading the callback exactly once", () => {
   // server: run 1 `session`, run 2 `absent`.
   it("returns the first outcome to every later caller, and reads only once", () => {
     const outcomes: ZeropsHandoverOutcome[] = [
-      { kind: "session", token: "rt-1", clientId: null, zcpClaimed: false },
+      { kind: "session", token: "rt-1", zcpClaimed: false },
       { kind: "absent" },
     ];
     let reads = 0;
