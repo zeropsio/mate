@@ -44,7 +44,7 @@ import {
   useProjectOrderOptions,
 } from "~/zerops/projectOrderPreference";
 import {
-  applyFirstBuildGiveUp,
+  applyFirstBuildVerdict,
   firstBuildOverdue,
   applyProjectCreationVerdict,
   normalizeOrigin,
@@ -102,6 +102,7 @@ import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessi
 import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
+import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
@@ -852,16 +853,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     presses.find((press) => press.organizationId === activeOrganization?.id && press.container)
       ?.projectId ?? null,
   );
-  // A first build half an hour on reads as the platform leaves it, with what removes it.
+  // A first build whose process failed reads as the platform leaves it, with what removes it.
+  const firstBuilds = useZeropsFirstBuilds(observedCandidates);
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
-        applyFirstBuildGiveUp(
+        applyFirstBuildVerdict(
           applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
-          nowMs,
+          firstBuilds.get(candidate.key),
         ),
       ),
-    [creationVerdicts, nowMs, observedCandidates],
+    [creationVerdicts, firstBuilds, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
   // connected. A lease (the account runtime's) reaches the door — it never

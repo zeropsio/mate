@@ -29,7 +29,6 @@
  * Pure: the reading and the words; the menu, the view and the page draw them.
  */
 import {
-  FIRST_BUILD_GIVE_UP_MS,
   FIRST_BUILD_GRACE_MS,
   type ZeropsCandidateGroup,
 } from "@t3tools/client-runtime/zerops/candidates";
@@ -216,18 +215,11 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       ? { kind: "coming", line: COMING_UP_LINE }
       : { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
   }
-  // Past its grace a first build is taking longer, whatever its build's state — a slow, queued or
-  // failed one look the same from its status — with no verb that cannot work on a service never
-  // deployed. Half an hour on, unless its build is known to run, it is not coming up at all.
+  // Past its grace a first build is taking longer, however long — a slow or queued one looks the
+  // same from its status as one whose process is not read yet — with no verb that cannot work on a
+  // service never deployed. Only its build's process says it failed (above), never its age.
   if (firstBuild) {
-    const created = candidate?.service?.created;
-    if (
-      input.firstBuild?.kind !== "running" &&
-      !youngAt(created, input.nowMs, FIRST_BUILD_GIVE_UP_MS)
-    ) {
-      return undefined;
-    }
-    const overdue = !youngAt(created, input.nowMs, FIRST_BUILD_GRACE_MS);
+    const overdue = !youngAt(candidate?.service?.created, input.nowMs, FIRST_BUILD_GRACE_MS);
     return { kind: "coming", line: overdue ? TAKING_LONGER_LINE : COMING_UP_LINE };
   }
   // Made here and not connected yet: its press is over and its container on its way — while

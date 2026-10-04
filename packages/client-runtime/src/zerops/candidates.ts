@@ -225,26 +225,23 @@ export function firstBuildOverdue(
 }
 
 /**
- * How long a first build nothing says is running stays on its way at all: past it, it failed or
- * is stuck for good, and reads as the platform leaves it.
+ * A container waiting for its first build, read against its build's own process where the caller
+ * read one: failed or cancelled, it never comes — unavailable, in the platform's words, so its row
+ * offers what removes it. Queued, running, or not known, it stays on its way: a clock never says a
+ * build that still runs has failed.
  */
-export const FIRST_BUILD_GIVE_UP_MS = 30 * 60_000;
-
-/**
- * A container waiting for its first build past {@link FIRST_BUILD_GIVE_UP_MS}, where no process
- * read says its build still runs: unavailable, naming its status, so its row offers what removes
- * it — never "taking longer" for good. A creation time not known keeps it on its way.
- */
-export function applyFirstBuildGiveUp<Candidate extends ZeropsCandidate>(
+export function applyFirstBuildVerdict<Candidate extends ZeropsCandidate>(
   candidate: Candidate,
-  nowMs: number,
+  build:
+    | { readonly kind: "running" }
+    | { readonly kind: "failed"; readonly why: string }
+    | undefined,
 ): Candidate {
   if (candidate.group !== "provisioning" || candidate.service?.status !== "READY_TO_DEPLOY") {
     return candidate;
   }
-  const created = Date.parse(candidate.service.created ?? "");
-  if (Number.isNaN(created) || nowMs - created < FIRST_BUILD_GIVE_UP_MS) return candidate;
-  return { ...candidate, group: "unavailable", reason: "container is READY_TO_DEPLOY" };
+  if (build?.kind !== "failed") return candidate;
+  return { ...candidate, group: "unavailable", reason: build.why };
 }
 
 /**
@@ -256,12 +253,15 @@ export function applyFirstBuildGiveUp<Candidate extends ZeropsCandidate>(
  */
 export const ADDRESS_GRACE_MS = 120_000;
 
+/** How young a container ACTIVE without its address may be and still be on its way to it. */
+const ADDRESS_YOUTH_MS = 30 * 60_000;
+
 /**
  * When a container's wait for its address ends, wall ms, given when its reader first saw it ACTIVE
  * without one; null when it is not waiting. Only a young container waits: a Mate turns ACTIVE at
- * the end of its first build, which is given up {@link FIRST_BUILD_GIVE_UP_MS} after its creation,
- * so one ACTIVE without an address past that and the grace is not being born — its access is off,
- * and a reload never paints it "coming up". A creation time not known says nothing young.
+ * the end of its first build, so one ACTIVE without an address past {@link ADDRESS_YOUTH_MS} and
+ * the grace is not being born — its access is off, and a reload never paints it "coming up". A
+ * creation time not known says nothing young.
  */
 export function addressWaitEnds(
   service: Pick<ZeropsService, "status" | "created">,
@@ -270,7 +270,7 @@ export function addressWaitEnds(
   if (service.status !== "ACTIVE") return null;
   const created = Date.parse(service.created ?? "");
   if (Number.isNaN(created)) return null;
-  return Math.min(sinceMs, created + FIRST_BUILD_GIVE_UP_MS) + ADDRESS_GRACE_MS;
+  return Math.min(sinceMs, created + ADDRESS_YOUTH_MS) + ADDRESS_GRACE_MS;
 }
 
 /**
