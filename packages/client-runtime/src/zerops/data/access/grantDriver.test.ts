@@ -649,7 +649,7 @@ describe("the access grant inside the data runtime", () => {
   it.effect("interrupts a read between rounds its own deadline abandons (G1)", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        // A's round read fails; its retry never answers.
+        // A's round read fails and waits for a manual check.
         const platform: Platform = {
           ...healthy(),
           outcome: (target, read) =>
@@ -709,7 +709,7 @@ describe("the access grant inside the data runtime", () => {
           expect(opened.phase()).toBe("verifying");
           expect(opened.view().overdue).toBe(true);
 
-          // The round's own deadline fails it; the retry 2 s later waits afresh.
+          // The round's own deadline ends it; only a manual check starts another.
           yield* opened.pass(10 * SECOND);
           expect(opened.phase()).toBe("unverified-failed");
           expect(opened.view().overdue).toBe(false);
@@ -727,7 +727,7 @@ describe("the access grant inside the data runtime", () => {
   );
 
   it.effect(
-    "fails the first round with the platform's words and retries it by the session backoff",
+    "ends the first failed round with the platform's words until the person checks again",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -822,7 +822,7 @@ describe("the access grant inside the data runtime", () => {
     ["a lapse on its 60 s cadence", 3 * MINUTE, false, [0]],
     ["a lapse on its 60 s cadence, the round answering", 3 * MINUTE, true, [0]],
   ] as const)(
-    "a user retry in a lapse starts one round, and no second round before the first rung of the ladder after it fails: %s",
+    "a manual check in a lapse starts one round and a failure stays terminal: %s",
     ([, lapsedMs, answers, startsAfterRetry]) =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -846,7 +846,7 @@ describe("the access grant inside the data runtime", () => {
           const clicked = retried[0]!.startedAtMono;
           yield* opened.pass(10 * SECOND - INVALIDATION_COALESCE_MS);
 
-          // Each round fails 1 s after it starts; the ladder waits 2 s, then 5 s.
+          // A failed manual check starts no automatic failure retry.
           expect(
             opened.platform.rounds
               .slice(before)
