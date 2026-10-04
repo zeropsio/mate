@@ -268,6 +268,27 @@ export function thoughtRunText(text: string): string {
 }
 
 /**
+ * The newest of a thought as the live slot shows it: whole sentences from the
+ * end, as many as fit in `chars`, so its first line never starts mid-sentence
+ * (Bodhi: "headless-specific rendering glitch. To pin…"). One sentence longer
+ * than that is the newest words, cut at a word.
+ */
+export function thoughtTail(run: string, chars: number): string {
+  if (run.length <= chars) return run;
+  const sentences = run.split(/(?<=[.!?…])\s+/u).filter((sentence) => sentence.length > 0);
+  let tail = "";
+  for (let index = sentences.length - 1; index >= 0; index -= 1) {
+    const next = tail.length === 0 ? sentences[index]! : `${sentences[index]!} ${tail}`;
+    if (next.length > chars) break;
+    tail = next;
+  }
+  if (tail.length > 0) return tail;
+  const words = run.slice(run.length - chars);
+  const at = words.indexOf(" ");
+  return `…${at < 0 ? words : words.slice(at + 1)}`;
+}
+
+/**
  * A note as the card says it: one that ends on a colon announced what its
  * next step shows — "Committing:", "Full error output:" — and said alone it
  * points at nothing, so the colon goes once the note is whole (Bodhi). A

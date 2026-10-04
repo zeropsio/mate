@@ -170,6 +170,7 @@ import {
   nowLineOf,
   nowLineWords,
   noteText,
+  thoughtTail,
   operationNowWords,
   reachesEarlier,
   runCardShows,
@@ -1117,7 +1118,7 @@ function LiveThought({ run }: { readonly run: string }) {
   return (
     <div className="run-thought-live" data-over={over ? "" : undefined}>
       <span ref={watch} className="block italic">
-        {run}
+        {thoughtTail(run, THOUGHT_GUESS_CHARS * 2)}
       </span>
     </div>
   );

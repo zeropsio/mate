@@ -35,6 +35,7 @@ import {
   thoughtTicker,
   workedWords,
   noteText,
+  thoughtTail,
 } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
 
@@ -1092,5 +1093,19 @@ describe("noteText", () => {
     ["```yaml\nkey:\n```", false, "```yaml\nkey:\n```"],
   ])("%j (streaming %j) reads %j", (text, streaming, expected) => {
     expect(noteText(text, streaming)).toBe(expected);
+  });
+});
+
+describe("thoughtTail", () => {
+  it.each([
+    ["Short. Whole.", 40, "Short. Whole."],
+    [
+      "The first goes. The second stays. The third stays.",
+      36,
+      "The second stays. The third stays.",
+    ],
+    ["One sentence that is far too long to fit at all here", 20, "…to fit at all here"],
+  ])("%j in %j characters reads %j", (run, chars, expected) => {
+    expect(thoughtTail(run, chars)).toBe(expected);
   });
 });
