@@ -296,6 +296,15 @@ describe("deriveZeropsThreadModel — a triggered build reads its own end", () =
       deployActivities("completed", { status: "BUILD_FAILED", appVersionId: "av-1" }),
     ],
     ["a failed call", deployActivities("failed", { error: "Build failed." })],
+    // An older zcp named no build on the results it ended itself: its terminal word stands.
+    [
+      "deployed, by a zcp that named no build",
+      deployActivities("completed", { status: "DEPLOYED" }),
+    ],
+    [
+      "build failed, by a zcp that named no build",
+      deployActivities("completed", { status: "BUILD_FAILED", failedPhase: "build" }),
+    ],
   ] as const)(
     "a result that settled its build is the verdict, whatever a read says (%s)",
     (_label, activities) => {
@@ -304,6 +313,7 @@ describe("deriveZeropsThreadModel — a triggered build reads its own end", () =
 
       expect(settled.deploy?.phase).not.toBe("running");
       expect(settled.deploy?.phase).not.toBe("uncertain");
+      expect(deployAt(activities).deploy?.phase).toBe(settled.deploy?.phase);
       expect(settled.asked).toEqual([]);
       expect(settled.deploy).toEqual(unobservable.deploy);
     },
