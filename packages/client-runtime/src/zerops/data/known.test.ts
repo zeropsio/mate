@@ -351,7 +351,7 @@ describe("inventory knowledge", () => {
         freshness: { kind: "paused", by: "background" },
       },
       {
-        name: "failed: the value kept, stale since it was read, with the retry",
+        name: "recovering: the value kept, stale since it was read, with a coverage gap",
         interests: [
           {
             status: "failed",
@@ -365,10 +365,9 @@ describe("inventory knowledge", () => {
         freshness: {
           kind: "stale",
           reason: {
-            kind: "revalidation-failed",
-            failure: { kind: "transport", detail: "gateway" },
-            attempt: 2,
+            kind: "source-recovering",
             retryAtMs: 8_000,
+            coverageGap: true,
           },
           sinceMs: 40,
         },

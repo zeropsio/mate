@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import type {
@@ -91,6 +92,26 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       region: "placeholder",
       message: { text: "Waiting for this Mate to connect…", afterMs: 0, tone: "quiet" },
       affordance: null,
+    },
+  },
+  {
+    name: "a receiver reconnects visibly before its first baseline",
+    shown: {
+      state: "failed",
+      failure: { kind: "transport", detail: "socket closed" },
+      atMs: 1_000,
+      attempt: 1,
+      retryAtMs: 104_000,
+    },
+    expected: {
+      region: "message",
+      message: {
+        text: "Reconnecting… Changes while disconnected may be missing.",
+        afterMs: 0,
+        tone: "notice",
+      },
+      affordance: { kind: "retry-now", label: "Try now" },
+      current: false,
     },
   },
   {
@@ -252,6 +273,24 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     expected: {
       region: "value",
       message: { text: "Reconnecting…", afterMs: 0, tone: "notice" },
+      affordance: { kind: "retry-now", label: "Try now" },
+      current: false,
+    },
+  },
+  {
+    name: "receiver recovery shows the coverage gap beside the kept data",
+    shown: known(["#1"], {
+      kind: "stale",
+      reason: { kind: "source-recovering", retryAtMs: 104_000, coverageGap: true },
+      sinceMs: 95_000,
+    }),
+    expected: {
+      region: "value",
+      message: {
+        text: `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(1_000), { timeStyle: "medium" })}. Changes while disconnected may be missing.`,
+        afterMs: 0,
+        tone: "notice",
+      },
       affordance: { kind: "retry-now", label: "Try now" },
       current: false,
     },

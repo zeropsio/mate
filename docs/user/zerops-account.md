@@ -17,6 +17,12 @@ you press **Try again** in the menu; Mate chats remain available.
 Opening a Mate reads its project before connecting. If that read cannot start, Mate shows the
 reason and **Again**. Press **Again** to make one new attempt.
 
+If a Zerops data stream drops, Mate reconnects automatically with increasing delays. The last
+known data stays visible with **Reconnecting…**, its as-of time, and a warning that updates during
+the interruption may be missing. **Try now** starts a fresh connection immediately. Reconnecting
+reads a fresh baseline; it does not repeat operations. A refused session or permission ends the
+connection visibly instead of reconnecting. Failed detail reads still need a manual check.
+
 Mate lists projects your account can operate. Changes made elsewhere appear when the inventory
 refreshes. A removed project or lost permission does not reopen from an old local list. If a
 platform read fails, Mate shows a retry state instead of pretending your projects were deleted.

@@ -1737,10 +1737,31 @@ describe("the post-grant stage's Mate environments", () => {
           yield* PubSub.publish(events, { kind: "closed", reason: "real receiver close" });
           yield* settle;
           expect(opens).toBe(before.opens);
+          const reconnecting = [...(yield* built.data.state).interests.values()].filter(
+            ({ interest }) => interest.status === "failed" && interest.retryAtMs !== null,
+          );
+          const receivers = new Set(
+            reconnecting.map(({ interest }) => interest.identity.receiver.receiverId),
+          );
+          expect(receivers.size).toBeGreaterThan(0);
+          expect(
+            reconnecting.every(
+              ({ interest }) =>
+                interest.status === "failed" && interest.retryAtMs === clock.wallMs() + 1_000,
+            ),
+          ).toBe(true);
           yield* clock.advance(1_000);
           yield* settle;
-          expect(opens).toBe(before.opens);
-          expect(registrations).toBe(before.registrations);
+          expect(opens).toBe(before.opens + receivers.size);
+          expect(registrations).toBeGreaterThan(before.registrations);
+          const recovered = yield* built.data.state;
+          expect(
+            reconnecting.every(
+              ({ key, interest }) =>
+                recovered.interests.get(key)?.interest.identity.receiver.receiverId !==
+                interest.identity.receiver.receiverId,
+            ),
+          ).toBe(true);
         }),
       ),
   );
@@ -2487,7 +2508,7 @@ describe("the post-grant stage's Mate environments", () => {
         };
         const platform = heldServicesReads(platformAdapter([A_MATE]), platformAdapter([A_MATE]));
         const { clock, rig, environments } = yield* granted([deleted], [A_MATE], platform.adapter);
-        yield* clock.advance(MINUTE);
+        yield* clock.advance(SECOND);
         yield* settle;
 
         // The services were read without it: a direct read of them is asked for, and until it
@@ -2497,7 +2518,7 @@ describe("the post-grant stage's Mate environments", () => {
         expect(platform.reads()).toBeGreaterThan(0);
 
         platform.release();
-        yield* clock.advance(MINUTE);
+        yield* clock.advance(SECOND);
         yield* settle;
 
         // The direct read lacks it too: the Mate leaves the catalog.
@@ -2529,14 +2550,14 @@ describe("the post-grant stage's Mate environments", () => {
             [A_MATE],
             platform.adapter,
           );
-          yield* clock.advance(MINUTE);
+          yield* clock.advance(SECOND);
           yield* settle;
           // Listed without it: the Mate is kept while a direct read of the services is asked for.
           expect(environments.machines().get(MATE)?.presence.kind).not.toBe("gone");
           expect(platform.reads()).toBeGreaterThan(0);
 
           platform.release();
-          yield* clock.advance(MINUTE);
+          yield* clock.advance(SECOND);
           yield* settle;
 
           expect(environments.machines().get(MATE)?.presence).toEqual({

@@ -420,14 +420,19 @@ export interface ProjectsListingNotice {
  * What the page says about the projects it does not hold in full (DESIGN
  * §3.4): a placeholder while they are unread or being read, the cause when the
  * read failed, "Still reading…" over a partial list, and nothing over a
- * complete one, nor over one a lapse withholds, which the app's one banner
+ * current complete one, nor over one a lapse withholds, which the app's one banner
  * names. Copy, delay and affordance are `knownPresentation`'s.
  */
 export function projectsListingNotice(
   listing: Shown<ReadonlyArray<ZeropsCandidate>>,
   nowMs: number,
 ): ProjectsListingNotice | null {
-  if (listing.state === "known" && listing.coverage === "complete") return null;
+  if (
+    listing.state === "known" &&
+    listing.coverage === "complete" &&
+    (listing.freshness.kind === "live" || listing.freshness.kind === "settled")
+  )
+    return null;
   const presentation = knownPresentation(listing, PROJECTS_SURFACE, {
     nowMs,
     updateOffered: false,

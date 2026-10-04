@@ -703,7 +703,6 @@ interface RuntimeRegistration {
   readonly outcome: Deferred.Deferred<PhysicalRegistrationOutcome>;
   readonly dependents: Map<InterestKey, InterestIdentity>;
   status: "registering" | "registered" | "failed";
-  streamFailure: AdapterError | null;
   awaitingAnswer: boolean;
 }
 
@@ -712,8 +711,13 @@ interface RuntimeReceiver {
   readonly organization: OrganizationRef;
   readonly identity: ReceiverIdentity;
   handle: ReceiverHandle | null;
-  /** A failed attempt stays visible until explicit refresh replaces this receiver. */
+  /** The last physical attempt; recovery replaces it after closing its registrations. */
   openFailure: AdapterError | null;
+  failed: boolean;
+  reconnectFailures: number;
+  reconnectAtMs: number | null;
+  readonly stopped: Latch.Latch;
+  reconnectFiber: Fiber.Fiber<void> | null;
   readonly registrations: Map<string, RuntimeRegistration>;
   readonly registrationOwners: Map<string, RuntimeRegistration>;
   registrationAttempts: number;
@@ -907,14 +911,32 @@ function failureKind(error: AdapterError): ReadFailureKind {
 
 /**
  * A registration the platform refused with an HTTP error status never took effect: the receiver
- * holds no subscription for it. Its failure stays scoped until manual refresh. One that got
+ * holds no subscription for it. A definitive refusal stays scoped until manual refresh. One that got
  * no answer, or an answer that could not be read, may have left a subscription nobody owns.
  */
-const registrationRefused = (error: AdapterError): boolean => error.status !== undefined;
+const canReconnect = (error: AdapterError): boolean =>
+  error.retryable &&
+  !error.accountRevocationEvidence &&
+  ![
+    "unauthorized",
+    "forbidden",
+    "not-found",
+    "rejected",
+    "cancelled",
+    "overflow",
+    "incomplete",
+  ].includes(error.kind) &&
+  (error.status === undefined ||
+    error.status === 408 ||
+    error.status === 429 ||
+    error.status >= 500);
+
+const registrationRefused = (error: AdapterError): boolean =>
+  error.status !== undefined && !canReconnect(error);
 
 /**
  * A shared registration its sender abandoned in flight — its establishment ran out of time, or it
- * went. Its dependents receive a failed attempt they can retry manually.
+ * went. Close that receiver before recovering: its subscription may still exist remotely.
  */
 const REGISTRATION_ABANDONED: AdapterError = {
   _tag: "ZeropsDataAdapterError",
@@ -989,9 +1011,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   /** The access the build logs and the cells were last reconciled with. */
   let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
-  // Demand arrives from independently run UI effects; workers retain the account scheduler.
+  // Demand arrives from independently run UI effects; workers retain the account clock and scheduler.
   const forkOwned = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(Effect.forkIn(runtimeScope), Effect.provideService(Scheduler.Scheduler, scheduler));
+    effect.pipe(
+      Effect.forkIn(runtimeScope),
+      Effect.provideService(Clock.Clock, clock),
+      Effect.provideService(Scheduler.Scheduler, scheduler),
+    );
   const closed = yield* Ref.make(false);
   /** Open while the tab is online: offline, no establishment starts, so no socket login is sent. */
   const network = yield* Latch.make(true);
@@ -1027,11 +1053,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   let scheduleTableRead: (
     followUp: Extract<ZeropsDataFollowUp, { readonly kind: "read-table-rows" }>,
   ) => Effect.Effect<void> = () => Effect.void;
-  let failReceiver: (receiver: RuntimeReceiver, reason: string) => Effect.Effect<void> = () =>
-    Effect.void;
-  let failSubscription: (
+  let failReceiver: (
     receiver: RuntimeReceiver,
-    registration: RuntimeRegistration,
+    reason: string,
+    error?: AdapterError,
   ) => Effect.Effect<void> = () => Effect.void;
   let failInterest: (identity: InterestIdentity, message: string) => Effect.Effect<void> = () =>
     Effect.void;
@@ -1146,7 +1171,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           const { receiver, registration } = input.sharedRegistration;
           if (
             receivers.get(receiver.key) !== receiver ||
-            receiver.registrations.get(registration.key) !== registration
+            receiver.registrations.get(registration.key) !== registration ||
+            receiver.failed
           )
             return null;
           // Select an owner at ingestion: the original lessee may have released while queued.
@@ -1306,7 +1332,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }
       yield* Effect.forEach(
         affectedReceivers.values(),
-        (receiver) => failReceiver(receiver, "ingress overflow"),
+        (receiver) => failReceiver(receiver, "ingress overflow", readCapacityError()),
         { discard: true },
       );
     });
@@ -1405,6 +1431,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       },
       handle: null,
       openFailure: null,
+      failed: false,
+      reconnectFailures: 0,
+      reconnectAtMs: null,
+      stopped: Latch.makeUnsafe(false),
+      reconnectFiber: null,
       registrations: new Map(),
       registrationOwners: new Map(),
       registrationAttempts: 0,
@@ -1752,7 +1783,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                 const receiver = receivers.get(receiverKeyOf(interest.descriptor));
                 return receiver === undefined
                   ? Effect.void
-                  : failReceiver(receiver, "The account read queue is full.");
+                  : failReceiver(receiver, "The account read queue is full.", readCapacityError());
               },
               { discard: true },
             );
@@ -1837,7 +1868,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           }
           yield* Effect.forEach(
             affectedReceivers.values(),
-            (receiver) => failReceiver(receiver, "read queue capacity"),
+            (receiver) => failReceiver(receiver, "read queue capacity", readCapacityError()),
             { discard: true },
           );
           continue;
@@ -1917,37 +1948,40 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const consumeReceiver = (receiver: RuntimeReceiver): Effect.Effect<void> => {
     const handle = receiver.handle;
     if (handle === null) return Effect.void;
-    return Stream.runForEach(handle.events, (event: ReceiverEvent) => {
-      if (event.kind === "pong") return Effect.void;
-      if (event.kind === "observation") {
-        const request = observationRegistration(event.input);
-        if (request === null)
-          return enqueue({ kind: "observation", input: event.input, interest: null }, event.bytes);
-        const registration = receiver.registrationOwners.get(request.subscriptionName);
-        if (registration === undefined) return Effect.void;
-        return enqueue(
-          {
-            kind: "observation",
-            input: event.input,
-            interest: null,
-            sharedRegistration: { receiver, registration },
-          },
-          event.bytes,
-        );
-      }
-      if (event.kind === "malformed") {
-        const registration =
-          event.subscriptionName === undefined
-            ? undefined
-            : receiver.registrationOwners.get(event.subscriptionName);
-        return registration === undefined
-          ? failReceiver(receiver, "malformed receiver frame")
-          : failSubscription(receiver, registration);
-      }
-      return failReceiver(receiver, event.reason);
-    }).pipe(
+    return Stream.runForEach(
+      handle.events.pipe(
+        Stream.takeUntil((event) => event.kind === "closed" || event.kind === "malformed"),
+      ),
+      (event: ReceiverEvent) => {
+        if (receivers.get(receiver.key) !== receiver || receiver.failed) return Effect.void;
+        if (event.kind === "pong") return Effect.void;
+        if (event.kind === "observation") {
+          const request = observationRegistration(event.input);
+          if (request === null)
+            return enqueue(
+              { kind: "observation", input: event.input, interest: null },
+              event.bytes,
+            );
+          const registration = receiver.registrationOwners.get(request.subscriptionName);
+          if (registration === undefined) return Effect.void;
+          return enqueue(
+            {
+              kind: "observation",
+              input: event.input,
+              interest: null,
+              sharedRegistration: { receiver, registration },
+            },
+            event.bytes,
+          );
+        }
+        if (event.kind === "malformed")
+          return failReceiver(receiver, "Malformed subscription frame.");
+        return failReceiver(receiver, event.reason);
+      },
+    ).pipe(
       Effect.andThen(failReceiver(receiver, "The data stream ended.")),
-      Effect.catch((error) => failReceiver(receiver, error.message)),
+      Effect.catch((error) => failReceiver(receiver, error.message, error)),
+      Effect.raceFirst(receiver.stopped.await),
     );
   };
 
@@ -1955,8 +1989,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     receiverLock.withPermit(
       Effect.gen(function* () {
         if (receiver.handle !== null) return receiver.handle;
-        // A failed login, or one abandoned before it answered, is the attempt of every
-        // establishment that reaches the receiver until an explicit refresh replaces it.
+        // Every dependent sees this physical attempt's failure while recovery backs off.
         if (receiver.openFailure !== null) return yield* Effect.fail(receiver.openFailure);
         const handle = yield* context(policy.establishmentDeadlineMs, (requestContext) =>
           options.adapter
@@ -2069,7 +2102,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           outcome: yield* Deferred.make<PhysicalRegistrationOutcome>(),
           dependents: new Map([[identity.key, identity]]),
           status: "registering",
-          streamFailure: null,
           awaitingAnswer: false,
         };
         receiver.registrationAttempts += 1;
@@ -2104,6 +2136,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     observations: ReadonlyArray<PlatformObservation>,
   ): Effect.Effect<void> =>
     Effect.suspend(() =>
+      receivers.get(receiver.key) !== receiver ||
+      receiver.failed ||
       receiver.registrations.get(registration.key) !== registration
         ? Effect.void
         : Effect.forEach(
@@ -2144,17 +2178,19 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           runtimeInterest.identity === waitedAs &&
           runtimeInterest.leases.size > 0 &&
           state.interests.get(runtimeInterest.key)?.interest.status !== "paused"
-            ? establish(runtimeInterest)
+            ? establish(runtimeInterest, receiverFor(runtimeInterest.descriptor))
             : Effect.succeed(establishmentDone),
         ),
       );
     });
 
-  const establish = (runtimeInterest: RuntimeInterest): Effect.Effect<EstablishmentOutcome> =>
+  const establish = (
+    runtimeInterest: RuntimeInterest,
+    receiver: RuntimeReceiver,
+  ): Effect.Effect<EstablishmentOutcome> =>
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return establishmentDone;
       if (runtimeInterest.descriptor.kind === "project-access") return establishmentDone;
-      const receiver = receiverFor(runtimeInterest.descriptor);
       if (runtimeInterest.identity.receiver !== receiver.identity) {
         yield* updateInterestIdentity(runtimeInterest, receiver).pipe(
           Effect.flatMap((interest) => applyControl({ kind: "interest-upserted", interest })),
@@ -2299,10 +2335,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             ),
           );
         }
-        const outcome: PhysicalRegistrationOutcome =
-          registration.streamFailure === null
-            ? yield* Deferred.await(registration.outcome)
-            : { kind: "failed", error: registration.streamFailure };
+        const outcome = yield* Deferred.await(registration.outcome);
         if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0)
           return establishmentDone;
         if (outcome.kind === "failed") {
@@ -2325,17 +2358,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             },
             interest: identity,
           });
-          if (registration.streamFailure !== null) {
-            yield* failInterest(identity, outcome.error.message);
-            return interestFailed;
-          }
           // A refusal or abandoned send stays attached to this physical attempt.
-          // An uncertain answer closes the known receiver once; refresh owns the next attempt.
+          // An uncertain answer closes the known receiver before reconnecting.
           if (registrationRefused(outcome.error)) {
             yield* failInterest(identity, outcome.error.message);
             return interestFailed;
           }
-          yield* failReceiver(receiver, outcome.error.message);
+          yield* failReceiver(receiver, outcome.error.message, outcome.error);
           return receiverFailed(outcome.error.message);
         }
         if (logicalTicket !== null) {
@@ -2369,6 +2398,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           return interestFailed;
         }
       }
+      yield* awaitIngress;
+      if (!receiver.failed) receiver.reconnectFailures = 0;
       return establishmentDone;
     }).pipe(
       Effect.timeoutOrElse({
@@ -2376,10 +2407,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         orElse: () => Effect.fail(ESTABLISHMENT_DEADLINE),
       }),
       Effect.catch((error: AdapterError) => {
-        const receiver = receiverFor(runtimeInterest.descriptor);
+        if (
+          receivers.get(receiver.key) !== receiver ||
+          runtimeInterest.identity.receiver !== receiver.identity
+        )
+          return Effect.succeed(establishmentDone);
         // One subscription outliving its deadline on a socket that is open says nothing against
         // the socket: this interest fails and its siblings keep observing. A socket that is dead
-        // says so itself. Either failure needs an explicit manual attempt.
+        // says so itself and schedules receiver recovery.
         if (
           error === ESTABLISHMENT_DEADLINE &&
           receiver.handle !== null &&
@@ -2389,8 +2424,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             Effect.as(interestFailed),
           );
         }
-        return failInterruptedInterest(runtimeInterest.identity, "disconnect").pipe(
-          Effect.andThen(failReceiver(receiver, error.message)),
+        return failReceiver(receiver, error.message, error).pipe(
           Effect.as(receiverFailed(error.message)),
         );
       }),
@@ -2400,6 +2434,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     identities: Iterable<InterestIdentity>,
     message: string,
     abortReads = true,
+    recovery?: {
+      readonly retryAtMs: number | null;
+      readonly attempts: number;
+      readonly retryable: boolean;
+    },
   ): Effect.Effect<void> =>
     Effect.gen(function* () {
       for (const identity of identities) {
@@ -2418,65 +2457,130 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               status: "failed",
               identity,
               reason: message,
-              retryable: true,
-              attempts: 1,
-              retryAtMs: null,
+              retryable: recovery?.retryable ?? true,
+              attempts: recovery?.attempts ?? 1,
+              retryAtMs: recovery?.retryAtMs ?? null,
             },
           },
         });
       }
     });
-  failReceiver = (receiver, message) =>
-    Ref.get(closed).pipe(
-      Effect.flatMap((isClosed) =>
-        // Shutdown interrupts registrations while holding the lifecycle lock. Their finalizers
-        // settle the abandoned attempt, but must not acquire that lock for a closed epoch.
-        isClosed
-          ? Effect.void
-          : lifecycleLock.withPermit(
-              Effect.gen(function* () {
-                if ((yield* Ref.get(closed)) || receivers.get(receiver.key) !== receiver) return;
-                yield* failInterests(
-                  [...interests.values()]
-                    .filter(
-                      (interest) =>
-                        interest.identity.receiver.receiverId === receiver.identity.receiverId,
-                    )
-                    .map((interest) => interest.identity),
-                  `${message} Reconnect to read a fresh baseline; updates while disconnected may be missing.`,
-                );
-                receiver.openFailure ??= {
-                  _tag: "ZeropsDataAdapterError",
-                  kind: "network",
-                  message,
-                  retryable: true,
-                  accountRevocationEvidence: false,
-                };
-                const handle = receiver.handle;
-                receiver.handle = null;
-                if (handle !== null) yield* options.adapter.closeReceiver(handle);
-              }),
-            ),
-      ),
-    );
-  failSubscription = (receiver, registration) =>
-    lifecycleLock.withPermit(
-      Effect.gen(function* () {
-        if (receivers.get(receiver.key) !== receiver) return;
-        receiver.registrationOwners.delete(registration.request.subscriptionName);
-        registration.status = "failed";
-        registration.streamFailure = {
-          _tag: "ZeropsDataAdapterError",
-          kind: "malformed",
-          message: "Malformed subscription frame. Try again.",
-          retryable: true,
-          accountRevocationEvidence: false,
-        };
-        yield* failInterests(registration.dependents.values(), registration.streamFailure.message);
-      }),
-    );
+  failReceiver = (receiver, message, error) =>
+    Ref.get(closed)
+      .pipe(
+        Effect.flatMap((isClosed) =>
+          isClosed
+            ? Effect.void
+            : lifecycleLock.withPermit(
+                Effect.gen(function* () {
+                  if (receivers.get(receiver.key) !== receiver || (yield* Ref.get(closed))) return;
+                  if (receiver.failed) {
+                    const current = yield* Ref.get(model);
+                    yield* failInterests(
+                      [...interests.values()]
+                        .filter(
+                          (interest) =>
+                            interest.identity.receiver === receiver.identity &&
+                            current.interests.get(interest.key)?.interest.status === "establishing",
+                        )
+                        .map((interest) => interest.identity),
+                      message,
+                      true,
+                      {
+                        retryAtMs: receiver.reconnectAtMs,
+                        attempts: receiver.reconnectFailures,
+                        retryable: receiver.reconnectAtMs !== null,
+                      },
+                    );
+                    return;
+                  }
+                  receiver.failed = true;
+                  receiver.openFailure ??= error ?? {
+                    _tag: "ZeropsDataAdapterError",
+                    kind: "network",
+                    message,
+                    retryable: true,
+                    accountRevocationEvidence: false,
+                  };
+                  const reconnect = canReconnect(receiver.openFailure);
+                  const attempts = ++receiver.reconnectFailures;
+                  const delayMs = Math.min(1_000 * 2 ** Math.min(attempts - 1, 5), 30_000);
+                  const retryAtMs = reconnect ? (yield* Clock.currentTimeMillis) + delayMs : null;
+                  receiver.reconnectAtMs = retryAtMs;
+                  const affected = [...interests.values()].filter(
+                    (interest) =>
+                      interest.identity.receiver === receiver.identity && interest.leases.size > 0,
+                  );
+                  yield* failInterests(
+                    affected.map((interest) => interest.identity),
+                    reconnect
+                      ? `${message} Reconnecting… A fresh baseline will be read; updates while disconnected may be missing.`
+                      : message,
+                    true,
+                    { retryAtMs, attempts, retryable: reconnect },
+                  );
+                  const handle = receiver.handle;
+                  receiver.handle = null;
+                  if (handle !== null) yield* options.adapter.closeReceiver(handle);
+                  if (!reconnect) return;
+
+                  // One owned recovery per physical receiver. A refresh, pause, release or shutdown fences
+                  // it before it can open anything; an offline tab waits without sending socket logins.
+                  receiver.reconnectFiber = yield* Effect.sleep(Duration.millis(delayMs)).pipe(
+                    Effect.andThen(network.await),
+                    Effect.andThen(
+                      lifecycleLock.withPermit(
+                        Effect.gen(function* () {
+                          if ((yield* Ref.get(closed)) || receivers.get(receiver.key) !== receiver)
+                            return;
+                          const held = [...interests.values()].filter(
+                            (interest) =>
+                              interest.leases.size > 0 &&
+                              interest.identity.receiver === receiver.identity,
+                          );
+                          if (held.length === 0) return;
+                          const replacement = makeReceiver(receiver.organization, receiver.key);
+                          replacement.reconnectFailures = receiver.reconnectFailures;
+                          receivers.set(receiver.key, replacement);
+                          // Preserve terminal hydration attempts: transport recovery never repeats failed reads.
+                          for (const [key, hydration] of hydrations) {
+                            if (
+                              [...hydration.ownership.dependents.values()].some(
+                                (identity) => identity.receiver === receiver.identity,
+                              )
+                            )
+                              yield* cancelHydration(key, hydration);
+                          }
+                          for (const interest of held) {
+                            const desired = yield* updateInterestIdentity(interest, replacement);
+                            yield* applyControl({ kind: "interest-upserted", interest: desired });
+                          }
+                          yield* Effect.forEach(
+                            held,
+                            (interest) => establishInterest(interest).pipe(forkOwned),
+                            { discard: true },
+                          );
+                        }),
+                      ),
+                    ),
+                    forkOwned,
+                  );
+                }),
+              ),
+        ),
+      )
+      .pipe(Effect.ensuring(receiver.stopped.open));
   failInterest = (identity, message) =>
     lifecycleLock.withPermit(failInterests([identity], message));
+
+  const stopReceiver = (receiver: RuntimeReceiver): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      yield* receiver.stopped.open;
+      if (receiver.reconnectFiber !== null) yield* Fiber.interrupt(receiver.reconnectFiber);
+      const handle = receiver.handle;
+      receiver.handle = null;
+      if (handle !== null) yield* options.adapter.closeReceiver(handle);
+    });
 
   const pauseForBackground = lifecycleLock.withPermit(
     Effect.gen(function* () {
@@ -2487,7 +2591,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         if (runtimeInterest.leases.size === 0) continue;
         runtimeInterest.readController.abort();
         const current = (yield* Ref.get(model)).interests.get(runtimeInterest.key);
-        if (current === undefined || current.interest.status === "failed") continue;
+        if (
+          current === undefined ||
+          (current.interest.status === "failed" && current.interest.retryAtMs === null)
+        )
+          continue;
         yield* applyControl({
           kind: "interest-upserted",
           interest: {
@@ -2501,12 +2609,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           },
         });
       }
-      yield* Effect.forEach(
-        activeReceivers,
-        (receiver) =>
-          receiver.handle === null ? Effect.void : options.adapter.closeReceiver(receiver.handle),
-        { discard: true },
-      );
+      yield* Effect.forEach(activeReceivers, (receiver) => stopReceiver(receiver), {
+        discard: true,
+      });
       // Every receiver just paused: no hydration read has a live registration behind it
       // any more. Cancel them all so scheduleHydration starts fresh once resumed.
       yield* Effect.forEach(
@@ -2680,9 +2785,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         );
         if (!hasOtherInterest || (inactiveQueryKeys.length > 0 && receiver?.openFailure === null)) {
           receivers.delete(organizationKey);
-          if (receiver?.handle !== null && receiver?.handle !== undefined) {
-            yield* options.adapter.closeReceiver(receiver.handle);
-          }
+          if (receiver !== undefined) yield* stopReceiver(receiver);
           for (const remaining of interests.values()) {
             if (
               remaining.leases.size === 0 ||
@@ -2778,7 +2881,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             (target.kind === "project" ? target : target.project).projectId === scope.projectId);
         for (const stale of affected) {
           receivers.delete(stale.key);
-          if (stale.handle !== null) yield* options.adapter.closeReceiver(stale.handle);
+          yield* stopReceiver(stale);
         }
         for (const runtimeInterest of held) {
           const desired = yield* updateInterestIdentity(

@@ -518,7 +518,7 @@ describe("hasNoZeropsProject", () => {
         failure: { kind: "transport", detail: "gateway" },
         atMs: 10,
         attempt: 1,
-        retryAtMs: 90,
+        retryAtMs: null,
       },
     },
     { name: "partial", listing: listing([], { coverage: "partial" }) },
@@ -574,7 +574,7 @@ describe("the projects listing", () => {
           failure: { kind: "transport", detail: "gateway" },
           atMs: 10,
           attempt: 1,
-          retryAtMs: 90,
+          retryAtMs: null,
         },
         0,
       ),
@@ -608,7 +608,7 @@ describe("the projects listing", () => {
         failure: { kind: "transport", detail: "gateway" },
         atMs: 10,
         attempt: 1,
-        retryAtMs: 90,
+        retryAtMs: null,
       },
       0,
     );
@@ -673,6 +673,25 @@ describe("the projects listing", () => {
       },
     ])("$name", ({ input, view }) => {
       expect(projectsTroubleView(input)).toEqual(view);
+    });
+  });
+  it("keeps a complete stale listing's reconnect notice beside its rows", () => {
+    const listing = {
+      ...held("complete"),
+      freshness: {
+        kind: "stale",
+        sinceMs: 10,
+        reason: {
+          kind: "source-recovering",
+          retryAtMs: 1_000,
+          coverageGap: true,
+        },
+      },
+    } as const;
+    expect(projectsListingNotice(listing, 0)).toMatchObject({
+      region: "value",
+      message: { text: expect.stringContaining("Reconnecting…") },
+      affordance: { kind: "retry-now" },
     });
   });
 });

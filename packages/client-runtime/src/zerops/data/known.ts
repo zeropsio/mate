@@ -129,12 +129,19 @@ function freshnessOf(source: InterestState | null, asOf: Stamp): Freshness {
     case "failed":
       return {
         kind: "stale",
-        reason: {
-          kind: "revalidation-failed",
-          failure: { kind: "transport", detail: source.reason },
-          attempt: source.attempts,
-          retryAtMs: source.retryAtMs,
-        },
+        reason:
+          source.retryAtMs !== null
+            ? {
+                kind: "source-recovering",
+                retryAtMs: source.retryAtMs,
+                coverageGap: true,
+              }
+            : {
+                kind: "revalidation-failed",
+                failure: { kind: "transport", detail: source.reason },
+                attempt: source.attempts,
+                retryAtMs: source.retryAtMs,
+              },
         sinceMs: asOf.atMs,
       };
   }

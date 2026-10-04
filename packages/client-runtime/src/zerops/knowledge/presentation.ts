@@ -5,6 +5,8 @@
  * A message names the cause only (R-K3); the affordance is a separate field the component renders
  * exactly once. Negative domain copy comes only from a complete known value (R-K1).
  */
+import * as DateTime from "effect/DateTime";
+
 import type {
   FailureReason,
   Known,
@@ -194,7 +196,14 @@ export function knownPresentation<T>(
     case "reading":
       return checking(surface);
     case "failed":
-      return failed(shown.failure, surface, context);
+      return shown.failure.kind === "transport" && shown.retryAtMs !== null
+        ? {
+            ...NOTHING,
+            region: "message",
+            message: say("Reconnecting… Changes while disconnected may be missing.", "notice"),
+            affordance: RETRY_NOW,
+          }
+        : failed(shown.failure, surface, context);
     case "known":
       return knownValue(shown, surface, context);
     case "gone":
@@ -277,7 +286,7 @@ function knownValue<T>(
       return {
         ...value,
         current: false,
-        ...staleMarker(freshness.reason, surface, context),
+        ...staleMarker(freshness.reason, surface, context, shown.asOf.atMs),
       };
   }
 }
@@ -286,10 +295,19 @@ function staleMarker<T>(
   reason: StaleReason,
   surface: KnownSurface<T>,
   context: PresentationContext,
+  asOfMs: number,
 ): Pick<KnownPresentation, "message" | "affordance"> {
   switch (reason.kind) {
     case "source-recovering":
-      return { message: say("Reconnecting…", "notice"), affordance: RETRY_NOW };
+      return {
+        message: say(
+          reason.coverageGap
+            ? `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(asOfMs), { timeStyle: "medium" })}. Changes while disconnected may be missing.`
+            : "Reconnecting…",
+          "notice",
+        ),
+        affordance: RETRY_NOW,
+      };
     case "revalidation-failed": {
       const unsupported = reason.failure.kind === "unsupported";
       return {
