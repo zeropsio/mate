@@ -404,6 +404,37 @@ describe("a press's hold at HQ", () => {
     }
   });
 
+  it("goes on unheld where HQ refuses this person's hold, never asking it again", async () => {
+    vi.useFakeTimers();
+    try {
+      const asked: Array<string> = [];
+      const hold = pressHold(
+        {
+          holdPress: async () => {
+            asked.push("hold");
+            throw new HqError({
+              kind: "refused",
+              code: "forbidden",
+              reason: "not_project_reader",
+              status: 403,
+              message: "refused",
+            });
+          },
+          releasePress: async () => {
+            asked.push("release");
+          },
+        },
+        "press-a",
+      );
+      expect(await hold.take("p-1")).toBe("held");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
+      await hold.release();
+      expect(asked).toEqual(["hold"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops a press of a Mate another browser's press holds, before it writes anything", async () => {
     const hq = api();
     await pressHold(hq.api, "press-a").take("p-1");

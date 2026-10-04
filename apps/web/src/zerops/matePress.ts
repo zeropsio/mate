@@ -882,7 +882,8 @@ export const PRESS_RENEW_MS = 20_000;
  * keeps two presses from importing one Mate's container twice. Taken once the press's project is
  * known, renewed every {@link PRESS_RENEW_MS} while it runs, given its container import's process
  * once Zerops answered it, and let go at its end. A hold HQ does not answer is not the press's to
- * wait on: it goes on, renewing; only HQ's refusal for another browser's press stops it.
+ * wait on: it goes on, renewing; only HQ's refusal for another browser's press stops it. One HQ
+ * refuses this person outright leaves the press unheld, never asked again.
  */
 export interface PressHold {
   /** Holds the press of `projectId`: `elsewhere` where another browser's press holds it. */
@@ -914,6 +915,12 @@ export function pressHold(
         await hold();
       } catch (cause) {
         if (cause instanceof HqError && cause.reason === "press_held") return "elsewhere";
+        // HQ's refusal of this person's hold is definitive: the press goes on unheld, and is
+        // never asked again. One HQ did not answer is renewed as the press runs.
+        if (cause instanceof HqError && cause.kind === "refused") {
+          projectId = null;
+          return "held";
+        }
       }
       if (api !== null && renewal === null) {
         renewal = setInterval(() => {
