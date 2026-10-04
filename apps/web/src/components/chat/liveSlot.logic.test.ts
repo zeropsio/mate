@@ -345,7 +345,12 @@ describe("slotClock", () => {
     readonly name: string;
     readonly slot: LiveSlot;
     readonly first: { readonly key: string; readonly at: string } | null;
-    readonly clock: { readonly from: string; readonly stopped: string | null } | null;
+    readonly waitingSince?: string;
+    readonly clock: {
+      readonly from: string;
+      readonly stopped: string | null;
+      readonly waiting?: true;
+    } | null;
   }>([
     {
       name: "a step running: since it started",
@@ -373,7 +378,36 @@ describe("slotClock", () => {
       first: null,
       clock: { from: "2026-10-04T10:02:00.000Z", stopped: null },
     },
-  ])("$name", ({ slot: given, first, clock }) => {
-    expect(slotClock(given, first)).toEqual(clock);
+    // Review of pass 39: it read 0:00 through a wait on the person, then
+    // jumped to the whole wait once answered.
+    {
+      name: "waiting on the person: the wait itself, counting",
+      slot: slot([{ key: "question:q", shownAt: 1000, endedAt: null, riders: [] }]),
+      first: { key: "question:q", at: "2026-10-04T10:00:00.000Z" },
+      waitingSince: "2026-10-04T10:00:00.000Z",
+      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null, waiting: true },
+    },
+    {
+      name: "answered, the question holding its place: stopped at the wait it counted",
+      slot: slot([
+        {
+          key: "question:q",
+          shownAt: 1000,
+          endedAt: Date.parse("2026-10-04T10:04:37.000Z"),
+          riders: [],
+        },
+      ]),
+      first: { key: "question:q", at: "2026-10-04T10:00:00.000Z" },
+      clock: { from: "2026-10-04T10:00:00.000Z", stopped: "2026-10-04T10:04:37.000Z" },
+    },
+    {
+      name: "a call waiting on the person's approval: the wait, from when it began",
+      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null, riders: [] }]),
+      first: { key: "s1", at: "2026-10-04T09:59:58.000Z" },
+      waitingSince: "2026-10-04T10:00:00.000Z",
+      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null, waiting: true },
+    },
+  ])("$name", ({ slot: given, first, waitingSince, clock }) => {
+    expect(slotClock(given, first, waitingSince ?? null)).toEqual(clock);
   });
 });

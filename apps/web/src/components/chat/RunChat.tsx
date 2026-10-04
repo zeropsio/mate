@@ -3285,16 +3285,14 @@ function LiveSlot({
   const clock = slotClock(
     slot,
     firstDrawn === undefined ? null : { key: firstDrawn.entry.key, at: firstDrawn.item.at },
+    status.waitingSince,
   );
+  // The thing's own time: what the run waited elsewhere is the run's clock's
+  // to leave out, and a wait on the person is counted as itself.
   const ticker: RunStatus | null =
     clock === null
       ? null
-      : {
-          ...status,
-          startedAt: clock.from,
-          waitedMs: 0,
-          waitingSince: clock.stopped ?? status.waitingSince,
-        };
+      : { ...status, startedAt: clock.from, waitedMs: 0, waitingSince: clock.stopped };
   // Which card each call stands in, kept from draw to draw (`slotEntries`).
   const [cards, setCards] = useState<ReadonlyMap<string, string>>(NO_CARDS);
   const slotted = slotEntries(lines, cards);
@@ -3387,7 +3385,8 @@ function LiveSlot({
           </ChatShownContext>
         </SlotStandsOpenContext>
       </InSlotContext>
-      <span className="run-slot-clock">
+      <span className="run-slot-clock" data-run-clock-waiting={clock?.waiting ? "" : undefined}>
+        {clock?.waiting ? <span className="sr-only">Waiting for you </span> : null}
         {ticker === null ? null : <RunTicker status={ticker} />}
       </span>
       {/* What a screen reader hears: what the slot shows, as it changes. */}

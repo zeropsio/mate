@@ -4373,6 +4373,11 @@ code {
   color: var(--color-foreground);
 }
 /* A row's right edge in the slot, where the clock stands on the first. */
+/* p39/content: a wait on the person counts in the quiet ink — its own time,
+   not the Mate's work. */
+.run-slot-clock[data-run-clock-waiting] {
+  color: var(--color-muted-foreground);
+}
 .run-slot-clock-room {
   width: 36px;
   flex: none;

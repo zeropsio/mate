@@ -344,12 +344,16 @@ export function slotHoldsIn(slot: LiveSlot, record: ReadonlyArray<string>): Read
  * started, stopped where it ended while it holds its place, "Thinking" since
  * the quiet began — so a row lands with its own time in the clock's column
  * (Bodhi: a step beside "1:57", the run's clock, settled as 1m 11s). A thing
- * first seen whole has no time of its own: null.
+ * first seen whole has no time of its own: null. While the Mate waits on the
+ * person (`waitingSince`) it counts the wait itself, marked as one: a question
+ * answered then stands stopped at the wait it counted, never a jump from 0:00.
  */
 export function slotClock(
   slot: LiveSlot,
   first: { readonly key: string; readonly at: string } | null,
-): { readonly from: string; readonly stopped: string | null } | null {
+  waitingSince: string | null = null,
+): { readonly from: string; readonly stopped: string | null; readonly waiting?: true } | null {
+  if (waitingSince !== null) return { from: waitingSince, stopped: null, waiting: true };
   if (first === null) {
     return slot.quietSince === null
       ? null
