@@ -25,6 +25,7 @@
  * @module groupDeploys
  */
 
+import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 import {
@@ -69,6 +70,8 @@ export interface GroupEnvironmentRowInput {
   readonly recipeServices?: ReadonlyArray<string> | undefined;
   /** A production's newest release as HQ's rollout of it stands there (`HqEnvironment.release`). */
   readonly release?: ReleaseRollout | null | undefined;
+  /** HQ bringing it up (`HqEnvironment.birth`). */
+  readonly birth?: EnvironmentBirth | null | undefined;
 }
 
 /**
@@ -214,6 +217,7 @@ export function environmentRowInputsOf(input: {
         ],
         ...(recipeServices === undefined ? {} : { recipeServices }),
         ...(environment.release === undefined ? {} : { release: environment.release }),
+        birth: environment.birth,
       };
     });
 }

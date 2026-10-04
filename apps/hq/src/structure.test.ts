@@ -194,6 +194,7 @@ const environmentRow = (
   keyInvalid: false,
   jobs: [],
   release: null,
+  birth: { ended: false },
 });
 
 /**
@@ -1944,6 +1945,81 @@ describe("structure", () => {
           ]);
         }),
       ),
+    );
+
+    // An environment's birth (H2): the rollout its attach asked for, and its jobs there — and any
+    // job of a commit it left out as under way — ended or not, whatever came after; none for an
+    // environment HQ did not bring up.
+    it.effect(
+      "carries whether an environment's birth ended, from the rollout its attach asked",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face-1" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_STAGE",
+              kind: "stage",
+              environment: { name: "stage" },
+            });
+            const sha = "5".repeat(40);
+            const [birth] = yield* sql<{ readonly id: string }>`
+            SELECT id::text AS id FROM hq_rollout
+            WHERE project_id = 'P_STAGE' AND cause = 'env_added'`;
+            const job = (rolloutId: string, state: string) =>
+              Effect.map(
+                sql<{ readonly id: string }>`
+                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+                  ended_at)
+                VALUES (${rolloutId}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${sha}, ${state},
+                  ${sql.literal(state === "queued" || state === "building" ? "NULL" : "now()")})
+                RETURNING id::text AS id`,
+                (rows) => rows[0]!.id,
+              );
+            const end = (jobId: string) => sql`
+            UPDATE hq_deploy_job SET state = 'live', ended_at = now(), updated_at = now()
+            WHERE id = ${jobId}::bigint`;
+            const born = Effect.map(structure.read("dev"), (read) =>
+              read.apps
+                .flatMap((app) => shown(app.environments))
+                .map((environment) => environment.birth),
+            );
+
+            // Asked for and not planned yet: still being born.
+            assert.deepStrictEqual(yield* born, [{ ended: false }]);
+            // Planned into its first deploy, which builds; then live.
+            yield* sql`UPDATE hq_rollout SET planned_at = now() WHERE id = ${birth!.id}::bigint`;
+            const first = yield* job(birth!.id, "building");
+            assert.deepStrictEqual(yield* born, [{ ended: false }]);
+            yield* end(first);
+            assert.deepStrictEqual(yield* born, [{ ended: true }]);
+            // Jobs after it are not its birth's.
+            const [merge] = yield* sql<{ readonly id: string }>`
+            INSERT INTO hq_rollout (app_id, cause, repo, sha, planned_at)
+            VALUES (${shop.id}::uuid, 'merge', 'web', ${sha}, now())
+            RETURNING id::text AS id`;
+            const later = yield* job(merge!.id, "building");
+            assert.deepStrictEqual(yield* born, [{ ended: true }]);
+            // A birth that left its service out for that job under way runs until the job ends.
+            yield* sql`
+            UPDATE hq_rollout SET left_out = jsonb_build_array(jsonb_build_object(
+              'project_id', 'P_STAGE', 'service', 'web', 'sha', ${sha}::text,
+              'job', ${later}::text, 'reason', 'under way'))
+            WHERE id = ${birth!.id}::bigint`;
+            assert.deepStrictEqual(yield* born, [{ ended: false }]);
+            yield* end(later);
+            assert.deepStrictEqual(yield* born, [{ ended: true }]);
+            // An environment HQ did not bring up has no birth.
+            yield* sql`DELETE FROM hq_rollout WHERE id = ${birth!.id}::bigint`;
+            assert.deepStrictEqual(yield* born, [null]);
+          }),
+        ),
     );
 
     it.effect("a project gone from Zerops loses its Mate credential and its challenges", () =>

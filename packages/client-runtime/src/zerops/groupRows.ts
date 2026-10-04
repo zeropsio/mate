@@ -19,6 +19,8 @@
  * @module groupRows
  */
 
+import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { HqJob, ServiceJobs } from "./hq/environments.ts";
 import { isReleaseTag, shortCommit } from "./release.ts";
@@ -54,6 +56,8 @@ export interface EnvironmentRow {
    * nothing there until somebody mints one.
    */
   readonly keyGap: boolean;
+  /** HQ bringing it up (`HqEnvironment.birth`); absent where nothing told. */
+  readonly birth?: EnvironmentBirth | null;
 }
 
 /**
@@ -204,6 +208,7 @@ export function environmentRow(input: {
   /** Whether HQ holds its deploy key, and whether that key no longer works; unknown works. */
   readonly keyHeld?: boolean | undefined;
   readonly keyInvalid?: boolean | undefined;
+  readonly birth?: EnvironmentBirth | null | undefined;
 }): EnvironmentRow {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
   // The first service that is running something names the environment: in a
@@ -239,5 +244,6 @@ export function environmentRow(input: {
     tone,
     deploys: input.services.flatMap(({ deploy }) => (deploy === undefined ? [] : [deploy.latest])),
     keyGap: input.keyHeld === false || input.keyInvalid === true,
+    ...(input.birth === undefined ? {} : { birth: input.birth }),
   };
 }

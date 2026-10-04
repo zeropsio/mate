@@ -34,7 +34,7 @@ const NONE: Shown<Deployment> = {
   coverage: "complete",
   freshness: { kind: "live" },
 };
-function said(deploy: HqJob, status = "ACTIVE", nowMs = NOW) {
+function said(deploy: HqJob, status = "ACTIVE", born = false) {
   const services = [{ hostname: "app", status, runtime: true }];
   const row = environmentRow({
     projectId: "stage",
@@ -43,6 +43,7 @@ function said(deploy: HqJob, status = "ACTIVE", nowMs = NOW) {
     sources: ["main"],
     keyHeld: true,
     services: [{ hostname: "app", deploy: { latest: deploy, live: null } }],
+    birth: { ended: born },
   });
   const input: GroupFlowInput = {
     groupId: "acme",
@@ -57,7 +58,6 @@ function said(deploy: HqJob, status = "ACTIVE", nowMs = NOW) {
         row,
         deployment: NONE,
         route: undefined,
-        createdAt: iso(2),
         projectStatus: "ACTIVE",
         services,
       },
@@ -74,14 +74,15 @@ function said(deploy: HqJob, status = "ACTIVE", nowMs = NOW) {
     mainHead: undefined,
     productionAddable: false,
     pending: [],
-    nowMs,
   };
   const stop = groupFlow(input).stages[0]!;
-  const coming = listedStopComing(
-    "stage",
-    { stop, projectStatus: "ACTIVE", createdAt: iso(2), services, building: false, routes: 0 },
-    nowMs,
-  );
+  const coming = listedStopComing("stage", {
+    stop,
+    projectStatus: "ACTIVE",
+    services,
+    building: false,
+    routes: 0,
+  });
   const result = {
     first: stop.firstDeploy,
     cell: stopLine(stop).word,
@@ -120,8 +121,8 @@ describe("a first-deploy failure delivered by HQ", () => {
       line: "Stage didn’t come up · its first deploy failed",
     });
   });
-  it("keeps the observed failure after the coming-up window", () => {
-    expect(said(failure, "ACTIVE", NOW + 20 * 60_000)).toMatchObject({
+  it("keeps the observed failure once HQ ended bringing it up", () => {
+    expect(said(failure, "ACTIVE", true)).toMatchObject({
       first: { kind: "failed", reason: "The test step failed." },
       cell: "First deploy failed",
     });

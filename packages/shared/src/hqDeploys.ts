@@ -63,3 +63,14 @@ export const NO_DEPLOYS: HqDeployAnswer = { jobs: [], note: null };
  */
 export const WithDeploys = Schema.Struct({ deploys: HqDeployAnswer });
 export type WithDeploys = typeof WithDeploys.Type;
+
+/**
+ * Whether an environment HQ brought up is up as far as HQ takes it, as its structure streams it
+ * beside the environment: derived from the rollout its attach asked for (`env_added`), never
+ * stored. Ended once that rollout was planned, every job it asked for ended — a first deploy HQ
+ * makes ends live only after its subdomain, where one was intended, came on or said why not — and
+ * every job of a commit it left out as under way ended too. An environment HQ did not bring up has
+ * none.
+ */
+export const EnvironmentBirth = Schema.Struct({ ended: Schema.Boolean });
+export type EnvironmentBirth = typeof EnvironmentBirth.Type;

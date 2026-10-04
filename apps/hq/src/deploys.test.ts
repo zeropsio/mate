@@ -929,6 +929,27 @@ describe("deploys", () => {
       ),
     );
 
+    // The subdomain is the last step of a first deploy HQ makes: followed by its process before the
+    // job ends live, and where it does not come on the live job says so in HQ's words.
+    it.effect(
+      "a subdomain HQ could not turn on is said on the live deploy, never only logged",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, until, deploys }) =>
+          Effect.gen(function* () {
+            yield* createdForHq("P_STAGE");
+            world.unanswered.add("enableSubdomainAccess");
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until((found) => found.length === 1 && settled("live")(found));
+            const [row] = yield* deploys;
+            assert.match(row?.reason ?? "", /^its subdomain was not turned on: /u);
+            assert.isFalse(
+              world.services.find((service) => service.name === "web")!.subdomainAccess,
+            );
+          }),
+        ),
+    );
+
     it.effect("opens no subdomain on the first deploy of a service not created for HQ", () =>
       withDeploys(({ appId, world, tiers, commit, until }) =>
         Effect.gen(function* () {

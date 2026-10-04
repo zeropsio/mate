@@ -57,6 +57,7 @@ const SHOP: HqStructure["apps"][number] = {
       keyInvalid: false,
       jobs: [],
       release: null,
+      birth: null,
       can: { keep_deploy_token: ALLOW },
     },
     {
@@ -69,6 +70,7 @@ const SHOP: HqStructure["apps"][number] = {
       keyInvalid: false,
       jobs: [],
       release: null,
+      birth: null,
       can: { keep_deploy_token: refused("not_project_admin") },
     },
   ],

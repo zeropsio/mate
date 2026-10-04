@@ -67,6 +67,7 @@ function environment(
     keyInvalid: false,
     jobs: [],
     release: null,
+    birth: null,
     ...overrides,
   };
 }
@@ -102,6 +103,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         keyHeld: true,
         keyInvalid: true,
         release: null,
+        birth: null,
         services: [
           {
             hostname: "api",
@@ -122,6 +124,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         keyHeld: true,
         keyInvalid: false,
         release: null,
+        birth: null,
         services: [{ hostname: "api", repository: "apidev", serviceId: "s3" }],
       },
     ]);

@@ -47,6 +47,7 @@
  * @module groupFlow
  */
 
+import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import {
@@ -109,7 +110,6 @@ export interface GroupFlowPending extends GroupFlowComing {
 
 /** One group stage or the production, as the surfaces hold it. */
 export interface GroupFlowStopInput {
-  readonly createdAt?: string | undefined;
   readonly projectStatus?: string | undefined;
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
@@ -166,8 +166,6 @@ export interface GroupFlowInput {
   readonly productionAddable: boolean;
   /** Its creations under way the listing does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<GroupFlowPending>;
-  /** The clock a stage being set up is read by; without one, nothing is said of its setting up. */
-  readonly nowMs?: number | undefined;
 }
 
 /** An open pull request, with what is stopping it and the one word for where it stands. */
@@ -209,6 +207,8 @@ export interface GroupFlowStop {
    * `undefined` while HQ has none under way.
    */
   readonly firstDeploy?: Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined;
+  /** HQ bringing it up (`EnvironmentRow.birth`), which says whether it is coming up. */
+  readonly birth?: EnvironmentBirth | null;
 }
 
 export type GroupFlowProduction =
@@ -317,6 +317,7 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
     name: input.name,
     source: row?.source,
     route: input.route,
+    ...(row?.birth === undefined ? {} : { birth: row.birth }),
   };
   if (deployment?.state === "known" && !deploymentReadFailed(deployment)) {
     if (deployment.value.kind === "none") return { ...base, state: "empty", version: undefined };
@@ -355,22 +356,17 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
 }
 
 /** A stage known to run nothing, with where its first deploy stands (`stageFirstDeploy`). */
-function withFirstDeploy(
-  stop: GroupFlowStop,
-  input: GroupFlowStopInput,
-  flow: GroupFlowInput,
-): GroupFlowStop {
+function withFirstDeploy(stop: GroupFlowStop, input: GroupFlowStopInput): GroupFlowStop {
   // Only a stage that runs nothing, or nothing known yet, waits for a first deploy.
   if (deploymentReadFailed(input.deployment)) return stop;
   if (input.tier !== "stage" || (stop.state !== "empty" && stop.state !== "checking")) return stop;
   const first = stageFirstDeploy({
-    createdAt: input.createdAt,
+    birth: input.row?.birth,
     projectStatus: input.projectStatus,
     services: input.services,
     deployment: input.deployment,
     deploys: input.row?.deploys,
     keyGap: input.row?.keyGap ?? false,
-    nowMs: flow.nowMs,
   });
   return first === undefined ? stop : { ...stop, firstDeploy: first };
 }
@@ -381,22 +377,21 @@ function withFirstDeploy(
  * ended failed, or as HQ's records of it say (`firstDeploy`). `undefined` while HQ has none under
  * way, or nothing can be promised.
  */
-export function stageSettingUp(
-  input: Pick<GroupFlowStopInput, "createdAt" | "projectStatus" | "services">,
-  nowMs: number | undefined,
-): ReturnType<typeof stopImport> {
-  return nowMs === undefined
-    ? undefined
-    : stopImport({
-        createdAt: input.createdAt,
-        projectStatus: input.projectStatus,
-        services: input.services,
-        nowMs,
-      });
+export function stageSettingUp(input: {
+  readonly birth?: EnvironmentBirth | null | undefined;
+  readonly projectStatus?: string | undefined;
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
+}): ReturnType<typeof stopImport> {
+  return stopImport({
+    birth: input.birth,
+    projectStatus: input.projectStatus,
+    services: input.services,
+  });
 }
 
 export function stageFirstDeploy(input: {
-  readonly createdAt?: string | undefined;
+  /** HQ bringing it up (`EnvironmentRow.birth`): its setting up is said only while it does. */
+  readonly birth?: EnvironmentBirth | null | undefined;
   /** Its project's status, as the platform lists it. */
   readonly projectStatus?: string | undefined;
   /** Its services as the platform lists them; with them, nothing is said while it is being made. */
@@ -407,8 +402,6 @@ export function stageFirstDeploy(input: {
   readonly deploys: ReadonlyArray<HqJob> | undefined;
   /** HQ holds no deploy key that works for it (`EnvironmentRow.keyGap`). */
   readonly keyGap: boolean;
-  /** The clock its setting up is read by; without one, nothing is said of it. */
-  readonly nowMs: number | undefined;
 }): Exclude<FirstDeploy, { readonly kind: "awaited" }> | undefined {
   const { deployment } = input;
   // Something runs or builds there: no first deploy to wait for.
@@ -424,7 +417,7 @@ export function stageFirstDeploy(input: {
     !(input.deploys ?? []).some((job) => job.processId === failedBuild.processId)
   )
     return { kind: "failed", reason: failedBuild.reason };
-  const step = stageSettingUp(input, input.nowMs);
+  const step = stageSettingUp(input);
   if (step !== undefined) return { kind: "setting-up", step };
   if (deployment?.state !== "known") return undefined;
   if (input.deploys === undefined) return undefined;
@@ -583,7 +576,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     notLive: input.release.waiting,
     notLiveAtLeast: input.release.waitingAtLeast,
   };
-  const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop, input));
+  const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop));
   const stages = stops.filter((_, index) => input.stops[index]?.tier === "stage");
   const productionStop = stops.find((_, index) => input.stops[index]?.tier === "production");
   const production = productionOf(productionStop, input, main);

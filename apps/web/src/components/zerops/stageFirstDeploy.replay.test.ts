@@ -38,7 +38,6 @@ const at = (seconds: number) => START + seconds * 1000;
 const iso = (seconds: number) => new Date(at(seconds)).toISOString();
 
 const STAGE_ID = "p-abacus-stage";
-const MADE = 670.4;
 const FIX = "5d0e7a19c4b2f83e6a1d09c7b5e4f3a2d1c0b9e8";
 
 const known = (value: Deployment): Shown<Deployment> => ({
@@ -200,6 +199,8 @@ interface Moment {
   readonly merged?: ReadonlyArray<FlowPullRequest>;
   /** HQ's deploy job of `main`'s head of `appdev`, as the deploy half last read it. */
   readonly deploy?: HqJob;
+  /** Whether HQ ended bringing it up (`HqEnvironment.birth`); still bringing it up unless said. */
+  readonly born?: boolean;
 }
 
 /** What the menu's line and the page's cell say at one moment. */
@@ -220,6 +221,7 @@ function said(moment: Moment) {
       },
     ],
     keyHeld: true,
+    birth: { ended: moment.born === true },
   });
   const input: GroupFlowInput = {
     groupId: "g-abacus",
@@ -234,7 +236,6 @@ function said(moment: Moment) {
         row,
         deployment: moment.deployment,
         route: undefined,
-        createdAt: iso(MADE),
         projectStatus,
         services,
       },
@@ -251,14 +252,12 @@ function said(moment: Moment) {
     mainHead: undefined,
     productionAddable: false,
     pending: [],
-    nowMs,
   };
   const stop = groupFlow(input).stages[0];
   if (stop === undefined) throw new Error("the stage is listed");
   const listed = {
     stop,
     projectStatus,
-    createdAt: iso(MADE),
     services,
     building: moment.deployment?.state === "known" && moment.deployment.value.kind === "deploying",
     routes: moment.routes ?? 0,
@@ -269,7 +268,7 @@ function said(moment: Moment) {
       {
         projectId: STAGE_ID,
         name: "Abacus - stage",
-        coming: listedStopComing("stage", listed, nowMs),
+        coming: listedStopComing("stage", listed),
         serves: stopServes(listed),
       },
     ],
