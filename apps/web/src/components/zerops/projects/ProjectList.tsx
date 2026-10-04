@@ -347,13 +347,33 @@ export function ProjectList<T>({
     rows.map((row) => ({ groupId: row.entry.group.groupId, rises: row.rises, known: row.known })),
   );
   const shown = groups.some((entry) => entry.group.groupId === focusGroup);
+  const ordered = risenFirst(rows, (row) => row.rises);
+  const orderKey = ordered.map((row) => row.entry.group.groupId).join(",");
   const scrolledTo = useRef<string | undefined>(undefined);
+  // The named row stays in view while rows above it rise as their reads answer — until the
+  // person scrolls or types for themselves.
+  const following = useRef(true);
   useEffect(() => {
-    if (!shown || focusGroup === undefined || scrolledTo.current === focusGroup) return;
-    scrolledTo.current = focusGroup;
-    setOpenGroups((current) => new Set([...current, focusGroup]));
+    if (focusGroup === undefined) return;
+    following.current = true;
+    const stop = () => {
+      following.current = false;
+    };
+    const intents = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
+    for (const intent of intents) window.addEventListener(intent, stop, { passive: true });
+    return () => {
+      for (const intent of intents) window.removeEventListener(intent, stop);
+    };
+  }, [focusGroup]);
+  useEffect(() => {
+    // Run again whenever the order moves (`orderKey`): the row may have been pushed down.
+    if (!shown || focusGroup === undefined || orderKey.length === 0) return;
+    if (scrolledTo.current !== focusGroup) {
+      scrolledTo.current = focusGroup;
+      setOpenGroups((current) => new Set([...current, focusGroup]));
+    } else if (!following.current) return;
     document.getElementById(rowId(focusGroup))?.scrollIntoView({ block: "start" });
-  }, [focusGroup, shown]);
+  }, [focusGroup, shown, orderKey]);
   if (rows.length === 0) return null;
   const toggle = (groupId: string) => {
     setOpenGroups((current) => {
@@ -366,7 +386,7 @@ export function ProjectList<T>({
   return (
     <FlatCard>
       <ul aria-label="Projects" data-zerops-surface="project-rows">
-        {risenFirst(rows, (row) => row.rises).map(({ entry, line }) => (
+        {ordered.map(({ entry, line }) => (
           <ProjectRow
             entry={entry}
             key={entry.group.groupId}
