@@ -270,16 +270,18 @@ export interface HqApi {
     environment: string,
     service: string,
   ) => Promise<HqDeployAnswer>;
-  /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
+  /** The person's active Git password metadata; passwords are returned only on issue. */
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
   readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
+  /** Source content pinned to a commit; uses the same person read rule as changes. */
   readonly repositorySource: (
     appId: string,
     repo: string,
     query: RepositoryQuery,
     signal?: AbortSignal,
   ) => Promise<RepositorySource>;
+  /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
   readonly change: (
     link: ChangeLink,
     signal?: AbortSignal,

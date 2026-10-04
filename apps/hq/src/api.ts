@@ -528,7 +528,7 @@ const gitCredential = (authorization: string | undefined) => {
 
 /**
  * HTTPS Git serves Mates and people. A person's independent, expiring password is scoped to its
- * application; every request asks the existing person read rule, and never accepts a client
+ * application; every request asks the person's read/write rule, and never accepts a client
  * session as a Git password. Mate admission and write policy are unchanged.
  */
 const serveGit = Effect.gen(function* () {
@@ -564,20 +564,20 @@ const serveGit = Effect.gen(function* () {
   const changes = yield* Changes;
   const own = holder.value;
   if (own.kind === "person") {
-    const read = (appId: string) =>
+    const access = (appId: string, write = false) =>
       own.appId === appId
-        ? changes.personGit(own.userId, appId)
+        ? changes.personGit(own.userId, appId, write)
         : Effect.fail(new ChangeRefused({ code: "forbidden", reason: "not_your_app" }));
     yield* (yield* GitHost).serve(
       request,
       ({ repo, service }) =>
         Effect.gen(function* () {
-          yield* read(repo.appId);
-          if (service === "git-receive-pack")
-            return yield* new ChangeRefused({ code: "forbidden", reason: "not_app_developer" });
+          const write = service === "git-receive-pack";
+          yield* access(repo.appId, write);
+          if (write) return { kind: "person", userId: own.userId, appId: own.appId } as const;
           return { kind: "reader", userId: own.userId } as const;
         }),
-      (repo) => Effect.isSuccess(read(repo.appId)),
+      (repo) => Effect.isSuccess(access(repo.appId)),
     );
   } else {
     const { projectId } = own;

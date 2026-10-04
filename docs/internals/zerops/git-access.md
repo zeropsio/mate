@@ -34,11 +34,28 @@ and expires after 12 hours. HQ keeps only its SHA-256 in `hq_git_credential`.
 `GET` on that route returns only the holder's active credential metadata. `DELETE …/:id` revokes
 only their own credential. Git uses Basic auth with username `person` and the password at
 `/git/:appId/:repo.git`. Every request checks the organization, application scope and current
-`read_change` permission. Neither an HQ client session nor a Git password can be used in the other's
-authentication door. Issue and revoke are leader-fenced writes; credential responses are no-store.
+`read_change` permission for reads, or `push_repo` for pushes. Neither an HQ client session nor a
+Git password can be used in the other's authentication door. Issue and revoke are leader-fenced
+writes; credential responses are no-store.
 A backup restore revokes all restored Git passwords; older backups without the table still restore.
 
 The shared credential store owns metadata and each command's visible result. Concurrent presses
 share one attempt. Failed reads and commands require manual recovery. Passwords remain in memory,
 are dropped on panel close or capability loss, and cannot arrive after account close. Metadata
 from an issue that lands before the first list has only partial coverage until a successful list.
+
+## Person writes
+
+`push_repo` uses main's app write-team rule: Basic user or above on any currently attached project,
+with each project's explicit grant overriding the organization role. An active organization
+owner retains main's site-admin Git rights, including an application without projects. An
+organization admin without an app developer grant does not gain Git write access. Reads use the
+same app source permission as the browser. Release rights remain the existing release workflow's.
+
+Push authorization uses the same write-freshness policy as other HQ writes, and confirms a refusal
+with fresh Zerops facts. Credentials carry identity and scope, never frozen role claims.
+The Git layer receives an app-scoped person principal only after this check. Its built-in ref
+policy permits topic branches; it refuses `main`, tags, the entire `mate` namespace and non-head
+refs. Existing branch deletion and non-fast-forward protections still apply, even for owners.
+Each Git command ends in Git's response, with a per-ref refusal for protected refs. A pushed topic
+branch can be selected after a manual source read; no background refresh or retry is added.

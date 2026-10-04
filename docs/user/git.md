@@ -24,3 +24,12 @@ The panel lists your active passwords and when each expires. **Revoke** ends a p
 without signing you out of Mate. If a creation attempt loses its answer, use **Read again** to find
 and revoke the password that may have been created, then create another. A password cannot be read
 back from HQ. Closing the panel clears its displayed password.
+
+If you have Basic user access or above on any attached Zerops project, or are the active account owner, you can push a
+topic branch with the same password, for example `git push origin HEAD:refs/heads/my-change`.
+Read-only access allows clone and fetch. Lowered permissions or inactive membership stop later
+requests, even while the password has not expired.
+
+HQ controls `main`, release tags and `mate/…` change branches. Direct pushes cannot change those
+refs, delete branches or replace branch history. Use the project's change and release workflows
+for `main` and production.

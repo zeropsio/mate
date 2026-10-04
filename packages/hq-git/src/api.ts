@@ -7,6 +7,8 @@ import * as Schema from "effect/Schema";
 export type Principal =
   | { readonly kind: "mate"; readonly mateId: string; readonly appId: string }
   | { readonly kind: "core" }
+  /** Core has checked this person's live app write permission; ref policy still applies. */
+  | { readonly kind: "person"; readonly userId: string; readonly appId: string }
   | { readonly kind: "reader"; readonly userId: string };
 
 export interface Repo {
@@ -61,7 +63,7 @@ export interface HqGitOptions {
   /** Routes default to /git/<appId>/<id>.git; Core may choose another mount prefix. */
   readonly pathPrefix?: string;
   readonly authenticate: (request: NodeHttp.IncomingMessage) => Awaitable<Principal | null>;
-  /** Core checks app membership for readers, and app identity for mates. Also gates pushes. */
+  /** Core checks app membership for readers/people, and app identity for mates. Also gates pushes. */
   readonly canRead: (principal: Principal, repo: Repo) => Awaitable<boolean>;
   /** The handler always applies the built-in write rules; Core answers only for change records. */
   readonly lookupChange: (repo: Repo, mateId: string, number: number) => Promise<Change | null>;

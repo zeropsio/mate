@@ -19,7 +19,8 @@ export const allowRefUpdate = async (
   lookupChange: HqGitOptions["lookupChange"],
 ): Promise<RefDecision> => {
   if (principal.kind === "reader") return refuse("read_only");
-  if (principal.kind === "mate" && principal.appId !== repo.appId) return refuse("not_your_ref");
+  if ((principal.kind === "mate" || principal.kind === "person") && principal.appId !== repo.appId)
+    return refuse("not_your_ref");
   if (!validRef(update.ref)) return refuse("invalid_ref");
   if (/^(?:0{40}|0{64})$/.test(update.newSha)) return refuse("deletion");
   if (principal.kind === "core") {
@@ -30,6 +31,15 @@ export const allowRefUpdate = async (
     )
       return refuse("tag_immutable");
     return { allowed: true };
+  }
+  if (principal.kind === "person") {
+    // HQ owns main, tags and the allocated Mate change namespace. People own topic branches.
+    return update.ref.startsWith("refs/heads/") &&
+      update.ref !== "refs/heads/main" &&
+      update.ref !== "refs/heads/mate" &&
+      !update.ref.startsWith("refs/heads/mate/")
+      ? { allowed: true }
+      : refuse("protected_ref");
   }
   const match = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/.exec(update.ref);
   if (!match || match[1] !== principal.mateId) return refuse("not_your_ref");

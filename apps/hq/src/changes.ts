@@ -203,18 +203,24 @@ export class Changes extends Context.Service<
       userId: string,
       appId: string,
     ) => Effect.Effect<ReadonlyArray<RepoListEntry>, ReadError>;
-    /**
-     * What lies between two of a repository's commits, git's `base..head` (`CompareQuery`), each
-     * commit with the change whose merge it is; `commit_not_found` for either end the repository
-     * lacks.
-     */
-    readonly personGit: (userId: string, appId: string) => Effect.Effect<void, ReadError>;
+    /** Checks a person's source read or topic-branch push against the app's current projects. */
+    readonly personGit: (
+      userId: string,
+      appId: string,
+      write?: boolean,
+    ) => Effect.Effect<void, ReadError>;
+    /** A bounded source tree or file at one commit, after the person's source-read permission. */
     readonly repositorySource: (
       userId: string,
       appId: string,
       repo: string,
       query: RepositoryQuery,
     ) => Effect.Effect<RepositorySource, ReadError | NotLeader | GitError>;
+    /**
+     * What lies between two of a repository's commits, git's `base..head` (`CompareQuery`), each
+     * commit with the change whose merge it is; `commit_not_found` for either end the repository
+     * lacks.
+     */
     readonly compare: (
       userId: string,
       appId: string,
@@ -513,7 +519,7 @@ export const changesLayer: Layer.Layer<
     const personApp = (
       userId: string,
       appId: string,
-      verb: "read_change" | "comment_change" | "merge_change" | "close_change",
+      verb: "read_change" | "comment_change" | "merge_change" | "close_change" | "push_repo",
     ) => {
       const check = Effect.gen(function* () {
         const projects = yield* sql<{ readonly project_id: string }>`
@@ -1073,7 +1079,8 @@ export const changesLayer: Layer.Layer<
             }),
           );
         }),
-      personGit: (userId, appId) => personApp(userId, appId, "read_change"),
+      personGit: (userId, appId, write = false) =>
+        personApp(userId, appId, write ? "push_repo" : "read_change"),
       repositorySource: (userId, appId, repo, query) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");
