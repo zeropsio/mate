@@ -3608,8 +3608,8 @@ function PullRequestList({
  * *Review* in blue at the right edge, the one door to merging it (R1). No
  * *Merge*, no *Ask* and no check dot on the row: the outlined pill repeated
  * on every change as the menu's only outlined control, and the verdict lives
- * in the review. The mark alone may say that something is wrong (S3): red
- * where its checks fail, amber where it fell behind `main`. A person's own
+ * in the review. The mark alone may say that something is wrong (S3): amber
+ * where it fell behind `main` and no longer merges (`changeMarkTone`). A person's own
  * pull request names them after the title — there is no room for a line.
  */
 function PullRequestRow({

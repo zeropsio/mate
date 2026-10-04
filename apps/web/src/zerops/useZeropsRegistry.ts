@@ -3,10 +3,11 @@
  * organization's HQ streams it (`hqStructure.ts`, ADR 0002), shared by every surface that reads
  * it: one stream, never a read per surface.
  *
- * An organization with no HQ has the empty registry, known once its member list said so. While
- * nothing is known yet — HQ not answered and nothing remembered — it is loading, never the empty
- * registry settled, which would drop every group from the tree. HQ down leaves the registry last
- * known standing.
+ * An empty structure from HQ is an organization with no applications yet: the empty registry,
+ * known. An organization with no HQ never reaches here — the HQ gate stands before the product
+ * (`hqGate.ts`). While nothing is known yet — HQ not answered and nothing remembered — it is
+ * loading, never the empty registry settled, which would drop every group from the tree. HQ down
+ * leaves the registry last known standing.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {

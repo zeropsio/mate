@@ -1904,7 +1904,7 @@ export interface OutcomeFailure {
 /** Something the run set out to do and did not: a push, a service it could not create. */
 export interface OutcomeNotDone {
   readonly key: string;
-  /** What it was about: "gitea", "appdev". */
+  /** What it was about: "db", "appdev". */
   readonly subject: string;
   /** "Import failed", "Push failed". */
   readonly word: string;
