@@ -25,7 +25,7 @@ import {
   reportDone,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
-import { read, write } from "./testing/crewGitFixture.ts";
+import { git, read, write } from "./testing/crewGitFixture.ts";
 
 const OPTIONS: CrewRunOptions = {
   budgetUsd: 1,
@@ -434,6 +434,39 @@ describe("CrewEngine runs", () => {
             reworked.attention.map((row) => row.kind),
           ],
           [thread, true, AS_CREW, []],
+        );
+      }),
+    ),
+  );
+
+  it.live("in a run, a merge conflict goes back to its crewmate on its own", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        write(world.root, "a.txt", "base\n");
+        git(world.root, ["add", "-A"]);
+        git(world.root, ["commit", "-q", "-m", "a.txt"]);
+        yield* started(world);
+        const thread = yield* firstTurn(world, () =>
+          write(world.root, ".crew/backend/a.txt", "crew\n"),
+        );
+        write(world.root, "a.txt", "person\n");
+        git(world.root, ["commit", "-q", "-am", "person edits a.txt"]);
+        yield* reportDone(thread);
+        yield* ended(world, thread, 0.1);
+        const reworked = yield* snapshotWhere(
+          (current) =>
+            current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 2,
+        );
+        const resolve = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
+        assert.deepStrictEqual(
+          [
+            resolve.threadId,
+            resolve.message.text.includes("resolve the conflicts"),
+            (yield* Ref.get(world.admitted)).at(-1)?.principal,
+            (yield* (yield* CrewStore).assignments("main"))[0]!.reworks,
+            reworked.attention.map((row) => row.kind),
+          ],
+          [thread, true, AS_CREW, 1, []],
         );
       }),
     ),

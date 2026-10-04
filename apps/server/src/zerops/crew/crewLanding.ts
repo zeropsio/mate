@@ -279,7 +279,8 @@ const integrateMerging = (core: CrewCore, taskId: string, inCopy: InCopy, setupA
                 "merging",
                 asRefusal(core.integration.mergeIn(key, operation.id)),
               );
-              if (!["merged", "current"].includes(merged._tag))
+              // A conflict is the merge's verdict, sent back to its crewmate as a failed check is.
+              if (!["merged", "current", "conflict"].includes(merged._tag))
                 yield* updateOperation(core, operation.id, {
                   detail: `Preparing the check stopped: ${merged._tag}`,
                 });
