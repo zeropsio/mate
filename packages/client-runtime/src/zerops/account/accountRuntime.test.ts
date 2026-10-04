@@ -1823,6 +1823,89 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  it.effect(
+    "deleting a Mate overrides every lease, parks its socket, and restores demand on failure",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { rig, environments } = yield* granted(
+            [REMEMBERED_A, REMEMBERED_B],
+            [A_MATE, B_MATE],
+          );
+          rig.catalog().environments(registered(ENV_A, ENV_B));
+          environments.setRoute(ENV_A);
+          environments.setOnScreen(A_MATE.projectId);
+          const release = environments.hold(ENV_A);
+          yield* settle;
+          rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: true })));
+          yield* settle;
+          rig.catalog().link(ENV_A, { phase: "connected" });
+          yield* settle;
+
+          environments.setDeleting(A_MATE.projectId, true);
+          yield* settle;
+          expect(environments.machines().get(MATE)?.guards.want).toBe(false);
+          expect(rig.parked()).toContain(ENV_A);
+          expect(rig.records()).toContainEqual(REMEMBERED_A);
+          expect(rig.removed).toEqual([]);
+          const before = {
+            exchanges: rig.exchanges.filter(({ input }) => input.key === MATE).length,
+            descriptors: rig.descriptors.length,
+            probes: rig.probes.filter(({ input }) => input === MATE_ORIGIN).length,
+          };
+          rig.catalog().link(ENV_A, { phase: "blocked", reason: "configuration" });
+          environments.setRoute(ENV_B);
+          environments.setRoute(ENV_A);
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          rig.fire(5_000);
+          rig.fire(11_000);
+          yield* settle;
+          expect(rig.exchanges.filter(({ input }) => input.key === MATE)).toHaveLength(
+            before.exchanges,
+          );
+          expect(rig.descriptors).toHaveLength(before.descriptors);
+          expect(rig.probes.filter(({ input }) => input === MATE_ORIGIN)).toHaveLength(
+            before.probes,
+          );
+          expect(environments.machines().get(MATE)?.guards.want).toBe(false);
+
+          environments.setDeleting(A_MATE.projectId, false);
+          yield* settle;
+          expect(environments.machines().get(MATE)?.guards.want).toBe(true);
+          expect(rig.unparked()).toContain(ENV_A);
+          expect(rig.descriptors.length).toBeGreaterThan(before.descriptors);
+          release();
+        }),
+      ),
+  );
+
+  it.effect(
+    "deleting a Mate cancels its pending exchange and leaves another Mate's demand alone",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { rig, environments } = yield* granted(
+            [REMEMBERED_A, REMEMBERED_B],
+            [A_MATE, B_MATE],
+          );
+          environments.setRoute(ENV_A);
+          yield* settle;
+          environments.setDeleting(A_MATE.projectId, true);
+          yield* settle;
+          expect(rig.exchanges[0]!.signal.aborted).toBe(true);
+          expect(environments.machines().get(MATE)?.guards.want).toBe(false);
+          environments.setOnScreen(B_MATE.projectId);
+          yield* settle;
+          expect(environments.machines().get(B_MATE.key)?.guards.want).toBe(true);
+          expect(rig.exchanges.map(({ input }) => input.key)).toEqual([MATE, B_MATE.key]);
+          environments.setDeleting(A_MATE.projectId, false);
+          yield* settle;
+          expect(rig.exchanges.map(({ input }) => input.key)).toEqual([MATE, B_MATE.key, MATE]);
+        }),
+      ),
+  );
+
   it.effect("an action holds a parked Mate connected until it answers", () =>
     Effect.scoped(
       Effect.gen(function* () {

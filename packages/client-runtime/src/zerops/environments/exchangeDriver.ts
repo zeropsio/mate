@@ -47,6 +47,7 @@ import {
   type Presence,
 } from "./environmentMachine.ts";
 import { selectReachability, type Reachability } from "./reachability.ts";
+import { targetProject } from "./targets.ts";
 
 /** `projectId:serviceId` (AL-05). */
 export type TargetKey = string;
@@ -178,6 +179,8 @@ export type ConnectOutcome =
 export interface ExchangeDriver {
   /** Every target the inventory or a record names, as they stand now. */
   readonly setTargets: (targets: ReadonlyArray<ExchangeTarget>) => void;
+  /** A project being deleted takes no demand, while its leases remain available on failure. */
+  readonly setDeleting: (projectId: string, deleting: boolean) => void;
   /** Replaces the whole set of targets one emitter wants. */
   readonly setDemand: (reason: DemandReason, keys: Iterable<TargetKey>) => void;
   /** The target is wanted until the answer is called; calling it again does nothing. */
@@ -263,6 +266,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   const { clock } = ports;
   const entries = new Map<TargetKey, Entry>();
   const demands = new Map<DemandReason, ReadonlySet<TargetKey>>();
+  const deleting = new Set<string>();
   /** How many holders each lease kind has on each target (`hold`). */
   const holds = new Map<LeaseKind, Map<TargetKey, number>>([
     ["action", new Map()],
@@ -315,11 +319,13 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   };
 
   const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | LeaseKind> =>
-    PRIORITY.filter((reason) =>
-      isLease(reason)
-        ? (holds.get(reason)?.get(key) ?? 0) > 0
-        : demands.get(reason)?.has(key) === true,
-    );
+    deleting.has(targetProject(key))
+      ? []
+      : PRIORITY.filter((reason) =>
+          isLease(reason)
+            ? (holds.get(reason)?.get(key) ?? 0) > 0
+            : demands.get(reason)?.has(key) === true,
+        );
 
   const reasonFor = (key: TargetKey, entry: Entry): IdentityExchangeReason => {
     const credential = entry.machine.credential;
@@ -625,6 +631,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
 
   const outcomeOf = (machine: EnvironmentMachine): ConnectOutcome | null => {
     const credential = machine.credential;
+    if (!machine.guards.want)
+      return {
+        _tag: "NotConnected",
+        reachability: selectReachability(machine, null),
+        descriptor: machine.descriptor,
+      };
     switch (credential.kind) {
       case "held":
         // A Connect answers once the registry took the credential.
@@ -714,6 +726,16 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
           }
         }
       }),
+    setDeleting: (projectId, accepted) =>
+      enqueue(() => {
+        if (accepted) deleting.add(projectId);
+        else deleting.delete(projectId);
+        // Apply before the next queued link event can request a descriptor on the old guards.
+        for (const [key, entry] of entries) {
+          if (targetProject(key) === projectId)
+            step(key, { type: "GUARDS", guards: guardsFor(key, entry.machine.guards.budget) });
+        }
+      }),
     setDemand: (reason, keys) =>
       enqueue(() => {
         // A key no target names yet is wanted once the inventory or a record names it.
@@ -745,7 +767,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
           const entry = entryFor(key, null);
           entry.userReason = reason;
           connects.set(key, [...(connects.get(key) ?? []), resolve]);
-          step(key, { type: "USER_RETRY" });
+          if (!deleting.has(targetProject(key))) step(key, { type: "USER_RETRY" });
         });
       }),
     setAccount: (guards) =>

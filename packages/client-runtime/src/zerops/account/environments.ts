@@ -253,6 +253,8 @@ export interface AccountEnvironments {
   readonly initAt: (key: TargetKey) => Promise<string | null>;
   /** The reading of a probe of this origin started from now on, through the account's pool. */
   readonly next: (origin: string) => Promise<ProbeReading>;
+  /** Suppress all connection leases during project deletion; false restores them on failure. */
+  readonly setDeleting: (projectId: string, deleting: boolean) => void;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
   /** The organization the tab has open: a target nothing names has its inventory read (§6.2). */
@@ -1010,6 +1012,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       },
       initAt: (key) => (closed ? Promise.resolve(null) : containers.initAt(key)),
       next: containers.next,
+      setDeleting: driver.setDeleting,
       setRoute: (environmentId) => {
         route = environmentId;
         preferRoute();

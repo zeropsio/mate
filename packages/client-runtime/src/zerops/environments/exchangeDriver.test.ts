@@ -817,6 +817,43 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(installs).toHaveLength(1);
   });
 
+  it("deletion ends a pending Connect visibly and discards its late exchange answer", async () => {
+    const shop = mate("shop");
+    const { driver, exchanges, installs, release, start } = rig([shop], { hold: true });
+    await start({});
+    let outcome: string | null = null;
+    const answer = connectHeld(driver, keyOf(shop), "user").then((result) => {
+      outcome = result._tag;
+    });
+    await flush();
+    expect(exchanges).toHaveLength(1);
+    driver.setDeleting(shop.projectId, true);
+    await flush();
+    expect(outcome).toBe("NotConnected");
+    expect(exchanges[0]!.signal.aborted).toBe(true);
+    await release();
+    expect(installs).toEqual([]);
+    await answer;
+  });
+
+  it("a link block queued after deletion starts no descriptor request", async () => {
+    const shop = mate("shop");
+    const { driver, exchanges, retriedLinks, start } = rig([shop]);
+    await start({ route: shop });
+    expect(exchanges).toHaveLength(1);
+    const reads = shop.descriptorReads();
+    driver.setDeleting(shop.projectId, true);
+    driver.link(EnvironmentId.make("env-shop"), { phase: "blocked", reason: "configuration" });
+    await flush();
+    expect(shop.descriptorReads()).toBe(reads);
+    expect(driver.machine(keyOf(shop))?.guards.want).toBe(false);
+    await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toMatchObject({
+      _tag: "NotConnected",
+    });
+    expect(retriedLinks).toEqual([]);
+    expect(shop.descriptorReads()).toBe(reads);
+  });
+
   // A9 (krok-a-hub §3): a Mate is wanted while something holds a lease on it — the route, the one
   // left last, an action from the sidebar — and no longer once its last holder lets it go.
   it("an action lease ends its demand when released", async () => {

@@ -97,6 +97,7 @@ import {
   movesAnywhere,
   type MoveMembership,
 } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
+import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { hqPeopleAtom, hqPlacementsAtom, hqStructureAtom } from "../state/zerops";
@@ -772,8 +773,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /**
    * Deletes the Mate's project, and its key with it — by the id the Mate named to HQ, read before
    * its project goes; none is matched by name (audit K3: a deleted Mate's key was left on the
-   * account, and a member holding tokens cannot be taken off the org). The dialog stays open until
-   * the platform answers: a refusal is said there, and nothing else changes. Once it accepts, the
+   * account, and a member holding tokens cannot be taken off the org). Connection demand ends
+   * before the delete is sent, while the command follows its process; a refusal restores it.
+   * The dialog stays open until the platform answers: a refusal is said there. Once it accepts, the
    * row says *Deleting…* until the listing lets it go, the listing is read again, and nothing this
    * browser remembers of the Mate — its row, its crew, a birth — is left for a reload to paint.
    * After the process finishes, HQ verifies the project is gone and releases its held records.
@@ -798,7 +800,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         const keyTokenId = cleanup === undefined ? await mateKeyOf(projectId) : cleanup.keyTokenId;
         const completion = cleanup?.completion ?? (await hqApi().prepareProjectDeletion(projectId));
         if (cleanup === undefined) {
-          await runZeropsCommand(runtime.commands.deleteProject({ organization, projectId }));
+          if (!isCurrent()) return;
+          const environments = currentAccountEnvironments();
+          environments?.setDeleting(projectId, true);
+          try {
+            await runZeropsCommand(runtime.commands.deleteProject({ organization, projectId }));
+          } catch (cause) {
+            environments?.setDeleting(projectId, false);
+            throw cause;
+          }
           if (!isCurrent()) return;
           markMateDeleting(projectId);
           rememberMenu((memory) => withoutMate(memory, projectId));

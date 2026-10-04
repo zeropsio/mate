@@ -763,6 +763,7 @@ const judgeDescriptorBlock = (
   const credential = machine.credential;
   const link = machine.link;
   if (
+    !machine.guards.want ||
     credential.kind !== "held" ||
     credential.staleBlock ||
     credential.rereading !== null ||
@@ -890,6 +891,18 @@ const apply = (
         identityAnswered:
           event.guards.zeropsFailing && !before.zeropsFailing ? false : machine.identityAnswered,
       };
+      // With no connection demand, abandon pending work but keep an installed credential.
+      // The driver aborts the old attempt once it is no longer tracked by the machine.
+      if (!event.guards.want) {
+        if (credential.kind === "held")
+          return { ...next, credential: { ...credential, rereading: null } };
+        if (credential.kind === "exchanging" || credential.kind === "backoff")
+          return {
+            ...next,
+            probing: null,
+            credential: { kind: "none", reconnect: credential.reconnect },
+          };
+      }
       const mintMoved = !sameJson(before.identityMint, event.guards.identityMint);
       if (credential.kind === "refused" && credential.reason.kind === "access" && mintMoved) {
         return inputChanged(next, "input-change");

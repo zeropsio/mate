@@ -97,6 +97,7 @@ function shellStage(): AccountEnvironments {
     readonly index: DescriptorIndex;
   } | null = null;
   return {
+    setDeleting: (projectId, deleting) => driver().setDeleting(projectId, deleting),
     detailProjects: () => new Set(),
     detailFailure: () => null,
     retryDetail: () => undefined,
