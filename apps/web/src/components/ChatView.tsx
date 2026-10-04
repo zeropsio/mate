@@ -8490,10 +8490,15 @@ export default function ChatView(props: ChatViewProps) {
 
               {/* The way back to the end, once the person has scrolled away from
                   it: a round button floating over the timeline, always drawn and
-                  eased in and out, so it rises into place instead of popping. */}
+                  eased in and out, so it rises into place instead of popping. It
+                  stands beside the conversation's column, never on its words
+                  (Bodhi's audit), and at its right edge where there is no room. */}
               <div
-                className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 justify-center py-2"
-                style={{ bottom: composerOverlayHeight + 4 }}
+                className="pointer-events-none absolute z-30 flex justify-center py-2"
+                style={{
+                  bottom: composerOverlayHeight + 4,
+                  left: "min(calc(50% + 24rem + 0.75rem), calc(100% - 3rem))",
+                }}
               >
                 {/* Hidden, it is inert: out of the tab order and the tree the
                     reader hears, and a button still focused as it goes (a click
