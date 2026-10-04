@@ -56,7 +56,7 @@ export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): str
  * holds no application without a name, so this is a read problem: the tree
  * marks it rather than pretending `7k2m9qx4vb1c` is a title.
  */
-export function groupNameIsPlaceholder(group: ZeropsGroup): boolean {
+export function groupNameUnread(group: ZeropsGroup): boolean {
   return group.nameSource === "unread";
 }
 

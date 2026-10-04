@@ -147,7 +147,7 @@ import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
-import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
+import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
@@ -1687,7 +1687,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           />
         ),
         getFlow?.(group.groupId),
-        groupNameIsPlaceholder(group) ? undefined : group.name,
+        groupNameUnread(group) ? undefined : group.name,
         group,
         lastProject(index),
       )}
@@ -1982,7 +1982,7 @@ export function ProjectHeader({
   /** A stop's own page, where one opens: the line's Details. */
   readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
 }) {
-  const placeholder = group !== undefined && groupNameIsPlaceholder(group);
+  const placeholder = group !== undefined && groupNameUnread(group);
   const { line: secondLine, landing } = useHeadingLine(line);
   const pillMotion = headingPillMotion(line, landing);
   const openReview = useOpenReview();
