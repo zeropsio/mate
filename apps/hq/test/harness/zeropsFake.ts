@@ -47,6 +47,8 @@ export interface FakeAppVersion {
   archive: Uint8Array | undefined;
   zeropsYaml: string | undefined;
   setup: string | undefined;
+  /** When a build Zerops took shows, ms: it reads UPLOADING until then (`buildSeenAfter`). */
+  buildSeenAtMs?: number;
 }
 
 interface FakeJob {
@@ -92,6 +94,10 @@ export interface FakeWorld {
   lost: Set<"createAppVersion" | "upload" | "buildAndDeploy" | "importServices">;
   /** Operations Zerops does not answer while they are named here, as `down` does every one. */
   unanswered: Set<string>;
+  /** How long an archive's upload takes to answer, ms: a large archive's; none at 0. */
+  uploadTakes: number;
+  /** How long a version whose build Zerops took still reads UPLOADING, ms; none at 0. */
+  buildSeenAfter: number;
 }
 
 export const emptyWorld = (): FakeWorld => ({
@@ -111,6 +117,8 @@ export const emptyWorld = (): FakeWorld => ({
   imports: [],
   lost: new Set(),
   unanswered: new Set(),
+  uploadTakes: 0,
+  buildSeenAfter: 0,
 });
 
 export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
@@ -360,11 +368,14 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
     upload: (appVersionId, archive) => (credential) =>
       Effect.map(versionOf("upload", credential, appVersionId), (version) => {
         version.archive = archive;
-      }).pipe(Effect.flatMap(() => answered(world, "upload", undefined))),
+      }).pipe(
+        Effect.delay(world.uploadTakes),
+        Effect.flatMap(() => answered(world, "upload", undefined)),
+      ),
     buildAndDeploy: (appVersionId, zeropsYaml, setup) => (credential) =>
       Effect.flatMap(
-        versionOf("buildAndDeploy", credential, appVersionId),
-        (version): Effect.Effect<{ readonly processId: string }, ZeropsError> => {
+        Effect.zip(versionOf("buildAndDeploy", credential, appVersionId), Clock.currentTimeMillis),
+        ([version, now]): Effect.Effect<{ readonly processId: string }, ZeropsError> => {
           if (version.archive === undefined) {
             return Effect.fail(
               new ZeropsRefused({
@@ -377,7 +388,8 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
           }
           version.zeropsYaml = zeropsYaml;
           version.setup = setup;
-          version.status = "BUILDING";
+          if (world.buildSeenAfter > 0) version.buildSeenAtMs = now + world.buildSeenAfter;
+          else version.status = "BUILDING";
           const service = world.services.find((candidate) => candidate.id === version.serviceId);
           if (service !== undefined) service.named = { id: version.id, name: version.name };
           const processId = id("process");
@@ -393,12 +405,19 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
         return Effect.succeed({ status: job.status, failure: job.failure });
       }),
     appVersion: (appVersionId) => (credential) =>
-      Effect.map(versionOf("appVersion", credential, appVersionId), (version) => {
-        for (const job of world.jobs.values()) {
-          if (job.appVersionId === version.id) advance(job);
-        }
-        return { status: version.status };
-      }),
+      Effect.map(
+        Effect.zip(versionOf("appVersion", credential, appVersionId), Clock.currentTimeMillis),
+        ([version, now]) => {
+          if (version.buildSeenAtMs !== undefined) {
+            if (now < version.buildSeenAtMs) return { status: version.status };
+            if (version.status === "UPLOADING") version.status = "BUILDING";
+          }
+          for (const job of world.jobs.values()) {
+            if (job.appVersionId === version.id) advance(job);
+          }
+          return { status: version.status };
+        },
+      ),
     importServices: (projectId, yaml) => (credential) =>
       Effect.flatMap(
         tokenOf(world, "importServices", credential),

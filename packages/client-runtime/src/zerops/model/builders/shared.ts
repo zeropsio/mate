@@ -36,10 +36,11 @@ import type {
 
 /**
  * How long after a deploy call returned BUILD_TRIGGERED its card stays running.
- * zcp's own build poll gives up after the same 10 minutes and keeps
- * BUILD_TRIGGERED (`internal/ops/progress.go` `defaultPollConfig`,
- * `internal/tools/deploy_poll.go`), so past it nothing in the thread will
- * settle the card.
+ * The call returns it when zcp did not see the build end: its own build poll
+ * gives up after 15 minutes (`internal/ops/progress.go` `defaultBuildPollConfig`,
+ * `internal/tools/deploy_poll.go`) and then says so (`timedOut`), naming the
+ * build it followed (`appVersionId`) where it saw one; nothing in the thread
+ * settles the card after that.
  */
 export const DEPLOY_BUILD_CAP_MS = 10 * 60 * 1000;
 

@@ -1555,30 +1555,74 @@ describe("deploys", () => {
       ),
     );
 
-    // A version whose upload went unanswered and whose build HQ never asked for still waits for its
-    // archive: Zerops never took the submission. The job ends refused, never submitted again; a
-    // person's Run again makes another.
-    it.effect("refuses a submission Zerops never took, and submits it again only when asked", () =>
+    // A version whose upload went unanswered is one whose build HQ never asked for: it waits for its
+    // archive for good, which HQ knows by its own record — no clock, however long its window. The
+    // job ends refused at once, never submitted again; a person's Run again makes another.
+    it.effect(
+      "refuses a submission whose upload went unanswered at once, and submits it again only when asked",
+      () =>
+        withDeploys(
+          ({ appId, world, tiers, commit, deploys, until }) =>
+            Effect.gen(function* () {
+              tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+              world.lost.add("upload");
+              const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+              yield* until(settled("refused"));
+              assert.deepStrictEqual(
+                (yield* deploys).map(({ reason }) => reason),
+                ["HQ's upload of the deploy's archive went unanswered: no build was asked for"],
+              );
+              assert.deepStrictEqual(
+                [...world.appVersions.values()].map((version) => version.status),
+                ["UPLOADING"],
+              );
+              assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
+              yield* until((rows) => rows.at(-1)?.state === "live");
+              assert.deepStrictEqual(
+                [...world.appVersions.values()].map((version) => version.status),
+                ["UPLOADING", "ACTIVE"],
+              );
+            }),
+          { ...FAST, untakenAfter: Duration.minutes(10) },
+        ),
+    );
+
+    // B9: the window a version may still read UPLOADING after its build was asked for runs from
+    // HQ's own upload, never from before it: an archive slower to upload than the window, its
+    // build's answer lost, is followed to its end, not refused on its first read.
+    it.effect("measures a build's untaken window from HQ's upload, not from before it", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-          world.lost.add("upload");
-          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          world.uploadTakes = 400;
+          world.buildSeenAfter = 100;
+          world.lost.add("buildAndDeploy");
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
+          assert.deepStrictEqual(
+            (yield* deploys).map(({ state }) => state),
+            ["live"],
+          );
+          assert.lengthOf(versions(world), 1);
+        }),
+      ),
+    );
+
+    // A build HQ asked for after its upload, that Zerops never took — its version still waits for
+    // its archive past the window from the upload — ends refused, never submitted again.
+    it.effect("refuses a build Zerops never took, its window counted from the upload", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.buildSeenAfter = 60_000;
+          world.lost.add("buildAndDeploy");
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("refused"));
           assert.deepStrictEqual(
             (yield* deploys).map(({ reason }) => reason),
-            ["Zerops did not take the deploy's submission"],
+            ["Zerops did not take the deploy's build"],
           );
-          assert.deepStrictEqual(
-            [...world.appVersions.values()].map((version) => version.status),
-            ["UPLOADING"],
-          );
-          assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
-          yield* until((rows) => rows.at(-1)?.state === "live");
-          assert.deepStrictEqual(
-            [...world.appVersions.values()].map((version) => version.status),
-            ["UPLOADING", "ACTIVE"],
-          );
+          assert.lengthOf(versions(world), 1);
         }),
       ),
     );
