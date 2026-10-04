@@ -1,8 +1,8 @@
 /**
  * HQ's update, for an owner or an admin (`ZeropsHqCard`): offered when HQ's health names an older
  * Core than this app carries, so the offer costs no read of its own. Opened, it reads where HQ
- * stands from Zerops — its `hq` service's app version and builds — and offers the one action that
- * fits. *Update HQ* deploys the carried Core with the person's own token and follows that deploy;
+ * stands — the Core HQ's health answers with, and its `hq` service's builds in Zerops; again when
+ * HQ answers with another Core — and offers the one action that fits. *Update HQ* deploys the carried Core with the person's own token and follows that deploy;
  * once it ends Zerops is read again. Nothing reads or retries while it is closed.
  */
 import {
@@ -170,20 +170,21 @@ export function ZeropsHqUpdate({
     [onBusy],
   );
   const read = useCallback(
-    () => readHqUpdate({ platform: client, projectId, carried }),
-    [carried, client, projectId],
+    () => readHqUpdate({ platform: client, projectId, carried, answering }),
+    [answering, carried, client, projectId],
   );
   const run = useCallback(
     () =>
       runHqUpdate({
         platform: client,
         projectId,
+        answering,
         core: () =>
           readBundledCore((input, init) => fetch(input, init), `${appBasePath()}/hq-core`),
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         now: () => Date.now(),
       }),
-    [client, projectId],
+    [answering, client, projectId],
   );
   return (
     <>

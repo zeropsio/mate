@@ -47,6 +47,9 @@ describe("hqUpdateOffered", () => {
 
 const OLDER = "20261003T100000Z.ba9876543210";
 
+/** The active version as the service list embeds it, measured on KRLS 2026-10-04: no `name`. */
+const ACTIVE = { id: "av-active", status: "ACTIVE", source: "CLI" };
+
 const build = (over: Partial<ActivityProcess> = {}): ActivityProcess => ({
   id: "p1",
   projectId: "hq-project",
@@ -58,52 +61,82 @@ const build = (over: Partial<ActivityProcess> = {}): ActivityProcess => ({
 });
 
 describe("hqUpdateState", () => {
+  it("names the Core HQ answers with, though its active version carries no name (KRLS, 2026-10-04)", () => {
+    expect(
+      hqUpdateState({
+        service: {
+          id: "svc-hq",
+          activeAppVersion: {
+            id: "av-0c5",
+            status: "ACTIVE",
+            source: "CLI",
+            created: "2026-10-04T18:00:41Z",
+          },
+        },
+        processes: [],
+        carried: "20261004T181300Z.3fdef992e7cb",
+        answering: "20261004T175946Z.0c5cc4d71f07",
+      }),
+    ).toEqual({
+      kind: "available",
+      running: "20261004T175946Z.0c5cc4d71f07",
+      carried: "20261004T181300Z.3fdef992e7cb",
+    });
+  });
+
   it.each([
     {
       name: "runs the carried Core",
-      active: `hq-core.${CARRIED}`,
+      answering: CARRIED,
       processes: [build()],
       state: { kind: "current", running: CARRIED },
     },
     {
       name: "runs an older Core",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [],
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
     {
-      name: "runs its birth's unnamed Core",
-      active: "hq-core",
+      name: "answers with a legacy stamp",
+      answering: "b6e65699e0.20261003T120000",
       processes: [],
-      state: { kind: "available", running: "hq-core", carried: CARRIED },
+      state: { kind: "available", running: "b6e65699e0.20261003T120000", carried: CARRIED },
     },
     {
-      name: "runs a hand deploy's Core",
-      active: "hq-b6e65699e0.20261003T120000",
-      processes: [],
-      state: { kind: "available", running: "hq-b6e65699e0.20261003T120000", carried: CARRIED },
-    },
-    {
-      name: "runs nothing Zerops names",
-      active: undefined,
+      name: "is not answering, with nothing Zerops names",
+      answering: undefined,
       processes: [],
       state: { kind: "available", running: "", carried: CARRIED },
     },
     {
+      name: "is not answering, its active version deployed by a build Zerops still lists",
+      answering: undefined,
+      processes: [build({ appVersion: { id: "av-active", name: `hq-core.${OLDER}` } })],
+      state: { kind: "available", running: OLDER, carried: CARRIED },
+    },
+    {
+      // HQ's health may name the new Core a few seconds before Zerops ends the build (KRLS).
+      name: "already answers with the Core a build still under way deploys",
+      answering: CARRIED,
+      processes: [build({ status: "RUNNING", appVersion: { name: `hq-core.${CARRIED}` } })],
+      state: { kind: "current", running: CARRIED },
+    },
+    {
       name: "is building",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [build({ status: "RUNNING", appVersion: { name: `hq-core.${CARRIED}` } })],
       state: { kind: "updating", target: CARRIED },
     },
     {
       name: "has a build waiting",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [build({ status: "PENDING", actionName: "stack.deploy" })],
       state: { kind: "updating", target: undefined },
     },
     {
       name: "failed its newest build",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [
         build({ status: "FAILED", failReason: "readiness check failed" }),
         build({ id: "p0", created: "2026-10-03T10:00:00Z" }),
@@ -117,7 +150,7 @@ describe("hqUpdateState", () => {
     },
     {
       name: "failed its newest build without a reason",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [build({ status: "CANCELED" })],
       state: {
         kind: "failed",
@@ -128,57 +161,56 @@ describe("hqUpdateState", () => {
     },
     {
       name: "failed a build but runs the carried Core",
-      active: `hq-core.${CARRIED}`,
+      answering: CARRIED,
       processes: [build({ status: "FAILED" })],
       state: { kind: "current", running: CARRIED },
     },
     {
       name: "finished after an older build that still reads running",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [build({ id: "p0", status: "RUNNING", created: "2026-10-03T10:00:00Z" }), build()],
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
     {
-      // Measured on KRLS, 2026-10-04: the build FINISHED while the active version still read the old.
-      name: "finished deploying the carried Core before Zerops shows it active",
-      active: `hq-core.${OLDER}`,
+      // Measured on KRLS, 2026-10-04: the build FINISHED while HQ still answered with the old Core.
+      name: "finished deploying the carried Core before HQ answers with it",
+      answering: OLDER,
       processes: [build({ appVersion: { name: `hq-core.${CARRIED}` } })],
       state: { kind: "current", running: CARRIED },
     },
     {
-      name: "finished deploying an older Core than it shows active",
-      active: `hq-core.${CARRIED}`,
+      name: "finished deploying an older Core than it answers with",
+      answering: CARRIED,
       processes: [build({ appVersion: { name: `hq-core.${OLDER}` } })],
       state: { kind: "current", running: CARRIED },
     },
     {
       name: "has another service building",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [build({ status: "RUNNING", serviceStackIds: ["svc-db"] })],
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
     {
       name: "is restarting, which is no build",
-      active: `hq-core.${OLDER}`,
+      answering: OLDER,
       processes: [build({ status: "RUNNING", actionName: "stack.restart" })],
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
-  ])("HQ that $name", ({ active, processes, state }) => {
+  ])("HQ that $name", ({ answering, processes, state }) => {
     expect(
       hqUpdateState({
-        service: {
-          id: "svc-hq",
-          ...(active === undefined ? {} : { activeAppVersion: { name: active } }),
-        },
+        // As `GET /project/{id}/service-stack` embeds it: no name (KRLS, 2026-10-04).
+        service: { id: "svc-hq", activeAppVersion: ACTIVE },
         processes,
         carried: CARRIED,
+        answering,
       }),
     ).toEqual(state);
   });
 });
 
 function fakeZerops(options: {
-  readonly active?: string;
+  readonly answering?: string;
   readonly processes?: ReadonlyArray<ActivityProcess>;
   readonly ends?: string;
 }) {
@@ -193,7 +225,7 @@ function fakeZerops(options: {
           id: "svc-hq",
           name: "hq",
           status: "ACTIVE",
-          activeAppVersion: { name: options.active ?? `hq-core.${OLDER}` },
+          activeAppVersion: ACTIVE,
         },
       ];
     },
@@ -218,7 +250,7 @@ function fakeZerops(options: {
       return reads >= 2 ? (options.ends ?? "FINISHED") : "RUNNING";
     },
   };
-  return { platform, calls };
+  return { platform, calls, answering: options.answering ?? OLDER };
 }
 
 const CORE = { build: CARRIED, archive: new Uint8Array(3), zeropsYaml: "zerops: []" };
@@ -228,6 +260,7 @@ function update(zerops: ReturnType<typeof fakeZerops>) {
   return runHqUpdate({
     platform: zerops.platform,
     projectId: "hq-project",
+    answering: zerops.answering,
     core: async () => CORE,
     sleep: async (ms) => {
       now += ms;
@@ -259,12 +292,12 @@ describe("runHqUpdate", () => {
     },
     {
       name: "when HQ runs the carried Core",
-      zerops: { active: `hq-core.${CARRIED}` },
+      zerops: { answering: CARRIED },
       reason: "HQ runs this Core already.",
     },
     {
       name: "when HQ runs a newer Core than this tab carries",
-      zerops: { active: "hq-core.20261009T100000Z.ffffffffffff" },
+      zerops: { answering: "20261009T100000Z.ffffffffffff" },
       reason: "HQ runs this Core already.",
     },
   ])("deploys nothing $name", async ({ zerops: options, reason }) => {
@@ -301,6 +334,7 @@ describe("runHqUpdate", () => {
       await runHqUpdate({
         platform: refused,
         projectId: "hq-project",
+        answering: OLDER,
         core: async () => CORE,
         sleep: async () => {},
         now: () => 0,
