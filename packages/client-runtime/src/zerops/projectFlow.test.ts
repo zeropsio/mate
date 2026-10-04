@@ -2,7 +2,7 @@ import { COMPARE_COUNT_MAX, type HqChange } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
 import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
-import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
+import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import {
@@ -167,10 +167,6 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
 });
 
 describe("whose pull request it is", () => {
-  it("names the bot after the project, the way main's broker did", () => {
-    expect(mateBotLogin(VERA)).toBe(`mate-${VERA}`);
-  });
-
   it.each([
     { name: "main's zcp's branch", ref: `mate/mate-${VERA}`, expected: VERA },
     { name: "HQ's branch of a Mate", ref: `mate/${VERA}`, expected: VERA },

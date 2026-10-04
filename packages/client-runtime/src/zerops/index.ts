@@ -267,12 +267,7 @@ export {
   type PullRequestBlocked,
 } from "./gitTab.ts";
 export { linkedChanges, linksChange } from "./changeLinks.ts";
-export {
-  branchLabel,
-  mateBotLogin,
-  mateProjectOfBranch,
-  mateProjectOfLogin,
-} from "./mateIdentity.ts";
+export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   MATE_ARRIVAL_WINDOW_MS,
