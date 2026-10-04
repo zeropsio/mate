@@ -1210,38 +1210,44 @@ describe("a Mate's face follows its work in the menu", () => {
     expect(faceOf(drawn())).toBe("sleep");
   });
 
-  it("keeps a remembered HQ online bit from waking a Mate before presence is fresh", () => {
-    const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: organization,
-    });
-    registry.set(hqMatesViewAtom, {
-      organizationId: organization.organizationId,
-      mates: new Map<string, MateLiveView>([
-        [
-          "crm-dev",
-          {
-            presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "live" },
-          },
-        ],
-      ]),
-      current: false,
-    });
-    const html = renderToStaticMarkup(
-      <RegistryContext.Provider value={registry}>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV]}
-          complete
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-        />
-      </RegistryContext.Provider>,
-    );
-    expect(faceOf(html)).toBe("sleep");
-    registry.dispose();
-  });
+  it.each([
+    { group: "unavailable", face: "sleep" },
+    { group: "ready", face: "idle" },
+  ] as const)(
+    "ignores remembered HQ presence for a $group Mate, keeping its $face face",
+    ({ group, face }) => {
+      const registry = AtomRegistry.make();
+      registry.set(zeropsSessionAtom, {
+        status: "signed-in",
+        organizationStatus: "selected",
+        activeOrganization: organization,
+      });
+      registry.set(hqMatesViewAtom, {
+        organizationId: organization.organizationId,
+        mates: new Map<string, MateLiveView>([
+          [
+            "crm-dev",
+            {
+              presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "live" },
+            },
+          ],
+        ]),
+        current: false,
+      });
+      const html = renderToStaticMarkup(
+        <RegistryContext.Provider value={registry}>
+          <SidebarZeropsTree
+            candidates={[{ ...CRM_DEV, group }]}
+            complete
+            onBrowseProjects={() => {}}
+            onSelect={() => {}}
+          />
+        </RegistryContext.Provider>,
+      );
+      expect(faceOf(html)).toBe(face);
+      registry.dispose();
+    },
+  );
 
   // Board D1, 2026-09-30: a new Mate's first run is the stand-up its person's sign-in sent; the
   // row says what it is doing, under the face at work, instead of the command sent for them.

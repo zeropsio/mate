@@ -278,7 +278,7 @@ import {
   rememberMenuCandidates,
 } from "../zerops/menuSkeleton";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
-import { candidateListingWholeAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
 import {
   candidatesNotice,
   findCandidate,
@@ -2363,12 +2363,19 @@ export default function Sidebar() {
       zeropsOrganizationId === undefined ||
       zeropsListingOrganizationId !== zeropsOrganizationId ||
       !zeropsHeld.complete
-    ) return;
+    )
+      return;
     rememberMenuCandidates(
       zeropsOrganizationId,
       zeropsCandidates.filter((candidate) => !mateDeleting(candidate.project, zeropsDeleting)),
     );
-  }, [zeropsCandidates, zeropsDeleting, zeropsHeld.complete, zeropsListingOrganizationId, zeropsOrganizationId]);
+  }, [
+    zeropsCandidates,
+    zeropsDeleting,
+    zeropsHeld.complete,
+    zeropsListingOrganizationId,
+    zeropsOrganizationId,
+  ]);
 
   // Forget the change rows and the chips of groups the listing no longer holds.
   // The Mates, their crews with them, are remembered as HQ tells them (`hqStructure.ts`).
