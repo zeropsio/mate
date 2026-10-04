@@ -106,6 +106,11 @@ describe("dockHelpers", () => {
       word: "Working",
     },
     {
+      name: "a helper waiting for the person says so, whatever it did last",
+      helper: { ...agent("h1", "waiting", "tests"), progress: "Running the unit tests" },
+      word: "Waiting for you",
+    },
+    {
       name: "a settled helper says how it ended",
       helper: { ...agent("h1", "completed", "tests"), progress: "Running the unit tests" },
       word: "Done",
