@@ -208,6 +208,7 @@ export class Changes extends Context.Service<
      * commit with the change whose merge it is; `commit_not_found` for either end the repository
      * lacks.
      */
+    readonly personGit: (userId: string, appId: string) => Effect.Effect<void, ReadError>;
     readonly repositorySource: (
       userId: string,
       appId: string,
@@ -1072,6 +1073,7 @@ export const changesLayer: Layer.Layer<
             }),
           );
         }),
+      personGit: (userId, appId) => personApp(userId, appId, "read_change"),
       repositorySource: (userId, appId, repo, query) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");

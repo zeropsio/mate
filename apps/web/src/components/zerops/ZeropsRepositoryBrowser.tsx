@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ZeropsGitCredentials } from "./ZeropsGitCredentials";
 import type { RepositorySource, RepositoryQuery } from "@t3tools/shared/hqGit";
 import { Button } from "~/components/ui/button";
 import { useRepositorySource } from "~/zerops/useRepositorySource";
@@ -85,6 +87,7 @@ export function ZeropsRepositoryBrowser({
   readonly onNavigate: (query: RepositoryQuery) => void;
   readonly onBack: () => void;
 }) {
+  const [cloneOpen, setCloneOpen] = useState(false);
   const { source, again } = useRepositorySource({ appId, repo, query }, allowed);
   const heading = (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -127,6 +130,12 @@ export function ZeropsRepositoryBrowser({
   return (
     <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
       {heading}
+      <details onToggle={(event) => setCloneOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-sm text-message-action">Clone with HTTPS</summary>
+        <div className="pt-3">
+          {cloneOpen ? <ZeropsGitCredentials appId={appId} repo={repo} /> : null}
+        </div>
+      </details>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           Branch

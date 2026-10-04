@@ -201,6 +201,13 @@ const databaseFrom = (dump: string, target: RestoreTarget, stamp: string, query:
       target.databaseUrl,
     );
     yield* query("UPDATE hq_session SET revoked_at = now() WHERE revoked_at IS NULL");
+    // Older sets predate person Git passwords; restored ones never revive an old password.
+    if (
+      (yield* query("SELECT to_regclass('public.hq_git_credential') IS NOT NULL AS present"))
+        .rows[0]?.["present"] === true
+    ) {
+      yield* query("UPDATE hq_git_credential SET revoked_at = now() WHERE revoked_at IS NULL");
+    }
     if (led !== null && Number.isSafeInteger(led)) {
       yield* query(`UPDATE hq_leader SET epoch = GREATEST(epoch, ${String(led + 1)}) WHERE id = 1`);
     }

@@ -85,3 +85,5 @@ export {
 } from "./registry.ts";
 
 export { makeRepositoryStore, repositoryKey, type RepositoryTarget } from "./repositoryStore.ts";
+
+export { makeGitCredentialStore, type GitCredentialSnapshot } from "./gitCredentialStore.ts";

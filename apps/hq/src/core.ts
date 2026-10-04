@@ -32,6 +32,7 @@ import { healthRoute } from "./health.ts";
 import { importsLayer } from "./importJob.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { loopWatchLayer } from "./loopWatch.ts";
+import { personGitCredentialsLayer } from "./personGitCredentials.ts";
 import { mateCredentialsLayer } from "./mateCredentials.ts";
 import { mateAccessLayer } from "./mateAccess.ts";
 import { mateOverviewsLayer } from "./mateOverviews.ts";
@@ -116,6 +117,7 @@ const services = (options: CoreOptions) => {
   return Layer.mergeAll(
     sessionsLayer,
     observationLayer,
+    personGitCredentialsLayer,
     structureLayer({
       hqProjectId: options.hqProjectId,
       reconcileEvery: options.reconcileEvery ?? Duration.seconds(60),

@@ -27,7 +27,13 @@ import {
   type ChangeLink,
   type CompareQuery,
 } from "@t3tools/shared/hqChanges";
-import { RepositorySource, type RepositoryQuery } from "@t3tools/shared/hqGit";
+import {
+  GitCredential,
+  GitCredentialList,
+  type GitCredentialRecord,
+  RepositorySource,
+  type RepositoryQuery,
+} from "@t3tools/shared/hqGit";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import {
@@ -265,6 +271,9 @@ export interface HqApi {
     service: string,
   ) => Promise<HqDeployAnswer>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
+  readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
+  readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
+  readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
   readonly repositorySource: (
     appId: string,
     repo: string,
@@ -492,6 +501,8 @@ const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
 const readRecipeTier = decoded(RecipeTierResponse);
 
+const readGitCredential = decoded(GitCredential);
+const readGitCredentialList = decoded(GitCredentialList);
 const readCompare = decoded(CompareResponse);
 const readReleases = decoded(ReleaseListResponse);
 const readRelease = decodedAsked(Release);
@@ -943,6 +954,27 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
+    gitCredentials: async (appId) =>
+      (
+        await readGitCredentialList(
+          await authorized(`/api/apps/${encodeURIComponent(appId)}/git-credentials`),
+        )
+      ).credentials,
+    issueGitCredential: async (appId) =>
+      readGitCredential(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/git-credentials`,
+          { method: "POST" },
+          "once",
+        ),
+      ),
+    revokeGitCredential: async (appId, id) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/git-credentials/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+        "idempotent",
+      );
+    },
     repositorySource: async (appId, repo, query, signal) =>
       decoded(RepositorySource)(
         await authorized(

@@ -24,3 +24,21 @@ presentation. The released hosted web client is the product surface.
 
 This restores source tree/file browsing. Issues, wiki, boards, packages and generic forge Actions
 are outside this parity brief; HQ's changes, releases and deploys remain their current workflows.
+
+## Person HTTPS credentials
+
+`POST /api/apps/:appId/git-credentials` issues a random 256-bit password, separate from HQ client
+sessions and Mate credentials. It is bound to the issuing person, organization and application id,
+and expires after 12 hours. HQ keeps only its SHA-256 in `hq_git_credential`.
+
+`GET` on that route returns only the holder's active credential metadata. `DELETE …/:id` revokes
+only their own credential. Git uses Basic auth with username `person` and the password at
+`/git/:appId/:repo.git`. Every request checks the organization, application scope and current
+`read_change` permission. Neither an HQ client session nor a Git password can be used in the other's
+authentication door. Issue and revoke are leader-fenced writes; credential responses are no-store.
+A backup restore revokes all restored Git passwords; older backups without the table still restore.
+
+The shared credential store owns metadata and each command's visible result. Concurrent presses
+share one attempt. Failed reads and commands require manual recovery. Passwords remain in memory,
+are dropped on panel close or capability loss, and cannot arrive after account close. Metadata
+from an issue that lands before the first list has only partial coverage until a successful list.

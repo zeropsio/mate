@@ -150,6 +150,9 @@ describe("a backup set, restored", () => {
           });
 
           const before = yield* reads(a.call, owner, appId, picture);
+          const gitPassword = (yield* a.call("POST", `/api/apps/${appId}/git-credentials`, {
+            session: owner,
+          })).body as { token: string };
           const manifest = yield* a.backup.take;
           yield* a.stop;
 
@@ -167,6 +170,14 @@ describe("a backup set, restored", () => {
           // A session from before is gone; a person signs in again and reads the same.
           assert.strictEqual(
             (yield* b.call("GET", `/api/apps/${appId}/changes`, { session: owner })).status,
+            401,
+          );
+          assert.strictEqual(
+            (yield* b.call("GET", `/git/${appId}/appdev.git/info/refs?service=git-upload-pack`, {
+              headers: {
+                authorization: `Basic ${Buffer.from(`person:${gitPassword.token}`).toString("base64")}`,
+              },
+            })).status,
             401,
           );
           const again = yield* sessionFor(b.call, "door-owner-2");

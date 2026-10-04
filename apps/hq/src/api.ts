@@ -123,6 +123,7 @@ import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from
 import { Writes } from "./writes.ts";
 import { Roles } from "./roles.ts";
 import type { RolloutCause } from "./rollouts.ts";
+import { PersonGitCredentials, type GitHolder } from "./personGitCredentials.ts";
 import { Sessions } from "./sessions.ts";
 import {
   MateLinkTickets,
@@ -516,27 +517,42 @@ const pictureBody = Effect.gen(function* () {
   return content;
 });
 
-/** The credential git presents for the user `mate`: `Authorization: Basic base64(mate:<credential>)`. */
+/** Git presents Basic auth: `mate:<credential>` or `person:<Git password>`. */
 const gitCredential = (authorization: string | undefined) => {
   const encoded = /^Basic ([A-Za-z0-9+/=]+)$/u.exec(authorization ?? "")?.[1];
   const decoded = encoded === undefined ? "" : Buffer.from(encoded, "base64").toString("utf8");
-  return decoded.startsWith("mate:") ? decoded.slice("mate:".length) : undefined;
+  if (decoded.startsWith("mate:")) return { kind: "mate" as const, token: decoded.slice(5) };
+  if (decoded.startsWith("person:")) return { kind: "person" as const, token: decoded.slice(7) };
+  return undefined;
 };
 
 /**
- * git at `/git/<appId>/<repo>.git` for a Mate, decided before the git layer serves the request:
- * its credential (a `401` asks git for it, and a client address's misses are limited as a door's
- * knocks are); then, on the service as the layer reads the request (`gitHost.ts`), a push by
- * `can`'s `open_change` over the org as a write is decided (`roles.ts`); and any request by
- * `fetch_repo` on the repository's
- * application, which also decides every repository the layer serves it.
+ * HTTPS Git serves Mates and people. A person's independent, expiring password is scoped to its
+ * application; every request asks the existing person read rule, and never accepts a client
+ * session as a Git password. Mate admission and write policy are unchanged.
  */
 const serveGit = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
   const presented = gitCredential(request.headers["authorization"]);
-  const holder =
-    presented === undefined ? Option.none() : yield* (yield* MateCredentials).whoami(presented);
-  if (Option.isNone(holder)) {
+  const holder: Option.Option<
+    | { readonly kind: "mate"; readonly projectId: string }
+    | (GitHolder & { readonly kind: "person" })
+  > =
+    presented === undefined
+      ? Option.none()
+      : presented.kind === "mate"
+        ? Option.map(yield* (yield* MateCredentials).whoami(presented.token), (mate) => ({
+            ...mate,
+            kind: "mate" as const,
+          }))
+        : Option.map(yield* (yield* PersonGitCredentials).resolve(presented.token), (person) => ({
+            ...person,
+            kind: "person" as const,
+          }));
+  const found =
+    Option.isSome(holder) &&
+    (holder.value.kind === "mate" || holder.value.orgId === (yield* (yield* Roles).view).orgId);
+  if (!found || Option.isNone(holder)) {
     // A credential presented and missed is a guess: limited per client address, like the doors.
     // git's first request of every command presents none, to be asked: that guesses nothing.
     if (presented !== undefined) yield* knock("git");
@@ -545,18 +561,37 @@ const serveGit = Effect.gen(function* () {
       headers: { "www-authenticate": 'Basic realm="HQ"' },
     });
   }
-  const { projectId } = holder.value;
   const changes = yield* Changes;
-  yield* (yield* GitHost).serve(
-    request,
-    ({ repo, service }) =>
-      Effect.gen(function* () {
-        if (service === "git-receive-pack") yield* changes.mateApp(projectId, "open_change");
-        const appId = yield* changes.mateFetch(projectId, repo.appId);
-        return { kind: "mate", mateId: projectId, appId } as const;
-      }),
-    (repo) => Effect.isSuccess(changes.mateFetch(projectId, repo.appId)),
-  );
+  const own = holder.value;
+  if (own.kind === "person") {
+    const read = (appId: string) =>
+      own.appId === appId
+        ? changes.personGit(own.userId, appId)
+        : Effect.fail(new ChangeRefused({ code: "forbidden", reason: "not_your_app" }));
+    yield* (yield* GitHost).serve(
+      request,
+      ({ repo, service }) =>
+        Effect.gen(function* () {
+          yield* read(repo.appId);
+          if (service === "git-receive-pack")
+            return yield* new ChangeRefused({ code: "forbidden", reason: "not_app_developer" });
+          return { kind: "reader", userId: own.userId } as const;
+        }),
+      (repo) => Effect.isSuccess(read(repo.appId)),
+    );
+  } else {
+    const { projectId } = own;
+    yield* (yield* GitHost).serve(
+      request,
+      ({ repo, service }) =>
+        Effect.gen(function* () {
+          if (service === "git-receive-pack") yield* changes.mateApp(projectId, "open_change");
+          const appId = yield* changes.mateFetch(projectId, repo.appId);
+          return { kind: "mate", mateId: projectId, appId } as const;
+        }),
+      (repo) => Effect.isSuccess(changes.mateFetch(projectId, repo.appId)),
+    );
+  }
   return HttpServerResponse.empty();
 });
 
@@ -737,6 +772,54 @@ const routes = (
           const { projectId, nonce, ...named } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
           return json(yield* (yield* MateCredentials).issue(projectId, nonce, named), 200);
         }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/apps/:appId/git-credentials",
+      handle(
+        Effect.gen(function* () {
+          const own = yield* principal;
+          const appId = (yield* HttpRouter.params)["appId"] ?? "";
+          return json(
+            { credentials: yield* (yield* PersonGitCredentials).list({ ...own, appId }) },
+            200,
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/git-credentials",
+      handle(
+        outliving(
+          Effect.gen(function* () {
+            const own = yield* principal;
+            const appId = (yield* HttpRouter.params)["appId"] ?? "";
+            yield* (yield* Changes).personGit(own.userId, appId);
+            return HttpServerResponse.jsonUnsafe(
+              yield* (yield* PersonGitCredentials).issue({ ...own, appId }),
+              { status: 201, headers: { "cache-control": "no-store" } },
+            );
+          }),
+        ),
+      ),
+    ),
+    HttpRouter.add(
+      "DELETE",
+      "/api/apps/:appId/git-credentials/:id",
+      handle(
+        outliving(
+          Effect.gen(function* () {
+            const own = yield* principal;
+            const params = yield* HttpRouter.params;
+            yield* (yield* PersonGitCredentials).revoke(
+              { ...own, appId: params["appId"] ?? "" },
+              params["id"] ?? "",
+            );
+            return HttpServerResponse.empty({ status: 204 });
+          }),
+        ),
       ),
     ),
     HttpRouter.add("*", "/git/*", handle(serveGit)),
