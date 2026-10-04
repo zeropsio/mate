@@ -123,7 +123,7 @@ import {
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
 import { useRunEffortWords } from "./runResultFacts";
-import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
+import { foldWork } from "./foldWork";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { easeRooms, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
@@ -3773,25 +3773,10 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
 }
 
 /**
- * How a settled run's work folds into its line: a whole scroll's height that
- * nobody asked to move, so longer than a toggle's and on the drawer's gentler
- * start — the strong ease-out threw a fifth of it in the first frame.
- */
-const SETTLE_FOLD_MS = 360;
-
-/**
- * Folds the work over a run's line shut: from its height, less `shift` — how
- * much higher the line stands without its hairline and room, which the fold
- * starts by keeping — to nothing, its newest lines the last to go, fading as
- * it closes; `done` once it is shut.
- *
- * In a conversation that follows its end, the line keeps its place. The list
- * moves its rows a frame after a row changes height, so the line rode up by
- * each frame's step and back down by the last one's (±45 px on a real run,
- * 2026-09-29). Each step is taken once the list has moved the rows for the
- * last one, and the card's row is carried as far as this step takes, for the
- * frame until the list moves it; whatever else moves the list — the answer
- * arriving as the run settles — is the list's to do.
+ * Folds the work over a run's line shut (`foldWork`): from its height, less
+ * `shift` — how much higher the line stands without its hairline and room,
+ * which the fold starts by keeping — to nothing, fading as it closes; `done`
+ * once it is shut.
  */
 function foldAway(above: HTMLElement, shift: number, done: () => void): () => void {
   const from = above.getBoundingClientRect().height + shift;
@@ -3799,33 +3784,7 @@ function foldAway(above: HTMLElement, shift: number, done: () => void): () => vo
     done();
     return () => undefined;
   }
-  const row = rowFollowingTheEnd(above);
-  return stepHeight({
-    element: above,
-    from,
-    to: 0,
-    duration: SETTLE_FOLD_MS,
-    ease: drawerEase,
-    // The settle's own rows (the answer done, the result) land in the list
-    // first: it lays those out at once, and would this fold's first steps too.
-    wait: row === null ? 0 : LIST_LAYS_OUT_FRAMES,
-    carried: row === null ? null : [{ row, direction: 1 }],
-    each: (shut) => {
-      above.style.opacity = String(Math.max(0, 1 - shut / 0.6));
-    },
-    done,
-  });
-}
-
-/**
- * The card row a fold takes from, in a conversation that follows its end
- * (`data-timeline-follows-end`); else null. Read from the timeline, not the
- * scroll: the answer arriving as the run settles puts the scroll off its end
- * until the list catches up.
- */
-function rowFollowingTheEnd(above: HTMLElement): HTMLElement | null {
-  const row = above.closest<HTMLElement>("[data-card-slice]");
-  return row?.closest("[data-timeline-follows-end]") ? row : null;
+  return foldWork({ above, from, done });
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */

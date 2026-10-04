@@ -7,6 +7,7 @@
  * curve, retargeted each frame as the end moves on. A person's move away
  * (`follows()` false) stops it where it stands.
  */
+import { GLIDING_ATTRIBUTE } from "./foldWork";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 
 /** A step of the end this long or longer glides; a shorter one is already a glide's step. */
@@ -38,6 +39,7 @@ export function createEndFollow({
     const element = viewport();
     if (element === null || !follows()) {
       last = 0;
+      if (element !== null) said(element, false);
       return;
     }
     // Moved since by something else: it glides on from there.
@@ -47,8 +49,12 @@ export function createEndFollow({
     last = now;
     element.scrollTop = at;
     placed = element.scrollTop;
-    if (at !== end) frame = requestAnimationFrame(step);
-    else last = 0;
+    if (at !== end) {
+      frame = requestAnimationFrame(step);
+    } else {
+      last = 0;
+      said(element, false);
+    }
   };
   return {
     follow: () => {
@@ -67,14 +73,25 @@ export function createEndFollow({
         return;
       }
       at = element.scrollTop;
+      // Said on it while it glides: a run's fold waits for it (`foldWork`).
+      said(element, true);
       frame = requestAnimationFrame(step);
     },
     stop: () => {
       cancelAnimationFrame(frame);
       frame = 0;
       last = 0;
+      const element = viewport();
+      if (element !== null) said(element, false);
     },
   };
+}
+
+/** Says on the list's scroll whether it glides; a stand-in for one (a test's) says nothing. */
+function said(element: HTMLElement, gliding: boolean): void {
+  if (typeof element.toggleAttribute === "function") {
+    element.toggleAttribute(GLIDING_ATTRIBUTE, gliding);
+  }
 }
 
 function reducedMotion(): boolean {
