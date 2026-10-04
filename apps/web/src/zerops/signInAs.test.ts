@@ -6,16 +6,14 @@ import { signInAs, type SignInPage } from "../../test/signInAs";
 
 const API = "https://api.example.test";
 
-const owner: ZeropsUser = { id: "user-1", email: "owner@example.test", clientUserList: [] };
+const person: ZeropsUser = { id: "user-1", email: "person@example.test", clientUserList: [] };
 
-/** A platform with the accounts the env names, and the env naming them. */
+/** A platform with the account the env lists, and the env listing it. */
 function platform() {
   const rest = makeFakeZeropsRest();
-  rest.addUser({ user: owner, password: "owner-secret" });
+  rest.addUser({ user: person, password: "person-secret" });
   const env = {
-    MATE_TEST_ACCOUNTS: JSON.stringify([
-      { name: "owner", email: owner.email, password: "owner-secret", writes: true },
-    ]),
+    MATE_TEST_ACCOUNTS: JSON.stringify([{ email: person.email, password: "person-secret" }]),
   };
   return { rest, env, options: { env, fetch: rest.fetch, apiBaseUrl: API } };
 }
@@ -41,13 +39,15 @@ afterEach(() => {
 });
 
 describe("signInAs", () => {
-  it("logs the named account in and hands its session to the page's dev hook", async () => {
+  it("logs the listed account in and hands its session to the page's dev hook", async () => {
     const { rest, options } = platform();
     const page = devPage();
 
-    const account = await signInAs(page, "owner", options);
+    const account = await signInAs(page, person.email, options);
 
-    expect(account).toMatchObject({ name: "owner", email: owner.email, writes: true });
+    // What the account may do is the platform's to say; the helper says only who.
+    expect(Object.keys(account).toSorted()).toEqual(["email", "logout"]);
+    expect(account.email).toBe(person.email);
     expect(page.adopted()).toEqual([
       { accessToken: expect.any(String), refreshToken: expect.any(String) },
     ]);
@@ -57,7 +57,7 @@ describe("signInAs", () => {
   it("ends its own session at the platform on logout", async () => {
     const { rest, options } = platform();
     const page = devPage();
-    const account = await signInAs(page, "owner", options);
+    const account = await signInAs(page, person.email, options);
     const { accessToken } = page.adopted()[0] as { accessToken: string };
 
     await account.logout();
@@ -75,16 +75,14 @@ describe("signInAs", () => {
   // it answers is useless to the page, so nothing is handed over.
   it("refuses an account that needs a second factor, and hands the page nothing", async () => {
     const rest = makeFakeZeropsRest();
-    rest.addUser({ user: owner, password: "owner-secret", totp: "123456" });
+    rest.addUser({ user: person, password: "person-secret", totp: "123456" });
     const env = {
-      MATE_TEST_ACCOUNTS: JSON.stringify([
-        { name: "owner", email: owner.email, password: "owner-secret", writes: false },
-      ]),
+      MATE_TEST_ACCOUNTS: JSON.stringify([{ email: person.email, password: "person-secret" }]),
     };
     const page = devPage();
 
     await expect(
-      signInAs(page, "owner", { env, fetch: rest.fetch, apiBaseUrl: API }),
+      signInAs(page, person.email, { env, fetch: rest.fetch, apiBaseUrl: API }),
     ).rejects.toThrow(/second factor/);
     expect(page.adopted()).toEqual([]);
   });
@@ -96,29 +94,37 @@ describe("signInAs", () => {
     vi.stubGlobal("window", {});
     const page: SignInPage = { evaluate: async (fn, arg) => fn(arg) };
 
-    await expect(signInAs(page, "owner", options)).rejects.toThrow(/dev build/);
+    await expect(signInAs(page, person.email, options)).rejects.toThrow(/dev build/);
     expect(rest.requests().map(({ route }) => route)).toEqual([
       "POST /auth/login",
       "POST /auth/logout",
     ]);
   });
 
-  describe("names the account it cannot find, and never a password", () => {
+  describe("names the email it cannot find, and never a password", () => {
     const rows = [
-      { name: "an unknown name", env: { MATE_TEST_ACCOUNTS: "[]" } },
+      {
+        name: "an email the list does not hold",
+        env: {
+          MATE_TEST_ACCOUNTS: JSON.stringify([
+            { email: "someone@example.test", password: "person-secret" },
+          ]),
+        },
+      },
       { name: "no MATE_TEST_ACCOUNTS", env: {} },
-      { name: "MATE_TEST_ACCOUNTS that is not JSON", env: { MATE_TEST_ACCOUNTS: "owner-secret" } },
+      { name: "MATE_TEST_ACCOUNTS that is not JSON", env: { MATE_TEST_ACCOUNTS: "person-secret" } },
     ];
     for (const row of rows) {
       it(row.name, async () => {
         const { rest } = platform();
-        const failure = signInAs(devPage(), "owner", {
+        const failure = signInAs(devPage(), person.email, {
           env: row.env,
           fetch: rest.fetch,
           apiBaseUrl: API,
         });
         await expect(failure).rejects.toThrow(/MATE_TEST_ACCOUNTS/);
-        await expect(failure).rejects.not.toThrow(/owner-secret/);
+        await expect(failure).rejects.toThrow(person.email);
+        await expect(failure).rejects.not.toThrow(/person-secret/);
         expect(rest.requests()).toEqual([]);
       });
     }

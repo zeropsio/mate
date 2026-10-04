@@ -29,27 +29,28 @@ itself.
 2. Export the accounts. Never commit them, never print them:
 
    ```sh
-   export MATE_TEST_ACCOUNTS='[{"name":"owner","email":"…","password":"…","writes":true},
-                               {"name":"guest","email":"…","password":"…","writes":false}]'
+   export MATE_TEST_ACCOUNTS='[{"email":"…","password":"…"},{"email":"…","password":"…"}]'
    ```
 
-   `writes: false` marks an account a test may only read as. The helper refuses an account with a
-   second factor: use accounts without 2FA.
+   An entry says who, never what they may do. What an account may do is decided by its Zerops
+   permissions alone, and what the agent should do with it is said in the task. The helper refuses
+   an account with a second factor: use accounts without 2FA.
 
 3. In the test (Playwright or Puppeteer: any page with `evaluate(fn, arg)`):
 
    ```ts
    import { signInAs } from "<repo>/apps/web/test/signInAs";
 
-   const owner = await signInAs(page, "owner");
+   const account = await signInAs(page, "someone@example.com");
    try {
-     // … drive the page as owner …
+     // … drive the page as that account …
    } finally {
-     await owner.logout(); // ends the session the helper minted
+     await account.logout(); // ends the session the helper minted
    }
    ```
 
-   `signInAs` calls `POST /auth/login` and hands `{accessToken, refreshToken}` to
+   `signInAs` picks the entry by email (an email the list does not hold is a readable error), calls
+   `POST /auth/login` and hands `{accessToken, refreshToken}` to
    `window.__mateDev.adoptSession`. The page then holds a full session that renews itself.
 
 ## Several accounts at once

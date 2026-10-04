@@ -3,7 +3,7 @@
  * dev build as several people (`docs/internals/zerops/test-accounts.md`).
  *
  * It reads the accounts from `MATE_TEST_ACCOUNTS` — a JSON array of
- * `{ name, email, password, writes }` — logs the named one in with
+ * `{ email, password }` — logs the one with `email` in with
  * `POST /auth/login`, and hands the session to the page through the dev-only
  * `window.__mateDev.adoptSession`. The session is the helper's own, so
  * `logout()` ends it at the platform: call it on teardown.
@@ -22,18 +22,17 @@ export interface SignInPage {
   readonly evaluate: <A>(fn: (arg: A) => Promise<void>, arg: A) => Promise<unknown>;
 }
 
+/**
+ * One entry of `MATE_TEST_ACCOUNTS`. It says who, never what they may do:
+ * that is the Zerops platform's permissions alone.
+ */
 export interface TestAccount {
-  readonly name: string;
   readonly email: string;
   readonly password: string;
-  /** Whether a test may change things as this account (create, deploy, delete). */
-  readonly writes: boolean;
 }
 
 export interface SignedInAccount {
-  readonly name: string;
   readonly email: string;
-  readonly writes: boolean;
   /** Ends the session at the platform. */
   readonly logout: () => Promise<void>;
 }
@@ -46,10 +45,10 @@ export interface SignInAsOptions {
 
 export async function signInAs(
   page: SignInPage,
-  accountName: string,
+  email: string,
   options: SignInAsOptions = {},
 ): Promise<SignedInAccount> {
-  const account = testAccount(options.env ?? process.env, accountName);
+  const account = testAccount(options.env ?? process.env, email);
   const send = options.fetch ?? fetch;
   const api = `${(options.apiBaseUrl ?? DEFAULT_ZEROPS_API_BASE).replace(/\/+$/u, "")}${PUBLIC_API_PREFIX}`;
 
@@ -60,7 +59,7 @@ export async function signInAs(
   });
   if (!response.ok) {
     throw new Error(
-      `Zerops refused the login of test account "${accountName}" (${response.status}).`,
+      `Zerops refused the login of test account ${account.email} (${response.status}).`,
     );
   }
   const login = (await response.json()) as {
@@ -71,7 +70,7 @@ export async function signInAs(
   // useless to the page, so the account is not one this helper can sign in.
   if (login.user === null || !login.auth?.accessToken || !login.auth.refreshToken) {
     throw new Error(
-      `Test account "${accountName}" needs a second factor; use an account without 2FA.`,
+      `Test account ${account.email} needs a second factor; use an account without 2FA.`,
     );
   }
   const session: MateDevSession = {
@@ -100,20 +99,29 @@ export async function signInAs(
     throw cause;
   }
 
-  return { name: account.name, email: account.email, writes: account.writes, logout };
+  return { email: account.email, logout };
 }
 
-function testAccount(env: Readonly<Record<string, string | undefined>>, name: string): TestAccount {
-  let accounts: ReadonlyArray<TestAccount>;
+function testAccount(
+  env: Readonly<Record<string, string | undefined>>,
+  email: string,
+): TestAccount {
+  let accounts: unknown;
   try {
-    accounts = JSON.parse(env.MATE_TEST_ACCOUNTS ?? "[]") as ReadonlyArray<TestAccount>;
+    accounts = JSON.parse(env.MATE_TEST_ACCOUNTS ?? "[]");
   } catch {
     // The value holds passwords: never echo it.
-    throw new Error("MATE_TEST_ACCOUNTS is not a JSON array of test accounts.");
+    throw new Error(
+      `Cannot sign in as ${email}: MATE_TEST_ACCOUNTS is not a JSON array of {email, password}.`,
+    );
   }
   const account = Array.isArray(accounts)
-    ? accounts.find((candidate) => candidate.name === name)
+    ? (accounts as ReadonlyArray<TestAccount>).find((candidate) => candidate.email === email)
     : undefined;
-  if (account === undefined) throw new Error(`MATE_TEST_ACCOUNTS names no account "${name}".`);
+  if (account === undefined) {
+    throw new Error(
+      `Cannot sign in as ${email}: MATE_TEST_ACCOUNTS lists no account with that email.`,
+    );
+  }
   return account;
 }
