@@ -961,6 +961,7 @@ describe("the account runtime", () => {
               adapter: {
                 ...datastream.adapter,
                 cells: {
+                  readProjectPublicAccess: () => Effect.never,
                   readOrganizationLocations: () => Effect.succeed([]),
                   readServiceAuthorizedAgents: () => Effect.succeed([]),
                   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),

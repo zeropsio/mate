@@ -1,3 +1,4 @@
+import { Atom } from "effect/unstable/reactivity";
 import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
@@ -196,6 +197,10 @@ describe("a chip on the project's heading", () => {
   it("demands every project id the visible chip stands for, even when inventory has not named it", () => {
     heldDemand.length = 0;
     const data = {
+      runtime: {
+        scope: {},
+        cells: { known: () => Atom.make({ state: "unread", waitingFor: null }) },
+      },
       projectRef: (_org: string, id: string) => projectRef(id),
     } as unknown as ZeropsDataContextValue;
     const session = { activeOrganization: { id: "org" } } as unknown as ZeropsSessionValue;

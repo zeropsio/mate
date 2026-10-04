@@ -57,3 +57,27 @@ export function selectMembers(shown: Shown<ReadonlyArray<ZeropsOrganizationMembe
  */
 export const settledValue = <T>(shown: Shown<T>): { readonly value: T } | null =>
   shown.state === "known" && shown.freshness.kind === "settled" ? { value: shown.value } : null;
+
+const NO_PUBLIC_ACCESS: import("../publicRoutes.ts").ZeropsPublicAccess = {
+  routes: [],
+  offers: [],
+};
+
+/** A failed recheck keeps its links, alongside the explicit failure and manual action. */
+export function selectPublicAccess(
+  shown: Shown<import("../publicRoutes.ts").ZeropsPublicAccess>,
+): import("../publicRoutes.ts").ZeropsPublicAccess & {
+  readonly state: "ready" | "reading" | "failed";
+} {
+  switch (shown.state) {
+    case "known":
+      return { ...shown.value, state: shown.freshness.kind === "stale" ? "failed" : "ready" };
+    case "failed":
+    case "gone":
+    case "withheld":
+      return { ...NO_PUBLIC_ACCESS, state: "failed" };
+    case "unread":
+    case "reading":
+      return { ...NO_PUBLIC_ACCESS, state: "reading" };
+  }
+}

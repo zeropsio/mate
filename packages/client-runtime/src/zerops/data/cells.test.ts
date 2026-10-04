@@ -101,6 +101,7 @@ const membersRequest = (scope: AccountScope): MembersCellRequest => ({
 });
 
 const unusedAdapter = (overrides: Partial<ZeropsCellAdapter> = {}): ZeropsCellAdapter => ({
+  readProjectPublicAccess: () => Effect.never,
   readOrganizationLocations: () => Effect.succeed([]),
   readOrganizationMembers: () => Effect.succeed([]),
   readServiceVariableNames: () => Effect.succeed([]),

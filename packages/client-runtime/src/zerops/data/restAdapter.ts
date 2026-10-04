@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+import { derivePublicAccess } from "../publicRoutes.ts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
@@ -1581,8 +1583,119 @@ const cellRead = <Value>(run: () => Promise<Value>): Effect.Effect<Value, Zerops
  * The reads no stream carries, one per cell kind, over the REST API; secret-bearing source rows
  * are stripped at this boundary.
  */
+const PublicAccessProject = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  publicZone: Schema.NullOr(Schema.String),
+  zeropsSubdomainHost: Schema.NullOr(Schema.String),
+});
+const PublicAccessServices = Schema.Struct({
+  list: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      status: Schema.String,
+      isSystem: Schema.optionalKey(Schema.Boolean),
+      subdomainAccess: Schema.Boolean,
+      ports: Schema.Array(
+        Schema.Struct({
+          port: Schema.Finite,
+          scheme: Schema.optionalKey(Schema.String),
+        }),
+      ),
+      serviceStackTypeInfo: Schema.optionalKey(
+        Schema.NullOr(
+          Schema.Struct({
+            serviceStackTypeVersionName: Schema.optionalKey(Schema.String),
+            serviceStackTypeCategory: Schema.optionalKey(Schema.NullOr(Schema.String)),
+          }),
+        ),
+      ),
+    }),
+  ),
+});
+const PublicAccessRoutings = Schema.Struct({
+  list: Schema.Array(
+    Schema.Struct({
+      isSynced: Schema.Boolean,
+      sslEnabled: Schema.Boolean,
+      domains: Schema.Array(Schema.Struct({ domainName: Schema.String })),
+      locations: Schema.Array(
+        Schema.Struct({ path: Schema.String, port: Schema.Finite, serviceStackId: Schema.String }),
+      ),
+    }),
+  ),
+});
+
+const decodePublicAccessProject = Schema.decodeUnknownEffect(PublicAccessProject);
+const decodePublicAccessServices = Schema.decodeUnknownEffect(PublicAccessServices);
+const decodePublicAccessRoutings = Schema.decodeUnknownEffect(PublicAccessRoutings);
+
 export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter {
   return {
+    readProjectPublicAccess: (input, context) =>
+      Effect.gen(function* () {
+        const id = input.project.projectId;
+        const read = (path: string) =>
+          cellRead(() =>
+            client.requestData({
+              path,
+              operationKind: "read",
+              signal: context.abortSignal,
+              background: true,
+            }),
+          );
+        const project = yield* read(`/project/${id}`);
+        const services = yield* read(`/project/${id}/service-stack?limit=500`);
+        const routings = yield* read(`/project/${id}/public-http-routing`);
+        const decodeFailure = () => ({
+          _tag: "ZeropsCellSourceError" as const,
+          kind: "decode" as const,
+          retryable: false,
+        });
+        const decoded = yield* decodePublicAccessProject(project).pipe(
+          Effect.mapError(decodeFailure),
+        );
+        const serviceRows = yield* decodePublicAccessServices(services).pipe(
+          Effect.mapError(decodeFailure),
+        );
+        const routingRows = yield* decodePublicAccessRoutings(routings).pipe(
+          Effect.mapError(decodeFailure),
+        );
+        if (decoded.id !== id) return yield* Effect.fail(decodeFailure());
+        return derivePublicAccess(
+          {
+            id: decoded.id,
+            name: decoded.name,
+            status: "UNKNOWN",
+            ...(decoded.publicZone === null ? {} : { publicZone: decoded.publicZone }),
+            ...(decoded.zeropsSubdomainHost === null
+              ? {}
+              : { zeropsSubdomainHost: decoded.zeropsSubdomainHost }),
+          },
+          serviceRows.list.map(({ serviceStackTypeInfo, ...service }) => ({
+            ...service,
+            ...(serviceStackTypeInfo === null || serviceStackTypeInfo === undefined
+              ? {}
+              : {
+                  serviceStackTypeInfo: {
+                    ...(serviceStackTypeInfo.serviceStackTypeVersionName === undefined
+                      ? {}
+                      : {
+                          serviceStackTypeVersionName:
+                            serviceStackTypeInfo.serviceStackTypeVersionName,
+                        }),
+                    ...(serviceStackTypeInfo.serviceStackTypeCategory == null
+                      ? {}
+                      : {
+                          serviceStackTypeCategory: serviceStackTypeInfo.serviceStackTypeCategory,
+                        }),
+                  },
+                }),
+          })),
+          routingRows.list,
+        );
+      }),
     readOrganizationLocations: (input, context) =>
       cellRead(() =>
         client.listClientLocations(input.organization.organizationId, context.abortSignal),

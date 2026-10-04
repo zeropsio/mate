@@ -782,6 +782,7 @@ const unavailableResource = (): Effect.Effect<never, ZeropsCellSourceError> =>
   });
 
 const unavailableCellAdapter: ZeropsCellAdapter = {
+  readProjectPublicAccess: unavailableResource,
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
   readServiceMateFlag: unavailableResource,
@@ -3433,6 +3434,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           result.kind === "enable-subdomain-access"
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
+        ),
+        Effect.tap(() =>
+          cells.invalidate({
+            kind: "public-access",
+            account: options.scope,
+            project: service.project,
+          }),
         ),
       ),
     createProject: (input) =>

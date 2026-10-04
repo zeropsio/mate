@@ -75,6 +75,7 @@ function locationsSource() {
       retryable: false,
     });
   const adapter: ZeropsCellAdapter = {
+    readProjectPublicAccess: () => Effect.never,
     readOrganizationLocations: () =>
       Effect.sync(() => {
         reads++;
