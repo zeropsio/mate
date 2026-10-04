@@ -495,6 +495,7 @@ describe("the account runtime", () => {
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: inertAdapter,
               atomRegistry: registry,
@@ -570,6 +571,7 @@ describe("the account runtime", () => {
           };
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: platformAdapter([A_MATE]),
               atomRegistry: registry,
@@ -624,6 +626,7 @@ describe("the account runtime", () => {
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: inertAdapter,
               atomRegistry: registry,
@@ -685,6 +688,7 @@ describe("the account runtime", () => {
         const grant = heldVerifier();
         const built = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
             scope: scope(),
             adapter: inertAdapter,
             atomRegistry: registry,
@@ -757,6 +761,7 @@ describe("the account runtime", () => {
         const opened: Array<string> = [];
         const built = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
             scope: scope(),
             adapter: {
               ...datastream,
@@ -861,6 +866,7 @@ describe("the account runtime", () => {
           });
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: datastream.adapter,
               atomRegistry: registry,
@@ -971,6 +977,7 @@ describe("the account runtime", () => {
           });
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: {
                 ...datastream.adapter,
@@ -1073,6 +1080,7 @@ describe("the account runtime", () => {
           client.restoreSession(rest.issueSession(account.accountId));
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: makeFakeDatastream(rest).adapter,
               atomRegistry: registry,
@@ -1192,6 +1200,7 @@ describe("the account runtime", () => {
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: inertAdapter,
               atomRegistry: registry,
@@ -1240,6 +1249,7 @@ describe("the account runtime", () => {
         const grant = heldVerifier();
         const exit = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
             scope: scope(),
             adapter: inertAdapter,
             atomRegistry: registry,
@@ -1299,6 +1309,7 @@ describe("the account runtime", () => {
           client.restoreSession(rest.issueSession(account.accountId));
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: makeFakeDatastream(rest).adapter,
               atomRegistry: registry,
@@ -1402,6 +1413,7 @@ describe("the post-grant stage's Mate environments", () => {
     const rig = environmentRig(clock, remembered);
     const built = yield* Effect.gen(function* () {
       const data = yield* makeZeropsDataRuntime({
+        random: () => 0,
         scope: scope(),
         adapter,
         atomRegistry: registry,

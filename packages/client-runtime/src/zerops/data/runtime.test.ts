@@ -2666,6 +2666,7 @@ describe("makeZeropsDataRuntime", () => {
         adapter,
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
         policy: makeZeropsDataPolicy({}),
       });
       const states = yield* Queue.unbounded<ZeropsDataState>();
@@ -4648,6 +4649,7 @@ describe("incomplete data says so, with its retry", () => {
           adapter,
           atomRegistry: registry,
           makeOpaqueId: makeIdFactory(),
+          random: () => 0,
           policy: makeZeropsDataPolicy({
             hydrationRetryLimit: 2,
             recoveryBackoffStartMs: 100,
@@ -5626,6 +5628,7 @@ it.effect("the establishment deadline closes a registration still awaiting its a
         policy: makeZeropsDataPolicy({ establishmentDeadlineMs: 100 }),
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
       });
       const states = yield* Queue.unbounded<ZeropsDataState>();
       const stop = registry.subscribe(runtime.stateAtom, (state) =>
@@ -5709,6 +5712,7 @@ it.effect.each(["login", "registration"] as const)(
           scope: runtimeScope,
           atomRegistry: registry,
           makeOpaqueId: makeIdFactory(),
+          random: () => 0,
           adapter: {
             ...harness.adapter,
             openReceiver: (scope, organization, identity, context) => {
@@ -5995,6 +5999,7 @@ describe("an interest that fails alone recovers alone", () => {
         },
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
+        random: () => 0,
         policy: makeZeropsDataPolicy({
           recoveryBackoffStartMs: 100,
           recoveryBackoffMaxMs: 1_000,
@@ -6260,6 +6265,7 @@ describe("an interest that fails alone recovers alone", () => {
           },
           atomRegistry: registry,
           makeOpaqueId: makeIdFactory(),
+          random: () => 0,
           policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 100 }),
         });
         const states = yield* Queue.unbounded<ZeropsDataState>();
@@ -6317,6 +6323,208 @@ describe("an interest that fails alone recovers alone", () => {
         yield* rig.runtime.shutdown("application-close");
         rig.stop();
         rig.registry.dispose();
+      }),
+    ),
+  );
+});
+
+describe("a 429 is answered with patience, never more requests", () => {
+  const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, {
+    discard: true,
+  });
+  const slowDown = (retryAfterMs: number, status = 429): AdapterError => ({
+    _tag: "ZeropsDataAdapterError",
+    kind: "network",
+    message: "slow down",
+    status,
+    retryAfterMs,
+    retryable: true,
+    accountRevocationEvidence: false,
+  });
+
+  it.effect("holds every read of the organization until the Retry-After one read was given", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const events = yield* Queue.unbounded<ReceiverEvent>();
+        let membership: RegistrationRequest | undefined;
+        const readsAt: Array<readonly [string, number]> = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            openReceiver: (_scope, organization, identity) =>
+              Effect.succeed({
+                identity,
+                organization,
+                delivery: "hot-single-consumer-buffered-before-open-resolves" as const,
+                events: Stream.fromQueue(events),
+              }),
+            register: (_receiver, request) => {
+              const baseline = unresolvedProcessBaseline(request);
+              if (baseline !== null) membership = request;
+              return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
+            },
+            read: (ticket) => {
+              if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+              const id = ticket.target.ref.processId;
+              return Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                readsAt.push([id, now]);
+                return id === "process-a"
+                  ? Effect.fail(slowDown(5_000))
+                  : Effect.succeed({ observations: [] });
+              });
+            },
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 0,
+        });
+        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        yield* settle;
+        expect(readsAt).toEqual([["process-a", 0]]);
+        yield* TestClock.adjust("1 second");
+        yield* Queue.offer(events, {
+          kind: "observation",
+          input: {
+            kind: "query-membership-observed",
+            operation: "add",
+            member: {
+              kind: "process",
+              project: topologyDescriptor.project,
+              processId: ZeropsProcessId.make("process-c"),
+            },
+            registration: membership as never,
+          },
+          bytes: 1,
+        });
+        yield* settle;
+        yield* TestClock.adjust("3999 millis");
+        yield* settle;
+        expect(readsAt).toEqual([["process-a", 0]]);
+        yield* TestClock.adjust("1 millis");
+        yield* settle;
+        expect(readsAt.map(([id]) => id).sort()).toEqual(["process-a", "process-a", "process-c"]);
+        expect(readsAt.every(([, at]) => at === 0 || at === 5_000)).toBe(true);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+    ),
+  );
+
+  it.effect("an interest's retry waits out its refusal's Retry-After", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const sentAt: number[] = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            register: (receiver, request, context) =>
+              request.descriptor.kind === "query-membership" &&
+              request.descriptor.query.kind === "running-processes-of-project"
+                ? Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                    sentAt.push(now);
+                    return sentAt.length === 1
+                      ? Effect.fail({ ...slowDown(5_000, 409), kind: "registration" as const })
+                      : Effect.succeed({ responseObservations: [] });
+                  })
+                : harness.adapter.register(receiver, request, context),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 0,
+          policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 100 }),
+        });
+        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        for (let step = 0; step < 60; step++) {
+          yield* TestClock.adjust("100 millis");
+          yield* settle;
+        }
+        // Never before its Retry-After, and not a backoff rung past it.
+        expect(sentAt).toHaveLength(2);
+        expect(sentAt[1]).toBeGreaterThanOrEqual(5_000);
+        expect(sentAt[1]).toBeLessThan(5_000 + 200);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+    ),
+  );
+
+  it.effect("a socket refused with a Retry-After logs in again only after it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const opensAt: number[] = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            openReceiver: (...args) =>
+              Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                opensAt.push(now);
+                return opensAt.length === 1
+                  ? Effect.fail({ ...slowDown(10_000), kind: "socket-open" as const })
+                  : harness.adapter.openReceiver(...args);
+              }),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 0,
+        });
+        yield* runtime.acquire(topologyDescriptor);
+        for (let step = 0; step < 15; step++) {
+          yield* TestClock.adjust("1 second");
+          yield* settle;
+        }
+        expect(opensAt).toEqual([0, 10_000]);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+    ),
+  );
+
+  it.effect("every backoff is jittered: a retry may come up to a fifth sooner", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const sentAt: number[] = [];
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            register: (receiver, request, context) =>
+              request.descriptor.kind === "query-membership" &&
+              request.descriptor.query.kind === "running-processes-of-project"
+                ? Effect.flatMap(Clock.currentTimeMillis, (now) => {
+                    sentAt.push(now);
+                    return sentAt.length === 1
+                      ? Effect.fail({ ...slowDown(0, 409), kind: "registration" as const })
+                      : Effect.succeed({ responseObservations: [] });
+                  })
+                : harness.adapter.register(receiver, request, context),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          random: () => 1,
+          policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 1_000 }),
+        });
+        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        for (let step = 0; step < 15; step++) {
+          yield* TestClock.adjust("100 millis");
+          yield* settle;
+        }
+        // Its 1 s rung, a fifth sooner: never a whole second after the failure.
+        expect(sentAt).toHaveLength(2);
+        expect(sentAt[1]).toBeGreaterThanOrEqual(800);
+        expect(sentAt[1]).toBeLessThan(1_000);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
       }),
     ),
   );

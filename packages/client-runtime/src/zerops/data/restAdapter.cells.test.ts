@@ -43,6 +43,36 @@ function clientFor(body: unknown): ZeropsApiClient {
 }
 
 describe("makeZeropsCellReads", () => {
+  it.effect("reads a 429 as retryable, carrying its Retry-After", () =>
+    Effect.gen(function* () {
+      const client = new ZeropsApiClient({
+        baseUrl: account.apiOrigin,
+        fetch: () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ error: { code: "tooManyRequests" } }), {
+              status: 429,
+              headers: { "retry-after": "12" },
+            }),
+          ),
+      });
+      client.restoreSession({ accessToken: "account-token" });
+      const failure = yield* Effect.flip(
+        makeZeropsCellReads(client).readOrganizationLocations(
+          { kind: "locations", account: scope, organization },
+          {
+            abortSignal: new AbortController().signal,
+          },
+        ),
+      );
+      expect(failure).toEqual({
+        _tag: "ZeropsCellSourceError",
+        kind: "transport",
+        retryable: true,
+        retryAfterMs: 12_000,
+      });
+    }),
+  );
+
   it.effect("projects integration tokens to grant metadata without credential fields", () =>
     Effect.gen(function* () {
       const adapter = makeZeropsCellReads(

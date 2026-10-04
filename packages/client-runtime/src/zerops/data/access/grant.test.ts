@@ -81,6 +81,8 @@ interface RunRequest {
 class GrantSim {
   state: GrantMachine;
   now: Instant = T0;
+  /** The jitter source; none by default, so every rung lands on its time. */
+  random: (() => number) | undefined = undefined;
   readonly effects: Array<{ readonly at: Instant; readonly effect: GrantEffect }> = [];
   readonly runs: Array<RunRequest> = [];
 
@@ -94,7 +96,9 @@ class GrantSim {
   }
 
   get ctx() {
-    return { now: this.now, policy };
+    return this.random === undefined
+      ? { now: this.now, policy }
+      : { now: this.now, policy, random: this.random };
   }
 
   send(event: GrantEvent): ReadonlyArray<GrantEffect> {
@@ -271,6 +275,21 @@ const expiredObservations = (effects: ReadonlyArray<GrantEffect>) =>
   );
 
 describe("a failed first read recovers by itself", () => {
+  it("jitters every rung: a retry may come up to a fifth sooner, never later", () => {
+    const sim = new GrantSim();
+    sim.random = () => 1;
+    sim.send({ type: "START" });
+    sim.send({
+      type: "ROUND_FAILED",
+      round: sim.round(),
+      failure: { kind: "server", status: 503 },
+    });
+    expect(sim.state.phase).toMatchObject({
+      phase: "unverified-failed",
+      retryAt: { wall: T0.wall + 1_600, mono: T0.mono + 1_600 },
+    });
+  });
+
   const failedFirst = (): GrantSim => {
     const sim = new GrantSim();
     sim.send({ type: "START" });

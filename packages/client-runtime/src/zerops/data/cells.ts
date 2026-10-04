@@ -182,6 +182,8 @@ export interface ZeropsCellSourceError {
   readonly _tag: "ZeropsCellSourceError";
   readonly kind: "transport" | "unavailable" | "permission" | "decode";
   readonly retryable: boolean;
+  /** A 429's Retry-After: the cell reads nothing sooner. */
+  readonly retryAfterMs?: number;
 }
 
 export interface ZeropsCellReadContext {
@@ -311,6 +313,13 @@ export interface ZeropsCellsOptions {
 
 export const CELL_ADMISSION_DEADLINE_MS = 30_000;
 
+/**
+ * A heavy list the platform sat on past its deadline retries on the ladder this many times; after
+ * that it waits `CELL_DEADLINE_CAP_MS` between reads, or a person's Read again.
+ */
+const DEADLINE_RETRIES = 2;
+const CELL_DEADLINE_CAP_MS = 5 * 60_000;
+
 export const CELL_IDLE_RETENTION_MS = 10 * 60_000;
 
 type AnyCellValue = ZeropsCellValues[ZeropsCellKind];
@@ -344,6 +353,8 @@ interface CellEntry {
   retryWake: Fiber.Fiber<void> | null;
   /** Its retry came due while the tab was hidden: the next `wake` reads it. */
   retryDue: boolean;
+  /** Reads past their deadline in a row (`DEADLINE_RETRIES`). */
+  deadlineFailures: number;
   /** The end of the idle retention window, while nothing demands the entry. */
   evictionWake: Fiber.Fiber<void> | null;
 }
@@ -442,7 +453,12 @@ export function zeropsCellKeyOf(request: ZeropsCellRequest): ZeropsCellKey {
 /** The sanitized reason a read failed: the source's own message never leaves the adapter. */
 const failureOf = (
   cause: Cause.Cause<ZeropsCellSourceError>,
-): { readonly failure: FailureReason; readonly retryable: boolean } => {
+): {
+  readonly failure: FailureReason;
+  readonly retryable: boolean;
+  readonly retryAfterMs?: number;
+  readonly pastDeadline?: true;
+} => {
   const found = Cause.findError(cause);
   if (Result.isFailure(found)) {
     return {
@@ -450,7 +466,19 @@ const failureOf = (
       retryable: false,
     };
   }
+  if (found.success === READ_PAST_DEADLINE)
+    return {
+      failure: { kind: "transport", detail: "Zerops did not answer." },
+      retryable: true,
+      pastDeadline: true,
+    };
   const { kind, retryable } = found.success;
+  if (found.success.retryAfterMs !== undefined)
+    return {
+      failure: { kind: "transport", detail: "Zerops did not answer." },
+      retryable,
+      retryAfterMs: found.success.retryAfterMs,
+    };
   switch (kind) {
     case "transport":
       return { failure: { kind: "transport", detail: "Zerops did not answer." }, retryable };
@@ -706,6 +734,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     entry.inFlight = null;
     if (Exit.isSuccess(exit)) {
       entry.backoff = INITIAL_BACKOFF;
+      entry.deadlineFailures = 0;
       apply(entry, {
         kind: "read-succeeded",
         ordinal: inFlight.ordinal,
@@ -717,9 +746,22 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       if (entry.cell.dirty && entry.demands.size > 0) startRead(entry);
       return;
     }
-    const { failure, retryable } = failureOf(exit.cause);
-    const scheduled = retryable ? scheduleRetry(entry.backoff, now(), random) : null;
-    if (scheduled !== null) entry.backoff = scheduled.backoff;
+    const { failure, retryable, retryAfterMs, pastDeadline } = failureOf(exit.cause);
+    entry.deadlineFailures = pastDeadline === true ? entry.deadlineFailures + 1 : 0;
+    const ladder = retryable ? scheduleRetry(entry.backoff, now(), random) : null;
+    if (ladder !== null) entry.backoff = ladder.backoff;
+    // A Retry-After is a floor; a list the platform keeps sitting on waits the cap.
+    const scheduled =
+      ladder === null
+        ? null
+        : {
+            retryAtMs: Math.max(
+              entry.deadlineFailures > DEADLINE_RETRIES
+                ? now() + CELL_DEADLINE_CAP_MS
+                : ladder.retryAtMs,
+              now() + (retryAfterMs ?? 0),
+            ),
+          };
     const failed = advance(
       entry.cell,
       {
@@ -994,6 +1036,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
         backoff: INITIAL_BACKOFF,
         retryWake: null,
         retryDue: false,
+        deadlineFailures: 0,
         evictionWake: null,
       };
       if (waits) {

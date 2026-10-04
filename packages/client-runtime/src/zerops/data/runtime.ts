@@ -18,6 +18,7 @@ import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import { ZeropsApiError, type ZeropsProject } from "../api.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
+import { RETRY_JITTER } from "../knowledge/retryPolicy.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
 import { createZeropsDataAtoms } from "./atoms.ts";
 import { grantCapabilities } from "./access/capabilities.ts";
@@ -133,6 +134,16 @@ function interestIdentitiesEqual(left: InterestIdentity, right: InterestIdentity
 
 function organizationOfInterest(descriptor: RuntimeInterestDescriptor): OrganizationRef {
   return "organization" in descriptor ? descriptor.organization : descriptor.project.organization;
+}
+
+/** The organization a read asks of, for its Retry-After. */
+function organizationOfReadTarget(target: ReadTarget): OrganizationRef | null {
+  if (target.kind !== "query") return organizationOfEntityRef(target.ref);
+  const descriptor = target.descriptor as {
+    readonly organization?: OrganizationRef;
+    readonly project?: ProjectRef;
+  };
+  return descriptor.organization ?? descriptor.project?.organization ?? null;
 }
 
 function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
@@ -744,6 +755,8 @@ export interface ZeropsDataRuntimeOptions {
   readonly initialAccess?: AccessState;
   readonly visibility?: ZeropsVisibility;
   readonly buildLogTransport?: BuildLogTransport;
+  /** The jitter source of every backoff: a retry comes up to `RETRY_JITTER` of its wait sooner. */
+  readonly random?: () => number;
   readonly logTimers?: {
     readonly setTimer: (callback: () => void, delayMs: number) => unknown;
     readonly clearTimer: (handle: unknown) => void;
@@ -1005,6 +1018,31 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const runtimeContext = yield* Effect.context<never>();
   const scheduler = yield* Scheduler.Scheduler;
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
+  const random = options.random ?? Math.random;
+  /** A wait made up to `RETRY_JITTER` shorter, so tabs and entities that failed together part. */
+  const jittered = (ms: number): number => Math.round(ms * (1 - RETRY_JITTER * random()));
+  /**
+   * Until when each organization's reads, or its socket, wait out a 429's Retry-After: every
+   * request of that kind holds, not only the one the platform answered.
+   */
+  const throttles = new Map<string, number>();
+  const throttleKey = (organization: OrganizationRef, kind: "read" | "socket") =>
+    `${organizationKeyOf(organization)}:${kind}`;
+  const throttledUntil = (organization: OrganizationRef, kind: "read" | "socket"): number =>
+    throttles.get(throttleKey(organization, kind)) ?? 0;
+  const throttle = (
+    organization: OrganizationRef | null,
+    kind: "read" | "socket",
+    error: AdapterError | null,
+    nowMs: number,
+  ): void => {
+    if (organization === null || error?.status !== 429) return;
+    const until = nowMs + (error.retryAfterMs ?? policy.recoveryBackoffStartMs);
+    const key = throttleKey(organization, kind);
+    throttles.set(key, Math.max(throttles.get(key) ?? 0, until));
+  };
+  /** Each interest's own Retry-After, from the failure its retry answers. */
+  const interestRetryAfter = new Map<InterestKey, number>();
   const model = yield* Ref.make(
     makeInitialZeropsDataState(options.scope, options.initialAccess ?? { status: "unverified" }),
   );
@@ -1703,11 +1741,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             ),
           ),
           Effect.catch((error) =>
-            enqueue({
-              kind: "read-completion",
-              completion: { kind: "read-failed", ticket, failure: failureKind(error) },
-              interest: identity,
-            }).pipe(Effect.as({ succeeded: false, error })),
+            Clock.currentTimeMillis.pipe(
+              Effect.tap((now) =>
+                Effect.sync(() =>
+                  throttle(organizationOfReadTarget(ticket.target), "read", error, now),
+                ),
+              ),
+              Effect.andThen(
+                enqueue({
+                  kind: "read-completion",
+                  completion: { kind: "read-failed", ticket, failure: failureKind(error) },
+                  interest: identity,
+                }),
+              ),
+              Effect.as({ succeeded: false, error }),
+            ),
           ),
         ),
       );
@@ -1833,7 +1881,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // A grace after the last read and after the first id came due, so ids that arrive
           // together are read together; every bound is absolute, so a wake never postpones it.
           const dueAtMs = Math.min(...owed.map((wanted) => wanted.dueAtMs));
-          const readAt = Math.max(lastReadAt + TABLE_READ_GRACE_MS, dueAtMs + TABLE_READ_GRACE_MS);
+          const readAt = Math.max(
+            lastReadAt + TABLE_READ_GRACE_MS,
+            dueAtMs + TABLE_READ_GRACE_MS,
+            throttledUntil(followUp.organization, "read"),
+          );
           if (readAt > before) {
             const woken = yield* Effect.raceFirst(
               Effect.sleep(Duration.millis(readAt - before)).pipe(Effect.as(false)),
@@ -1919,6 +1971,35 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       );
     });
 
+  /** The queries whose hydration waits for an organization's Retry-After, read once it passes. */
+  const throttledQueries = new Map<string, Set<QueryKey>>();
+  const readAfterThrottle = (
+    organization: OrganizationRef,
+    until: number,
+    query: QueryKey,
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const key = throttleKey(organization, "read");
+      const waiting = throttledQueries.get(key);
+      if (waiting !== undefined) {
+        waiting.add(query);
+        return;
+      }
+      throttledQueries.set(key, new Set([query]));
+      const now = yield* Clock.currentTimeMillis;
+      yield* Effect.sleep(Duration.millis(Math.max(0, until - now))).pipe(
+        Effect.andThen(
+          Effect.suspend(() => {
+            const queries = throttledQueries.get(key) ?? new Set<QueryKey>();
+            throttledQueries.delete(key);
+            if (Ref.getUnsafe(currentVisibility) === "hidden") return Effect.void;
+            return Effect.forEach(queries, (held) => scheduleHydration(held), { discard: true });
+          }),
+        ),
+        forkOwned,
+      );
+    });
+
   scheduleHydration = (query) =>
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return;
@@ -1946,6 +2027,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               ownership: existing.ownership,
             });
           }
+          continue;
+        }
+        // The organization's reads wait out a 429's Retry-After: this one starts after it.
+        const heldUntil = throttledUntil(organizationOfEntityRef(target), "read");
+        if (heldUntil > (yield* Clock.currentTimeMillis)) {
+          yield* readAfterThrottle(organizationOfEntityRef(target), heldUntil, query);
           continue;
         }
         const attempted = hydrationAttempts.get(key);
@@ -2097,9 +2184,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       const backoffMs = spent
         ? policy.recoveryBackoffMaxMs
         : Math.min(policy.recoveryBackoffStartMs * 2 ** (count - 1), policy.recoveryBackoffMaxMs);
-      const delayMs =
-        refusal.kind === "throttled" ? Math.max(backoffMs, refusal.retryAfterMs ?? 0) : backoffMs;
       const now = yield* Clock.currentTimeMillis;
+      const delayMs = Math.max(
+        jittered(backoffMs),
+        refusal.kind === "throttled" ? (refusal.retryAfterMs ?? 0) : 0,
+        throttledUntil(organizationOfEntityRef(target), "read") - now,
+      );
       const record = {
         target,
         query,
@@ -2757,8 +2847,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   };
                   const reconnect = canReconnect(receiver.openFailure);
                   const attempts = ++receiver.reconnectFailures;
-                  const delayMs = Math.min(1_000 * 2 ** Math.min(attempts - 1, 5), 30_000);
-                  const retryAtMs = reconnect ? (yield* Clock.currentTimeMillis) + delayMs : null;
+                  const now = yield* Clock.currentTimeMillis;
+                  throttle(receiver.organization, "socket", receiver.openFailure, now);
+                  const delayMs = Math.max(
+                    jittered(Math.min(1_000 * 2 ** Math.min(attempts - 1, 5), 30_000)),
+                    receiver.openFailure.retryAfterMs ?? 0,
+                    throttledUntil(receiver.organization, "socket") - now,
+                  );
+                  const retryAtMs = reconnect ? now + delayMs : null;
                   receiver.reconnectAtMs = retryAtMs;
                   const affected = [...interests.values()].filter(
                     (interest) =>
@@ -2832,12 +2928,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       )
       .pipe(Effect.ensuring(receiver.stopped.open));
   failInterest = (identity, message, error) =>
-    lifecycleLock.withPermit(
-      failInterests([identity], message, true, {
-        retryAtMs: null,
-        attempts: 1,
-        retryable: !permanentFailure(error),
-      }),
+    Effect.flatMap(Clock.currentTimeMillis, (now) => {
+      if (error?.retryAfterMs !== undefined)
+        interestRetryAfter.set(identity.key, now + error.retryAfterMs);
+      else interestRetryAfter.delete(identity.key);
+      return Effect.void;
+    }).pipe(
+      Effect.andThen(
+        lifecycleLock.withPermit(
+          failInterests([identity], message, true, {
+            retryAtMs: null,
+            attempts: 1,
+            retryable: !permanentFailure(error),
+          }),
+        ),
+      ),
     );
 
   /**
@@ -2871,13 +2976,22 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         runtimeInterest.recoveryAttempts += 1;
         const attempts = runtimeInterest.recoveryAttempts;
         const spent = attempts > policy.recoveryAttemptLimit;
-        const delayMs = spent
-          ? policy.recoveryBackoffMaxMs
-          : Math.min(
-              policy.recoveryBackoffStartMs * 2 ** (attempts - 1),
-              policy.recoveryBackoffMaxMs,
-            );
-        const dueAtMs = now + delayMs;
+        const organization = organizationOfInterest(runtimeInterest.descriptor);
+        const dueAtMs = Math.max(
+          now +
+            jittered(
+              spent
+                ? policy.recoveryBackoffMaxMs
+                : Math.min(
+                    policy.recoveryBackoffStartMs * 2 ** (attempts - 1),
+                    policy.recoveryBackoffMaxMs,
+                  ),
+            ),
+          // A Retry-After its own failure carried, or its organization's 429, is a floor.
+          interestRetryAfter.get(runtimeInterest.key) ?? 0,
+          throttledUntil(organization, "read"),
+          throttledUntil(organization, "socket"),
+        );
         readFailures.delete(runtimeInterest.key);
         interestRetries.set(runtimeInterest.key, {
           identity: runtimeInterest.identity,
@@ -4222,6 +4336,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const grant = yield* makeGrantDriver({
     scope: options.scope,
     policy: DEFAULT_ZEROPS_GRANT_POLICY,
+    random,
     clock,
     atomRegistry: options.atomRegistry,
     access: Ref.get(model).pipe(Effect.map((state) => state.access)),

@@ -164,6 +164,7 @@ const tab = Effect.fnUntraced(function* (
   const registry = AtomRegistry.make();
   let opaque = 0;
   const runtime = yield* makeZeropsDataRuntime({
+    random: () => 0,
     scope: scope(),
     adapter: inertAdapter,
     atomRegistry: registry,
@@ -961,6 +962,7 @@ describe("the access grant inside the data runtime", () => {
           const changes = yield* Queue.unbounded<"visible" | "hidden">();
           let visibility: "visible" | "hidden" = "visible";
           const runtime = yield* makeZeropsDataRuntime({
+            random: () => 0,
             scope: scope(),
             adapter: inertAdapter,
             atomRegistry: registry,
@@ -993,6 +995,7 @@ describe("the access grant inside the data runtime", () => {
         const registry = AtomRegistry.make();
         const platform = healthy();
         const runtime = yield* makeZeropsDataRuntime({
+          random: () => 0,
           scope: scope(),
           adapter: inertAdapter,
           atomRegistry: registry,

@@ -95,7 +95,9 @@ Terminal records remain available to retained history/operation views.
    never downloads process history. Hydrate unresolved
    added IDs with one shared in-flight request per target/facet. A failed attempt retries on
    the recovery backoff within its budget, then the backoff's cap, while the tab is visible; a
-   429 waits its Retry-After and a 403/404/410 waits for a grant change. A visible manual
+   429 holds every read of its organization until its Retry-After, and a 403/404/410 waits for a
+   grant change. Every backoff, the grant's and the cells' included, is jittered up to a fifth
+   sooner; a Retry-After is a floor no jitter lowers. A visible manual
    **again** reads it at once.
 5. On a direct result reject obsolete generations. For each owned field group,
    suppress values if a native observation arrived after the ticket began, or a
