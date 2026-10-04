@@ -12,7 +12,7 @@ import { operationHolds, operationStep, updateOperation, withOperation } from ".
  *
  * {@link land} runs between the person's turns only — no chat of this Mate
  * may be working — and follows the refusal git gives: files edited in your
- * tree wait on you, a moved head or a lock waits for another press, a full disk
+ * tree wait on you, a moved head merges again, a lock backs off, a full disk
  * parks. After a landing the copy stands at the landing commit, its app
  * restarts when set, and an *After landing: restart the dev server* crewmate
  * gets one shaped turn that may only do that.
@@ -149,7 +149,9 @@ const runCheck = (
           // check's verdict is on a tree that will not land.
           const checking = yield* requireTask(core, taskId);
           if (checking.state !== "checking") return { done: checking } as const;
-          if (outcome._tag !== "passed")
+          // A failed verdict is the check's outcome, sent back to its crewmate; only a check
+          // that could not give one stops the operation.
+          if (outcome._tag !== "passed" && outcome._tag !== "failed")
             yield* updateOperation(core, operationId, {
               detail: `The check stopped: ${outcome._tag}`,
             });
@@ -504,15 +506,25 @@ export const land = (
     );
     // Your tree moved: it merges and checks again first, the check outside the lock.
     if (before.state === "merging") yield* integrate(core, taskId, inCopy);
-    yield* inCopy(landReady(core, principal, taskId));
+    const after = yield* inCopy(landReady(core, principal, taskId));
+    if (after === undefined) return;
+    if (after.next === "land") return yield* land(core, principal, after.assignment, inCopy);
+    if ((yield* integrate(core, after.assignment, inCopy)).state === "ready") {
+      return yield* land(core, principal, after.assignment, inCopy);
+    }
   });
+
+/** What a landing asks for after it, outside the lock: merge and check again, or land again. */
+type LandAfter =
+  | undefined
+  | { readonly next: "integrate-then-land" | "land"; readonly assignment: string };
 
 /** The landing of a task as it stands, under the crewmate's lock. */
 const landReady = (
   core: CrewCore,
   principal: TurnPrincipal,
   taskId: string,
-): Effect.Effect<void, CrewCommandError> =>
+): Effect.Effect<LandAfter, CrewCommandError> =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
     let task = yield* requireTask(core, taskId);
@@ -568,7 +580,11 @@ const landReady = (
               }),
             ),
           );
-          if (!["landed", "already-landed", "nothing"].includes(outcome._tag))
+          // A moved tree or a missing object is the landing's outcome: it merges or lands again.
+          const again =
+            outcome._tag === "head-moved" ||
+            (outcome._tag === "refused" && ["redo", "retry"].includes(outcome.refusal.action));
+          if (!again && !["landed", "already-landed", "nothing"].includes(outcome._tag))
             yield* updateOperation(core, operation.id, {
               detail: `Adding the work stopped: ${outcome._tag}`,
             });
@@ -643,13 +659,11 @@ const landReady = (
               return;
             }
             case "head-moved": {
-              yield* landingHeld(
-                core,
-                landing,
-                "your tree moved since its check; continue when ready",
-              );
-              yield* stepTask(core, landing, { type: "head-moved" });
-              return;
+              yield* landingHeld(core, landing, "your tree moved since its check; it merges again");
+              const moved = yield* stepTask(core, landing, { type: "head-moved" });
+              return moved.state === "merging"
+                ? ({ next: "integrate-then-land", assignment: moved.assignment } as const)
+                : undefined;
             }
             case "refused": {
               const { refusal } = outcome;
@@ -674,10 +688,10 @@ const landReady = (
                   yield* landingHeld(
                     core,
                     landing,
-                    "your tree moved during the landing; continue when ready",
+                    "your tree moved during the landing; it merges again",
                   );
-                  yield* stepTask(core, landing, { type: "not-fast-forward" });
-                  return;
+                  const moved = yield* stepTask(core, landing, { type: "not-fast-forward" });
+                  return { next: "integrate-then-land", assignment: moved.assignment } as const;
                 }
                 case "backoff":
                   yield* landingHeld(core, landing, "another git process holds your tree's index");
@@ -690,10 +704,10 @@ const landReady = (
                   yield* landingHeld(
                     core,
                     landing,
-                    "an object the landing needs was missing; continue when ready",
+                    "an object the landing needs was missing; it lands again",
                   );
-                  yield* stepTask(core, landing, { type: "missing-object" });
-                  return;
+                  const missing = yield* stepTask(core, landing, { type: "missing-object" });
+                  return { next: "land", assignment: missing.assignment } as const;
                 }
                 case "park":
                   if (refusal.kind === "no-space") {

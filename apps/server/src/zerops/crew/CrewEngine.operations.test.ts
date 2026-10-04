@@ -19,6 +19,7 @@ import {
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
 import {
+  eventually,
   spiEvent,
   withCrewEngine,
   withCrewEngines,
@@ -27,25 +28,26 @@ import {
 import { write, git } from "./testing/crewGitFixture.ts";
 
 describe("owned crew operations", () => {
-  it.live("a refused Try again leaves the interrupted operation waiting for Continue", () =>
+  it.live("a broken-off turn's operation records its ending and holds nothing", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () => undefined);
-        yield* world.publish(
-          spiEvent("turn.completed", thread, { state: "failed", terminalReason: "api_error" }),
-        );
         const store = yield* CrewStore;
         const operation = (yield* store.operations(CREW_ID)).find(
           (row) => row.kind === "dispatch",
         )!;
-        assert.strictEqual(operation.status, "interrupted");
+        yield* world.publish(
+          spiEvent("turn.completed", thread, { state: "failed", terminalReason: "api_error" }),
+        );
+        const again = yield* snapshotWhere((frame) => frame.board.tasks[0]?.attempts === 2);
+        const ended = yield* store.getOperation(operation.id);
+        assert.strictEqual(ended._tag === "Some" ? ended.value.status : null, "succeeded");
+        assert.isFalse(again.attention.some((need) => need.kind === "interrupted"));
         const refusal = yield* Effect.flip(
           command({ _tag: "taskRetry", taskId: operation.taskId! }),
         );
         assert.strictEqual(refusal.reason, "wrong-state");
-        const after = yield* store.getOperation(operation.id);
-        assert.strictEqual(after._tag === "Some" ? after.value.status : null, "interrupted");
       }),
     ),
   );
@@ -84,7 +86,7 @@ describe("owned crew operations", () => {
   );
 
   it.live(
-    "a person's fix acknowledges a confirmed failed check while its final read is pending",
+    "a failed check's verdict holds nothing: a fix during its final read goes out at once",
     () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
@@ -103,13 +105,9 @@ describe("owned crew operations", () => {
           const operation = (yield* store.operations(CREW_ID)).find((row) => row.kind === "check")!;
           assert.strictEqual(operation.status, "running");
           assert.strictEqual(operation.confirmedStage, "checking");
-          assert.isNotNull(operation.detail);
+          assert.isNull(operation.detail);
           yield* command({ _tag: "askFix", taskId: operation.taskId! });
-          const acknowledged = yield* store.getOperation(operation.id);
-          assert.strictEqual(
-            acknowledged._tag === "Some" ? acknowledged.value.status : null,
-            "continued",
-          );
+          assert.strictEqual((yield* store.assignments(CREW_ID))[0]!.attempt, 2);
           yield* hold.release;
           yield* snapshotWhere(
             (frame) => !frame.operations?.some((row) => row.id === operation.id),
@@ -186,7 +184,7 @@ describe("owned crew operations", () => {
 });
 
 for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
-  it.live(`restart interrupts ${kind} at its confirmed stage and preserves dirty work`, () => {
+  it.live(`restart carries ${kind} on from its confirmed stage, its dirty work saved`, () => {
     let head = "";
     return withCrewEngines([
       (world) =>
@@ -223,43 +221,35 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
       (world) =>
         Effect.gen(function* () {
           yield* (yield* ServerCommandReadiness).complete;
-          const snapshot = yield* snapshotWhere(
+          const settled = yield* snapshotWhere(
             (frame) =>
-              frame.attention.some(
-                (need) =>
-                  need.operation?.id === `crashed-${kind}` &&
-                  need.operation.status === "interrupted",
-              ) && frame.crewmates[0]?.lane?.dirty === true,
+              !frame.operations?.some((row) => row.id === `crashed-${kind}`) &&
+              (kind === "dispatch" || kind === "checkpoint"
+                ? frame.board.tasks[0]?.attempts === 2 && frame.board.tasks[0]?.state === "working"
+                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "landed")),
           );
-          const interrupted = snapshot.attention.find(
-            (need) => need.operation?.id === `crashed-${kind}`,
-          )!.operation!;
-          assert.strictEqual(interrupted.confirmedStage, "prepared");
-          assert.strictEqual(snapshot.crewmates[0]!.lane?.dirty, true);
-          assert.strictEqual(snapshot.board.tasks[0]!.attempts, 1);
+          const operation = yield* (yield* CrewStore).getOperation(`crashed-${kind}`);
           assert.strictEqual(
-            git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD"]),
-            head,
+            operation._tag === "Some" ? operation.value.status : null,
+            "continued",
           );
+          assert.isFalse(settled.attention.some((need) => need.kind === "interrupted"));
+          const copy = NodePath.join(world.root, ".crew/backend");
           assert.strictEqual(
-            (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-              .length,
-            1,
+            NodeFS.readFileSync(
+              NodePath.join(kind === "landing" ? world.root : copy, "ok.txt"),
+              "utf8",
+            ),
+            "dirty work\n",
           );
-          yield* command({
-            _tag: "operationContinue",
-            handle: "backend",
-            operationId: interrupted.id,
-          });
-          const settled = yield* (yield* CrewStore).getOperation(interrupted.id);
-          assert.strictEqual(settled._tag === "Some" ? settled.value.status : null, "continued");
-          if (kind === "dispatch" || kind === "checkpoint") {
-            assert.strictEqual((yield* (yield* CrewStore).assignments(CREW_ID))[0]!.attempt, 2);
-            const continued = yield* snapshotWhere((frame) => frame.board.tasks[0]?.attempts === 2);
-            assert.strictEqual(continued.board.tasks[0]!.state, "working");
-          } else if (kind === "check" || kind === "landing") {
-            yield* snapshotWhere(
-              (frame) => frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "landed"),
+          if (kind === "dispatch") {
+            // The boot sweep saved the dirty work as a commit on the copy's tip.
+            assert.strictEqual(git(copy, ["rev-parse", "HEAD~1"]), head);
+            yield* eventually(
+              Effect.map(
+                Ref.get(world.dispatched),
+                (rows) => rows.filter((entry) => entry.type === "thread.turn.start").length === 2,
+              ),
             );
           }
         }),
@@ -347,7 +337,7 @@ for (const [ending, setup] of [
 
 for (const taskState of ["landing", "landed"] as const) {
   it.live(
-    `restart reports an already landed outcome for a ${taskState} task, and Continue records it`,
+    `restart records an already landed outcome for a ${taskState} task without landing again`,
     () => {
       let operationId = "";
       let landedHead = "";
@@ -385,26 +375,15 @@ for (const taskState of ["landing", "landed"] as const) {
         (world) =>
           Effect.gen(function* () {
             yield* (yield* ServerCommandReadiness).complete;
-            const snapshot = yield* snapshotWhere(
-              (frame) =>
-                frame.operations?.some(
-                  (operation) => operation.id === operationId && operation.result !== null,
-                ) === true,
-            );
-            const need = snapshot.attention.find((need) => need.operation?.id === operationId);
-            assert.isDefined(
-              need,
-              "the unfinished landing must remain visible after the task outcome is saved",
-            );
-            const operation = need!.operation!;
-            assert.deepStrictEqual(operation.result, {
-              _tag: "already-landed",
-              commit: landedHead,
-            });
-            assert.strictEqual(git(world.root, ["rev-parse", "HEAD"]), landedHead);
-            yield* command({ _tag: "operationContinue", handle: "backend", operationId });
             const recorded = yield* snapshotWhere(
-              (frame) => frame.board.tasks[0]?.state === "landed",
+              (frame) =>
+                frame.board.tasks[0]?.state === "landed" &&
+                !frame.attention.some((need) => need.operation?.id === operationId),
+            );
+            const operation = yield* (yield* CrewStore).getOperation(operationId);
+            assert.strictEqual(
+              operation._tag === "Some" ? operation.value.status : null,
+              "continued",
             );
             assert.strictEqual(recorded.board.tasks[0]!.landedCommit, landedHead);
             assert.strictEqual(git(world.root, ["rev-parse", "HEAD"]), landedHead);
@@ -415,7 +394,7 @@ for (const taskState of ["landing", "landed"] as const) {
 }
 
 it.live(
-  "Drop it cancels an interrupted task while keeping its dirty files and HEAD in place",
+  "Drop it cancels a task its restart could not carry on, its saved work left in its copy",
   () => {
     let head = "";
     return withCrewEngines([
@@ -429,24 +408,31 @@ it.live(
         }),
       (world) =>
         Effect.gen(function* () {
+          yield* Ref.set(world.refusal, "not the login's signer");
           yield* (yield* ServerCommandReadiness).complete;
           const stopped = yield* snapshotWhere((frame) =>
-            frame.attention.some((need) => need.kind === "interrupted"),
+            frame.attention.some(
+              (need) =>
+                need.kind === "interrupted" &&
+                need.text?.includes("not the login's signer") === true,
+            ),
           );
           const operation = stopped.attention.find(
             (need) => need.kind === "interrupted",
           )!.operation!;
+          assert.strictEqual(
+            (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
+              .length,
+            1,
+          );
           yield* command({
             _tag: "operationDiscard",
             handle: "backend",
             operationId: operation.id,
           });
-          const discarded = yield* snapshotWhere(
-            (frame) => frame.board.tasks[0]?.state === "discarded",
-          );
-          assert.strictEqual(discarded.crewmates[0]!.lane?.dirty, true);
+          yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "discarded");
           assert.strictEqual(
-            git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD"]),
+            git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD~1"]),
             head,
           );
           assert.strictEqual(
@@ -458,7 +444,7 @@ it.live(
   },
 );
 
-it.live("a missing copy stays missing at boot and is rebuilt only by its selected press", () => {
+it.live("a missing copy comes back at boot from its recorded branch, its work kept", () => {
   let tip = "";
   return withCrewEngines([
     (world) =>
@@ -474,17 +460,15 @@ it.live("a missing copy stays missing at boot and is rebuilt only by its selecte
     (world) =>
       Effect.gen(function* () {
         yield* (yield* ServerCommandReadiness).complete;
-        const missing = yield* snapshotWhere(
-          (frame) => frame.crewmates[0]?.lane?.state === "missing",
+        yield* eventually(
+          Effect.sync(() => NodeFS.existsSync(NodePath.join(world.root, ".crew/backend/ok.txt"))),
         );
-        assert.isFalse(NodeFS.existsSync(NodePath.join(world.root, ".crew/backend")));
-        assert.strictEqual(
-          (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-            .length,
-          1,
+        const back = yield* snapshotWhere(
+          (frame) =>
+            frame.crewmates[0]?.lane?.state === "ready" &&
+            !frame.attention.some((need) => need.kind === "copy-missing"),
         );
-        yield* command({ _tag: "rebuildCopy", handle: missing.crewmates[0]!.handle });
-        yield* snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
+        assert.isNull(back.lastError);
         assert.strictEqual(
           git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD"]),
           tip,
@@ -493,9 +477,39 @@ it.live("a missing copy stays missing at boot and is rebuilt only by its selecte
           NodeFS.readFileSync(NodePath.join(world.root, ".crew/backend/ok.txt"), "utf8"),
           "kept\n",
         );
+        assert.strictEqual(
+          (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
+            .length,
+          1,
+        );
       }),
   ]);
 });
+
+it.live("a missing copy whose branch is gone stays missing at boot and names the loss", () =>
+  withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "kept\n"),
+        );
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
+        git(world.root, ["worktree", "prune"]);
+        git(world.root, ["branch", "-D", "-q", "crew/backend"]);
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        const lost = yield* snapshotWhere(
+          (frame) => frame.lastError?.includes("crew/backend") === true,
+        );
+        assert.notStrictEqual(lost.crewmates[0]?.lane?.state, "ready");
+        assert.isFalse(NodeFS.existsSync(NodePath.join(world.root, ".crew/backend")));
+      }),
+  ]),
+);
 
 it.live("Continue after a rebuild interrupted during setup leaves its existing copy in place", () =>
   withCrewEngines([

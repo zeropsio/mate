@@ -22,6 +22,12 @@ export const KAREL: TurnPrincipal = {
   subject: `${ZEROPS_SUBJECT_PREFIX}user-karel`,
 };
 
+/** The engine acting for the person outside their session: a run's or a task's later turns. */
+export const AS_CREW: TurnPrincipal = {
+  kind: "crew",
+  startedBy: KAREL.kind === "session" ? KAREL.subject.slice(ZEROPS_SUBJECT_PREFIX.length) : "",
+};
+
 export const latest = Effect.flatMap(CrewEngine, (engine) =>
   engine.snapshot.pipe(Stream.take(1), Stream.runHead, Effect.map(Option.getOrThrow)),
 );

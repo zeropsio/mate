@@ -85,6 +85,7 @@ const ROTATED_TOO_OFTEN = "its conversation outgrew its context too often";
 const PARK_WORDS: Readonly<Record<string, string>> = {
   reworks: "it came back for rework too often",
   rotations: ROTATED_TOO_OFTEN,
+  infrastructure: "its turn broke off twice",
   "empty-merge-base": "your tree's history was rewritten",
   "disk-full": "the service's disk is full",
 };
@@ -201,8 +202,8 @@ export const stepTask = (
   row: CrewAssignmentRow,
   event: TaskEvent,
   change: (next: CrewAssignmentRow) => CrewAssignmentRow = (next) => next,
-  /** Counters the row does not carry. */
-  counted: Partial<Pick<TaskCounters, "rotations">> = {},
+  /** Counters the row does not carry: re-queues are counted from the task's attempts. */
+  counted: Partial<Pick<TaskCounters, "requeues" | "rotations">> = {},
 ) =>
   Effect.gen(function* () {
     const step = taskTransition(
@@ -212,6 +213,7 @@ export const stepTask = (
           attempt: Math.max(1, row.attempt),
           reworks: row.reworks,
           remerges: row.remerges,
+          requeues: counted.requeues ?? 0,
           rotations: counted.rotations ?? 0,
         },
       },
@@ -384,6 +386,28 @@ const optionalReason = (reason: string | undefined) =>
 const optionalApply = (apply: ReturnType<CrewCore["memory"]["applyChoices"]["get"]>) =>
   apply === undefined ? {} : { apply };
 
+/**
+ * An infrastructure ending (the provider or the session setup failed): the attempt ends with `detail`, and the task
+ * queues again once — the second time it stops (ARCHITECTURE §4 *Assignment*).
+ */
+export const requeueTask = (core: CrewCore, task: CrewAssignmentRow, detail: string) =>
+  Effect.gen(function* () {
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    if (attempt !== undefined) {
+      yield* asRefusal(
+        core.store.putAttempt({
+          ...attempt,
+          ending: "infrastructure",
+          endingDetail: detail,
+          endedAt: yield* core.now,
+        }),
+      );
+    }
+    const requeues = attempts.filter((row) => row.ending === "infrastructure").length;
+    return yield* stepTask(core, task, { type: "infrastructure-ending" }, undefined, { requeues });
+  });
+
 /* ------------------------------------------------------------ turns */
 
 export type StartOutcome =
@@ -550,6 +574,8 @@ export const startTask = (
     );
     const now = yield* core.now;
     if (refused !== undefined) {
+      // The refusal is the outcome, shown as Can't start; no effect waits to be continued.
+      yield* finishOperation(core, owned.id, { refused });
       core.memory.cantStart.set(task.assignment, { text: refused, at: now });
       return { _tag: "refused", detail: refused } satisfies StartOutcome as StartOutcome;
     }

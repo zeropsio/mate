@@ -4,7 +4,7 @@
  * Rows are plain values; JSON columns are decoded here so no caller parses
  * SQL text. Every write publishes a {@link CrewStoreChange} so a snapshot
  * subscriber re-reads without polling. Git is the truth for lanes - a lane
- * row is what the engine last wrote and saw; boot reports unfinished operations.
+ * row is what the engine last wrote and saw, re-derived by the boot sweep.
  *
  * The git core reads and writes definition seq, crewmates, lanes, task
  * landings and dev-service crew ports; the crew tools Show-on-dev claims and
@@ -121,6 +121,13 @@ export interface CrewAssignmentRow {
 }
 
 /** A landing the integration branch must keep carrying (its `Crew-Assignment:` trailer). */
+export interface CrewLanding {
+  readonly crew: string;
+  readonly member: string;
+  readonly assignment: string;
+  readonly title: string;
+  readonly landedCommit: string;
+}
 
 export interface CrewHostPort {
   readonly port: number;
@@ -307,6 +314,10 @@ export interface CrewStoreService {
     crew: string,
     member: string,
   ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
+  /** Every recorded landing by a crewmate on `host`, oldest first. */
+  readonly landingsOnHost: (
+    host: string,
+  ) => Effect.Effect<ReadonlyArray<CrewLanding>, CrewStoreError>;
   readonly putHost: (row: CrewHostRow) => Effect.Effect<void, CrewStoreError>;
   readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
   readonly getClaim: (host: string) => Effect.Effect<Option.Option<CrewClaimRow>, CrewStoreError>;
@@ -931,6 +942,16 @@ export const make = Effect.gen(function* () {
         Effect.mapError(sqlError("assignmentsOf")),
         Effect.map((rows) => rows.map((row) => row.assignment)),
       ),
+    landingsOnHost: (host) =>
+      sql<CrewLanding>`
+        SELECT
+          a.crew, a.member, a.assignment, a.title,
+          a.landed_commit AS "landedCommit"
+        FROM crew_assignment a
+        JOIN crew_member m ON m.crew = a.crew AND m.handle = a.member
+        WHERE m.host = ${host} AND a.landed_commit IS NOT NULL
+        ORDER BY a.updated_at, a.number
+      `.pipe(Effect.mapError(sqlError("landingsOnHost"))),
     putHost: (row) =>
       Effect.gen(function* () {
         const crewPorts = yield* decode("putHost", encodeCrewPorts(row.crewPorts));

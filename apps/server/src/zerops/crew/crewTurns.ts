@@ -20,8 +20,8 @@ import {
  * - token usage and compaction are recorded for the section's context meter;
  *   a turn's cost and the logins' usage windows move a run's meters.
  * - `zerops_deploy` onto a service with lanes (any thread) freezes the
- *   service's lanes and interrupts their turns; when the deploy ends, exact reads
- *   name missing copies for a selected rebuild.
+ *   service's lanes and interrupts their turns; when the deploy ends and the
+ *   mount answers, `recover` brings the lanes back or names what was lost.
  *
  * @module crewTurns
  */
@@ -40,12 +40,11 @@ import {
   type CrewCore,
   type CrewMember,
 } from "./crewCore.ts";
-import { crewLane } from "./CrewDefinition.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { grantAfterTurn, moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
-import { attemptRef } from "./CrewWorkspace.ts";
+import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
 import {
   followCrewWork,
   RUN_PAUSED,
@@ -56,7 +55,7 @@ import {
 } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
-import { continueAfterSave, openTaskOf, parkTask } from "./crewTasks.ts";
+import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
 import { attemptEndingOf, turnEndingOf } from "./crewMachines.ts";
 import { settleLeadWake } from "./crewLead.ts";
 import { flushState } from "./crewState.ts";
@@ -68,6 +67,49 @@ const GUARD_WORDS = {
   secrets: "a secret file",
   size: "a file over the size cap",
 } as const;
+
+/** The lane specs of a host's writers, for a recovery that sets lanes up again. */
+export const laneSpecsOn = (applied: AppliedCrew, host: string): ReadonlyArray<LaneSpec> =>
+  applied.definition.members.flatMap((spec) => {
+    const row = applied.members.get(spec.handle);
+    if (spec.kind !== "writer" || spec.host !== host || row === undefined) return [];
+    return [
+      {
+        crew: CREW_ID,
+        handle: spec.handle,
+        host,
+        setup: spec.setup,
+        crewPort: row.crewPort ?? undefined,
+        env: spec.env,
+      },
+    ];
+  });
+
+/**
+ * A host whose copies went missing (a self-deploy, a container replacement,
+ * a restart): `recover` re-adds them only when every branch, recorded
+ * landing and saved tip is still there, so no work is lost; otherwise it
+ * names what was lost, keeps the host frozen, and the copies stay missing
+ * for a person's Rebuild crew copy.
+ */
+export const recoverLanes = (core: CrewCore, applied: AppliedCrew, host: string, when: string) =>
+  Effect.gen(function* () {
+    yield* core.repositories.refresh;
+    const outcome = yield* asRefusal(core.workspace.recover(host, laneSpecsOn(applied, host)));
+    if (outcome._tag === "lost") {
+      core.memory.lastError =
+        `${host} ${when} without crew work: ` +
+        [
+          ...outcome.landings.map((landing) => `landing of ${landing.title}`),
+          ...outcome.branches.map((handle) => `crew/${handle}`),
+          ...outcome.wip.map((lane) => `crew/${lane.handle} work since ${lane.since}`),
+        ].join(", ");
+      yield* core.changed;
+      return;
+    }
+    for (const handle of outcome.readded) core.memory.missingLanes.delete(handle);
+    yield* core.changed;
+  });
 
 /**
  * Every ref the engine itself writes on a service, which ref policing must not
@@ -173,26 +215,14 @@ const turnEnded = (
         operation.status === "running" &&
         operation.targets.threadId === stint.threadId
       ) {
-        if (
-          turnEndingOf(event.payload.terminalReason) === "infrastructure" ||
-          turnEndingOf(event.payload.terminalReason) === "rotation"
-        )
-          yield* updateOperation(core, operation.id, {
-            status: "interrupted",
-            result: event.payload,
-            detail:
-              event.payload.errorMessage ??
-              (turnEndingOf(event.payload.terminalReason) === "rotation"
-                ? "Its conversation grew too long. Continue in a fresh conversation."
-                : "Its turn stopped before the work finished."),
-          });
-        else
-          yield* finishOperation(
-            core,
-            operation.id,
-            event.payload,
-            event.payload.state === "failed",
-          );
+        // A broken-off turn or an overflow is an ending the engine takes on itself (`endedHow`).
+        yield* finishOperation(
+          core,
+          operation.id,
+          event.payload,
+          event.payload.state === "failed" &&
+            !["infrastructure", "rotation"].includes(turnEndingOf(event.payload.terminalReason)),
+        );
       }
     }
     const { memory } = core;
@@ -215,15 +245,6 @@ const turnEnded = (
     const cost = yield* turnCost(core, stint.threadId, event);
     if (open !== undefined) yield* recordCost(core, open, cost);
     yield* recordRunSpend(core, cost);
-    const interrupted = ["infrastructure", "rotation"].includes(
-      turnEndingOf(event.payload.terminalReason),
-    );
-    if (interrupted) {
-      yield* endedHow(core, member, stint, event);
-      yield* refreshLaneStats(core, member);
-      yield* core.changed;
-      return;
-    }
     if (memory.sessionRestart.delete(stint.threadId)) {
       // The run's budget changed during this turn: the next resumes under the new cap.
       yield* asRefusal(
@@ -235,10 +256,7 @@ const turnEnded = (
         }),
       );
     }
-    if (
-      member.row.kind === "writer" &&
-      turnEndingOf(event.payload.terminalReason) !== "infrastructure"
-    ) {
+    if (member.row.kind === "writer") {
       yield* commitAndPolice(
         core,
         member,
@@ -285,8 +303,9 @@ const turnEnded = (
 
 /**
  * What the turn's ending means for the open task (CONCEPT §5 *Endings*): an
- * overflowed context or a broken-off turn waits for a person's Continue;
- * a turn the run's budget stopped carries on when the run goes on.
+ * overflowed context takes the task on in a new conversation (at most twice
+ * an attempt, then it stops), a broken-off turn queues it again once, and a
+ * turn the run's budget stopped carries on when the run goes on.
  */
 const endedHow = (
   core: CrewCore,
@@ -305,31 +324,35 @@ const endedHow = (
     const task = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), member.row.handle);
     // A save's rotation at this turn's end has already moved the task on.
     if (
-      task === undefined ||
+      task?.state !== "working" ||
       currentStint(applied, member.row.handle)?.threadId !== stint.threadId
     ) {
       return;
     }
-    if (ending === "infrastructure" || ending === "rotation") {
-      const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
-      const attempt = attempts.find((row) => row.attempt === task.attempt);
-      if (attempt !== undefined)
-        yield* asRefusal(
-          core.store.putAttempt({
-            ...attempt,
-            ending: "interrupted",
-            endingDetail: `Its turn ended: ${event.payload.terminalReason}`,
-            endedAt: yield* core.now,
-          }),
-        );
-      yield* refreshLaneStats(core, member);
+    if (ending === "infrastructure") {
+      yield* requeueTask(core, task, `its turn ended: ${event.payload.terminalReason}`);
+      return;
+    }
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    const moved = yield* stepTask(core, task, { type: "rotation-ending" }, undefined, {
+      rotations: attempt?.rotations ?? 0,
+    });
+    if (moved.state !== "working") return;
+    if (attempt !== undefined) {
+      yield* asRefusal(core.store.putAttempt({ ...attempt, rotations: attempt.rotations + 1 }));
+    }
+    core.memory.terminalReasons.delete(stint.threadId);
+    const opened = yield* rotateBetweenTurns(core, applied, member, "context-overflow");
+    if (runningRun(applied) !== undefined) {
+      core.memory.carryOn.set(opened.threadId, opened.reason ?? "");
     }
   });
 
 /**
  * A turn that left its task `working`, with no turn of the crewmate's
  * running now, ends the task's attempt: how, in words, and when. A
- * recorded interruption stands; a person's next turn opens an attempt again.
+ * re-queue's or a restart's ending stands; the attempt's next turn opens it again.
  */
 const endAttempt = (
   core: CrewCore,
@@ -343,7 +366,12 @@ const endAttempt = (
     if (task?.state !== "working") return;
     const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
     const attempt = attempts.find((row) => row.attempt === task.attempt);
-    if (attempt === undefined || attempt.ending === "interrupted") return;
+    if (
+      attempt === undefined ||
+      attempt.ending === "infrastructure" ||
+      attempt.ending === "interrupted"
+    )
+      return;
     const { ending, detail } = attemptEndingOf({
       state: event.payload.state,
       terminalReason: event.payload.terminalReason,
@@ -466,16 +494,11 @@ export const makeTurnHandler = (core: CrewCore) => {
           deploys.set(event.itemId, target);
           yield* freeze(applied, target);
         } else if (event.type === "item.completed" && deploys.delete(event.itemId)) {
-          yield* asRefusal(core.workspace.unfreeze(target));
-          const repository = applied.repositories.get(target);
-          for (const member of applied.members.values()) {
-            if (member.kind !== "writer" || member.host !== target || repository === undefined)
-              continue;
-            if (!(yield* core.fileExists(crewLane(repository, member.handle).mountDir)))
-              core.memory.missingLanes.add(member.handle);
-            else core.memory.missingLanes.delete(member.handle);
-          }
-          yield* core.changed;
+          yield* core.background(
+            recoverLanes(core, applied, target, "came back from its deploy").pipe(
+              Effect.andThen(advanceAll(core)),
+            ),
+          );
         }
       }
       const stint = applied.stints.find((row) => row.threadId === event.threadId);

@@ -97,7 +97,7 @@ describe("CrewStore", () => {
   });
 
   it.layer(storeLayer)("landed outcomes", (it) => {
-    it.effect("reads a landed outcome and lists a crewmate's tasks by number", () =>
+    it.effect("lists a host's landings oldest first, and a crewmate's tasks by number", () =>
       Effect.gen(function* () {
         const store = yield* CrewStore.CrewStore;
         const member = (handle: string, host: string): CrewStore.CrewMemberRow => ({
@@ -158,11 +158,28 @@ describe("CrewStore", () => {
         const read = yield* store.getAssignment("a-1");
         assert.deepStrictEqual(
           {
+            landings: yield* store.landingsOnHost("appdev"),
             members: (yield* store.members("game")).map((row) => row.handle),
             backendTasks: yield* store.assignmentsOf("game", "backend"),
             read: Option.getOrUndefined(read),
           },
           {
+            landings: [
+              {
+                crew: "game",
+                member: "backend",
+                assignment: "a-1",
+                title: "Task 1",
+                landedCommit: "c".repeat(40),
+              },
+              {
+                crew: "game",
+                member: "backend",
+                assignment: "a-2",
+                title: "Task 2",
+                landedCommit: "d".repeat(40),
+              },
+            ],
             members: ["backend", "web"],
             backendTasks: ["a-1", "a-2", "a-3"],
             read: task("a-1", 1, "backend", "c".repeat(40)),

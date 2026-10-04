@@ -16,7 +16,7 @@ import {
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import {
-  KAREL,
+  AS_CREW,
   applied,
   command,
   dispatchedOf,
@@ -377,7 +377,7 @@ describe("CrewEngine runs", () => {
             {
               run: ["refused", "You are not this login's signer."],
               second: "queued",
-              principal: { kind: "crew", startedBy: "user-karel" },
+              principal: AS_CREW,
               inRun: [true, true],
             },
           );
@@ -406,13 +406,13 @@ describe("CrewEngine runs", () => {
         const turns = yield* dispatchedOf(world, "thread.turn.start");
         assert.deepStrictEqual(
           [nudges(turns).length, (yield* Ref.get(world.admitted)).at(-1)?.principal],
-          [1, { kind: "crew", startedBy: "user-karel" }],
+          [1, AS_CREW],
         );
       }),
     ),
   );
 
-  it.live("in a run, a failed check waits for a person to ask for a fix", () =>
+  it.live("in a run, a failed check goes back to its crewmate on its own", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* started(world);
@@ -421,12 +421,10 @@ describe("CrewEngine runs", () => {
         );
         yield* reportDone(thread);
         yield* ended(world, thread, 0.1);
-        const stopped = yield* snapshotWhere(
-          (current) => current.board.tasks[0]?.state === "rework",
+        const reworked = yield* snapshotWhere(
+          (current) =>
+            current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 2,
         );
-        assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
-        yield* command({ _tag: "askFix", taskId: stopped.board.tasks[0]!.id });
-        const reworked = yield* snapshotWhere((current) => current.board.tasks[0]?.attempts === 2);
         const fix = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
         assert.deepStrictEqual(
           [
@@ -435,7 +433,7 @@ describe("CrewEngine runs", () => {
             (yield* Ref.get(world.admitted)).at(-1)?.principal,
             reworked.attention.map((row) => row.kind),
           ],
-          [thread, true, KAREL, []],
+          [thread, true, AS_CREW, []],
         );
       }),
     ),

@@ -1,3 +1,4 @@
+import { resumeAfterRestart } from "./crewContinue.ts";
 import { operationHolds } from "./crewOperations.ts";
 /**
  * crewRunFlow — what a running run does on its own once a crewmate is free
@@ -10,7 +11,7 @@ import { operationHolds } from "./crewOperations.ts";
  *   passes*; with *I land everything* it waits for the person's **Land**;
  * - a turn that ended without a report gets one nudge per attempt, and a
  *   task carries on in a turn the run's own pause stopped, when the run goes
- *   on, with interrupted work held for a person; a run that starts or
+ *   on, and in the new conversation after an overflow; a run that starts or
  *   resumes carries on every task standing `working` with no turn running;
  * - with *The crew may show work on dev*, a crewmate's request to show its
  *   copy is allowed as soon as its turn ends.
@@ -205,6 +206,7 @@ export const autoLand = (
 
 export const advance = (core: CrewCore, handle: string) =>
   Effect.gen(function* () {
+    yield* resumeAfterRestart(core, handle);
     if (yield* operationHolds(core, handle)) return;
     const applied = yield* core.applied;
     if (applied === undefined) return;
@@ -258,6 +260,23 @@ export const takeUpWaiting = (core: CrewCore) =>
     if (applied === undefined || runningRun(applied) === undefined) return;
     yield* carryOnStopped(core, applied);
     yield* renewLeadWakes(core);
+  });
+
+/**
+ * Starts again every queued task admission refused, once a sign-in or a
+ * signer changed: the cause may have cleared. One refused again keeps its
+ * *Can't start* row with the new words.
+ */
+export const retryRefused = (core: CrewCore) =>
+  Effect.gen(function* () {
+    if (core.memory.cantStart.size === 0) return;
+    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+    const handles = new Set(
+      tasks
+        .filter((task) => task.state === "queued" && core.memory.cantStart.has(task.assignment))
+        .map((task) => task.member),
+    );
+    for (const handle of handles) yield* advanceWhenFree(core, handle);
   });
 
 /**

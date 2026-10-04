@@ -114,6 +114,11 @@ export interface EngineMemory {
   readonly progress: Map<string, LaneProgress>;
   readonly laneStats: Map<string, LaneStats>;
   readonly missingLanes: Set<string>;
+  /**
+   * Operations a restart interrupted (`crew_operation` ids) that the engine
+   * carries on itself from their last confirmed stage once their crewmate is free.
+   */
+  readonly resumeAtBoot: Set<string>;
   readonly apps: Map<string, "running" | "stopped">;
   readonly context: Map<string, { readonly tokens: number; readonly window: number }>;
   readonly delivered: Set<string>;
@@ -223,6 +228,7 @@ export const makeMemory = (): EngineMemory => ({
   progress: new Map(),
   laneStats: new Map(),
   missingLanes: new Set(),
+  resumeAtBoot: new Set(),
   apps: new Map(),
   context: new Map(),
   delivered: new Set(),

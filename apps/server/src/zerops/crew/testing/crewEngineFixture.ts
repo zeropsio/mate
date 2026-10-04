@@ -258,6 +258,18 @@ const fakes = (
           : Effect.void
         ).pipe(
           Effect.andThen(Ref.update(world.dispatched, (all) => [...all, command])),
+          // The projection follows a conversation's new copy, as the reactor's does.
+          Effect.andThen(
+            command.type === "thread.meta.update" && command.worktreePath !== undefined
+              ? Ref.update(world.threads, (threads) =>
+                  threads.map((thread) =>
+                    thread.id === command.threadId
+                      ? { ...thread, worktreePath: command.worktreePath ?? null }
+                      : thread,
+                  ),
+                )
+              : Effect.void,
+          ),
           Effect.as({ sequence: 1 }),
         ),
     }),

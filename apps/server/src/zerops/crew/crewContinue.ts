@@ -5,11 +5,14 @@ import * as Option from "effect/Option";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import {
   asRefusal,
+  dispatchPrincipal,
+  failureWords,
   refuse,
   requireApplied,
   requireMember,
   isWorking,
   principalUser,
+  runningRun,
   type CrewCore,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
@@ -70,7 +73,7 @@ const selected = (core: CrewCore, handle: string, id: string) =>
     return { operation, related, task, applied, member: yield* requireMember(applied, handle) };
   });
 
-/** Only this person's selected work continues; the restart-paused crew stays paused. */
+/** The selected work continues from its recorded stage: a person's press, or the engine's own after a restart. */
 export const continueOperation = (
   core: CrewCore,
   principal: TurnPrincipal,
@@ -190,6 +193,64 @@ export const continueOperation = (
     for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
     yield* refreshLaneStats(core, member);
     yield* core.changed;
+  });
+
+/**
+ * The operations a restart interrupted, carried on by the engine from their
+ * last confirmed stage once the crewmate is free (its turn's end advances it
+ * again): each redoes its side effect or records the outcome its receipt
+ * already holds, as Continue does — the task's turn as the one its dispatch
+ * runs as (`dispatchPrincipal`), a landing as the person who pressed Land.
+ * A rebuild a person chose and a conversation's own turn outside a run stay
+ * theirs; a resume that is refused leaves its row with the words why.
+ */
+export const resumeAfterRestart = (core: CrewCore, handle: string) =>
+  Effect.gen(function* () {
+    const pending = core.memory.resumeAtBoot;
+    if (pending.size === 0) return;
+    const applied = yield* core.applied;
+    if (applied === undefined || isWorking(core, applied, handle)) return;
+    const rows = (yield* asRefusal(core.store.operations(CREW_ID))).filter(
+      (row) => row.handle === handle && pending.has(row.id),
+    );
+    // The newest first: Continue settles a task's older rows with it.
+    for (const row of rows.toReversed()) {
+      pending.delete(row.id);
+      const found = yield* asRefusal(core.store.getOperation(row.id));
+      if (Option.isNone(found) || found.value.status !== "interrupted") continue;
+      if (row.kind === "rebuild") continue;
+      if (row.taskId === null) {
+        const lead = applied.members.get(handle)?.kind === "lead";
+        // The run wakes its lead again, its wakes spaced; a person's own turn is theirs.
+        if (lead && runningRun(applied) !== undefined)
+          yield* updateOperation(core, row.id, { status: "continued" });
+        continue;
+      }
+      const task = (yield* asRefusal(core.store.assignments(CREW_ID))).find(
+        (candidate) => candidate.assignment === row.taskId,
+      );
+      if (task === undefined) continue;
+      const principal: TurnPrincipal =
+        row.kind === "landing" && row.startedBy !== ""
+          ? { kind: "crew", startedBy: row.startedBy }
+          : dispatchPrincipal(applied, task);
+      const refused = yield* continueOperation(core, principal, handle, row.id).pipe(
+        Effect.as(undefined),
+        Effect.catch((error) => Effect.succeed(failureWords(error))),
+      );
+      if (refused === undefined) continue;
+      // The row a person now sees: this one, or the operation its resume began.
+      const shown = (yield* asRefusal(core.store.operations(CREW_ID))).findLast(
+        (candidate) =>
+          candidate.handle === handle &&
+          candidate.taskId === row.taskId &&
+          ["failed", "interrupted"].includes(candidate.status),
+      );
+      if (shown !== undefined)
+        yield* updateOperation(core, shown.id, {
+          detail: `The Mate restarted and could not carry this on: ${refused}`,
+        });
+    }
   });
 
 /** Dropping an interrupted task cancels its records; its files remain exactly where they are. */
