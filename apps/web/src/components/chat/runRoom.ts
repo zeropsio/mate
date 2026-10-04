@@ -32,11 +32,20 @@ export interface Rooms {
    * commit.
    */
   readonly flush: () => void;
+  /**
+   * `element` — a box under the root, drawn this commit — eases from `height`
+   * to its own: a line landing from the live slot grows from the height it
+   * showed there.
+   */
+  readonly easeFrom: (element: HTMLElement, height: number) => void;
   /** Whether a box eases this moment. */
   readonly easing: () => boolean;
   /** Stops easing: every box takes its own height. */
   readonly stop: () => void;
 }
+
+/** Said on the root of a set of rooms: what holds it leaves what changes inside to it. */
+const ROOM_ROOT = "data-room-root";
 
 /** Hides what a growing box does not show yet, below its edge only: rings and marks beside it stay. */
 const CLIP_BELOW = "inset(-48px -96px -2px -96px)";
@@ -44,6 +53,7 @@ const CLIP_BELOW = "inset(-48px -96px -2px -96px)";
 /** Rooms that never ease: drawn outside a page (a test's renderer). */
 const STILL: Rooms = {
   pending: () => 0,
+  easeFrom: () => undefined,
   flush: () => undefined,
   easing: () => false,
   stop: () => undefined,
@@ -64,6 +74,7 @@ export function easeRooms({
   selector,
   eases,
   rootClips = false,
+  attributes = [],
 }: {
   /** A box itself, and what holds the others. */
   readonly root: HTMLElement;
@@ -72,6 +83,8 @@ export function easeRooms({
   readonly eases: () => boolean;
   /** Whether the root hides what it does not show yet; a scroll scrolls it instead. */
   readonly rootClips?: boolean;
+  /** Attributes of what it holds that change its height, besides a class, `hidden` and `open`. */
+  readonly attributes?: ReadonlyArray<string>;
 }): Rooms {
   if (
     typeof ResizeObserver === "undefined" ||
@@ -157,6 +170,11 @@ export function easeRooms({
   const hear = (records: ReadonlyArray<MutationRecord>) => {
     const touched = new Set<Box>();
     for (const record of records) {
+      // What changed inside another set of rooms is theirs: it shows here as
+      // their box easing, laid out.
+      const at = record.target instanceof Element ? record.target : record.target.parentElement;
+      const owner = at?.closest(`[${ROOM_ROOT}]`) ?? null;
+      if (owner !== null && owner !== root && root.contains(owner)) continue;
       for (const node of record.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
         if (node.matches(selector)) add(node, true);
@@ -185,8 +203,9 @@ export function easeRooms({
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ["class", "hidden", "open"],
+    attributeFilter: ["class", "hidden", "open", ...attributes],
   });
+  root.setAttribute(ROOM_ROOT, "");
   const rootBox = boxes.get(root)!;
   return {
     pending: () => {
@@ -196,12 +215,23 @@ export function easeRooms({
       }
       return pending;
     },
+    easeFrom: (element, height) => {
+      const records = changes.takeRecords();
+      if (records.length > 0) hear(records);
+      if (!root.contains(element)) return;
+      if (!boxes.has(element)) add(element, true);
+      const box = boxes.get(element)!;
+      if (box.shown !== null) return;
+      box.rested = height;
+      heard(box);
+    },
     easing: () => frame !== 0,
     flush: () => {
       const records = changes.takeRecords();
       if (records.length > 0) hear(records);
     },
     stop: () => {
+      root.removeAttribute(ROOM_ROOT);
       changes.disconnect();
       sizes.disconnect();
       cancelAnimationFrame(frame);

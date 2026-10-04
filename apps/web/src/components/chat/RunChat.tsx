@@ -3001,6 +3001,8 @@ interface Landing {
    * stays keeps its place in the slot as a row above it leaves.
    */
   readonly staying: ReadonlyMap<string, number>;
+  /** How tall each leaving line's bubble stood in the slot: it grows from there in the history. */
+  readonly bubbles: ReadonlyMap<string, number>;
 }
 
 /** Where each of the chat's lines under `root` stands on screen, by its key. */
@@ -3024,6 +3026,19 @@ function rowTops(root: HTMLElement | null, from: number): ReadonlyMap<string, nu
     tops.set(row.dataset.runKey!, row.getBoundingClientRect().top - from);
   }
   return tops;
+}
+
+/** How tall the first bubble of each row under `root` stands, by the row's key. */
+function bubbleHeights(root: HTMLElement | null): ReadonlyMap<string, number> {
+  const heights = new Map<string, number>();
+  if (typeof root?.querySelectorAll !== "function") return heights;
+  for (const row of root.querySelectorAll<HTMLElement>("[data-chat-row][data-run-key]")) {
+    const bubble = row.matches("[data-chat-bubble]")
+      ? row
+      : row.querySelector<HTMLElement>("[data-chat-bubble]");
+    if (bubble !== null) heights.set(row.dataset.runKey!, bubble.getBoundingClientRect().height);
+  }
+  return heights;
 }
 
 /** The row drawn for the chat's line `key` under `root`, if one is. */
@@ -3382,6 +3397,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const readingRef = useRef(false);
   // How the history's scroll keeps to its foot, for a line landing in it.
   const keepScrollRef = useRef<(() => void) | null>(null);
+  // How its boxes ease (`easeRooms`), for a line landing in it.
+  const historyRoomsRef = useRef<Rooms | null>(null);
   const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
@@ -3390,6 +3407,33 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     rootRef,
     aboveRef,
   });
+  // The card's own height eases (`easeRooms`) as its parts come and go — the
+  // history's scroll arriving with its first line, the slot giving way to the
+  // line, the live height let go — for a run watched live here; what changes
+  // inside the history and the slot is theirs to ease.
+  const watchedRef = useRef(false);
+  const cardEasesRef = useRef(false);
+  useLayoutEffect(() => {
+    if (row.live && !ctx.syncing) watchedRef.current = true;
+    cardEasesRef.current = watchedRef.current && !ctx.syncing;
+  });
+  const cardRoomsRef = useRef<Rooms | null>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    const rooms = easeRooms({
+      root,
+      selector: ":not(*)",
+      eases: () => cardEasesRef.current,
+      rootClips: true,
+      attributes: ["data-run-live"],
+    });
+    cardRoomsRef.current = rooms;
+    return () => {
+      rooms.stop();
+      cardRoomsRef.current = null;
+    };
+  }, []);
   // A run the person comes back to (D3), or one that just settled: its
   // worked line alone — the summary — and "Show work" opens the whole run
   // under it (K12).
@@ -3465,6 +3509,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         slot: slotted ? painted.slot : null,
         card: painted.card,
         staying: slotted ? painted.slotRows : new Map(),
+        bubbles: slotted ? painted.slotBubbles : new Map(),
       });
     },
   });
@@ -3475,6 +3520,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       rows: lineTops(aboveRef.current),
       slot: slotTop,
       slotRows: rowTops(slotRef.current, slotTop ?? 0),
+      slotBubbles: bubbleHeights(slotRef.current),
       card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
     };
   };
@@ -3514,6 +3560,15 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       const card = line.closest<HTMLElement>("[data-chat-calls]");
       const alone = card !== null && card.childElementCount === 1;
       plop(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line, from);
+      // Its bubble grows from the height it showed in the slot (a thought
+      // the slot showed four lines of, the history in full).
+      const stoodHeight = landing.bubbles.get(key);
+      const bubble = line.matches("[data-chat-bubble]")
+        ? line
+        : line.querySelector<HTMLElement>("[data-chat-bubble]");
+      if (stoodHeight !== undefined && bubble !== null) {
+        historyRoomsRef.current?.easeFrom(bubble, stoodHeight);
+      }
     }
     const element = slotRef.current;
     if (landing.slot === null || landing.card === null || element === null) return;
@@ -3542,6 +3597,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   useLayoutEffect(() => {
     paintedRef.current = slotted ? paintedNow() : null;
   });
+  // Every commit, before the list's row measures the card in its own.
+  useLayoutEffect(() => cardRoomsRef.current?.flush());
   const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
   // A folded line whose call the slot still holds stands unfolded, that call
   // left out: it folds in once the call lands.
@@ -3585,6 +3642,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         landing={landing?.from ?? null}
         lines={lines}
         keepRef={keepScrollRef}
+        roomsRef={historyRoomsRef}
         eases={slotted && !ctx.syncing}
         opensAtStart={!above}
         {...(above ? { readingRef } : {})}
@@ -3862,6 +3920,7 @@ function RunScroll({
   landing = null,
   eases = false,
   opensAtStart = false,
+  roomsRef,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
@@ -3879,6 +3938,8 @@ function RunScroll({
    * at its foot.
    */
   readonly opensAtStart?: boolean;
+  /** Given how its boxes ease, for a line landing in it. */
+  readonly roomsRef?: { current: Rooms | null };
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -3913,11 +3974,13 @@ function RunScroll({
       eases: () => easesRef.current && shownRef.current,
     });
     roomRef.current = rooms;
+    if (roomsRef !== undefined) roomsRef.current = rooms;
     return () => {
       rooms.stop();
       roomRef.current = null;
+      if (roomsRef !== undefined) roomsRef.current = null;
     };
-  }, []);
+  }, [roomsRef]);
   // Every commit, before the list's row measures it in its own.
   useLayoutEffect(() => roomRef.current?.flush());
   // It follows its foot until the person moves it up or opens something in
