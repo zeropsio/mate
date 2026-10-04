@@ -409,6 +409,8 @@ import {
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./chat/conversationDock.logic";
+import { liveJobsOf } from "./chat/liveJobs.logic";
+import { useLiveJobs } from "./chat/useLiveJobs";
 import {
   environmentConnectionBannerItem,
   mateVoiceBannerItem,
@@ -5132,6 +5134,22 @@ export default function ChatView(props: ChatViewProps) {
   // turn is needed.
   const activeBackgroundLiveness =
     !isWorking && activeThread ? (activeThreadShell?.backgroundLiveness ?? null) : null;
+  // Which background jobs the server holds live: one it does not, unreported,
+  // never will report — one judgement for the band and the run cards.
+  const shellTaskIds = activeThreadShell?.backgroundTaskIds;
+  const shellLiveness = activeThreadShell?.backgroundLiveness ?? null;
+  const shellTaskKey = shellTaskIds === undefined ? null : shellTaskIds.join("\n");
+  const liveJobsNow = useMemo(
+    () =>
+      liveJobsOf({
+        backgroundTaskIds:
+          shellTaskKey === null ? undefined : shellTaskKey.split("\n").filter(Boolean),
+        backgroundLiveness: shellLiveness,
+        isWorking,
+      }),
+    [shellTaskKey, shellLiveness, isWorking],
+  );
+  const liveJobs = useLiveJobs(liveJobsNow);
   const [isStoppingBackgroundWork, setIsStoppingBackgroundWork] = useState(false);
   useEffect(() => {
     // "Stopping..." holds until the liveness clears; the interrupt command
@@ -5588,6 +5606,7 @@ export default function ChatView(props: ChatViewProps) {
         plan: activePlan ?? null,
         backgroundTasks,
         backgroundLiveness: activeBackgroundLiveness,
+        liveJobs,
         // The server's own pause when it keeps one; the thread's last words otherwise.
         pause: activeThreadShell?.usagePause
           ? { resetsAt: activeThreadShell.usagePause.resetsAt }
@@ -5596,6 +5615,7 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [
       standupsDone,
+      liveJobs,
       displayedTimeline.entries,
       isWorking,
       activeRunningTurnId,
@@ -8425,6 +8445,7 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenAgents: addAgentsSurface,
                   working: dockModel,
                   afterTurnWork: activeBackgroundLiveness,
+                  liveJobs,
                   onStopBackgroundWork: stopBackgroundWork,
                   stoppingBackgroundWork: isStoppingBackgroundWork,
                   isWorking,

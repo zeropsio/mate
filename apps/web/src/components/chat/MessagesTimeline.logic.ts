@@ -66,6 +66,7 @@ import {
   type TrackedCommands,
   type WorkStep,
 } from "./workSteps.logic";
+import type { LiveJobs } from "./liveJobs.logic";
 
 export type TimelineLatestTurn = Pick<
   OrchestrationLatestTurn,
@@ -1821,12 +1822,8 @@ export function deriveMessagesTimelineRows(input: {
   newSince?: string | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
-  /**
-   * Nothing lives in the background any more — the thread is idle and the
-   * server holds no live background work (its session is gone): a job that
-   * never reported never will.
-   */
-  backgroundGone?: boolean;
+  /** The background jobs the server holds live (`liveJobs.logic`): one it does not never reports. */
+  liveJobs?: LiveJobs | null;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
   nowMs?: number;
   /** When each helper finished, as the helpers panel knows it (`helperFinishesOf`). */
@@ -1857,7 +1854,7 @@ export function deriveMessagesTimelineRows(input: {
         entry.kind === "work" || entry.kind === "generic-call" ? [entry.entry] : [],
       ),
     ),
-    backgroundGone: input.backgroundGone === true,
+    liveJobs: input.liveJobs ?? null,
   };
 
   const diffByTurnId = new Map<TurnId, TurnDiffSummary>();

@@ -13,6 +13,7 @@
  */
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
+import { jobLost, type LiveJobs } from "./liveJobs.logic";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
@@ -103,12 +104,8 @@ export interface TrackedCommands {
   readonly trackers: ReadonlySet<string>;
   /** Each background task's words, by its id: a read of its output names it. */
   readonly jobTitles: ReadonlyMap<string, string>;
-  /**
-   * Nothing lives in the background any more — the session that ran the
-   * jobs is gone (a restart, the session ended): one that never reported
-   * never will.
-   */
-  readonly backgroundGone?: boolean;
+  /** The jobs the server holds live (`liveJobs.logic`): one it does not, unreported, never will. */
+  readonly liveJobs?: LiveJobs | null;
 }
 
 export const NO_TRACKED_COMMANDS: TrackedCommands = {
@@ -361,7 +358,10 @@ export function backgroundJobOf(
     title,
     state:
       task === undefined || !ended
-        ? tracked.backgroundGone === true && !live
+        ? jobLost(
+            { id: command.sentToBackground ?? task?.taskId, ofLiveTurn: live },
+            tracked.liveJobs ?? null,
+          )
           ? "lost"
           : "running"
         : failed

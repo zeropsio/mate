@@ -334,6 +334,31 @@ describe("deriveDock", () => {
     expect(dock?.afterTurn).toBeNull();
   });
 
+  // Review of pass 39: the band kept a job lost to a restart "running" while
+  // its card said it didn't report back. One judgement (`jobLost`) for both.
+  it.each([
+    { name: "held live", held: ["b1"], running: 1 },
+    { name: "held no longer: lost, not in the band", held: [] as string[], running: 0 },
+    { name: "only a newer session's job held", held: ["b9"], running: 1 },
+  ])("drops a job the server holds no longer: $name", ({ held, running }) => {
+    const dock = deriveDock({
+      ...base,
+      isWorking: false,
+      runningTurnId: null,
+      backgroundLiveness: "monitoring",
+      liveJobs: { ids: new Set(held) },
+      backgroundTasks: foldBackgroundTasks([
+        task("task.started", "b1", 2, { detail: "Soak" }, "t0"),
+        ...(held.includes("b9") ? [task("task.started", "b9", 3, { detail: "Newer" })] : []),
+      ]),
+    });
+    expect(
+      dock?.background?.tasks.filter((item) => item.id === "b1" && item.state === "running")
+        .length ?? 0,
+    ).toBe(held.includes("b1") ? 1 : 0);
+    expect(dock?.background?.running ?? 0).toBe(running);
+  });
+
   // Review of pass 39: "1/3" fell to "1/2" as an earlier turn's sibling ended,
   // and with no turn start known an earlier task that ended mid-turn left.
   it.each([

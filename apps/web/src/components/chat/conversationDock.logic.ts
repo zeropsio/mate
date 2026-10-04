@@ -19,6 +19,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
 import { readUsageLimitNotice, splitBatchDeploy, timelineEntryTurnId } from "./conversation.logic";
+import { jobLost, type LiveJobs } from "./liveJobs.logic";
 import { helperNowWords, helperSpan } from "./helpers.logic";
 
 /** Operations that run long enough to watch: a pipeline, a multi-step setup, a stand-up's builds. */
@@ -45,7 +46,8 @@ export interface DockBackgroundTask {
   readonly id: string;
   /** What it was asked to do, in the words it was given. */
   readonly title: string;
-  readonly state: "running" | "done" | "failed" | "stopped";
+  /** "lost": it never reported and the server holds it no longer (`jobLost`). */
+  readonly state: "running" | "done" | "failed" | "stopped" | "lost";
   /** It watches something (a log, a pull request) rather than running once. */
   readonly watch: boolean;
   readonly turnId: string | null;
@@ -403,6 +405,8 @@ export function deriveDock(input: {
   readonly backgroundTasks?: ReadonlyArray<DockBackgroundTask>;
   /** The server's word on work that outlived the turn. */
   readonly backgroundLiveness?: "working" | "monitoring" | null;
+  /** The jobs the server holds live (`liveJobs.logic`): a running one it does not is lost. */
+  readonly liveJobs?: LiveJobs | null;
   /** The thread is held by a usage limit: when it resets, if known. */
   readonly pause: { readonly resetsAt: string | null } | null;
   /**
@@ -411,7 +415,17 @@ export function deriveDock(input: {
    */
   readonly standupsDone?: ReadonlySet<string>;
 }): DockModel | null {
-  const backgroundTasks = input.backgroundTasks ?? [];
+  // A task that never reported and that the server holds no longer is lost:
+  // never running in the band (the run card's line says so too).
+  const backgroundTasks = (input.backgroundTasks ?? []).map((task) =>
+    task.state === "running" &&
+    jobLost(
+      { id: task.id, ofLiveTurn: input.isWorking && task.turnId === input.runningTurnId },
+      input.liveJobs ?? null,
+    )
+      ? { ...task, state: "lost" as const }
+      : task,
+  );
   // Work that outlived the turn: what still runs, and nothing else.
   const afterTurn = input.isWorking ? null : (input.backgroundLiveness ?? null);
   if (afterTurn !== null) {

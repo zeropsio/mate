@@ -10,6 +10,7 @@ import {
   taskReportWords,
   trackCommands,
   unwrapShell,
+  type TrackedCommands,
 } from "./workSteps.logic";
 
 function entry(partial: Partial<WorkLogEntry> & { id: string }): WorkLogEntry {
@@ -544,12 +545,13 @@ describe("backgroundJobOf", () => {
   // The session that ran it is gone (a restart, the session ended): nothing
   // will report, and "running in the background" would stand forever.
   it.each([
-    { name: "its session is gone, its turn settled", gone: true, live: false, state: "lost" },
-    { name: "its session lives", gone: false, live: false, state: "running" },
-    { name: "its own turn still runs", gone: true, live: true, state: "running" },
-  ])("a job that never reported: $name", ({ gone, live, state }) => {
+    { name: "the server holds it no longer", held: [], live: false, state: "lost" },
+    { name: "the server holds it", held: ["b94"], live: false, state: "running" },
+    { name: "only a newer session's job lives", held: ["b7"], live: false, state: "lost" },
+    { name: "its own turn still runs", held: [], live: true, state: "running" },
+  ])("a job that never reported: $name", ({ held, live, state }) => {
     const run = command("1", "sleep 40; exit 2", { sentToBackground: "b94" });
-    const tracked = { ...trackCommands([run]), backgroundGone: gone };
+    const tracked: TrackedCommands = { ...trackCommands([run]), liveJobs: { ids: new Set(held) } };
     expect(backgroundJobOf(run, tracked, live)?.state).toBe(state);
   });
 
