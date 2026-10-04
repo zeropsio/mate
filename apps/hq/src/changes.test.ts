@@ -31,6 +31,18 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 /** A PNG's signature and a little more: what HQ checks a picture by. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 
+const ascii = (text: string) => [...text].map((char) => char.charCodeAt(0));
+const RASTERS = [
+  ["image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+  ["image/jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0xe0])],
+  ["image/gif", new Uint8Array(ascii("GIF89a"))],
+  ["image/webp", new Uint8Array([...ascii("RIFF"), 4, 0, 0, 0, ...ascii("WEBP")])],
+  [
+    "image/avif",
+    new Uint8Array([0, 0, 0, 24, ...ascii("ftypavif"), 0, 0, 0, 0, ...ascii("mif1avif")]),
+  ],
+] as const;
+
 describe("a Mate's changes in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -508,6 +520,16 @@ describe("a Mate's changes in HQ", () => {
             [404, { code: "change_not_found", reason: "unknown_change" }],
           );
 
+          for (const [type, bytes] of RASTERS) {
+            const uploaded = yield* attach(bytes, type);
+            assert.strictEqual(uploaded.status, 200, type);
+            const path = (uploaded.body as { path: string }).path;
+            const picture = yield* call("GET", path, { session: owner });
+            assert.deepStrictEqual(
+              [picture.status, picture.headers.get("content-type"), [...picture.bytes]],
+              [200, type, [...bytes]],
+            );
+          }
           const kept = yield* attach(PNG);
           assert.strictEqual(kept.status, 200);
           const { id, path } = kept.body as { readonly id: string; readonly path: string };
@@ -518,7 +540,7 @@ describe("a Mate's changes in HQ", () => {
           ] as const) {
             assert.deepStrictEqual((yield* attach(bytes, contentType)).body, {
               code: "invalid",
-              reason: "not_png",
+              reason: "not_raster",
             });
           }
           const tooLarge = yield* attach(new Uint8Array(20 * 1024 * 1024 + 1));

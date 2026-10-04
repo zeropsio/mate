@@ -30,3 +30,5 @@ you want included. A blocked release review tells you what needs doing first.
 
 HQ deploys production from approved releases. The agent's handoff has not checked whether
 production is set up or ready for a release; read those facts in Mate.
+
+Change descriptions can include private PNG, JPEG, GIF, WebP and AVIF pictures, up to 20 MiB each. Pictures require the same access as the change.
