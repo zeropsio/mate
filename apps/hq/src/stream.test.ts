@@ -115,6 +115,8 @@ const streamFor = (
   ) => Effect.Effect<unknown, never, Scope.Scope> = () => Effect.void,
   /** The applications whose changes `userId` reads, by id. */
   readable: Readonly<Record<string, ReadonlyArray<never>>> = {},
+  /** When Zerops answered the view HQ holds as the stream opens, wall ms; none answered yet. */
+  answered?: number,
 ) =>
   Effect.gen(function* () {
     const reads = yield* Ref.make(0);
@@ -143,7 +145,9 @@ const streamFor = (
     const appReadCalls: string[] = [];
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
     /** The org view as Zerops answers it (`Roles.views`); none until a test answers one. */
-    const seen = yield* SubscriptionRef.make<OrgSeen | undefined>(undefined);
+    const seen = yield* SubscriptionRef.make<OrgSeen | undefined>(
+      answered === undefined ? undefined : { view: org(), answered },
+    );
     /** What the read offers the reader of the organization. */
     const orgCan = yield* Ref.make(OWNER_CAN);
     const overviews = yield* makeMateOverviews(memoryStore().store);
@@ -205,6 +209,7 @@ const streamFor = (
         Roles,
         Roles.of({
           view: Ref.get(view),
+          answeredAt: Effect.map(SubscriptionRef.get(seen), (answer) => answer?.answered),
           views: SubscriptionRef.changes(seen).pipe(
             Stream.filter((answer) => answer !== undefined),
           ),
@@ -237,42 +242,44 @@ const streamFor = (
   });
 
 describe("the structure stream", () => {
-  it.effect("a view Zerops answers moves the organization's offers at once, with its time", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const h = yield* streamFor("owner");
-        assert.deepStrictEqual(
-          [h.sent[0]?.["can"], h.sent[0]?.["rolesAnsweredAt"]],
-          [OWNER_CAN, null],
-        );
-        const demoted = {
-          create_app: { allow: false, reason: "not_structure_writer" },
-          rename_app: { allow: false, reason: "not_structure_writer" },
-          delete_app: { allow: false, reason: "not_structure_writer" },
-        } as const;
-        yield* Ref.set(h.orgCan, demoted);
-        yield* SubscriptionRef.set(h.seen, {
-          view: yield* Ref.get(h.view),
-          answered: Date.parse("2026-10-04T10:00:00.000Z"),
-        });
-        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
-        assert.deepStrictEqual(h.sent.slice(1), [
-          {
-            type: "org",
-            can: demoted,
-            rolesAnsweredAt: "2026-10-04T10:00:00.000Z",
-            unheld: {},
-          },
-        ]);
-        // A later view that decides the same says nothing: its time rides with the next move.
-        yield* SubscriptionRef.set(h.seen, {
-          view: yield* Ref.get(h.view),
-          answered: Date.parse("2026-10-04T10:00:30.000Z"),
-        });
-        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
-        assert.strictEqual(h.sent.length, 2);
-      }),
-    ),
+  it.effect(
+    "says when Zerops answered the view from the snapshot on, and moves with each view",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const at = (time: string) => Date.parse(`2026-10-04T${time}.000Z`);
+          const h = yield* streamFor("owner", undefined, {}, at("10:00:00"));
+          assert.deepStrictEqual(
+            [h.sent[0]?.["can"], h.sent[0]?.["rolesAnsweredAt"]],
+            [OWNER_CAN, "2026-10-04T10:00:00.000Z"],
+          );
+          // A later view that decides the same moves only its time.
+          yield* SubscriptionRef.set(h.seen, {
+            view: yield* Ref.get(h.view),
+            answered: at("10:00:30"),
+          });
+          yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+          assert.deepStrictEqual(h.sent.slice(1), [
+            { type: "roles", rolesAnsweredAt: "2026-10-04T10:00:30.000Z" },
+          ]);
+          // One that decides otherwise moves the organization's offers at once, its time beside.
+          const demoted = {
+            create_app: { allow: false, reason: "not_structure_writer" },
+            rename_app: { allow: false, reason: "not_structure_writer" },
+            delete_app: { allow: false, reason: "not_structure_writer" },
+          } as const;
+          yield* Ref.set(h.orgCan, demoted);
+          yield* SubscriptionRef.set(h.seen, {
+            view: yield* Ref.get(h.view),
+            answered: at("10:01:00"),
+          });
+          yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+          assert.deepStrictEqual(h.sent.slice(2), [
+            { type: "org", can: demoted, unheld: {} },
+            { type: "roles", rolesAnsweredAt: "2026-10-04T10:01:00.000Z" },
+          ]);
+        }),
+      ),
   );
 
   it.effect("carries the four load reads for readable apps, and re-reads only the moved app", () =>

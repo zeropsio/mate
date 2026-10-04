@@ -150,6 +150,7 @@ const withStructure = <A, E, B = never>(
                 current.projects.some((candidate) => candidate.id === projectId),
               ),
         ),
+      answeredAt: Effect.succeed(undefined),
       views: Stream.never,
     });
     const context = yield* Layer.build(
