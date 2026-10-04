@@ -20,7 +20,8 @@ import {
 export const HQ_PROJECT_NAME = "Headquarters";
 /** A project on its way out, or out: nothing a birth counts. */
 const GONE_PROJECT_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
-const HQ_SERVICE = "hq";
+/** Core's service: never `core`, every project's reserved system service. */
+export const HQ_SERVICE = "hq";
 const HQ_PORT = 8080;
 const HQ_SERVICES = ["db", "vol", HQ_SERVICE] as const;
 /** Core's working credential, as Core reads it (`apps/hq/src/main.ts`). */
@@ -29,7 +30,13 @@ const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
 const HQ_KEY_SECRET_ENV = "HQ_KEY_SECRET";
 const HQ_KEY_SECRET_BYTES = 32;
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
-const HQ_SETUP = "hq";
+export const HQ_SETUP = "hq";
+/** The app version a birth or an update names after the Core it deploys (`update.ts`). */
+export const HQ_CORE_VERSION_PREFIX = "hq-core.";
+
+export function hqCoreVersionName(build: string): string {
+  return `${HQ_CORE_VERSION_PREFIX}${build}`;
+}
 export type HqBirthStep =
   | "project"
   | "services"
@@ -132,6 +139,8 @@ export type HqBirthPlatform = Pick<
 
 /** Core as this build of the app carries it (`hq-core/`). */
 export interface HqCoreArtifact {
+  /** Its identity (`hq-core/build.json`, `apps/hq/src/coreIdentity.ts`). */
+  readonly build: string;
   readonly archive: Uint8Array<ArrayBuffer>;
   readonly zeropsYaml: string;
 }
@@ -517,8 +526,9 @@ export async function runHqBirth(input: {
             : undefined;
         if (core !== undefined) await advance({ coreYaml: core.zeropsYaml });
         if (record.appVersionId === null) {
+          const name = hqCoreVersionName((core ?? (await deps.core())).build);
           const version = await effect("version", { serviceId }, async () => ({
-            appVersionId: (await platform.createAppVersion(serviceId, "hq-core")).id,
+            appVersionId: (await platform.createAppVersion(serviceId, name)).id,
           }));
           await advance({ appVersionId: version.appVersionId! });
         }

@@ -287,7 +287,11 @@ function deps(
   let now = 0;
   return {
     platform: zerops.platform,
-    core: async () => ({ archive: new Uint8Array(7), zeropsYaml: "zerops:\n  - setup: hq\n" }),
+    core: async () => ({
+      build: "20261004T100000Z.0123456789ab",
+      archive: new Uint8Array(7),
+      zeropsYaml: "zerops:\n  - setup: hq\n",
+    }),
     health: async (address) => {
       expect(address).toBe(ADDRESS);
       return health();
@@ -337,6 +341,24 @@ async function birth(
 }
 
 describe("runHqBirth", () => {
+  it("names Core's app version after the Core it deploys", async () => {
+    const zerops = fakeZerops();
+    const names: Array<string> = [];
+    const named = {
+      ...zerops,
+      platform: {
+        ...zerops.platform,
+        createAppVersion: async (serviceId: string, name: string) => {
+          names.push(name);
+          return zerops.platform.createAppVersion(serviceId, name);
+        },
+      },
+    };
+    const result = await birth(HQ_BIRTH_START, named, deps(named));
+    expect(result.outcome).toMatchObject({ ok: true });
+    expect(names).toEqual(["hq-core.20261004T100000Z.0123456789ab"]);
+  });
+
   it("stands HQ up from nothing: import, services, access, Core, its domain, anchor, official", async () => {
     const zerops = fakeZerops();
     const { outcome, record } = await birth(HQ_BIRTH_START, zerops);

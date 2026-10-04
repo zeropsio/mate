@@ -322,21 +322,41 @@ async function asGzip(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayB
 }
 
 /**
+ * Which Core this build carries under `base` (`hq-core/build.json`, `apps/hq/scripts/pack-core.ts`):
+ * its identity, or `""` where it carries none — a dev server, a build that packed no Core.
+ */
+export async function readCarriedCoreBuild(
+  fetch: typeof globalThis.fetch,
+  base: string,
+): Promise<string> {
+  try {
+    const response = await fetch(`${base}/build.json`, { cache: "no-store" });
+    if (!response.ok) return "";
+    const body = (await response.json()) as { readonly build?: unknown };
+    return typeof body.build === "string" ? body.build : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Core as this build carries it under `base` (`apps/hq/scripts/pack-core.ts`): its archive, by a
- * name no server takes for an encoding, and the `zerops.yml` it deploys with.
+ * name no server takes for an encoding, the `zerops.yml` it deploys with, and its identity.
  */
 export async function readBundledCore(
   fetch: typeof globalThis.fetch,
   base: string,
 ): Promise<HqCoreArtifact> {
-  const [archive, yaml] = await Promise.all([
+  const [archive, yaml, build] = await Promise.all([
     fetch(`${base}/core.tgz.bin`, { cache: "no-store" }),
     fetch(`${base}/zerops.yml`, { cache: "no-store" }),
+    readCarriedCoreBuild(fetch, base),
   ]);
-  if (!archive.ok || !yaml.ok) {
+  if (!archive.ok || !yaml.ok || build === "") {
     throw new Error("This build of the app carries no HQ to deploy.");
   }
   return {
+    build,
     archive: await asGzip(new Uint8Array(await archive.arrayBuffer())),
     zeropsYaml: await yaml.text(),
   };

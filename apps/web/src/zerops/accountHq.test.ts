@@ -85,12 +85,15 @@ describe("readBundledCore — Core as this build carries it", () => {
         new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip")),
       ).arrayBuffer(),
     );
-  /** A server answering the build's two files; `archive` as the browser hands its body over. */
+  /** A server answering the build's three files; `archive` as the browser hands its body over. */
   const served = (archive: Uint8Array<ArrayBuffer>) => {
     const asked: Array<string> = [];
     const fetch = async (input: RequestInfo | URL) => {
       const path = String(input);
       asked.push(path);
+      if (path.endsWith("/build.json")) {
+        return new Response(JSON.stringify({ build: "20261004T100000Z.0123456789ab" }));
+      }
       return path.endsWith("/zerops.yml")
         ? new Response("zerops:\n  - setup: hq\n")
         : new Response(archive);
@@ -113,7 +116,8 @@ describe("readBundledCore — Core as this build carries it", () => {
     const { asked, fetch } = served(archive);
     const core = await readBundledCore(fetch, "/hq-core");
     expect(core.archive).toEqual(archive);
-    expect(asked).toEqual(["/hq-core/core.tgz.bin", "/hq-core/zerops.yml"]);
+    expect(core.build).toBe("20261004T100000Z.0123456789ab");
+    expect(asked).toEqual(["/hq-core/core.tgz.bin", "/hq-core/zerops.yml", "/hq-core/build.json"]);
   });
 });
 
