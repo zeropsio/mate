@@ -44,6 +44,7 @@ const encodeChatAttachments = Schema.encodeEffect(
 const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
 const encodeCrewOrigin = Schema.encodeEffect(Schema.fromJsonString(ThreadCrewOrigin));
 const encodeActivityPayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeActivityPayload = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 // The columns the activity repository writes beside a payload, for rows a
 // test stores itself (`fillBudgetColumns` for rows stored by SQL).
 const budgetColumnsOf = (kind: string, payload: unknown) => {
@@ -2688,7 +2689,7 @@ const fillBudgetColumns = Effect.fnUntraced(function* () {
     FROM projection_thread_activities
   `;
   for (const row of rows) {
-    const columns = budgetColumnsOf(row.kind, JSON.parse(row.payload));
+    const columns = budgetColumnsOf(row.kind, yield* decodeActivityPayload(row.payload));
     yield* sql`
       UPDATE projection_thread_activities
       SET ${sql.update(columns)}
