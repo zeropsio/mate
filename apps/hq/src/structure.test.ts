@@ -1030,10 +1030,7 @@ describe("structure", () => {
               appId: team.id,
               face: "rose:seal",
             });
-            // Unnamed, as a client from before D3 reads it: its project is not yet, nor its name.
-            assert.deepStrictEqual(yield* birthsOf, [
-              { id: intent.id, name: "", face: "rose:seal" },
-            ]);
+            assert.deepStrictEqual(yield* birthsOf, [{ id: intent.id, face: "rose:seal" }]);
             // Nobody who does not see the application records one in it.
             assert.strictEqual(
               yield* reasonOf(structure.recordBirth("nobody", { appId: team.id, face: "" })),
@@ -1074,7 +1071,7 @@ describe("structure", () => {
           yield* structure.bindBirth("owner", birth.id, "P_OWN");
           const read = yield* structure.read("owner");
           assert.deepStrictEqual(read.apps.find((a) => a.id === app.id)?.births, [
-            { id: birth.id, name: "", face: "rose:seal", projectId: "P_OWN" },
+            { id: birth.id, face: "rose:seal", projectId: "P_OWN" },
           ]);
           assert.strictEqual(
             yield* reasonOf(structure.bindBirth("nobody", birth.id, "P_TEAM")),

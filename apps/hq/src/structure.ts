@@ -274,11 +274,8 @@ export interface StructureRead {
      * whoever read its repositories; none to one who only sees the application.
      */
     readonly environments: ReadonlyArray<EnvironmentView>;
-    /**
-     * The Mates on their way into it whose attach has not landed yet, oldest first: `name` empty,
-     * as a client from before D3 reads one, since its project and the name it holds are not yet.
-     */
-    readonly births: ReadonlyArray<BirthIntent & { readonly name: "" }>;
+    /** The Mates on their way into it whose attach has not landed yet, oldest first. */
+    readonly births: ReadonlyArray<BirthIntent>;
   }>;
 }
 
@@ -1402,7 +1399,6 @@ export const structureLayer = (options: {
                     .filter((row) => row.app_id === app.id)
                     .map(({ id, face, projectId }) => ({
                       id,
-                      name: "" as const,
                       face,
                       ...(projectId == null ? {} : { projectId }),
                     })),
