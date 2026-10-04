@@ -232,6 +232,24 @@ describe("inventory throwaway cleanup", () => {
     expect(shown.state).toBe("done");
   });
 
+  it("deletes an owed id directly, listed or not, and lists nothing for it", async () => {
+    for (const [name, id] of [
+      ["mate-door:s:n5", "unlisted"],
+      ["mate-door:s:n6", "gone"],
+    ] as const) {
+      mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, name);
+      mocks.debt!.minted("org-1", name, id);
+    }
+    mocks.remove.mockImplementation(async ({ tokenId }: { readonly tokenId: string }) => {
+      if (tokenId === "gone") throw new ZeropsApiError("Token not found.", "not-found", 404);
+    });
+    await mount();
+    expect(mocks.read).not.toHaveBeenCalled();
+    expect(mocks.remove.mock.calls.map(([input]) => input.tokenId)).toEqual(["unlisted", "gone"]);
+    expect(shown.state).toBe("done");
+    expect(mocks.debt!.failedAt("org-1")).toBeNull();
+  });
+
   it("sweeps an owed throwaway by the id its mint answered, whatever it is named", async () => {
     mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:r:n4");
     mocks.debt!.minted("org-1", "mate-door:r:n4", "elsewhere");

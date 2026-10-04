@@ -30,61 +30,51 @@ const NOW = Date.parse("2026-09-16T10:00:00.000Z");
 describe("planThrowawaySweep", () => {
   // Exactly what this browser owes, by its handle: everything else on the account's token list is
   // somebody's — another tab's, another device's, a working credential — however old.
-  for (const [name, token, owed, swept] of [
-    [
-      "an owed throwaway, by the id its mint answered",
-      { id: "a", name: "mate-door:p1:n1" },
-      [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
-      true,
-    ],
-    [
-      "an owed throwaway whose mint answer was lost, by its name",
-      { id: "b", name: "mate-door:p1:n2" },
-      [{ attempt: "mate-door:p1:n2" }],
-      true,
-    ],
-    [
-      "another tab's or device's throwaway",
-      { id: "c", name: "mate-door:p1:n3" },
-      [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
-      false,
-    ],
-    [
-      "a throwaway named like an owed one, but not it",
-      { id: "d", name: "mate-door:p1:n4" },
-      [{ attempt: "mate-door:p1:n44" }],
-      false,
-    ],
-    [
-      "a throwaway whose name an owed id's mint used, under another id",
-      { id: "e2", name: "mate-door:p1:n5" },
-      [{ attempt: "mate-door:p1:n5", tokenId: "e" }],
-      false,
-    ],
-    [
-      "a Mate's own key, whatever is owed",
-      { id: "f", name: "zcp-acme" },
-      [{ attempt: "zcp-acme" }],
-      false,
-    ],
-    ["a token with no name at all", { id: "g" }, [{ attempt: "mate-door:p1:n7" }], false],
-  ] as const) {
-    it(`${swept ? "sweeps" : "leaves"} ${name}`, () => {
-      expect(planThrowawaySweep({ tokens: [token], owed })).toEqual(swept ? [token.id] : []);
-    });
-  }
-
-  it("sweeps every owed throwaway in one pass", () => {
-    const stale = planThrowawaySweep({
-      tokens: [
-        { id: "a", name: "mate-door:p1:n1" },
-        { id: "b", name: "zcp-acme" },
-        { id: "c", name: "mate-door:p2:n2" },
-        { id: "d", name: "mate-door:p3:n3" },
-      ],
-      owed: [{ attempt: "mate-door:p1:n1", tokenId: "a" }, { attempt: "mate-door:p2:n2" }],
-    });
-    expect(stale).toEqual(["a", "c"]);
+  it.each([
+    {
+      case: "an owed throwaway, by the id its mint answered, listed or not",
+      tokens: [],
+      owed: [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
+      swept: ["a"],
+    },
+    {
+      case: "an owed throwaway whose mint answer was lost, by its name",
+      tokens: [{ id: "b", name: "mate-door:p1:n2" }],
+      owed: [{ attempt: "mate-door:p1:n2" }],
+      swept: ["b"],
+    },
+    {
+      case: "never another tab's or device's throwaway",
+      tokens: [{ id: "c", name: "mate-door:p1:n3" }],
+      owed: [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
+      swept: ["a"],
+    },
+    {
+      case: "never a throwaway named like an owed one, but not it",
+      tokens: [{ id: "d", name: "mate-door:p1:n4" }],
+      owed: [{ attempt: "mate-door:p1:n44" }],
+      swept: [],
+    },
+    {
+      case: "never a token named as an owed id's mint was, under another id",
+      tokens: [{ id: "e2", name: "mate-door:p1:n5" }],
+      owed: [{ attempt: "mate-door:p1:n5", tokenId: "e" }],
+      swept: ["e"],
+    },
+    {
+      case: "never a Mate's own key, whatever is owed",
+      tokens: [{ id: "f", name: "zcp-acme" }],
+      owed: [{ attempt: "zcp-acme" }],
+      swept: [],
+    },
+    {
+      case: "never a token with no name at all",
+      tokens: [{ id: "g" }],
+      owed: [{ attempt: "mate-door:p1:n7" }],
+      swept: [],
+    },
+  ])("$case", ({ tokens, owed, swept }) => {
+    expect(planThrowawaySweep({ tokens, owed })).toEqual(swept);
   });
 });
 

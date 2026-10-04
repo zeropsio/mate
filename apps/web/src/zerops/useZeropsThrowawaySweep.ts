@@ -172,10 +172,10 @@ export function useZeropsThrowawaySweep(input: {
           account: runtime.scope,
           organization: organizationRef(clientId),
         } as const;
-        const tokens =
-          owed.length === 0
-            ? []
-            : await readZeropsCell(runtime.cells, request, controller.signal, explicit);
+        // Only a mint whose answer was lost needs the list: it is found by its name.
+        const tokens = owed.every((entry) => entry.tokenId !== undefined)
+          ? []
+          : await readZeropsCell(runtime.cells, request, controller.signal, explicit);
         if (controller.signal.aborted) return;
         const stale = planThrowawaySweep({
           tokens: tokens.map((token) => ({ id: token.tokenId, name: token.name })),
@@ -187,7 +187,11 @@ export function useZeropsThrowawaySweep(input: {
             publishOutstandingFailure();
             return;
           }
-          await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
+          try {
+            await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
+          } catch (cause) {
+            if (!(cause instanceof ZeropsApiError && cause.kind === "not-found")) throw cause;
+          }
         }
         if (controller.signal.aborted) return;
         if (!explicit && debt.sweepFailed(clientId)) {

@@ -637,24 +637,23 @@ export interface AccountTokenRow {
 }
 
 /**
- * Which of the account's tokens are throwaways this browser owes: the one its mint answered
- * with, by its id, or — its answer lost — the one minted under its name. A token merely named
- * like a throwaway, or old, is somebody else's — another tab's, another device's — and left.
+ * The throwaways this browser owes, as the ids to delete: the one its mint answered with, by that
+ * id — listed or not, a token that is gone is gone — or, its answer lost, the one the token list
+ * names as minted under its name. A token merely named like a throwaway, or old, is somebody
+ * else's — another tab's, another device's — and left.
  */
 export function planThrowawaySweep(input: {
   readonly tokens: ReadonlyArray<AccountTokenRow>;
   readonly owed: ReadonlyArray<OwedThrowaway>;
 }): ReadonlyArray<string> {
-  const ids = new Set(
-    input.owed.flatMap((owed) => (owed.tokenId === undefined ? [] : [owed.tokenId])),
-  );
+  const ids = input.owed.flatMap((owed) => (owed.tokenId === undefined ? [] : [owed.tokenId]));
   const names = new Set(
     input.owed.flatMap((owed) => (owed.tokenId === undefined ? [owed.attempt] : [])),
   );
-  return input.tokens.flatMap((token) =>
-    ids.has(token.id) ||
-    (token.name !== undefined && isThrowawayName(token.name) && names.has(token.name))
+  const named = input.tokens.flatMap((token) =>
+    token.name !== undefined && isThrowawayName(token.name) && names.has(token.name)
       ? [token.id]
       : [],
   );
+  return [...new Set([...ids, ...named])];
 }
