@@ -73,6 +73,33 @@ export type Release = typeof Release.Type;
 export const ReleaseListResponse = Schema.Struct({ releases: Schema.Array(Release) });
 export type ReleaseListResponse = typeof ReleaseListResponse.Type;
 
+/**
+ * Where HQ's deploy of an application's newest release stands in one production environment, as
+ * its structure streams it beside the environment: derived from the release's rollout and its jobs
+ * there, never stored. Planned once a leading Core asked for its jobs; ended once every job it
+ * asked for there ended, and every job of a commit it found already under way there — what it left
+ * out, followed to that job — ended too. A snapshot release deploys nothing and has no rollout.
+ */
+export const ReleaseRollout = Schema.Struct({
+  id: Schema.String,
+  /** The release it deploys. */
+  tag: Schema.String,
+  planned: Schema.Boolean,
+  ended: Schema.Boolean,
+  /** When its last job there ended, or when it was planned where it asked for none; ISO 8601. */
+  endedAt: Schema.NullOr(Schema.String),
+  /** Each service it asked nothing for there, and why: the job of the commit under way, if any. */
+  leftOut: Schema.Array(
+    Schema.Struct({
+      service: Schema.String,
+      sha: Schema.String,
+      job: Schema.NullOr(Schema.String),
+      reason: Schema.String,
+    }),
+  ),
+});
+export type ReleaseRollout = typeof ReleaseRollout.Type;
+
 /** At least one service, and each once: what a release message can carry. */
 const Entries = Schema.Array(ReleaseEntry).check(
   Schema.makeFilter((entries: ReadonlyArray<ReleaseEntry>) =>

@@ -349,6 +349,7 @@ describe("HQ API", () => {
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
+                release: null,
               },
             ],
           ],
@@ -452,6 +453,7 @@ describe("HQ API", () => {
               keyHeld: true,
               keyInvalid: false,
               jobs: [],
+              release: null,
             },
           ],
         );
@@ -505,6 +507,7 @@ describe("HQ API", () => {
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
+                release: null,
               },
             ],
           ]);
@@ -1268,6 +1271,7 @@ describe("HQ API", () => {
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
+                release: null,
               },
             ],
             births: [],
