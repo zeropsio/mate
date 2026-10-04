@@ -20,7 +20,7 @@
  */
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
-import { ROOM_TAU_MS, approach } from "./runMotion.logic";
+import { PERSON_INPUT_MS, ROOM_TAU_MS, approach } from "./runMotion.logic";
 
 export interface Rooms {
   /**
@@ -65,6 +65,8 @@ export function noteScrollTop(scroll: HTMLElement): void {
 
 /** Puts back the following scrolls of the card around `element` the browser clamped down. */
 function unclamp(element: HTMLElement): void {
+  // A move the person just made is theirs to keep.
+  if (personActedWithin(PERSON_INPUT_MS)) return;
   const card = element.closest("[data-run-chat]") ?? element;
   for (const scroll of card.querySelectorAll<HTMLElement>("[data-run-scroll][data-follows]")) {
     const top = scrollTops.get(scroll);
@@ -295,6 +297,23 @@ function depthOf(element: Element): number {
   let depth = 0;
   for (let node = element.parentElement; node !== null; node = node.parentElement) depth += 1;
   return depth;
+}
+
+/** When the person last gave the page an input that can scroll; heard from the first room on. */
+let lastInputAt = Number.NEGATIVE_INFINITY;
+let inputHeard = false;
+
+function personActedWithin(ms: number): boolean {
+  if (!inputHeard && typeof document !== "undefined") {
+    inputHeard = true;
+    const heard = () => {
+      lastInputAt = performance.now();
+    };
+    for (const type of ["wheel", "touchmove", "keydown", "pointerdown"]) {
+      document.addEventListener(type, heard, { capture: true, passive: true });
+    }
+  }
+  return performance.now() - lastInputAt <= ms;
 }
 
 /** A tab out of sight: nobody watches a box ease. */
