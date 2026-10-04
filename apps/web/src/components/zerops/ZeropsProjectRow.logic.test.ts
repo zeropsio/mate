@@ -960,7 +960,10 @@ describe("releaseRowTone", () => {
   });
 });
 
-describe("mateRowCan — a row's verbs, where HQ offers following its Mate", () => {
+// The web review, 2026-10-05: a row's verbs are the door's and Zerops', who refuse in their own
+// words; an HQ that has not said — one from before it streamed offers, or one being read again —
+// takes none of them away. Only HQ's refusal of following the Mate does.
+describe("mateRowCan — a row's verbs, unless HQ refuses following its Mate", () => {
   const held = (kind: HqOfferState["kind"]): HqMateOfferStates => {
     const observe: HqOfferState =
       kind === "refused"
@@ -974,18 +977,14 @@ describe("mateRowCan — a row's verbs, where HQ offers following its Mate", () 
     ["offered", held("allowed"), true],
     ["while HQ does not answer: the door and Zerops decide", held("unavailable"), true],
     ["refused: the door would refuse it too", held("refused"), false],
-    ["not said yet", held("unknown"), false],
-    ["before HQ's structure is known", undefined, false],
+    ["not said: an HQ from before its offers", held("unknown"), true],
+    ["before HQ's structure is known", undefined, true],
     [
       "a project HQ holds as no Mate: the door and Zerops decide",
       { held: false, createRecord: { kind: "unknown" } },
       true,
     ],
   ])("%s", (_name, offers, offered) => {
-    expect(mateRowCan(offers, false)).toEqual(offered ? ALL : NONE);
-  });
-
-  it("offers them all while HQ does not answer, before it ever said: an outage is no gate", () => {
-    expect(mateRowCan(undefined, true)).toEqual(ALL);
+    expect(mateRowCan(offers)).toEqual(offered ? ALL : NONE);
   });
 });

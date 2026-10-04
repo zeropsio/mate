@@ -172,7 +172,7 @@ import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
-import { useHqDown, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
@@ -962,7 +962,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
-  const hqDown = useHqDown();
   // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
   const people = useAtomValue(hqPeopleAtom);
 
@@ -1018,7 +1017,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(mateOffersOf(candidate.project.id), hqDown),
+      can: mateRowCan(mateOffersOf(candidate.project.id)),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),
@@ -2345,8 +2344,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           // A project with nothing in it goes, at whoever writes the structure's word.
           ...(deleteOffered(
             group,
-            orgOffer("delete_app").kind === "allowed" ||
-              orgOffer("delete_app").kind === "unavailable",
+            orgOffer("delete_app").kind !== "refused",
             applicationContents(hqStructure, activeOrganization?.id, group.groupId),
           )
             ? [
@@ -2354,8 +2352,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                   id: "delete-group",
                   label: `Delete ${group.name}…`,
                   variant: "destructive" as const,
-                  // While HQ does not answer, its delete is drawn and not pressable.
-                  disabled: orgOffer("delete_app").kind === "unavailable",
+                  // While HQ has not said or does not answer, drawn and not pressable.
+                  disabled: orgOffer("delete_app").kind !== "allowed",
                   onSelect: () => {
                     setRowDialog({ kind: "delete-group", group });
                   },

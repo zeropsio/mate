@@ -251,11 +251,11 @@ export function flowStepsAwaiting(input: {
  */
 export function changesUnknownOf(input: {
   /** What HQ offers of the project's changes (`useChangeOffers`); `undefined` while unsaid. */
-  readonly offers: { readonly read: boolean; readonly unavailable: boolean } | undefined;
+  readonly offers: { readonly readRefused: boolean } | undefined;
   /** Why HQ never told its changes (`ZeropsProjectFlow.changesFailure`). */
   readonly changesFailure: string | undefined;
 }): ChangesUnknown | undefined {
-  if (input.offers?.read === false && !input.offers.unavailable) return "unseen";
+  if (input.offers?.readRefused === true) return "unseen";
   return input.changesFailure === undefined ? undefined : "failed";
 }
 

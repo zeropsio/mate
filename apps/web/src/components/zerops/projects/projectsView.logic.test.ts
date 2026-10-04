@@ -211,34 +211,20 @@ describe("flowStepsAwaiting — which steps hold a skeleton while a read is out"
 });
 
 // HQ's refusal decides first: where it shows this person the project and not its changes, an HQ
-// that did not answer them changes nothing they would see. Nothing said yet decides nothing, and an
-// HQ that does not answer refuses nothing.
+// that did not answer them changes nothing they would see. Nothing said, or HQ not answering,
+// refuses nothing.
 describe("changesUnknownOf — why a project's changes are not known", () => {
   it.each([
-    { case: "seen and told", read: true, failed: false, want: undefined },
-    { case: "seen, and HQ did not answer", read: true, failed: true, want: "failed" },
-    { case: "not seen", read: false, failed: false, want: "unseen" },
-    { case: "not seen, and HQ did not answer", read: false, failed: true, want: "unseen" },
-    {
-      case: "not offered while HQ does not answer",
-      read: false,
-      unavailable: true,
-      failed: true,
-      want: "failed",
-    },
-    { case: "its rule not asked yet", read: undefined, failed: false, want: undefined },
-    {
-      case: "its rule not asked, HQ did not answer",
-      read: undefined,
-      failed: true,
-      want: "failed",
-    },
-  ] as const)("$case", (row) => {
-    const { read, failed, want } = row;
-    const unavailable = "unavailable" in row;
+    { case: "seen and told", refused: false, failed: false, want: undefined },
+    { case: "seen, and HQ did not answer", refused: false, failed: true, want: "failed" },
+    { case: "refused", refused: true, failed: false, want: "unseen" },
+    { case: "refused, and HQ did not answer", refused: true, failed: true, want: "unseen" },
+    { case: "nothing said yet", refused: undefined, failed: false, want: undefined },
+    { case: "nothing said, HQ did not answer", refused: undefined, failed: true, want: "failed" },
+  ] as const)("$case", ({ refused, failed, want }) => {
     expect(
       changesUnknownOf({
-        offers: read === undefined ? undefined : { read, unavailable },
+        offers: refused === undefined ? undefined : { readRefused: refused },
         changesFailure: failed ? "HQ is not answering right now." : undefined,
       }),
     ).toBe(want);

@@ -50,8 +50,8 @@ function mount(group = GROUP, actions: ReadonlyArray<ZeropsMenuEntry> = []) {
 }
 
 describe("project rename in the row and detail menu, as HQ offers it", () => {
-  it.each<HqOfferState>([{ kind: "refused", reason: "not_structure_writer" }, { kind: "unknown" }])(
-    "offers no rename form where HQ does not: %j",
+  it.each<HqOfferState>([{ kind: "refused", reason: "not_structure_writer" }])(
+    "offers no rename form where HQ refuses it: %j",
     (offer) => {
       mock.rename = offer;
       for (const nameSource of ["hq", "unread"] as const) {
@@ -74,11 +74,14 @@ describe("project rename in the row and detail menu, as HQ offers it", () => {
     expect(tree!.root.findAllByType("button")).toHaveLength(0);
   });
 
-  it("draws it not pressable while HQ does not answer", () => {
-    mock.rename = { kind: "unavailable", since: 1 };
-    mount();
-    expect(mock.actions).toMatchObject([{ id: "rename-group", disabled: true }]);
-  });
+  it.each<HqOfferState>([{ kind: "unavailable", since: 1 }, { kind: "unknown" }])(
+    "draws it not pressable while HQ does not answer, or has not said: %j",
+    (offer) => {
+      mock.rename = offer;
+      mount();
+      expect(mock.actions).toMatchObject([{ id: "rename-group", disabled: true }]);
+    },
+  );
 
   it("offers a project whose name could not be read the same rename, never a naming", () => {
     mount({ ...GROUP, nameSource: "unread" });

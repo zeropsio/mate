@@ -123,18 +123,13 @@ const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
 
 /**
  * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
- * rest Zerops' — each refusal shown as they word it. Every one where HQ offers following its Mate
- * (`observe_mate`), and while HQ does not answer (`hqDown`), whether or not it ever said; none
- * where HQ refuses it or has not said yet. A project HQ holds as no Mate has no such offer: its
- * verbs stand, for the door and Zerops to decide.
+ * rest Zerops' — each refusal shown as they word it. None where HQ refuses following its Mate
+ * (`observe_mate`): the door would refuse them too. Every one otherwise — where HQ offers it, has
+ * not said (an HQ from before its offers, a structure not read yet), or does not answer, and on a
+ * project HQ holds as no Mate.
  */
-export function mateRowCan(
-  offers: HqMateOfferStates | undefined,
-  hqDown: boolean,
-): ZeropsRowInput["can"] {
-  if (offers === undefined) return ROW_VERBS(hqDown);
-  if (!offers.held) return ROW_VERBS(true);
-  return ROW_VERBS(offers.observe.kind === "allowed" || offers.observe.kind === "unavailable");
+export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
+  return ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused");
 }
 
 export type ZeropsRowAction =

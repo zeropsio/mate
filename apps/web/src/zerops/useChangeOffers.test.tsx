@@ -150,10 +150,10 @@ describe("useChangeOffers", () => {
       close: true,
       redeploy: true,
       why: {},
-      unavailable: false,
+      readRefused: false,
     });
     const gallery = offers("app-gallery");
-    expect([gallery?.read, gallery?.merge, gallery?.unavailable]).toEqual([false, false, false]);
+    expect([gallery?.read, gallery?.merge, gallery?.readRefused]).toEqual([false, false, true]);
     expect(gallery?.why.read).toMatch(
       /^You need at least Basic user access to one of this project's Zerops projects to see its changes\. Zerops roles as of .+\.$/u,
     );
@@ -162,7 +162,6 @@ describe("useChangeOffers", () => {
   it.each<[string, Hq, string]>([
     ["before HQ's structure is known", { structure: null }, "app-shop"],
     ["for an application HQ did not send", STREAMED, "app-other"],
-    ["for an application HQ sent no offers for", STREAMED, "app-seed"],
     [
       "over another organization's structure",
       { ...STREAMED, organizationId: "org-beta" },
@@ -172,12 +171,31 @@ describe("useChangeOffers", () => {
     expect(answerOf(hq, useChangeOffers)(appId)).toBeUndefined();
   });
 
+  // The web review, 2026-10-05: an HQ from before its offers sends an application with none: its
+  // verbs are drawn not pressable, saying so, never read as refused.
+  it("offers nothing HQ has not said, and says so: an application HQ sent no offers for", () => {
+    const seed = answerOf(STREAMED, useChangeOffers)("app-seed");
+    expect([seed?.read, seed?.merge, seed?.readRefused, seed?.why.merge]).toEqual([
+      false,
+      false,
+      false,
+      "HQ has not said yet.",
+    ]);
+  });
+
+  it("keeps what HQ said last while it is read again, before any outage", () => {
+    expect(
+      answerOf({ ...STREAMED, current: false, unavailableSince: null }, useChangeOffers)("app-shop")
+        ?.merge,
+    ).toBe(true);
+  });
+
   it("offers nothing while HQ does not answer, and says since when", () => {
     const offers = answerOf(
       { ...STREAMED, current: false, unavailableSince: Date.parse("2026-10-04T10:05:00.000Z") },
       useChangeOffers,
     )("app-shop");
-    expect([offers?.read, offers?.merge, offers?.unavailable]).toEqual([false, false, true]);
+    expect([offers?.read, offers?.merge, offers?.readRefused]).toEqual([false, false, false]);
     expect(offers?.why.merge).toMatch(/^HQ unavailable since .+\.$/u);
   });
 });
@@ -189,7 +207,8 @@ describe("useReleasePermission", () => {
     expect((permission("app-shop") as { readonly reason: string } | undefined)?.reason).toMatch(
       /^You need at least Basic user access to this project's production to release it\./u,
     );
-    expect(permission("app-seed")).toBeUndefined();
+    expect(permission("app-seed")).toEqual({ allowed: false, reason: "HQ has not said yet." });
+    expect(permission("app-other")).toBeUndefined();
   });
 
   it("offers what HQ offers", () => {

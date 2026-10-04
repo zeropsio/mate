@@ -130,7 +130,6 @@ const mock = vi.hoisted(() => ({
 
 vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
 vi.mock("./useHqOffers", () => ({
-  useHqDown: () => false,
   useMateOffers: () => mock.mateOffers,
   // HQ offers writing the structure to the org's owners and admins (`create_app`).
   useOrgOffers: () => () =>
@@ -451,6 +450,32 @@ describe("useMateActions — Change face…", () => {
     expect(ids.filter((id) => ["rename-agent", "face", "move", "leave"].includes(id))).toEqual([]);
     expect(actions().changeFace(FEN)).toBeUndefined();
     expect(actions().renameInPlace(FEN)).toBeUndefined();
+  });
+
+  // The web review, 2026-10-05: an HQ from before its offers says nothing of a Mate's: HQ's verbs
+  // are drawn and not pressable, never taken away; the platform's rename stands.
+  it("draws HQ's verbs not pressable on a Mate HQ has said nothing of", () => {
+    const unsaid = { kind: "unknown" } as const;
+    mock.mateOffers = () => ({
+      held: true,
+      observe: unsaid,
+      edit: unsaid,
+      detach: unsaid,
+      moveTo: undefined,
+    });
+    mount();
+    expect(
+      verbs(FEN)
+        .filter((verb) => ["rename-agent", "face", "move", "leave"].includes(verb.id))
+        .map((verb) => [verb.id, verb.disabled === true]),
+    ).toEqual([
+      ["rename-agent", false],
+      ["face", true],
+      ["move", true],
+      ["leave", true],
+    ]);
+    // Its row's verbs are the door's and Zerops': they stand.
+    expect(verbs(FEN).some((verb) => verb.id === "restart")).toBe(true);
   });
 
   it.each([
@@ -1046,17 +1071,18 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
       known: true,
       offered: false,
     },
+    // An HQ that has not said takes nothing of Zerops' away: Zerops refuses in its own words.
     {
-      who: "a person the session does not name",
-      role: "OWNER",
-      user: null,
+      who: "a member HQ has said nothing of yet",
+      role: "BASIC_USER",
+      user: { id: "user-ada" },
       known: false,
-      offered: false,
+      offered: true,
     },
   ])("$who: Start offered $offered", ({ role, user, known, offered }) => {
     mock.roleCode = role;
     mock.user = user;
-    // HQ offers following the Mate to whom its door opens; nothing before it has said.
+    // HQ offers following the Mate to whom its door opens; it may not have said yet.
     mock.mateOffers = () =>
       known
         ? {

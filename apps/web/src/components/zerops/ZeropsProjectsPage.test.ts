@@ -721,7 +721,7 @@ describe("an environment's menu", () => {
     expect(mateActionsSource).toContain("...(platformVerbs.assign");
     // A Mate's name is its project's (D3): renaming it is the platform's verb.
     expect(mateActionsSource).toContain("...(platformVerbs.rename");
-    expect(mateActionsSource).toContain('edit: offers.edit.kind === "allowed" ? "offered" : "no"');
+    expect(mateActionsSource).toContain("edit: verb(offers.edit),");
     expect(mateActionsSource).toContain('...(hqVerbs.move !== "no"');
     expect(mateActionsSource).toContain('...(hqVerbs.leave !== "no" && tags.groupId !== undefined');
     // Change face writes HQ's record of the Mate: HQ's gate, on a Mate.

@@ -285,7 +285,7 @@ const DEVELOPS: ZeropsChangeOffers = {
   close: true,
   redeploy: true,
   why: {},
-  unavailable: false,
+  readRefused: false,
 };
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
