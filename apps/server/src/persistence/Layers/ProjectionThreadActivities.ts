@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
 
+import { activityBudgetColumns } from "../activityBudgetColumns.ts";
 import { toPersistenceDecodeError, toPersistenceSqlError } from "../Errors.ts";
 
 import {
@@ -57,8 +58,9 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
 
   const upsertProjectionThreadActivityRow = SqlSchema.void({
     Request: ProjectionThreadActivity,
-    execute: (row) =>
-      sql`
+    execute: (row) => {
+      const budget = activityBudgetColumns(row.kind, row.payload);
+      return sql`
             INSERT INTO projection_thread_activities (
               activity_id,
               thread_id,
@@ -68,7 +70,11 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
               summary,
               payload_json,
               sequence,
-              created_at
+              created_at,
+              agent_id,
+              call_id,
+              task_id,
+              used_tokens
             )
             VALUES (
               ${row.activityId},
@@ -79,7 +85,11 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
               ${row.summary},
               ${JSON.stringify(row.payload)},
               ${row.sequence ?? null},
-              ${row.createdAt}
+              ${row.createdAt},
+              ${budget.agentId},
+              ${budget.callId},
+              ${budget.taskId},
+              ${budget.usedTokens}
             )
             ON CONFLICT (activity_id)
             DO UPDATE SET
@@ -90,8 +100,13 @@ const makeProjectionThreadActivityRepository = Effect.gen(function* () {
               summary = excluded.summary,
               payload_json = excluded.payload_json,
               sequence = excluded.sequence,
-              created_at = excluded.created_at
-          `,
+              created_at = excluded.created_at,
+              agent_id = excluded.agent_id,
+              call_id = excluded.call_id,
+              task_id = excluded.task_id,
+              used_tokens = excluded.used_tokens
+          `;
+    },
   });
 
   const listProjectionThreadActivityRows = SqlSchema.findAll({
