@@ -33,6 +33,7 @@ import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
+import { Official, type OfficialStatus } from "./official.ts";
 import { Releases } from "./releases.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
@@ -128,6 +129,8 @@ const streamFor = (
       ),
     );
     const appReadCalls: string[] = [];
+    /** Whether this Core is the official HQ, as its last check of Zerops said. */
+    const official = yield* Ref.make<OfficialStatus>({ official: "ok", allowed: true });
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
     const overviews = yield* makeMateOverviews(memoryStore().store);
     yield* before(overviews);
@@ -178,6 +181,10 @@ const streamFor = (
       ),
       Layer.succeed(Roles, Roles.of({ view: Ref.get(view) } as unknown as Roles["Service"])),
       Layer.succeed(MateOverviews, overviews),
+      Layer.succeed(
+        Official,
+        Official.of({ status: Ref.get(official) } as unknown as Official["Service"]),
+      ),
     );
     const sent: Array<{ readonly type: string } & Record<string, unknown>> = [];
     yield* Effect.forkScoped(
@@ -188,7 +195,18 @@ const streamFor = (
     );
     yield* Effect.repeat(Effect.yieldNow, { times: 50 });
     yield* TestClock.adjust("1 millis");
-    return { sent, reads, version, view, overviews, revisions, released, appReads, appReadCalls };
+    return {
+      sent,
+      reads,
+      version,
+      view,
+      overviews,
+      revisions,
+      released,
+      appReads,
+      appReadCalls,
+      official,
+    };
   });
 
 describe("the structure stream", () => {
@@ -266,6 +284,32 @@ describe("the structure stream", () => {
         yield* SubscriptionRef.update(h.version, (n) => n + 1);
         yield* Effect.repeat(Effect.yieldNow, { times: 50 });
         assert.deepStrictEqual(h.appReadCalls, []);
+      }),
+    ),
+  );
+
+  const verdict = (official: OfficialStatus["official"]): OfficialStatus => ({
+    official,
+    allowed: true,
+  });
+  // HQ serving while it cannot check Zerops is no outage, and the reader is told so (e840eb444).
+  it.effect("carries whether HQ could check Zerops, and each time that changes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.strictEqual(h.sent[0]?.["official"], "ok");
+        yield* Ref.set(h.official, verdict("unknown"));
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        yield* Ref.set(h.official, verdict("ok"));
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [
+          { type: "official", official: "unknown" },
+          { type: "official", official: "ok" },
+        ]);
       }),
     ),
   );
