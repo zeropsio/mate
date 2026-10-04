@@ -17,6 +17,7 @@ import {
   ProviderInstanceId,
   ProviderItemId,
   type ProviderRuntimeEvent,
+  isToolLifecycleItemType,
   type ProviderRequestKind,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
@@ -558,7 +559,7 @@ function mapItemLifecycle(
 /**
  * A child's call as a step of its own: mapped as the parent's calls are,
  * tagged with the child (`agentId`) so clients draw it in the child's card,
- * never the parent's.
+ * never the parent's. Its messages and reasoning are not forwarded.
  */
 function childStep(
   event: ProviderEvent,
@@ -584,6 +585,8 @@ function childStep(
     lifecycle === "started" ? "item.started" : "item.completed",
   );
   if (!step || (step.type !== "item.started" && step.type !== "item.completed")) return undefined;
+  // Its calls only: its words and its thoughts are its own, never the parent's.
+  if (!isToolLifecycleItemType(step.payload.itemType)) return undefined;
   return { ...step, payload: { ...step.payload, agentId: taskId } };
 }
 

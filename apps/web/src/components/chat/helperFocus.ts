@@ -14,12 +14,24 @@ export interface HelperFocus {
 
 let focus: HelperFocus | null = null;
 let asks = 0;
+/** The newest ask a panel already opened: never opened again on a later opening. */
+let answered = 0;
 const listeners = new Set<() => void>();
 
 export function showHelper(threadKey: string, helperId: string): void {
   asks += 1;
   focus = { threadKey, helperId, at: asks };
   for (const listener of listeners) listener();
+}
+
+/** The newest ask a panel opened on. */
+export function answeredHelperAsk(): number {
+  return answered;
+}
+
+/** A panel opened on this ask: the next panel opens as the person leaves it. */
+export function answerHelperAsk(at: number): void {
+  answered = Math.max(answered, at);
 }
 
 function subscribe(listener: () => void): () => void {

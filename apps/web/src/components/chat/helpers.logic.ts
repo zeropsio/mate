@@ -1,7 +1,7 @@
 /**
  * A helper's own work, read off the thread: its steps — the calls the server
- * forwards tagged with it (`agentId`), or under its launch before its id is
- * known — as a run of its own, the record the Mate's run card draws; what it
+ * forwards tagged with it (`agentId`: its task, or its launch before its task
+ * is known) — as a run of its own, the record the Mate's run card draws; what it
  * does now, in the same words a step of the Mate's says; and the map of the
  * Mate's helpers and theirs.
  *
@@ -51,12 +51,10 @@ export function helperStepActivities(
     if (!STEP_KINDS.has(activity.kind)) return [];
     const payload = payloadOf(activity);
     if (payload === null) return [];
+    // Tagged with it: by its task, or by its launch while the server did not
+    // know its task yet. An untagged row is the Mate's, drawn there.
     const owner = payload.agentId;
-    const mine =
-      owner === helper.id ||
-      (owner === undefined &&
-        helper.toolUseId !== null &&
-        payload.parentToolUseId === helper.toolUseId);
+    const mine = owner !== undefined && (owner === helper.id || owner === helper.toolUseId);
     if (!mine) return [];
     const { agentId: _agentId, parentToolUseId: _parent, ...own } = payload;
     return [
@@ -177,32 +175,37 @@ export interface HelperMapRow {
  * helper whose parent is not among them stands at the top.
  */
 export function helperMap(helpers: ReadonlyArray<RuntimeSubagent>): HelperMapRow[] {
-  const ids = new Set(helpers.map((helper) => helper.id));
+  // A parent is named by its task, or by its launch where the server did not
+  // know its task yet.
+  const byName = new Map<string, string>();
+  for (const helper of helpers) {
+    if (helper.toolUseId !== null) byName.set(helper.toolUseId, helper.id);
+  }
+  for (const helper of helpers) byName.set(helper.id, helper.id);
   const children = new Map<string | null, RuntimeSubagent[]>();
   for (const helper of helpers) {
-    const parent =
-      helper.spawnedBy !== null && ids.has(helper.spawnedBy) && helper.spawnedBy !== helper.id
-        ? helper.spawnedBy
-        : null;
+    const named = helper.spawnedBy === null ? undefined : byName.get(helper.spawnedBy);
+    const parent = named !== undefined && named !== helper.id ? named : null;
     children.set(parent, [...(children.get(parent) ?? []), helper]);
   }
   const rows: HelperMapRow[] = [];
   const seen = new Set<string>();
-  const walk = (parent: string | null, depth: number): number => {
-    let count = 0;
-    for (const helper of children.get(parent) ?? []) {
+  const walk = (helper: RuntimeSubagent, depth: number): number => {
+    seen.add(helper.id);
+    const at = rows.length;
+    rows.push({ helper, depth, descendants: 0 });
+    let below = 0;
+    for (const child of children.get(helper.id) ?? []) {
       // A loop in what the driver said is cut where it closes.
-      if (seen.has(helper.id)) continue;
-      seen.add(helper.id);
-      const at = rows.length;
-      rows.push({ helper, depth, descendants: 0 });
-      const below = walk(helper.id, depth + 1);
-      rows[at] = { helper, depth, descendants: below };
-      count += 1 + below;
+      if (!seen.has(child.id)) below += 1 + walk(child, depth + 1);
     }
-    return count;
+    rows[at] = { helper, depth, descendants: below };
+    return below;
   };
-  walk(null, 0);
+  for (const root of children.get(null) ?? []) walk(root, 0);
+  // Helpers in a loop have no root: each loop stands at the top from its
+  // first-seen helper, never left out.
+  for (const helper of helpers) if (!seen.has(helper.id)) walk(helper, 0);
   return rows;
 }
 
@@ -244,4 +247,37 @@ export function helperSpan(helper: RuntimeSubagent): {
     helper.completedAt === null ? null : Date.parse(helper.completedAt) - Date.parse(startedAt);
   const ranMs = Math.max(counted ?? 0, byRows ?? 0);
   return { since: null, ranMs: ranMs > 0 ? ranMs : null };
+}
+
+const EFFORT_WORDS: Readonly<Record<string, string>> = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+/**
+ * What it ran on, as the composer names a model: "Opus 5.5 · Max", never the
+ * slug ("claude-opus-5-5"). A name it does not know stays as the driver said.
+ */
+export function helperModelWords(model: string | null, effort: string | null): string | null {
+  if (model === null) return null;
+  const slug = model
+    .trim()
+    .replace(/\[[^\]]*\]$/u, "")
+    .replace(/-\d{8}$/u, "")
+    .replace(/-latest$/u, "");
+  const claude = /^(?:claude-)?(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?$/u.exec(slug);
+  const gpt = /^gpt-(.+)$/u.exec(slug);
+  const name =
+    claude !== null
+      ? `${claude[1]!.charAt(0).toUpperCase()}${claude[1]!.slice(1)} ${claude[2]}${claude[3] === undefined ? "" : `.${claude[3]}`}`
+      : gpt !== null
+        ? `GPT-${gpt[1]!.replace(/-codex$/u, " Codex")}`
+        : model.trim();
+  const level =
+    effort === null ? null : (EFFORT_WORDS[effort.trim().toLowerCase()] ?? effort.trim());
+  return level === null || level.length === 0 ? name : `${name} · ${level}`;
 }

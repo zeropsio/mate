@@ -818,6 +818,46 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("forwards none of a child's words or thoughts as items", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+      const items = [
+        { type: "agentMessage", id: "child-words", text: "Done: three tables checked." },
+        { type: "reasoning", id: "child-thought", summary: ["Checking"], content: [] },
+      ] as const;
+      for (const item of items) {
+        yield* runtime.emit({
+          id: asEventId(`evt-${item.id}`),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "collabAgent/item",
+          threadId: asThreadId("thread-1"),
+          turnId: asTurnId("turn-1"),
+          payload: {
+            agentThreadId: "child-words",
+            item,
+            lifecycle: "completed",
+            notification: {
+              threadId: "child-words",
+              turnId: "child-turn",
+              completedAtMs: 1_778_000_001_000,
+              item,
+            },
+          },
+        });
+      }
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["task.progress", "task.progress"],
+      );
+    }),
+  );
+
   it.effect("does not reactivate an idle child after a parent interaction", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

@@ -41,7 +41,7 @@ import {
 import { cn } from "~/lib/utils";
 import { MateMark } from "~/components/MateMark";
 import { HelperCard, HelperClock, helperCostWords } from "~/components/chat/HelperCard";
-import { useHelperFocus } from "~/components/chat/helperFocus";
+import { answeredHelperAsk, answerHelperAsk, useHelperFocus } from "~/components/chat/helperFocus";
 import { helperMap, helperNowWords, helperReportLine } from "~/components/chat/helpers.logic";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { orchestrationEnvironment } from "~/state/orchestration";
@@ -349,7 +349,11 @@ function PhaseSection({
   phase: AgentPanelWorkflowGroup["phases"][number];
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen || phase.state === "running");
+  const [chosen, setOpen] = useState(defaultOpen || phase.state === "running");
+  // It stands open while it holds the helper opened on the map.
+  const { openId, onToggle } = use(MapCtx);
+  const holds = phase.members.some((member) => member.id === openId);
+  const open = chosen || holds;
   const previousState = useRef(phase.state);
 
   useEffect(() => {
@@ -363,7 +367,11 @@ function PhaseSection({
     <div>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          // Folding it folds the helper opened in it too.
+          if (open && holds && openId !== null) onToggle(openId);
+          setOpen(!open);
+        }}
         aria-expanded={open}
         className={cn(
           "mt-2 flex w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
@@ -546,13 +554,22 @@ function WorkflowSection({
   environmentId: EnvironmentId | null;
   threadId: ThreadId | null;
 }) {
-  const [open, setOpen] = useState(() => workflowIsLive(group));
+  const [chosen, setOpen] = useState(() => workflowIsLive(group));
+  // It stands open while it holds the helper opened on the map.
+  const { openId, onToggle } = use(MapCtx);
+  const holds =
+    openId !== null &&
+    (group.workflow.id === openId || workflowMembers(group).some((m) => m.id === openId));
+  const open = chosen || holds;
   return open ? (
     <ExpandedWorkflowSection
       group={group}
       environmentId={environmentId}
       threadId={threadId}
-      onCollapse={() => setOpen(false)}
+      onCollapse={() => {
+        if (holds && openId !== null) onToggle(openId);
+        setOpen(false);
+      }}
     />
   ) : (
     <CollapsedWorkflowSection group={group} onExpand={() => setOpen(true)} />
@@ -614,7 +631,14 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
     [rows],
   );
   const { earlier } = splitEarlier(roots);
-  const [showEarlier, setShowEarlier] = useState(false);
+  const [chosen, setShowEarlier] = useState(false);
+  // The earlier ones stand unfolded while one of theirs is opened on the map.
+  const { openId, onToggle } = use(MapCtx);
+  const openRow = rows.findIndex((row) => row.helper.id === openId);
+  const openRoot =
+    openRow === -1 ? undefined : rows.findLast((row, index) => index <= openRow && row.depth === 0);
+  const heldEarlier = openRoot !== undefined && earlier.includes(openRoot.helper);
+  const showEarlier = chosen || heldEarlier;
   // A row under an earlier root folds with it.
   const hidden = new Set<string>();
   if (!showEarlier) {
@@ -630,7 +654,11 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
         <button
           aria-expanded={showEarlier}
           className="helper-map-earlier"
-          onClick={() => setShowEarlier((value) => !value)}
+          onClick={() => {
+            // Folding them folds the helper opened among them too.
+            if (showEarlier && heldEarlier && openId !== null) onToggle(openId);
+            setShowEarlier(!showEarlier);
+          }}
           type="button"
         >
           {showEarlier ? (
@@ -672,21 +700,27 @@ export function AgentsPanel({
   );
   const threadKey = threadRef === null ? null : scopedThreadKey(threadRef);
   // What the person opened here, and when: a helper asked for from the run
-  // card since then opens instead.
-  const [opened, setOpened] = useState<{ id: string | null; at: number }>({ id: null, at: 0 });
+  // card since then opens instead — once: an ask a panel already opened on
+  // is the person's past, never what the next opening shows.
+  const [opened, setOpened] = useState<{ id: string | null; at: number }>(() => ({
+    id: null,
+    at: answeredHelperAsk(),
+  }));
   const focus = useHelperFocus(threadKey);
-  const openId = focus !== null && focus.at > opened.at ? focus.helperId : opened.id;
+  const asked = focus !== null && focus.at > opened.at ? focus : null;
+  const openId = asked !== null ? asked.helperId : opened.id;
   const scrollRef = useRef<HTMLDivElement>(null);
   // A helper asked for from the run card comes into view.
   useEffect(() => {
-    if (focus === null) return;
+    if (asked === null) return;
+    answerHelperAsk(asked.at);
     const frame = requestAnimationFrame(() => {
       scrollRef.current
-        ?.querySelector(`[data-helper-row="${CSS.escape(focus.helperId)}"]`)
+        ?.querySelector(`[data-helper-row="${CSS.escape(asked.helperId)}"]`)
         ?.scrollIntoView({ block: "start", behavior: "smooth" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [focus]);
+  }, [asked]);
   const map = useMemo<MapState>(
     () => ({
       openId,
