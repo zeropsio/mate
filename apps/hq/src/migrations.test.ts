@@ -5,6 +5,7 @@ import * as Redacted from "effect/Redacted";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { treeMigrations } from "./migrationFiles.ts";
 import { MIGRATIONS_TABLE, migrate } from "./migrations.ts";
 
 /** A pool on a fresh database of the file's cluster. */
@@ -78,6 +79,23 @@ describe("migrate", () => {
           assert.strictEqual(error.migration, "0002_b.sql");
           assert.deepStrictEqual(yield* recorded, ["0001_a.sql"]);
           assert.deepStrictEqual(yield* tables, ["m_a"]);
+        }),
+      ),
+    );
+
+    // The migration from main ran once, before the switch; its tables go with its code.
+    it.effect("leaves none of the migration from main's tables", () =>
+      withSql(
+        Effect.gen(function* () {
+          yield* migrate(treeMigrations());
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{ readonly name: string }>`
+            SELECT table_name AS name FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name LIKE 'hq\\_import%' ORDER BY 1`;
+          assert.deepStrictEqual(
+            rows.map((row) => row.name),
+            [],
+          );
         }),
       ),
     );
