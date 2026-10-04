@@ -6527,7 +6527,7 @@ describe("a 429 is answered with patience, never more requests", () => {
   );
 
   it.effect(
-    "a read held by a Retry-After that ends while the tab is hidden runs on its return",
+    "a read a Retry-After holds is said until it passes, and runs on the visible wake when the hold ends hidden",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -6536,8 +6536,7 @@ describe("a 429 is answered with patience, never more requests", () => {
           const events = yield* Queue.unbounded<ReceiverEvent>();
           const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
           const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
-          let busy: RegistrationRequest | undefined;
-          let quiet: RegistrationRequest | undefined;
+          const registrations = new Map<string, RegistrationRequest>();
           const reads: string[] = [];
           const runtime = yield* makeZeropsDataRuntime({
             scope: runtimeScope,
@@ -6552,24 +6551,28 @@ describe("a 429 is answered with patience, never more requests", () => {
                 }),
               register: (_receiver, request) => {
                 const baseline = unresolvedProcessBaseline(request);
-                if (baseline === null) return Effect.succeed({ responseObservations: [] });
                 if (
-                  request.descriptor.kind === "query-membership" &&
-                  request.descriptor.query.kind === "running-processes-of-project" &&
-                  request.descriptor.query.project.projectId === "project-b"
-                ) {
-                  // Project b runs nothing yet: its first process arrives while a's read is held.
-                  quiet = request;
-                  const empty = {
-                    ...baseline,
-                    members: [],
-                    unresolvedMembers: [],
-                    observedTotal: 0,
-                  } as PlatformObservation;
-                  return Effect.succeed({ responseObservations: [empty] });
-                }
-                busy = request;
-                return Effect.succeed({ responseObservations: [baseline] });
+                  baseline === null ||
+                  request.descriptor.kind !== "query-membership" ||
+                  request.descriptor.query.kind !== "running-processes-of-project"
+                )
+                  return Effect.succeed({ responseObservations: [] });
+                const projectId = request.descriptor.query.project.projectId;
+                registrations.set(projectId, request);
+                // Only project a runs something; the others' first processes arrive while its read
+                // is held.
+                return Effect.succeed({
+                  responseObservations: [
+                    projectId === "project-a"
+                      ? baseline
+                      : ({
+                          ...baseline,
+                          members: [],
+                          unresolvedMembers: [],
+                          observedTotal: 0,
+                        } as PlatformObservation),
+                  ],
+                });
               },
               read: (ticket) => {
                 if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
@@ -6588,41 +6591,49 @@ describe("a 429 is answered with patience, never more requests", () => {
               changes: Stream.fromQueue(visibilityChanges),
             },
           });
+          const membership = (operation: "add" | "remove", projectId: string, processId: string) =>
+            Queue.offer(events, {
+              kind: "observation",
+              input: {
+                kind: "query-membership-observed",
+                operation,
+                member: {
+                  kind: "process",
+                  project: project(projectId),
+                  processId: ZeropsProcessId.make(processId),
+                },
+                registration: registrations.get(projectId) as never,
+              },
+              bytes: 1,
+            });
           yield* runtime.acquire({ kind: "project-activity", project: project("project-a") });
-          yield* runtime.acquire({ kind: "project-activity", project: project("project-b") });
+          const leaseB = yield* runtime.acquire({
+            kind: "project-activity",
+            project: project("project-b"),
+          });
+          const leaseC = yield* runtime.acquire({
+            kind: "project-activity",
+            project: project("project-c"),
+          });
+          const interestOf = (lease: typeof leaseB) =>
+            registry.get(runtime.stateAtom).interests.get(lease.interest)?.interest;
           yield* settle;
           expect(reads).toEqual(["process-a"]);
           yield* TestClock.adjust("1 second");
-          yield* Queue.offer(events, {
-            kind: "observation",
-            input: {
-              kind: "query-membership-observed",
-              operation: "add",
-              member: {
-                kind: "process",
-                project: project("project-b"),
-                processId: ZeropsProcessId.make("process-c"),
-              },
-              registration: quiet as never,
-            },
-            bytes: 1,
-          });
+          yield* membership("add", "project-b", "process-b");
+          yield* membership("add", "project-c", "process-c");
           yield* settle;
-          // The process whose read was refused ends: nothing of a's is left to read.
-          yield* Queue.offer(events, {
-            kind: "observation",
-            input: {
-              kind: "query-membership-observed",
-              operation: "remove",
-              member: {
-                kind: "process",
-                project: project("project-a"),
-                processId: ZeropsProcessId.make("process-a"),
-              },
-              registration: busy as never,
-            },
-            bytes: 1,
-          });
+          // Their data is missing until the hold passes: each interest says so, with when it reads.
+          for (const lease of [leaseB, leaseC])
+            expect(interestOf(lease)).toMatchObject({
+              status: "failed",
+              retryable: true,
+              retryAtMs: 5_000,
+            });
+          // Project a's refused process and project c's held one end: nothing of theirs is left to
+          // read.
+          yield* membership("remove", "project-a", "process-a");
+          yield* membership("remove", "project-c", "process-c");
           yield* settle;
           yield* Ref.set(visibilityState, "hidden");
           yield* Queue.offer(visibilityChanges, "hidden");
@@ -6631,10 +6642,11 @@ describe("a 429 is answered with patience, never more requests", () => {
           yield* TestClock.adjust("10 seconds");
           yield* settle;
           expect(reads).toEqual(["process-a"]);
+          expect(interestOf(leaseC)?.status).toBe("observing");
           yield* Ref.set(visibilityState, "visible");
           yield* Queue.offer(visibilityChanges, "visible");
           yield* settle;
-          expect(reads.slice(1)).toEqual(["process-c"]);
+          expect(reads.slice(1)).toEqual(["process-b"]);
           yield* runtime.shutdown("application-close");
           registry.dispose();
         }),

@@ -146,6 +146,14 @@ function organizationOfReadTarget(target: ReadTarget): OrganizationRef | null {
   return descriptor.organization ?? descriptor.project?.organization ?? null;
 }
 
+function entityIdOf(ref: EntityRef): string {
+  return ref.kind === "project"
+    ? ref.projectId
+    : ref.kind === "service"
+      ? ref.serviceId
+      : ref.processId;
+}
+
 function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
   return ref.kind === "project" ? ref.organization : ref.project.organization;
 }
@@ -1977,6 +1985,27 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
    */
   const throttledQueries = new Map<string, Set<QueryKey>>();
   const heldPastHidden = new Set<QueryKey>();
+  /**
+   * The entities a hold keeps from their first read: their interests read as failed until it
+   * passes, so a missing list is said, not silent. Their read's answer lifts it (`reviveRead`), or
+   * the hold's end when nothing is left to read.
+   */
+  const heldReads = new Set<string>();
+  const settleHeldReads = Effect.gen(function* () {
+    if (heldReads.size === 0) return;
+    const current = yield* Ref.get(model);
+    const unresolved = new Set<string>();
+    for (const query of [
+      ...current.inventory.queries.values(),
+      ...current.activity.queries.values(),
+    ])
+      for (const ref of unresolvedRefs(current, query.key)) unresolved.add(entityKeyOf(ref));
+    for (const key of heldReads) {
+      if (unresolved.has(key)) continue;
+      heldReads.delete(key);
+      yield* reviveRead(key);
+    }
+  });
   const readAfterThrottle = (
     organization: OrganizationRef,
     until: number,
@@ -1993,14 +2022,15 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       const now = yield* Clock.currentTimeMillis;
       yield* Effect.sleep(Duration.millis(Math.max(0, until - now))).pipe(
         Effect.andThen(
-          Effect.suspend(() => {
+          Effect.gen(function* () {
             const queries = throttledQueries.get(key) ?? new Set<QueryKey>();
             throttledQueries.delete(key);
+            yield* settleHeldReads;
             if (Ref.getUnsafe(currentVisibility) === "hidden") {
               for (const held of queries) heldPastHidden.add(held);
-              return Effect.void;
+              return;
             }
-            return Effect.forEach(queries, (held) => scheduleHydration(held), { discard: true });
+            yield* Effect.forEach(queries, (held) => scheduleHydration(held), { discard: true });
           }),
         ),
         forkOwned,
@@ -2039,9 +2069,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // The organization's reads wait out a 429's Retry-After: this one starts after it.
         const heldUntil = throttledUntil(organizationOfEntityRef(target), "read");
         if (heldUntil > (yield* Clock.currentTimeMillis)) {
+          if (!heldReads.has(key)) {
+            heldReads.add(key);
+            const waiting = [...dependents.values()];
+            yield* failInterests(
+              waiting,
+              `${target.kind} ${entityIdOf(target)} waits: Zerops asked for a pause. Read again.`,
+              false,
+              { retryAtMs: heldUntil, attempts: 1, retryable: true },
+            );
+            markReadFailed(waiting, key);
+          }
           yield* readAfterThrottle(organizationOfEntityRef(target), heldUntil, query);
           continue;
         }
+        heldReads.delete(key);
         const attempted = hydrationAttempts.get(key);
         // A failed entity waits out its own retry; one the platform refused waits for a grant.
         if (
@@ -2126,12 +2168,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                     yield* reviveRead(key);
                     return;
                   }
-                  const id =
-                    target.kind === "project"
-                      ? target.projectId
-                      : target.kind === "service"
-                        ? target.serviceId
-                        : target.processId;
+                  const id = entityIdOf(target);
                   const retry = yield* scheduleHydrationRetry(key, target, query, error);
                   const dependents = [...hydration.ownership.dependents.values()];
                   yield* failInterests(
@@ -4465,6 +4502,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         hydrations.clear();
         hydrationAttempts.clear();
         readFailures.clear();
+        heldReads.clear();
+        heldPastHidden.clear();
         interestRetries.clear();
         recoveryCycles.clear();
       }),
