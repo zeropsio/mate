@@ -7,6 +7,8 @@ import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account
 import { reachabilityPhrase, type TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import { CLOSE_OFF_STOPPED_LINE } from "./close-off";
+
 export type MateConnectResult =
   | { readonly _tag: "Connected"; readonly environmentId: EnvironmentId }
   | { readonly _tag: "Failed"; readonly error: string };
@@ -14,7 +16,10 @@ export type MateConnectResult =
 export async function connectMate(
   environments: Pick<AccountEnvironments, "connect">,
   key: TargetKey,
+  /** The Mate's close-off, read as the person opens it (`checkCloseOff`): a held one says why. */
+  closeOff?: () => Promise<"held" | "clear">,
 ): Promise<MateConnectResult> {
+  if ((await closeOff?.()) === "held") return { _tag: "Failed", error: CLOSE_OFF_STOPPED_LINE };
   const outcome = await environments.connect(key, "user");
   switch (outcome._tag) {
     case "Connected":

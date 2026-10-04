@@ -511,7 +511,9 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     }
     // Unknown is not unavailable: the inventory has not yet said whether a
     // container is there, so the row is still being checked (DESIGN §3.4).
-    if (candidate.presence === "unknown") {
+    // A plain project offered Set up Mate is not being checked: nothing reads its services until
+    // something leases it, and its Set up Mate reads them as it runs.
+    if (candidate.presence === "unknown" && deriveZeropsRowAction(input).kind !== "set-up-mate") {
       return { status: { label: "Checking", pulse: true, tone: "busy" } };
     }
     return {
@@ -639,17 +641,19 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       if (candidate.creationFailed !== undefined) {
         return can.remove ? { kind: "remove", label: "Remove" } : { kind: "none" };
       }
-      // An explicit dev role, a declared Mate, or an existing plain project its viewer may bring
-      // a Mate into (`plainZeropsProject`); never an environment an earlier group tagged, whose
-      // role nothing here can read.
+      // An explicit dev role or a declared Mate with no container, or an existing plain project its
+      // viewer may bring a Mate into (`plainZeropsProject`) — its services read with none, or not
+      // read at all: 0.13 reads them only once something leases the project, and Set up Mate reads
+      // them as it runs, importing nothing where a container is there already. Never an
+      // environment an earlier group tagged, whose role nothing here can read.
       if (
-        candidate.missingContainer === true &&
         can.setUpMate &&
         mateSetupOffered(role) &&
-        (role === "dev" ||
-          role === "devstage" ||
-          hasMate(candidate) ||
-          (can.setUpPlainProject === true &&
+        ((candidate.missingContainer === true &&
+          (role === "dev" || role === "devstage" || hasMate(candidate))) ||
+          ((candidate.missingContainer === true ||
+            (candidate.service === undefined && candidate.presence === "unknown")) &&
+            can.setUpPlainProject === true &&
             plainZeropsProject(candidate.project, input.plainEvidence)))
       ) {
         return { kind: "set-up-mate", label: "Set up Mate" };

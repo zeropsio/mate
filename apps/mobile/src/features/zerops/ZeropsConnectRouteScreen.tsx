@@ -32,6 +32,8 @@ import {
 } from "./presentation";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsData } from "./ZeropsDataProvider";
+import { checkCloseOff, closeOffFacts, SETUP_MARKER } from "./close-off";
+import { PROJECT_ENV_ISOLATION_KEY } from "@t3tools/client-runtime/zerops";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 type ZeropsConnectSurfaceProps = {
@@ -275,6 +277,7 @@ function ListingNotice(props: { readonly notice: CandidatesNotice; readonly onRe
 
 function ProjectPickerSurface(props: { readonly onDone: (environmentId: EnvironmentId) => void }) {
   const {
+    client,
     user,
     signOut,
     newRecoveryToken,
@@ -333,6 +336,26 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
     })).filter((section) => section.rows.length > 0);
   }, [body, readAtMs, visibilityOf]);
 
+  // A Mate's close-off, read once as the person opens it (`close-off.ts`).
+  const organizationId = activeOrganization?.id;
+  const closeOffOf = useCallback(
+    (candidate: MobileCandidate): (() => Promise<"held" | "clear">) | undefined => {
+      const serviceId = candidate.service?.id;
+      if (organizationId === undefined || serviceId === undefined) return undefined;
+      return () =>
+        checkCloseOff(closeOffFacts, {
+          projectId: candidate.project.id,
+          readIsolation: async () =>
+            (await client.readProjectEnv(organizationId, candidate.project.id)).find(
+              (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
+            )?.content,
+          readMarker: async () =>
+            (await client.listServiceVariableNames(serviceId)).includes(SETUP_MARKER),
+        });
+    },
+    [client, organizationId],
+  );
+
   // The row's verb: Open a connected Mate, else the account's Connect on its target (§4.4).
   const openCandidate = useCallback(
     async (candidate: MobileCandidate) => {
@@ -342,11 +365,12 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         return;
       }
       if (visibilityOf(candidate) === "listed" || environments === null) return;
+      const closeOff = closeOffOf(candidate);
       connectingRef.current = true;
       setConnectingKey(candidate.key);
       setActionError(null);
       try {
-        const result = await connectMate(environments, candidate.key);
+        const result = await connectMate(environments, candidate.key, closeOff);
         if (result._tag === "Failed") {
           setActionError(result.error);
           return;
@@ -357,7 +381,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         setConnectingKey(null);
       }
     },
-    [environments, props, visibilityOf],
+    [closeOffOf, environments, props, visibilityOf],
   );
 
   return (
