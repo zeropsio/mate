@@ -5,6 +5,7 @@ import {
   type FlowReleaseRow,
   type Moved,
   type MovedCommits,
+  type ReleaseDeployFailure,
 } from "@t3tools/client-runtime/zerops";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { act } from "react";
@@ -46,19 +47,18 @@ const release = (tag: string, overrides: Partial<FlowRelease> = {}): FlowRelease
 });
 
 const PRODUCTION: ReadonlyMap<string, string> = new Map([["app", RUNS]]);
-const NO_FAILURES: ReadonlyMap<string, string> = new Map();
+const NO_FAILURES: ReadonlyArray<ReleaseDeployFailure> = [];
 
 /** The row as client-runtime words it: the component only draws it. */
 const row = (
   from: FlowRelease,
   index: number,
-  options: { live?: boolean; failed?: ReadonlyMap<string, string> } = {},
+  options: { live?: boolean; failed?: ReadonlyArray<ReleaseDeployFailure> } = {},
 ): FlowReleaseRow =>
   releaseRow(from, index, {
     production: PRODUCTION,
     failed: options.failed ?? NO_FAILURES,
     live: options.live ?? false,
-    newer: [],
   });
 
 const LIVE = row(release("v1.2.0"), 0, { live: true });
@@ -69,7 +69,7 @@ const EARLIER = row(
   1,
 );
 const DEPLOY_FAILED = row(release("v1.3.0", { entries: [{ service: "app", commit: BROKE }] }), 0, {
-  failed: new Map([[`app@${BROKE}`, "2026-09-25T07:05:00Z"]]),
+  failed: [{ tag: "v1.3.0", service: "app", sha: BROKE }],
 });
 const REFUSED = row(
   release("v1.4.0", { verdict: "refused", detail: "The build of app failed." }),

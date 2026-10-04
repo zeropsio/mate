@@ -499,7 +499,7 @@ const releases = (
         taggedAt: new Date(NOW - (index + 1) * 3_600_000).toISOString(),
       },
       index,
-      { production: running, failed: new Map(), live: index === 0, newer: [] },
+      { production: running, failed: [], live: index === 0 },
     ),
   );
 

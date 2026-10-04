@@ -23,6 +23,7 @@ import {
   type FlowRelease,
   type FlowReleaseRow,
 } from "./release.ts";
+import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
@@ -401,8 +402,6 @@ describe("shortCommit", () => {
 
 describe("a release's row", () => {
   const TAGGED = "2026-09-25T07:00:00Z";
-  const EARLIER = "2026-09-25T06:00:00Z";
-  const EARLIEST = "2026-09-25T05:00:00Z";
   const release = (
     tag: string,
     over: Partial<FlowRelease> & { readonly api?: string; readonly web?: string } = {},
@@ -426,13 +425,19 @@ describe("a release's row", () => {
       ["api", api],
       ["web", web],
     ]);
-  const NONE_FAILED = new Map<string, string>();
+  const NONE_FAILED: ReadonlyArray<ReleaseDeployFailure> = [];
+  /** HQ's failed job of `service` at `sha`, as the rollout of release `tag` asked for it. */
+  const failure = (tag: string, service: string, sha: string): ReleaseDeployFailure => ({
+    tag,
+    service,
+    sha,
+  });
 
   /** The newest-first list's rows, each told whether it is the one `releaseRunBy` names. */
   const rows = (
     releases: ReadonlyArray<FlowRelease>,
     production: ReadonlyMap<string, string>,
-    failed: ReadonlyMap<string, string> = NONE_FAILED,
+    failed: ReadonlyArray<ReleaseDeployFailure> = NONE_FAILED,
   ) => {
     const live = releaseRunBy(releases, production);
     return releases.map((entry, index) =>
@@ -440,7 +445,6 @@ describe("a release's row", () => {
         production,
         failed,
         live: entry.tag === live,
-        newer: releases.slice(0, index),
       }),
     );
   };
@@ -489,26 +493,22 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a commit it lists failed its production deploy after it was made: Deploy failed",
-      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      name: "a commit it lists failed the production deploy its rollout asked for: Deploy failed",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.3.0", "web", WEB)],
       expected: [
         { tag: "v1.3.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
         { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
       ],
     },
     {
-      // HQ deploys production to the newest release only: an older one listing the same commit
-      // did not fail with it.
-      name: "an older release lists the failed commit: its failure is the newest's that lists it",
-      releases: [
-        release("v1.4.0"),
-        release("v1.3.0", { web: OLD, taggedAt: EARLIER }),
-        release("v1.2.0", { taggedAt: EARLIEST }),
-      ],
+      // A failure is the release's whose rollout asked for the job: an older one listing the same
+      // commit did not fail with it.
+      name: "an older release lists the failed commit: the failure is the rollout's that asked",
+      releases: [release("v1.4.0"), release("v1.3.0", { web: OLD }), release("v1.2.0")],
       production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.4.0", "web", WEB)],
       expected: [
         { tag: "v1.4.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
         { tag: "v1.3.0", standing: "live", word: "Live", rollBack: false },
@@ -516,10 +516,10 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure posted before it was made belongs to an earlier release of the commit",
-      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      name: "a failure another release's rollout asked for is not this one's, whatever it lists",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T06:55:00Z"]]),
+      failed: [failure("v1.1.0", "web", WEB)],
       expected: [
         { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
         { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
@@ -527,9 +527,9 @@ describe("a release's row", () => {
     },
     {
       name: "a failed commit production runs anyway is not what failed",
-      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       production: runs(OLD, WEB),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.3.0", "web", WEB)],
       expected: [
         { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
         { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
@@ -543,7 +543,7 @@ describe("a release's row", () => {
         release("v1.2.0"),
       ],
       production: runs(API, WEB),
-      failed: new Map([[`web@${OLD}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.3.0", "web", OLD)],
       expected: [
         { tag: "v1.4.0", standing: undefined, word: "Refused", rollBack: false },
         { tag: "v1.3.0", standing: undefined, word: "Refused", rollBack: false },
@@ -566,9 +566,9 @@ describe("a release's row", () => {
 
   it("says which of its commits failed, on which service, and nothing for any other row", () => {
     const [failed, live] = rows(
-      [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       runs(API, OLD),
-      new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      [failure("v1.3.0", "web", WEB)],
     );
     expect(failed!.failedEntry).toEqual({ service: "web", commit: WEB });
     expect(live!.failedEntry).toBeUndefined();
@@ -837,9 +837,8 @@ describe("a production whose version names spell short shas", () => {
     const release = listing("v1.1.0", OLD);
     const row = releaseRow(release, 0, {
       production: RUNS,
-      failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
+      failed: [{ tag: "v1.1.0", service: "api", sha: short(OLD) }],
       live: false,
-      newer: [],
     });
     expect(row.standing).toBe("deploy-failed");
   });

@@ -29,6 +29,7 @@ import {
   type FlowPullRequest,
   type FlowRelease,
   type MovedCommits,
+  type ReleaseDeployFailure,
   type ZeropsPublicRoute,
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
@@ -519,8 +520,8 @@ interface StopFixture {
   readonly releases?: ReadonlyArray<FlowRelease>;
   /** What each of a production's releases carried; the rows are shas without it. */
   readonly carried?: ReadonlyMap<string, MovedCommits>;
-  /** `{service}@{full sha}` → when its production deploy failed. */
-  readonly failedDeploys?: ReadonlyMap<string, string>;
+  /** The production deploys that failed, each as a release's. */
+  readonly failedDeploys?: ReadonlyArray<ReleaseDeployFailure>;
   readonly releasedAge?: string;
 }
 
@@ -608,9 +609,8 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const releases = listing.map((entry, index) =>
     releaseRow(entry, index, {
       production: running,
-      failed: fixture.failedDeploys ?? new Map(),
+      failed: fixture.failedDeploys ?? [],
       live: entry.tag === live,
-      newer: listing.slice(0, index),
     }),
   );
   const view = stopView({
@@ -1036,9 +1036,7 @@ function Harness() {
             routes: BEVIRO_ROUTES,
             releases: BEVIRO_FAILED_RELEASES,
             carried: carriedOf(BEVIRO_FAILED_RELEASES),
-            failedDeploys: new Map([
-              [`nextstore@${sha(NEXTSTORE_FAILED)}`, new Date(NOW - 360_000).toISOString()],
-            ]),
+            failedDeploys: [{ tag: "v0.1.14", service: "nextstore", sha: sha(NEXTSTORE_FAILED) }],
           }}
         />
       </State>

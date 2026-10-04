@@ -326,6 +326,7 @@ export {
   type GroupEnvironmentService,
   type GroupStopProject,
   type GroupStops,
+  type ReleaseDeployFailure,
   type ReleaseDeploys,
 } from "./groupDeploys.ts";
 export { agentNeedsSignIn, AGENT_SIGN_IN_MESSAGE } from "./agentSignIn.ts";
