@@ -122,6 +122,7 @@ import {
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
+import { usePace } from "./usePace";
 import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -2971,6 +2972,8 @@ const NO_HOLDS: ReadonlySet<string> = new Set();
 interface Landing {
   /** Each line leaving the slot by its key, by where its row stood (NaN: it rode along unseen). */
   readonly from: ReadonlyMap<string, number>;
+  /** The lines leaving that stood in the slot: they join the history at once (`usePace`). */
+  readonly hosts: ReadonlySet<string>;
   /** Where the slot stood: what lands above it moves it, and it glides there. */
   readonly slot: number | null;
   /** How tall the card's row stood: a list that follows its end moves it a frame late. */
@@ -3404,11 +3407,14 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [row.items],
   );
   const slotRef = useRef<HTMLDivElement>(null);
+  // What goes live enters the slot one after another (`usePace`).
+  const liveKeys = useMemo(() => model.live.map((item) => item.key), [model.live]);
+  const liveHeld = usePace({ keys: liveKeys, flush: !slotted || ctx.syncing });
   // Where each row leaving the slot stood, and each line of the history, read
   // before they move: the plop starts there, and the history glides from there.
   const [landing, setLanding] = useState<Landing | null>(null);
   const slot = useLiveSlot({
-    live: slotted ? model.live.map((item) => item.key) : NO_KEYS,
+    live: slotted ? liveKeys.filter((key) => !liveHeld.has(key)) : NO_KEYS,
     record: recordKeys,
     final: !slotted,
     syncing: ctx.syncing,
@@ -3430,8 +3436,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         const top = painted.slotRows.get(key);
         stood.set(key, top === undefined || !slotted ? Number.NaN : top + (painted.slot ?? 0));
       }
+      // What stood in the slot itself, not what rode along with it unseen.
+      const stoodInSlot = new Set(from.entries.map((entry) => entry.key));
       setLanding({
         from: stood,
+        hosts: new Set(leaving.filter((key) => stoodInSlot.has(key))),
         rows: slotted ? painted.rows : new Map(),
         slot: slotted ? painted.slot : null,
         card: painted.card,
@@ -3536,7 +3545,17 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (from === null || feed === null) return;
     easeFeedHeight(feed, from);
   });
-  const lines = above || !folded ? chatLines(history, undone) : [];
+  // What joins the history enters one after another (`usePace`): a line
+  // landing from the slot at once, what rode along with it after.
+  const historyKeys = useMemo(() => history.map((item) => item.key), [history]);
+  const historyHeld = usePace({
+    keys: historyKeys,
+    landing: landing?.hosts ?? NO_HOLDS,
+    flush: !slotted || ctx.syncing,
+  });
+  const entered =
+    historyHeld.size === 0 ? history : history.filter((item) => !historyHeld.has(item.key));
+  const lines = above || !folded ? chatLines(entered, undone) : [];
   // The scroll mounts with its first line, so its box is there from its
   // first frame for what keeps it at its foot.
   const scroll =
@@ -3914,6 +3933,11 @@ function RunScroll({
     const glide = () => {
       const element = scrollRef.current;
       if (element === null || gliding.frame !== 0) return;
+      // Drawn outside a page (a test's renderer), it stands there at once.
+      if (typeof requestAnimationFrame !== "function") {
+        putAt(element, footOf(positionOf(element)));
+        return;
+      }
       gliding.at = element.scrollTop;
       gliding.last = 0;
       const tick = (now: number) => {
