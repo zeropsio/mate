@@ -23,7 +23,9 @@
  *   projects, each by user id with their member id — never a token;
  * - `{ type: "official", official }` — whether this HQ is the official one as its last check of
  *   Zerops said (`official.ts`), whenever that changes: `unknown` while Zerops does not answer
- *   it, which HQ's grace serves through (`@t3tools/shared/hqStream` `HqOfficialVerdict`);
+ *   it, which HQ's grace serves through (`@t3tools/shared/hqStream` `HqOfficialVerdict`), and
+ *   `null` before this Core's first check finished — a Core starts at `unknown`, which is no
+ *   verdict;
  * - `{ type: "ping" }` every 20 s, so the Zerops L7 (which cuts an idle connection at 60 s) never
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
@@ -93,10 +95,10 @@ export type StructureMessage =
       readonly type: "snapshot";
       readonly changes: ChangesSnapshot;
       readonly appReads: AppReads;
-      readonly official: HqOfficialVerdict;
+      readonly official: HqOfficialVerdict | null;
     } & StructureRead &
       HqMatesSnapshot)
-  | { readonly type: "official"; readonly official: HqOfficialVerdict }
+  | { readonly type: "official"; readonly official: HqOfficialVerdict | null }
   | ChangesMessage
   | ReleaseRevisionMessage
   | { readonly type: "change"; readonly key: string; readonly value: unknown }
@@ -189,8 +191,8 @@ interface Sent {
   /** Each observed Mate's parts, encoded. */
   readonly mates: ReadonlyMap<string, ReadonlyMap<string, string>>;
   readonly people: string;
-  /** Whether this HQ is the official one, as its last check of Zerops said. */
-  readonly official: HqOfficialVerdict;
+  /** Whether this HQ is the official one, as its last check of Zerops said; none before one. */
+  readonly official: HqOfficialVerdict | null;
 }
 
 /**
@@ -290,12 +292,20 @@ export const structureMessages = <R>(
           appReads[appId] = yield* Effect.gen(function* () {
             const records = yield* releases.list(userId, appId);
             const repos = yield* changes.listRepos(userId, appId);
-            const mate = yield* changes.readRecipe(userId, appId, "mate");
+            // The Mate's tier stands alone: one HQ cannot read — past the read's bound, say — is
+            // left out, and its reader reads it on its own; the rest never fails for it.
+            const mate = yield* changes.readRecipe(userId, appId, "mate").pipe(
+              Effect.map((read) => ({ mate: read })),
+              Effect.catchTags({
+                ChangeRefused: () => Effect.succeed({}),
+                GitError: () => Effect.succeed({}),
+              }),
+            );
             const stage = yield* changes.readRecipe(userId, appId, "stage");
             const production = yield* changes.readRecipe(userId, appId, "production");
             return {
               revision,
-              value: { releases: records, repos, recipes: { mate, stage, production } },
+              value: { releases: records, repos, recipes: { ...mate, stage, production } },
               failure: null,
             };
           }).pipe(
@@ -364,7 +374,7 @@ export const structureMessages = <R>(
           named,
           mates: new Map([...mates].map(([projectId, entry]) => [projectId, encodedParts(entry)])),
           people: toJson(people),
-          official: (yield* officialHq.status).official,
+          official: (yield* officialHq.checked) ? (yield* officialHq.status).official : null,
         };
         yield* Ref.set(sent, now);
         if (before === undefined) {

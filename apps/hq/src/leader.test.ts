@@ -47,6 +47,7 @@ const startInstance = (
         official: ok ? "ok" : "anchor_missing",
         allowed: ok,
       })),
+      checked: Effect.succeed(true),
       lastOk: Effect.undefined,
       inherit: () => Effect.void,
     });

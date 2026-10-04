@@ -69,11 +69,12 @@ export type HqStructureEvent =
       readonly people: HqPeople | null;
       /**
        * Whether HQ is the official one as its last check of Zerops said
-       * (`@t3tools/shared/hqStream` `HqOfficialVerdict`); absent from an HQ that sends none.
+       * (`@t3tools/shared/hqStream` `HqOfficialVerdict`); `null` before the Core's first check,
+       * absent from a Core whose stream does not say it.
        */
-      readonly official?: string;
+      readonly official?: string | null;
     }
-  | { readonly kind: "official"; readonly official: string }
+  | { readonly kind: "official"; readonly official: string | null }
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
   | { readonly kind: "ungrouped"; readonly mates: HqUngrouped }
   | {
@@ -214,12 +215,14 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       }),
       mates: matesOf(mates),
       people: Option.getOrNull(readPeople(people)),
-      ...(typeof official === "string" ? { official } : {}),
+      ...(typeof official === "string" || official === null ? { official } : {}),
     };
   }
   if (type === "official") {
     const { official } = message as { readonly official?: unknown };
-    return typeof official === "string" ? { kind: "official", official } : undefined;
+    return typeof official === "string" || official === null
+      ? { kind: "official", official }
+      : undefined;
   }
   if (type === "mate" || type === "people") {
     return Option.match(readMatesMessage(message), {

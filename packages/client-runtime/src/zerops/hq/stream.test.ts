@@ -268,6 +268,15 @@ describe("structureEventOf", () => {
       official: "ok",
     });
     expect(structureEventOf({ type: "official", official: 7 })).toBeUndefined();
+    // Before the Core's first check: no verdict, which is not a Core that never says one.
+    expect(structureEventOf({ type: "snapshot", apps: [ACME], official: null })).toMatchObject({
+      kind: "snapshot",
+      official: null,
+    });
+    expect(structureEventOf({ type: "official", official: null })).toEqual({
+      kind: "official",
+      official: null,
+    });
   });
 
   it("parses a Mate's sections and the people map and passes by what it does not know", () => {

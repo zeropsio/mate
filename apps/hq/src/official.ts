@@ -95,6 +95,11 @@ export class Official extends Context.Service<
   Official,
   {
     readonly status: Effect.Effect<OfficialStatus>;
+    /**
+     * Whether this Core's first check has finished, whatever it answered: until then `unknown` is
+     * no verdict, only the state a Core starts in.
+     */
+    readonly checked: Effect.Effect<boolean>;
     /** The newest `ok` this Core holds, read or inherited: what the leader records for the next. */
     readonly lastOk: Effect.Effect<OfficialOk | undefined>;
     /**
@@ -132,6 +137,7 @@ export const officialLayer = (
       const grace = Duration.toMillis(options.grace ?? Duration.minutes(10));
       /** When the credential's own token was last read to fit; none until it was, or once not. */
       const fitAt = yield* Ref.make<number | undefined>(undefined);
+      const checked = yield* Ref.make(false);
       const state = yield* Ref.make<{
         readonly official: OfficialStatus["official"];
         /** When the last verdict was read, if it was `ok`. */
@@ -179,6 +185,7 @@ export const officialLayer = (
           okAt: official === "ok" ? now : official === "unknown" ? current.okAt : undefined,
           answered: current.answered || official !== "unknown",
         }));
+        yield* Ref.set(checked, true);
         if (was.official !== official) {
           yield* Effect.logInfo("official verdict changed", { from: was.official, to: official });
         }
@@ -193,6 +200,7 @@ export const officialLayer = (
       );
 
       return Official.of({
+        checked: Ref.get(checked),
         lastOk: Effect.map(Ref.get(state), ({ okAt }) =>
           okAt === undefined ? undefined : { at: okAt, projectId: options.projectId },
         ),

@@ -15,6 +15,7 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { HqMatesView, HqPeopleView, HqStructureView } from "../state/zerops";
+import type { HqStanding } from "./accountHq";
 import { driveHqStructure, requestHqSnapshot, hqOfficialOf, hqOutageLine } from "./hqStructure";
 
 const ACME: HqStructure = { ungrouped: [], apps: [{ id: "app-1", name: "Acme", projects: [] }] };
@@ -92,7 +93,13 @@ function harness(
 ) {
   const views: Array<HqStructureView> = [];
   const healthReads: Array<number> = [];
-  const page = { visible: true };
+  /** The tab: whether it is shown, and what waits for it to be. */
+  const page = { visible: true, waiting: new Set<() => void>() };
+  const show = () => {
+    page.visible = true;
+    for (const run of page.waiting) run();
+    page.waiting.clear();
+  };
   const mates: Array<HqMatesView> = [];
   const people: Array<HqPeopleView> = [];
   const kept: Array<[HqStructure, number]> = [];
@@ -108,6 +115,7 @@ function harness(
     logged,
     healthReads,
     page,
+    show,
     tick: (ms: number) => (now += ms),
     deps: {
       organizationId: "org-1",
@@ -123,14 +131,22 @@ function harness(
         healthReads.push(now);
         return health;
       },
-      visible: () => page.visible,
+      whenShown: (run: () => void) => {
+        if (page.visible) {
+          run();
+          return () => undefined;
+        }
+        page.waiting.add(run);
+        return () => void page.waiting.delete(run);
+      },
       silenceMs: 60_000,
     },
   };
 }
 
 describe("HQ's standing, from its stream", () => {
-  const snapshot: HqStructureEvent = {
+  /** A Core from before its stream said whether it could check Zerops: no `official`. */
+  const legacy: HqStructureEvent = {
     kind: "snapshot",
     structure: ACME,
     changes: null,
@@ -138,6 +154,7 @@ describe("HQ's standing, from its stream", () => {
     mates: null,
     people: null,
   };
+  const snapshot: HqStructureEvent = { ...legacy, official: "ok" };
 
   it.each<[string, HqHealth, HqStructureView["standing"]]>([
     ["HQ not answering", { kind: "unreachable" }, { kind: "unavailable", since: 10_000 }],
@@ -233,7 +250,7 @@ describe("HQ's standing, from its stream", () => {
     }
   });
 
-  it("reads HQ's health once per failed attempt, never while the tab is hidden", async () => {
+  it("reads HQ's health once per failed attempt, never while the tab is hidden, once on its return", async () => {
     vi.useFakeTimers();
     const h = harness();
     h.page.visible = false;
@@ -247,16 +264,123 @@ describe("HQ's standing, from its stream", () => {
       expect(h.healthReads).toEqual([]);
       // What the stream itself says stands: HQ did not answer it.
       expect(h.views.at(-1)?.standing).toEqual({ kind: "unavailable", since: 10_000 });
-      h.page.visible = true;
+      h.show();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(8000);
       expect(api.attempts()).toBe(5);
-      expect(h.healthReads).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(16000);
-      expect(api.attempts()).toBe(6);
       expect(h.healthReads).toHaveLength(2);
     } finally {
       stop.abort();
       await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // A refusal waits for a manual again: no next attempt would ever read HQ's health.
+  it("reads HQ's health on the tab's return after a refusal it was hidden for", async () => {
+    vi.useFakeTimers();
+    const h = harness(undefined, { kind: "unchecked", build: "b1" });
+    h.page.visible = false;
+    const api = {
+      streamStructure: async () => {
+        throw new HqError({ kind: "refused", code: "session_required", message: "Sign in." });
+      },
+    };
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(h.healthReads).toEqual([]);
+      h.show();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toHaveLength(1);
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked" });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps only the newest health answer, whichever comes back first", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const answers: Array<(health: HqHealth) => void> = [];
+    const api = streamingApi([{ events: [], end: "fail" }]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({
+      ...h.deps,
+      readHealth: () => new Promise<HqHealth>((resolve) => answers.push(resolve)),
+      api,
+      signal: stop.signal,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(answers).toHaveLength(2);
+      answers[1]!({ kind: "unchecked", build: "b1" });
+      await vi.advanceTimersByTimeAsync(0);
+      answers[0]!({ kind: "unreachable" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked" });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // A Core born before its stream said so sends no verdict: its /health says it, once.
+  it.each<[string, HqHealth, HqStanding]>([
+    ["unable to check Zerops", { kind: "unchecked", build: "b1" }, { kind: "unchecked" }],
+    ["the official HQ", { kind: "healthy", build: "b1" }, { kind: "healthy" }],
+  ])("reads an old Core's health once its stream serves: %s", async (_case, health, standing) => {
+    vi.useFakeTimers();
+    const h = harness(undefined, health);
+    const api = streamingApi([{ events: [legacy, legacy], end: "hang" }]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toHaveLength(1);
+      expect(h.views.at(-1)).toMatchObject({ current: true, standing });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads an old Core's health on the tab's return, and none for a Core yet to check", async () => {
+    vi.useFakeTimers();
+    const h = harness(undefined, { kind: "unchecked", build: "b1" });
+    h.page.visible = false;
+    const api = streamingApi([{ events: [legacy], end: "hang" }]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toEqual([]);
+      h.show();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toHaveLength(1);
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked" });
+    } finally {
+      stop.abort();
+      await driving;
+    }
+
+    const fresh = harness(undefined, { kind: "unchecked", build: "b1" });
+    const checking = streamingApi([{ events: [{ ...snapshot, official: null }], end: "hang" }]);
+    const halt = new AbortController();
+    const going = driveHqStructure({ ...fresh.deps, api: checking, signal: halt.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fresh.healthReads).toEqual([]);
+      expect(fresh.views.at(-1)?.standing).toEqual({ kind: "healthy" });
+    } finally {
+      halt.abort();
+      await going;
       vi.useRealTimers();
     }
   });
@@ -870,6 +994,7 @@ describe("driveHqStructure", () => {
             changes: null,
             mates: null,
             people: null,
+            official: "ok",
           },
           { kind: "release-revision", appId: "app-1", read: read("57") },
         ],
@@ -884,6 +1009,7 @@ describe("driveHqStructure", () => {
             changes: null,
             mates: null,
             people: null,
+            official: "ok",
           },
         ],
         end: "hang",
@@ -965,6 +1091,7 @@ describe("driveHqStructure", () => {
             changes: null,
             mates: new Map([["p1", VERA]]),
             people: { "u-ada": { name: "Ada Lovelace" } },
+            official: "ok",
           },
           { kind: "mate", projectId: "p1", value: { crew: { status: "off" }, main: null } },
           { kind: "mate", projectId: "p2", value: VERA },

@@ -35,6 +35,7 @@ import {
   RepositorySource,
   type RepositoryQuery,
 } from "@t3tools/shared/hqGit";
+import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
   Release,
@@ -338,6 +339,12 @@ export interface HqApi {
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
   /**
+   * The Mate tier, as the person (`GET /api/apps/:appId/recipe/mate`): read on demand only where
+   * HQ's stream does not carry it — a Core from before it did, or one that could not read it —
+   * or while the stream is down.
+   */
+  readonly mateRecipe: (appId: string, signal?: AbortSignal) => Promise<RecipeTierResponse>;
+  /**
    * What lies between two commits of an application's repository, by its name, read as the person
    * (`GET /api/apps/:appId/repos/:repo/compare`): git's `base..head`, whoever may read its changes.
    */
@@ -522,6 +529,7 @@ const readMerged = decodedAsked(HqChange);
 const readGitCredential = decoded(GitCredential);
 const readGitCredentialList = decoded(GitCredentialList);
 const readCompare = decoded(CompareResponse);
+const readRecipeTier = decoded(RecipeTierResponse);
 const readReleases = decoded(ReleaseListResponse);
 const readRelease = decodedAsked(Release);
 const readDeploys = decoded(WithDeploys);
@@ -1091,6 +1099,13 @@ export function makeHqApi(input: {
             newest?.rollbackOf === tag && newest.sha === request.groupHead ? newest : undefined,
           );
         },
+      ),
+    mateRecipe: async (appId, signal) =>
+      readRecipeTier(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/recipe/mate`,
+          signal === undefined ? {} : { signal },
+        ),
       ),
     recordClosedOff: async (projectId) => {
       await authorized(

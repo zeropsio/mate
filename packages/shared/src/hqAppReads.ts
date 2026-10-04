@@ -14,7 +14,7 @@ export const AppReadValue = Schema.Struct({
   releases: Schema.Array(Release),
   repos: Schema.Array(RepoListEntry),
   recipes: Schema.Struct({
-    /** Absent from an HQ that predates it: not known, never "no recipe". */
+    /** Absent from an HQ that predates it, or could not read it: not known, never "no recipe". */
     mate: Schema.optionalKey(RecipeTierResponse),
     stage: RecipeTierResponse,
     production: RecipeTierResponse,

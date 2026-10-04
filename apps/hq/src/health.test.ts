@@ -70,6 +70,7 @@ const getHealth = (
           }),
           Layer.succeed(Official, {
             status: Effect.succeed({ official, allowed: official === "ok" }),
+            checked: Effect.succeed(true),
             lastOk: Effect.undefined,
             inherit: () => Effect.void,
           }),
