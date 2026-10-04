@@ -451,6 +451,24 @@ The review's header and footer read the same `changeReview` verdict: an `empty` 
 only Close where permitted, with no merge consequence or Merge action. HQ's detail excludes the
 Mate's preceding landed head from the change's commit list, so squash-landed work is not counted
 again. Desktop uses this web review; mobile has no HQ change-review surface.
+Door cleanup debt is recorded before the possible mint and settled per attempt only after a
+refusal or a confirmed delete. Web and desktop keep it in account-scoped storage by organization,
+without token values; an old account's delete writes to that captured account even after sign-out.
+A reload restores the debt for the projects screen's existing sweep. Deletes run once and leave
+debt on failure. The sweep waits until inventory admits the account, publishes queued/running/final
+state, and persists its own failure so reloading cannot retry it. Manual cleanup refreshes the
+shared token cell once and can discover legacy leftovers without debt. An organization change
+ends its scope; neither its late list nor its manual ask acts on the next organization.
+Mobile shares that accounting and single delete attempt in memory; it has no
+projects-screen sweep today, so its host does not supply durable debt storage yet.
+
+HQ calls are single attempts, including reads, 503 answers with `Retry-After`, and refused
+sessions. A refused session is forgotten for the next explicit call. A lost write answer still
+gets one confirmation read, never a repeated write. The web/desktop structure owner retains
+HQ's last known rows and shows the failure when a stream ends or stops answering; another
+opening waits for an explicit snapshot request. Mobile uses the same single-attempt HQ API; it has no
+separate HQ structure owner today.
+
 The stream snapshot carries each readable application's releases, repository heads and stage/production
 recipes; a `release-revision` message replaces only the moved application's value. The client folds
 these once (`hq/stream.ts`) and projects them without per-app bootstrap reads or recipe retry timers.
@@ -550,7 +568,7 @@ read when its detail opens. An explicit recipe retry asks the stream owner for a
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`) | Still wanted                        |
 | Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                    | Demanded                            |
 | Container probe                                   | The container machine's cadence                                                                | Its state requires it               |
-| Throwaway sweep                                   | Once, after this tab failed a delete, past the door's window (`throwawayDebt`)                 | The projects screen is open         |
+| Throwaway sweep                                   | Once for durable debt past the door window; failed sweeps require explicit again               | The projects screen is open         |
 
 **Wake.** A visible wake is one coalesced event, at most one per 10 s, on: visible again after at
 least 30 s hidden, `pageshow` with `persisted`, `resume`, `online`, sleep detected while visible,

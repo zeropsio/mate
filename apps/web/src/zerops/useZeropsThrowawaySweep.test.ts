@@ -21,21 +21,21 @@ const mock = vi.hoisted(() => ({
   deleted: [] as Array<string>,
 }));
 
-vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({
-    client: {
-      deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
-        mock.deleted.push(tokenId);
-      },
+vi.mock("./ZeropsSessionProvider", () => {
+  const client = {
+    deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
+      mock.deleted.push(tokenId);
     },
-  }),
-}));
-vi.mock("./zeropsDataContext", () => ({
-  useZeropsData: () => ({
+  };
+  return { useZeropsSession: () => ({ client }) };
+});
+vi.mock("./zeropsDataContext", () => {
+  const data = {
     organizationRef: (organizationId: string) => ({ organizationId }),
     runtime: { scope: {}, cells: {} },
-  }),
-}));
+  };
+  return { useZeropsData: () => data };
+});
 vi.mock("./readZeropsCell", () => ({
   readZeropsCell: async (
     _cells: unknown,

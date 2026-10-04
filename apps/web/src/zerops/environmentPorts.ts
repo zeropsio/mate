@@ -3,6 +3,7 @@
  * connection runtime, the connection catalog and its links, the probe over `fetch`, and this
  * account's storage. Adapters only: every decision is the runtime's.
  */
+import { accountThrowawayDebt } from "./throwawayDebt";
 import { fetchRemoteSessionState } from "@t3tools/client-runtime/authorization";
 import {
   connectionAdmission,
@@ -480,6 +481,7 @@ export function webEnvironmentPorts(input: {
             throwaway: client.session?.accessToken
               ? {
                   platform: zeropsThrowawayPlatform(client, {
+                    debt: accountThrowawayDebt(client),
                     signal: request.signal,
                     asked: request.asked,
                   }),

@@ -107,6 +107,8 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
  * applications and the projects HQ places in them.
  */
 export interface HqStructureView {
+  /** A failed stream attempt, waiting for the person to ask again. */
+  readonly failure?: string | null;
   readonly organizationId: string;
   /** Null while nothing is known: never read here, nothing remembered from before. */
   readonly structure: HqStructure | null;

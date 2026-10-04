@@ -38,7 +38,7 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { parseRetryAfterMs, type FetchImplementation } from "../api.ts";
+import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords } from "./refusals.ts";
 import { structureEventOf, type HqStructureEvent } from "./stream.ts";
@@ -381,34 +381,13 @@ async function errorOf(response: Response): Promise<HqError> {
   });
 }
 
-/** A call stopped by its caller or by its own timeout: never one to try again. */
-const stopped = (cause: unknown, signal: AbortSignal | null | undefined) =>
-  signal?.aborted === true ||
-  (cause instanceof DOMException && (cause.name === "AbortError" || cause.name === "TimeoutError"));
-
-/**
- * One call to HQ: its answer, or an {@link HqError}. A read whose connection drops under it is
- * tried once more — a kept-alive connection is cut as HQ's Core is redeployed (measured on the rig,
- * 2026-10-02) — and HQ's own answer never is.
- *
- * A write HQ would make twice is never sent twice: one whose answer was lost — its deadline passed,
- * its connection dropped, or HQ failed it on its way (`5xx`, but `not_active`) — is `uncertain`,
- * for what HQ holds to decide. A write that sets a value HQ answered `503` with a `Retry-After` is
- * asked once more after it, a wait of 45 s at most (F22: HQ could not read Zerops in time).
- */
+/** One call to HQ, ending with its answer or a visible failure; another call is the caller's ask. */
 async function send(
   fetch: FetchImplementation,
   url: string,
   init: RequestInit,
   write?: Write,
 ): Promise<Response> {
-  const response = await sendOnce(fetch, url, init, write);
-  if (write !== "idempotent" || response.status !== 503) return answered(response, write);
-  // @effect-diagnostics-next-line globalDate:off -- an HTTP date is read against the wall clock it names.
-  const wait = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
-  if (wait === null) return answered(response, write);
-  // @effect-diagnostics-next-line globalTimers:off -- plain promises: the wait HQ asked for.
-  await new Promise((resolve) => setTimeout(resolve, Math.min(wait, WRITE_TIMEOUT_MS)));
   return answered(await sendOnce(fetch, url, init, write), write);
 }
 
@@ -439,20 +418,15 @@ async function sendOnce(
     ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
     ...init.headers,
   };
-  for (let attempt = 0; ; attempt += 1) {
-    let response: Response;
-    try {
-      response = await fetch(url, { ...init, signal, headers });
-    } catch (cause) {
-      if (write !== undefined) throw uncertain();
-      if (attempt === 0 && !stopped(cause, signal)) continue;
-      throw new HqError({
-        kind: "unavailable",
-        code: "network",
-        message: "HQ could not be reached.",
-      });
-    }
-    return response;
+  try {
+    return await fetch(url, { ...init, signal, headers });
+  } catch {
+    if (write !== undefined) throw uncertain();
+    throw new HqError({
+      kind: "unavailable",
+      code: "network",
+      message: "HQ could not be reached.",
+    });
   }
 }
 
@@ -644,30 +618,24 @@ export function makeHqApi(input: {
     return entering;
   };
 
-  /**
-   * A call as the session's holder; a session HQ no longer takes is replaced once — by one another
-   * tab kept meanwhile, else through the door.
-   */
+  /** A call as the session's holder; a refused session is forgotten for the next explicit call. */
   const authorized = async (
     path: string,
     init: RequestInit = {},
     write?: Write,
   ): Promise<Response> => {
-    for (let attempt = 0; ; attempt += 1) {
-      const held = session ?? restore() ?? enter();
-      const token = await held;
-      try {
-        return await send(
-          input.fetch,
-          `${origin}${path}`,
-          { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
-          write,
-        );
-      } catch (cause) {
-        const stale = cause instanceof HqError && cause.code === "session_required";
-        if (!stale || attempt > 0) throw cause;
-        drop(held, token);
-      }
+    const held = session ?? restore() ?? enter();
+    const token = await held;
+    try {
+      return await send(
+        input.fetch,
+        `${origin}${path}`,
+        { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
+        write,
+      );
+    } catch (cause) {
+      if (cause instanceof HqError && cause.code === "session_required") drop(held, token);
+      throw cause;
     }
   };
 

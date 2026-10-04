@@ -26,9 +26,9 @@
  *
  * `withThrowaway` deletes in `finally`, but a delete can fail — and Zerops
  * refuses to remove a member who still holds tokens (measured 2026-09-15), so
- * the rows are not harmless. A delete is tried again while Zerops cannot
- * answer, waiting longer each time; one that still fails, or a mint whose
- * answer was lost, is owed ({@link ThrowawayDebt}), and only then does the app
+ * the rows are not harmless. Cleanup is owed before every mint ({@link ThrowawayDebt})
+ * and settled only after its token is deleted or Zerops refused the mint. A delete
+ * is attempted once; a failed delete or a crash stays owed, and only then does the app
  * list the organization's tokens and delete the person's own `mate-door:*`
  * tokens older than five minutes, and the `gitea-signin:*` ones main's client
  * leaves. {@link planThrowawaySweep}
@@ -51,37 +51,111 @@ import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 /** Nothing older than this is still anybody's live throwaway. */
 export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
 
-/**
- * Where a throwaway this tab minted could not be deleted: the organization, and when its newest
- * such delete failed (wall ms). An organization's tokens are listed only to take those back
- * (`planThrowawaySweep`; step A, open question 10) — never on a load, never by the day.
- */
+/** The account's outstanding cleanup, by organization and mint attempt; no token values. */
 export interface ThrowawayDebt {
-  readonly owe: (clientId: string, atMs: number) => void;
-  /** When the newest delete this tab owes `clientId` failed; null while it owes none. */
+  readonly owe: (clientId: string, atMs: number, attempt?: string) => void;
+  /** The newest outstanding attempt; null when this organization owes none. */
   readonly failedAt: (clientId: string) => number | null;
-  /** A sweep took back what failed up to `upToMs`: owed no longer, unless one failed since. */
+  /** A sweep failed: subsequent loads require the person to ask again. */
+  readonly sweepFailed: (clientId: string) => boolean;
+  readonly failSweep: (clientId: string, atMs: number) => void;
+  /** One mint was refused or its token deleted: other outstanding attempts remain owed. */
+  readonly finish: (clientId: string, attempt: string) => void;
+  /** A sweep settled attempts up to this time; later mints remain owed. */
   readonly settle: (clientId: string, upToMs: number) => void;
-  /** Told on every change. */
   readonly subscribe: (listener: () => void) => () => void;
 }
 
-export function makeThrowawayDebt(): ThrowawayDebt {
-  const owed = new Map<string, number>();
+/** The host supplies storage scoped to a captured account, including after it signs out. */
+export interface ThrowawayDebtStorage {
+  readonly getItem: (key: string) => string | null;
+  readonly setItem: (key: string, value: string) => void;
+  readonly removeItem: (key: string) => void;
+}
+
+export const THROWAWAY_DEBT_KEY = "throwaway-debt.v1";
+
+export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt {
+  let owed = new Map<
+    string,
+    { readonly clientId: string; readonly attempt: string; readonly at: number }
+  >();
   const listeners = new Set<() => void>();
+  let durable = storage !== undefined;
+  const read = () => {
+    if (!durable || storage === undefined) return;
+    try {
+      const value: unknown = JSON.parse(storage.getItem(THROWAWAY_DEBT_KEY) ?? "[]");
+      if (!Array.isArray(value)) return;
+      const read = new Map<
+        string,
+        { readonly clientId: string; readonly attempt: string; readonly at: number }
+      >();
+      for (const entry of value) {
+        if (!Array.isArray(entry) || entry.length !== 3) continue;
+        const [clientId, attempt, at] = entry as unknown[];
+        if (
+          typeof clientId !== "string" ||
+          typeof attempt !== "string" ||
+          typeof at !== "number" ||
+          !Number.isFinite(at) ||
+          at < 0
+        )
+          continue;
+        read.set(JSON.stringify([clientId, attempt]), { clientId, attempt, at });
+      }
+      owed = read;
+    } catch {
+      /* Blocked storage leaves this renderer's debt available. */
+    }
+  };
   const told = () => {
+    try {
+      if (owed.size === 0) storage?.removeItem(THROWAWAY_DEBT_KEY);
+      else
+        storage?.setItem(
+          THROWAWAY_DEBT_KEY,
+          JSON.stringify(
+            [...owed.values()].map(({ clientId, attempt, at }) => [clientId, attempt, at]),
+          ),
+        );
+    } catch {
+      durable = false; /* Cleanup still works in memory when persistence is blocked. */
+    }
     for (const listener of listeners) listener();
   };
   return {
-    owe: (clientId, atMs) => {
-      owed.set(clientId, Math.max(atMs, owed.get(clientId) ?? atMs));
+    owe: (clientId, atMs, attempt = "") => {
+      read();
+      const key = JSON.stringify([clientId, attempt]);
+      owed.set(key, { clientId, attempt, at: Math.max(atMs, owed.get(key)?.at ?? atMs) });
       told();
     },
-    failedAt: (clientId) => owed.get(clientId) ?? null,
+    failedAt: (clientId) => {
+      read();
+      let at: number | null = null;
+      for (const entry of owed.values())
+        if (entry.clientId === clientId) at = Math.max(at ?? 0, entry.at);
+      return at;
+    },
+    sweepFailed: (clientId) => {
+      read();
+      return owed.has(JSON.stringify([clientId, "sweep-failed"]));
+    },
+    failSweep: (clientId, at) => {
+      read();
+      const attempt = "sweep-failed";
+      owed.set(JSON.stringify([clientId, attempt]), { clientId, attempt, at });
+      told();
+    },
+    finish: (clientId, attempt) => {
+      read();
+      if (owed.delete(JSON.stringify([clientId, attempt]))) told();
+    },
     settle: (clientId, upToMs) => {
-      const failed = owed.get(clientId);
-      if (failed === undefined || failed > upToMs) return;
-      owed.delete(clientId);
+      read();
+      for (const [key, entry] of owed)
+        if (entry.clientId === clientId && entry.at <= upToMs) owed.delete(key);
       told();
     },
     subscribe: (listener) => {
@@ -91,33 +165,14 @@ export function makeThrowawayDebt(): ThrowawayDebt {
   };
 }
 
-/** This tab's debt, shared by every platform built here, as its mint budgets are. */
+/** Hosts without durable storage keep the same cleanup accounting in memory. */
 export const throwawayDebt: ThrowawayDebt = makeThrowawayDebt();
-
-/**
- * How long a throwaway delete that Zerops could not answer waits before each try again, in turn:
- * a stall of the organization's reads (KRLS, 2026-10-03: a minute of them timing out) is outlasted,
- * and only then is the delete owed to the sweep.
- */
-export const THROWAWAY_DELETE_RETRIES_MS: ReadonlyArray<number> = [5_000, 15_000, 45_000];
 
 /**
  * How long a throwaway its door did not take is held for the door's next try: well inside the
  * five minutes a door admits one for (`THROWAWAY_SWEEP_AGE_MS`), then it is deleted.
  */
 export const THROWAWAY_REUSE_MS = 2 * 60 * 1000;
-
-/**
- * Whether a failed delete is worth trying again: the platform was not
- * reached, did not answer in time, or answered 429/5xx. A 401 or 403 is the
- * minting session's own verdict and is left to the sweep.
- */
-function isTransientDeleteFailure(cause: unknown): boolean {
-  return (
-    cause instanceof ZeropsApiError &&
-    (cause.kind === "network" || cause.kind === "server" || cause.status === 429)
-  );
-}
 
 /**
  * How fast mints start, as a bucket: a full one starts `burst` at once, and it refills at
@@ -265,7 +320,12 @@ const tabMintBudgets = makeThrowawayMintBudgets();
  */
 const mintedHere = new Map<
   string,
-  { readonly name: string; readonly mintingToken: string; readonly mintedAtMs: number }
+  {
+    readonly name: string;
+    readonly mintingToken: string;
+    readonly mintedAtMs: number;
+    readonly debt: ThrowawayDebt;
+  }
 >();
 
 /**
@@ -287,10 +347,8 @@ const heldForDoor = new Map<
  * not hold it up. A mint first takes a slot from this tab's door budget — at
  * once when `asked`, the person having asked for this Mate — and a
  * 429 holds that budget's background mints; `signal` ends the wait and the mint — never the delete,
- * which runs on its own deadline with the token the mint carried and is tried
- * again on {@link THROWAWAY_DELETE_RETRIES_MS} while Zerops cannot answer. A
- * delete that still fails, or a mint whose answer was lost — a throwaway may
- * stand that nobody holds — owes the organization a sweep.
+ * which runs once on its own deadline with the token the mint carried. A failed
+ * delete or a mint whose answer was lost stays owed to the organization’s sweep.
  *
  * A throwaway its door did not take is held for the door's next try for
  * {@link THROWAWAY_REUSE_MS} from its mint (`hold`), and the next mint for that
@@ -339,20 +397,10 @@ export function zeropsThrowawayPlatform(
       }
     };
     try {
-      for (let tried = 0; ; tried += 1) {
-        try {
-          await attempt();
-          return;
-        } catch (cause) {
-          const wait = THROWAWAY_DELETE_RETRIES_MS[tried];
-          if (wait === undefined || !isTransientDeleteFailure(cause)) throw cause;
-          // @effect-diagnostics-next-line globalTimers:off -- plain promises: the retry's own pause.
-          await new Promise((resolve) => setTimeout(resolve, wait));
-        }
-      }
+      await attempt();
+      throwaway?.debt.finish(input.clientId, throwaway.name);
     } catch (cause) {
-      // Left on the account: this tab owes its organization a sweep.
-      debt.owe(input.clientId, nowMs());
+      (throwaway?.debt ?? debt).owe(input.clientId, nowMs(), throwaway?.name);
       throw cause;
     }
   };
@@ -373,6 +421,8 @@ export function zeropsThrowawayPlatform(
         }
       }
       const diagnostic = { kind: "throwaway", action: "mint", clientId: input.clientId } as const;
+      // Persist before the possible write: a crash or lost answer still leaves an owned sweep.
+      debt.owe(input.clientId, nowMs(), input.name);
       return client
         .mintThrowaway(
           { clientId: input.clientId, name: input.name },
@@ -387,6 +437,7 @@ export function zeropsThrowawayPlatform(
               name: input.name,
               mintingToken: throwaway.mintingToken,
               mintedAtMs: nowMs(),
+              debt,
             });
             mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: throwaway.id });
             return { id: throwaway.id, token: throwaway.token };
@@ -397,7 +448,9 @@ export function zeropsThrowawayPlatform(
             }
             // Its answer lost, a throwaway may stand that nobody here can delete: the sweep can.
             if (cause instanceof ZeropsApiError && cause.kind === "uncertain") {
-              debt.owe(input.clientId, nowMs());
+              debt.owe(input.clientId, nowMs(), input.name);
+            } else if (cause instanceof ZeropsApiError) {
+              debt.finish(input.clientId, input.name);
             }
             mateDiagnostics.record({
               ...diagnostic,

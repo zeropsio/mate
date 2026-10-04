@@ -88,6 +88,7 @@ export async function driveHqStructure(input: {
     readAt: input.remembered?.readAt ?? null,
     current: false,
     unavailableSince: null,
+    failure: null,
   };
   const publish = (next: HqStructureView) => {
     view = next;
@@ -143,7 +144,8 @@ export async function driveHqStructure(input: {
         dirty = false;
       };
       if (view.current || view.unavailableSince !== null)
-        publish({ ...view, current: false, unavailableSince: null });
+        publish({ ...view, current: false, unavailableSince: null, failure: null });
+      let failure = "HQ's stream ended.";
       try {
         await input.api.streamStructure(
           {
@@ -193,13 +195,18 @@ export async function driveHqStructure(input: {
                 readAt,
                 current: true,
                 unavailableSince: null,
+                failure: null,
               });
             },
           },
           controller.signal,
         );
-      } catch {
-        // The failure belongs to the retained view; only a person's request starts another attempt.
+      } catch (cause) {
+        failure = controller.signal.aborted
+          ? "HQ's stream stopped answering."
+          : cause instanceof Error
+            ? cause.message
+            : "HQ could not be reached.";
       } finally {
         clearTimeout(silence);
         rememberMates(true);
@@ -207,7 +214,7 @@ export async function driveHqStructure(input: {
       if (input.signal.aborted) return;
       if (!requested) {
         input.log(`HQ's structure stream stopped after ${String(input.now() - openedAt)} ms`);
-        publish({ ...view, current: false, unavailableSince: input.now() });
+        publish({ ...view, current: false, unavailableSince: input.now(), failure });
         publishMates({ ...matesView, current: false });
         await new Promise<void>((resolve) => {
           again = resolve;
@@ -239,7 +246,7 @@ export function hqOutageLine(
     return view.readAt === null || view.structure === null
       ? null
       : `Last known · as of ${at(view.readAt)} · Updating…`;
-  const since = `HQ unavailable since ${at(view.unavailableSince)}.`;
+  const since = `${view.failure ? `${view.failure} ` : ""}HQ unavailable since ${at(view.unavailableSince)}.`;
   return view.readAt === null || view.structure === null
     ? since
     : `${since} Projects as of ${at(view.readAt)}.`;

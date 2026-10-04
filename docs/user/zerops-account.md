@@ -10,6 +10,10 @@ that project, so another admin's browser can continue it after a tab closes. If 
 Mate shows why and stops. Fix the cause in Zerops, then press **Again**. If Zerops did not confirm
 an operation, **Again** checks its recorded progress rather than sending the operation again.
 
+HQ calls stop with a visible failure when HQ cannot answer. Press **Try again** to ask again.
+If HQ's live connection drops, Mate keeps the last known projects visible and stops until
+you press **Try again** in the menu; Mate chats remain available.
+
 Mate lists projects your account can operate. Changes made elsewhere appear when the inventory
 refreshes. A removed project or lost permission does not reopen from an old local list. If a
 platform read fails, Mate shows a retry state instead of pretending your projects were deleted.
@@ -28,6 +32,11 @@ for it when that information is available. A container replacement is identified
 time proves it happened during the turn; otherwise the chat gives Mate's restart time. Send a
 message to continue. Mate keeps the coding agent's saved conversation cursor, but recovery depends
 on that agent's saved session still being available.
+
+The projects page cleans up expired temporary sign-in tokens left by an interrupted sign-in.
+Cleanup progress and failures stay visible. Use **Clean up sign-in tokens** to find older
+leftovers, or **Try again** after a cleanup failure. Reloading preserves a failed cleanup and
+still requires **Try again**.
 
 Signing out locks every Mate tab sharing this browser login. It does not sign out other devices or
 stop work already running in a project. Signing out of the Zerops website is separate from revoking
