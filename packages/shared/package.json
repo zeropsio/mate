@@ -87,6 +87,10 @@
       "types": "./src/hqAttachments.ts",
       "import": "./src/hqAttachments.ts"
     },
+    "./hqGit": {
+      "types": "./src/hqGit.ts",
+      "import": "./src/hqGit.ts"
+    },
     "./hqChanges": {
       "types": "./src/hqChanges.ts",
       "import": "./src/hqChanges.ts"

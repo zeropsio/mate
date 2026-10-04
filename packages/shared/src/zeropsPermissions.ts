@@ -157,6 +157,8 @@ export interface Targets {
   readonly comment_change: { readonly projectIds: ReadonlyArray<string> };
   /** A merge of one of an application's changes into its `main`: whoever develops it. */
   readonly merge_change: { readonly projectIds: ReadonlyArray<string> };
+  /** Human topic-branch pushes: main's app write team, or its active org owner (site admin). */
+  readonly push_repo: { readonly projectIds: ReadonlyArray<string> };
   /** A change of an application closed without merging: whoever may merge it, or a writer. */
   readonly close_change: { readonly projectIds: ReadonlyArray<string> };
   /** A deploy of one of an application's environments asked again ("Run again"): whoever develops it. */
@@ -362,6 +364,11 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "comment_change":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return seesChanges(request.target.projectIds) ? ALLOW : deny("changes_not_seen");
+    case "push_repo":
+      if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
+      return member.roleCode === "OWNER" || writesApp(request.target.projectIds)
+        ? ALLOW
+        : deny("not_app_developer");
     // Main's Gitea write team merges. It closes too, as does the structure's writer, who merges
     // nothing — Gitea's split: a Mate's open change outlives its leaving the application, so an
     // application with no project left still has a closer.

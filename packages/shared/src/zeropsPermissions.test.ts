@@ -193,6 +193,26 @@ const redeploy = (...projectIds: ReadonlyArray<string>): Request => ({
 });
 
 const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
+  push_repo: [
+    [
+      "developer",
+      { override: "BASIC_USER" },
+      { verb: "push_repo", target: { projectIds: ["P"] } },
+      "allow",
+    ],
+    [
+      "site owner without projects",
+      { orgRole: "OWNER" },
+      { verb: "push_repo", target: { projectIds: [] } },
+      "allow",
+    ],
+    [
+      "admin without projects",
+      { orgRole: "ADMIN" },
+      { verb: "push_repo", target: { projectIds: [] } },
+      "not_app_developer",
+    ],
+  ],
   // "Run again" of a deploy (main B36): main re-ran a deploy's job with write on its repository —
   // whoever develops the application, as a merge.
   redeploy: [
@@ -1339,7 +1359,14 @@ const REQUESTS: ReadonlyArray<Request> = [
     [null, "A"].flatMap((appId) => ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))),
   ),
   ...(
-    ["read_change", "comment_change", "merge_change", "close_change", "redeploy"] as const
+    [
+      "read_change",
+      "comment_change",
+      "merge_change",
+      "close_change",
+      "redeploy",
+      "push_repo",
+    ] as const
   ).flatMap((verb) => APPS.map((projectIds): Request => ({ verb, target: { projectIds } }))),
   ...APPS.flatMap((projectIds) =>
     [null, "P", "P_SEEN", "P_DEV", "P_HIDDEN"].map((production) =>

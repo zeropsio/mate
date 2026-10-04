@@ -110,7 +110,7 @@ export class GitHost extends Context.Service<
       decide: (target: {
         readonly repo: Repo;
         readonly service: GitService;
-      }) => Effect.Effect<MatePrincipal, E, R>,
+      }) => Effect.Effect<Principal, E, R>,
       mayRead: (repo: Repo) => Effect.Effect<boolean>,
     ) => Effect.Effect<void, E | NotLeader | GitError, R>;
     /** Closes the layer for good: on shutdown, before the lead is given up. */

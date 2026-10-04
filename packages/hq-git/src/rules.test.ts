@@ -17,6 +17,38 @@ const decide = (
 ) => allowRefUpdate(principal, repo, { ...update, ...patch }, async () => record);
 
 describe("default write rules", () => {
+  it("allows an application's person to push a topic branch without a Mate change", async () => {
+    const person: Principal = { kind: "person", userId: "user", appId: "app" };
+    expect(await decide(person, { ref: "refs/heads/feature/source" }, null)).toEqual({
+      allowed: true,
+    });
+  });
+
+  it.each([
+    "refs/heads/main",
+    "refs/heads/mate",
+    "refs/heads/mate/alice/1",
+    "refs/tags/v1",
+    "refs/notes/review",
+  ])("protects %s from a person even with write permission", async (ref) => {
+    expect(await decide({ kind: "person", userId: "user", appId: "app" }, { ref })).toEqual({
+      allowed: false,
+      reason: "protected_ref",
+    });
+  });
+
+  it("refuses a person's other application and branch deletion", async () => {
+    expect(
+      await decide({ kind: "person", userId: "user", appId: "other" }, { ref: "refs/heads/topic" }),
+    ).toEqual({ allowed: false, reason: "not_your_ref" });
+    expect(
+      await decide(
+        { kind: "person", userId: "user", appId: "app" },
+        { ref: "refs/heads/topic", newSha: "0".repeat(40) },
+      ),
+    ).toEqual({ allowed: false, reason: "deletion" });
+  });
+
   it("allows an allocated open change and core's main/tags", async () => {
     expect(await decide()).toEqual({ allowed: true });
     for (const ref of ["refs/heads/main", "refs/tags/v1"]) {
