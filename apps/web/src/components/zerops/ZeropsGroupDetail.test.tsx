@@ -159,6 +159,12 @@ function render(
 const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) =>
   ({ deployments }) as unknown as ZeropsProjectFlowValue;
 
+it("an empty open-change list makes no claim about how closed changes ended", () => {
+  const markup = render();
+  expect(markup).toContain("Nothing open.");
+  expect(markup).not.toContain("Every change the Mates made has landed.");
+});
+
 describe("runtime without HQ detail", () => {
   it("keeps the inventory's placed stop identities when HQ has no environment read", () => {
     const projects = ["production", "stage", "mate"].map((kind) => ({
@@ -532,6 +538,7 @@ const CARRIED: ReadonlyMap<string, MovedCommits> = new Map([
 ]);
 
 interface StopCase {
+  readonly readAgain?: ReactNode;
   readonly tier: EnvironmentRow["tier"];
   readonly services: ReadonlyArray<EnvironmentServiceState>;
   readonly deployment?: Shown<Deployment>;
@@ -632,6 +639,7 @@ function renderStop(input: StopCase): string {
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
+      readAgain={input.readAgain}
       carried={input.carried}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
       deployAgain={
@@ -671,6 +679,26 @@ function renderStop(input: StopCase): string {
     />,
   );
 }
+
+it("keeps runtime read recovery inside the verdict that reports its failure", () => {
+  const markup = renderStop({
+    tier: "stage",
+    services: [],
+    deployment: {
+      state: "failed",
+      failure: { kind: "transport", detail: "timeout" },
+      atMs: NOW,
+      attempt: 1,
+      retryAtMs: null,
+    },
+    readAgain: <button>Again</button>,
+  });
+  const document = new Window().document;
+  document.body.innerHTML = markup;
+  const panel = document.querySelector('[data-zerops-primitive="verdict-panel"]');
+  expect(panel?.textContent).toContain("Again");
+  expect(panel?.textContent).toContain("Zerops");
+});
 
 const TWO_LIVE = [service("api", "a1", "v0.1.13"), service("web", "b2", "v0.1.13")];
 

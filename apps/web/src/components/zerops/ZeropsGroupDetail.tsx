@@ -937,7 +937,7 @@ export function ZeropsGroupPane({
 
       <Section title="In flight">
         {pullRequests.length === 0 ? (
-          <Note>Nothing open. Every change the Mates made has landed.</Note>
+          <Note>Nothing open.</Note>
         ) : (
           <ul className="flex flex-col">
             {pullRequests.map((pull) => (
@@ -1127,91 +1127,89 @@ export function ZeropsStopDetailPage({
   });
 
   return (
-    <>
-      <StopReadAgain projectId={projectId} />
-      <ZeropsStopPane
-        readFailures={
-          <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
-        }
-        carried={carried}
-        crumbs={crumbs}
-        deployed={deployed}
-        enablingServiceId={route.enablingServiceId}
-        history={history}
+    <ZeropsStopPane
+      readAgain={<StopReadAgain projectId={projectId} />}
+      readFailures={
+        <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
+      }
+      carried={carried}
+      crumbs={crumbs}
+      deployed={deployed}
+      enablingServiceId={route.enablingServiceId}
+      history={history}
 
-        groupId={groupId}
-        names={names}
-        onEnableRoute={(serviceId) => {
-          void route.enable(projectId, serviceId);
-        }}
-        onOpenCarriedChange={openCarried}
-        onOpenChange={openChange}
-        onRollBack={(tag, from) => {
-          openReview({ kind: "rollback", groupId, tag }, { from });
-        }}
-        pending={flowValue.pending}
-        release={release}
-        releases={production ? flow.releases : NO_RELEASES}
-        repo={repo}
-        routeTrouble={route.trouble}
-        routes={routes}
-        deployAgain={
-          mayRunAgain
-            ? {
-                running: (service) =>
-                  flowValue.pending.has(
-                    flowVerbKey({ kind: "redeploy", groupId, projectId, service }),
-                  ),
-                onDeployAgain: (again) => said(flowValue.redeploy(groupId, projectId, again)),
-              }
-            : undefined
-        }
-        addService={
-          mayRunAgain
-            ? {
-                running: (service) =>
-                  flowValue.pending.has(
-                    flowVerbKey({ kind: "add-service", groupId, projectId, service }),
-                  ),
-                onAdd: (service) => said(flowValue.addService(groupId, projectId, service)),
-              }
-            : undefined
-        }
-        notInZerops={
-          declared === undefined || withheld !== null
-            ? undefined
-            : notInZerops({ recipeServices: declared.recipeServices, platform })
-        }
-        deployAnswer={deployAnswer}
-        runAgain={
-          redeploy === undefined || !mayRunAgain
-            ? undefined
-            : {
-                running: flowValue.pending.has(
-                  flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
+      groupId={groupId}
+      names={names}
+      onEnableRoute={(serviceId) => {
+        void route.enable(projectId, serviceId);
+      }}
+      onOpenCarriedChange={openCarried}
+      onOpenChange={openChange}
+      onRollBack={(tag, from) => {
+        openReview({ kind: "rollback", groupId, tag }, { from });
+      }}
+      pending={flowValue.pending}
+      release={release}
+      releases={production ? flow.releases : NO_RELEASES}
+      repo={repo}
+      routeTrouble={route.trouble}
+      routes={routes}
+      deployAgain={
+        mayRunAgain
+          ? {
+              running: (service) =>
+                flowValue.pending.has(
+                  flowVerbKey({ kind: "redeploy", groupId, projectId, service }),
                 ),
-                refused: runAgainRefused,
-                onRunAgain: () => said(flowValue.redeploy(groupId, projectId, redeploy)),
-              }
-        }
-        services={services}
-        stop={stop}
-        tags={tags}
-        trouble={flowValue.trouble}
-        verdict={verdict}
-        view={view}
-        untold={production ? flow.release.untold : NO_UNTOLD}
-        waiting={
-          production
-            ? {
-                commits: releaseContentsCommits(flow.release.contents),
-                total: notLive.count,
-                atLeast: notLive.atLeast,
-              }
-            : NOTHING_WAITING
-        }
-      />
-    </>
+              onDeployAgain: (again) => said(flowValue.redeploy(groupId, projectId, again)),
+            }
+          : undefined
+      }
+      addService={
+        mayRunAgain
+          ? {
+              running: (service) =>
+                flowValue.pending.has(
+                  flowVerbKey({ kind: "add-service", groupId, projectId, service }),
+                ),
+              onAdd: (service) => said(flowValue.addService(groupId, projectId, service)),
+            }
+          : undefined
+      }
+      notInZerops={
+        declared === undefined || withheld !== null
+          ? undefined
+          : notInZerops({ recipeServices: declared.recipeServices, platform })
+      }
+      deployAnswer={deployAnswer}
+      runAgain={
+        redeploy === undefined || !mayRunAgain
+          ? undefined
+          : {
+              running: flowValue.pending.has(
+                flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
+              ),
+              refused: runAgainRefused,
+              onRunAgain: () => said(flowValue.redeploy(groupId, projectId, redeploy)),
+            }
+      }
+      services={services}
+      stop={stop}
+      tags={tags}
+      trouble={flowValue.trouble}
+      verdict={verdict}
+      view={view}
+      untold={production ? flow.release.untold : NO_UNTOLD}
+      waiting={
+        production
+          ? {
+              commits: releaseContentsCommits(flow.release.contents),
+              total: notLive.count,
+              atLeast: notLive.atLeast,
+            }
+          : NOTHING_WAITING
+      }
+    />
   );
 }
 
@@ -1365,6 +1363,7 @@ const RELEASES_SHOWN = 5;
  */
 export function ZeropsStopPane({
   readFailures,
+  readAgain,
   carried,
   crumbs,
   deployed,
@@ -1397,6 +1396,8 @@ export function ZeropsStopPane({
   waiting,
 }: {
   readonly readFailures?: React.ReactNode;
+  /** Runtime read recovery belongs beside the verdict that reports it. */
+  readonly readAgain?: React.ReactNode;
   readonly crumbs: ReadonlyArray<Crumb>;
   readonly groupId: string;
   readonly stop: EnvironmentRow;
@@ -1512,7 +1513,9 @@ export function ZeropsStopPane({
             >
               {flowVerbLabel("redeploy", runAgain.running)}
             </Button>
-          ) : undefined}
+          ) : (
+            readAgain
+          )}
         </VerdictPanel>
         {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
           <p className="mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]">
@@ -1766,11 +1769,11 @@ function StopServiceLine({
             <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>
           )}
         </span>
-        <span className="col-start-2 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-3">
+        <span className="col-start-2 row-start-1 flex min-w-0 text-line text-foreground sm:col-start-3">
           {row.status === undefined ||
           (answer !== undefined &&
             (row.runs === undefined || row.job !== undefined)) ? null : dot === undefined ? (
-            <span className="truncate text-muted-foreground">{row.status}</span>
+            <span className="min-w-0 break-words text-muted-foreground">{row.status}</span>
           ) : (
             <StatusDot label={row.status} sentence tone={dot} />
           )}
