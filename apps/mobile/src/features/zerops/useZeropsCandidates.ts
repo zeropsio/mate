@@ -23,6 +23,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
+import { AppState } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
@@ -120,6 +121,32 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
     let desiredInventory = new Map<string, ProjectRef>();
     let projectReads: ReadonlyArray<StampedRead<CollectionRead<ProjectRecord>>> = [];
     let serviceReads = new Map<string, StampedRead<CollectionRead<ServiceRecord>>>();
+    /** Disarms the publish due when the first address wait ends. */
+    let disarmWait: (() => void) | null = null;
+
+    // A wait ends on a clock, not on a read: the rows are derived again then, as the web's are
+    // (`ADDRESS_GRACE_MS`), so a young Mate never says "on its way" past its wait. One timer at a
+    // time; an app in the background derives nothing until it is back in the foreground.
+    const armWait = (waitEnd: number, atMs: number) => {
+      const handle = setTimeout(
+        () => {
+          if (AppState.currentState === "active") {
+            disarmWait = null;
+            publish();
+            return;
+          }
+          const foreground = AppState.addEventListener("change", (state) => {
+            if (state !== "active") return;
+            foreground.remove();
+            disarmWait = null;
+            publish();
+          });
+          disarmWait = () => foreground.remove();
+        },
+        Math.max(0, waitEnd - atMs),
+      );
+      disarmWait = () => clearTimeout(handle);
+    };
 
     // Scope creation is asynchronous. Cleanup can win that race, so closing is
     // centralized and guarded before this hook starts any demand acquisition.
@@ -226,6 +253,9 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
       );
       const learned = learnAddresses(addresses.current, listings);
       addresses.current = learned.memory;
+      disarmWait?.();
+      disarmWait = null;
+      if (learned.waitEnd !== null) armWait(learned.waitEnd, atMs);
       setReads({ projects: projectReads, services: serviceReads, listings, atMs });
     }
 
@@ -264,6 +294,7 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
 
     return () => {
       cancelled = true;
+      disarmWait?.();
       unsubscribeAll();
       desiredInventory = new Map();
       for (const lease of inventoryLeases.values()) void Effect.runPromise(lease.release);

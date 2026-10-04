@@ -34,3 +34,31 @@ layer("059_ActivityBudgetColumnsWhereSkipped", (it) => {
     }),
   );
 });
+
+const ranUpstream57 = it.layer(Layer.mergeAll(NodeSqliteClient.layer({ filename: ":memory:" })));
+
+ranUpstream57(
+  "059_ActivityBudgetColumnsWhereSkipped over a database that ran upstream's 57",
+  (it) => {
+    it.effect("reads none of its rows again", () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 57 });
+        yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at,
+          agent_id
+        )
+        VALUES ('helper-call', 'thread-1', 'turn-1', 'tool', 'tool.started', 'row',
+          '{"toolCallId":"call-1","agentId":"helper-a"}', NULL, '2026-05-01T00:00:00.000Z',
+          'written-at-ingestion')
+      `;
+        yield* runMigrations();
+        const rows = yield* sql<{ readonly agentId: string | null }>`
+        SELECT agent_id AS "agentId" FROM projection_thread_activities
+      `;
+        assert.deepStrictEqual(rows, [{ agentId: "written-at-ingestion" }]);
+      }),
+    );
+  },
+);
