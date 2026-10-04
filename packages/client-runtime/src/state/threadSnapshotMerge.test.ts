@@ -81,6 +81,15 @@ const thread = (turns: ReadonlyArray<number>, checkpoints: ReadonlyArray<number>
     session: null,
   }) satisfies OrchestrationThread;
 
+// The turn's reply still streaming: the turn was running when the client
+// last heard of it.
+const running = (value: OrchestrationThread, turn: number): OrchestrationThread => ({
+  ...value,
+  messages: value.messages.map((entry) =>
+    entry.id === `reply-${turn}` ? { ...entry, streaming: true } : entry,
+  ),
+});
+
 const page = (beforeCursor: string | null): EnvironmentThreadPageState => ({
   beforeCursor,
   hasMore: beforeCursor !== null,
@@ -151,6 +160,48 @@ describe("mergeFirstPageSnapshot", () => {
       turns: ["ask-1", "ask-2", "ask-3", "ask-4", "ask-5"],
       cursor: "before-1",
     },
+    {
+      name: "drops what it holds when it doesn't reach the page",
+      held: running(thread([1, 2, 3, 4]), 4),
+      heldPage: page("before-1"),
+      snapshot: snapshotOf(thread([6]), "before-6"),
+      turns: ["ask-6"],
+      cursor: "before-6",
+    },
+    {
+      name: "keeps a turn that was running when the page has it, settled",
+      held: running(thread([1, 2, 3, 4]), 4),
+      heldPage: page("before-1"),
+      snapshot: snapshotOf(thread([4, 5]), "before-4"),
+      turns: ["ask-1", "ask-2", "ask-3", "ask-4", "ask-5"],
+      cursor: "before-1",
+    },
+    {
+      name: "drops what it holds when a turn below the page was still running",
+      held: running(thread([1, 2, 3, 4]), 3),
+      heldPage: page("before-1"),
+      snapshot: snapshotOf(thread([4, 5]), "before-4"),
+      turns: ["ask-4", "ask-5"],
+      cursor: "before-4",
+    },
+    {
+      name: "drops what it holds when its latest turn below the page was running",
+      held: {
+        ...thread([1, 2, 3, 4]),
+        latestTurn: {
+          turnId: TurnId.make("turn-3"),
+          state: "running" as const,
+          requestedAt: at(3),
+          startedAt: at(3),
+          completedAt: null,
+          assistantMessageId: null,
+        },
+      },
+      heldPage: page("before-1"),
+      snapshot: snapshotOf(thread([4, 5]), "before-4"),
+      turns: ["ask-4", "ask-5"],
+      cursor: "before-4",
+    },
   ])("$name", ({ held, heldPage, snapshot, turns, cursor }) => {
     const merged = mergeFirstPageSnapshot({ held, heldPage, snapshot });
     expect(turnsOf(merged.thread)).toEqual(turns);
@@ -194,6 +245,27 @@ describe("mergeFirstPageSnapshot", () => {
     });
   });
 
+  it("keeps a whole older turn whose helper start the page pins", () => {
+    const held = thread([1, 2, 3, 4, 5]);
+    const helperStart = { ...step(2, "helper-start-2"), kind: "task.started" as const };
+    const heldWithHelper = { ...held, activities: [...held.activities, helperStart] };
+    const fresh = thread([5, 6]);
+    const merged = mergeFirstPageSnapshot({
+      held: heldWithHelper,
+      heldPage: page("before-1"),
+      snapshot: snapshotOf(
+        { ...fresh, activities: [helperStart, ...fresh.activities] },
+        "before-5",
+      ),
+    });
+    expect(merged.thread.messages.map((entry) => entry.id)).toEqual(
+      [1, 2, 3, 4, 5, 6].flatMap((turn) => [`ask-${turn}`, `reply-${turn}`]),
+    );
+    expect(merged.thread.activities.map((entry) => entry.id).toSorted()).toEqual(
+      ["helper-start-2", "step-1", "step-2", "step-3", "step-4", "step-5", "step-6"].toSorted(),
+    );
+  });
+
   it("keeps a held older row the page pins only once, in the record's order", () => {
     const held = thread([1, 2, 3]);
     const pinned = held.activities[0]!;
@@ -208,5 +280,8 @@ describe("mergeFirstPageSnapshot", () => {
       "step-2",
       "step-3",
     ]);
+    expect(merged.thread.messages.map((entry) => entry.id)).toEqual(
+      [1, 2, 3].flatMap((turn) => [`ask-${turn}`, `reply-${turn}`]),
+    );
   });
 });
