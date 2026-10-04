@@ -450,6 +450,7 @@ describe("candidate inventory demand", () => {
           lifecycle: {
             knowledge: "observed",
             fields: { status, startedAt: null, finishedAt: null },
+            stamp: { receiptOrdinal: 5, observedAtMs: 50 },
           },
           pipeline: { knowledge: "unresolved" },
         },

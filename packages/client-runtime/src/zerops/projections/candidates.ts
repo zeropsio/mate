@@ -17,10 +17,12 @@ import {
   addressSeenAfter,
   deriveZeropsCandidates,
   isZcpService,
+  newestSubdomainProcess,
   subdomainEnableOf,
   type AddressFacts,
   type AddressSeen,
   type SubdomainEnable,
+  type SubdomainProcess,
   type ZeropsCandidate,
 } from "../candidates.ts";
 import { readZeropsMembership } from "../groups.ts";
@@ -111,24 +113,53 @@ export function selectCandidates(
   );
 }
 
+const TERMINAL_PROCESS_STATUSES: ReadonlySet<string> = new Set(["FINISHED", "FAILED", "CANCELED"]);
+
+/** A project's processes as read, each with the receipt ordinal its end was first read at. */
+function subdomainProcessesOf(activity: ProjectActivityRead): ReadonlyArray<SubdomainProcess> {
+  return [...activity.running.value, ...activity.retainedHistory].flatMap((entry) => {
+    if (entry.knowledge !== "observed") return [];
+    const process = processRecordToActivityProcess(entry.record);
+    if (process === null) return [];
+    const lifecycle = entry.record.lifecycle;
+    return lifecycle.knowledge === "observed" && TERMINAL_PROCESS_STATUSES.has(process.status)
+      ? [{ ...process, endedAt: lifecycle.stamp.receiptOrdinal }]
+      : [process];
+  });
+}
+
 /**
  * Where the platform stands on turning a service's address on, from its project's activity
  * (`subdomainEnableOf`): known once its running processes and its newest history are both read; a
- * live enable among what is read says `on` before that. `undefined` while it is not known.
+ * live enable among what is read says `on` before that. `servicesCheckedAt` is the receipt ordinal
+ * of the reader's newest direct read of the project's services (`servicesCheckOrdinalOf`).
+ * `undefined` while it is not known.
  */
 export function subdomainEnableIn(
   activity: ProjectActivityRead | null,
   serviceId: string,
+  servicesCheckedAt: number | null = null,
 ): SubdomainEnable | undefined {
   if (activity === null) return undefined;
-  const processes = [...activity.running.value, ...activity.retainedHistory].flatMap((entry) => {
-    if (entry.knowledge !== "observed") return [];
-    const process = processRecordToActivityProcess(entry.record);
-    return process === null ? [] : [process];
-  });
-  const said = subdomainEnableOf(processes, serviceId);
+  const said = subdomainEnableOf(subdomainProcessesOf(activity), serviceId, servicesCheckedAt);
   const read = activity.running.query.status === "observed" && activity.processHistory === "read";
   return read || said === "on" ? said : undefined;
+}
+
+/**
+ * The receipt ordinal a service's enable was first read as finished at, where its newest
+ * enable/disable is a finished enable: a read of its services after it says whether the record
+ * caught up. Null otherwise.
+ */
+export function finishedEnableAt(
+  activity: ProjectActivityRead | null,
+  serviceId: string,
+): number | null {
+  if (activity === null) return null;
+  const newest = newestSubdomainProcess(subdomainProcessesOf(activity), serviceId);
+  return newest?.actionName === "stack.enableSubdomainAccess" && newest.status === "FINISHED"
+    ? (newest.endedAt ?? null)
+    : null;
 }
 
 /**

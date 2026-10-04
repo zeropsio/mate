@@ -1830,18 +1830,23 @@ describe("the post-grant stage's Mate environments", () => {
         const lacking = { ...A_MATE, service: { ...A_MATE.service, subdomainAccess: address } };
         const opened = yield* granted([], [lacking]);
         yield* settle;
-        const kinds = new Set(
-          [...opened.registry.get(opened.built.data.stateAtom).interests.values()]
-            .filter(
-              ({ descriptor, leases }) =>
-                leases > 0 &&
-                "project" in descriptor &&
-                descriptor.project.projectId === A_MATE.projectId,
-            )
-            .map(({ descriptor }) => descriptor.kind),
-        );
-        expect(kinds.has("project-activity")).toBe(read);
-        expect(kinds.has("project-process-history")).toBe(read);
+        const kinds = () =>
+          new Set(
+            [...opened.registry.get(opened.built.data.stateAtom).interests.values()]
+              .filter(
+                ({ descriptor, leases }) =>
+                  leases > 0 &&
+                  "project" in descriptor &&
+                  descriptor.project.projectId === A_MATE.projectId,
+              )
+              .map(({ descriptor }) => descriptor.kind),
+          );
+        expect(kinds().has("project-activity")).toBe(read);
+        expect(kinds().has("project-process-history")).toBe(read);
+        // Only the organization in view is read for.
+        opened.environments.setActiveOrganization("org-other");
+        yield* settle;
+        expect(kinds().has("project-activity")).toBe(false);
       }),
     ),
   );

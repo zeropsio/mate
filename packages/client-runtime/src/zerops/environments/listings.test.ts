@@ -195,7 +195,21 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
     }) as unknown as ServiceRecord;
 
   /** A read the platform answered whole. */
-  const read = <R>(records: ReadonlyArray<R>, slice?: ReturnType<typeof project>) =>
+  /** A direct read of the project's services, observing since this receipt ordinal. */
+  const checkedAt = (ordinal: number) => ({
+    status: "observing",
+    identity: {
+      ...identity(),
+      key: interestKeyOf({ kind: "project-services-check", project: project() }),
+    },
+    sinceReceiptOrdinal: ReceiptOrdinal.make(ordinal),
+  });
+
+  const read = <R>(
+    records: ReadonlyArray<R>,
+    slice?: ReturnType<typeof project>,
+    checked?: number,
+  ) =>
     ({
       value: records.map((record) => ({ knowledge: "observed", record })),
       query: {
@@ -205,7 +219,10 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
         coverage: { kind: "exhausted-traversal" },
         descriptor: { organization },
       },
-      observation: { required: [], optional: [] },
+      observation: {
+        required: checked === undefined ? [] : [checkedAt(checked)],
+        optional: [],
+      },
       ...(slice === undefined ? {} : { project: slice }),
     }) as unknown;
 
@@ -231,7 +248,8 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
         serviceIds: ["service-1"],
         createdAt: "2026-10-02T12:01:40.000Z",
       }),
-      lifecycle: observed({ status, startedAt: null, finishedAt: null }),
+      // Its end first read at receipt 5.
+      lifecycle: { ...observed({ status, startedAt: null, finishedAt: null }), stamp: stamp(5) },
       pipeline: unresolved,
     },
   });
@@ -285,6 +303,12 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
           case "address-off":
           case "address-on":
             return registry.set(servicesRead, read([zcp(event === "address-on")], project()));
+          case "checked-before-its-end":
+          case "checked-after-its-end":
+            return registry.set(
+              servicesRead,
+              read([zcp(false)], project(), event === "checked-before-its-end" ? 3 : 7),
+            );
           case "enabling":
             return registry.set(activity, activityOf("RUNNING"));
           case "enabled":
@@ -317,6 +341,9 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
     /** Its project's processes: an enable running, finished, failed, or none at all. */
     | "enabling"
     | "enabled"
+    /** Its services read directly again, before or after its enable was read as finished. */
+    | "checked-before-its-end"
+    | "checked-after-its-end"
     | "enable-failed"
     | "not-enabling"
     | "projects-unread"
@@ -361,6 +388,16 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
         [110_000, "address-off", { group: "unavailable" }],
         [111_000, "enabled", { group: "provisioning" }],
         [115_000, "address-on", { group: "ready" }],
+      ],
+    },
+    {
+      case: "no public address once a read of its services after its enable ended still lacks it",
+      steps: [
+        [110_000, "address-off", { group: "unavailable" }],
+        [111_000, "enabled", { group: "provisioning" }],
+        [112_000, "checked-before-its-end", { group: "provisioning" }],
+        [HOUR, "tick", { group: "provisioning" }],
+        [HOUR + 1_000, "checked-after-its-end", { group: "unavailable" }],
       ],
     },
     {

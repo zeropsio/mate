@@ -193,7 +193,9 @@ export function candidateListingsAtom(
         },
         addressFactsOf(addresses, nowMs, (_projectId, serviceId) => {
           activity = get(data.reads.activity(record.ref));
-          return subdomainEnableIn(activity, serviceId);
+          // A direct read of its services after its enable ended says whether the record caught up.
+          const checkedAt = services === null ? null : servicesCheckOrdinalOf(services);
+          return subdomainEnableIn(activity, serviceId, checkedAt);
         }),
       );
       addresses = rememberAddresses(addresses, rows ?? []);

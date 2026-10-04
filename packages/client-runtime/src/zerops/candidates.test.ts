@@ -501,6 +501,17 @@ describe("subdomainEnableOf", () => {
   ])("$case", ({ processes, said }) => {
     expect(subdomainEnableOf(processes, "s1")).toBe(said);
   });
+
+  // The record follows a finished enable seconds later; a direct read of the services taken after
+  // the enable's end that still lacks the address says it caught up — no clock decides it.
+  it.each([
+    { case: "no read of its services since: on", checkedAt: null, said: "on" },
+    { case: "a read before its end: on", checkedAt: 3, said: "on" },
+    { case: "a read after its end: off", checkedAt: 7, said: "off" },
+  ] as const)("a finished enable, $case", ({ checkedAt, said }) => {
+    const finished = { ...process(ENABLE, "FINISHED", "2026-10-02T12:00:00Z"), endedAt: 5 };
+    expect(subdomainEnableOf([finished], "s1", checkedAt)).toBe(said);
+  });
 });
 
 describe("a container ACTIVE before its address landed", () => {

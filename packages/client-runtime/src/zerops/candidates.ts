@@ -252,35 +252,55 @@ const SUBDOMAIN_ACTIONS: ReadonlySet<string> = new Set([
 ]);
 const ENABLE_HOLDS: ReadonlySet<string> = new Set(["PENDING", "RUNNING", "FINISHED"]);
 
-/**
- * Where the platform stands on turning a container's address on, as its project's processes say
- * it: `on` while its newest `stack.enableSubdomainAccess` is queued or running, or finished with no
- * `stack.disableSubdomainAccess` after it — the service's record follows the process seconds later
- * (measured 2026-10-02: 5.6 s from ACTIVE to the address in the tab, under 20 s in the REST
- * record) — and `off` where it failed, a disable is newer, or none is held. `undefined` while the
- * processes are not read: running ones and the newest history both.
- */
-export function subdomainEnableOf(
-  processes:
-    | ReadonlyArray<{
-        readonly actionName: string;
-        readonly serviceStackIds: ReadonlyArray<string>;
-        readonly status: string;
-        readonly created: string;
-      }>
-    | undefined,
+/** One of a project's processes, as `subdomainEnableOf` reads it. */
+export interface SubdomainProcess {
+  readonly actionName: string;
+  readonly serviceStackIds: ReadonlyArray<string>;
+  readonly status: string;
+  readonly created: string;
+  /** The receipt ordinal its end was first read at; absent while it is not read as ended. */
+  readonly endedAt?: number;
+}
+
+/** The newest `stack.enableSubdomainAccess` or `stack.disableSubdomainAccess` of the service. */
+export function newestSubdomainProcess<Process extends SubdomainProcess>(
+  processes: ReadonlyArray<Process>,
   serviceId: string,
-): SubdomainEnable | undefined {
-  if (processes === undefined) return undefined;
-  const newest = processes
+): Process | undefined {
+  return processes
     .filter(
       (process) =>
         SUBDOMAIN_ACTIONS.has(process.actionName) && process.serviceStackIds.includes(serviceId),
     )
     .sort((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
-  return newest?.actionName === "stack.enableSubdomainAccess" && ENABLE_HOLDS.has(newest.status)
-    ? "on"
-    : "off";
+}
+
+/**
+ * Where the platform stands on turning a container's address on, as its project's processes say
+ * it: `on` while its newest `stack.enableSubdomainAccess` is queued or running, or finished with no
+ * `stack.disableSubdomainAccess` after it — the service's record follows the process seconds later
+ * (measured 2026-10-02: 5.6 s from ACTIVE to the address in the tab, under 20 s in the REST
+ * record) — until a read of its services taken after its end (`servicesCheckedAt`, a receipt
+ * ordinal past `endedAt`) still lacks the address: the record has caught up, and it is `off`. `off`
+ * too where it failed, a disable is newer, or none is held. `undefined` while the processes are not
+ * read: running ones and the newest history both.
+ */
+export function subdomainEnableOf(
+  processes: ReadonlyArray<SubdomainProcess> | undefined,
+  serviceId: string,
+  servicesCheckedAt: number | null = null,
+): SubdomainEnable | undefined {
+  if (processes === undefined) return undefined;
+  const newest = newestSubdomainProcess(processes, serviceId);
+  if (newest?.actionName !== "stack.enableSubdomainAccess" || !ENABLE_HOLDS.has(newest.status)) {
+    return "off";
+  }
+  const caughtUp =
+    newest.status === "FINISHED" &&
+    newest.endedAt !== undefined &&
+    servicesCheckedAt !== null &&
+    servicesCheckedAt > newest.endedAt;
+  return caughtUp ? "off" : "on";
 }
 
 /**

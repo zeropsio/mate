@@ -689,7 +689,7 @@ describe("learnAddresses — what the listings teach the address memory, and the
 // Whether a container's address is being turned on is its project's processes' word: known once
 // both its running processes and its newest history are read; a live enable says so before that.
 describe("subdomainEnableIn", () => {
-  const observedFacet = (fields: unknown) => ({ knowledge: "observed", fields });
+  const observedFacet = (fields: unknown) => ({ knowledge: "observed", fields, stamp: stamp(1) });
   const enable = (status: string) => ({
     knowledge: "observed",
     record: {

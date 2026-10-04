@@ -2,6 +2,7 @@ import {
   knownProjectsOf,
   knownServicesOf,
   projectKeyOf,
+  servicesCheckOrdinalOf,
   ZeropsOrganizationId,
   type CollectionRead,
   type InterestLease,
@@ -236,9 +237,13 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
       );
       const facts = addressFactsOf(addresses.current, atMs, (projectId, serviceId) => {
         const project = opened.get(projectId);
-        return project === undefined
-          ? undefined
-          : subdomainEnableIn(registry.get(runtime.reads.activity(project)), serviceId);
+        if (project === undefined) return undefined;
+        const services = serviceReads.get(projectKeyOf(project));
+        return subdomainEnableIn(
+          registry.get(runtime.reads.activity(project)),
+          serviceId,
+          services === undefined ? null : servicesCheckOrdinalOf(services.read),
+        );
       });
       const listings = projectReads.map(({ read, atMs: projectsAtMs }) =>
         selectCandidates(
