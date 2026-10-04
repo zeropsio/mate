@@ -51,12 +51,29 @@ import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 /** Nothing older than this is still anybody's live throwaway. */
 export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
 
+/** The terminal result of one cleanup attempt; no credential values. */
+export interface ThrowawayCleanupFailure {
+  readonly attempt: string;
+  readonly tokenId?: string;
+  readonly state: "failed" | "unknown";
+  readonly reason: string;
+}
+
+interface ThrowawayDebtEntry {
+  readonly clientId: string;
+  readonly attempt: string;
+  readonly at: number;
+  readonly failure?: ThrowawayCleanupFailure;
+}
+
 /** The account's outstanding cleanup, by organization and mint attempt; no token values. */
 export interface ThrowawayDebt {
   readonly owe: (clientId: string, atMs: number, attempt?: string) => void;
   /** The newest outstanding attempt; null when this organization owes none. */
   readonly failedAt: (clientId: string) => number | null;
-  /** A sweep failed: subsequent loads require the person to ask again. */
+  readonly cleanupFailures: (clientId: string) => ReadonlyArray<ThrowawayCleanupFailure>;
+  readonly failCleanup: (clientId: string, atMs: number, failure: ThrowawayCleanupFailure) => void;
+  /** Cleanup failed: subsequent loads require the person to ask again. */
   readonly sweepFailed: (clientId: string) => boolean;
   readonly failSweep: (clientId: string, atMs: number) => void;
   /** One mint was refused or its token deleted: other outstanding attempts remain owed. */
@@ -76,10 +93,7 @@ export interface ThrowawayDebtStorage {
 export const THROWAWAY_DEBT_KEY = "throwaway-debt.v1";
 
 export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt {
-  let owed = new Map<
-    string,
-    { readonly clientId: string; readonly attempt: string; readonly at: number }
-  >();
+  let owed = new Map<string, ThrowawayDebtEntry>();
   const listeners = new Set<() => void>();
   let durable = storage !== undefined;
   const read = () => {
@@ -87,13 +101,10 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
     try {
       const value: unknown = JSON.parse(storage.getItem(THROWAWAY_DEBT_KEY) ?? "[]");
       if (!Array.isArray(value)) return;
-      const read = new Map<
-        string,
-        { readonly clientId: string; readonly attempt: string; readonly at: number }
-      >();
+      const read = new Map<string, ThrowawayDebtEntry>();
       for (const entry of value) {
-        if (!Array.isArray(entry) || entry.length !== 3) continue;
-        const [clientId, attempt, at] = entry as unknown[];
+        if (!Array.isArray(entry) || (entry.length !== 3 && entry.length !== 4)) continue;
+        const [clientId, attempt, at, result] = entry as unknown[];
         if (
           typeof clientId !== "string" ||
           typeof attempt !== "string" ||
@@ -102,7 +113,23 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
           at < 0
         )
           continue;
-        read.set(JSON.stringify([clientId, attempt]), { clientId, attempt, at });
+        let failure: ThrowawayCleanupFailure | undefined;
+        if (Array.isArray(result)) {
+          const [state, reason, tokenId] = result as unknown[];
+          if (
+            (state === "failed" || state === "unknown") &&
+            typeof reason === "string" &&
+            (tokenId === null || typeof tokenId === "string")
+          ) {
+            failure = { attempt, state, reason, ...(tokenId === null ? {} : { tokenId }) };
+          }
+        }
+        read.set(JSON.stringify([clientId, attempt]), {
+          clientId,
+          attempt,
+          at,
+          ...(failure === undefined ? {} : { failure }),
+        });
       }
       owed = read;
     } catch {
@@ -116,7 +143,11 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
         storage?.setItem(
           THROWAWAY_DEBT_KEY,
           JSON.stringify(
-            [...owed.values()].map(({ clientId, attempt, at }) => [clientId, attempt, at]),
+            [...owed.values()].map(({ clientId, attempt, at, failure }) =>
+              failure === undefined
+                ? [clientId, attempt, at]
+                : [clientId, attempt, at, [failure.state, failure.reason, failure.tokenId ?? null]],
+            ),
           ),
         );
     } catch {
@@ -138,9 +169,29 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
         if (entry.clientId === clientId) at = Math.max(at ?? 0, entry.at);
       return at;
     },
+    cleanupFailures: (clientId) => {
+      read();
+      return [...owed.values()].flatMap((entry) =>
+        entry.clientId === clientId && entry.failure !== undefined ? [entry.failure] : [],
+      );
+    },
+    failCleanup: (clientId, at, failure) => {
+      read();
+      owed.set(JSON.stringify([clientId, failure.attempt]), {
+        clientId,
+        attempt: failure.attempt,
+        at,
+        failure,
+      });
+      told();
+    },
     sweepFailed: (clientId) => {
       read();
-      return owed.has(JSON.stringify([clientId, "sweep-failed"]));
+      return [...owed.values()].some(
+        (entry) =>
+          entry.clientId === clientId &&
+          (entry.attempt === "sweep-failed" || entry.failure !== undefined),
+      );
     },
     failSweep: (clientId, at) => {
       read();
@@ -378,34 +429,38 @@ export function zeropsThrowawayPlatform(
     } as const;
     const throwaway = mintedHere.get(input.tokenId);
     mintedHere.delete(input.tokenId);
-    const attempt = async () => {
-      try {
-        if (throwaway === undefined) {
-          throw new ZeropsApiError(
-            "This throwaway was not minted here, so there is no token to delete it with.",
-            "invalid-input",
-          );
-        }
-        await client.deleteThrowaway(
-          { clientId: input.clientId, tokenId: input.tokenId, name: throwaway.name },
-          { token: throwaway.mintingToken },
-        );
-        mateDiagnostics.record({ ...diagnostic, outcome: "ok" });
-      } catch (cause) {
-        mateDiagnostics.record({ ...diagnostic, outcome: "failed", ...diagnosticFailure(cause) });
-        throw cause;
-      }
-    };
     try {
-      await attempt();
-      throwaway?.debt.finish(input.clientId, throwaway.name);
+      if (throwaway === undefined) {
+        throw new ZeropsApiError(
+          "This throwaway was not minted here, so there is no token to delete it with.",
+          "invalid-input",
+        );
+      }
+      await client.deleteThrowaway(
+        { clientId: input.clientId, tokenId: input.tokenId, name: throwaway.name },
+        { token: throwaway.mintingToken },
+      );
+      mateDiagnostics.record({ ...diagnostic, outcome: "ok" });
+      throwaway.debt.finish(input.clientId, throwaway.name);
     } catch (cause) {
-      (throwaway?.debt ?? debt).owe(input.clientId, nowMs(), throwaway?.name);
+      mateDiagnostics.record({ ...diagnostic, outcome: "failed", ...diagnosticFailure(cause) });
+      (throwaway?.debt ?? debt).failCleanup(input.clientId, nowMs(), {
+        attempt: throwaway?.name ?? input.tokenId,
+        tokenId: input.tokenId,
+        state:
+          cause instanceof ZeropsApiError &&
+          cause.kind !== "network" &&
+          cause.kind !== "uncertain" &&
+          (cause.status === null || cause.status < 500)
+            ? "failed"
+            : "unknown",
+        reason: cause instanceof Error ? cause.message : "Zerops did not confirm cleanup.",
+      });
       throw cause;
     }
   };
 
-  /** Deletes a throwaway nobody waits on: a delete that fails is owed, and told nowhere else. */
+  /** Deletes once; the captured account owns the visible failure if the answer is lost or refused. */
   const release = (clientId: string, tokenId: string) =>
     void remove({ clientId, tokenId }).catch(() => undefined);
 
