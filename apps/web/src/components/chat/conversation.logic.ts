@@ -643,7 +643,10 @@ export function settlingWithoutWordsUntil(
       timelineEntryTurnId(entry) === latestTurn.turnId,
   );
   if (last === undefined) return null;
-  const said = last.kind === "message" && last.message.role === "assistant";
+  // Its words, or a plan it proposed — which ends a turn by design. A
+  // thought last waits: its words nearly always follow it.
+  const said =
+    (last.kind === "message" && last.message.role === "assistant") || last.kind === "proposed-plan";
   return said ? null : completedMs + LAST_WORDS_GRACE_MS;
 }
 
