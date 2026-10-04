@@ -134,7 +134,9 @@
       "id": "zerops-browser-panel",
       "title": "Zerops browser panel",
       "components": [
+        "apps/web/src/components/zerops/MateAddresses.tsx",
         "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsBrowserSurface.tsx",
         "packages/client-runtime/src/zerops/browserStream.ts"
       ],
       "entryPoints": [
