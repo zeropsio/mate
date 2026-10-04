@@ -2412,6 +2412,269 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // A helper's own work reaches the thread as its steps: the SDK forwards a
+  // helper's calls only in its snapshots (no stream events), each tagged with
+  // the launching Agent call as its parent.
+  describe("a helper's steps", () => {
+    const SESSION = "sdk-session-helper-steps";
+    const launch = (id: string, input: Record<string, unknown>) =>
+      ({
+        type: "stream_event",
+        session_id: SESSION,
+        uuid: `launch-${id}`,
+        parent_tool_use_id: null,
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "tool_use", id, name: "Agent", input },
+        },
+      }) as unknown as SDKMessage;
+    const started = (
+      taskId: string,
+      toolUseId: string,
+      taskType: string,
+      extra: Record<string, unknown> = {},
+    ) =>
+      ({
+        type: "system",
+        subtype: "task_started",
+        task_id: taskId,
+        tool_use_id: toolUseId,
+        description: `Task ${taskId}`,
+        task_type: taskType,
+        uuid: `started-${taskId}`,
+        session_id: SESSION,
+        ...extra,
+      }) as unknown as SDKMessage;
+    const helperCalls = (
+      parent: string,
+      calls: ReadonlyArray<{ id: string; name: string; input: Record<string, unknown> }>,
+    ) =>
+      ({
+        type: "assistant",
+        parent_tool_use_id: parent,
+        message: {
+          model: SYNTHETIC_SUBAGENT_MODEL,
+          content: calls.map((call) => ({ type: "tool_use", ...call })),
+        },
+        uuid: `snapshot-${calls.map((call) => call.id).join("-")}`,
+        session_id: SESSION,
+      }) as unknown as SDKMessage;
+    const returned = (parent: string | null, id: string, content: string) =>
+      ({
+        type: "user",
+        session_id: SESSION,
+        uuid: `result-${id}`,
+        parent_tool_use_id: parent,
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content }] },
+      }) as unknown as SDKMessage;
+    const notified = (taskId: string, toolUseId: string, summary: string) =>
+      ({
+        type: "system",
+        subtype: "task_notification",
+        task_id: taskId,
+        tool_use_id: toolUseId,
+        status: "completed",
+        output_file: `/tmp/${taskId}.output`,
+        summary,
+        uuid: `notified-${taskId}`,
+        session_id: SESSION,
+      }) as unknown as SDKMessage;
+    const turnEnd = {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      errors: [],
+      session_id: SESSION,
+      uuid: "result-helper-steps",
+    } as unknown as SDKMessage;
+    const PROMPT = "Read the schema and report every table without a primary key.";
+
+    type Seen = ReadonlyArray<ProviderRuntimeEvent>;
+    const callsOf = (events: Seen, type: "item.started" | "item.updated" | "item.completed") =>
+      events.flatMap((event) =>
+        event.type === type && event.itemId !== undefined
+          ? [
+              {
+                id: String(event.itemId),
+                agentId: event.payload.agentId ?? null,
+                parent: event.payload.parentToolUseId ?? null,
+              },
+            ]
+          : [],
+      );
+    const tasksOf = (events: Seen) =>
+      events.flatMap((event) => (event.type === "task.started" ? [event.payload] : []));
+
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly messages: ReadonlyArray<SDKMessage>;
+      readonly check: (events: Seen) => void;
+    }> = [
+      {
+        name: "a helper's call starts and returns as its own step",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent", { prompt: PROMPT }),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h1", name: "Bash", input: { command: "npm test" } },
+          ]),
+          returned("toolu_agent_a", "tool-h1", "4 passing"),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.deepStrictEqual(callsOf(events, "item.started").at(-1), {
+            id: "tool-h1",
+            agentId: "task-a",
+            parent: "toolu_agent_a",
+          });
+          assert.deepStrictEqual(
+            callsOf(events, "item.completed").filter((call) => call.id === "tool-h1"),
+            [{ id: "tool-h1", agentId: "task-a", parent: "toolu_agent_a" }],
+          );
+          // Its result is in its completion: no streamed update row for a helper's call.
+          assert.deepStrictEqual(
+            callsOf(events, "item.updated").filter((call) => call.id === "tool-h1"),
+            [],
+          );
+        },
+      },
+      {
+        name: "a helper starts with the prompt it was given",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent", { prompt: PROMPT }),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(tasksOf(events)[0]?.prompt, PROMPT);
+        },
+      },
+      {
+        name: "a call a helper's stream already started is not started twice",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          {
+            type: "stream_event",
+            session_id: SESSION,
+            uuid: "helper-stream-h1",
+            parent_tool_use_id: "toolu_agent_a",
+            event: {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "tool_use", id: "tool-h1", name: "Read", input: {} },
+            },
+          } as unknown as SDKMessage,
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h1", name: "Read", input: { file_path: "/srv/schema.sql" } },
+          ]),
+          returned("toolu_agent_a", "tool-h1", "create table"),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(
+            callsOf(events, "item.started").filter((call) => call.id === "tool-h1").length,
+            1,
+          );
+        },
+      },
+      {
+        name: "a helper's own background command is its work, not the Mate's",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h2", name: "Bash", input: { command: "npm run dev" } },
+          ]),
+          started("task-shell", "tool-h2", "local_bash"),
+          turnEnd,
+        ],
+        check: (events) => {
+          const shell = tasksOf(events).find((task) => task.taskId === "task-shell");
+          assert.equal(shell?.agentId, "task-a");
+        },
+      },
+      {
+        name: "a helper's helper names the helper that started it",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "toolu_agent_b", name: "Agent", input: { description: "Read the logs" } },
+          ]),
+          started("task-b", "toolu_agent_b", "local_agent"),
+          helperCalls("toolu_agent_b", [
+            { id: "tool-b1", name: "Read", input: { file_path: "/var/log/app.log" } },
+          ]),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(tasksOf(events).find((task) => task.taskId === "task-b")?.agentId, "task-a");
+          assert.deepStrictEqual(
+            callsOf(events, "item.started").find((call) => call.id === "tool-b1"),
+            { id: "tool-b1", agentId: "task-b", parent: "toolu_agent_b" },
+          );
+        },
+      },
+      {
+        name: "the Mate's turn ending leaves a working helper's call open; the helper's end closes it",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          returned(null, "toolu_agent_a", "Async agent launched successfully."),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h3", name: "Bash", input: { command: "sleep 600" } },
+          ]),
+          turnEnd,
+          notified("task-a", "toolu_agent_a", "Every table has a primary key."),
+        ],
+        check: (events) => {
+          const closes = events.flatMap((event) =>
+            event.type === "item.completed" && String(event.itemId) === "tool-h3" ? [event] : [],
+          );
+          assert.equal(closes.length, 1);
+          const close = closes[0]!;
+          assert.equal(close.payload.agentId, "task-a");
+          const turnEndAt = events.findIndex((event) => event.type === "turn.completed");
+          assert.ok(events.indexOf(close) > turnEndAt);
+        },
+      },
+    ];
+
+    for (const { name, messages, check } of cases) {
+      it.effect(name, () => {
+        const harness = makeHarness();
+        return Effect.gen(function* () {
+          const adapter = yield* ClaudeAdapter;
+          const eventsFiber = yield* adapter.streamEvents.pipe(
+            Stream.takeUntil(
+              (event) => event.type === "task.completed" && event.payload.taskId === "task-end",
+            ),
+            Stream.runCollect,
+            Effect.forkChild,
+          );
+          const session = yield* adapter.startSession({
+            threadId: THREAD_ID,
+            provider: ProviderDriverKind.make("claudeAgent"),
+            runtimeMode: "full-access",
+          });
+          yield* adapter.sendTurn({
+            threadId: session.threadId,
+            input: "delegate",
+            attachments: [],
+          });
+          for (const message of messages) harness.query.emit(message);
+          harness.query.emit(notified("task-end", "toolu_end", "end"));
+          check(Array.from(yield* Fiber.join(eventsFiber)));
+        }).pipe(
+          Effect.provideService(Random.Random, makeDeterministicRandomService()),
+          Effect.provide(harness.layer),
+        );
+      });
+    }
+  });
+
   // The calls of one model response are one batch: the live slot tells a
   // newer batch by the response a call was written in.
   it.effect("stamps each call with the model response it was written in", () => {
