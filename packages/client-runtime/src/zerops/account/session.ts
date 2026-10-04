@@ -113,8 +113,11 @@ export type ZeropsSessionEvent =
   | { readonly type: "SECOND_FACTOR_REQUIRED" }
   /** A fresh read of the same person, with its memberships. */
   | { readonly type: "USER_UPDATED"; readonly user: ZeropsUser }
-  /** This tab's client dropped its session: sign-out, or a refresh that failed. */
-  | { readonly type: "SESSION_ENDED" }
+  /**
+   * This tab's client dropped its session: the person signed out, or the
+   * platform refused it (a 401, or a refresh that failed).
+   */
+  | { readonly type: "SESSION_ENDED"; readonly cause: "signed-out" | "refused" }
   | { readonly type: "VERIFY_AGAIN" };
 
 export type ZeropsSessionEffect =
@@ -130,7 +133,17 @@ export type ZeropsSessionEffect =
   | { readonly kind: "close-account" }
   /** Under the refresh lock: take the record for `userId`, or create it when missing. */
   | { readonly kind: "claim-owner"; readonly userId: string }
-  | { readonly kind: "write-owner"; readonly owner: ZeropsSessionOwner };
+  | { readonly kind: "write-owner"; readonly owner: ZeropsSessionOwner }
+  /**
+   * The platform refused this tab's session: send the tab back for a fresh
+   * hand-over, unless the port's own guard says one was just refused too.
+   */
+  | { readonly kind: "reauth" }
+  /**
+   * A stored session survived a fresh load's verification: the last hand-over
+   * held, so the next refusal may ask for another one.
+   */
+  | { readonly kind: "reauth-settled" };
 
 export interface ZeropsSessionTransition {
   readonly state: ZeropsSessionState;
@@ -283,9 +296,11 @@ export function transitionZeropsSession(
           effects: [
             { kind: "open-account", user: verdict.user },
             { kind: "claim-owner", userId: verdict.user.id },
+            { kind: "reauth-settled" },
           ],
         };
-      if (verdict.kind === "unauthorized") return { state: { status: "signed-out" }, effects: [] };
+      if (verdict.kind === "unauthorized")
+        return { state: { status: "signed-out" }, effects: [{ kind: "reauth" }] };
       return {
         state: { status: "unavailable", session: state.session },
         effects: [],
@@ -328,7 +343,10 @@ export function transitionZeropsSession(
       if (state.status === "signed-out") return stay(state);
       return {
         state: { status: "signed-out" },
-        effects: leaving(state, { closeAccount: true }),
+        effects: [
+          ...leaving(state, { closeAccount: true }),
+          ...(event.cause === "refused" ? [{ kind: "reauth" } as const] : []),
+        ],
       };
     case "VERIFY_AGAIN":
       if (state.status === "unavailable") return verify(state, state.session);
@@ -359,6 +377,9 @@ export interface ZeropsSessionPorts {
   /** Runs `work` holding `ZEROPS_REFRESH_LOCK`, shared by every tab of the origin. */
   readonly withRefreshLock: <T>(work: () => Promise<T>) => Promise<T>;
   readonly newGeneration: () => string;
+  /** The `reauth` effect: the tab's way back to a fresh hand-over. */
+  readonly reauth: () => void;
+  readonly reauthSettled: () => void;
 }
 
 export interface ZeropsSessionDriver {
@@ -441,6 +462,12 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
         return;
       case "write-owner":
         ports.owner.write(effect.owner);
+        return;
+      case "reauth":
+        ports.reauth();
+        return;
+      case "reauth-settled":
+        ports.reauthSettled();
         return;
     }
   };

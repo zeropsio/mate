@@ -52,6 +52,7 @@ import {
 } from "react";
 
 import { randomUUID } from "../lib/utils";
+import { browserZeropsReauth } from "./reauth";
 import { browserZeropsStorage } from "./storage";
 import { tokenWrites } from "./tokenWriteLock";
 
@@ -155,6 +156,8 @@ function makeSession(storage: ZeropsStorageAdapter) {
   // Web Locks exist only in a secure context; without them each tab renews alone.
   const locks: LockManager | undefined = browser.navigator.locks;
   let driver!: ZeropsSessionDriver;
+  /** True while the person's own sign-out runs: its session end is no refusal. */
+  let signingOut = false;
   const client = new ZeropsApiClient({
     // The client's own token writes hold the same locks as every other writer in this browser.
     holdToken: tokenWrites,
@@ -164,7 +167,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
         // The client clears itself when a refresh fails mid-flight, so a
         // session that dies between renders cannot leave an
         // authorized-looking UI behind.
-        driver.send({ type: "SESSION_ENDED" });
+        driver.send({ type: "SESSION_ENDED", cause: signingOut ? "signed-out" : "refused" });
         return clearZeropsSession(storage);
       }
       return saveZeropsSession(storage, session);
@@ -194,8 +197,18 @@ function makeSession(storage: ZeropsStorageAdapter) {
     withRefreshLock: (work) =>
       locks === undefined ? Promise.resolve().then(work) : locks.request(ZEROPS_REFRESH_LOCK, work),
     newGeneration: randomUUID,
+    reauth: browserZeropsReauth.ask,
+    reauthSettled: browserZeropsReauth.settled,
   });
-  return { client, driver };
+  const signOutLocally = async () => {
+    signingOut = true;
+    try {
+      await client.signOutLocally();
+    } finally {
+      signingOut = false;
+    }
+  };
+  return { client, driver, signOutLocally };
 }
 
 export function ZeropsSessionProvider({
@@ -210,7 +223,7 @@ export function ZeropsSessionProvider({
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
   const preferredClientIdRef = useRef<string | null>(null);
 
-  const { client, driver } = useMemo(() => makeSession(storage), [storage]);
+  const { client, driver, signOutLocally } = useMemo(() => makeSession(storage), [storage]);
   const machine = useSyncExternalStore(driver.subscribe, driver.state);
   const status = statusOf(machine);
   const user = machine.status === "signed-in" ? machine.user : null;
@@ -371,7 +384,7 @@ export function ZeropsSessionProvider({
         setLastRegistration(null);
         // Local only: the token is the Zerops app's own session, and logging
         // it out would sign the person out there too.
-        await client.signOutLocally();
+        await signOutLocally();
       },
       lastRegistration,
       clearLastRegistration: () => {
@@ -386,6 +399,7 @@ export function ZeropsSessionProvider({
       organizationStatus,
       organizations,
       selectOrganization,
+      signOutLocally,
       updateVerifiedMemberships,
       status,
       user,
