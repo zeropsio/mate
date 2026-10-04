@@ -166,13 +166,11 @@ describe("Runs on", () => {
     ]);
   });
 
-  it("against a server that names no agent's capability, offers its two defaults as before", () => {
-    const older = [cursor, codex, claude].map(({ threadProfile: _, ...provider }) => provider);
-    expect(crewLoginOptions(older, false).map((login) => [login.id, login.tools])).toEqual([
-      ["codex", false],
-      ["claudeAgent", true],
-    ]);
-    expect(crewLoginOptions(older, true).map((login) => login.id)).toEqual(["claudeAgent"]);
+  it("offers no login whose agent names no crew capability, whatever it is called", () => {
+    const unnamed = [cursor, codex, claude].map(
+      ({ threadProfile: _profile, ...provider }) => provider,
+    );
+    expect(crewLoginOptions(unnamed, false)).toEqual([]);
   });
 
   it("offers the lead only the logins whose agent hosts the crew tools", () => {
