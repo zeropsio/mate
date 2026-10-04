@@ -64,11 +64,13 @@ export {
 } from "./update.ts";
 export {
   birthIntentOf,
+  hqMateOffers,
   menuRowsFromHq,
   placeListing,
   placeProject,
   placeProjects,
   placementsOf,
+  type HqMateOfferStates,
   type HqPlacement,
 } from "./placement.ts";
 export {

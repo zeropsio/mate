@@ -120,8 +120,8 @@ export function resolveMateProjectRole(input: {
 }
 
 /**
- * What this person may do to a Mate's project on the platform — opening it is HQ's rule's
- * (`observe_mate`, `mateRowCan`), and so are its face and place (`mayOffer`).
+ * What this person may do to a Mate's project on the platform — following it, its face and its
+ * place are HQ's offers (`can`, `@t3tools/shared/hqOffers`).
  *
  * One rule for the whole screen (guide 0.8): **a verb a person cannot finish
  * is not offered**. Every one of these is a platform write that the platform

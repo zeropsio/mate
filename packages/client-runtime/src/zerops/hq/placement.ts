@@ -10,8 +10,9 @@
  *
  * @module hq/placement
  */
+import { type HqMoveTo, type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 
 import type { CandidateRow } from "../projections/candidates.ts";
 import type { ZeropsProject } from "../api.ts";
@@ -201,4 +202,45 @@ export function menuRowsFromHq(input: {
       },
     ];
   });
+}
+
+/**
+ * What HQ offers the reader of a project (`can`, `@t3tools/shared/hqOffers`): of a Mate it holds,
+ * following it, its record, leaving its application, and where it may go — none while HQ does not
+ * answer; of a project it holds nowhere, writing its Mate's record. HQ decides each, and decides the
+ * write again at the press.
+ */
+export type HqMateOfferStates =
+  | {
+      readonly held: true;
+      readonly observe: HqOfferState;
+      readonly edit: HqOfferState;
+      readonly detach: HqOfferState;
+      readonly moveTo: HqMoveTo | undefined;
+    }
+  | { readonly held: false; readonly createRecord: HqOfferState };
+
+export function hqMateOffers(
+  structure: HqStructure,
+  projectId: string,
+  hq: { readonly current: boolean; readonly unavailableSince: number | null },
+): HqMateOfferStates {
+  const mate =
+    structure.ungrouped.find((entry) => entry.projectId === projectId) ??
+    structure.apps
+      .flatMap((app) => app.projects)
+      .find((entry) => entry.projectId === projectId && isMateKind(entry.kind));
+  if (mate === undefined) {
+    return {
+      held: false,
+      createRecord: hqOffer(structure.unheld?.[projectId], "create_mate_record", hq),
+    };
+  }
+  return {
+    held: true,
+    observe: hqOffer(mate.can, "observe_mate", hq),
+    edit: hqOffer(mate.can, "edit_mate_record", hq),
+    detach: hqOffer(mate.can, "detach", hq),
+    moveTo: hq.current ? mate.moveTo : undefined,
+  };
 }

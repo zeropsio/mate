@@ -43,7 +43,7 @@ import {
   type CreateReleaseRequest,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
-import type { HqOffers } from "@t3tools/shared/hqOffers";
+import type { HqMoveTo, HqOffers } from "@t3tools/shared/hqOffers";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -106,6 +106,15 @@ export interface HqMate extends HqMateRecord {
   readonly runsWithoutSignIn?: boolean;
 }
 
+/**
+ * What the reader may do with a Mate (`observe_mate`, `edit_mate_record`, `detach`) and where it
+ * may go; absent where HQ sent none, or none this build can read.
+ */
+export interface HqMateOffers {
+  readonly can?: HqOffers;
+  readonly moveTo?: HqMoveTo;
+}
+
 /** HQ's held records, including projects whose removal has not finished at HQ. */
 export interface HqAppContents {
   /** The same project, change, release and code repository records that guard Delete. */
@@ -119,26 +128,35 @@ export interface HqStructure {
   /** What the reader may do with the organization's applications; absent where HQ sent none. */
   readonly can?: HqOffers;
   /**
+   * Each project the reader reads that HQ holds nowhere, by id, with whether they may write its
+   * Mate's record (`create_mate_record`); absent where HQ sent none.
+   */
+  readonly unheld?: Readonly<Record<string, HqOffers>>;
+  /**
    * When Zerops answered the org view HQ decides its offers over (ISO 8601): shown, never compared
    * with now. None until HQ's stream names one.
    */
   readonly rolesAnsweredAt?: string | null;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
-  readonly ungrouped: ReadonlyArray<{
-    readonly projectId: string;
-    readonly name: string;
-    readonly mate: HqMate;
-  }>;
+  readonly ungrouped: ReadonlyArray<
+    {
+      readonly projectId: string;
+      readonly name: string;
+      readonly mate: HqMate;
+    } & HqMateOffers
+  >;
   readonly apps: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
-    readonly projects: ReadonlyArray<{
-      readonly projectId: string;
-      readonly name: string;
-      readonly kind: string;
-      readonly mate: HqMate | null;
-    }>;
+    readonly projects: ReadonlyArray<
+      {
+        readonly projectId: string;
+        readonly name: string;
+        readonly kind: string;
+        readonly mate: HqMate | null;
+      } & HqMateOffers
+    >;
     /** What the reader may do with it: its changes, its deploys, its release; absent where none. */
     readonly can?: HqOffers;
     /** Absent from an older HQ: projected projects cannot establish emptiness. */

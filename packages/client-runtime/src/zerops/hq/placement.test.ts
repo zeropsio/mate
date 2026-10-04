@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type { Known } from "../knowledge/known.ts";
 import {
   birthIntentOf,
+  hqMateOffers,
   placeListing,
   placeProjects,
   placementsOf,
@@ -152,5 +153,61 @@ describe("birthIntentOf", () => {
     // Closed by its attach, or never HQ's: none.
     expect(birthIntentOf(structure, "b-2")).toBeUndefined();
     expect(birthIntentOf(null, "b-1")).toBeUndefined();
+  });
+});
+
+describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds nowhere", () => {
+  const LIVE = { current: true, unavailableSince: null } as const;
+  const OFFERED = {
+    ...STRUCTURE,
+    unheld: { "p-free": { create_mate_record: { allow: true } } },
+    ungrouped: [
+      {
+        ...STRUCTURE.ungrouped[0]!,
+        can: {
+          observe_mate: { allow: true },
+          edit_mate_record: { allow: false, reason: "not_project_admin" },
+          detach: { allow: false, reason: "not_project_admin" },
+        },
+        moveTo: { "app-1": ["mate"] },
+      },
+    ],
+  };
+
+  it("reads a Mate's verbs and moves as HQ streamed them", () => {
+    expect(hqMateOffers(OFFERED, "p-ada", LIVE)).toEqual({
+      held: true,
+      observe: { kind: "allowed" },
+      edit: { kind: "refused", reason: "not_project_admin" },
+      detach: { kind: "refused", reason: "not_project_admin" },
+      moveTo: { "app-1": ["mate"] },
+    });
+  });
+
+  it("reads a Mate HQ sent no offers for as unknown, and moves nowhere", () => {
+    expect(hqMateOffers(OFFERED, "p-vera", LIVE)).toEqual({
+      held: true,
+      observe: { kind: "unknown" },
+      edit: { kind: "unknown" },
+      detach: { kind: "unknown" },
+      moveTo: undefined,
+    });
+  });
+
+  it("reads a project HQ holds nowhere by its record's offer; unknown where HQ named none", () => {
+    expect([hqMateOffers(OFFERED, "p-free", LIVE), hqMateOffers(OFFERED, "p-else", LIVE)]).toEqual([
+      { held: false, createRecord: { kind: "allowed" } },
+      { held: false, createRecord: { kind: "unknown" } },
+    ]);
+  });
+
+  it("is unavailable since HQ stopped answering, moves included", () => {
+    expect(hqMateOffers(OFFERED, "p-ada", { current: false, unavailableSince: 9 })).toEqual({
+      held: true,
+      observe: { kind: "unavailable", since: 9 },
+      edit: { kind: "unavailable", since: 9 },
+      detach: { kind: "unavailable", since: 9 },
+      moveTo: undefined,
+    });
   });
 });

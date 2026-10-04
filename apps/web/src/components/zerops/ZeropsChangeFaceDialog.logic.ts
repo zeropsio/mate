@@ -38,7 +38,7 @@ export function changeFaceWords(name: string): ChangeFaceWords {
  */
 export function changeFaceOffered(input: {
   readonly candidate: ZeropsCandidate;
-  /** Whether HQ's rule offers the viewer the Mate's record (`mayOffer`); never for an unknown one. */
+  /** Whether HQ offers the viewer the Mate's record (`edit_mate_record`); never while unknown. */
   readonly mayEdit: boolean;
 }): boolean {
   return input.mayEdit && hasMate(input.candidate);

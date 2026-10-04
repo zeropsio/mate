@@ -8,7 +8,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
@@ -42,7 +42,20 @@ interface FaceDialogProps {
   readonly onOpenChangeComplete: (open: boolean) => void;
 }
 
+/** Every kind a Mate may take, as HQ lists where it may go. */
+const KINDS = ["mate", "devstage", "stage", "production"];
+/** What HQ offers an org owner of a Mate: everything, anywhere. */
+const OWNER_OFFERS: HqMateOfferStates = {
+  held: true,
+  observe: { kind: "allowed" },
+  edit: { kind: "allowed" },
+  detach: { kind: "allowed" },
+  moveTo: { acme: KINDS, new: KINDS },
+};
+
 const mock = vi.hoisted(() => ({
+  /** What HQ offers of each project (`useMateOffers`); an owner's by default. */
+  mateOffers: (_projectId: string): unknown => undefined,
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
   updateMate: vi.fn(),
   restartContainer: vi.fn(),
@@ -116,6 +129,7 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
+vi.mock("./useHqOffers", () => ({ useMateOffers: () => mock.mateOffers }));
 vi.mock("./mateRestart", async (original) => ({
   ...(await original<typeof import("./mateRestart")>()),
   restartMateContainer: mock.restartContainer,
@@ -323,6 +337,7 @@ beforeEach(() => {
   mock.threads = [];
   mock.restartDialog.current = null;
   mock.roleCode = "OWNER";
+  mock.mateOffers = () => OWNER_OFFERS;
   mock.user = { id: "user-ada" };
   mock.markers.clear();
   mock.dialog.current = null;
@@ -404,6 +419,11 @@ describe("useMateActions — Change face…", () => {
     { who: "a read-only member", role: "READ_ONLY", offered: false },
   ])("$who: offered $offered, right after Rename Mate as Rename is", ({ role, offered }) => {
     mock.roleCode = role;
+    // HQ offers the Mate's record exactly where the platform takes its rename.
+    mock.mateOffers = () => ({
+      ...OWNER_OFFERS,
+      edit: offered ? { kind: "allowed" } : { kind: "refused", reason: "not_project_admin" },
+    });
     mount();
     const ids = verbs(FEN).map((verb) => verb.id);
     expect(ids.includes("face")).toBe(offered);
@@ -417,6 +437,7 @@ describe("useMateActions — Change face…", () => {
 
   it("offers no Mate verb of HQ's to a person the session does not name: unknown is no", () => {
     mock.user = null;
+    mock.mateOffers = () => undefined;
     mount();
     const ids = verbs(FEN).map((verb) => verb.id);
     expect(ids.filter((id) => ["rename-agent", "face", "move", "leave"].includes(id))).toEqual([]);
@@ -789,6 +810,12 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
     { who: "an owner, HQ's structure not known yet", role: "OWNER", known: false, want: false },
   ])("$who: offered $want", ({ role, known, want }) => {
     mock.roleCode = role;
+    // HQ offers writing its record to whom its rule lets.
+    mock.mateOffers = () => ({
+      held: false,
+      createRecord:
+        role === "OWNER" ? { kind: "allowed" } : { kind: "refused", reason: "not_project_admin" },
+    });
     listing();
     mount(hqRegistry(known));
     expect(finishVerb() !== undefined).toBe(want);
@@ -796,6 +823,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
 
   it("writes its record, then its birth closed off, with nobody's stand-up asked", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
+    mock.mateOffers = () => ({ held: false, createRecord: { kind: "allowed" } });
     listing();
     mount(hqRegistry(true));
     await act(async () => {
@@ -879,6 +907,8 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
       },
       container: true,
     });
+    // HQ holds Dan nowhere, and offers his owner writing his record.
+    mock.mateOffers = () => ({ held: false, createRecord: { kind: "allowed" } });
     mock.listing.current = {
       state: "known",
       value: [DAN],
@@ -1000,17 +1030,35 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
   const ids = () => verbs(STOPPED).map((verb) => verb.id);
 
   it.each([
-    { who: "a member", role: "BASIC_USER", user: { id: "user-ada" }, offered: true },
+    { who: "a member", role: "BASIC_USER", user: { id: "user-ada" }, known: true, offered: true },
     {
       who: "a read-only member, whose Mate is listed",
       role: "READ_ONLY",
       user: { id: "user-ada" },
+      known: true,
       offered: false,
     },
-    { who: "a person the session does not name", role: "OWNER", user: null, offered: false },
-  ])("$who: Start offered $offered", ({ role, user, offered }) => {
+    {
+      who: "a person the session does not name",
+      role: "OWNER",
+      user: null,
+      known: false,
+      offered: false,
+    },
+  ])("$who: Start offered $offered", ({ role, user, known, offered }) => {
     mock.roleCode = role;
     mock.user = user;
+    // HQ offers following the Mate to whom its door opens; nothing before it has said.
+    mock.mateOffers = () =>
+      known
+        ? {
+            ...OWNER_OFFERS,
+            observe:
+              role === "READ_ONLY"
+                ? { kind: "refused", reason: "not_mate_operator" }
+                : { kind: "allowed" },
+          }
+        : undefined;
     mock.listing.current = {
       state: "known",
       value: [STOPPED],
@@ -1076,6 +1124,12 @@ describe("useMateActions — Rename Mate", () => {
 describe("useMateActions — Move, for the person who made the Mate", () => {
   it("offers Change project or role to a member with no org access who owns the Mate's project", () => {
     mock.roleCode = "NO_ACCESS";
+    // HQ lets its maker keep it a Mate in its application, and nothing more.
+    mock.mateOffers = () => ({
+      ...OWNER_OFFERS,
+      edit: { kind: "allowed" },
+      moveTo: { acme: ["mate", "devstage"] },
+    });
     const made = {
       ...FEN,
       project: { ...FEN.project, userRoles: [{ clientUserId: "member-ada", roleCode: "OWNER" }] },
@@ -1092,7 +1146,8 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
   });
 
   // e2e-krls F29: a birth cut before its Mate was attached leaves its application empty in HQ.
-  it("offers every application HQ holds, one with no project in it too", () => {
+  it("offers every application HQ offers it, one with no project in it too", () => {
+    mock.mateOffers = () => ({ ...OWNER_OFFERS, moveTo: { acme: KINDS, "app-g": KINDS } });
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {
       status: "signed-in",

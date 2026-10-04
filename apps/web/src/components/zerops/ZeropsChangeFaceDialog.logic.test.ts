@@ -1,9 +1,6 @@
 import {
   assignCandidateMateTints,
   changedMateFace,
-  heldOf,
-  mayOffer,
-  offerAsker,
   readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -73,56 +70,16 @@ describe("changeFaceWords — what the dialog says", () => {
 });
 
 /**
- * Changing a face is a write to HQ's record of the Mate, as a rename is, so it is offered exactly
- * where Rename is: where HQ's rule offers the Mate's record (`mayOffer`, `edit_mate_record`:
- * effective OWNER or ADMIN on the project), and only on a Mate.
+ * Changing a face is a write to HQ's record of the Mate, so it is offered exactly where HQ offers
+ * that record (`edit_mate_record`, which HQ decides), and only on a Mate.
  */
 describe("changeFaceOffered — where a Mate's menus offer Change face…", () => {
-  const viewer = (roleCode: string) => ({
-    userId: "user-ada",
-    clientUserId: "member-ada",
-    roleCode,
-    canCreateProjects: true,
-  });
-
-  it.each([
-    { who: "an org owner", role: "OWNER", override: undefined, offered: true },
-    { who: "an org admin", role: "ADMIN", override: undefined, offered: true },
-    {
-      who: "a member, on the Mate they made",
-      role: "BASIC_USER",
-      override: "OWNER",
-      offered: true,
-    },
-    {
-      who: "a member, on a colleague's Mate",
-      role: "BASIC_USER",
-      override: undefined,
-      offered: false,
-    },
-    { who: "a read-only member", role: "READ_ONLY", override: undefined, offered: false },
-    {
-      who: "an owner lowered on this project",
-      role: "OWNER",
-      override: "READ_ONLY",
-      offered: false,
-    },
-  ])("$who: $offered, as Rename is", ({ role, override, offered }) => {
+  it.each([true, false])("follows HQ's offer of the Mate's record: %s", (mayEdit) => {
     const candidate: ZeropsCandidate = {
       ...mate("fen", "Fen"),
-      project: project(
-        "fen",
-        ["mate"],
-        inAcme("mate", {}),
-        override === undefined ? undefined : [{ clientUserId: "member-ada", roleCode: override }],
-      ),
+      project: project("fen", ["mate"], inAcme("mate", {})),
     };
-    const mayEdit = mayOffer(offerAsker(viewer(role), [candidate.project]), "edit_mate_record", {
-      projectId: candidate.project.id,
-      held: heldOf(candidate.project),
-    });
-    expect(changeFaceOffered({ candidate, mayEdit })).toBe(offered);
-    expect(mayEdit).toBe(offered);
+    expect(changeFaceOffered({ candidate, mayEdit })).toBe(mayEdit);
   });
 
   it("is never offered where no Mate lives: a stage has no face to change", () => {

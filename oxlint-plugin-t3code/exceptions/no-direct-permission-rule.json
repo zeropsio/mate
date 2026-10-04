@@ -4,7 +4,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "import { can, type Facts, type FactsFor, type Held, type Principal, type Targets, type Verb, } from \"@t3tools/shared/zeropsPermissions\";",
     "owner": "TP8 offers",
-    "reason": "mayOffer is the client's way to HQ's rule for a Mate's record and place until HQ streams those offers: cached facts stand in for fresh ones only for an offer, never a write",
+    "reason": "canWriteRegistry asks create_app of HQ's rule over the session's own membership: cached facts stand in for fresh ones only for an offer, never a write",
     "expires": "never"
   }
 ]

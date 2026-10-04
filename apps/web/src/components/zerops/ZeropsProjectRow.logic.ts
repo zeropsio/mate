@@ -17,9 +17,7 @@ import {
   formatMateFace,
   hasMate,
   isGenericPlatformError,
-  mayOffer,
   newMateTint,
-  type OfferAsker,
   readZeropsToolKind,
   readZeropsMembership,
   type ZeropsEnvironmentRole,
@@ -28,6 +26,7 @@ import {
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -113,21 +112,25 @@ export interface ZeropsRowInput {
   };
 }
 
+const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
+  open: offered,
+  enable: offered,
+  setUpMate: offered,
+  start: offered,
+  restart: offered,
+  remove: offered,
+});
+
 /**
- * A row's verbs for this person: every one where its Mate's door opens for them — HQ's rule
- * (`observe_mate`) over what the client holds — none where it does not, nor where the client knows
- * nobody.
+ * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
+ * rest Zerops' — each refusal shown as they word it. Every one where HQ offers following its Mate
+ * (`observe_mate`), and while HQ does not answer; none where HQ refuses it or has not said. A
+ * project HQ holds as no Mate has no such offer: its verbs stand, for the door and Zerops to decide.
  */
-export function mateRowCan(asker: OfferAsker | null, projectId: string): ZeropsRowInput["can"] {
-  const opens = mayOffer(asker, "observe_mate", { projectId });
-  return {
-    open: opens,
-    enable: opens,
-    setUpMate: opens,
-    start: opens,
-    restart: opens,
-    remove: opens,
-  };
+export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
+  if (offers === undefined) return ROW_VERBS(false);
+  if (!offers.held) return ROW_VERBS(true);
+  return ROW_VERBS(offers.observe.kind === "allowed" || offers.observe.kind === "unavailable");
 }
 
 export type ZeropsRowAction =

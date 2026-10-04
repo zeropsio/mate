@@ -5,15 +5,11 @@
  * write is enforced with, and decides the write again at the press. While HQ does not answer,
  * every one of them is unavailable since then; before HQ has said, none is known.
  */
-import { useAtomValue } from "@effect/atom-react";
 import { type ReleaseGate } from "@t3tools/client-runtime/zerops";
-import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
-import { type HqOfferState, type HqOffers, hqOffer } from "@t3tools/shared/hqOffers";
-import { useCallback, useMemo } from "react";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
+import { useCallback } from "react";
 
-import { useClientSettings } from "../hooks/useSettings";
-import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
-import { formatShortTimestamp } from "../timestampFormat";
+import { useHqOffers } from "./useHqOffers";
 
 type ChangeVerb = "read" | "comment" | "merge" | "close" | "redeploy";
 
@@ -36,31 +32,6 @@ export type ZeropsChangeOffers = { readonly [V in ChangeVerb]: boolean } & {
 
 /** An application's offers by its id; `undefined` while HQ has not said them. */
 export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
-
-/**
- * The organization's structure as HQ last streamed it, whether HQ answers now, and how a verb's
- * state reads in words.
- */
-function useHqOffers() {
-  const view = useAtomValue(hqStructureAtom);
-  const organizationId = useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  return useMemo(() => {
-    const structure =
-      view === null || view.organizationId !== organizationId ? null : view.structure;
-    const hq = {
-      current: view?.current === true,
-      unavailableSince: view?.unavailableSince ?? null,
-    };
-    const at = (ms: number) => formatShortTimestamp(new Date(ms).toISOString(), timestampFormat);
-    return {
-      structure,
-      state: (can: HqOffers | undefined, verb: string) => hqOffer(can, verb, hq),
-      words: (state: HqOfferState) =>
-        hqOfferWords(state, { at, rolesAnsweredAt: structure?.rolesAnsweredAt ?? null }),
-    };
-  }, [organizationId, timestampFormat, view]);
-}
 
 export function useChangeOffers(): ZeropsChangeOffersOf {
   const { structure, state, words } = useHqOffers();

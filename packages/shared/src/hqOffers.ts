@@ -6,6 +6,8 @@
  *
  * - **The record is open.** A verb this build does not know, or a decision it cannot read, is
  *   unknown — never a broken snapshot, never a guess. Each decision is read on its own.
+ * - **A Mate's moves** (`moveTo`) are choices, not a verb: each application, or `new`, with the
+ *   kinds the move rule lets it take there; none listed is nowhere.
  * - **Four states a control draws** (`hqOffer`): allowed, refused with HQ's reason (its words are
  *   `hq/refusals.ts`'), unknown — nothing streamed yet, the thing absent, the verb unanswered — and
  *   unavailable since HQ stopped answering. Nothing compares a time to now.
@@ -29,6 +31,13 @@ export type HqDecision = typeof HqDecision.Type;
 /** A `can` record as it travels: open, each decision read on its own (`hqOffer`). */
 export const HqOffers = Schema.Record(Schema.String, Schema.Unknown);
 export type HqOffers = typeof HqOffers.Type;
+
+/**
+ * Where HQ lets the reader move a Mate (`moveTo`): each application by id, and `new` — one they
+ * make for it — with the kinds it may take there. A kind this build does not know is passed by.
+ */
+export const HqMoveTo = Schema.Record(Schema.String, Schema.Array(Schema.String));
+export type HqMoveTo = typeof HqMoveTo.Type;
 
 /** A `can` record as HQ writes it: a decision for each of `V`. */
 export type HqOffersOf<V extends string> = { readonly [K in V]: Decision };

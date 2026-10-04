@@ -143,8 +143,6 @@ import {
   type ZeropsGroup,
   type ZeropsMembership,
   canWriteRegistry,
-  mayOffer,
-  offerAsker,
   firstDeployLine,
   type FirstDeploy,
   matePoseOf,
@@ -175,6 +173,7 @@ import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
@@ -960,16 +959,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         };
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
     viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
-  // Whom HQ's rule is asked about for each row's verbs (`mateRowCan`): nobody where the session
-  // names nobody, and nothing is then offered.
-  const asker = useMemo(
-    () =>
-      offerAsker(
-        sessionOfferViewer(user, activeOrganization),
-        candidates.map((candidate) => candidate.project),
-      ),
-    [activeOrganization, candidates, user],
-  );
+  // What HQ offers of each row's project (`mateRowCan`), and of the organization.
+  const mateOffersOf = useMateOffers();
+  const orgOffer = useOrgOffers();
   // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
   const people = useAtomValue(hqPeopleAtom);
 
@@ -1025,7 +1017,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(asker, candidate.project.id),
+      can: mateRowCan(mateOffersOf(candidate.project.id)),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),
@@ -1098,7 +1090,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           project: candidate.project,
           press: held,
           writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
-          mayCreateRecord: mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
+          mayCreateRecord: (() => {
+            const offers = mateOffersOf(projectId);
+            return offers?.held === false && offers.createRecord.kind === "allowed";
+          })(),
           standUp: false,
           candidates,
         });
@@ -1142,7 +1137,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [
       accountHq,
       activeOrganization,
-      asker,
+      mateOffersOf,
       candidates,
       client,
       groupTree.groups,
@@ -2349,7 +2344,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           // A project with nothing in it goes, at whoever writes the structure's word.
           ...(deleteOffered(
             group,
-            mayOffer(asker, "delete_app", null),
+            orgOffer("delete_app").kind === "allowed" ||
+              orgOffer("delete_app").kind === "unavailable",
             applicationContents(hqStructure, activeOrganization?.id, group.groupId),
           )
             ? [
@@ -2357,6 +2353,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                   id: "delete-group",
                   label: `Delete ${group.name}…`,
                   variant: "destructive" as const,
+                  // While HQ does not answer, its delete is drawn and not pressable.
+                  disabled: orgOffer("delete_app").kind === "unavailable",
                   onSelect: () => {
                     setRowDialog({ kind: "delete-group", group });
                   },
