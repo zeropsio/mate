@@ -550,6 +550,38 @@ describe("backgroundJobOf", () => {
   });
 });
 
+// Run on Dara: the live card said "Read be98ni9xv.output" — Claude Code reading
+// the file a background job writes. It names the job.
+describe("a read of a background job's output", () => {
+  const read = (path: string, extra: Partial<WorkLogEntry> = {}) =>
+    entry({
+      id: "r1",
+      label: "Read",
+      itemType: "dynamic_tool_call",
+      toolName: "Read",
+      callInput: { filePath: path },
+      ...extra,
+    } as Partial<WorkLogEntry> & { id: string });
+  const job = task("t1", "Sleep 60s then print soak ok", { taskId: "be98ni9xv" });
+
+  it.each([
+    {
+      name: "a job it knows: by the job's words",
+      path: "/tmp/claude-1000/-srv/0a1b2c3d-1111-4222-8333-444455556666/tasks/be98ni9xv.output",
+      words: "Read the output of Sleep 60s then print soak ok",
+    },
+    {
+      name: "a job it does not know: as a job's output",
+      path: "/tmp/claude-1000/-srv/0a1b2c3d-1111-4222-8333-444455556666/tasks/zz9.output",
+      words: "Read a background job's output",
+    },
+    { name: "any other file: by its name", path: "/srv/app/notes.txt", words: "Read notes.txt" },
+  ])("$name", ({ path, words }) => {
+    const reading = read(path);
+    expect(stepOf(reading, trackCommands([reading, job]), false).words).toBe(words);
+  });
+});
+
 describe("taskReportWords", () => {
   it.each([
     ['Background command "Soak" failed with exit code 3', "Exit code 3"],

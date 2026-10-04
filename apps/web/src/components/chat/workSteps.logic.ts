@@ -100,11 +100,14 @@ export interface TrackedCommands {
   readonly byCommand: ReadonlyMap<string, TrackedCommand>;
   /** The tasks that are commands: never a row or a bar of their own. */
   readonly trackers: ReadonlySet<string>;
+  /** Each background task's words, by its id: a read of its output names it. */
+  readonly jobTitles: ReadonlyMap<string, string>;
 }
 
 export const NO_TRACKED_COMMANDS: TrackedCommands = {
   byCommand: new Map(),
   trackers: new Set(),
+  jobTitles: new Map(),
 };
 
 /**
@@ -258,8 +261,11 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
   );
   const byCommand = new Map<string, TrackedCommand>();
   const trackers = new Set<string>();
+  const jobTitles = new Map<string, string>();
   for (const task of entries) {
     if (!isTask(task)) continue;
+    const words = (task.toolTitle ?? task.label).trim();
+    if (task.taskId !== undefined && words.length > 0) jobTitles.set(task.taskId, words);
     const command =
       task.taskToolUseId !== undefined
         ? byCallId.get(task.taskToolUseId)
@@ -281,7 +287,29 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
         : { task },
     );
   }
-  return { byCommand, trackers };
+  return { byCommand, trackers, jobTitles };
+}
+
+/** The file a background task writes what it prints to: `…/tasks/<task id>.output`. */
+const JOB_OUTPUT = /[\\/]tasks[\\/]([\w-]+)\.output$/u;
+
+/**
+ * A read of the file a background job writes, said by the job (a probe read
+ * "Read be98ni9xv.output" on the live card): null for any other read.
+ */
+function jobOutputPhrase(
+  entry: WorkLogEntry,
+  tracked: TrackedCommands,
+  running: boolean,
+): StepPhrase | null {
+  const file = entry.callInput?.filePath ?? detailFile(entry.detail) ?? null;
+  const id = file === null ? undefined : JOB_OUTPUT.exec(file)?.[1];
+  if (id === undefined) return null;
+  const title = tracked.jobTitles.get(id);
+  const verb = running ? "Reading" : "Read";
+  return title === undefined
+    ? { verb: `${verb} a background job's output`, targets: [], more: 0, code: false }
+    : { verb: `${verb} the output of`, targets: [title], more: 0, code: false };
 }
 
 /**
@@ -642,11 +670,17 @@ export function stepOf(
   const script = unwrapped === null ? null : commandWhole(unwrapped);
   const look = kind === "look" ? lookedAt(entry) : null;
   const described = entry.callInput?.description ?? track?.description ?? null;
+  const ofJob =
+    kind === "read" && described === null ? jobOutputPhrase(entry, tracked, running) : null;
   return {
     key: entry.id,
     kind,
-    words: described ?? plainWords(entry, kind, running),
-    phrase: described === null ? plainPhrase(entry, kind, running) : null,
+    words:
+      described ??
+      (ofJob === null
+        ? plainWords(entry, kind, running)
+        : [ofJob.verb, ...ofJob.targets].join(" ")),
+    phrase: described !== null ? null : (ofJob ?? plainPhrase(entry, kind, running)),
     code,
     script,
     codeLines: script === null ? 0 : script.split("\n").length,
