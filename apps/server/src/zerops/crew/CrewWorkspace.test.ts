@@ -512,24 +512,29 @@ describe("CrewWorkspace", () => {
     ),
   );
 
-  it.effect("the boot sweep never commits a checked lane's edits", () =>
-    withLanes((root) =>
-      Effect.gen(function* () {
-        const workspace = yield* CrewWorkspace.CrewWorkspace;
-        yield* workspace.create(BACKEND);
-        const tip = git(root, ["rev-parse", "crew/backend"]);
-        write(root, ".crew/backend/after-check.txt", "unchecked\n");
-        const swept = yield* workspace.sweep(TEST_HOST, new Set(["backend"]));
-        assert.deepStrictEqual(
-          [
-            swept.lanes.map((lane) => [lane.handle, lane._tag]),
-            git(root, ["rev-parse", "crew/backend"]),
-            git(`${root}/.crew/backend`, ["status", "--porcelain"]),
-          ],
-          [[["backend", "held"]], tip, "?? after-check.txt"],
-        );
-      }),
-    ),
+  it.effect(
+    "the boot sweep never commits a checked lane: tracked edits hold it, untracked files don't",
+    () =>
+      withLanes((root) =>
+        Effect.gen(function* () {
+          const workspace = yield* CrewWorkspace.CrewWorkspace;
+          yield* workspace.create(BACKEND);
+          const tip = git(root, ["rev-parse", "crew/backend"]);
+          write(root, ".crew/backend/build.log", "untracked\n");
+          const untracked = yield* workspace.sweep(TEST_HOST, new Set(["backend"]));
+          write(root, ".crew/backend/README.md", "edited after the check\n");
+          const edited = yield* workspace.sweep(TEST_HOST, new Set(["backend"]));
+          assert.deepStrictEqual(
+            [
+              untracked.lanes.map((lane) => [lane.handle, lane._tag]),
+              edited.lanes.map((lane) => [lane.handle, lane._tag]),
+              git(root, ["rev-parse", "crew/backend"]),
+              git(`${root}/.crew/backend`, ["status", "--porcelain"]),
+            ],
+            [[["backend", "clean"]], [["backend", "held"]], tip, "M README.md\n?? build.log"],
+          );
+        }),
+      ),
   );
 
   it.effect("sweeps at boot: WIP for a dirty lane, rework left open, a 0-byte ref parks", () =>

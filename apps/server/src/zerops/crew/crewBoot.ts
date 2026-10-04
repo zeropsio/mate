@@ -210,7 +210,18 @@ const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
     for (const lane of swept.lanes) {
       const task = lane._tag === "held" ? open(lane.handle) : undefined;
       if (task === undefined) continue;
-      for (const row of yield* asRefusal(core.store.operations(CREW_ID))) {
+      const rows = yield* asRefusal(core.store.operations(CREW_ID));
+      // A landing that went through is landed: its resume records it, whatever the copy holds.
+      if (
+        rows.some(
+          (row) =>
+            row.taskId === task.assignment &&
+            row.kind === "landing" &&
+            readLandedEvidence(row.result) !== undefined,
+        )
+      )
+        continue;
+      for (const row of rows) {
         if (row.taskId !== task.assignment || row.status !== "interrupted") continue;
         core.memory.resumeAtBoot.delete(row.id);
         yield* updateOperation(core, row.id, { status: "continued" });

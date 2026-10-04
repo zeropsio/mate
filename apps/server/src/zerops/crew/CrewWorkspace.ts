@@ -237,7 +237,7 @@ export type SweepLane = { readonly handle: string } & (
   | { readonly _tag: "frozen" }
   /** The directory is gone: `recover` brings it back. */
   | { readonly _tag: "missing" }
-  /** Edits on a copy whose task the check passed: never committed, never landed. */
+  /** Tracked edits on a copy whose task the check passed: never committed, never landed. */
   | { readonly _tag: "held" }
 );
 
@@ -315,6 +315,8 @@ export interface CrewWorkspaceService {
     key: LaneKey,
     turn: TurnCommit,
   ) => Effect.Effect<LaneCommit, CrewWorkspaceError>;
+  /** Whether the copy's tracked files differ from its tip; untracked files never count. */
+  readonly trackedEdits: (key: LaneKey) => Effect.Effect<boolean, CrewWorkspaceError>;
   /**
    * A git write that finished on the service after the Mate stopped: the
    * interrupted `operation`'s own commits (or its `landed` commit, which the
@@ -469,6 +471,18 @@ export const make = Effect.gen(function* () {
           ),
         ),
       );
+
+  const trackedEdits: CrewWorkspaceService["trackedEdits"] = (key) =>
+    Effect.gen(function* () {
+      const row = yield* store.requireLane(key.crew, key.handle);
+      const out = yield* runLane(
+        row.host,
+        "trackedEdits",
+        `[ -d ${shellQuote(laneDirectory(row.lane))} ] || { printf 'edits\\tno\\n'; exit 0; }\n` +
+          `[ -z "$(${laneGit(row.lane)(["status", "--porcelain", "--untracked-files=no"])})" ] && printf 'edits\\tno\\n' || printf 'edits\\tyes\\n'\n`,
+      );
+      return field(out, "edits") === "yes";
+    });
 
   const adopt: CrewWorkspaceService["adopt"] = (key, input) =>
     Effect.gen(function* () {
@@ -720,7 +734,8 @@ export const make = Effect.gen(function* () {
                 `  tip=$(${lg(["rev-parse", "-q", "--verify", "HEAD"])} 2>/dev/null) || tip=\n` +
                 `  merging=0; ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null 2>&1 && merging=1\n` +
                 `  dirty=0; [ -z "$(${lg(["status", "--porcelain"])} 2>/dev/null)" ] || dirty=1\n` +
-                `  printf 'lane\\t%s\\t%s\\t%s\\t%s\\n' ${handle} "$tip" "$merging" "$dirty"\n` +
+                `  tracked=0; [ -z "$(${lg(["status", "--porcelain", "--untracked-files=no"])} 2>/dev/null)" ] || tracked=1\n` +
+                `  printf 'lane\\t%s\\t%s\\t%s\\t%s\\t%s\\n' ${handle} "$tip" "$merging" "$dirty" "$tracked"\n` +
                 `  [ "$merging" = 0 ] || ${lg(["diff", "--name-only", "--diff-filter=U"])} | sed 's/^/unmerged\t${row.lane}\t/'\n` +
                 `else\n` +
                 `  printf 'missing\\t%s\\n' ${handle}\n` +
@@ -733,8 +748,11 @@ export const make = Effect.gen(function* () {
       const missing = new Set(fieldsOf(out, "missing"));
       const read = new Map(
         fieldsOf(out, "lane").map((value) => {
-          const [handle = "", tip = "", merging = "", dirty = ""] = value.split("\t");
-          return [handle, { tip, merging: merging === "1", dirty: dirty === "1" }] as const;
+          const [handle = "", tip = "", merging = "", dirty = "", tracked = ""] = value.split("\t");
+          return [
+            handle,
+            { tip, merging: merging === "1", dirty: dirty === "1", tracked: tracked === "1" },
+          ] as const;
         }),
       );
       const unmerged = fieldsOf(out, "unmerged").map((value) => {
@@ -772,8 +790,12 @@ export const make = Effect.gen(function* () {
             const paths = unmerged.filter(([lane]) => lane === handle).map(([, path]) => path);
             return { handle, _tag: "merging", paths } satisfies SweepLane;
           }
+          // A checked copy's untracked files are neither edits after its check nor committed.
+          if (checked.has(handle))
+            return state.tracked
+              ? ({ handle, _tag: "held" } satisfies SweepLane)
+              : ({ handle, _tag: "clean", tip: state.tip } satisfies SweepLane);
           if (!state.dirty) return { handle, _tag: "clean", tip: state.tip } satisfies SweepLane;
-          if (checked.has(handle)) return { handle, _tag: "held" } satisfies SweepLane;
           const committed = yield* commitLane(
             row,
             "wip(sweep): lane work left uncommitted at boot",
@@ -962,6 +984,7 @@ export const make = Effect.gen(function* () {
     orphanScan,
     commitTurn,
     adopt,
+    trackedEdits,
     keepAndReset,
   });
 });

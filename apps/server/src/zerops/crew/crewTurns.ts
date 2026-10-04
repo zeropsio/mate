@@ -27,7 +27,6 @@ import {
  */
 import { CommandId, ThreadId, type CrewRunReason, type SpiEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 
 import {
   asRefusal,
@@ -147,15 +146,12 @@ export const commitAndPolice = (
   withOperation(core, { kind: "checkpoint", handle: member.row.handle, task }, (operation) =>
     Effect.gen(function* () {
       const key = { crew: CREW_ID, handle: member.row.handle };
-      // A checked task's copy is the tree that lands: an edit on it is never committed.
-      if (task !== undefined && CHECKED_STATES.has(task.state) && member.row.host !== null) {
-        const stats = yield* core.reads
-          .laneStats(member.row.host, member.row.handle)
-          .pipe(Effect.option);
-        if (Option.isSome(stats) && stats.value.dirty) {
+      // A checked task's copy is the tree that lands: nothing is committed on it. A tracked
+      // edit stops the task; untracked files are neither edits nor landed.
+      if (task !== undefined && CHECKED_STATES.has(task.state)) {
+        if (yield* asRefusal(core.workspace.trackedEdits(key)))
           yield* parkTask(core, task, EDITED_AFTER_CHECK);
-          return;
-        }
+        return;
       }
       const turnKey = task === undefined ? "" : `${task.assignment}:${task.attempt}`;
       const committed = yield* operationStep(
