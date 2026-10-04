@@ -46,22 +46,21 @@
  *
  * @module authorization/zeropsThrowaway
  */
-
-/** A throwaway minted to open one Mate: `mate-door:{projectId}:{nonce}`. */
-export const DOOR_THROWAWAY_PREFIX = "mate-door";
+import { DOOR_PREFIX } from "@t3tools/shared/zeropsDoor";
 
 /**
- * Names a throwaway after the Mate it is for. The receiver checks the name
+ * Names a throwaway after the Mate it is for, `mate-door:{projectId}:{nonce}`
+ * (`DOOR_PREFIX`, the one the door checks). The receiver checks the name
  * against its own project, so a throwaway captured at one Mate's door is not
  * a pass to another.
  */
 export function doorThrowawayName(projectId: string, nonce: string): string {
-  return `${DOOR_THROWAWAY_PREFIX}:${projectId}:${nonce}`;
+  return `${DOOR_PREFIX}:${projectId}:${nonce}`;
 }
 
 /** Whether a token on the account is one of our throwaways, left behind by a crash. */
 export function isThrowawayName(name: string): boolean {
-  return name.startsWith(`${DOOR_THROWAWAY_PREFIX}:`);
+  return name.startsWith(`${DOOR_PREFIX}:`);
 }
 
 /**
