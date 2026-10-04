@@ -1,8 +1,8 @@
 # Project metadata
 
 A Zerops project carries only the exact `mate` marker when it has a Mate. Project names, services
-and access roles come from Zerops. Application membership and kind, faces, makers, birth intents,
-name sources and preserved signer identities are HQ records joined by project id. Desktop uses
+and access roles come from Zerops. Application membership and kind, faces, makers, birth intents
+and preserved signer identities are HQ records joined by project id. Desktop uses
 the web client; mobile shares the client runtime and reads the same HQ placement.
 
 The client records a birth intent before creating a project and retains its id in the creation

@@ -228,7 +228,6 @@ export interface NewMateRecord extends MateRecord {
 export interface MateView {
   readonly birthId?: string;
   readonly signers?: Readonly<Record<string, string>>;
-  readonly nameSource?: string;
   /**
    * Its project's name in Zerops as HQ's view of the org has it, never HQ's own (D3): what a client
    * from before D3 reads a Mate's name from.
@@ -1242,7 +1241,7 @@ export const structureLayer = (options: {
                      CASE WHEN m.project_id IS NULL THEN NULL ELSE jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
-                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END END AS mate
+                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END END AS mate
               FROM hq_app_project p LEFT JOIN hq_mate m USING (project_id)
               ORDER BY p.seq`;
             const alone = yield* sql<{
@@ -1252,7 +1251,7 @@ export const structureLayer = (options: {
               SELECT m.project_id, jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
-                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END AS mate
+                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END AS mate
               FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
