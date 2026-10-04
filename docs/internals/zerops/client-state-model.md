@@ -254,8 +254,11 @@ background pause. Other machines retain their own declared policies. Waiting for
 - **`verifying`** — `user/info` in flight
   - _Leaves on:_ Principal verified → `signed-in` (epoch opens); a 401 whose refresh failed and
     cleared the stored session → `signed-out`; network or 5xx → `unavailable`
-- **`unavailable(retryAt)`** — Zerops did not answer
-  - _Leaves on:_ Tick, online, visible, user retry, a stored session from another tab → `verifying`
+- **`unavailable(retryAt)`** — Zerops did not answer; a 429's Retry-After is the floor of `retryAt`
+  - _Leaves on:_ Tick, online, visible, user retry, a stored session from another tab → `verifying`.
+    A tick, online or visible retry is a background one: the failure stays shown, saying it tries
+    again; only the person's Verify again shows a fresh check. A hidden tab sends nothing on
+    `online`: its visible wake checks.
 - **`signed-out`** — Landing
   - _Leaves on:_ Sign-in, 2FA or hand-over here, or a session stored by another tab → `verifying`
 - **`signed-in(p, epoch, gen)`** — Epoch open; token `current ⇄ refreshing` under Web Lock

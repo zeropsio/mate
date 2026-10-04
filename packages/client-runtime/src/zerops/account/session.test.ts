@@ -121,18 +121,30 @@ describe("transitionZeropsSession", () => {
       [{ kind: "schedule", at: 5_000 }],
     ],
     [
-      "verifies again when its retry time comes",
+      "verifies again when its retry time comes, a background retry that keeps the failure shown",
       unavailableAt(1_000),
       { type: "WAKE", trigger: "tick" },
-      { status: "verifying", session: stored, backoff: { rung: 1 } },
+      { status: "verifying", session: stored, backoff: { rung: 1 }, retry: true },
       [{ kind: "verify", session: stored }],
     ],
     [
-      "verifies again at once when the tab comes online",
+      "verifies again at once when the tab comes online, in the background",
       unavailableAt(60_000),
       { type: "WAKE", trigger: "online" },
-      verifying(),
+      { ...verifying(), retry: true },
       [{ kind: "cancel-schedule" }, { kind: "verify", session: stored }],
+    ],
+    [
+      "waits out a 429's Retry-After when it is longer than the ladder's rung",
+      verifying(),
+      { type: "VERIFIED", session: stored, verdict: { kind: "unavailable", retryAfterMs: 30_000 } },
+      {
+        status: "unavailable",
+        session: stored,
+        backoff: { rung: 1 },
+        retryAt: 1_000 + 30_000,
+      },
+      [{ kind: "schedule", at: 1_000 + 30_000 }],
     ],
     [
       "verifies again at once on the person's Verify again, from the first rung",
@@ -476,6 +488,23 @@ function makeOrigin(initial: { session: ZeropsSession | null; owner: ZeropsSessi
 const flush = async () => {
   for (let turn = 0; turn < 10; turn++) await Promise.resolve();
 };
+
+describe("probeZeropsPrincipal", () => {
+  it.each([
+    [429, { "retry-after": "20" }, { kind: "unavailable", retryAfterMs: 20_000 }],
+    [503, {}, { kind: "unavailable" }],
+    [401, {}, { kind: "unauthorized" }],
+  ] as const)("reads a %i as %j", async (status, headers, verdict) => {
+    const answer = await probeZeropsPrincipal(
+      {
+        fetch: async () => new Response("{}", { status, headers }),
+        baseUrl: "https://api.example.test",
+      },
+      stored,
+    );
+    expect(answer).toEqual(verdict);
+  });
+});
 
 describe("makeZeropsSessionDriver", () => {
   it("retries a boot the platform could not answer when its retry time comes", async () => {
