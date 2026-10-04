@@ -3892,3 +3892,21 @@ no-cache`.
   and **a stage HQ holds for a deploy key says that, never "coming up"**.
   - _Why:_ layout shift; a review stuck on "redeploys" forever; and "coming up" for a stage nothing
     will bring up.
+- **2026-10-04** — **Crew work carries on after a restart, from the stage it recorded.**
+  - 0.13's operations persist their stage before each side effect. At boot the engine carries each
+    interrupted one on from that stage:
+    - a turn continues in its copy as its starter;
+    - a checkpoint commits again;
+    - a check merges and checks again;
+    - a landing records the outcome its trailer already shows, or lands again as the person who
+      pressed Land.
+  - A waiting Allow goes out again at boot. A refused task starts again once a sign-in changes. In a
+    run, a failed check goes back to its crewmate.
+  - The boot sweeps the crew copies: a dirty copy is saved as a WIP commit, and a missing one comes
+    back only when its branch, landings and tip prove nothing is lost.
+  - Only an ambiguous resume waits for a person, with its reason: a rebuild a person chose, a task
+    changed since, a resume admission refuses.
+  - **Supersedes:** "crew work interrupted by a restart is shown and continued by a person, never
+    repaired at boot".
+  - _Why:_ a Mate update mid-run paused every crew until someone pressed Continue; the recorded
+    stages make the resume safe.
