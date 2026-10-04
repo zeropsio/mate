@@ -361,7 +361,7 @@ describe("deriveDock", () => {
     ]);
   });
 
-  it("stays after the turn while work runs on in the background: what still runs, and its turn's others", () => {
+  it("stays after the turn while work runs on in the background: what still runs, and nothing else", () => {
     const dock = deriveDock({
       ...base,
       isWorking: false,
@@ -381,10 +381,10 @@ describe("deriveDock", () => {
       operations: [],
       tasks: null,
       helpers: { working: 1, done: 0 },
-      // What still runs, with what its own turn sent along: an earlier turn's is history.
-      background: { running: 1, done: 1, failed: 0 },
+      // After the turn its card's line is the record: the band holds only what runs.
+      background: { running: 1, done: 0, failed: 0 },
     });
-    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b1", "b2"]);
+    expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b2"]);
   });
 
   // A bar stands for what runs without the Mate waiting on it (pass 35): a

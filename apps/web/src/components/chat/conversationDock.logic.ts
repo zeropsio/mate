@@ -425,7 +425,8 @@ export function deriveDock(input: {
       operations: [],
       helpers: rows.length === 0 ? null : { rows, working: rows.length, done: 0, failed: 0 },
       tasks: null,
-      background: backgroundRunning(backgroundTasks, { id: null, startedMs: Number.NaN }),
+      // After the turn its card's line is the record of what ended: only what runs.
+      background: backgroundGroup(backgroundTasks.filter((task) => task.state === "running")),
       afterTurn,
       pause: null,
     };

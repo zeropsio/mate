@@ -731,11 +731,14 @@ function Instruments({
             bar={background.tasks.map((task) => ({ key: task.id, tone: TASK_BAR[task.state] }))}
             failed={background.running === 0 && background.failed > 0}
             figure={
-              background.tasks.length > 1
+              // How many ended of all, once one has; while all run, nothing to count.
+              background.tasks.length > 1 && background.running < background.tasks.length
                 ? `${background.tasks.length - background.running}/${background.tasks.length}`
-                : runningTask !== undefined
-                  ? spanOf(runningTask.startedAt, null)
-                  : null
+                : background.tasks.length > 1
+                  ? null
+                  : runningTask !== undefined
+                    ? spanOf(runningTask.startedAt, null)
+                    : null
             }
             label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed.${backgroundOpens ? ` ${backgroundShown ? "Hide" : "Show"} each one` : ""}`}
             onToggle={backgroundOpens ? () => toggle("background") : null}
