@@ -115,7 +115,7 @@ export function ZeropsChangeReview({
   /** Opens another review in this one's place — the release, once this merged. */
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
-  const reviewOffers = useChangeReviewOffers(target.groupId, target.repository);
+  const reviewOffers = useChangeReviewOffers(target.groupId);
   const router = useRouter();
   const flowValue = useZeropsProjectFlowOptional();
   // The dialog's way to the same review at the change's own address.

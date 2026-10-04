@@ -29,10 +29,7 @@ function failureWords(failure: GrantFailure): string {
   }
 }
 
-export function useChangeReviewOffers(
-  appId: string,
-  repository: string,
-): ZeropsChangeOffers | undefined {
+export function useChangeReviewOffers(appId: string): ZeropsChangeOffers | undefined {
   const data = useZeropsData();
   const placements = useAtomValue(hqPlacementsAtom);
   const session = useZeropsSessionOptional();
@@ -96,7 +93,7 @@ export function useChangeReviewOffers(
     [evidence, organizationId],
   );
   const offersOf = useChangeOffers(verified);
-  const offers = offersOf(appId, repository);
+  const offers = offersOf(appId);
   if (offers === undefined || offers.merge) return offers;
   const projects = descriptors.flatMap((descriptor) =>
     "project" in descriptor ? [descriptor.project] : [],

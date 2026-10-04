@@ -220,27 +220,18 @@ describe("useChangeOffers", () => {
       merge: true,
     });
   });
-  it.each([
-    {
-      production: true,
-      reason: "You need at least Basic user access to production to merge this recipe change.",
-    },
-    {
-      production: false,
-      reason:
-        "An organization owner or admin can merge this recipe change before production exists.",
-    },
-  ])(
-    "gives a Developer the recipe refusal with production $production",
-    ({ production, reason }) => {
+  it.each([true, false])(
+    "D23 offers a project writer recipe and code merges with production %s",
+    (production) => {
       const offers = offersOf({
         roleCode: "NO_ACCESS",
         grants: [{ projectId: "p-stage", roleCode: "BASIC_USER" }],
         placed: true,
         gitFixture: !production,
       });
-      expect(offers("app-shop", "appdev")?.merge).toBe(true);
-      expect(offers("app-shop", "group")).toMatchObject({ merge: false, reason });
+      // The offer is application-wide for both repositories.
+      expect(offers("app-shop")).toMatchObject({ merge: true });
+      expect(offers("app-shop")?.reason).toBeUndefined();
     },
   );
 

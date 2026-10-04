@@ -13,7 +13,6 @@ import {
   releasePermission,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
-import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useContext, useMemo } from "react";
 
@@ -31,10 +30,7 @@ export type ZeropsChangeOffers = ReturnType<typeof changeOffers> & {
  * An application's offers by its id; `undefined` while HQ has not said where it places the
  * projects. Listed identities retain the organization role; held grants authorize while services load.
  */
-export type ZeropsChangeOffersOf = (
-  appId: string,
-  repository?: string,
-) => ZeropsChangeOffers | undefined;
+export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
 
 /** Who asks, by the session's membership and the projects the inventory lists; `undefined` before. */
 type OfferProject = {
@@ -69,20 +65,12 @@ export function useChangeOffers(
   const placements = useAtomValue(hqPlacementsAtom);
   const asker = useOfferAsker(verified);
   return useCallback(
-    (appId, repository) => {
+    (appId) => {
       if (asker === undefined || placements === null) return undefined;
-      const offers = changeOffers(asker, placements, appId, repository);
-      const decision = changeMergePermission(asker, placements, appId, repository);
+      const offers = changeOffers(asker, placements, appId);
+      const decision = changeMergePermission(asker, placements, appId);
       return decision?.allowed === false
-        ? {
-            ...offers,
-            reason:
-              repository === RECIPE_REPO && decision.reason === "no_production"
-                ? "An organization owner or admin can merge this recipe change before production exists."
-                : repository === RECIPE_REPO && decision.reason === "not_releaser"
-                  ? "You need at least Basic user access to production to merge this recipe change."
-                  : hqRefusalWords({ code: "forbidden", reason: decision.reason }),
-          }
+        ? { ...offers, reason: hqRefusalWords({ code: "forbidden", reason: decision.reason }) }
         : offers;
     },
     [asker, placements],

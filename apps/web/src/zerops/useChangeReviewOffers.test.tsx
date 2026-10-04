@@ -48,7 +48,7 @@ it("demands the open review's projects once, ends a failed read visibly, and Aga
   const seen: Array<ReturnType<typeof useChangeReviewOffers>> = [];
   const offers = () => seen.at(-1)!;
   function Probe() {
-    seen.push(useChangeReviewOffers("app", "group"));
+    seen.push(useChangeReviewOffers("app"));
     return null;
   }
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

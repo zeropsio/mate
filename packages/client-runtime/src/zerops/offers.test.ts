@@ -235,7 +235,7 @@ describe("heldOf — what HQ holds a project as, from where it places it", () =>
   });
 });
 
-describe("recipe merge rights", () => {
+describe("D23: recipe merges use the same write rights as code merges", () => {
   it.each([
     ["OWNER", false, [], true],
     ["ADMIN", false, [], true],
@@ -243,13 +243,13 @@ describe("recipe merge rights", () => {
       "NO_ACCESS",
       false,
       [{ id: "p-dev", userRoles: [{ clientUserId: "cu-ada", roleCode: "BASIC_USER" }] }],
-      false,
+      true,
     ],
     [
       "NO_ACCESS",
       true,
       [{ id: "p-dev", userRoles: [{ clientUserId: "cu-ada", roleCode: "BASIC_USER" }] }],
-      false,
+      true,
     ],
     [
       "NO_ACCESS",
@@ -258,7 +258,7 @@ describe("recipe merge rights", () => {
       true,
     ],
   ] as const)(
-    "%s with production %s gets recipe offer %s",
+    "%s with production %s and grants %j gets merge offer %s",
     (roleCode, production, grants, merge) => {
       const placements = new Map<string, HqPlacement>([
         ["p-dev", { appId: "app", appName: "App", kind: "mate", mate: null }],
@@ -271,9 +271,8 @@ describe("recipe merge rights", () => {
         { id: "p-dev" },
         ...(production ? [{ id: "p-prod" }] : []),
       ]);
-      expect(changeOffers(asker, placements, "app", "group").merge).toBe(merge);
-      if (roleCode === "NO_ACCESS" && grants[0]?.id === "p-dev")
-        expect(changeOffers(asker, placements, "app", "appdev").merge).toBe(true);
+      // The same offer governs every repository in the application.
+      expect(changeOffers(asker, placements, "app").merge).toBe(merge);
     },
   );
 });
