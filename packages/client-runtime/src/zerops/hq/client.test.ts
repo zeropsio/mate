@@ -1598,6 +1598,59 @@ describe("makeHqApi — a write HQ may have made", () => {
     });
   });
 
+  it.each<{
+    readonly name: string;
+    readonly ask: (api: HqApi) => Promise<void>;
+  }>([
+    { name: "face", ask: (api) => api.updateMate("p1", { face: "sky" }) },
+    { name: "project move", ask: (api) => api.moveProject("p1", { appId: null, kind: "mate" }) },
+    { name: "deploy token", ask: (api) => api.keepDeployToken("app-1", "stage", "token") },
+    { name: "deletion completion", ask: (api) => api.completeProjectDeletion("p1", "completion") },
+  ])("a failed $name write stays uncertain and manual Again writes once", async ({ ask }) => {
+    let failed = true;
+    const writes: Seen[] = [];
+    const hq = fakeHq((seen) => {
+      if (seen.path === "/api/door") return undefined;
+      writes.push(seen);
+      return failed ? json(503, { code: "internal_error" }) : new Response(null, { status: 204 });
+    });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(ask(api)).rejects.toMatchObject({
+      kind: "uncertain",
+      message: HQ_WRITE_UNCERTAIN,
+    });
+    expect(writes).toHaveLength(1);
+    failed = false;
+    await expect(ask(api)).resolves.toBeUndefined();
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual(writes[0]);
+  });
+
+  it("confirms a name already held after a 503 without sending the write again", async () => {
+    const hq = fakeHq((seen) => {
+      if (seen.path === "/api/apps/app-1") return json(503, { code: "internal_error" });
+      if (seen.path === "/api/structure")
+        return json(200, { apps: [{ id: "app-1", name: "Harbor" }] });
+      return undefined;
+    });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.renameApp("app-1", "Harbor")).resolves.toBeUndefined();
+    expect(hq.seen.filter((seen) => seen.path !== "/api/door").map((seen) => seen.method)).toEqual([
+      "PATCH",
+      "GET",
+    ]);
+  });
+
   it("ends a 503 write visibly despite Retry-After, and writes again only when asked", async () => {
     let busy = true;
     const hq = fakeHq((seen) => {
@@ -1615,8 +1668,8 @@ describe("makeHqApi — a write HQ may have made", () => {
       openSocket: NO_SOCKET,
     });
     await expect(api.renameApp("app-1", "Harbor")).rejects.toMatchObject({
-      kind: "unavailable",
-      code: "zerops_unavailable",
+      kind: "uncertain",
+      message: HQ_WRITE_UNCERTAIN,
     });
     expect(hq.seen.filter((entry) => entry.method === "PATCH")).toHaveLength(1);
     await api.renameApp("app-1", "Harbor");

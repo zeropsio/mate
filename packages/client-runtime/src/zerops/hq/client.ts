@@ -376,12 +376,6 @@ const CALL_TIMEOUT_MS = 20_000;
 const WRITE_TIMEOUT_MS = 45_000;
 
 /**
- * A call that changes what HQ holds: one HQ makes again the same if asked twice
- * (`idempotent` — it sets a value), or one it would make twice (`once`).
- */
-type Write = "once" | "idempotent";
-
-/**
  * What a write whose answer was lost says, when HQ holds nothing of it either: main's words for an
  * attempt that may have landed (`docs/internals/zerops/client-state-model.md`, command attempts).
  */
@@ -422,53 +416,44 @@ async function errorOf(response: Response): Promise<HqError> {
   });
 }
 
-/** One call to HQ, ending with its answer or a visible failure; another call is the caller's ask. */
-async function send(
-  fetch: FetchImplementation,
-  url: string,
-  init: RequestInit,
-  write?: Write,
-): Promise<Response> {
-  return answered(await sendOnce(fetch, url, init, write), write);
-}
-
 /**
  * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
  * for a Core that does not lead (`not_active`), which writes nothing.
  */
-async function answered(response: Response, write: Write | undefined): Promise<Response> {
+async function answered(response: Response, write: boolean): Promise<Response> {
   if (response.ok) return response;
   const error = await errorOf(response);
-  if (write === "once" && response.status >= 500 && error.code !== "not_active") {
+  if (write && response.status >= 500 && error.code !== "not_active") {
     throw uncertain();
   }
   throw error;
 }
 
-/** The call sent, with its deadline, and HQ's answer whatever it says. */
-async function sendOnce(
+/** One call to HQ, ending with its answer or a visible failure; another call is the caller's ask. */
+async function send(
   fetch: FetchImplementation,
   url: string,
   init: RequestInit,
-  write: Write | undefined,
+  write = false,
 ): Promise<Response> {
-  const signal =
-    init.signal ?? AbortSignal.timeout(write === undefined ? CALL_TIMEOUT_MS : WRITE_TIMEOUT_MS);
+  const signal = init.signal ?? AbortSignal.timeout(write ? WRITE_TIMEOUT_MS : CALL_TIMEOUT_MS);
   const headers = {
     Accept: "application/json",
     ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
     ...init.headers,
   };
+  let response: Response;
   try {
-    return await fetch(url, { ...init, signal, headers });
+    response = await fetch(url, { ...init, signal, headers });
   } catch {
-    if (write !== undefined) throw uncertain();
+    if (write) throw uncertain();
     throw new HqError({
       kind: "unavailable",
       code: "network",
       message: "HQ could not be reached.",
     });
   }
+  return answered(response, write);
 }
 
 const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;
@@ -665,7 +650,7 @@ export function makeHqApi(input: {
   const authorized = async (
     path: string,
     init: RequestInit = {},
-    write?: Write,
+    write = false,
   ): Promise<Response> => {
     const held = session ?? restore() ?? enter();
     const token = await held;
@@ -830,17 +815,13 @@ export function makeHqApi(input: {
     // taken for it.
     recordBirth: async (birth) =>
       json<HqBirth>(
-        await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, "once"),
+        await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
       ),
     createApp: (name) =>
       confirmed(
         async () =>
           json<{ readonly id: string; readonly name: string }>(
-            await authorized(
-              "/api/apps",
-              { method: "POST", body: JSON.stringify({ name }) },
-              "once",
-            ),
+            await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, true),
           ),
         async () => {
           const made = (await structureOf()).apps.find((app) => app.name === name);
@@ -853,7 +834,7 @@ export function makeHqApi(input: {
           authorized(
             `/api/apps/${encodeURIComponent(appId)}/projects`,
             { method: "POST", body: JSON.stringify(attach) },
-            "once",
+            true,
           ),
         async () =>
           (await appOf(appId))?.projects.some(
@@ -864,7 +845,7 @@ export function makeHqApi(input: {
       await authorized(
         `${environmentPath(appId, environment)}/deploy-token`,
         { method: "PUT", body: JSON.stringify({ token }) },
-        "idempotent",
+        true,
       );
     },
     redeploy: async (appId, environment, deploy) =>
@@ -873,7 +854,7 @@ export function makeHqApi(input: {
           await authorized(
             `${environmentPath(appId, environment)}/redeploy`,
             { method: "POST", body: JSON.stringify(deploy) },
-            "once",
+            true,
           ),
         )
       ).deploys,
@@ -883,7 +864,7 @@ export function makeHqApi(input: {
           await authorized(
             `${environmentPath(appId, environment)}/services`,
             { method: "POST", body: JSON.stringify({ service }) },
-            "once",
+            true,
           ),
         )
       ).deploys,
@@ -902,7 +883,7 @@ export function makeHqApi(input: {
           method: "POST",
           body: JSON.stringify({ completion }),
         },
-        "idempotent",
+        true,
       );
     },
     mateKey: async (projectId, signal) =>
@@ -918,7 +899,7 @@ export function makeHqApi(input: {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}`,
         { method: "PATCH", body: JSON.stringify(change) },
-        "idempotent",
+        true,
       );
     },
     renameApp: (appId, name) =>
@@ -927,25 +908,25 @@ export function makeHqApi(input: {
           authorized(
             `/api/apps/${encodeURIComponent(appId)}`,
             { method: "PATCH", body: JSON.stringify({ name }) },
-            "idempotent",
+            true,
           ),
         async () => (await appOf(appId))?.name === name,
       ),
     deleteApp: (appId) =>
       confirmedDone(
-        () => authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, "once"),
+        () => authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, true),
         async () => (await appOf(appId)) === undefined,
       ),
     moveProject: async (projectId, to) => {
       await authorized(
         `/api/projects/${encodeURIComponent(projectId)}/app`,
         { method: "PUT", body: JSON.stringify(to) },
-        "idempotent",
+        true,
       );
     },
     createMate: (mate) =>
       confirmedDone(
-        () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, "once"),
+        () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, true),
         async () => {
           const { ungrouped, apps } = await structureOf();
           return (
@@ -969,7 +950,7 @@ export function makeHqApi(input: {
             await authorized(
               `${changePath(link)}/comments`,
               { method: "POST", body: JSON.stringify({ body }) },
-              "once",
+              true,
             ),
           ),
         async () => {
@@ -984,7 +965,7 @@ export function makeHqApi(input: {
             await authorized(
               `${changePath(link)}/merge`,
               { method: "POST", body: JSON.stringify({ expectedHead }) },
-              "once",
+              true,
             ),
           ),
         async () => heldAsked(await changeIn(link, "merged")),
@@ -993,7 +974,7 @@ export function makeHqApi(input: {
     closeChange: (link) =>
       confirmed(
         async () =>
-          readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, "once")),
+          readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, true)),
         () => changeIn(link, "closed"),
         ["change_not_open"],
       ),
@@ -1015,14 +996,14 @@ export function makeHqApi(input: {
         await authorized(
           `/api/apps/${encodeURIComponent(appId)}/git-credentials`,
           { method: "POST" },
-          "once",
+          true,
         ),
       ),
     revokeGitCredential: async (appId, id) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/git-credentials/${encodeURIComponent(id)}`,
         { method: "DELETE" },
-        "idempotent",
+        true,
       );
     },
     repositorySource: async (appId, repo, query, signal) =>
@@ -1045,7 +1026,7 @@ export function makeHqApi(input: {
             await authorized(
               releasesPath(appId),
               { method: "POST", body: JSON.stringify(request) },
-              "once",
+              true,
             ),
           ),
         async () =>
@@ -1068,7 +1049,7 @@ export function makeHqApi(input: {
             await authorized(
               `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
               { method: "POST", body: JSON.stringify(request) },
-              "once",
+              true,
             ),
           ),
         async () => {
@@ -1089,7 +1070,7 @@ export function makeHqApi(input: {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
         { method: "POST" },
-        "once",
+        true,
       );
     },
   };
