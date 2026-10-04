@@ -5,7 +5,11 @@
  * while the platform works on it, then each service with its dot. The Mate's own view and the
  * route's stage (`MateLinkStage`) both put it in their slot.
  */
-import type { MateVoice, RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
+import {
+  askAgainLabel,
+  type MateVoice,
+  type RouteGatePhrase,
+} from "@t3tools/client-runtime/zerops/environments";
 import { Link } from "@tanstack/react-router";
 import { useState, type ReactElement, type ReactNode } from "react";
 
@@ -118,7 +122,8 @@ export function MateLinkLineView({
 
 /**
  * Under a Mate's name while its link is made, or when it cannot be opened: the route gate's words
- * for its verdict (`mateOpeningPhrase`), and each of its verbs once — *Try now* retries its link;
+ * for its verdict (`mateOpeningPhrase`), and each of its verbs once — *Try now* (*Try again* after
+ * a refusal) asks its Mate again;
  * *Start*, *Enable* and *Restart* are the projects screen's verbs, so until this view carries the
  * container machine's own they are *Go to projects*, as on the conversation's route.
  */
@@ -136,7 +141,7 @@ export function MateOpeningLine({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects: ReactElement;
 }): ReactNode {
-  const tryNow = onTryNow !== undefined && phrase.actions.includes("try-now");
+  const askAgain = onTryNow === undefined ? null : askAgainLabel(phrase.actions);
   const openInZerops = projectUrl !== undefined && phrase.actions.includes("open-in-zerops");
   const toProjects = phrase.actions.some(
     (action) =>
@@ -154,13 +159,13 @@ export function MateOpeningLine({
       <p className="text-center text-sm text-muted-foreground" role="status">
         {phrase.text}
       </p>
-      {tryNow || openInZerops || toProjects ? (
+      {askAgain !== null || openInZerops || toProjects ? (
         <div className="flex flex-wrap items-center justify-center gap-2">
-          {tryNow ? (
+          {askAgain === null ? null : (
             <Button onClick={onTryNow} size="compact" variant="pill">
-              Try now
+              {askAgain}
             </Button>
-          ) : null}
+          )}
           {openInZerops ? (
             <Button
               render={<a href={projectUrl} rel="noreferrer" target="_blank" />}

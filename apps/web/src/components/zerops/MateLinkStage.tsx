@@ -6,6 +6,7 @@
  * has words of its own (a restart, a reconnect, a container that is not running) the Mate's face
  * stands asleep over its name with them, on one axis (`stageSpeaks`).
  */
+import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
@@ -97,7 +98,8 @@ function MateLinkStageOf({
         : undefined;
   if (known === undefined) return <MateLinkWords voice={voice} />;
   const mate = { ...known, connected: false };
-  const onTryNow = voice.actions.includes("try-now") ? () => tryAgain(environmentId) : undefined;
+  const askAgain = askAgainLabel(voice.actions);
+  const onTryNow = askAgain === null ? undefined : () => tryAgain(environmentId);
   if (!stageSpeaks(voice)) {
     return (
       <MateOpeningPage
@@ -108,7 +110,7 @@ function MateLinkStageOf({
             ) : null}
             {onTryNow === undefined ? null : (
               <Button onClick={onTryNow} size="compact" variant="pill">
-                Try now
+                {askAgain}
               </Button>
             )}
           </>

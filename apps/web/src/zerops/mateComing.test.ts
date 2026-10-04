@@ -1265,7 +1265,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     },
     {
       case: "its fresh credentials refused past them",
-      reachability: { ...NOT_ANSWERING, last: { kind: "rejected" } },
+      reachability: { kind: "refused-credential" },
       failures: 4,
       errors: 4,
       coming: false,

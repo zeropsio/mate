@@ -42,6 +42,8 @@ export type Reachability =
   | { readonly kind: "refused-role" }
   /** The link kept refusing its configuration; waits for the user or an input change. */
   | { readonly kind: "refused-configuration" }
+  /** The Mate refused its credential; waits for the user or an input change. */
+  | { readonly kind: "refused-credential" }
   | { readonly kind: "update-required"; readonly actual: string; readonly minimum: string }
   | { readonly kind: "update-unavailable" }
   | { readonly kind: "connecting"; readonly waitingOn: ConnectingOn }
@@ -136,6 +138,8 @@ export function selectReachability(
         return { kind: "connecting", waitingOn: "access" };
       case "configuration":
         return { kind: "refused-configuration" };
+      case "credential":
+        return { kind: "refused-credential" };
     }
   }
   const held = credential.kind === "held";
@@ -188,14 +192,23 @@ export function selectReachability(
 
 // ── Copy ──────────────────────────────────────────────────────────────────────────────────────
 
-/** A verb the surface renders exactly once beside the verdict's message. */
+/**
+ * A verb the surface renders exactly once beside the verdict's message. `try-now` asks again before
+ * the next automatic attempt would; `try-again` follows a definitive refusal, which nothing asks
+ * again on its own.
+ */
 export type ReachabilityAction =
   | "go-to-projects"
   | "restart"
   | "try-now"
+  | "try-again"
   | "open-in-zerops"
   | "enable"
   | "start";
+
+/** The words of a verdict's ask-again verb, where it offers one: `try-again` over `try-now`. */
+export const askAgainLabel = (actions: ReadonlyArray<string>): "Try again" | "Try now" | null =>
+  actions.includes("try-again") ? "Try again" : actions.includes("try-now") ? "Try now" : null;
 
 export interface ReachabilityPhrase {
   /** The cause only; null when the verdict needs no words (a ready Mate). */
@@ -216,7 +229,6 @@ const CAUSE: Record<ExchangeCause["kind"], string> = {
   mint: "Zerops isn't answering.",
   "identity-unavailable": "This Mate can't reach Zerops to check who you are.",
   "identity-failed": "This Mate can't reach Zerops to check who you are.",
-  rejected: "This Mate didn't accept the sign-in.",
   install: "This tab couldn't set up the connection to this Mate.",
 };
 
@@ -294,9 +306,13 @@ export function reachabilityPhrase(
         "go-to-projects",
       ]);
     case "refused-role":
-      return phrase("You can see this project in Zerops but can't operate its Mate.");
+      return phrase("You can see this project in Zerops but can't operate its Mate.", [
+        "try-again",
+      ]);
     case "refused-configuration":
-      return phrase("This Mate keeps refusing its connection settings.", ["try-now"]);
+      return phrase("This Mate keeps refusing its connection settings.", ["try-again"]);
+    case "refused-credential":
+      return phrase("This Mate didn't accept the sign-in.", ["try-again"]);
     case "update-required":
       return phrase(
         `This Mate runs ${verdict.actual}; this app needs ${verdict.minimum} or newer. Restarting it installs a newer one.`,

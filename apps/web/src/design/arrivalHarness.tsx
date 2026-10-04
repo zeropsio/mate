@@ -58,7 +58,7 @@ import {
   type ArrivalService,
   type ArrivalStepInput,
 } from "~/zerops/mateArrival";
-import type { MateVoice } from "@t3tools/client-runtime/zerops/environments";
+import { askAgainLabel, type MateVoice } from "@t3tools/client-runtime/zerops/environments";
 import type { MateComing } from "~/zerops/mateComing";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { mateStandUpAskLine, type MateStandUpPhase } from "~/zerops/mateStandUp";
@@ -530,7 +530,7 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
       kind: "reaching",
       below: (
         <MateLinkLineView
-          onTryNow={voice.actions.includes("try-now") ? () => undefined : undefined}
+          onTryNow={askAgainLabel(voice.actions) === null ? undefined : () => undefined}
           processes={voice.processes ? <MateLinkProcessesView services={PROCESSES} /> : null}
           projects={<a href="#projects" />}
           projectUrl={undefined}

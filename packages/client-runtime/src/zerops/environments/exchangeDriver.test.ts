@@ -469,31 +469,36 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(exchanges.at(-1)?.key).toBe(keyOf(remembered[0]!));
   });
 
-  it("a revoked session re-exchanges with backoff, repeatedly", async () => {
+  it("a revoked session re-exchanges, and past the loop window is refused until the person asks again", async () => {
     const shop = mate("shop");
     const { driver, clock, exchanges, installs, logs, start, reach } = rig([shop]);
     await start({ records: [shop] });
     const environmentId = EnvironmentId.make("env-shop");
     expect(reach(shop)).toEqual({ kind: "ready", notice: null });
 
-    // Revoked every 30 s: from the third rejection on, the loop window holds three of them.
-    for (let revocation = 1; revocation <= 6; revocation += 1) {
+    // Revoked every 30 s: the third rejection finds three in the loop window.
+    for (let revocation = 1; revocation <= AUTH_LOOP_REJECTIONS; revocation += 1) {
       shop.revokeSessions();
       driver.link(environmentId, { phase: "blocked", reason: "authentication" });
       // The supervisor re-attempts with the revoked credential while the new one is exchanged.
       driver.link(environmentId, { phase: "blocked", reason: "authentication" });
       await flush();
-      if (revocation >= AUTH_LOOP_REJECTIONS) {
+      if (revocation === AUTH_LOOP_REJECTIONS) {
+        // A definitive refusal: nothing asks again on its own, however long it waits.
         expect(exchanges).toHaveLength(revocation);
-        expect(reach(shop)).toMatchObject({ kind: "retrying", last: { kind: "rejected" } });
-        await clock.advance(2_000);
+        expect(reach(shop)).toEqual({ kind: "refused-credential" });
+        await clock.advance(10 * 60_000);
+        expect(exchanges).toHaveLength(revocation);
+        driver.retry(keyOf(shop));
+        await flush();
       }
       expect(exchanges).toHaveLength(1 + revocation);
       expect(installs).toHaveLength(1 + revocation);
       expect(reach(shop)).toEqual({ kind: "ready", notice: null });
       await clock.advance(30_000);
     }
-    expect(exchanges.slice(1).every((request) => request.reason === "repair")).toBe(true);
+    // The repairs the rejections asked for; the person's own after the refusal is a fresh one.
+    expect(exchanges.slice(1, AUTH_LOOP_REJECTIONS).every((r) => r.reason === "repair")).toBe(true);
     expect(logs).toContainEqual({
       key: keyOf(shop),
       diagnostic: { kind: "auth-loop", rejections: AUTH_LOOP_REJECTIONS },

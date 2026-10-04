@@ -358,6 +358,27 @@ describe("a Mate's own view while its link is made", () => {
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
   });
 
+  // The owner, 2026-10-05: a definitive refusal is never asked again on its own — its reason, and
+  // the person's Try again.
+  it("offers Try again where its Mate refused its credential, which asks it again", () => {
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: { kind: "refused-credential" },
+    } satisfies MateLink;
+    openView();
+    expect(said()).toContain("This Mate didn't accept the sign-in.");
+    expect(buttons()).toEqual(["Try again"]);
+    app.connect.mockClear();
+    act(() =>
+      tree?.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Try again")
+        ?.props.onClick(),
+    );
+    expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
+  });
+
   // A live run, 2026-10-01: a browser with 21 registered stayed on "coming up" for an hour. The
   // Mate whose view is open holds the screen's lease while the view stands (A9).
   it("puts its Mate on screen while it stands, and takes it off when it goes", () => {

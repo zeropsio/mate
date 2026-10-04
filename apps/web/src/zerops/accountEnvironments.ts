@@ -315,6 +315,7 @@ const TERMINAL_CONNECT: ReadonlySet<string> = new Set([
   "replaced",
   "refused-role",
   "refused-configuration",
+  "refused-credential",
   "update-required",
   "update-unavailable",
   "no-address",

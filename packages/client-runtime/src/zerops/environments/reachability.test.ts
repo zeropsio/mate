@@ -688,13 +688,18 @@ describe("reachabilityPhrase", () => {
     reachabilityPhrase(verdict, { nowMs: NOW, mateName: "shop" });
 
   it("names the cause only and offers each action once", () => {
+    // A definitive refusal: its reason, and the person's Try again — nothing asks again on its own.
     expect(phrase({ kind: "refused-role" })).toEqual({
       text: "You can see this project in Zerops but can't operate its Mate.",
-      actions: [],
+      actions: ["try-again"],
     });
     expect(phrase({ kind: "refused-configuration" })).toEqual({
       text: "This Mate keeps refusing its connection settings.",
-      actions: ["try-now"],
+      actions: ["try-again"],
+    });
+    expect(phrase({ kind: "refused-credential" })).toEqual({
+      text: "This Mate didn't accept the sign-in.",
+      actions: ["try-again"],
     });
     expect(phrase({ kind: "update-unavailable" })).toEqual({
       text: "This project's Zerops tooling installs an older Mate than this app supports.",

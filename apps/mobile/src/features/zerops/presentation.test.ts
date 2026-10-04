@@ -129,10 +129,17 @@ describe("zeropsCandidatePresentation", () => {
       section: "waiting",
     },
     {
-      name: "a Mate whose door refused the role",
+      name: "a Mate whose door refused the role: Try again, nothing on its own",
       candidate: candidate({ reachability: { kind: "refused-role" }, connectable: false }),
       label: "Unavailable",
-      action: null,
+      action: "Try again",
+      section: "unavailable",
+    },
+    {
+      name: "a Mate that refused its credential",
+      candidate: candidate({ reachability: { kind: "refused-credential" }, connectable: false }),
+      label: "Unavailable",
+      action: "Try again",
       section: "unavailable",
     },
     {
