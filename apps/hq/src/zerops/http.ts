@@ -9,6 +9,8 @@
  *
  * @module zerops/http
  */
+import * as ByteSize from "effect/ByteSize";
+import * as HttpIncomingMessage from "effect/unstable/http/HttpIncomingMessage";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -460,12 +462,66 @@ export const makeZeropsDeployHttp = (
     };
   });
 
+const LogAccess = Schema.Struct({ url: Schema.String });
+const LogPage = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({
+      timestamp: Schema.String,
+      severityLabel: Schema.String,
+      message: Schema.String,
+    }),
+  ),
+});
+const decodeLogs = Schema.decodeUnknownEffect(LogPage);
+
 export const makeZeropsObservationHttp = (
   baseUrl: string,
 ): Effect.Effect<ZeropsObservation["Service"], never, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
     return {
+      logs: (projectId, serviceId, limit) => (credential) =>
+        Effect.gen(function* () {
+          const unavailable = () =>
+            new ZeropsUnavailable({
+              operation: "logs",
+              message: "The log backend did not answer usably.",
+            });
+          const { value: access } = yield* ask(
+            client,
+            "logs",
+            credential,
+            HttpClientRequest.get(`${baseUrl}/project/${encodeURIComponent(projectId)}/log`),
+            LogAccess,
+          );
+          const url = yield* Effect.try({
+            try: () => {
+              const address = access.url.replace(/^GET /u, "");
+              const url = new URL(/^https?:\/\//u.test(address) ? address : `https://${address}`);
+              if (!["http:", "https:"].includes(url.protocol)) throw new Error("invalid scheme");
+              url.searchParams.set("serviceStackId", serviceId);
+              url.searchParams.set("limit", String(limit));
+              url.searchParams.set("desc", "1");
+              return url.toString();
+            },
+            catch: unavailable,
+          });
+          // The signed address authorizes this GET; the deploy key never goes to the backend.
+          const response = yield* client
+            .execute(HttpClientRequest.get(url))
+            .pipe(Effect.timeout(REQUEST_TIMEOUT), Effect.mapError(unavailable));
+          if (response.status !== 200) return yield* unavailable();
+          const raw = yield* response.json.pipe(
+            Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.mebibytes(1)),
+            Effect.mapError(unavailable),
+          );
+          const page = yield* decodeLogs(raw).pipe(Effect.mapError(unavailable));
+          return page.items.slice(0, limit).map((entry) => ({
+            timestamp: entry.timestamp,
+            severity: entry.severityLabel,
+            message: entry.message.slice(0, 4096),
+          }));
+        }),
       activeVersion: (id) => (credential) =>
         ask(
           client,

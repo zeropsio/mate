@@ -4,7 +4,11 @@
  * safely inherit just one controller's reach. Only runtime facts leave here; no env, userData,
  * deploy credential or platform DTO. Permission facts are recent, never the outage fallback.
  */
-import { type EnvironmentStatus, type ObservedEnvironment } from "@t3tools/shared/hqObservation";
+import {
+  type EnvironmentLogs,
+  type EnvironmentStatus,
+  type ObservedEnvironment,
+} from "@t3tools/shared/hqObservation";
 import { can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -60,6 +64,12 @@ export class Observation extends Context.Service<
       },
       ObservationError
     >;
+    readonly logs: (
+      mateProjectId: string,
+      projectId: string,
+      serviceId: string,
+      limit: number,
+    ) => Effect.Effect<EnvironmentLogs, ObservationError>;
     readonly status: (
       mateProjectId: string,
       projectId: string,
@@ -118,6 +128,18 @@ export const observationLayer = Layer.effect(
         return { environment, token };
       });
     return Observation.of({
+      logs: (mateProjectId, projectId, serviceId, limit) =>
+        Effect.gen(function* () {
+          const { token } = yield* target(mateProjectId, projectId);
+          const service = yield* api.service(serviceId)(token);
+          if (service.projectId !== projectId || service.isSystem)
+            return yield* refused("service_not_found");
+          return {
+            projectId,
+            serviceId,
+            entries: yield* platform.logs(projectId, serviceId, limit)(token),
+          };
+        }),
       environments: (mateProjectId) =>
         Effect.map(scopeOf(mateProjectId), ({ appId, environments }) => ({ appId, environments })),
       status: (mateProjectId, projectId) =>

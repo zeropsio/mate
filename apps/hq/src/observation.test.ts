@@ -121,5 +121,43 @@ describe("a Mate's application observation", () => {
         );
       }),
     );
+    it.effect("reads bounded logs only for a service in the allowed environment", () =>
+      Effect.gen(function* () {
+        const { call, fake, auth } = yield* setup;
+        const answer = yield* call(
+          "GET",
+          "/api/mate/environments/P_STAGE/services/S-stage/logs?limit=2",
+          { headers: auth },
+        );
+        assert.strictEqual(answer.status, 200);
+        assert.deepStrictEqual(answer.body, {
+          projectId: "P_STAGE",
+          serviceId: "S-stage",
+          entries: [],
+        });
+        assert.include(fake.calls, "logs:key-stage");
+        fake.calls.length = 0;
+        assert.strictEqual(
+          (yield* call("GET", "/api/mate/environments/P_STAGE/services/S-production/logs", {
+            headers: auth,
+          })).status,
+          403,
+        );
+        assert.notInclude(fake.calls, "logs:key-stage");
+        assert.strictEqual(
+          (yield* call("GET", "/api/mate/environments/P_STAGE/services/S-stage/logs?limit=101", {
+            headers: auth,
+          })).status,
+          400,
+        );
+        fake.unanswered.add("logs");
+        assert.strictEqual(
+          (yield* call("GET", "/api/mate/environments/P_STAGE/services/S-stage/logs", {
+            headers: auth,
+          })).status,
+          503,
+        );
+      }),
+    );
   });
 });

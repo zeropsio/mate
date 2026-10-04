@@ -473,6 +473,8 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
 };
 
 export const fakeZeropsObservation = (world: FakeWorld): ZeropsObservation["Service"] => ({
+  logs: (_projectId, _serviceId, _limit) => (credential) =>
+    tokenOf(world, "logs", credential).pipe(Effect.as([])),
   activeVersion: (id) => (credential) =>
     Effect.gen(function* () {
       yield* tokenOf(world, "activeVersion", credential);

@@ -161,6 +161,11 @@ const CredentialBody = Schema.Struct({
   keyTokenId: Schema.optionalKey(TokenId),
   serviceId: Schema.optionalKey(ServiceId),
 });
+const LogLimit = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 1, maximum: 100 }),
+);
+const decodeLogLimit = Schema.decodeUnknownEffect(LogLimit);
 const KeyBody = Schema.Struct({ keyTokenId: TokenId });
 const AppBody = Schema.Struct({ name: Schema.String });
 const MoveBody = Schema.Struct({
@@ -852,6 +857,27 @@ const routes = (
             `mate link of ${projectId} closed by ${ended.by} (${String(ended.code)})`,
           );
           return HttpServerResponse.empty();
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/environments/:projectId/services/:serviceId/logs",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const params = yield* HttpRouter.params;
+          const url = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq");
+          const limit = yield* decodeLogLimit(Number(url.searchParams.get("limit") ?? "100"));
+          return json(
+            yield* (yield* Observation).logs(
+              projectId,
+              params["projectId"] ?? "",
+              params["serviceId"] ?? "",
+              limit,
+            ),
+            200,
+          );
         }),
       ),
     ),

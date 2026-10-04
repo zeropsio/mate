@@ -20,3 +20,16 @@ export const EnvironmentStatus = Schema.Struct({
   ),
 });
 export type EnvironmentStatus = typeof EnvironmentStatus.Type;
+
+export const ObservationLogEntry = Schema.Struct({
+  timestamp: Schema.String,
+  severity: Schema.String,
+  message: Schema.String,
+});
+export type ObservationLogEntry = typeof ObservationLogEntry.Type;
+export const EnvironmentLogs = Schema.Struct({
+  projectId: Schema.String,
+  serviceId: Schema.String,
+  entries: Schema.Array(ObservationLogEntry),
+});
+export type EnvironmentLogs = typeof EnvironmentLogs.Type;
