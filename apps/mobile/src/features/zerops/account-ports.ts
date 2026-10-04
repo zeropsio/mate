@@ -1,7 +1,7 @@
 /**
  * The account's personal context as mobile hands it to the account runtime (DESIGN §7.5): its
  * registration records over the device's storage adapter, its container intents in memory, and
- * HQ's word, which the device does not read.
+ * HQ, which the device does not run.
  * Plain values, no React Native: the device's adapter is
  * the one the session is stored through.
  */
@@ -52,18 +52,15 @@ export function memoryIntents(): AccountEnvironmentPorts["intents"] {
 }
 
 /**
- * HQ as the device sees it: unavailable. The device runs no HQ flow, so HQ's word is never
- * current — no environment's project named, no Mate held online, no organization spoken for —
- * and the runtime reads the listing's containers as it does through any HQ outage.
+ * HQ as the device sees it: absent. The device runs no HQ flow, so HQ will not answer here — no
+ * environment's project named, no organization spoken for — and the runtime reads the listing's
+ * containers at once rather than waiting for a word that never comes.
  */
-export function hqUnavailable(): Pick<
-  AccountEnvironmentPorts,
-  "hqIndex" | "online" | "hqOrganization"
-> {
+export function hqAbsent(): Pick<AccountEnvironmentPorts, "hqIndex" | "online" | "hqOrganization"> {
   const quiet = () => () => undefined;
   return {
     hqIndex: { projectOf: () => null, subscribe: quiet },
-    online: { read: () => null, subscribe: quiet },
+    online: { read: () => "absent", subscribe: quiet },
     hqOrganization: { read: () => null, subscribe: quiet },
   };
 }

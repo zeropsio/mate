@@ -2846,6 +2846,25 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  it.effect("a Mate listed where no HQ will answer is read at once, never waiting for HQ", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted(
+          [],
+          [A_MATE],
+          platformAdapter([A_MATE]),
+          [A_MATE],
+          {
+            online: { read: () => "absent", subscribe: () => () => undefined },
+          },
+        );
+        yield* settle;
+        expect([...environments.machines().keys()]).toContain(MATE);
+        expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
+      }),
+    ),
+  );
+
   it.effect(
     "a Mate listed before HQ answers waits for its word, and HQ holding it online keeps it unread",
     () =>

@@ -869,6 +869,24 @@ describe("container store: a Mate HQ holds online (krok-a §4)", () => {
     store.dispose();
   });
 
+  it("a Mate first seen where no HQ will answer is read at once, and never waits after", async () => {
+    const { clock, store, probes } = rig();
+    store.setOnline("absent");
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+
+    const other = "https://zcp-2.prg1.zerops.app";
+    store.setOnline("absent");
+    store.setTargets([
+      target("ACTIVE"),
+      { ...target("ACTIVE", other), key: "project-2:service-2" },
+    ]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, other]);
+    store.dispose();
+  });
+
   it("the route's Mate never waits for HQ's word", async () => {
     const { clock, store, probes } = rig();
     const other = "https://zcp-2.prg1.zerops.app";
