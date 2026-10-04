@@ -23,3 +23,5 @@ export const writeFileStringAtomically = (input: {
       yield* fs.rename(tempPath, input.filePath);
     }),
   );
+
+// CI gate probe: a server-only diff. Never merged.
