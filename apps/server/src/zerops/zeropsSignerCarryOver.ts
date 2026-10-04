@@ -233,9 +233,12 @@ export const liveCarryOverSources = (input: {
         const response = yield* http.get(`${enrollment.hq.replace(/\/+$/u, "")}/api/mate/self`, {
           headers: { authorization: `Mate ${enrollment.credential}`, accept: "application/json" },
         });
-        if (response.status === 404) return {};
-        if (response.status !== 200) return undefined;
-        return savedSignersOf(yield* response.json);
+        if (response.status === 200) return savedSignersOf(yield* response.json);
+        // HQ knows no such Mate, or refuses it: there is nothing of this Mate's it could save.
+        // Busy or failing, it has not answered.
+        return response.status >= 400 && response.status < 500 && response.status !== 429
+          ? {}
+          : undefined;
       }),
     );
 

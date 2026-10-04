@@ -1,9 +1,17 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
+import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+
+import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 
 import {
   carrySignersOver,
+  liveCarryOverSources,
   loginCredentialPath,
   planSignerCarryOver,
   type CarryOverSources,
@@ -222,4 +230,97 @@ describe("carrySignersOver", () => {
       assert.deepStrictEqual(yield* store.lastSigners, { "claude-code": EVA });
     }),
   );
+});
+
+// What a start reads the old record from: the project's tags with the Mate's own key, and HQ's
+// saved signers with the Mate's credential. Only an answer counts; a failure is the next start's.
+describe("liveCarryOverSources", () => {
+  const PROJECT = "project-fixture";
+  const HQ = "https://hq.example.test";
+  const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+  const respond = (body: unknown, status: number) =>
+    new Response(encodeJson(body), { status, headers: { "content-type": "application/json" } });
+
+  const read = (input: {
+    readonly project: readonly [body: unknown, status: number];
+    readonly hq?: readonly [body: unknown, status: number];
+  }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-carry-" });
+      const enrollment = `${home}/enrollment.json`;
+      if (input.hq !== undefined) {
+        yield* fs.writeFileString(
+          enrollment,
+          encodeJson({ hq: HQ, credential: "mate-credential" }),
+        );
+      }
+      const environment = {
+        ...resolveZeropsEnvironment({
+          projectId: PROJECT,
+          apiHost: undefined,
+          allowedOrigins: [],
+          apiToken: "mate-key",
+        })!,
+        hqEnrollmentPath: enrollment,
+      };
+      const client = HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            request.url === `${HQ}/api/mate/self`
+              ? respond(...(input.hq ?? [{}, 500]))
+              : respond(...input.project),
+          ),
+        ),
+      );
+      const sources = yield* liveCarryOverSources({ homeDir: home, environment }).pipe(
+        Effect.provideService(HttpClient.HttpClient, client),
+        Effect.provideService(
+          ZeropsMateKeyModule.ZeropsMateKey,
+          ZeropsMateKeyModule.snapshotOnlyReader("mate-key"),
+        ),
+      );
+      return { tags: yield* sources.readTags, saved: yield* sources.readSaved };
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+
+  const project = [{ id: PROJECT, tagList: ["mate", tag("codex", JAN)] }, 200] as const;
+  for (const [name, input, expected] of [
+    [
+      "both answer",
+      { project, hq: [{ projectId: PROJECT, signers: { codex: EVA } }, 200] },
+      { tags: ["mate", tag("codex", JAN)], saved: { codex: EVA } },
+    ],
+    [
+      "no HQ enrolled: nothing saved",
+      { project },
+      { tags: ["mate", tag("codex", JAN)], saved: {} },
+    ],
+    [
+      "an HQ with no record of this Mate: nothing saved",
+      { project, hq: [{ code: "mate_not_found" }, 404] },
+      { tags: ["mate", tag("codex", JAN)], saved: {} },
+    ],
+    [
+      "an HQ that refuses this Mate: nothing saved",
+      { project, hq: [{ code: "mate_credential_required" }, 401] },
+      { tags: ["mate", tag("codex", JAN)], saved: {} },
+    ],
+    [
+      "an HQ that fails: no answer",
+      { project, hq: [{}, 503] },
+      { tags: ["mate", tag("codex", JAN)], saved: undefined },
+    ],
+    [
+      "a project that cannot be read: no answer",
+      { project: [{ message: "down" }, 500], hq: [{ signers: {} }, 200] },
+      { tags: undefined, saved: {} },
+    ],
+  ] as const) {
+    it.effect(name, () =>
+      Effect.gen(function* () {
+        assert.deepStrictEqual<unknown>(yield* read(input), expected);
+      }),
+    );
+  }
 });
