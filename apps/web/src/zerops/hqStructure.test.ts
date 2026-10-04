@@ -339,15 +339,15 @@ describe("HQ's standing, from its stream", () => {
   });
 
   // What an owner's update offer weighs (`ZeropsHqUpdate.logic.ts`): the Core HQ runs, as its stream
-  // names it. A stream that names none is a Core older than the one that does: an unnamed Core
-  // (`""`), which the card offers to update — with no read of its own.
+  // names it. A stream that names none names nothing — no read stands in for it; HQ's card reads
+  // the running Core from Zerops instead.
   it.each<[string, HqStructureEvent, HqStanding]>([
     [
       "named",
       { ...snapshot, build: "20261004T100000Z.0123456789ab" },
       { kind: "healthy", build: "20261004T100000Z.0123456789ab" },
     ],
-    ["named by none", legacy, { kind: "healthy", build: "" }],
+    ["named by none", legacy, { kind: "healthy" }],
   ])("names the Core HQ runs from its stream: %s", async (_case, event, standing) => {
     vi.useFakeTimers();
     const h = harness();

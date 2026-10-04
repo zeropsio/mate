@@ -3879,8 +3879,9 @@ no-cache`.
     recipe's Mate tier and HQ's own verdict on whether it could check Zerops.
   - `/health` is read only after a stream attempt failed, to say why: HQ down, a standby or an HQ
     that is not the official one, or one that cannot check Zerops right now. A stream that names no
-    Core is a Core older than this, which HQ's card offers an admin to update (`ZeropsHqUpdate`);
-    no read stands in for what such a stream leaves out.
+    Core is an older Core: no health read stands in for it, and HQ's card, opened by an admin, reads
+    the running Core from Zerops (its `hq` service's active app version) and offers the update on it
+    (`ZeropsHqUpdate`).
   - While the stream is down, Add a Mate and the creation forms say the tier it said last and import
     none until it serves again; nothing reads the tier beside the stream.
   - A Mate's setup, and the day's re-read of a no-HQ verdict, wait for a shown tab.

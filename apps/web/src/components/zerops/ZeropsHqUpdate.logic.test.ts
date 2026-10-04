@@ -1,3 +1,4 @@
+import { hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import { coreLabel, hqUpdateTrigger, hqUpdateWords } from "./ZeropsHqUpdate.logic";
@@ -152,5 +153,45 @@ describe("hqUpdateTrigger", () => {
     },
   ] as const)("$name", ({ admin, standing, carried, trigger }) => {
     expect(hqUpdateTrigger({ admin, standing, carried })).toBe(trigger);
+  });
+
+  // A stream that names no Core: the running Core is a Zerops fact — the `hq` service's active app
+  // version, `hq-core.<identity>`, named by the build that deployed it — read when the card opens.
+  const zerops = (running: string) =>
+    hqUpdateState({
+      service: { id: "svc-hq", activeAppVersion: { id: "av-active", status: "ACTIVE" } },
+      processes: [
+        {
+          id: "p1",
+          projectId: "hq-project",
+          serviceStackIds: ["svc-hq"],
+          status: "FINISHED",
+          actionName: "stack.build",
+          created: "2026-10-04T10:00:00Z",
+          appVersion: { id: "av-active", name: `hq-core.${running}` },
+        },
+      ],
+      carried: CARRIED,
+      answering: undefined,
+    });
+  it.each([
+    {
+      name: "an admin, Zerops runs an older Core",
+      admin: true,
+      read: OLDER,
+      trigger: "Update available",
+    },
+    { name: "an admin, Zerops runs this Core", admin: true, read: CARRIED, trigger: "Up to date" },
+    { name: "an admin, Zerops not read yet", admin: true, read: undefined, trigger: null },
+    { name: "a developer, Zerops runs an older Core", admin: false, read: OLDER, trigger: null },
+  ] as const)("a stream naming no Core — $name", ({ admin, read, trigger }) => {
+    expect(
+      hqUpdateTrigger({
+        admin,
+        standing: { kind: "healthy" },
+        carried: CARRIED,
+        zerops: read === undefined ? undefined : zerops(read),
+      }),
+    ).toBe(trigger);
   });
 });

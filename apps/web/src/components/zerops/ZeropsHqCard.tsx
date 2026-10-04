@@ -5,9 +5,10 @@
  * (`ZeropsHqCard.logic.ts`).
  *
  * Everything it shows comes from reads already made — HQ's structure stream, which says where HQ
- * stands, the Core it runs and how its parts stand (`hqStandingAtom`; an older Core's health is
- * read once per stream for it) — but one: an admin opening it reads HQ's project from Zerops once, its services and its
- * builds, as HQ's update does. The projects page holds no read of HQ's project — it draws none of
+ * stands, the Core it runs and how its parts stand (`hqStandingAtom`) — but one: an admin opening
+ * it reads HQ's project from Zerops once, its services and its builds, as HQ's update does. Where
+ * the stream names no Core, that read names the running one (its `hq` service's active app
+ * version), and the update is offered on it. The projects page holds no read of HQ's project — it draws none of
  * its stops — so its inventory has none of HQ's services. Nothing is read again while the card
  * stays open, and a read that failed says so.
  */
@@ -152,7 +153,12 @@ export function ZeropsHqCard() {
     updating,
     time: (ms) => formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat),
   });
-  const trigger = hqUpdateTrigger({ admin, standing, carried });
+  const trigger = hqUpdateTrigger({
+    admin,
+    standing,
+    carried,
+    zerops: update?.kind === "read" ? update.state : undefined,
+  });
   return (
     <ZeropsHqCardView
       onOpenChange={openCard}
@@ -163,8 +169,7 @@ export function ZeropsHqCard() {
         // answering.
         carried !== undefined &&
         trigger !== null &&
-        (standing.kind === "healthy" || standing.kind === "unchecked") &&
-        standing.build !== undefined ? (
+        (standing.kind === "healthy" || standing.kind === "unchecked") ? (
           <ZeropsHqUpdate
             answering={standing.build}
             carried={carried}

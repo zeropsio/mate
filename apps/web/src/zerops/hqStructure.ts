@@ -219,8 +219,8 @@ export async function driveHqStructure(input: {
        */
       let official: string | null = null;
       /**
-       * The Core HQ runs, as this stream names it: `""`, an unnamed Core, from a stream that names
-       * none — a Core older than this build's, which HQ's card offers to update.
+       * The Core HQ runs, as this stream names it; none from a stream that names none, whose Core
+       * HQ's card reads from Zerops for its update (`hqUpdateTrigger`).
        */
       let build: string | undefined;
       /** How HQ's parts stand, as this stream says them; none from a Core whose stream does not. */
@@ -294,7 +294,7 @@ export async function driveHqStructure(input: {
               }
               if (event.kind === "snapshot") {
                 official = event.official ?? null;
-                build = event.build ?? "";
+                build = event.build;
                 parts = event.parts;
                 // Serving again: a health read still waiting on a failure is none of its business.
                 unwaitHealth();

@@ -1,6 +1,7 @@
 /**
- * HQ's update, for an owner or an admin (`ZeropsHqCard`): offered when HQ's health names an older
- * Core than this app carries, so the offer costs no read of its own. Opened, it reads where HQ
+ * HQ's update, for an owner or an admin (`ZeropsHqCard`): offered when HQ's stream names an older
+ * Core than this app carries, so the offer costs no read of its own — or, where the stream names
+ * none, when the opened card's read of Zerops does. Opened, it reads where HQ
  * stands — the Core HQ's health answers with, and its `hq` service's builds in Zerops; again when
  * HQ answers with another Core — and offers the one action that fits. *Update HQ* deploys the carried Core with the person's own token and follows that deploy;
  * once it ends Zerops is read again. Nothing reads or retries while it is closed.
@@ -153,8 +154,8 @@ export function ZeropsHqUpdate({
   readonly projectId: string;
   /** The Core this app carries. */
   readonly carried: string;
-  /** The Core HQ's health names. */
-  readonly answering: string;
+  /** The Core HQ's stream names; `undefined` where it names none, and Zerops says it. */
+  readonly answering: string | undefined;
   readonly trigger: "Update available" | "Up to date";
   /** Told when an update pressed here starts and ends. */
   readonly onBusy: (busy: boolean) => void;
