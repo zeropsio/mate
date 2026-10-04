@@ -24,7 +24,7 @@ function frames(from: number, to: number, tau: number): number[] {
 describe("approach", () => {
   it.each([
     { what: "a card growing by a line", from: 38, to: 193, tau: ROOM_TAU_MS },
-    { what: "a card growing by a tall line", from: 80, to: 210, tau: ROOM_TAU_MS },
+    { what: "a card growing by a tall line", from: 80, to: 280, tau: ROOM_TAU_MS },
     { what: "a card shrinking as a slot row leaves", from: 330, to: 270, tau: ROOM_TAU_MS },
     { what: "a scroll following its foot", from: 386, to: 540, tau: FOLLOW_TAU_MS },
   ])(
@@ -42,7 +42,8 @@ describe("approach", () => {
       }
       // A strong ease-out: the first frame takes the most.
       const steps = path.map((at, index) => Math.abs(at - (index === 0 ? from : path[index - 1]!)));
-      expect(steps[0]).toBe(Math.max(...steps));
+      // (A long way's first frames all go at the top speed.)
+      expect(steps[0]).toBeGreaterThanOrEqual(Math.max(...steps) - 1e-9);
       expect(path.length * FRAME_MS).toBeLessThanOrEqual(260 + FRAME_MS * 4);
     },
   );
@@ -51,6 +52,13 @@ describe("approach", () => {
     { what: "standing at its target", current: 120, target: 120, dt: FRAME_MS, expected: 120 },
     { what: "within half a pixel", current: 119.6, target: 120, dt: FRAME_MS, expected: 120 },
     { what: "no time passed", current: 100, target: 200, dt: 0, expected: 100 },
+    {
+      what: "a frame long gone (a hidden tab)",
+      current: 100,
+      target: 900,
+      dt: 2000,
+      expected: 900,
+    },
   ])("$what", ({ current, target, dt, expected }) => {
     expect(approach(current, target, dt, ROOM_TAU_MS)).toBe(expected);
   });

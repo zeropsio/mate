@@ -24,6 +24,9 @@ export const MAX_SPEED_PX_PER_MS = 1.6;
 /** The longest frame a move's speed counts: a frame and a fifth at 60 Hz. */
 const ON_TIME_FRAME_MS = 20;
 
+/** A frame this late means nobody watched: the move stands at its target. */
+export const LONG_GONE_MS = 250;
+
 /** Closer than this to its target, a move stands at it. */
 export const SETTLED_PX = 0.5;
 
@@ -33,6 +36,8 @@ export const SETTLED_PX = 0.5;
  */
 export function approach(current: number, target: number, dtMs: number, tauMs: number): number {
   if (dtMs <= 0) return current;
+  // A frame long gone — a tab out of sight coming back — finds it there.
+  if (dtMs >= LONG_GONE_MS) return target;
   const share = (target - current) * (1 - Math.exp(-dtMs / tauMs));
   // A late frame moves no further than a frame on time would: the move
   // takes longer, and nothing jumps.
