@@ -800,6 +800,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         Ref.update(state, (current) => ({
           ...current,
           signOutEpoch: { ...current.signOutEpoch, [agentId]: current.signOutEpoch[agentId] + 1 },
+          pendingCredentialCheck: { ...current.pendingCredentialCheck, [agentId]: false },
           markedOAuth: { ...current.markedOAuth, [agentId]: false },
           registration: { ...current.registration, [agentId]: undefined },
           verification: { ...current.verification, [agentId]: undefined },

@@ -1051,6 +1051,12 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             yield* Effect.sleep("200 millis");
 
             assert.deepEqual(yield* Ref.get(fake.calls), []);
+            // A later env-store event may check auth, but must not spend the canceled credential event.
+            const subscription = yield* feed.subscribe;
+            yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
+            fakeWatch.trigger(envStorePath);
+            yield* changeWhere(subscription, claudeAuthResolved);
+            assert.deepEqual(yield* Ref.get(fake.calls), []);
           }),
         ),
       10_000,
