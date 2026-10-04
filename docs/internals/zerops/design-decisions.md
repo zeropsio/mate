@@ -3877,8 +3877,10 @@ no-cache`.
   tab is hidden.**
   - HQ's standing comes from the stream; its 30 s `/health` poll is gone. The stream also carries the
     recipe's Mate tier and HQ's own verdict on whether it could check Zerops.
-  - A Core older than this answers through one `/health` read per stream start. A Core is deployed
-    once at an HQ's birth and never updated.
+  - `/health` is read only after a stream attempt failed, to say why: HQ down, a standby or an HQ
+    that is not the official one, or one that cannot check Zerops right now. A stream that names no
+    Core is a Core older than this, which HQ's card offers an admin to update (`ZeropsHqUpdate`);
+    no read stands in for what such a stream leaves out.
   - While the stream is down, Add a Mate and the creation forms say the tier it said last and import
     none until it serves again; nothing reads the tier beside the stream.
   - A Mate's setup, and the day's re-read of a no-HQ verdict, wait for a shown tab.

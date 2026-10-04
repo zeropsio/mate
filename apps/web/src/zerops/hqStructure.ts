@@ -94,8 +94,9 @@ export async function driveHqStructure(input: {
   readonly log: (line: string) => void;
   /**
    * HQ's `/health`, read once after each attempt that failed, while the tab is visible — in a
-   * hidden tab once it is shown: whether HQ is down or serves while it cannot check Zerops right
-   * now. While the stream serves, only for a Core whose stream says nothing of it, once.
+   * hidden tab once it is shown: whether HQ is down, answers as a standby or an HQ that is not the
+   * official one (`503 not_active`), or serves while it cannot check Zerops right now. Never read
+   * while the stream serves: the stream says all of that itself.
    */
   readonly readHealth: () => Promise<HqHealth>;
   /**
@@ -137,10 +138,6 @@ export async function driveHqStructure(input: {
   /** Each health read asked: only the newest one's answer counts. */
   let healthAsked = 0;
   let unwaitHealth = () => {};
-  /** HQ's health as last read: what a Core whose stream says nothing of it stands on. */
-  let told: HqHealth | undefined;
-  /** A Core whose stream says nothing of its check of Zerops had its health read for it. */
-  let toldAsked = false;
   /**
    * Reads HQ's health now while the tab is shown, else once it is; `apply` takes its answer while
    * `wanted` and no newer read was asked. True when it was read now.
@@ -154,7 +151,6 @@ export async function driveHqStructure(input: {
       const asked = ++healthAsked;
       void input.readHealth().then((health) => {
         if (input.signal.aborted || asked !== healthAsked || !wanted()) return;
-        told = health;
         apply(health);
       });
     });
@@ -217,31 +213,29 @@ export async function driveHqStructure(input: {
       let mates: HqMates | null = null;
       let people: HqPeople | null = null;
       /**
-       * Whether HQ could check Zerops, as this stream last said: `null` before its first check,
-       * nothing from a Core whose stream does not say it.
+       * Whether HQ could check Zerops, as this stream last said: `null` before its first check, and
+       * before its snapshot. A stream that serves is HQ answering as the official one, so one that
+       * says nothing of its check serves as one yet to check.
        */
-      let official: string | null | undefined;
-      /** The Core HQ runs, as this stream names it; none from a Core whose stream does not. */
+      let official: string | null = null;
+      /**
+       * The Core HQ runs, as this stream names it: `""`, an unnamed Core, from a stream that names
+       * none — a Core older than this build's, which HQ's card offers to update.
+       */
       let build: string | undefined;
       /** How HQ's parts stand, as this stream says them; none from a Core whose stream does not. */
       let parts: HqParts | undefined;
       const servingStanding = (): HqStanding => {
-        const health: HqHealth =
-          official === undefined
-            ? told?.kind === "unchecked"
-              ? told
-              : { kind: "healthy", build: "", parts: NO_PARTS }
-            : healthOfOfficial(official);
-        const next = nextHqStanding(view.standing ?? { kind: "unknown" }, health, input.now());
+        const next = nextHqStanding(
+          view.standing ?? { kind: "unknown" },
+          healthOfOfficial(official),
+          input.now(),
+        );
         if (next.kind !== "healthy" && next.kind !== "unchecked") return next;
-        // The Core it runs and its parts: as the stream says them, else as a health read did.
-        const read = told?.kind === "healthy" || told?.kind === "unchecked" ? told : undefined;
-        const named = build ?? read?.build;
-        const standing = parts ?? read?.parts;
         return {
           kind: next.kind,
-          ...(named === undefined ? {} : { build: named }),
-          ...(standing === undefined ? {} : { parts: standing }),
+          ...(build === undefined ? {} : { build }),
+          ...(parts === undefined ? {} : { parts }),
         };
       };
       let rememberedAt: number | null = null;
@@ -299,20 +293,11 @@ export async function driveHqStructure(input: {
                 return;
               }
               if (event.kind === "snapshot") {
-                official = event.official;
-                build = event.build;
+                official = event.official ?? null;
+                build = event.build ?? "";
                 parts = event.parts;
                 // Serving again: a health read still waiting on a failure is none of its business.
                 unwaitHealth();
-                if (official === undefined && !toldAsked) {
-                  toldAsked = true;
-                  askHealth(
-                    () => {
-                      if (view.current) publish({ ...view, standing: servingStanding() });
-                    },
-                    () => true,
-                  );
-                }
               }
               if (event.kind === "mate" || event.kind === "people") return;
               streamed = applyStructureEvent(streamed, event);

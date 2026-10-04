@@ -149,7 +149,7 @@ function harness(
 }
 
 describe("HQ's standing, from its stream", () => {
-  /** A Core from before its stream said whether it could check Zerops: no `official`. */
+  /** A Core whose stream says nothing of its check of Zerops nor of itself: no `official`. */
   const legacy: HqStructureEvent = {
     kind: "snapshot",
     structure: ACME,
@@ -158,7 +158,7 @@ describe("HQ's standing, from its stream", () => {
     mates: null,
     people: null,
   };
-  const snapshot: HqStructureEvent = { ...legacy, official: "ok" };
+  const snapshot: HqStructureEvent = { ...legacy, official: "ok", build: "b0" };
 
   it.each<[string, HqHealth, HqStructureView["standing"]]>([
     ["HQ not answering", { kind: "unreachable" }, { kind: "unavailable", since: 10_000 }],
@@ -218,7 +218,7 @@ describe("HQ's standing, from its stream", () => {
     try {
       expect(h.views[0]?.standing ?? { kind: "unknown" }).toEqual({ kind: "unknown" });
       await vi.advanceTimersByTimeAsync(600_000);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "healthy" });
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "healthy", build: "b0" });
       expect(h.healthReads).toEqual([]);
     } finally {
       stop.abort();
@@ -338,43 +338,32 @@ describe("HQ's standing, from its stream", () => {
     }
   });
 
-  // What an owner's update offer weighs (`ZeropsHqUpdate.logic.ts`): the Core HQ runs, named by
-  // its stream — or, from a Core whose stream does not name it, by the health read made for it.
-  it("names the Core HQ runs from its stream, or else from its health", async () => {
+  // What an owner's update offer weighs (`ZeropsHqUpdate.logic.ts`): the Core HQ runs, as its stream
+  // names it. A stream that names none is a Core older than the one that does: an unnamed Core
+  // (`""`), which the card offers to update — with no read of its own.
+  it.each<[string, HqStructureEvent, HqStanding]>([
+    [
+      "named",
+      { ...snapshot, build: "20261004T100000Z.0123456789ab" },
+      { kind: "healthy", build: "20261004T100000Z.0123456789ab" },
+    ],
+    ["named by none", legacy, { kind: "healthy", build: "" }],
+  ])("names the Core HQ runs from its stream: %s", async (_case, event, standing) => {
     vi.useFakeTimers();
-    const BUILD = "20261004T100000Z.0123456789ab";
-    const named = harness();
+    const h = harness();
     const stop = new AbortController();
     const driving = driveHqStructure({
-      ...named.deps,
-      api: streamingApi([{ events: [{ ...snapshot, build: BUILD }], end: "hang" }]),
+      ...h.deps,
+      api: streamingApi([{ events: [event], end: "hang" }]),
       signal: stop.signal,
-    });
-    const older = harness(undefined, {
-      kind: "healthy",
-      build: "20261001T090000Z.aaaaaaaaaaaa",
-      parts: QUIET,
-    });
-    const halt = new AbortController();
-    const going = driveHqStructure({
-      ...older.deps,
-      api: streamingApi([{ events: [legacy], end: "hang" }]),
-      signal: halt.signal,
     });
     try {
       await vi.advanceTimersByTimeAsync(0);
-      expect(named.views.at(-1)?.standing).toEqual({ kind: "healthy", build: BUILD });
-      expect(named.healthReads).toEqual([]);
-      expect(older.views.at(-1)?.standing).toEqual({
-        kind: "healthy",
-        build: "20261001T090000Z.aaaaaaaaaaaa",
-        parts: QUIET,
-      });
+      expect(h.views.at(-1)?.standing).toEqual(standing);
+      expect(h.healthReads).toEqual([]);
     } finally {
       stop.abort();
-      halt.abort();
       await driving;
-      await going;
       vi.useRealTimers();
     }
   });
@@ -410,61 +399,27 @@ describe("HQ's standing, from its stream", () => {
     }
   });
 
-  // A Core born before its stream said so sends no verdict: its /health says it, once.
-  it.each<[string, HqHealth, HqStanding]>([
-    [
-      "unable to check Zerops",
-      { kind: "unchecked", build: "b1", parts: QUIET },
-      { kind: "unchecked" },
-    ],
-    ["the official HQ", { kind: "healthy", build: "b1", parts: QUIET }, { kind: "healthy" }],
-  ])("reads an old Core's health once its stream serves: %s", async (_case, health, standing) => {
-    vi.useFakeTimers();
-    const h = harness(undefined, health);
-    const api = streamingApi([{ events: [legacy, legacy], end: "hang" }]);
-    const stop = new AbortController();
-    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
-    try {
-      await vi.advanceTimersByTimeAsync(0);
-      expect(h.healthReads).toHaveLength(1);
-      expect(h.views.at(-1)).toMatchObject({ current: true, standing });
-    } finally {
-      stop.abort();
-      await driving;
-      vi.useRealTimers();
-    }
-  });
-
-  it("reads an old Core's health on the tab's return, and none for a Core yet to check", async () => {
+  // A serving stream is HQ answering as the official one: a Core yet to finish its first check
+  // (`null`), or one whose stream says nothing of it, serves — no health read stands in for it.
+  it.each<[string, HqStructureEvent]>([
+    ["yet to check", { ...snapshot, official: null }],
+    ["silent on its check", legacy],
+  ])("reads no health for a serving Core %s", async (_case, event) => {
     vi.useFakeTimers();
     const h = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
-    h.page.visible = false;
-    const api = streamingApi([{ events: [legacy], end: "hang" }]);
     const stop = new AbortController();
-    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    const driving = driveHqStructure({
+      ...h.deps,
+      api: streamingApi([{ events: [event, event], end: "hang" }]),
+      signal: stop.signal,
+    });
     try {
       await vi.advanceTimersByTimeAsync(0);
       expect(h.healthReads).toEqual([]);
-      h.show();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(h.healthReads).toHaveLength(1);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1", parts: QUIET });
+      expect(h.views.at(-1)).toMatchObject({ current: true, standing: { kind: "healthy" } });
     } finally {
       stop.abort();
       await driving;
-    }
-
-    const fresh = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
-    const checking = streamingApi([{ events: [{ ...snapshot, official: null }], end: "hang" }]);
-    const halt = new AbortController();
-    const going = driveHqStructure({ ...fresh.deps, api: checking, signal: halt.signal });
-    try {
-      await vi.advanceTimersByTimeAsync(0);
-      expect(fresh.healthReads).toEqual([]);
-      expect(fresh.views.at(-1)?.standing).toEqual({ kind: "healthy" });
-    } finally {
-      halt.abort();
-      await going;
       vi.useRealTimers();
     }
   });

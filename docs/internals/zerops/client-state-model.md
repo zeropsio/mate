@@ -597,7 +597,7 @@ stream owner for a fresh snapshot.
 | Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                   | —                                   |
 | An application's releases and repositories        | None: values in HQ's snapshot and release-revision messages (`useZeropsAppReleases`)           | An official HQ is known             |
 | HQ's structure, environments and a Mate's changes | None: HQ's stream, reconnecting by itself 1 s → 30 s; a refusal waits for a manual again       | —                                   |
-| HQ's standing (the projects page's HQ card)       | None: stream's verdict, Core and parts; `/health` per failed attempt, once for an old Core     | The tab is visible                  |
+| HQ's standing (the projects page's HQ card)       | None: stream's verdict, Core and parts; `/health` once per failed attempt                      | The tab is visible                  |
 | A recipe's tiers on `main`                        | None: Mate, stage and production tiers in the same snapshot and messages                       | —                                   |
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`) | Still wanted                        |
 | Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                    | Demanded                            |
