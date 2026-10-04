@@ -935,7 +935,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
     }),
   );
 
-  it.live("a stand-up ends short when its MCP process is gone", () =>
+  it.live("a stand-up ends short when an owner of its end answers: its process, its own turn", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* Ref.set(world.signers, SIGNED);
@@ -968,6 +968,14 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
             state: "failed",
             at: "",
             reason: "process_gone",
+          });
+          yield* Ref.set(world.goneProcesses, []);
+          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "completed");
+          assert.deepStrictEqual(yield* step, {
+            id: "standup",
+            state: "failed",
+            at: "",
+            reason: "stage_not_built",
           });
         }),
       );
@@ -1036,12 +1044,15 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
   );
 });
 
-/** A turn of the projection's, as the engine records one, written into the Mate's database. */
+/**
+ * A turn of the projection's, as the engine records one, written into the Mate's database; the
+ * same turn written again is its later state.
+ */
 const turnRow = (database: string, threadId: string, messageId: string, state: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`
-      INSERT INTO projection_turns
+      INSERT OR REPLACE INTO projection_turns
         (thread_id, turn_id, pending_message_id, state, requested_at, checkpoint_files_json)
       VALUES (${threadId}, ${`turn-${messageId}`}, ${messageId}, ${state},
         '2026-10-01T10:00:00.000Z', '[]')

@@ -422,6 +422,57 @@ describe("setupDocument", () => {
       "done",
     ],
     [
+      "its own turn ended without the stage call: the stages were not built",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "its own turn failed before the stage call: the stages were not built",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "failed",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "its own turn over, a later call building the stages",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesStaging } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "its own turn over, zcp in the development phase: zcp's word",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        status: parseZcpStatus(status({ standup: { state: "running", services: halvesStaging } })),
+      },
+      "running",
+    ],
+    [
+      "nothing recorded, zcp waiting for its stage call: no turn to read, running",
+      {
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
+    [
       "HQ's birth names nobody who asked, its project closed off: no stand-up to run",
       { requestedBy: undefined, nobodyAsked: true },
       "none",
@@ -521,6 +572,24 @@ describe("setupDocument", () => {
         ),
       },
       { id: "standup", state: "failed", at: "", reason: "process_gone" },
+    ],
+    [
+      "its own turn over without the stage call",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        status: parseZcpStatus(
+          status({
+            standup: {
+              state: "running",
+              phase: "stage",
+              startedAt: "2026-10-01T11:58:00Z",
+              services: halvesAfterDev,
+            },
+          }),
+        ),
+      },
+      { id: "standup", state: "failed", at: "", reason: "stage_not_built" },
     ],
   ];
   for (const [name, overrides, step] of endings) {

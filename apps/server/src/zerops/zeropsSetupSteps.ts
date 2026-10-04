@@ -250,8 +250,12 @@ export interface SetupStep {
   readonly code?: string;
 }
 
-/** Why a stand-up ended short: its zcp MCP process provably gone while zcp's word was `running`. */
-export type StandUpShort = "process_gone";
+/**
+ * Why a stand-up ended short: its zcp MCP process provably gone while zcp's word was `running`;
+ * its own turn over while zcp waited for the call that builds the stages — development stands,
+ * the stages were not built.
+ */
+export type StandUpShort = "process_gone" | "stage_not_built";
 
 /**
  * Why a stand-up nothing started waits, as far as the server knows: zcp found no official HQ;
@@ -357,7 +361,9 @@ interface ZcpStandUp {
  * else — a stand-up settled as never due, its own turn over or not read — zcp's word stands: a
  * newer zcp keeps its section `running` between the two calls itself.
  *
- * zcp's `running` is not its word once its MCP process is provably gone.
+ * zcp's `running` is not its word once the owners of its end have answered: its MCP process is
+ * provably gone, or — waiting in the `stage` phase for the call that builds the stages, no half
+ * running — the stand-up's own turn is over, which zcp cannot see.
  */
 const zcpStandUpState = (facts: SetupFacts): ZcpStandUp | undefined => {
   const standup = facts.status?.standup;
@@ -365,8 +371,18 @@ const zcpStandUpState = (facts: SetupFacts): ZcpStandUp | undefined => {
   if (state !== "running" && state !== "done" && state !== "failed") return undefined;
   if (state === "running" && facts.standUpProcessGone)
     return { state: "failed", short: "process_gone" };
+  const ownTurnRan = facts.record?.ran === true;
+  const awaitsStageCall =
+    standup!.phase === "stage" && !standup!.services.some((service) => service.state === "running");
+  if (
+    state === "running" &&
+    awaitsStageCall &&
+    ownTurnRan &&
+    (facts.standUpTurn === "done" || facts.standUpTurn === "failed")
+  )
+    return { state: "failed", short: "stage_not_built" };
   const halvesLeft = standup!.services.some((service) => service.state === "pending");
-  const ownTurnRuns = facts.record?.ran === true && facts.standUpTurn === "running";
+  const ownTurnRuns = ownTurnRan && facts.standUpTurn === "running";
   return { state: state === "done" && halvesLeft && ownTurnRuns ? "running" : state };
 };
 
