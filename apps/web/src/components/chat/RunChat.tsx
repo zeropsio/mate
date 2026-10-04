@@ -123,7 +123,8 @@ import {
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
 import { usePace } from "./usePace";
-import { slotMoves } from "./slotMoves.logic";
+import { KeptTimelineContext } from "./keptTimelineContext";
+import { landingHosts, slotMoves } from "./slotMoves.logic";
 import { stripShowsFiles } from "./runResult.logic";
 import {
   backgroundItemWord,
@@ -3543,7 +3544,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const slotRef = useRef<HTMLDivElement>(null);
   // What goes live enters the slot one after another (`usePace`).
   const liveKeys = useMemo(() => model.live.map((item) => item.key), [model.live]);
-  const liveHeld = usePace({ keys: liveKeys, flush: !slotted || ctx.syncing });
+  // Out of sight (a kept list), nobody watches: what arrives is simply there.
+  const outOfSight = !(use(KeptTimelineContext)?.shown ?? true);
+  const liveHeld = usePace({ keys: liveKeys, flush: !slotted || ctx.syncing || outOfSight });
   // When the quiet began, from the data: the record's newest line, else the
   // run's start — a reload or a catch-up never restarts "Thinking".
   const quietFrom = useMemo(() => {
@@ -3556,7 +3559,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const [landing, setLanding] = useState<Landing | null>(null);
   const slot = useLiveSlot({
     live: slotted ? liveKeys.filter((key) => !liveHeld.has(key)) : NO_KEYS,
-    record: recordKeys,
+    // What waits its turn to go live is not the record's yet either: a
+    // question waiting never rides into the history as ended.
+    record: liveHeld.size === 0 ? recordKeys : recordKeys.filter((key) => !liveHeld.has(key)),
     final: !slotted,
     syncing: ctx.syncing,
     quietFrom,
@@ -3575,11 +3580,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         const top = painted.slotRows.get(key);
         stood.set(key, top === undefined || !slotted ? Number.NaN : top + (painted.slot ?? 0));
       }
-      // What stood in the slot itself, not what rode along with it unseen.
-      const stoodInSlot = new Set(from.entries.map((entry) => entry.key));
       setLanding({
         from: stood,
-        hosts: new Set(leaving.filter((key) => stoodInSlot.has(key))),
+        hosts: landingHosts(from, leaving, new Set(painted.slotRows.keys())),
         rows: slotted ? painted.rows : new Map(),
         slot: slotted ? painted.slot : null,
         card: painted.card,
@@ -3703,7 +3706,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const historyHeld = usePace({
     keys: historyKeys,
     landing: landing?.hosts ?? NO_HOLDS,
-    flush: !slotted || ctx.syncing,
+    flush: !slotted || ctx.syncing || outOfSight,
   });
   const entered =
     historyHeld.size === 0 ? history : history.filter((item) => !historyHeld.has(item.key));
