@@ -102,6 +102,11 @@ const streamFor = (
   ) => Effect.Effect<unknown, never, Scope.Scope> = () => Effect.void,
   /** The applications whose changes `userId` reads, by id. */
   readable: Readonly<Record<string, ReadonlyArray<never>>> = {},
+  /** Where this Core's check of Zerops stands as the stream opens. */
+  start: { readonly official: OfficialStatus["official"]; readonly checked: boolean } = {
+    official: "ok",
+    checked: true,
+  },
 ) =>
   Effect.gen(function* () {
     const reads = yield* Ref.make(0);
@@ -130,7 +135,9 @@ const streamFor = (
     );
     const appReadCalls: string[] = [];
     /** Whether this Core is the official HQ, as its last check of Zerops said. */
-    const official = yield* Ref.make<OfficialStatus>({ official: "ok", allowed: true });
+    const official = yield* Ref.make<OfficialStatus>({ official: start.official, allowed: true });
+    /** Whether this Core's first check of Zerops has finished. */
+    const checked = yield* Ref.make(start.checked);
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
     const overviews = yield* makeMateOverviews(memoryStore().store);
     yield* before(overviews);
@@ -183,7 +190,10 @@ const streamFor = (
       Layer.succeed(MateOverviews, overviews),
       Layer.succeed(
         Official,
-        Official.of({ status: Ref.get(official) } as unknown as Official["Service"]),
+        Official.of({
+          status: Ref.get(official),
+          checked: Ref.get(checked),
+        } as unknown as Official["Service"]),
       ),
     );
     const sent: Array<{ readonly type: string } & Record<string, unknown>> = [];
@@ -206,6 +216,7 @@ const streamFor = (
       appReads,
       appReadCalls,
       official,
+      checked,
     };
   });
 
@@ -310,6 +321,21 @@ describe("the structure stream", () => {
           { type: "official", official: "unknown" },
           { type: "official", official: "ok" },
         ]);
+      }),
+    ),
+  );
+
+  // A Core starts at `unknown` until its first check answers: no verdict, never "can't check".
+  it.effect("says no verdict before HQ's first check of Zerops, then the check's", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner", undefined, {}, { official: "unknown", checked: false });
+        assert.strictEqual(h.sent[0]?.["official"], null);
+        yield* Ref.set(h.checked, true);
+        yield* Ref.set(h.official, verdict("ok"));
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [{ type: "official", official: "ok" }]);
       }),
     ),
   );
