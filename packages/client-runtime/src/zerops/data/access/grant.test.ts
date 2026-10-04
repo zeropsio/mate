@@ -1108,6 +1108,24 @@ describe("access grant reducer", () => {
       expect(sim.read(C).allowed).toBe(false);
     });
 
+    it("demanded while the grant is lapsed, is read once a round grants again", () => {
+      const sim = grantedSim();
+      sim.elapse(16 * MINUTE);
+      sim.send({ type: "TICK" });
+      expect(sim.state.phase.phase).toBe("lapsed");
+      sim.send(listed([A, B, C]));
+      // Offered while lapsed, and ignored there: the grant reads no project then.
+      expect(verifyRuns(sim, C)).toHaveLength(0);
+      sim.elapse(SECOND);
+      // The lapse's round answers for the projects its search listed, which C is not yet.
+      const round = sim.round();
+      sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+      sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A) });
+      sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+      expect(sim.state.phase.phase).toBe("granted");
+      expect(verifyRuns(sim, C)).toHaveLength(1);
+    });
+
     it("listed while a renewal round runs that did not target it, is read when that round ends", () => {
       const sim = grantedSim();
       play(sim, 12 * MINUTE + 10 * SECOND, () => []);
