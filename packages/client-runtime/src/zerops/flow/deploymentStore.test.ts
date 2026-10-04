@@ -578,45 +578,23 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "none" } });
   });
 
-  it("a refused process demand fails the none it could not prove until it is taken again", () => {
+  it("a refused demand stays failed until a manual Again, without scheduling recovery", () => {
     const platform = listings();
     const store = makeDeploymentStore(platform.ports);
-    const release = store.demand(STAGE);
-    const heard: Array<string> = [];
-    store.subscribe((ref) => heard.push(ref.projectId));
+    store.demand(STAGE);
+    platform.refuse(STAGE, "account-capacity");
+    expect(store.stop(STAGE)).toMatchObject({ state: "failed", retryAtMs: null });
+    expect(platform.armed()).toEqual([]);
+    platform.fire();
+    expect(platform.follows()).toBe(1);
+    store.again(STAGE);
+    expect(platform.follows()).toBe(2);
     platform.publish(STAGE, stage(NEVER_DEPLOYED));
-
-    platform.refuse(STAGE, "account-capacity");
-
-    expect(heard).toEqual([STAGE.projectId, STAGE.projectId]);
-    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-      state: "failed",
-      failure: { kind: "refused", code: "account-capacity" },
-      attempt: 1,
-      retryAtMs: NOW + 2_000,
-    });
-    // Refused again, the next ask waits a rung longer (§4.0).
-    platform.fire();
-    platform.refuse(STAGE, "account-capacity");
-    expect(platform.armed()).toEqual([4_000]);
-    expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-      state: "failed",
-      attempt: 2,
-      retryAtMs: NOW + 4_000,
-    });
-
-    // Taken this time: the stop reads its processes, and proves its none.
-    platform.fire();
-    expect(platform.follows()).toBe(3);
-    expect(deploymentOf(store.stop(STAGE), "app")?.state).toBe("unread");
     platform.publishProcesses(STAGE, building());
     expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
       state: "known",
       value: { kind: "none" },
     });
-
-    release();
-    expect(platform.armed()).toEqual([]);
   });
 
   it("a stop let go stops asking for the demand the platform refused", () => {

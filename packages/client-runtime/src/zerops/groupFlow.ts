@@ -14,8 +14,8 @@
  *
  * Whether anything runs is the platform's pushed deployment (`stopDeployment`,
  * D6); the deploy half's version name (`environmentRow`) names it and colours
- * it, and stands for a deploy only while the platform's answer is still on its
- * way — the precedence `stopView` draws the menu with. The page read the name
+ * it only once the platform confirms that version runs — the precedence `stopView`
+ * draws the menu with. An unread or failed runtime answer stands on every surface. The page read the name
  * alone, and a service's `appVersionName` can name a commit the platform does
  * not run: `fsadfdasfsa`'s production named `055a7e8`, the merge waiting for
  * its first release, while nothing was live there.
@@ -55,6 +55,8 @@ import {
   NOTHING_DEPLOYED,
   runningTone,
   runningVersion,
+  stopView,
+  deploymentReadFailed,
 } from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
@@ -198,6 +200,8 @@ export interface GroupFlowStop {
   /** What feeds it — `main` for a stage, `release` for a production; `undefined` undeclared. */
   readonly source: string | undefined;
   readonly route: string | undefined;
+  /** The shared runtime answer while unread or failed; no HQ history can replace it. */
+  readonly readLine?: string;
   /**
    * A stage that runs nothing: its first deploy on its way, or failed (`stageFirstDeploy`).
    * `undefined` while HQ has none under way.
@@ -308,14 +312,13 @@ function flowPullRequestOf(pull: FlowPullRequest): GroupFlowPullRequest {
 /** What a stop runs and how it went, by the rules `stopView` draws the page with (`runningVersion`, `runningTone`). */
 function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   const { deployment, row } = input;
-  const named = row !== undefined && row.version.label !== undefined ? row.version : undefined;
   const base = {
     projectId: input.projectId,
     name: input.name,
     source: row?.source,
     route: input.route,
   };
-  if (deployment?.state === "known") {
+  if (deployment?.state === "known" && !deploymentReadFailed(deployment)) {
     if (deployment.value.kind === "none") return { ...base, state: "empty", version: undefined };
     // A build runs now: what it builds is the stop's answer, whatever the row read before it.
     if (deployment.value.kind === "deploying") {
@@ -332,9 +335,16 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
       version: runningVersion(deployment.value.version, row),
     };
   }
-  if (named !== undefined)
-    return { ...base, state: runningState(runningTone(undefined, row)), version: named };
-  return { ...base, state: "checking", version: undefined };
+  return {
+    ...base,
+    state: "checking",
+    version: undefined,
+    readLine: stopView({
+      deployment: deployment ?? { state: "unread", waitingFor: null },
+      row,
+      nowMs: 0,
+    }).line,
+  };
 }
 
 /** A stage known to run nothing, with where its first deploy stands (`stageFirstDeploy`). */
@@ -344,6 +354,7 @@ function withFirstDeploy(
   flow: GroupFlowInput,
 ): GroupFlowStop {
   // Only a stage that runs nothing, or nothing known yet, waits for a first deploy.
+  if (deploymentReadFailed(input.deployment)) return stop;
   if (input.tier !== "stage" || (stop.state !== "empty" && stop.state !== "checking")) return stop;
   const first = stageFirstDeploy({
     createdAt: input.createdAt,
@@ -441,15 +452,17 @@ function productionOf(
     };
   }
   const line =
-    stop.state === "checking" ? CHECKING_WHAT_RUNS : (stop.version?.label ?? NOTHING_DEPLOYED);
+    stop.state === "checking"
+      ? (stop.readLine ?? CHECKING_WHAT_RUNS)
+      : (stop.version?.label ?? NOTHING_DEPLOYED);
   const candidate = releaseOffered(input)
     ? { tag: input.release.suggestion, waiting: input.release.waiting }
     : undefined;
   if (stop.state === "failed") return { kind: "deploy-failed", stop, line, candidate };
+  if (stop.state === "checking") return { kind: "checking", stop, line };
   if (input.release.inFlight !== undefined)
     return { kind: "releasing", stop, line, tag: input.release.inFlight };
   if (candidate !== undefined) return { kind: "ready-to-release", stop, line, candidate };
-  if (stop.state === "checking") return { kind: "checking", stop, line };
   if (stop.state === "deploying") return { kind: "deploying", stop, line: PRODUCTION_DEPLOYING };
   return { kind: stop.state === "empty" ? "empty" : "live", stop, line };
 }

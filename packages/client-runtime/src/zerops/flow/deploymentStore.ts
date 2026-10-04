@@ -11,8 +11,7 @@
  * ended is still named by it. A version a push left unstated that no build named is what the
  * account's store states of the service (A14): its organization's active versions and the deploy
  * it last started, streamed — nothing is read for it. A process demand the platform refuses fails what it could
- * not prove, rather than checking forever, and is asked for again on the retry ladder (§4.0)
- * while the stop is demanded. A stop nobody demands shows `unread`.
+ * not prove, rather than checking forever, until a manual Again while the stop is demanded. A stop nobody demands shows `unread`.
  *
  * A stop read again keeps its last answer while nothing new is known (`heldThroughRecheck`):
  * "Checking what runs here…" is said only before the first one.
@@ -33,7 +32,6 @@ import {
 import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
-import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
 import {
   afterBuilds,
   buildNames,
@@ -67,8 +65,6 @@ export interface DeploymentStorePorts {
     refused: (reason: LeaseAdmissionError["reason"]) => void,
   ) => () => void;
   readonly nowMs: () => number;
-  /** The jitter source of the retry ladder. */
-  readonly random: () => number;
   /** Arms a timer; the returned function disarms it. */
   readonly setTimer: (delayMs: number, fire: () => void) => () => void;
 }
@@ -78,6 +74,8 @@ export interface DeploymentStore {
   readonly demand: (project: ProjectRef) => () => void;
   /** The stop's runtime services and what each runs; `unread` while nobody demands it. */
   readonly stop: (project: ProjectRef) => Shown<ReadonlyArray<StopService>>;
+  /** One manual attempt for a stop a view still shows. */
+  readonly again: (project: ProjectRef) => void;
   /** Whether a view demands the stop that holds the service. */
   readonly shows: (service: ServiceRef) => boolean;
   /** Told the project of every stop that was published again. */
@@ -96,10 +94,6 @@ interface Entry {
   refused: ProcessRefusal | null;
   /** How often the platform refused the demand; it keeps a demand it admitted. */
   refusals: number;
-  /** Where the next ask for a refused demand sits on the ladder. */
-  backoff: Backoff;
-  /** Disarms the next ask for a refused demand. */
-  disarm: () => void;
   shown: Known<ReadonlyArray<StopService>>;
   /** The services seen building while demanded and not seen running since (`afterBuilds`). */
   built: ReadonlyMap<string, SeenBuild>;
@@ -107,12 +101,6 @@ interface Entry {
   disarmGrace: () => void;
   unfollow: () => void;
 }
-
-/** A demand refused for capacity may be admitted later; one for another account never is. */
-const RETRIED_REFUSALS: ReadonlySet<LeaseAdmissionError["reason"]> = new Set([
-  "account-capacity",
-  "receiver-capacity",
-]);
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
@@ -168,19 +156,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       () => publish(entry),
       (reason) => {
         if (disposed || entries.get(projectKeyOf(entry.project)) !== entry) return;
-        const nowMs = ports.nowMs();
-        const scheduled = RETRIED_REFUSALS.has(reason)
-          ? scheduleRetry(entry.backoff, nowMs, ports.random)
-          : null;
-        entry.refused = {
-          reason,
-          attempt: ++entry.refusals,
-          retryAtMs: scheduled?.retryAtMs ?? null,
-        };
-        if (scheduled !== null) {
-          entry.backoff = scheduled.backoff;
-          entry.disarm = ports.setTimer(scheduled.retryAtMs - nowMs, () => askAgain(entry));
-        }
+        entry.refused = { reason, attempt: ++entry.refusals, retryAtMs: null };
         publish(entry);
       },
     );
@@ -188,7 +164,6 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
 
   /** Asked again, the stop reads as its listings say until the platform answers. */
   const askAgain = (entry: Entry): void => {
-    entry.disarm = () => undefined;
     entry.unfollow();
     const refused = entry.refused;
     follow(entry);
@@ -210,8 +185,6 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           names: new Map(),
           refused: null,
           refusals: 0,
-          backoff: INITIAL_BACKOFF,
-          disarm: () => undefined,
           shown: UNREAD,
           built: new Map(),
           disarmGrace: () => undefined,
@@ -232,13 +205,17 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         released = true;
         held.leases -= 1;
         if (held.leases > 0) return;
-        held.disarm();
         held.disarmGrace();
         held.unfollow();
         entries.delete(key);
       };
     },
     stop: (project) => entries.get(projectKeyOf(project))?.shown ?? UNREAD,
+    again: (project) => {
+      if (disposed) return;
+      const entry = entries.get(projectKeyOf(project));
+      if (entry !== undefined) askAgain(entry);
+    },
     shows: (service) => entries.has(projectKeyOf(service.project)),
     subscribe: (listener) => {
       listeners.add(listener);
@@ -255,7 +232,6 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       if (disposed) return;
       disposed = true;
       for (const entry of entries.values()) {
-        entry.disarm();
         entry.disarmGrace();
         entry.unfollow();
       }
