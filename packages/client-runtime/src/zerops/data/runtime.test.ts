@@ -5255,6 +5255,76 @@ describe("incomplete data says so, with its retry", () => {
     ),
   );
 
+  it.effect(
+    "each grant round asks a refusal once more, the same role and an organization's included",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = AtomRegistry.make();
+          const harness = makeAdapterHarness();
+          let attempts = 0;
+          const runtime = yield* makeZeropsDataRuntime({
+            scope: runtimeScope,
+            adapter: {
+              ...harness.adapter,
+              register: (receiver, request, context) => {
+                if (
+                  request.descriptor.kind !== "query-membership" ||
+                  request.descriptor.query.kind !== "projects-of-organization"
+                )
+                  return harness.adapter.register(receiver, request, context);
+                attempts += 1;
+                return Effect.fail({
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "forbidden",
+                  message: "list refused",
+                  status: 403,
+                  retryable: false,
+                  accountRevocationEvidence: false,
+                } satisfies AdapterError);
+              },
+            },
+            atomRegistry: registry,
+            makeOpaqueId: makeIdFactory(),
+          });
+          const states = yield* Queue.unbounded<ZeropsDataState>();
+          const stop = registry.subscribe(runtime.stateAtom, (state) =>
+            Queue.offerUnsafe(states, state),
+          );
+          const organization = topologyDescriptor.project.organization;
+          const lease = yield* runtime.acquire({ kind: "organization-inventory", organization });
+          yield* waitForState(
+            states,
+            (state) => state.interests.get(lease.interest)?.interest.status === "failed",
+          );
+          const round = (verifiedAtMs: number) =>
+            runtime.observeAccess({
+              kind: "access-verified",
+              grant: {
+                account: runtimeScope.account,
+                accountEpoch: runtimeScope.epoch,
+                verifiedAtMs,
+                deadlineMs: verifiedAtMs + 15 * 60_000,
+                mutationsAllowed: true,
+                organizations: [{ organization, mutationsAllowed: true }],
+                projects: [],
+              },
+            });
+          expect(attempts).toBe(1);
+          yield* round(0);
+          yield* waitForState(states, () => attempts === 2);
+          yield* TestClock.adjust("12 minutes");
+          expect(attempts).toBe(2);
+          // The next round, with the same role, asks once more.
+          yield* round(12 * 60_000);
+          yield* waitForState(states, () => attempts === 3);
+          yield* runtime.shutdown("application-close");
+          stop();
+          registry.dispose();
+        }),
+      ),
+  );
+
   it.effect("a receiver stream that ends without a close frame ends visibly", () =>
     Effect.scoped(
       Effect.gen(function* () {

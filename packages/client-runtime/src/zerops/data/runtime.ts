@@ -3970,6 +3970,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               },
               interest: null,
             });
+            // The project this account just made is granted: a refusal of it is asked again.
+            yield* retryRefusedInterestsSoon;
           }
           yield* enqueueObservations(outcome.success.observations, null);
           yield* enqueue({
@@ -4261,66 +4263,58 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
 
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>
     Effect.gen(function* () {
-      const before = rolesOf((yield* Ref.get(model)).access);
       yield* enqueue({ kind: "access-observation", observation, interest: null });
       yield* awaitIngress;
-      if (observation.kind === "project-access-established") {
+      if (
+        observation.kind === "access-verified" ||
+        observation.kind === "project-access-established"
+      ) {
         yield* retryRefusedHydrations;
-        yield* retryRefusedInterests(new Set([projectKeyOf(observation.project)]));
-      } else if (observation.kind === "access-verified") {
-        yield* retryRefusedHydrations;
-        // Only a project whose grant changed may now be answered otherwise.
-        const after = rolesOf((yield* Ref.get(model)).access);
-        yield* retryRefusedInterests(
-          new Set([...after].filter(([key, role]) => before.get(key) !== role).map(([key]) => key)),
-        );
+        yield* retryRefusedInterestsSoon;
       }
     });
 
-  /** Each project's granted role, keyed by project. */
-  const rolesOf = (access: AccessState): ReadonlyMap<string, string> =>
-    new Map(
-      (access.status === "verified" ? access.projects : []).map((entry) => [
-        projectKeyOf(entry.project),
-        entry.role,
-      ]),
-    );
+  /**
+   * A grant round answered: each refusal is sent once more, outside the grant's own lock (the
+   * grant reports from inside it, and a shutdown holding the lifecycle waits for that lock).
+   */
+  const retryRefusedInterestsSoon = Effect.suspend(() => {
+    const state = Ref.getUnsafe(model);
+    const anyRefused = [...interests.values()].some((runtimeInterest) => {
+      const failed = state.interests.get(runtimeInterest.key)?.interest;
+      return runtimeInterest.leases.size > 0 && failed?.status === "failed" && !failed.retryable;
+    });
+    return anyRefused ? retryRefusedInterests.pipe(forkOwned, Effect.asVoid) : Effect.void;
+  });
 
   /**
-   * A grant changed for these projects: each held interest of theirs a refusal failed for good
-   * registers once more, as a person's again would; a refusal that stands fails it the same way.
+   * Each held interest a refusal failed for good registers once more, as a person's again would —
+   * at most once a grant round; a refusal that stands fails it the same way.
    */
-  const retryRefusedInterests = (projects: ReadonlySet<string>): Effect.Effect<void> =>
-    lifecycleLock.withPermit(
-      Effect.gen(function* () {
-        if (projects.size === 0 || (yield* Ref.get(closed))) return;
-        const state = yield* Ref.get(model);
-        const refused = [...interests.values()].filter((runtimeInterest) => {
-          const failed = state.interests.get(runtimeInterest.key)?.interest;
-          return (
-            runtimeInterest.leases.size > 0 &&
-            "project" in runtimeInterest.descriptor &&
-            projects.has(projectKeyOf(runtimeInterest.descriptor.project)) &&
-            failed?.status === "failed" &&
-            !failed.retryable
-          );
-        });
-        const retried: RuntimeInterest[] = [];
-        for (const runtimeInterest of refused) {
-          const receiver = receivers.get(receiverKeyOf(runtimeInterest.descriptor));
-          if (receiver === undefined || receiver.failed || receiver.openFailure !== null) continue;
-          yield* releaseFailedRegistrations(receiver, runtimeInterest.key);
-          const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
-          yield* applyControl({ kind: "interest-upserted", interest: desired });
-          retried.push(runtimeInterest);
-        }
-        yield* Effect.forEach(
-          retried,
-          (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
-          { discard: true },
-        );
-      }),
-    );
+  const retryRefusedInterests: Effect.Effect<void> = lifecycleLock.withPermit(
+    Effect.gen(function* () {
+      if (yield* Ref.get(closed)) return;
+      const state = yield* Ref.get(model);
+      const refused = [...interests.values()].filter((runtimeInterest) => {
+        const failed = state.interests.get(runtimeInterest.key)?.interest;
+        return runtimeInterest.leases.size > 0 && failed?.status === "failed" && !failed.retryable;
+      });
+      const retried: RuntimeInterest[] = [];
+      for (const runtimeInterest of refused) {
+        const receiver = receivers.get(receiverKeyOf(runtimeInterest.descriptor));
+        if (receiver === undefined || receiver.failed || receiver.openFailure !== null) continue;
+        yield* releaseFailedRegistrations(receiver, runtimeInterest.key);
+        const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
+        yield* applyControl({ kind: "interest-upserted", interest: desired });
+        retried.push(runtimeInterest);
+      }
+      yield* Effect.forEach(
+        retried,
+        (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+        { discard: true },
+      );
+    }),
+  );
 
   /** A grant changed: every entity the platform refused is read once more under it. */
   const retryRefusedHydrations = Effect.suspend(() => {

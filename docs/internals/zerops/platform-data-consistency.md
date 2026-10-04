@@ -121,7 +121,7 @@ Terminal records remain available to retained history/operation views.
    socket failure, malformed frame or uncertain ownership fails the receiver's demand. Optional metrics can fail without
    withholding service topology. An interest that failed alone re-establishes alone on its own
    backoff, staying at the cap once its budget is spent, its siblings observing on; a refusal or
-   an overflow waits for a manual attempt or a grant change. A failed receiver reconnects on its
+   an overflow waits for a manual attempt, or is asked once more each grant round. A failed receiver reconnects on its
    own. A new lease joins the failure and its scheduled retry; it starts nothing sooner. A visible manual
    **again** re-establishes the held scope with new identities and baselines at once.
 9. Bound establishment/token/open/greeting/read deadlines. The first failed attempt has a
@@ -184,7 +184,7 @@ inventory's own registrations, its project feed and project list, are admitted
 ahead of waiting project registrations; a registration's deadline starts when it
 is sent, not while it waits for its turn. A registration the platform refused
 with an HTTP error status took no effect. A refusal (400/401/403/404/410) registers again only
-at a manual attempt or when the project's grant changes; any other registers again on the same
+at a manual attempt or once each grant round; any other registers again on the same
 receiver on its own backoff, sending only the failed subscription, and a socket whose released
 subscriptions reach the bound is replaced. A required interest's registration without an answer, or with an
 answer that could not be read, may have left a subscription nobody owns, so its
