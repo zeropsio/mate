@@ -110,8 +110,8 @@ export function releaseFollows(input: {
   readonly press: ReviewPress;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight: string | undefined;
-  /** The newest release, once HQ ended its deploy to production (`releaseEnded`). */
-  readonly ended: string | undefined;
+  /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
+  readonly stalled: string | undefined;
   /** The version offered next. */
   readonly suggestion: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
@@ -149,7 +149,7 @@ export function releaseFollows(input: {
     newer === undefined
       ? undefined
       : { by: newer.tag, live: input.releases.find((entry) => entry.standing === "live")?.tag };
-  const stalled = releasing && superseded === undefined && releaseStalled(tagged, input.ended);
+  const stalled = releasing && superseded === undefined && stalledAt(tagged, input.stalled);
   return {
     tag,
     tagged,
@@ -167,10 +167,10 @@ export function releaseFollows(input: {
 
 /**
  * Whether HQ ended a tag's deploy to production with neither a landing nor a failure: a job of it
- * refused, skipped or superseded, a service it left out never running its commit. A release HQ has
- * not listed yet has not ended.
+ * refused, skipped or superseded, a service it left out never running its commit. One HQ says
+ * landed waits for production's own word, never stalls; a release HQ has not listed has not ended.
  */
-function releaseStalled(tagged: FlowReleaseRow | undefined, ended: string | undefined): boolean {
+function stalledAt(tagged: FlowReleaseRow | undefined, stalled: string | undefined): boolean {
   if (
     tagged === undefined ||
     tagged.snapshot === true ||
@@ -178,7 +178,7 @@ function releaseStalled(tagged: FlowReleaseRow | undefined, ended: string | unde
     tagged.verdict === "refused"
   )
     return false;
-  return tagged.tag === ended;
+  return tagged.tag === stalled;
 }
 
 /** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */

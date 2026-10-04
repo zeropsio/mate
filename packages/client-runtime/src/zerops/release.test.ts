@@ -10,11 +10,11 @@ import {
   releaseEntries,
   releaseGate,
   releaseCandidate,
-  releaseEnded,
   releaseInFlight,
   releaseInFlightReason,
   releaseOffer,
   releaseRow,
+  releaseStalled,
   releaseWord,
   RELEASE_CHECKING,
   RELEASE_NOTHING_MERGED,
@@ -700,90 +700,120 @@ describe("a release in flight", () => {
     ],
     taggedAt: "2026-09-24T10:00:00Z",
   };
-  const rollout = (tag: string, ended: boolean): ReleaseRollout => ({
+  const rollout = (
+    tag: string,
+    ended: boolean,
+    over: Partial<ReleaseRollout> = {},
+  ): ReleaseRollout => ({
     id: "7",
     tag,
     planned: true,
     ended,
     endedAt: ended ? "2026-09-24T11:20:00Z" : null,
+    landed: false,
     leftOut: [],
+    ...over,
   });
 
-  // HQ's rollout of the newest release says when it ends, in each production; no clock does.
+  // HQ's rollout of the newest release says when it ends, in each production; no clock does, and
+  // nothing it has not said is read as on its way.
   it.each([
     {
       name: "on its way while HQ's rollout of it has not ended",
       release: newest,
       rollouts: [rollout("v0.1.3", false)],
       inFlight: "v0.1.3",
-      ended: undefined,
+      stalled: undefined,
+    },
+    {
+      name: "on its way before HQ planned it",
+      release: newest,
+      rollouts: [rollout("v0.1.3", false, { planned: false })],
+      inFlight: "v0.1.3",
+      stalled: undefined,
     },
     {
       name: "on its way while any production's rollout of it has not ended",
       release: newest,
       rollouts: [rollout("v0.1.3", true), rollout("v0.1.3", false)],
       inFlight: "v0.1.3",
-      ended: undefined,
+      stalled: undefined,
     },
     {
-      name: "on its way before HQ streams its rollout: an older release's is no end of it",
-      release: newest,
-      rollouts: [rollout("v0.1.2", true)],
-      inFlight: "v0.1.3",
-      ended: undefined,
-    },
-    {
-      name: "on its way before HQ planned it",
-      release: newest,
-      rollouts: [null],
-      inFlight: "v0.1.3",
-      ended: undefined,
-    },
-    {
-      name: "ended once HQ ended its rollout in every production",
+      name: "ended with something of it not live: stalled",
       release: newest,
       rollouts: [rollout("v0.1.3", true)],
       inFlight: undefined,
-      ended: "v0.1.3",
+      stalled: "v0.1.3",
+    },
+    {
+      // Review #6: HQ says it landed before production's version is read — never stalled.
+      name: "ended with all of it live: landed, never stalled",
+      release: newest,
+      rollouts: [rollout("v0.1.3", true, { landed: true })],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      // Review #2: made before rollouts were, or recorded from git — HQ says it ended.
+      name: "a release HQ ended with no rollout of its own: never on its way",
+      release: newest,
+      rollouts: [rollout("v0.1.3", true, { id: null })],
+      inFlight: undefined,
+      stalled: "v0.1.3",
+    },
+    {
+      name: "neither where HQ's rollout names another release: nothing said of this one",
+      release: newest,
+      rollouts: [rollout("v0.1.2", false)],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      name: "neither where HQ names no release there",
+      release: newest,
+      rollouts: [null],
+      inFlight: undefined,
+      stalled: undefined,
     },
     {
       name: "neither where the project has no production environment to deploy it to",
       release: newest,
       rollouts: [],
       inFlight: undefined,
-      ended: undefined,
+      stalled: undefined,
     },
     {
-      name: "neither where HQ tells no release's end",
+      name: "neither where HQ tells no release's end (a Core older than this client)",
       release: newest,
       rollouts: [undefined],
       inFlight: undefined,
-      ended: undefined,
+      stalled: undefined,
     },
     {
       name: "neither for a release HQ refused",
       release: { ...newest, verdict: "refused" as const },
       rollouts: [rollout("v0.1.3", false)],
       inFlight: undefined,
-      ended: undefined,
+      stalled: undefined,
     },
     {
       name: "neither for a snapshot, which deploys nothing",
       release: { ...newest, snapshot: true },
-      rollouts: [null],
+      rollouts: [rollout("v0.1.3", true, { id: null })],
       inFlight: undefined,
-      ended: undefined,
+      stalled: undefined,
     },
     {
       name: "neither without a release",
       release: undefined,
       rollouts: [rollout("v0.1.3", false)],
       inFlight: undefined,
-      ended: undefined,
+      stalled: undefined,
     },
-  ])("$name", ({ release, rollouts, inFlight, ended }) => {
+  ])("$name", ({ release, rollouts, inFlight, stalled }) => {
     expect(releaseInFlight({ newest: release, rollouts })).toBe(inFlight);
-    expect(releaseEnded({ newest: release, rollouts })).toBe(ended);
+    expect(releaseStalled({ newest: release, rollouts })).toBe(stalled);
   });
 
   it("keeps Release from being offered, and says which tag is on its way", () => {

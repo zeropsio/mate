@@ -116,6 +116,7 @@ describe("environmentsOf", () => {
         planned: true,
         ended: false,
         endedAt: null,
+        landed: false,
         leftOut: [{ service: "api", sha: A, job: "5", reason: "a job of aaaaaaa is under way" }],
       },
     };

@@ -1892,14 +1892,22 @@ describe("structure", () => {
             environment: { name: "production" },
           });
           const sha = "4".repeat(40);
+          /** HQ's record of release `tag`, made before rollouts were or recorded from git. */
+          const recorded = (tag: string) => sql`
+            INSERT INTO hq_release (app_id, tag, sha, entries, released_by, state)
+            VALUES (${shop.id}::uuid, ${tag}, ${sha}, '[]'::jsonb, 'owner', 'approved')`;
+          /** Release `tag`, recorded with the rollout that deploys it. */
           const release = (tag: string, planned: boolean) =>
-            Effect.map(
-              sql<{ readonly id: string }>`
-                INSERT INTO hq_rollout (app_id, cause, tag, planned_at)
-                VALUES (${shop.id}::uuid, 'release', ${tag},
-                  ${sql.literal(planned ? "now()" : "NULL")})
-                RETURNING id::text AS id`,
-              (rows) => rows[0]!.id,
+            Effect.andThen(
+              recorded(tag),
+              Effect.map(
+                sql<{ readonly id: string }>`
+                  INSERT INTO hq_rollout (app_id, cause, tag, planned_at)
+                  VALUES (${shop.id}::uuid, 'release', ${tag},
+                    ${sql.literal(planned ? "now()" : "NULL")})
+                  RETURNING id::text AS id`,
+                (rows) => rows[0]!.id,
+              ),
             );
           const jobs = (rolloutId: string, state: string, count: number) =>
             sql<{ readonly id: string }>`
@@ -1924,6 +1932,7 @@ describe("structure", () => {
                       rollout.planned,
                       rollout.ended,
                       rollout.endedAt === null ? null : typeof rollout.endedAt,
+                      rollout.landed,
                       rollout.leftOut.map((left) => [left.service, left.job]),
                     ],
               ]),
@@ -1933,7 +1942,7 @@ describe("structure", () => {
           const first = yield* release("v0.1.0", false);
           assert.deepStrictEqual(yield* standing, [
             ["P_STAGE", null],
-            ["P_PROD", ["v0.1.0", false, false, null, []]],
+            ["P_PROD", ["v0.1.0", false, false, null, false, []]],
           ]);
           // Planned into more jobs than the view lists: its last job, newest, still waits.
           yield* sql`UPDATE hq_rollout SET planned_at = now() WHERE id = ${first}::bigint`;
@@ -1941,12 +1950,13 @@ describe("structure", () => {
           const [last] = yield* jobs(first, "queued", 1);
           assert.deepStrictEqual((yield* standing)[1], [
             "P_PROD",
-            ["v0.1.0", true, false, null, []],
+            ["v0.1.0", true, false, null, false, []],
           ]);
           yield* end(last!.id);
+          // Ended, and not landed: some of its jobs were refused.
           assert.deepStrictEqual((yield* standing)[1], [
             "P_PROD",
-            ["v0.1.0", true, true, "string", []],
+            ["v0.1.0", true, true, "string", false, []],
           ]);
 
           // A newer release that left a service out, its commit building under a merge's job: it
@@ -1967,20 +1977,34 @@ describe("structure", () => {
             WHERE id = ${second}::bigint`;
           assert.deepStrictEqual((yield* standing)[1], [
             "P_PROD",
-            ["v0.2.0", true, false, null, [["web", building!.id]]],
+            ["v0.2.0", true, false, null, false, [["web", building!.id]]],
           ]);
           yield* end(building!.id);
+          // Every job it asked for, and the one it waited on, live: landed.
           assert.deepStrictEqual((yield* standing)[1], [
             "P_PROD",
-            ["v0.2.0", true, true, "string", [["web", building!.id]]],
+            ["v0.2.0", true, true, "string", true, [["web", building!.id]]],
           ]);
 
-          // One planned into no job there — every service already runs it — ended as planned.
+          // One planned into no job there — every service already runs it — landed as planned.
           yield* release("v0.3.0", true);
           assert.deepStrictEqual((yield* standing)[1], [
             "P_PROD",
-            ["v0.3.0", true, true, "string", []],
+            ["v0.3.0", true, true, "string", true, []],
           ]);
+
+          // Review #2 (web, client): a release HQ records with no rollout of its own — made before
+          // rollouts were, or recorded from git — deploys nothing more: ended, as it was made, and
+          // never on its way. The newest by version is what production follows.
+          yield* recorded("v0.10.0");
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.10.0", true, true, "string", false, []],
+          ]);
+          const [legacy] = shown((yield* structure.read("dev")).apps[0]!.environments).flatMap(
+            ({ release: rollout }) => (rollout === null ? [] : [rollout]),
+          );
+          assert.strictEqual(legacy?.id, null);
         }),
       ),
     );

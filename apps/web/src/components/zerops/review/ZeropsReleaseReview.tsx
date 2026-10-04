@@ -272,7 +272,7 @@ function ReleaseData({
     held,
     press,
     inFlight: flow.release.inFlight,
-    ended: flow.release.ended,
+    stalled: flow.release.stalled,
     suggestion: chosen.tag ?? flow.release.suggestion,
     releases: flow.releases,
   });
@@ -695,7 +695,7 @@ function RollbackData({
     held: undefined,
     press,
     inFlight: undefined,
-    ended: flow.release.ended,
+    stalled: flow.release.stalled,
     suggestion,
     releases: flow.releases,
   });
