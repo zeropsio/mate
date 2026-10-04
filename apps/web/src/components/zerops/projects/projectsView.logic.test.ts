@@ -35,6 +35,12 @@ import {
   nextStepCell,
   nextStepTone,
   parseProjectsSearch,
+  matesKnownOf,
+  rowMateActivitiesOf,
+  risenFirst,
+  rowRise,
+  productionMark,
+  projectRowLine,
   stripColumns,
   talkSettled,
   withoutOfficialHq,
@@ -1192,5 +1198,275 @@ describe("the Overview's ungrouped projects", () => {
     const production = row("foreign-prod", ["mate:g:foreign", "mate:role:prod"], false);
     const ordinary = row("central-prometheus", [], false);
     expect(shownUngrouped([production, ordinary, mate, lostMate])).toEqual([mate, lostMate]);
+  });
+});
+
+describe("projectRowLine — a project row's second line", () => {
+  const quiet = { lastMerged: undefined, activities: [], settled: true } as const;
+  const RUNE_WORKING = {
+    name: "Wren",
+    working: true,
+    subject: "Add a health check",
+    at: "2026-10-03T10:00:00Z",
+  };
+  const RUNE_IDLE = { ...RUNE_WORKING, working: false };
+  const MERGED = pull({
+    number: 4,
+    title: "Ship the archive page",
+    merged: true,
+    mergedAt: "2026-10-02T10:00:00Z",
+  });
+  it.each([
+    [
+      "a change waits: the sentence, with its title, and the verb",
+      { flow: FLOWS.merge },
+      {
+        kind: "needs-you",
+        text: FLOWS.merge.nextStep.text,
+        detail: "Greet with a fuller line",
+        tone: "attention",
+      },
+    ],
+    [
+      "a Mate stopped on an error: said even before the reads answer",
+      { flow: FLOWS.stopped, settled: false },
+      { kind: "needs-you", text: "Wren stopped on an error", tone: "failed" },
+    ],
+    [
+      "a release waits",
+      { flow: FLOWS.release },
+      { kind: "needs-you", text: FLOWS.release.nextStep.text, tone: "busy" },
+    ],
+    [
+      "the reads are out: nothing is claimed yet",
+      { flow: FLOWS.merge, settled: false },
+      { kind: "pending" },
+    ],
+    [
+      "a Mate works: what it is on, its face says the rest",
+      { flow: FLOWS.none, activities: [RUNE_WORKING] },
+      { kind: "mate", mate: "Wren", text: "Add a health check" },
+    ],
+    [
+      "quiet: the change that landed last",
+      { flow: FLOWS.none, lastMerged: MERGED },
+      { kind: "change", text: "Merged #4 Ship the archive page", at: "2026-10-02T10:00:00Z" },
+    ],
+    [
+      "quiet: the Mate's last task when it is newer than the last merge",
+      { flow: FLOWS.none, lastMerged: MERGED, activities: [RUNE_IDLE] },
+      { kind: "mate", mate: "Wren", text: "Add a health check", at: "2026-10-03T10:00:00Z" },
+    ],
+    [
+      "a Mate nobody has spoken to: its first task",
+      { flow: FLOWS.firstTask },
+      { kind: "first-task", text: "Give Wren a first task" },
+    ],
+    ["nothing known: no line at all", { flow: FLOWS.none }, { kind: "none" }],
+    // An unknown read is not "nothing to do": a change may wait there unseen.
+    [
+      "HQ did not answer for its changes: it says so",
+      { flow: FLOWS.none, lastMerged: MERGED, changesUnknown: "failed" },
+      { kind: "unread", text: "HQ didn’t answer" },
+    ],
+    [
+      "HQ's rule withholds its changes from this person: it says why",
+      { flow: FLOWS.merge, changesUnknown: "unseen" },
+      { kind: "unread", text: "Needs Basic user access" },
+    ],
+    [
+      "its changes unknown, a Mate stopped on an error: the Mate first",
+      { flow: FLOWS.stopped, changesUnknown: "failed" },
+      { kind: "needs-you", text: "Wren stopped on an error", tone: "failed" },
+    ],
+    [
+      // Production is the person's to add from the menu: never a step that waits.
+      "production could be added: not a thing that needs you",
+      {
+        flow: flowOf({
+          merged: [MERGED],
+          mainHasCode: true,
+          productionAddable: true,
+          missing: [{ tier: "production" }],
+        }),
+        lastMerged: MERGED,
+      },
+      { kind: "change", text: "Merged #4 Ship the archive page", at: "2026-10-02T10:00:00Z" },
+    ],
+  ] as const)("%s", (_name, over, expected) => {
+    expect(projectRowLine({ ...quiet, ...over })).toEqual(expected);
+  });
+
+  it("a change open and not yet the person's: its number and title", () => {
+    const flow = flowOf({
+      pullRequests: [
+        pull({ number: 9, title: "Make the design system", mergeability: "checking" }),
+      ],
+    });
+    expect(projectRowLine({ ...quiet, flow })).toEqual({
+      kind: "change",
+      text: "#9 Make the design system",
+    });
+  });
+
+  it.each([
+    ["a deploy runs on a stage", { state: "deploying" }, "Deploying fixture-stage…"],
+  ] as const)("under way: %s", (_name, over, text) => {
+    const stage: GroupFlowStop = {
+      projectId: "fixture-stage",
+      name: "fixture-stage",
+      version: undefined,
+      source: "main",
+      route: undefined,
+      ...over,
+    };
+    const flow: GroupFlow = { ...FLOWS.none, stages: [stage] };
+    expect(projectRowLine({ ...quiet, flow })).toEqual({ kind: "under-way", text });
+  });
+});
+
+describe("productionMark — production's version, only where production exists", () => {
+  const production = (over: Partial<GroupFlowStop>): GroupFlow =>
+    ({
+      ...FLOWS.none,
+      production: {
+        kind: over.state === "deployed" ? "live" : "empty",
+        line: "",
+        stop: {
+          projectId: "p-prod",
+          name: "production",
+          state: "empty",
+          version: undefined,
+          source: "release",
+          route: undefined,
+          ...over,
+        },
+      },
+    }) as GroupFlow;
+  it.each([
+    ["no production: nothing at all", FLOWS.none, undefined],
+    [
+      "production runs a version: the version and its tone",
+      production({ state: "deployed", version: { label: "v0.1.59" } as GroupFlowStop["version"] }),
+      { version: "v0.1.59", tone: "ok" },
+    ],
+    ["production runs nothing yet: nothing to show", production({}), undefined],
+  ] as const)("%s", (_name, flow, expected) => {
+    expect(productionMark(flow)).toEqual(expected);
+  });
+});
+
+describe("risenFirst — the rows that need the person rise, the custom order kept within", () => {
+  it.each([
+    ["none rise: the order as given", [false, false, false], ["a", "b", "c"]],
+    ["one rises", [false, true, false], ["b", "a", "c"]],
+    ["two rise: their own order kept", [false, true, true], ["b", "c", "a"]],
+  ] as const)("%s", (_name, rises, expected) => {
+    const rows = ["a", "b", "c"];
+    expect(risenFirst(rows, (row) => rises[rows.indexOf(row)] === true)).toEqual(expected);
+  });
+});
+
+describe("rowRise — a row whose answer is out stays where it was drawn", () => {
+  const NEEDS = { kind: "needs-you", text: "x", tone: "attention" } as const;
+  it.each([
+    ["needs you", NEEDS, undefined, true, { rises: true, known: true }],
+    ["needs you, a Mate reconnecting", NEEDS, undefined, false, { rises: true, known: true }],
+    ["quiet", { kind: "none" }, true, true, { rises: false, known: true }],
+    [
+      "quiet while a Mate reconnects, last drawn risen: it stays",
+      { kind: "none" },
+      true,
+      false,
+      { rises: true, known: false },
+    ],
+    [
+      "quiet while a Mate reconnects, never drawn risen",
+      { kind: "none" },
+      undefined,
+      false,
+      { rises: false, known: false },
+    ],
+    ["pending, last drawn risen", { kind: "pending" }, true, true, { rises: true, known: false }],
+    ["pending, never drawn", { kind: "pending" }, undefined, true, { rises: false, known: false }],
+    [
+      "its changes unknown, last drawn risen: it stays",
+      { kind: "unread", text: "HQ didn’t answer" },
+      true,
+      true,
+      { rises: true, known: false },
+    ],
+  ] as const)("%s", (_name, line, remembered, matesKnown, expected) => {
+    expect(rowRise(line, remembered, matesKnown)).toEqual(expected);
+  });
+});
+
+describe("a project row's Mates — what each is on, and whether each is known", () => {
+  const mate = (
+    group: ZeropsCandidate["group"],
+    linked: boolean,
+  ): ZeropsCandidate & { readonly connection?: unknown } =>
+    ({
+      key: "p-wren:zcp",
+      project: { id: "p-wren", name: "p-wren", status: "ACTIVE", tagList: [] },
+      group,
+      ...(group === "connected" ? { environmentId: "env-wren" as EnvironmentId } : {}),
+      ...(linked
+        ? { connection: { phase: group === "connected" ? "connected" : "connecting" } }
+        : {}),
+      service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+    }) as ZeropsCandidate & { readonly connection?: unknown };
+  const working: ZeropsAgentActivity = {
+    threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+    kind: "working",
+    status: null,
+    face: "working",
+    subject: "Add a health check",
+    at: "2026-09-24T10:00:00.000Z",
+    snippet: undefined,
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread",
+    task: undefined,
+  };
+  const resting: ZeropsAgentActivity = { ...working, remembered: true };
+
+  it.each([
+    [
+      "of now: what it is on",
+      working,
+      [{ name: "Wren", working: true, subject: "Add a health check", at: working.at }],
+    ],
+    // HQ's last word of a Mate it holds no live link of: its last task, never that it works.
+    [
+      "at rest: its last task, never working",
+      resting,
+      [{ name: "Wren", working: false, subject: "Add a health check", at: working.at }],
+    ],
+    ["nothing told: nothing", undefined, []],
+  ] as const)("%s", (_name, activity, expected) => {
+    expect(
+      rowMateActivitiesOf([{ item: mate("ready", false), name: "Wren" }], () => activity),
+    ).toEqual(expected);
+  });
+
+  it.each([
+    ["every Mate connected and read", "connected", true, undefined, true, true],
+    ["a Mate connected, its conversations not arrived", "connected", true, undefined, false, false],
+    // Its link held and not up: a restart, an update, a blip — it may be asking.
+    ["a Mate reconnecting", "ready", true, undefined, true, false],
+    // HQ holds it live: its word says whether it asks, whatever this tab's link.
+    ["a Mate reconnecting that HQ holds live", "ready", true, working, true, true],
+    ["a Mate reconnecting that HQ only remembers", "ready", true, resting, true, false],
+    // No link this tab holds: nothing to come back from.
+    ["a Mate this tab never linked", "ready", false, undefined, true, true],
+  ] as const)("matesKnown: %s", (_name, group, linked, activity, read, expected) => {
+    expect(
+      matesKnownOf(
+        [mate(group, linked)],
+        () => activity,
+        () => read,
+      ),
+    ).toBe(expected);
   });
 });

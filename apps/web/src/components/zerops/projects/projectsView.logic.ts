@@ -805,3 +805,223 @@ export function groupFlowInputOf(input: {
     nowMs: input.nowMs,
   };
 }
+
+/** A Mate's activity as a project's row reads it (`agentActivity.ts`). */
+export interface RowMateActivity {
+  readonly name: string;
+  /** It is on a turn now: its face says so, and its line says what on. */
+  readonly working: boolean;
+  /** What it is on, or was last on; absent before anybody spoke to it. */
+  readonly subject: string | undefined;
+  /** When it last did something. */
+  readonly at: string | undefined;
+}
+
+/**
+ * A project row's second line: the one thing that needs the person, as a full sentence (its verb
+ * at the row's end), else the latest meaningful fact — never a word for nothing.
+ */
+export type ProjectRowLine =
+  | {
+      readonly kind: "needs-you";
+      readonly text: string;
+      /** The change it names, by its title. */
+      readonly detail?: string;
+      readonly tone: ServiceStatusToneId;
+    }
+  /** A deploy or a release on its way. */
+  | { readonly kind: "under-way"; readonly text: string }
+  /** What a Mate is on (working), or was last on. */
+  | { readonly kind: "mate"; readonly mate: string; readonly text: string; readonly at?: string }
+  /** A change: open, or the last that landed. */
+  | { readonly kind: "change"; readonly text: string; readonly at?: string }
+  | { readonly kind: "first-task"; readonly text: string }
+  /** Its reads are out: the line holds its place and claims nothing. */
+  | { readonly kind: "pending" }
+  /** Its changes are not known (`ChangesUnknown`): nothing about them is claimed, and it says why. */
+  | { readonly kind: "unread"; readonly text: string }
+  | { readonly kind: "none" };
+
+/** The steps a Mate's own state decides: known without the project's reads. */
+const MATE_STEPS: ReadonlySet<GroupNextStepKind> = new Set(["answer-mate", "fix-mate"]);
+
+function newer(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined) return false;
+  if (b === undefined) return true;
+  return Date.parse(a) > Date.parse(b);
+}
+
+/** A stage with a deploy on its way, as the row says it: its run, or its first deploy's word. */
+function stageUnderWay(stages: ReadonlyArray<GroupFlowStop>): string | undefined {
+  for (const stage of stages) {
+    if (stage.state === "deploying") return `Deploying ${stage.name}…`;
+    const line = stopLine(stage);
+    if (line.tone === "busy") return `${stage.name}: ${line.word}`;
+  }
+  return undefined;
+}
+
+export function projectRowLine(input: {
+  readonly flow: GroupFlow;
+  readonly lastMerged: FlowPullRequest | undefined;
+  readonly activities: ReadonlyArray<RowMateActivity>;
+  /** The project's reads answered (`flowStepsAwaiting`): its next step is known. */
+  readonly settled: boolean;
+  /** Why its changes are not known, where they are not (`changesUnknownOf`). */
+  readonly changesUnknown?: ChangesUnknown | undefined;
+}): ProjectRowLine {
+  const { flow, activities } = input;
+  const step = flow.nextStep;
+  const needsYou = (): ProjectRowLine => {
+    const target = step.target;
+    const pull =
+      target?.kind === "change"
+        ? flow.pullRequests.find(
+            (entry) =>
+              entry.pull.repository === target.repository && entry.pull.number === target.number,
+          )?.pull
+        : undefined;
+    return {
+      kind: "needs-you",
+      text: step.text,
+      ...(pull === undefined ? {} : { detail: pull.title }),
+      tone: nextStepTone(step.kind),
+    };
+  };
+  if (MATE_STEPS.has(step.kind)) return needsYou();
+  if (!input.settled) return { kind: "pending" };
+  // A failed deploy is the deploy half's to say; everything else waits on the changes HQ keeps.
+  if (input.changesUnknown !== undefined)
+    return step.kind === "fix-deploy"
+      ? needsYou()
+      : { kind: "unread", text: CHANGES_UNKNOWN_LINE[input.changesUnknown] };
+  if (nextStepAwaitsSomebody(step.kind)) return needsYou();
+
+  const { production } = flow;
+  if (production.kind === "creating") return { kind: "under-way", text: production.line };
+  if (production.kind === "releasing")
+    return { kind: "under-way", text: releaseInFlightReason(production.tag) };
+  if (production.kind === "deploying") return { kind: "under-way", text: "Deploying production…" };
+  const stage = stageUnderWay(flow.stages);
+  if (stage !== undefined) return { kind: "under-way", text: stage };
+
+  const working = activities.find((mate) => mate.working && mate.subject !== undefined);
+  if (working?.subject !== undefined)
+    return { kind: "mate", mate: working.name, text: working.subject };
+
+  const open = flow.pullRequests[0]?.pull;
+  if (open !== undefined) return { kind: "change", text: `#${String(open.number)} ${open.title}` };
+
+  const merged = input.lastMerged;
+  const lastTalk = activities
+    .filter((mate) => mate.subject !== undefined)
+    .reduce<RowMateActivity | undefined>(
+      (latest, mate) => (latest === undefined || newer(mate.at, latest.at) ? mate : latest),
+      undefined,
+    );
+  if (
+    lastTalk?.subject !== undefined &&
+    (merged === undefined || newer(lastTalk.at, merged.mergedAt))
+  )
+    return {
+      kind: "mate",
+      mate: lastTalk.name,
+      text: lastTalk.subject,
+      ...(lastTalk.at === undefined ? {} : { at: lastTalk.at }),
+    };
+  if (merged !== undefined)
+    return {
+      kind: "change",
+      text: `Merged #${String(merged.number)} ${merged.title}`,
+      ...(merged.mergedAt === undefined ? {} : { at: merged.mergedAt }),
+    };
+  if (step.kind === "first-task") return { kind: "first-task", text: step.text };
+  return { kind: "none" };
+}
+
+/**
+ * Production's version beside the project's name, where production exists and runs one: what it
+ * runs and the tone of its last deploy. Nothing at all without production — adding one is the
+ * row's menu's offer, never a word in the row.
+ */
+export function productionMark(
+  flow: GroupFlow,
+): { readonly version: string; readonly tone: ServiceStatusToneId } | undefined {
+  const { production } = flow;
+  if (production.kind === "absent" || production.kind === "creating") return undefined;
+  const version = production.stop.version?.label;
+  if (version === undefined) return undefined;
+  return { version, tone: STOP_TONE[production.stop.state] };
+}
+
+/**
+ * Whether a row rises, and whether that is known — what the list may remember of it. A row that
+ * needs the person rises. One whose answer is out (`pending`, `unread`), or whose Mates are not
+ * all known (`matesKnown`: a Mate reconnecting may be asking), stays where it was last drawn and
+ * is not remembered either way.
+ */
+export function rowRise(
+  line: ProjectRowLine,
+  remembered: boolean | undefined,
+  matesKnown: boolean,
+): { readonly rises: boolean; readonly known: boolean } {
+  if (line.kind === "needs-you") return { rises: true, known: true };
+  if (line.kind === "pending" || line.kind === "unread" || !matesKnown)
+    return { rises: remembered === true, known: false };
+  return { rises: false, known: true };
+}
+
+/** The rows that rise first, then the rest, each keeping the order it was given. */
+export function risenFirst<E>(
+  rows: ReadonlyArray<E>,
+  rises: (row: E) => boolean,
+): ReadonlyArray<E> {
+  return [...rows.filter(rises), ...rows.filter((row) => !rises(row))];
+}
+
+/**
+ * The row's Mates' activity, as each one's menu row reads it (`useMateRowActivity`): HQ's word or
+ * its socket's. A word at rest (`activityOfNow`) — HQ's last of a Mate it holds no live link of,
+ * a kept shell gone quiet — still names its last task, and never says it works while its face
+ * sleeps.
+ */
+export function rowMateActivitiesOf<T>(
+  mates: ReadonlyArray<{ readonly item: T; readonly name: string }>,
+  activityOf: (item: T) => ZeropsAgentActivity | undefined,
+): ReadonlyArray<RowMateActivity> {
+  return mates.flatMap(({ item, name }) => {
+    const activity = activityOf(item);
+    if (activity === undefined) return [];
+    const now = activityOfNow(activity) !== undefined;
+    return [
+      {
+        name,
+        working: now && activity.kind === "working",
+        subject: activity.subject,
+        at: activity.at,
+      },
+    ];
+  });
+}
+
+/** A Mate's candidate as a row reads its link: the join with the environment at its origin. */
+type RowMateCandidate = ZeropsCandidate & { readonly connection?: unknown };
+
+/**
+ * Whether every Mate of a row is known not to be asking: HQ holds it live (its word says), or the
+ * link this tab holds to it is up and its conversations read. One whose link is down and HQ does
+ * not hold live — a restart, an update, a blip — may be asking, so its row stays where it was
+ * drawn (`rowRise`). A Mate this tab never linked has nothing to come back from.
+ */
+export function matesKnownOf<T extends RowMateCandidate>(
+  mates: ReadonlyArray<T>,
+  activityOf: (item: T) => ZeropsAgentActivity | undefined,
+  conversationsRead: (item: T) => boolean,
+): boolean {
+  return mates.every(
+    (item) =>
+      activityOfNow(activityOf(item)) !== undefined ||
+      item.connection === undefined ||
+      (item.group === "connected" && item.environmentId !== undefined && conversationsRead(item)),
+  );
+}
