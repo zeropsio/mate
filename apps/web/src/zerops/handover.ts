@@ -1,11 +1,13 @@
+import { appBasePath } from "../basePath";
 import { rememberSignInReturn } from "./navigationStorage";
 /**
  * The browser half of the Zerops sign-in hand-over.
  *
  * `client-runtime/zerops/handover` owns the wire contract and is pure; this
- * file owns the two things a browser has to supply — the nonce's randomness,
- * and somewhere to keep it while the tab navigates to `app.zerops.io` and
- * back.
+ * file owns what a browser has to supply — the nonce's randomness, somewhere
+ * to keep it while the tab navigates to the Zerops app and back, and where
+ * this tab lives: its origin and base path, plus the build's project hint
+ * (`VITE_MATE_SIGNIN_PROJECT`) and Zerops app (`VITE_ZEROPS_APP_URL`).
  *
  * **Why the nonce is stored at all.** Without it, `…/zerops/authorized#token=<attacker's>`
  * is a working link: whoever opens it signs this browser into the attacker's
@@ -73,23 +75,21 @@ function mintNonce(): string {
   return btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
 }
 
-/**
- * The port to ask the callback to return to, or null when this is not a dev
- * server. Matched on the hostname `localhost` and deliberately not
- * `127.0.0.1` — the trust is on the hostname. `URL.port` is empty when the
- * origin leaves the scheme's default implicit, so it is filled in here rather
- * than sending nothing.
- */
 function currentOrigin(): string {
   try {
     return window.location.origin;
   } catch {
-    // Not a browser — no loopback to come back to, so the production mode is
-    // the honest answer rather than a crash.
+    // Not a browser: the request builder refuses an empty origin.
     return "";
   }
 }
 
+/**
+ * TRANSITION — remove once the new FL is live on app.zerops.io: the port the
+ * old one comes back to, or null when this is not a dev server. Matched on the
+ * hostname `localhost` and deliberately not `127.0.0.1`: the trust is on the
+ * hostname. An implicit port is filled in.
+ */
 function loopbackPortOf(origin: string): number | null {
   let parsed: URL;
   try {
@@ -129,18 +129,26 @@ export function startZeropsHandover(
     readonly store?: ZeropsHandoverNonceStore;
     readonly intent?: ZeropsHandoverIntent;
     readonly origin?: string;
+    readonly path?: string;
+    readonly project?: string;
     readonly guiBaseUrl?: string;
   } = {},
 ): string {
   if (!input.store) rememberSignInReturn();
   const store = input.store ?? sessionHandoverNonceStore;
-  const state = mintZeropsHandoverNonce({ store });
-  const loopbackPort = loopbackPortOf(input.origin ?? currentOrigin());
+  const nonce = mintZeropsHandoverNonce({ store });
+  const project = input.project ?? import.meta.env.VITE_MATE_SIGNIN_PROJECT;
+  const guiBaseUrl = input.guiBaseUrl ?? import.meta.env.VITE_ZEROPS_APP_URL;
+  const origin = input.origin ?? currentOrigin();
+  const loopbackPort = loopbackPortOf(origin);
   return buildZeropsAuthorizeUrl({
-    state,
+    nonce,
+    origin,
+    path: input.path ?? appBasePath(),
+    ...(project ? { project } : {}),
     ...(loopbackPort === null ? {} : { loopbackPort }),
     ...(input.intent ? { intent: input.intent } : {}),
-    ...(input.guiBaseUrl ? { guiBaseUrl: input.guiBaseUrl } : {}),
+    ...(guiBaseUrl ? { guiBaseUrl } : {}),
   });
 }
 

@@ -368,7 +368,6 @@ describe("ZeropsInventoryProvider lapse", () => {
 
   it("Sign out from the lapse banner signs out", async () => {
     const { harness, tab, pass } = await admittedProduct();
-    const token = JSON.parse(storedSession(harness)!).accessToken as string;
     harness.rest.hang("GET /user/info");
     await pass(16 * MINUTE_MS);
     expect(tab.readable()).toContain("Zerops isn't answering.");
@@ -379,9 +378,10 @@ describe("ZeropsInventoryProvider lapse", () => {
     expect(tab.session().status).toBe("signed-out");
     expect(tab.accountId()).toBeNull();
     expect(storedSession(harness)).toBeNull();
-    expect(
-      harness.rest.requests().filter(({ route }) => route === "POST /auth/logout"),
-    ).toMatchObject([{ token }]);
+    // Local only: the token is the Zerops app's own session.
+    expect(harness.rest.requests().filter(({ route }) => route === "POST /auth/logout")).toEqual(
+      [],
+    );
     expect(tab.text()).not.toMatch(/Zerops isn't answering|product mounted/);
   });
 });

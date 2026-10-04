@@ -69,7 +69,7 @@ describe("runZeropsNativeSignIn", () => {
     const adoptHandover = vi.fn(async () => undefined);
     const zeropsSignIn = fakeBridge(async () => ({
       kind: "callback",
-      fragment: "#token=rt-1&state=STATE&clientId=org-1&zcpClaimed=false",
+      fragment: "#token=rt-1&state=STATE&zcpClaimed=false",
     }));
     const { setState, states } = collectStates();
 
@@ -85,7 +85,6 @@ describe("runZeropsNativeSignIn", () => {
     expect(states.at(-1)).toEqual({ kind: "idle" });
     expect(adoptHandover).toHaveBeenCalledWith({
       token: "rt-1",
-      clientId: "org-1",
       zcpClaimed: false,
     });
   });

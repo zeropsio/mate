@@ -133,27 +133,27 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });
 
     await expect(
-      tab.run(() =>
-        tab.session().adoptHandover({ token: "revoked", clientId: null, zcpClaimed: false }),
-      ),
+      tab.run(() => tab.session().adoptHandover({ token: "revoked", zcpClaimed: false })),
     ).rejects.toThrow();
     expect(tab.session().status).toBe("signed-out");
     expect(storedSession(harness)).toBeNull();
 
     const handedOver = harness.rest.issueSession("user-1").accessToken;
-    await tab.run(() =>
-      tab.session().adoptHandover({ token: handedOver, clientId: "org-1", zcpClaimed: false }),
-    );
+    await tab.run(() => tab.session().adoptHandover({ token: handedOver, zcpClaimed: false }));
     expect(tab.session().status).toBe("signed-in");
     expect(tab.session().activeOrganization?.id).toBe("org-1");
     expect(JSON.parse(storedSession(harness)!)).toEqual({ accessToken: handedOver });
   });
 
-  it("signs out: closes the account, clears the stored session, revokes the token it carried", async () => {
-    const harness = harnessWith({ signedIn: "user-1" });
-    const token = JSON.parse(storedSession(harness)!).accessToken as string;
-    const tab = await mountTab(harness, harness.browser.openTab());
-    expect(tab.session().status).toBe("signed-in");
+  // The handed-over token is the Zerops app's own session: logging it out
+  // would sign the person out there too. Sign-out forgets it here, and the
+  // account's close ends every HQ and Mate session it kept.
+  it("signs out locally: closes the account, forgets the token, never calls /auth/logout", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });
+    const handedOver = harness.rest.issueSession("user-1").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token: handedOver, zcpClaimed: false }));
+    expect(tab.accountId()).toBe("user-1");
 
     await tab.run(() => tab.session().signOut());
 
@@ -161,9 +161,26 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(tab.session().user).toBeNull();
     expect(tab.accountId()).toBeNull();
     expect(storedSession(harness)).toBeNull();
-    expect(
-      harness.rest.requests().filter(({ route }) => route === "POST /auth/logout"),
-    ).toMatchObject([{ token }]);
+    expect(harness.rest.requests().filter(({ route }) => route === "POST /auth/logout")).toEqual(
+      [],
+    );
+  });
+
+  it("switches accounts when a hand-over brings a different person", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });
+    const first = harness.rest.issueSession("user-1").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token: first, zcpClaimed: false }));
+    expect(tab.accountId()).toBe("user-1");
+
+    const second = harness.rest.issueSession("user-2").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token: second, zcpClaimed: false }));
+
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.session().user?.id).toBe("user-2");
+    expect(tab.accountId()).toBe("user-2");
+    expect(tab.session().activeOrganization?.id).toBe("org-2");
+    expect(JSON.parse(storedSession(harness)!)).toEqual({ accessToken: second });
   });
 
   it("signs out when another tab signs out", async () => {
@@ -600,5 +617,123 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     expect([a.session().status, b.session().status]).toEqual(["signed-in", "signed-in"]);
     expect(a.session().client.session?.accessToken).toBe(storedToken(harness));
     expect(b.session().client.session?.accessToken).toBe(storedToken(harness));
+  });
+});
+
+describe("ZeropsSessionProvider when the platform refuses the handed-over token", () => {
+  /** A tab at `path`, signed in through a hand-over the way a person is. */
+  async function handedOverTab(harness: ReturnType<typeof harnessWith>, path: string) {
+    const tab = await mountTab(harness, harness.browser.openTab(), { path });
+    const token = harness.rest.issueSession("user-1").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token, zcpClaimed: false }));
+    return { tab, token };
+  }
+
+  const handovers = (tab: { navigations: () => ReadonlyArray<{ via: string; url: string }> }) =>
+    tab.navigations().filter(({ url }) => url.includes("/authorize-app"));
+
+  /** A platform read the page makes, answered 401 once the token died. */
+  const readUser = (tab: Awaited<ReturnType<typeof handedOverTab>>["tab"]) =>
+    tab.run(() =>
+      tab
+        .session()
+        .client.fetchUser()
+        .catch(() => undefined),
+    );
+
+  it("sends the tab for a fresh hand-over and remembers the route it was on", async () => {
+    const harness = harnessWith();
+    const { tab, token } = await handedOverTab(harness, "/projects/p-1");
+
+    harness.rest.expireAccessToken(token);
+    await readUser(tab);
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(tab.accountId()).toBeNull();
+    expect(handovers(tab)).toMatchObject([{ via: "replace" }]);
+    expect(tab.tab.sessionStorage.getItem("mate:sign-in-return:v1")).toBe("/projects/p-1");
+  });
+
+  it("stays signed out when the fresh token is refused on the load it returns to", async () => {
+    const harness = harnessWith();
+    const { tab, token } = await handedOverTab(harness, "/projects/p-1");
+    harness.rest.expireAccessToken(token);
+    await readUser(tab);
+    expect(handovers(tab)).toHaveLength(1);
+
+    // The callback adopted the fresh token, then the tab loads the route again
+    // — and the platform refuses that token at once.
+    const fresh = harness.rest.issueSession("user-1").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token: fresh, zcpClaimed: false }));
+    harness.rest.expireAccessToken(fresh);
+    await tab.run(() => window.location.reload());
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(handovers(tab)).toHaveLength(1);
+  });
+
+  it("sends the tab again when a token that held through a fresh load dies later", async () => {
+    const harness = harnessWith();
+    const { tab, token } = await handedOverTab(harness, "/projects/p-1");
+    harness.rest.expireAccessToken(token);
+    await readUser(tab);
+
+    const fresh = harness.rest.issueSession("user-1").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token: fresh, zcpClaimed: false }));
+    await tab.run(() => window.location.reload());
+    expect(tab.session().status).toBe("signed-in");
+
+    harness.rest.expireAccessToken(fresh);
+    await readUser(tab);
+
+    expect(handovers(tab)).toHaveLength(2);
+  });
+
+  it("sends nowhere when the person signs out", async () => {
+    const harness = harnessWith();
+    const { tab } = await handedOverTab(harness, "/projects/p-1");
+
+    await tab.run(() => tab.session().signOut());
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(handovers(tab)).toEqual([]);
+  });
+
+  it("sends nowhere when a hand-over brings a token the platform refuses", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });
+
+    await expect(
+      tab.run(() => tab.session().adoptHandover({ token: "revoked", zcpClaimed: false })),
+    ).rejects.toThrow();
+
+    expect(handovers(tab)).toEqual([]);
+  });
+
+  it("sends nowhere when another tab signs out", async () => {
+    const harness = harnessWith();
+    const { tab } = await handedOverTab(harness, "/projects/p-1");
+
+    harness.browser.openTab().localStorage.removeItem(ZEROPS_SESSION_STORAGE_KEY);
+    await settle();
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(handovers(tab)).toEqual([]);
+  });
+});
+
+describe("ZeropsSessionProvider in a dev build", () => {
+  it("signs in with a session an agent hands to window.__mateDev, refresh token and all", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab());
+    const login = harness.rest.issueSession("user-2");
+    await tab.run(() => window.__mateDev!.adoptSession(login));
+
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.accountId()).toBe("user-2");
+    expect(JSON.parse(storedSession(harness)!)).toEqual({
+      accessToken: login.accessToken,
+      refreshToken: login.refreshToken,
+    });
   });
 });
