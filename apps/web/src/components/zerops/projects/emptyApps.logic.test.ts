@@ -9,6 +9,7 @@ import {
   emptyApplications,
   emptyMateLine,
   groupIsEmpty,
+  heldLine,
 } from "./emptyApps.logic";
 
 const view = (organizationId: string): HqStructureView => ({
@@ -168,5 +169,35 @@ describe("HQ's word on an application's contents", () => {
     expect(
       applicationContents({ ...given, unavailableSince: 1 }, "org-a", "app-e2e"),
     ).toBeUndefined();
+  });
+});
+
+describe("what HQ still holds, on a project's row", () => {
+  it.each([
+    [
+      "a deletion under way, Mates left",
+      1,
+      { empty: false, deletingProjectIds: ["zed"] },
+      "Deletion is still in progress.",
+    ],
+    [
+      "a deletion under way, no Mate left",
+      0,
+      { empty: false, deletingProjectIds: ["zed"] },
+      "Deletion is still in progress.",
+    ],
+    [
+      "no Mate, HQ still holding records",
+      0,
+      { empty: false, deletingProjectIds: [] },
+      "HQ still holds this project's records.",
+    ],
+    // Nothing for nothing: the menu offers its first Mate.
+    ["no Mate, nothing held", 0, { empty: true, deletingProjectIds: [] }, undefined],
+    // Not HQ's current answer: nothing is claimed.
+    ["no Mate, HQ's word not known", 0, undefined, undefined],
+    ["Mates, nothing deleting", 1, { empty: false, deletingProjectIds: [] }, undefined],
+  ] as const)("%s", (_name, mates, contents, expected) => {
+    expect(heldLine(mates, contents)).toBe(expected);
   });
 });
