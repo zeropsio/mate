@@ -600,6 +600,7 @@ describe("a Mate's changes in HQ", () => {
             face: "face-1",
             standupRequestedBy: null,
             closedOff: false,
+            signers: {},
           };
           const change = (number: number, state: string, head: string | null = null) => ({
             repo: "appdev",
