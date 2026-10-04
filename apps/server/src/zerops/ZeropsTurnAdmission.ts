@@ -15,12 +15,12 @@
  * agent authorized by a token rather than by a personal login, are both
  * unaffected — a token belongs to the project.
  *
- * The record is a tag on the Mate's project, which this container's key
- * cannot write, so neither it nor its agent can forge it
- * (`ZeropsProjectSigners`). A read that fails leaves the record unknown, and
- * unknown refuses: "nobody recorded it" and "somebody else's" are the same
- * thing to everyone but the person who knows. A refusal on a cached record is
- * re-read once before it stands.
+ * The record is what this server saw: the person whose session started the
+ * sign-in that succeeded here, kept beside the logins' homes
+ * (`zeropsSignIns`). No record refuses: "nobody recorded it" and "somebody
+ * else's" are the same thing to everyone but the person who knows. It is a
+ * guardrail, not a lock — whoever can write in this container can rewrite it,
+ * and already holds the login's credential (`ZeropsProjectSigners`).
  *
  * A crewmate's conversation (a thread with a crew origin) has three guards
  * of its own (ARCHITECTURE seam 13). A person's session never archives,

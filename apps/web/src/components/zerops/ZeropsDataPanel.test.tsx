@@ -415,13 +415,6 @@ describe("ZeropsDataPanel", () => {
     expect(starting?.props.label).toBe("Starting");
   });
 
-  it("shows the unsupported message", () => {
-    feedState.session = { status: "unsupported", allowWrites: false };
-    const tree = render();
-    const unsupported = findByAttribute(tree, "data-zerops-data-unsupported");
-    expect(unsupported?.props.children).toBe("This project doesn't support Data yet.");
-  });
-
   it("shows the fixed unavailable line plus the reason carried by the event", () => {
     feedState.session = {
       status: "unavailable",

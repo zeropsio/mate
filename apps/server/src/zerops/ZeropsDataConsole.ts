@@ -15,7 +15,7 @@
  *
  * ## Session lifecycle
  *
- * `idle → starting → ready`, or `idle → starting → unavailable|unsupported`.
+ * `idle → starting → ready`, or `idle → starting → unavailable`.
  * The FIRST `call` while idle spawns the console (CAS on {@link SessionState}
  * via `Ref.modify` — a concurrent second first-call awaits the same
  * `Deferred` instead of spawning twice). A ready session is killed after
@@ -27,21 +27,16 @@
  * ## Degrade, never crash-loop
  *
  * If the child exits before printing its one-line ready JSON (or never
- * prints one within {@link READY_LINE_TIMEOUT_MS}), {@link classifyStartupFailure}
- * reads its stderr: `"unknown studio subcommand: ..."` (an older zcp with
- * `studio` but no `console` verb) classifies as `unsupported` — permanent for
- * this zcp build, `call` fails immediately with `session_unsupported` and no
- * respawn is attempted. Anything else — including an even older zcp that
- * lacks the `studio` verb entirely and so falls through to MCP `serve` mode,
- * which never prints a ready line and is caught by the timeout — classifies
- * as `unavailable` with a sanitized one-line reason (paths redacted, capped
- * at {@link MAX_REASON_LENGTH} characters); `call` fails with
- * `session_unavailable`. Unlike `unsupported`, `unavailable` is NOT
- * permanent — a service the console tried to discover may simply still be
- * booting — so the subscription keeps showing `unavailable` with its reason
- * right up until the NEXT `call`, which attempts a fresh spawn exactly like
- * a first call from `idle` (and may itself fail again the same way, or
- * succeed). A ready line that parses but names a non-loopback host
+ * prints one within {@link READY_LINE_TIMEOUT_MS}), the session is
+ * `unavailable`, with the first line of its stderr as a sanitized one-line
+ * reason ({@link startupFailureReason}: paths redacted, capped at
+ * {@link MAX_REASON_LENGTH} characters); `call` fails with
+ * `session_unavailable`. Nothing respawns it on its own: the subscription
+ * keeps showing `unavailable` with its reason right up until the NEXT
+ * `call` — a person's *Try again*, or another request they make — which
+ * attempts a fresh spawn exactly like a first call from `idle` (and may
+ * itself fail again the same way, or succeed). A ready line that parses but
+ * names a non-loopback host
  * ({@link isLoopbackReadyUrl} — anything other than `127.0.0.1`, `localhost`,
  * or `::1`) is treated the same as an unreadable one: `unavailable` with
  * reason "console did not bind loopback" — this broker only ever dials
@@ -106,10 +101,9 @@ export interface DataConsoleProcess {
    * Fires once the process has actually ended (real implementation: Node's
    * `"close"` event, not `"exit"` — `close` fires only after every stdio
    * stream has finished emitting its buffered data, so stderr is fully
-   * drained by the time {@link classifyStartupFailure} reads it; `exit` can
-   * fire first and race the final stderr chunk, silently losing the
-   * `"unknown studio subcommand"` line and misclassifying a permanent
-   * `unsupported` build as a merely-transient `unavailable` one).
+   * drained by the time {@link startupFailureReason} reads it; `exit` can
+   * fire first and race the final stderr chunk, silently losing the line
+   * that says why the console did not start).
    */
   readonly onExit: (listener: (code: number | null) => void) => void;
   /** The spawn itself failed — the binary is missing, not executable, etc (Node's `"error"` event). May fire instead of, or in addition to, `onExit`. */
@@ -207,20 +201,10 @@ const sanitizeReason = (line: string): string => {
     : redacted;
 };
 
-interface StartupFailure {
-  readonly status: "unavailable" | "unsupported";
-  readonly reason?: string;
-}
-
 /** See the module doc comment's "Degrade, never crash-loop" section. */
-export const classifyStartupFailure = (stderr: string): StartupFailure => {
+export const startupFailureReason = (stderr: string): string | undefined => {
   const line = firstNonEmptyLine(stderr);
-  if (line !== undefined && /unknown (studio )?subcommand/i.test(line)) {
-    return { status: "unsupported" };
-  }
-  return line === undefined
-    ? { status: "unavailable" }
-    : { status: "unavailable", reason: sanitizeReason(line) };
+  return line === undefined ? undefined : sanitizeReason(line);
 };
 
 type SessionState =
@@ -230,8 +214,7 @@ type SessionState =
       readonly deferred: Deferred.Deferred<ReadyInfo, ZeropsDataConsoleError>;
     }
   | { readonly _tag: "ready"; readonly info: ReadyInfo }
-  | { readonly _tag: "unavailable"; readonly reason: string | undefined }
-  | { readonly _tag: "unsupported" };
+  | { readonly _tag: "unavailable"; readonly reason: string | undefined };
 
 type ProcEvent =
   | { readonly _tag: "stdoutLine"; readonly line: string }
@@ -698,16 +681,12 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
     const settleFailed = (
       proc: DataConsoleProcess,
       deferred: Deferred.Deferred<ReadyInfo, ZeropsDataConsoleError>,
-      failure: StartupFailure,
+      reason: string | undefined,
     ) =>
       Effect.gen(function* () {
         const error = new ZeropsDataConsoleError({
-          code: failure.status === "unsupported" ? "session_unsupported" : "session_unavailable",
-          message:
-            failure.reason ??
-            (failure.status === "unsupported"
-              ? "this zcp build does not support the data console"
-              : "the data console is unavailable"),
+          code: "session_unavailable",
+          message: reason ?? "the data console is unavailable",
         });
         // `currentProcessRef` was set right after spawn (so the shutdown
         // finalizer can kill a still-starting process) — a startup failure
@@ -716,15 +695,10 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
         yield* Ref.modify(currentProcessRef, (current) =>
           current === proc ? [undefined, undefined] : [undefined, current],
         );
-        yield* Ref.set(
-          stateRef,
-          failure.status === "unsupported"
-            ? { _tag: "unsupported" }
-            : { _tag: "unavailable", reason: failure.reason },
-        );
+        yield* Ref.set(stateRef, { _tag: "unavailable", reason });
         yield* publishStatus({
-          status: failure.status,
-          ...(failure.reason !== undefined ? { reason: failure.reason } : {}),
+          status: "unavailable",
+          ...(reason !== undefined ? { reason } : {}),
         });
         yield* Deferred.fail(deferred, error);
       });
@@ -772,41 +746,29 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
 
         if (Option.isNone(startupEvent)) {
           proc.kill();
-          yield* settleFailed(proc, deferred, {
-            status: "unavailable",
-            reason: "the data console did not respond in time",
-          });
+          yield* settleFailed(proc, deferred, "the data console did not respond in time");
           return;
         }
 
         const event = startupEvent.value;
         if (event._tag === "error") {
-          yield* settleFailed(proc, deferred, {
-            status: "unavailable",
-            reason: "zcp is not available",
-          });
+          yield* settleFailed(proc, deferred, "zcp is not available");
           return;
         }
         if (event._tag === "exit") {
-          yield* settleFailed(proc, deferred, classifyStartupFailure(stderrBuffer));
+          yield* settleFailed(proc, deferred, startupFailureReason(stderrBuffer));
           return;
         }
 
         const parsed = parseReadyLine(event.line);
         if (parsed === undefined) {
           proc.kill();
-          yield* settleFailed(proc, deferred, {
-            status: "unavailable",
-            reason: "the data console printed an unreadable ready line",
-          });
+          yield* settleFailed(proc, deferred, "the data console printed an unreadable ready line");
           return;
         }
         if (!isLoopbackReadyUrl(parsed.url)) {
           proc.kill();
-          yield* settleFailed(proc, deferred, {
-            status: "unavailable",
-            reason: "console did not bind loopback",
-          });
+          yield* settleFailed(proc, deferred, "console did not bind loopback");
           return;
         }
 
@@ -841,17 +803,11 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
             return current.info;
           case "starting":
             return yield* Deferred.await(current.deferred);
-          case "unsupported":
-            return yield* new ZeropsDataConsoleError({
-              code: "session_unsupported",
-              message: "this zcp build does not support the data console",
-            });
-          // Unlike `unsupported`, `unavailable` is not permanent — the
-          // console may have failed because a managed service was still
-          // booting. The subscription keeps showing the last-published
-          // `unavailable` status (with its reason) right up until THIS call
-          // — the next one after the failure — attempts a fresh spawn, same
-          // as a first call from `idle`.
+          // `unavailable` is not permanent — the console may have failed
+          // because a managed service was still booting. The subscription
+          // keeps showing the last-published `unavailable` status (with its
+          // reason) right up until THIS call — the next one after the
+          // failure — attempts a fresh spawn, same as a first call from `idle`.
           case "unavailable":
           case "idle": {
             const deferred = yield* Deferred.make<ReadyInfo, ZeropsDataConsoleError>();

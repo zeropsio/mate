@@ -142,8 +142,8 @@ export function useZeropsBrowserStream(
  * `"unavailable"` sentinel: `subscribeZeropsDataConsole` ships together with
  * this panel (there is no pre-existing server build that lacks the method
  * the way 0.2.5 lacks the browser stream), and the session status enum
- * already carries its own `"unavailable"`/`"unsupported"` states for the
- * broker-level failures the panel needs to distinguish.
+ * already carries its own `"unavailable"` state for the broker-level
+ * failure the panel shows.
  */
 export function useZeropsDataConsole(
   environmentId: EnvironmentId | null,

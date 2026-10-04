@@ -107,7 +107,7 @@ code is gone.
     runs with `core.hooksPath=/dev/null` and `core.fsmonitor=false`
 - **The shared rules** — `packages/shared/src`: `zeropsPermissions.ts` (`can`, the one rule HQ
   enforces and the client offers by), `zeropsDoor.ts` (the throwaway check behind HQ's door; the
-  Mate server's door keeps its own copy of the same rules, `zeropsDoor.ts:1-4`), `zeropsRoles.ts`,
+  Mate server's door judges a token's shape by the same `checkDoorTokenShape`), `zeropsRoles.ts`,
   and the wire contracts `hqChanges.ts`, `hqRecipe.ts`, `hqRelease.ts`,
   `mateLink.ts`
 - **The Mate server** — `apps/server/src/zerops`, installed into every Mate by zcp from the release

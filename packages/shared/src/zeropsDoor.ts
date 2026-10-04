@@ -1,7 +1,7 @@
 /**
  * The door a person comes through: the rules, with no I/O. HQ Core judges every caller by them; the
- * Mate server's door (`ZeropsThrowawayIdentity.ts`) still has its own copy and moves onto this one
- * in T6.
+ * Mate server's door (`ZeropsThrowawayIdentity.ts`) judges a token's shape by
+ * {@link checkDoorTokenShape} and resolves its creator against its own project.
  *
  * The person's app mints a **throwaway**: a Zerops integration token of their org with `NO_ACCESS`,
  * no project grant and no flag, named `mate-door:<door project id>:<nonce>`, seconds before it is
