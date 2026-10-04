@@ -125,7 +125,7 @@ import { useLiveSlot } from "./useLiveSlot";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
-import { easeRoom, easeRoomsUnder, type Room } from "./runRoom";
+import { easeRooms, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -2961,7 +2961,7 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
   return <NowLine answering={false} now={null} outcome={null} status={status} />;
 }
 
-/** The boxes in a run's chat whose height eases as what they hold grows (`easeRoom`). */
+/** The boxes in a run's chat whose height eases as what they hold grows (`easeRooms`). */
 const EASED_BOXES = "[data-chat-bubble],[data-chat-calls]";
 
 const NO_KEYS: ReadonlyArray<string> = [];
@@ -3230,9 +3230,10 @@ function LiveSlot({
     placeSlot(listRef.current);
     // Read when what it shows changed, never on every draw.
   }, [slot, live, items, filler, lines.length]);
-  // Its room eases as rows come and go (`easeRoom`), uncovering a row that
+  // Its room eases as rows come and go (`easeRooms`), uncovering a row that
   // joins at its foot; nothing eases on a resync.
   const syncingRef = useRef(ctx.syncing);
+  const slotRoomsRef = useRef<Rooms | null>(null);
   useLayoutEffect(() => {
     syncingRef.current = ctx.syncing;
   }, [ctx.syncing]);
@@ -3240,22 +3241,20 @@ function LiveSlot({
     const list = listRef.current;
     const slotBox = list?.parentElement;
     if (list === null || slotBox === null || slotBox === undefined) return;
-    const room = easeRoom({
-      box: slotBox,
-      content: list,
-      eases: () => shownRef.current && !syncingRef.current,
-      clips: true,
-    });
-    const rooms = easeRoomsUnder({
-      root: list,
+    const rooms = easeRooms({
+      root: slotBox,
       selector: EASED_BOXES,
       eases: () => shownRef.current && !syncingRef.current,
+      rootClips: true,
     });
+    slotRoomsRef.current = rooms;
     return () => {
-      rooms();
-      room.stop();
+      rooms.stop();
+      slotRoomsRef.current = null;
     };
   }, []);
+  // Every commit, before the list's row measures it in its own.
+  useLayoutEffect(() => slotRoomsRef.current?.flush());
   // A row opened or shut in place, or the page resized: the room it takes
   // changes with no change of what it shows.
   useEffect(() => {
@@ -3839,6 +3838,9 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
   );
 }
 
+/** How long after the person's input a move of the run's scroll is still theirs. */
+const PERSON_INPUT_MS = 500;
+
 /** How long a scroll stands still before its move counts as ended, where the browser never says so. */
 const SCROLL_QUIET_MS = 150;
 
@@ -3886,32 +3888,32 @@ function RunScroll({
   useLayoutEffect(() => {
     easesRef.current = eases;
   }, [eases]);
-  // Its room easing to its lines (`easeRoom`): made before what keeps it at
+  // Its room easing to its lines (`easeRooms`): made before what keeps it at
   // its foot, so that hears each change with the room already holding the
   // height it showed.
-  const roomRef = useRef<Room | null>(null);
+  const roomRef = useRef<Rooms | null>(null);
+  // When the person last gave it an input: what tells their move from its own motion's.
+  const personAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const heardPerson = () => {
+    personAtRef.current = performance.now();
+  };
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    const list = listRef.current;
-    if (element === null || list === null) return;
-    const room = easeRoom({
-      box: element,
-      content: list,
-      eases: () => easesRef.current && shownRef.current,
-    });
-    roomRef.current = room;
-    // Each bubble and card of calls in it eases as what it holds grows.
-    const rooms = easeRoomsUnder({
-      root: list,
+    if (element === null) return;
+    // It, and each bubble and card of calls in it, as what they hold grows.
+    const rooms = easeRooms({
+      root: element,
       selector: EASED_BOXES,
       eases: () => easesRef.current && shownRef.current,
     });
+    roomRef.current = rooms;
     return () => {
-      rooms();
-      room.stop();
+      rooms.stop();
       roomRef.current = null;
     };
   }, []);
+  // Every commit, before the list's row measures it in its own.
+  useLayoutEffect(() => roomRef.current?.flush());
   // It follows its foot until the person moves it up or opens something in
   // it, and again once they move it down onto its foot or close what they
   // opened; where its top last stood tells their move from the page's. It
@@ -3975,6 +3977,19 @@ function RunScroll({
       };
       gliding.frame = requestAnimationFrame(tick);
     };
+    /**
+     * Where it stands, read: while its room eases or it glides, a move with
+     * no input of the person's is that motion's — the browser clamping it as
+     * its box grows — and never their move up.
+     */
+    const read = (position: RunScrollPosition) => {
+      const moving = gliding.frame !== 0 || (roomRef.current?.easing() ?? false);
+      if (moving && performance.now() - personAtRef.current > PERSON_INPUT_MS) {
+        heard({ kind: "set", top: position.scrollTop });
+      } else {
+        heard({ kind: "scrolled", position });
+      }
+    };
     // How tall its lines stood at the last keep: lines joining glide it on,
     // its own box changing keeps its foot where it is.
     const laid: { height: number | null } = { height: null };
@@ -3987,7 +4002,7 @@ function RunScroll({
       const element = scrollRef.current;
       if (element === null) return;
       const position = positionOf(element);
-      heard({ kind: "scrolled", position });
+      read(position);
       const grew = laid.height !== null && position.scrollHeight > laid.height + 0.5;
       laid.height = position.scrollHeight;
       if (followRef.current.follows) {
@@ -3999,6 +4014,7 @@ function RunScroll({
     };
     return {
       heard,
+      read,
       putAt,
       keep,
       glide,
@@ -4101,7 +4117,7 @@ function RunScroll({
           onScroll={(event) => {
             const position = positionOf(event.currentTarget);
             const followed = followRef.current.follows;
-            follow.heard({ kind: "scrolled", position });
+            follow.read(position);
             const element = scrollRef.current;
             if (element !== null) {
               // Brought back to the foot it set out for, it glides on to
@@ -4113,6 +4129,10 @@ function RunScroll({
             endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
+          onKeyDown={heardPerson}
+          onPointerDown={heardPerson}
+          onTouchMove={heardPerson}
+          onWheel={heardPerson}
           role="region"
           tabIndex={0}
         >

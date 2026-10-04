@@ -1,203 +1,220 @@
 /**
- * A box in a run's card whose height eases to what its content needs (pass
- * 39): the history's scroll as lines join it, the live slot as its rows come
- * and go, a bubble or a card of calls as what it holds grows. What the content
- * needs is laid out at once; the box shows the height it showed a frame ago
- * and eases from there on `approach`'s curve, retargeted from wherever it
- * stands when the content changes again. Inside the box nothing moves: what
- * grew is uncovered at its foot, and what stands under the box rides its
- * edge, because the layout carries it.
+ * Boxes in a run's card whose height eases to what they hold (pass 39): the
+ * history's scroll as lines join it, the live slot as its rows come and go, a
+ * bubble or a card of calls as what it holds grows. What a box holds is laid
+ * out at once; the box shows the height it showed before and eases from
+ * there on `approach`'s curve, retargeted from wherever it stands when what
+ * it holds changes again. Inside the box nothing moves: what grew is
+ * uncovered at its foot, and what stands under the box rides its edge,
+ * because the layout carries it.
  *
- * The innermost box that changed eases; one holding a box that eases follows
- * it as laid out, so two eases never stack. A box eases only while `eases()`
- * says so — a live run watched as it goes; a first paint, a resync, a settled
- * run or reduced motion take their height at once.
+ * A change is heard as the page's code makes it, before the browser lays the
+ * page out (a MutationObserver), so the box takes its old height before any
+ * frame — or the conversation's list, which measures its rows — sees the new
+ * one. The innermost box that changed eases; one holding it keeps the height
+ * that box shows, and follows it as laid out, so two eases never stack.
+ *
+ * Boxes ease only while `eases()` says so — a live run watched as it goes; a
+ * first paint, a resync, a settled run or reduced motion take their height
+ * at once.
  */
 import { ROOM_TAU_MS, approach } from "./runMotion.logic";
 
-export interface Room {
-  /** How much taller the box will stand once it has eased: what a scroll at its foot will not need to scroll. */
+export interface Rooms {
+  /**
+   * How much taller the root will stand once it has eased than what it holds
+   * will have grown by then: what a scroll at its foot will not need to scroll.
+   */
   readonly pending: () => number;
-  /** Stops easing: the box takes its own height. */
+  /**
+   * Hears what changed since, now: called in a layout effect, a box takes its
+   * old height before the conversation's list measures the rows in the same
+   * commit.
+   */
+  readonly flush: () => void;
+  /** Whether a box eases this moment. */
+  readonly easing: () => boolean;
+  /** Stops easing: every box takes its own height. */
   readonly stop: () => void;
 }
-
-/** Said on a box while it eases: what holds it follows it as laid out. */
-const EASING = "data-room-easing";
 
 /** Hides what a growing box does not show yet, below its edge only: rings and marks beside it stay. */
 const CLIP_BELOW = "inset(-48px -96px -2px -96px)";
 
-/** A box that never eases: drawn outside a page (a test's renderer). */
-const STILL: Room = { pending: () => 0, stop: () => undefined };
+/** Rooms that never ease: drawn outside a page (a test's renderer). */
+const STILL: Rooms = {
+  pending: () => 0,
+  flush: () => undefined,
+  easing: () => false,
+  stop: () => undefined,
+};
 
-export function easeRoom({
-  box,
-  content = null,
+interface Box {
+  readonly element: HTMLElement;
+  readonly clips: boolean;
+  /** The height it shows while it eases; null: its own. */
+  shown: number | null;
+  target: number;
+  /** Its height as last laid out at rest: where an ease starts. */
+  rested: number;
+}
+
+export function easeRooms({
+  root,
+  selector,
   eases,
-  clips = false,
+  rootClips = false,
 }: {
-  readonly box: HTMLElement;
-  /**
-   * What the box holds, at its own height: its changes are what the box
-   * eases to. Null: the box's own children, each heard as it changes, comes
-   * or goes.
-   */
-  readonly content?: HTMLElement | null;
+  /** A box itself, and what holds the others. */
+  readonly root: HTMLElement;
+  /** The boxes under it that ease too, each from when it is first drawn. */
+  readonly selector: string;
   readonly eases: () => boolean;
-  /** Whether the box hides what it does not show yet; a scroll scrolls it instead. */
-  readonly clips?: boolean;
-}): Room {
+  /** Whether the root hides what it does not show yet; a scroll scrolls it instead. */
+  readonly rootClips?: boolean;
+}): Rooms {
   if (
     typeof ResizeObserver === "undefined" ||
+    typeof MutationObserver === "undefined" ||
     typeof requestAnimationFrame !== "function" ||
     typeof HTMLElement === "undefined" ||
-    !(box instanceof HTMLElement)
+    !(root instanceof HTMLElement)
   ) {
     return STILL;
   }
-  // The height the box shows while it eases (null: its own), and the height it eases to.
-  let shown: number | null = null;
-  let target = 0;
-  // Its height as last laid out at rest: where an ease starts.
-  let rested: number | null = null;
+  const boxes = new Map<Node, Box>();
   let frame = 0;
   let last = 0;
-  const natural = () => {
-    if (shown === null) return box.getBoundingClientRect().height;
-    box.style.height = "";
-    const height = box.getBoundingClientRect().height;
-    box.style.height = `${shown}px`;
+  const heightOf = (element: HTMLElement) => element.getBoundingClientRect().height;
+  const show = (box: Box, height: number | null) => {
+    box.shown = height;
+    box.element.style.height = height === null ? "" : `${height}px`;
+    if (box.clips) box.element.style.clipPath = height === null ? "" : CLIP_BELOW;
+  };
+  /** The box's height as laid out with what it holds, the boxes inside it as they show. */
+  const natural = (box: Box) => {
+    if (box.shown === null) return heightOf(box.element);
+    box.element.style.height = "";
+    const height = heightOf(box.element);
+    box.element.style.height = `${box.shown}px`;
     return height;
   };
-  const release = () => {
-    cancelAnimationFrame(frame);
-    frame = 0;
-    shown = null;
-    box.style.height = "";
-    if (clips) box.style.clipPath = "";
-    box.removeAttribute(EASING);
-    rested = box.getBoundingClientRect().height;
+  const release = (box: Box) => {
+    show(box, null);
+    box.rested = heightOf(box.element);
   };
   const step = (now: number) => {
     frame = 0;
-    if (shown === null) return;
-    shown = approach(shown, target, last === 0 ? 1000 / 60 : now - last, ROOM_TAU_MS);
+    const dt = last === 0 ? 1000 / 60 : now - last;
     last = now;
-    if (shown === target) {
-      release();
-      return;
+    let easing = false;
+    for (const box of boxes.values()) {
+      if (box.shown === null) continue;
+      const next = approach(box.shown, box.target, dt, ROOM_TAU_MS);
+      if (next === box.target) {
+        release(box);
+      } else {
+        show(box, next);
+        easing = true;
+      }
     }
-    box.style.height = `${shown}px`;
-    frame = requestAnimationFrame(step);
+    if (easing) frame = requestAnimationFrame(step);
+    else last = 0;
   };
-  const heard = () => {
-    const height = natural();
-    // A box inside it eases, and it follows as laid out.
-    const inner = shown === null && box.querySelector(`[${EASING}]`) !== null;
-    if (inner || !eases() || prefersReducedMotion()) {
-      if (shown !== null) release();
-      rested = height;
+  /** What `box` holds changed: it eases from what it showed to its new height. */
+  const heard = (box: Box) => {
+    const height = natural(box);
+    if (!eases() || prefersReducedMotion()) {
+      if (box.shown !== null) release(box);
+      else box.rested = height;
       return;
     }
-    const from = shown ?? rested;
-    if (from === null || Math.abs(height - from) < 1) {
-      if (shown === null) rested = height;
+    const from = box.shown ?? box.rested;
+    if (Math.abs(height - from) < 1) {
+      if (box.shown === null) box.rested = height;
       return;
     }
-    target = height;
-    if (shown === null) {
-      shown = from;
-      last = 0;
-      // Before this frame paints: it shows what it showed, and eases from there.
-      box.style.height = `${shown}px`;
-      if (clips) box.style.clipPath = CLIP_BELOW;
-      box.setAttribute(EASING, "");
-    }
+    box.target = height;
+    // Before anything lays the page out: it shows what it showed.
+    if (box.shown === null) show(box, from);
     if (frame === 0) frame = requestAnimationFrame(step);
   };
-  // The box alone changing at rest (the card's shared height giving it more
-  // or less room) is where the next ease starts; what it holds changing is one.
-  const observer = new ResizeObserver((entries) => {
-    if (entries.some((entry) => entry.target !== box)) heard();
-    else if (shown === null) rested = box.getBoundingClientRect().height;
+  // A box at rest laid out anew for a reason no code of the page gave (its
+  // shared height, the width, a font) is where its next ease starts.
+  const sizes = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const box = boxes.get(entry.target);
+      if (box !== undefined && box.shown === null) box.rested = heightOf(box.element);
+    }
   });
-  observer.observe(box);
-  let children: MutationObserver | null = null;
-  if (content !== null) {
-    observer.observe(content);
-  } else {
-    for (const child of box.children) observer.observe(child);
-    children = new MutationObserver((records) => {
-      for (const record of records) {
-        for (const node of record.addedNodes) if (node instanceof Element) observer.observe(node);
-        for (const node of record.removedNodes)
-          if (node instanceof Element) observer.unobserve(node);
+  const add = (element: HTMLElement, clips: boolean) => {
+    if (boxes.has(element)) return;
+    boxes.set(element, { element, clips, shown: null, target: 0, rested: heightOf(element) });
+    sizes.observe(element);
+  };
+  add(root, rootClips);
+  for (const element of root.querySelectorAll<HTMLElement>(selector)) add(element, true);
+  const hear = (records: ReadonlyArray<MutationRecord>) => {
+    const touched = new Set<Box>();
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.matches(selector)) add(node, true);
+        for (const element of node.querySelectorAll<HTMLElement>(selector)) add(element, true);
       }
-      heard();
-    });
-    children.observe(box, { childList: true });
-  }
+      // Every box holding what changed, up to the root.
+      for (let node: Node | null = record.target; node !== null; node = node.parentNode) {
+        const box = boxes.get(node);
+        if (box !== undefined) touched.add(box);
+        if (node === root) break;
+      }
+    }
+    for (const [element, box] of boxes) {
+      if (box.element.isConnected) continue;
+      sizes.unobserve(box.element);
+      boxes.delete(element);
+      touched.delete(box);
+    }
+    // The innermost first: one holding it then hears it at the height it shows.
+    const order = [...touched].sort((a, b) => depthOf(b.element) - depthOf(a.element));
+    for (const box of order) heard(box);
+  };
+  const changes = new MutationObserver(hear);
+  changes.observe(root, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ["class", "hidden", "open"],
+  });
+  const rootBox = boxes.get(root)!;
   return {
-    pending: () => (shown === null ? 0 : target - shown),
+    pending: () => {
+      let pending = rootBox.shown === null ? 0 : rootBox.target - rootBox.shown;
+      for (const box of boxes.values()) {
+        if (box !== rootBox && box.shown !== null) pending -= box.target - box.shown;
+      }
+      return pending;
+    },
+    easing: () => frame !== 0,
+    flush: () => {
+      const records = changes.takeRecords();
+      if (records.length > 0) hear(records);
+    },
     stop: () => {
-      observer.disconnect();
-      children?.disconnect();
-      if (shown !== null) release();
+      changes.disconnect();
+      sizes.disconnect();
+      cancelAnimationFrame(frame);
+      for (const box of boxes.values()) if (box.shown !== null) show(box, null);
+      boxes.clear();
     },
   };
 }
 
-/**
- * Every box under `root` matching `selector` eases its height (`easeRoom`),
- * each from when it is first drawn — its first height is simply there — until
- * it leaves the page. Returns what stops them all.
- */
-export function easeRoomsUnder({
-  root,
-  selector,
-  eases,
-}: {
-  readonly root: HTMLElement;
-  readonly selector: string;
-  readonly eases: () => boolean;
-}): () => void {
-  if (
-    typeof MutationObserver === "undefined" ||
-    typeof HTMLElement === "undefined" ||
-    !(root instanceof HTMLElement)
-  ) {
-    return () => undefined;
-  }
-  const rooms = new Map<HTMLElement, Room>();
-  const take = (node: Node) => {
-    if (!(node instanceof HTMLElement)) return;
-    const boxes = node.matches(selector) ? [node] : [];
-    boxes.push(...node.querySelectorAll<HTMLElement>(selector));
-    for (const box of boxes) {
-      if (!rooms.has(box)) rooms.set(box, easeRoom({ box, eases, clips: true }));
-    }
-  };
-  const drop = () => {
-    for (const [box, room] of rooms) {
-      if (box.isConnected) continue;
-      room.stop();
-      rooms.delete(box);
-    }
-  };
-  take(root);
-  const watcher = new MutationObserver((records) => {
-    for (const record of records) {
-      for (const node of record.addedNodes) take(node);
-      if (record.removedNodes.length > 0) drop();
-    }
-  });
-  watcher.observe(root, { childList: true, subtree: true });
-  return () => {
-    watcher.disconnect();
-    for (const room of rooms.values()) room.stop();
-    rooms.clear();
-  };
+function depthOf(element: Element): number {
+  let depth = 0;
+  for (let node = element.parentElement; node !== null; node = node.parentElement) depth += 1;
+  return depth;
 }
 
 function prefersReducedMotion(): boolean {
