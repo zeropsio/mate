@@ -19,8 +19,28 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 
-const pgBin = (name: string) =>
-  NodePath.join(process.env["MATE_PG_BIN"] ?? "/opt/homebrew/bin", name);
+/**
+ * Where the host's Postgres binaries are: `MATE_PG_BIN`, else `pg_config --bindir`, else the
+ * newest Debian/Ubuntu cluster (`/usr/lib/postgresql/<major>/bin`, as on CI runners), else Homebrew.
+ */
+const pgBinDir = (() => {
+  const named = process.env["MATE_PG_BIN"];
+  if (named !== undefined) return named;
+  const config = NodeChildProcess.spawnSync("pg_config", ["--bindir"], { encoding: "utf8" });
+  const fromConfig = config.status === 0 ? config.stdout.trim() : "";
+  if (fromConfig !== "" && NodeFS.existsSync(NodePath.join(fromConfig, "initdb")))
+    return fromConfig;
+  const debian = "/usr/lib/postgresql";
+  if (NodeFS.existsSync(debian)) {
+    const newest = NodeFS.readdirSync(debian)
+      .filter((major) => NodeFS.existsSync(NodePath.join(debian, major, "bin", "initdb")))
+      .sort((a, b) => Number(b) - Number(a))[0];
+    if (newest !== undefined) return NodePath.join(debian, newest, "bin");
+  }
+  return "/opt/homebrew/bin";
+})();
+
+const pgBin = (name: string) => NodePath.join(pgBinDir, name);
 
 interface Cluster {
   readonly root: string;
