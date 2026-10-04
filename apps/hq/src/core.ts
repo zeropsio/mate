@@ -1,3 +1,4 @@
+import { observationLayer } from "./observation.ts";
 /**
  * Core, composed once for `main.ts` and the tests: the routes served over its services, and the
  * drain that ends it. What it still needs is the HTTP server and the Zerops port (`ZeropsApi`,
@@ -114,6 +115,7 @@ const services = (options: CoreOptions) => {
   );
   return Layer.mergeAll(
     sessionsLayer,
+    observationLayer,
     structureLayer({
       hqProjectId: options.hqProjectId,
       reconcileEvery: options.reconcileEvery ?? Duration.seconds(60),

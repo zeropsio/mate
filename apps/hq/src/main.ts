@@ -42,8 +42,12 @@ import { type CoreOptions, coreApp } from "./core.ts";
 import { USAGE, checkCommand, importArgs, queueCommand } from "./importCli.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
 import { restoreSet } from "./restore.ts";
-import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
-import { makeZeropsApiHttp, makeZeropsDeployHttp } from "./zerops/http.ts";
+import { ZeropsApi, ZeropsDeploy, ZeropsObservation } from "./zerops/api.ts";
+import {
+  makeZeropsApiHttp,
+  makeZeropsDeployHttp,
+  makeZeropsObservationHttp,
+} from "./zerops/http.ts";
 
 /** The build stamp the bundle carries (`vite.config.ts`); an unbundled run is `dev`. */
 declare const __HQ_BUILD__: string | undefined;
@@ -76,6 +80,7 @@ const core = Layer.unwrap(
     const zerops = Layer.mergeAll(
       Layer.effect(ZeropsApi, makeZeropsApiHttp(api)),
       Layer.effect(ZeropsDeploy, makeZeropsDeployHttp(api)),
+      Layer.effect(ZeropsObservation, makeZeropsObservationHttp(api)),
     ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
     const options: CoreOptions = {
       drainFor: Duration.seconds(

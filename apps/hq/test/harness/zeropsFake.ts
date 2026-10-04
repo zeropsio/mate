@@ -21,6 +21,7 @@ import * as Redacted from "effect/Redacted";
 
 import {
   type ZeropsApi,
+  type ZeropsObservation,
   type ZeropsDeploy,
   type ZeropsError,
   type ZeropsMember,
@@ -470,3 +471,21 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
       }),
   };
 };
+
+export const fakeZeropsObservation = (world: FakeWorld): ZeropsObservation["Service"] => ({
+  logs: (_projectId, _serviceId, _limit) => (credential) =>
+    tokenOf(world, "logs", credential).pipe(Effect.as([])),
+  activeVersion: (id) => (credential) =>
+    Effect.gen(function* () {
+      yield* tokenOf(world, "activeVersion", credential);
+      const version = world.appVersions.get(id);
+      if (version === undefined)
+        return yield* new ZeropsRefused({
+          operation: "activeVersion",
+          reason: "not_found",
+          status: 404,
+          code: "appVersionNotFound",
+        });
+      return { id: version.id, name: version.name };
+    }),
+});

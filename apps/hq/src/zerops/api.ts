@@ -1,3 +1,4 @@
+import type { ObservationLogEntry } from "@t3tools/shared/hqObservation";
 /**
  * The Zerops REST calls Core makes, and nothing else: the reads ({@link ZeropsApi}), and an
  * environment's deploy ({@link ZeropsDeploy}, SPEC §3.2b). Every call takes the credential it runs as
@@ -181,3 +182,16 @@ export class ZeropsDeploy extends Context.Service<
     }>;
   }
 >()("@t3tools/hq/zerops/api/ZeropsDeploy") {}
+
+/** Narrow observation reads: no platform environment or credential leaves HQ. */
+export class ZeropsObservation extends Context.Service<
+  ZeropsObservation,
+  {
+    readonly logs: (
+      projectId: string,
+      serviceId: string,
+      limit: number,
+    ) => Read<ReadonlyArray<ObservationLogEntry>>;
+    readonly activeVersion: (id: string) => Read<{ readonly id: string; readonly name: string }>;
+  }
+>()("@t3tools/hq/zerops/api/ZeropsObservation") {}

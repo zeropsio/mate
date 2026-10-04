@@ -3698,3 +3698,18 @@ no-cache`.
   HQ and still admits the turn through project access. Cold menus remember candidate rows only as
   a standing-in tree and join HQ's placement; unread detail pages say HQ's failure or an earned
   missing project, without a Gitea session or another account read.
+
+- **2026-10-04** — **A Mate observes its application's stage and production through HQ**
+  (parity 84, 260, 275; ADR 0003's boundary stands). `zerops_observe` uses the Mate's enrollment,
+  never a sibling Zerops grant. HQ lists only environments of the Mate's current application that
+  every active person able to operate that Mate may read. Permission facts are read for each call;
+  an unavailable read refuses rather than taking stale permissions. Status and active-version
+  metadata are projected from direct Zerops reads with the environment's checked deploy key;
+  service logs are one bounded read, up to 100 entries of 4,096 characters each. Environment
+  variables, raw platform records, deploy keys and signed log URLs stay in HQ. A failure ends the
+  call and the agent asks again explicitly.
+  - _Why:_ the removed sibling grants read unmarked secrets and need writes to keep them aligned.
+    HQ now supplies the observation they previously enabled, without either property. A Mate's
+    credential is shared by its terminal's operators, so it cannot inherit just one person's reach.
+  - _Supersedes:_ only "later" in the 2026-10-02 HQ and own-project key rows. Their key scope and
+    legacy-grant removal rules still stand.
