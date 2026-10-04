@@ -513,12 +513,18 @@ export const makeTurnHandler = (core: CrewCore) => {
           deploys.set(event.itemId, target);
           yield* freeze(applied, target);
         } else if (event.type === "item.completed" && deploys.delete(event.itemId)) {
-          yield* asRefusal(core.workspace.unfreeze(target));
-          yield* core.changed;
+          // The copies are recovered while held, and the host thaws only after: no check or
+          // turn starts on a copy being brought back.
+          const writers = [...applied.members.values()]
+            .filter((row) => row.kind === "writer" && row.host === target)
+            .map((row) => row.handle);
           yield* core.background(
-            recoverLanes(core, applied, target, "came back from its deploy").pipe(
-              Effect.andThen(advanceAll(core)),
-            ),
+            core
+              .holdingCopies(
+                writers,
+                recoverLanes(core, applied, target, "came back from its deploy"),
+              )
+              .pipe(Effect.andThen(advanceAll(core))),
           );
         }
       }
@@ -547,7 +553,11 @@ export const makeTurnHandler = (core: CrewCore) => {
           yield* followCrewWork(core);
           break;
         case "turn.completed":
-          yield* core.crewmate(stint.member)(turnEnded(core, stint, event));
+          // Behind the boot sweep or a deploy's recovery, the turn's end queues on its crewmate's
+          // copy instead of holding up every other crewmate's events.
+          if (core.memory.sweeping.has(stint.member))
+            yield* core.background(core.crewmate(stint.member)(turnEnded(core, stint, event)));
+          else yield* core.crewmate(stint.member)(turnEnded(core, stint, event));
           break;
         case "thread.token-usage.updated":
           core.memory.context.set(stint.threadId, {

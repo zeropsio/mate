@@ -465,8 +465,12 @@ refuses any other tip ("its copy moved after its check"), so nothing unchecked l
 (`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
 tip remain, so no work is lost; otherwise the loss is named and the copy offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
 never resets an existing directory. Nothing leaves a host frozen with no way out: a self-deploy's
-end thaws its host before the recovery, a recovery thaws it whatever it finds, and boot thaws a
-host whose deploy the restart cut off. Each landing is verified on the host it landed on. A turn the provider broke off (`api_error`, `model_error`,
+end recovers its copies while holding them and then thaws the host, whatever the recovery finds;
+boot asks the platform whether a deploy the restart cut off still runs (`crewDeployState.ts`) and
+keeps its host frozen, with words, until the platform says it ended, never thawing on a guess.
+While the boot sweep or a deploy's recovery holds a crewmate's copy (`CrewCore.holdingCopies`), a
+person's press waits its turn, up to two minutes, and the crewmate's turn end queues behind it
+instead of holding up the crew's events. Each landing is verified on the host it landed on. A turn the provider broke off (`api_error`, `model_error`,
 `turn_setup_failed`) saves its work in the turn's WIP commit and queues its task again once, the
 second time it stops; an overflowed context (`prompt_too_long`, `rapid_refill_breaker`) saves its
 work and rotates at once into a fresh conversation, which a running run carries the task on in, at

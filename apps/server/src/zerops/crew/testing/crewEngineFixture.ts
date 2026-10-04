@@ -39,6 +39,8 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
+import { ZeropsRestartRead } from "../../ZeropsRestartRead.ts";
+import { unavailable } from "../../zeropsApiRead.ts";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
@@ -116,6 +118,8 @@ export interface CrewWorld {
   readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
   /** Logins whose instance is not live yet (the registry has no adapter for it). */
   readonly missingAgents: Ref.Ref<ReadonlySet<string>>;
+  /** The project's processes as the platform lists them (`ZeropsRestartRead`); `unreadable` fails the read. */
+  readonly processes: Ref.Ref<ReadonlyArray<unknown> | "unreadable">;
   /**
    * Hands the engine a provider event and returns once the engine has handled
    * it: its next pull of the bus comes only after its handler for this one.
@@ -339,6 +343,19 @@ const fakes = (
           }),
         ),
     }),
+    Layer.mock(ZeropsRestartRead)({
+      read: Effect.flatMap(Ref.get(world.processes), (processes) =>
+        processes === "unreadable"
+          ? Effect.fail(unavailable("Zerops did not answer."))
+          : Effect.succeed({
+              name: "Mate",
+              projectId: "project-1",
+              serviceId: "zcp-1",
+              processes,
+              containerStartedAt: null,
+            }),
+      ),
+    }),
     Layer.mock(ZeropsLogins)({
       resolve: (id) => Effect.map(Ref.get(world.logins), (logins) => logins.get(id)),
       latest: Effect.succeed([]),
@@ -510,6 +527,7 @@ export const withCrewEngines = <E>(
       sshCalls: yield* Ref.make(0),
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
       missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
+      processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
       publish: (event) =>
         Effect.gen(function* () {
           const handled = yield* Deferred.make<void>();

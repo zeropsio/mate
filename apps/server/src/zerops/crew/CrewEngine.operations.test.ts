@@ -1059,17 +1059,17 @@ it.live("the boot sweep holds each crewmate's copy: a press during it waits its 
         const hold = yield* world.holdSsh((script) => script.includes("ignoring broken ref"));
         yield* (yield* ServerCommandReadiness).complete;
         yield* hold.reached;
-        const pressed = yield* command({
+        const press = yield* command({
           _tag: "message",
           handle: "backend",
           text: "Work",
           attachments: [],
-        }).pipe(
-          Effect.as("ran"),
-          Effect.catchTag("CrewCommandError", (error) => Effect.succeed(error.detail ?? "")),
-        );
+        }).pipe(Effect.forkChild);
+        yield* Effect.sleep("300 millis");
+        assert.strictEqual(press.pollUnsafe() === undefined, true);
         yield* hold.release;
-        assert.include(pressed, "is busy");
+        yield* Fiber.join(press);
+        yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
       }),
   ]),
 );

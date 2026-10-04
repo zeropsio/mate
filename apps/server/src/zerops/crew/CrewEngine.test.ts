@@ -1165,6 +1165,72 @@ describe("CrewEngine", () => {
     ]),
   );
 
+  for (const [state, processes, words] of [
+    [
+      "still runs",
+      [{ serviceStacks: [{ name: "appdev" }], status: "RUNNING" }],
+      "still redeploying",
+    ],
+    ["cannot be read", "unreadable", "could not read"],
+  ] as const) {
+    it.live(
+      `a restart keeps a service frozen while its deploy ${state}, and thaws it at its end`,
+      () =>
+        withCrewEngines([
+          (world) =>
+            Effect.gen(function* () {
+              yield* applied(world);
+              yield* world.publish(deployEvent("item.started"));
+              yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+            }),
+          (world) =>
+            Effect.gen(function* () {
+              yield* Ref.set(world.processes, processes);
+              yield* (yield* ServerCommandReadiness).complete;
+              const held = yield* snapshotWhere(
+                (snapshot) => snapshot.lastError?.includes(words) === true,
+              );
+              assert.strictEqual(held.crewmates[0]!.lane?.state, "frozen");
+              yield* Ref.set(world.processes, []);
+              const thawed = yield* snapshotWhere(
+                (snapshot) => snapshot.crewmates[0]!.lane?.state === "ready",
+              );
+              assert.isNull(thawed.lastError);
+            }),
+        ]),
+    );
+  }
+
+  it.live(
+    "a deploy's end recovers the copies before it thaws: a press meanwhile waits its turn",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+          const hold = yield* world.holdSsh((script) => script.includes("worktree prune"));
+          yield* world.publish(deployEvent("item.completed"));
+          yield* hold.reached;
+          const press = yield* command({
+            _tag: "message",
+            handle: "backend",
+            text: "Work",
+            attachments: [],
+          }).pipe(Effect.forkChild);
+          yield* Effect.sleep("300 millis");
+          const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
+          assert.deepStrictEqual(
+            [lane.frozenSince !== null, press.pollUnsafe() === undefined],
+            [true, true],
+          );
+          yield* hold.release;
+          yield* Fiber.join(press);
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+        }),
+      ),
+  );
+
   it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
     withCrewEngines([
       (world) =>
