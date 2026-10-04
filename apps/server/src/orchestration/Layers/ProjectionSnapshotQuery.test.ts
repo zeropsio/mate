@@ -3449,9 +3449,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
   // A long run shaped like a real one: 28 asks, most with a handful of calls,
   // two with forty; every third sends two helpers, whose results land in a
   // turn of their own — one of them after the next ask. Each call streams an
-  // update and a context reading, the turnless meter ticks between them, and
-  // each helper ticks progress forty times: ~2,000 rows, 60% of them readings
-  // and ticks a later one supersedes.
+  // update and a context reading, and the turnless meter reads four times
+  // between calls: ~1,950 rows, 60% of them readings and updates a later row
+  // supersedes. A helper's progress is one row, updated in place as ingestion
+  // stores it; `legacyTicks` stores forty, as rows stored before that did.
+  // No row carries a sequence, as none does live.
   const threadL = ThreadId.make("thread-l");
   const ASKS = 28;
 
@@ -3460,7 +3462,10 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
     readonly steps: Set<string>;
   }
 
-  const seedLongThread = Effect.fnUntraced(function* (callsPerAsk?: number) {
+  const seedLongThread = Effect.fnUntraced(function* (
+    options: { readonly callsPerAsk?: number; readonly legacyTicks?: boolean } = {},
+  ) {
+    const { callsPerAsk, legacyTicks = false } = options;
     const sql = yield* SqlClient.SqlClient;
     yield* sql`DELETE FROM projection_projects`;
     yield* sql`DELETE FROM projection_threads`;
@@ -3511,7 +3516,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
         kind,
         summary: kind,
         payload_json: JSON.stringify(payload),
-        sequence,
+        sequence: null,
         created_at: at(seconds),
         ...budgetColumnsOf(kind, payload),
       });
@@ -3562,9 +3567,17 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
         activity(`${toolCallId}-usage`, turnId, "context-window.updated", seconds + 3, {
           usedTokens: 1_000 * (call + 1),
         });
-        activity(`${toolCallId}-meter`, null, "context-window.updated", seconds + 4, {
-          usedTokens: 2_000 * (call + 1),
-        });
+        for (let reading = 0; reading < 4; reading += 1) {
+          activity(
+            `${toolCallId}-meter-${reading}`,
+            null,
+            "context-window.updated",
+            seconds + 4 + reading,
+            {
+              usedTokens: 2_000 * (call + 1) + reading,
+            },
+          );
+        }
       }
       message(`${turnId}-reply`, turnId, "assistant", base + 500);
       if (ask % 3 !== 0) continue;
@@ -3578,10 +3591,17 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
             agentKind: "agent",
           }),
         );
-        for (let tick = 0; tick < 40; tick += 1) {
-          activity(`${taskId}-tick-${tick}`, null, "task.progress", base + 451 + tick, {
+        if (legacyTicks) {
+          for (let tick = 0; tick < 40; tick += 1) {
+            activity(`${taskId}-tick-${tick}`, null, "task.progress", base + 451 + tick, {
+              taskId,
+              summary: `tick ${tick}`,
+            });
+          }
+        } else {
+          activity(`${taskId}-progress`, null, "task.progress", base + 490, {
             taskId,
-            summary: `tick ${tick}`,
+            summary: "tick 39",
           });
         }
         if (helper === "b" && ask + 1 < ASKS) {
@@ -3664,7 +3684,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
   it.effect("a page too long for its asks holds fewer, each whole", () =>
     Effect.gen(function* () {
       // Fifty calls an ask: ten asks hold more steps than a page carries.
-      const { cards } = yield* seedLongThread(50);
+      const { cards } = yield* seedLongThread({ callsPerAsk: 50 });
       const pages = yield* readEveryPage();
       const asksOn = (page: (typeof pages)[number]) =>
         cards.filter((card) => page.messages.has(card.userMessageId));
@@ -3690,7 +3710,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
 
   it.effect("a helper's result keeps the start that sent it on its page", () =>
     Effect.gen(function* () {
-      yield* seedLongThread(50);
+      yield* seedLongThread({ callsPerAsk: 50 });
       const pages = yield* readEveryPage();
       let resultsAfterTheirAsk = 0;
       for (const page of pages) {
@@ -3709,7 +3729,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
 
   it.effect("a superseded reading or tick takes no step's place", () =>
     Effect.gen(function* () {
-      yield* seedLongThread();
+      yield* seedLongThread({ legacyTicks: true });
       const [first] = yield* readEveryPage();
       const ids = [...(first?.activities ?? [])];
       // A helper's first tick and its latest six; each turn's latest reading;
