@@ -9,6 +9,7 @@ import {
 import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import * as Cause from "effect/Cause";
+import * as DateTime from "effect/DateTime";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -547,13 +548,14 @@ describe("hasNoZeropsProject", () => {
 });
 
 describe("the projects listing", () => {
-  const held = (coverage: "complete" | "partial"): Known<ReadonlyArray<ZeropsCandidate>> => ({
-    state: "known",
-    value: [],
-    asOf: { ordinal: 1, atMs: 10 },
-    coverage,
-    freshness: { kind: "live" },
-  });
+  const held = (coverage: "complete" | "partial") =>
+    ({
+      state: "known",
+      value: [],
+      asOf: { ordinal: 1, atMs: 10 },
+      coverage,
+      freshness: { kind: "live" },
+    }) satisfies Known<ReadonlyArray<ZeropsCandidate>>;
 
   it("the projects page shows a placeholder, never 'No projects', while the inventory is unread", () => {
     const unread: Known<ReadonlyArray<ZeropsCandidate>> = { state: "unread", waitingFor: null };
@@ -691,7 +693,9 @@ describe("the projects listing", () => {
     } as const;
     expect(projectsListingNotice(listing, 0)).toMatchObject({
       region: "value",
-      message: { text: expect.stringContaining("Reconnecting…") },
+      message: {
+        text: `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(listing.asOf.atMs), { timeStyle: "medium" })}. Changes while disconnected may be missing.`,
+      },
       affordance: { kind: "retry-now" },
     });
   });

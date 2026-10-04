@@ -11,6 +11,7 @@ import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZerop
  */
 
 import { useAtomValue } from "@effect/atom-react";
+import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
@@ -436,6 +437,16 @@ export function projectsListingNotice(
   const presentation = knownPresentation(listing, PROJECTS_SURFACE, {
     nowMs,
     updateOffered: false,
+    ...(listing.state === "known" &&
+    listing.freshness.kind === "stale" &&
+    listing.freshness.reason.kind === "source-recovering" &&
+    listing.freshness.reason.coverageGap
+      ? {
+          asOfTime: DateTime.formatLocal(DateTime.makeUnsafe(listing.asOf.atMs), {
+            timeStyle: "medium",
+          }),
+        }
+      : {}),
   });
   if (presentation.message === null) return null;
   return {
