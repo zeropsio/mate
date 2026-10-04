@@ -4,7 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 const source = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock("@t3tools/client-runtime/zerops/mateSetup", () => ({ readMateSetup: source.read }));
-import { MATE_SETUP_POLL_MS, useMateSetup, type MateSetupObserved } from "./useMateSetup";
+import {
+  MATE_SETUP_POLL_MS,
+  refreshMateSetup,
+  useMateSetup,
+  type MateSetupObserved,
+} from "./useMateSetup";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 
 const trees: ReactTestRenderer[] = [];
@@ -19,16 +24,31 @@ afterEach(async () => {
 
 const UNSETTLED = { at: "now", git: "done", runtimes: "running", standup: "waiting" } as const;
 
-/** Mounts one reader of `origin`'s setup, and what it has seen. */
-async function watch(origin = "https://mate.test"): Promise<Array<MateSetupObserved>> {
-  const seen: Array<MateSetupObserved> = [];
-  function View() {
-    seen.push(useMateSetup(origin));
+/** Mounts one reader of `origin`'s setup, and what it has seen; `rekey` changes its epoch. */
+async function watch(
+  origin = "https://mate.test",
+  epoch?: string,
+): Promise<Array<MateSetupObserved> & { rekey: (next: string) => Promise<void> }> {
+  const seen = [] as unknown as Array<MateSetupObserved> & {
+    rekey: (next: string) => Promise<void>;
+  };
+  function View(props: { readonly epoch: string | undefined }) {
+    seen.push(useMateSetup(origin, props.epoch));
     return null;
   }
-  await act(async () => {
-    trees.push(create(createElement(View)));
-  });
+  const tree = await (async () => {
+    let created: ReactTestRenderer | undefined;
+    await act(async () => {
+      created = create(createElement(View, { epoch }));
+    });
+    return created!;
+  })();
+  trees.push(tree);
+  seen.rekey = async (next) => {
+    await act(async () => {
+      tree.update(createElement(View, { epoch: next }));
+    });
+  };
   return seen;
 }
 
@@ -85,5 +105,37 @@ describe("what ends a setup observation", () => {
       await vi.advanceTimersByTimeAsync(MATE_SETUP_POLL_MS);
     });
     expect(seen.at(-1)).toEqual({ setup: UNSETTLED, failure: "refused" });
+  });
+});
+
+// Web review #4 (2026-10-05): a failed setup read is definitive for that read, never for the Mate:
+// the person's Try again reads it again, and so does a changed input — a redeploy, or its server
+// restarting.
+describe("what reads a failed setup again", () => {
+  it("the person's Try again reads it again, and a setup that answers clears the failure", async () => {
+    openAccountLifetime("setup-viewer");
+    source.read.mockResolvedValueOnce({ kind: "refused" }).mockResolvedValue({
+      kind: "setup",
+      setup: { at: "now", git: "done", runtimes: "none", standup: "none" },
+    });
+    const seen = await watch();
+    expect(seen.at(-1)?.failure).toBe("refused");
+    await act(async () => {
+      refreshMateSetup("https://mate.test");
+    });
+    expect(source.read).toHaveBeenCalledTimes(2);
+    expect(seen.at(-1)).toMatchObject({ failure: undefined, setup: { git: "done" } });
+  });
+
+  it.each([
+    { case: "a changed input reads it again", next: "env-b|ready", reads: 2 },
+    { case: "the same input reads nothing", next: "env-a|ready", reads: 1 },
+  ])("$case", async ({ next, reads }) => {
+    openAccountLifetime("setup-viewer");
+    source.read.mockResolvedValue({ kind: "invalid" });
+    const seen = await watch("https://mate.test", "env-a|ready");
+    expect(seen.at(-1)?.failure).toBe("invalid");
+    await seen.rekey(next);
+    expect(source.read).toHaveBeenCalledTimes(reads);
   });
 });

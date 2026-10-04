@@ -95,6 +95,7 @@ import {
   KEEP_TAB_OPEN_LINE,
   pressNote,
   pressRuns,
+  SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
   type ArrivalStep,
 } from "~/zerops/mateArrival";
@@ -119,7 +120,7 @@ import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
 import { finishSetupView, forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
-import { useMateSetup } from "~/zerops/useMateSetup";
+import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
@@ -485,8 +486,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   // What its container says of its own setup, in any browser (`/mate/setup.json`): read only
   // while its card is on screen and its setup is under way, and why where it can't be read.
+  // A read that could not be its setup is read again by the person's Try again, or once what it
+  // depends on changed: a redeploy (another environment), or its server seen restarting (its
+  // health moving).
+  const setupOrigin = arrival !== undefined ? candidate?.containerOrigin : undefined;
   const { setup, failure: setupFailure } = useMateSetup(
-    arrival !== undefined ? candidate?.containerOrigin : undefined,
+    setupOrigin,
+    `${link.environmentId ?? ""}|${containerHealth ?? ""}`,
   );
   // What it brings, named before its project lists them: its press's, then its creation's — a
   // press over never takes a line back before the project's own read or its setup answers.
@@ -664,6 +670,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     {...(finishSetup === undefined ? {} : { onFinishSetup: finishSetup })}
                     finishing={mateActions.busyKey === candidate?.key}
                     {...(pressRetry === null ? {} : { onTryAgain: () => void pressRetry() })}
+                    {...(setupOrigin === undefined
+                      ? {}
+                      : { onSetupAgain: () => refreshMateSetup(setupOrigin) })}
                     progress={lineProgress}
                     removing={removing}
                     you={you}
@@ -954,6 +963,7 @@ export function ComingBelow({
   onRemove,
   onFinishSetup,
   onTryAgain,
+  onSetupAgain,
   ends,
   projects,
 }: {
@@ -969,6 +979,8 @@ export function ComingBelow({
   /** *Finish setup*, for a Mate whose press stopped before its container. */
   readonly onFinishSetup?: () => void;
   readonly onTryAgain?: () => void;
+  /** Reads its setup again, where the last read could not be it (`refreshMateSetup`). */
+  readonly onSetupAgain?: () => void;
   /**
    * A creation that stopped before Zerops took it as far as this tab knows (`creationEnds`):
    * *Dismiss*, which takes it out of the menu — and, for an Add refused for certain, *Start over*
@@ -1041,19 +1053,27 @@ export function ComingBelow({
   // a stop's reason (one Zerops may have made says it in the sentence), or a registration not
   // finished, with this person's own *Finish setup*, at once.
   const note = pressNote(progress?.press);
-  const read =
+  const pressRead =
     note === null ||
     (note.kind === "stopped" && coming?.kind === "failed" && coming.verb === "go-to-projects")
       ? null
       : note;
-  const left = read?.kind === "unfinished" ? read : null;
+  const left = pressRead?.kind === "unfinished" ? pressRead : null;
   const finishVerb =
     left !== null && coming?.kind === "coming" && onFinishSetup !== undefined ? (
       <Button disabled={finishing} onClick={onFinishSetup}>
         {FINISH_MATE_SETUP_VERB}
       </Button>
     ) : null;
-  const acts = verb ?? finishVerb;
+  // Its setup that could not be read, while it comes up: why, and *Try again*, which reads it again.
+  const setupFailure = coming?.kind === "coming" ? progress?.setupFailure : undefined;
+  const read =
+    pressRead ?? (setupFailure === undefined ? null : { text: SETUP_FAILURE_WORDS[setupFailure] });
+  const setupVerb =
+    pressRead === null && setupFailure !== undefined && onSetupAgain !== undefined ? (
+      <Button onClick={onSetupAgain}>Try again</Button>
+    ) : null;
+  const acts = verb ?? finishVerb ?? setupVerb;
   if (acts === null && read === null) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }

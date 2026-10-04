@@ -506,8 +506,8 @@ export function arrivalSteps(
   return steps;
 }
 
-/** Why a Mate's setup can't be read, in the setup step's words. */
-const SETUP_FAILURE_WORDS: Readonly<Record<MateSetupFailure, string>> = {
+/** Why a Mate's setup can't be read: the setup step's reason, read whole under the steps. */
+export const SETUP_FAILURE_WORDS: Readonly<Record<MateSetupFailure, string>> = {
   refused: "Its container turned the read of its setup away.",
   invalid: "Its container answered with something that isn't its setup.",
 };

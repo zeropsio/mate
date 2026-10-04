@@ -5,15 +5,16 @@
  * Git access, its runtimes and its stand-up have settled.
  *
  * A read turned away, or answered with something that is not the setup, is a failure the view
- * says, and ends the observation: only an explicit action reads it again (`refreshMateSetup`). A
- * server outside a Zerops project has no setup (`404`): nothing is said, and nothing read again.
+ * says, and ends the observation until the person's *Try again* (`refreshMateSetup`) or a changed
+ * input — its caller's `epoch`: a redeploy, its server restarting — reads it again. A server
+ * outside a Zerops project has no setup (`404`): nothing is said, and nothing read again.
  */
 import {
   readMateSetup,
   type MateSetup,
   type MateSetupFailure,
 } from "@t3tools/client-runtime/zerops/mateSetup";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { onAccountLifetimeClose } from "./accountLifetime";
 
 /** How often a Mate's setup is read while something in it is still to happen. */
@@ -54,6 +55,8 @@ interface SetupObservation {
   timer: ReturnType<typeof setTimeout> | undefined;
   inFlight: boolean;
   dirty: boolean;
+  /** The caller's input the last read answered for (`useMateSetup`'s `epoch`). */
+  epoch: string | undefined;
 }
 const observations = new Map<string, SetupObservation>();
 function observation(origin: string): SetupObservation {
@@ -67,6 +70,7 @@ function observation(origin: string): SetupObservation {
       timer: undefined,
       inFlight: false,
       dirty: false,
+      epoch: undefined,
     };
     observations.set(origin, held);
   }
@@ -124,7 +128,11 @@ function stop(held: SetupObservation): void {
   held.timer = undefined;
 }
 
-export function useMateSetup(origin: string | undefined): MateSetupObserved {
+export function useMateSetup(
+  origin: string | undefined,
+  /** What its setup depends on beyond its origin; a change reads it again. */
+  epoch?: string,
+): MateSetupObserved {
   const subscribe = useCallback(
     (listener: () => void) => {
       if (origin === undefined) return () => undefined;
@@ -145,7 +153,15 @@ export function useMateSetup(origin: string | undefined): MateSetupObserved {
         : (observations.get(origin)?.observed ?? NOTHING_OBSERVED),
     [origin],
   );
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
+  const observed = useSyncExternalStore(subscribe, snapshot, snapshot);
+  useEffect(() => {
+    if (origin === undefined || epoch === undefined) return;
+    const held = observation(origin);
+    const before = held.epoch;
+    held.epoch = epoch;
+    if (before !== undefined && before !== epoch) refreshMateSetup(origin);
+  }, [origin, epoch]);
+  return observed;
 }
 
 onAccountLifetimeClose(() => {
