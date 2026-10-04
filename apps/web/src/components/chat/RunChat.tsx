@@ -132,7 +132,7 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
-import { easeRooms, type Rooms } from "./runRoom";
+import { easeRooms, noteScrollTop, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -4049,10 +4049,12 @@ function RunScroll({
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
-    // It, and each bubble and card of calls in it, as what they hold grows.
+    // It, its lines — so lines leaving or shrinking at its foot let it settle
+    // there gradually, never clamp it down at once — and each bubble and card
+    // of calls in it, as what they hold changes.
     const rooms = easeRooms({
       root: element,
-      selector: EASED_BOXES,
+      selector: `[data-run-scroll] > ol, ${EASED_BOXES}`,
       eases: () => easesRef.current && shownRef.current,
     });
     roomRef.current = rooms;
@@ -4085,9 +4087,14 @@ function RunScroll({
       scrollRef.current?.toggleAttribute("data-follows", follows);
       if (event.kind !== "set" && readingRef !== undefined) readingRef.current = !follows;
     };
+    /** Whether a box holding it eases this moment (`easeRooms`): its height is that ease's. */
+    const heldAbove = () =>
+      typeof scrollRef.current?.parentElement?.closest === "function" &&
+      scrollRef.current.parentElement.closest("[data-room-easing]") !== null;
     /** The page puts its top at `top`, and remembers where the browser took it. */
     const putAt = (element: HTMLElement, top: number) => {
       element.scrollTop = top;
+      noteScrollTop(element);
       heard({ kind: "set", top: element.scrollTop });
     };
     /**
@@ -4095,7 +4102,7 @@ function RunScroll({
      * uncovers what joined, and the scroll stays.
      */
     const footOf = (position: RunScrollPosition) =>
-      Math.max(0, footTop(position) - (roomRef.current?.pending() ?? 0));
+      Math.max(0, footTop(position) - Math.max(0, roomRef.current?.pending() ?? 0));
     // The glide to the foot, while one runs: where it stands (the browser
     // rounds what it is given), and the frame it waits for.
     const gliding = { frame: 0, at: 0, last: 0 };
@@ -4139,16 +4146,17 @@ function RunScroll({
      * its box grows — and never their move up.
      */
     const read = (position: RunScrollPosition) => {
-      const moving = gliding.frame !== 0 || (roomRef.current?.easing() ?? false);
+      const moving = gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove();
       if (moving && performance.now() - personAtRef.current > PERSON_INPUT_MS) {
         heard({ kind: "set", top: position.scrollTop });
       } else {
         heard({ kind: "scrolled", position });
       }
+      if (scrollRef.current !== null) noteScrollTop(scrollRef.current);
     };
     // How tall its lines stood at the last keep: lines joining glide it on,
     // its own box changing keeps its foot where it is.
-    const laid: { height: number | null } = { height: null };
+    const laid: { height: number | null; again: number } = { height: null, again: 0 };
     /**
      * Read where it stands — a move up not heard yet (a scroll event comes a
      * frame late) is the person's — and, while it follows, keep it at its
@@ -4161,7 +4169,16 @@ function RunScroll({
       read(position);
       const grew = laid.height !== null && position.scrollHeight > laid.height + 0.5;
       laid.height = position.scrollHeight;
-      if (followRef.current.follows) {
+      // The card around it easing taller gives it the room it needs: it
+      // stays, and keeps to its foot again once that ease is over.
+      if (followRef.current.follows && heldAbove()) {
+        if (laid.again === 0) {
+          laid.again = requestAnimationFrame(() => {
+            laid.again = 0;
+            keep();
+          });
+        }
+      } else if (followRef.current.follows) {
         const foot = footOf(position);
         if (grew && foot > element.scrollTop + 0.5 && easesRef.current) glide();
         else if (gliding.frame === 0) putAt(element, foot);

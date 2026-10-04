@@ -18,6 +18,8 @@
  * first paint, a resync, a settled run or reduced motion take their height
  * at once.
  */
+import { useLayoutEffect, useRef, type RefObject } from "react";
+
 import { ROOM_TAU_MS, approach } from "./runMotion.logic";
 
 export interface Rooms {
@@ -46,6 +48,29 @@ export interface Rooms {
 
 /** Said on a box while it holds a height of its own: what it holds is read without it. */
 const EASING = "data-room-easing";
+
+/**
+ * Where each run's scroll that follows its foot last stood, as its own code
+ * put it or read it (`noteScrollTop`). A change laid out before a box takes
+ * its old height — a row leaving the slot frees room the card gives the
+ * history at once — makes the browser clamp the scroll down, and it keeps
+ * that clamp: once the boxes hold their heights, it is put back.
+ */
+const scrollTops = new WeakMap<Element, number>();
+
+/** A run's scroll stands at `scroll.scrollTop` by its own code's doing or the person's. */
+export function noteScrollTop(scroll: HTMLElement): void {
+  scrollTops.set(scroll, scroll.scrollTop);
+}
+
+/** Puts back the following scrolls of the card around `element` the browser clamped down. */
+function unclamp(element: HTMLElement): void {
+  const card = element.closest("[data-run-chat]") ?? element;
+  for (const scroll of card.querySelectorAll<HTMLElement>("[data-run-scroll][data-follows]")) {
+    const top = scrollTops.get(scroll);
+    if (top !== undefined && scroll.scrollTop < top - 0.5) scroll.scrollTop = top;
+  }
+}
 
 /** Said on the root of a set of rooms: what holds it leaves what changes inside to it. */
 const ROOM_ROOT = "data-room-root";
@@ -128,6 +153,8 @@ export function easeRooms({
     const height = heightOf(box.element);
     box.element.style.height = own;
     for (const [holder, height] of held) holder.style.height = height;
+    // The reading laid the card out without these heights for a moment.
+    unclamp(box.element);
     return height;
   };
   const release = (box: Box) => {
@@ -217,6 +244,8 @@ export function easeRooms({
     // The innermost first: one holding it then hears it at the height it shows.
     const order = [...touched].sort((a, b) => depthOf(b.element) - depthOf(a.element));
     for (const box of order) heard(box);
+    // Once every set has heard it (the observers' turn ends first).
+    if (order.length > 0) queueMicrotask(() => unclamp(root));
   };
   const changes = new MutationObserver(hear);
   changes.observe(root, {
@@ -270,4 +299,36 @@ function depthOf(element: Element): number {
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * A box of its own — a card outside a run's chat, as what runs in the
+ * background comes and goes — whose height eases (`easeRooms`) from its
+ * first draw on, while `eases`. Returns the ref to put on it.
+ */
+export function useEasedRoom<T extends HTMLElement>(eases: boolean): RefObject<T | null> {
+  const ref = useRef<T | null>(null);
+  const easesRef = useRef(eases);
+  const roomsRef = useRef<Rooms | null>(null);
+  useLayoutEffect(() => {
+    easesRef.current = eases;
+  }, [eases]);
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (root === null) return;
+    const rooms = easeRooms({
+      root,
+      selector: ":not(*)",
+      eases: () => easesRef.current,
+      rootClips: true,
+    });
+    roomsRef.current = rooms;
+    return () => {
+      rooms.stop();
+      roomsRef.current = null;
+    };
+  }, []);
+  // Every commit, before the list's row measures it in its own.
+  useLayoutEffect(() => roomsRef.current?.flush());
+  return ref;
 }
