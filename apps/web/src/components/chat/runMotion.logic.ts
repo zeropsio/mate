@@ -16,9 +16,10 @@ export const FOLLOW_TAU_MS = 45;
 
 /**
  * The fastest a move goes: a long way starts at this speed and eases out once
- * a frame's share of what is left is less — no frame moves anything 40 px.
+ * a frame's share of what is left is less — no frame moves anything 40 px,
+ * a late frame included.
  */
-export const MAX_SPEED_PX_PER_MS = 2.1;
+export const MAX_SPEED_PX_PER_MS = 1.6;
 
 /** Closer than this to its target, a move stands at it. */
 export const SETTLED_PX = 0.5;

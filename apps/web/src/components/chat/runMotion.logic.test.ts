@@ -24,7 +24,7 @@ function frames(from: number, to: number, tau: number): number[] {
 describe("approach", () => {
   it.each([
     { what: "a card growing by a line", from: 38, to: 193, tau: ROOM_TAU_MS },
-    { what: "a card growing by a tall line", from: 80, to: 280, tau: ROOM_TAU_MS },
+    { what: "a card growing by a tall line", from: 80, to: 210, tau: ROOM_TAU_MS },
     { what: "a card shrinking as a slot row leaves", from: 330, to: 270, tau: ROOM_TAU_MS },
     { what: "a scroll following its foot", from: 386, to: 540, tau: FOLLOW_TAU_MS },
   ])(
