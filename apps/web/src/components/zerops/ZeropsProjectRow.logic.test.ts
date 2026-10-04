@@ -984,6 +984,10 @@ describe("mateRowCan — a row's verbs, where HQ offers following its Mate", () 
       true,
     ],
   ])("%s", (_name, offers, offered) => {
-    expect(mateRowCan(offers)).toEqual(offered ? ALL : NONE);
+    expect(mateRowCan(offers, false)).toEqual(offered ? ALL : NONE);
+  });
+
+  it("offers them all while HQ does not answer, before it ever said: an outage is no gate", () => {
+    expect(mateRowCan(undefined, true)).toEqual(ALL);
   });
 });

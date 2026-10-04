@@ -171,7 +171,7 @@ import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
-import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useHqDown, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
@@ -960,6 +960,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
+  const hqDown = useHqDown();
   // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
   const people = useAtomValue(hqPeopleAtom);
 
@@ -1015,7 +1016,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(mateOffersOf(candidate.project.id)),
+      can: mateRowCan(mateOffersOf(candidate.project.id), hqDown),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),

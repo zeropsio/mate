@@ -130,6 +130,7 @@ const mock = vi.hoisted(() => ({
 
 vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
 vi.mock("./useHqOffers", () => ({
+  useHqDown: () => false,
   useMateOffers: () => mock.mateOffers,
   // HQ offers writing the structure to the org's owners and admins (`create_app`).
   useOrgOffers: () => () =>

@@ -61,7 +61,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
-import { useMateOffers, useOrgOffers } from "./useHqOffers";
+import { useHqDown, useMateOffers, useOrgOffers } from "./useHqOffers";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
@@ -293,6 +293,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** What HQ offers of each project and of the organization: drawn here, decided by HQ. */
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
+  const hqDown = useHqDown();
   /**
    * Where a Mate may be moved, as HQ offers it (`moveTo`, `detach`): each application listed, a
    * new one, or none.
@@ -369,11 +370,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         candidate,
         health: undefined,
         waiting: false,
-        can: mateRowCan(mateOffersOf(candidate.project.id)),
+        can: mateRowCan(mateOffersOf(candidate.project.id), hqDown),
         ...(visibility === undefined ? {} : { visibility }),
       };
     },
-    [mateOffersOf, viewer],
+    [hqDown, mateOffersOf, viewer],
   );
 
   const start = useCallback(
