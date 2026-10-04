@@ -11,13 +11,12 @@
  * them.
  */
 import type * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import type { ProjectRef } from "../data/types.ts";
+import { processKeyOf, type ProjectRef } from "../data/types.ts";
 import type { DeploymentStorePorts } from "../flow/deploymentStore.ts";
 import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
 
@@ -64,15 +63,14 @@ export function deploymentStorePorts(
       };
     },
     deployedVersion: (service) => atomRegistry.get(data.reads.deployedVersion(service)),
-    nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
-    setTimer: (delayMs, fire) => {
-      const timer = run(
-        Effect.sleep(Duration.millis(delayMs)).pipe(Effect.andThen(Effect.sync(fire))),
-      );
-      return () => {
-        timer.interruptUnsafe();
-      };
+    // A process's status as the platform last pushed it: how a build the store followed ended.
+    buildStatus: (process) => {
+      const lifecycle = atomRegistry
+        .get(data.stateAtom)
+        .activity.processes.get(processKeyOf(process))?.lifecycle;
+      return lifecycle?.knowledge === "observed" ? lifecycle.fields.status : undefined;
     },
+    nowMs: () => data.access.clock.currentTimeMillisUnsafe(),
   };
 }
 

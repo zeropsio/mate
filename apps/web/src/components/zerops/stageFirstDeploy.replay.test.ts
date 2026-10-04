@@ -22,7 +22,7 @@ import {
   runningProcess,
   servicesRead,
 } from "@t3tools/client-runtime/zerops/flow/fixtures";
-import type { ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
+import type { ProcessStatus, ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
@@ -88,6 +88,7 @@ function firstBuild() {
   let services = listed(IMPORTED);
   let processes = build;
   let stated: Shown<ZeropsServiceDeployedVersion> = { state: "unread", waitingFor: null };
+  let status: ProcessStatus | undefined;
   let changed = () => undefined as void;
   const clock = { ms: at(1033.9) };
   const store = makeDeploymentStore({
@@ -98,8 +99,8 @@ function firstBuild() {
       changed = listener;
       return () => undefined;
     },
+    buildStatus: () => status,
     nowMs: () => clock.ms,
-    setTimer: () => () => undefined,
   });
   store.demand(stage);
   const step = (t: number, change: () => void) => {
@@ -123,6 +124,7 @@ function firstBuild() {
   });
   const ended = step(1096.1, () => {
     processes = processesRead([], { project: stage });
+    status = "FINISHED";
   });
   const unstated = step(1096.4, () => {
     services = listed({ ...IMPORTED, id: "version-9", source: null });
@@ -445,14 +447,15 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       cell: "Deploying… 5d0e7a1",
     },
     {
-      // N3: the build's process left; its version not active yet.
+      // N3: the build's process left, Zerops ended it FINISHED, its version not active yet:
+      // nothing runs, and HQ's job of it has not ended — no clock holds the build's word.
       t: 1096.1,
       services: [app("UPGRADING")],
       deployment: BUILD.ended,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
 
-      line: "Stage coming up · building the app",
-      cell: "Deploying… 5d0e7a1",
+      line: "Stage coming up · first deploy on its way",
+      cell: "First deploy on its way",
     },
     {
       // N3: read again, its new version active and stated by nothing yet.
@@ -460,8 +463,8 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       deployment: BUILD.unstated,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
 
-      line: "Stage coming up · building the app",
-      cell: "Deploying… 5d0e7a1",
+      line: "Stage coming up · first deploy on its way",
+      cell: "First deploy on its way",
     },
     {
       t: 1097.6,

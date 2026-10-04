@@ -377,9 +377,9 @@ function withFirstDeploy(
 
 /**
  * Where a stage's first deploy stands, the one reading every surface says it by — its cell, the
- * menu, its own page: only for a stage known to run nothing — a first deploy seen to fail, or as
- * HQ's records of it say (`firstDeploy`). `undefined` while HQ has none under way, or nothing can
- * be promised.
+ * menu, its own page: only for a stage known to run nothing — a build HQ did not make that Zerops
+ * ended failed, or as HQ's records of it say (`firstDeploy`). `undefined` while HQ has none under
+ * way, or nothing can be promised.
  */
 export function stageSettingUp(
   input: Pick<GroupFlowStopInput, "createdAt" | "projectStatus" | "services">,
@@ -413,13 +413,17 @@ export function stageFirstDeploy(input: {
   const { deployment } = input;
   // Something runs or builds there: no first deploy to wait for.
   if (deployment?.state === "known" && deployment.value.kind !== "none") return undefined;
-  // A build of it was seen to end with nothing running: a fact, however long ago it was asked.
+  // A build HQ did not make, which Zerops ended failed with nothing running: Zerops' word on it,
+  // however long ago it was asked. One HQ made is its job's to say (`firstDeploy`).
+  const failedBuild =
+    deployment?.state === "known" && deployment.value.kind === "none"
+      ? deployment.value.failedBuild
+      : undefined;
   if (
-    deployment?.state === "known" &&
-    deployment.value.kind === "none" &&
-    deployment.value.afterBuild === true
+    failedBuild !== undefined &&
+    !(input.deploys ?? []).some((job) => job.processId === failedBuild.processId)
   )
-    return { kind: "failed" };
+    return { kind: "failed", reason: failedBuild.reason };
   const step = stageSettingUp(input, input.nowMs);
   if (step !== undefined) return { kind: "setting-up", step };
   if (deployment?.state !== "known") return undefined;
