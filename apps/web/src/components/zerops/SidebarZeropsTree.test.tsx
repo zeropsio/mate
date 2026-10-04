@@ -537,6 +537,14 @@ describe("SidebarZeropsTree", () => {
     );
   });
 
+  it("offers manual again beside an HQ outage, including an empty inventory", () => {
+    for (const candidates of [[CRM_DEV], []]) {
+      expect(
+        render(candidates, { hqOutage: "HQ could not be reached.", onHqAgain: () => {} }),
+      ).toContain("Try again");
+    }
+  });
+
   it("says HQ is not answering at the menu's top, over the structure it last read", () => {
     const line = "HQ unavailable since 14:05. Projects as of 13:58.";
     const html = render([CRM_DEV], { hqOutage: line });

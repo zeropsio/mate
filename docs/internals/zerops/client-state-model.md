@@ -451,6 +451,13 @@ The review's header and footer read the same `changeReview` verdict: an `empty` 
 only Close where permitted, with no merge consequence or Merge action. HQ's detail excludes the
 Mate's preceding landed head from the change's commit list, so squash-landed work is not counted
 again. Desktop uses this web review; mobile has no HQ change-review surface.
+HQ calls are single attempts, including reads, 503 answers with `Retry-After`, and refused
+sessions. A refused session is forgotten for the next explicit call. A lost write answer still
+gets one confirmation read, never a repeated write. The web/desktop structure owner retains
+HQ's last known rows and shows the failure when a stream ends or stops answering; another
+opening waits for an explicit snapshot request. Mobile uses the same single-attempt HQ API; it has no
+separate HQ structure owner today.
+
 The stream snapshot carries each readable application's releases, repository heads and stage/production
 recipes; a `release-revision` message replaces only the moved application's value. The client folds
 these once (`hq/stream.ts`) and projects them without per-app bootstrap reads or recipe retry timers.

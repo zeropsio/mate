@@ -6,6 +6,8 @@ import {
   type HqStructure,
   type HqStructureEvent,
 } from "@t3tools/client-runtime/zerops/hq";
+import type { AppRead } from "@t3tools/shared/hqAppReads";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import { MateLiveView, type HqPeople } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -162,6 +164,285 @@ describe("HQ menu currency", () => {
   );
 });
 describe("driveHqStructure", () => {
+  it("ends an initial failure visibly without retrying until explicitly asked", async () => {
+    vi.useFakeTimers();
+    const api = streamingApi([
+      { events: [], end: "fail" },
+      { events: [], end: "hang" },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(api.attempts()).toBe(1);
+      expect(h.views.at(-1)).toMatchObject({
+        current: false,
+        unavailableSince: 10_000,
+        failure: "HQ could not be reached.",
+      });
+      requestHqSnapshot("org-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.attempts()).toBe(2);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends a lost socket visibly and waits for manual again", async () => {
+    vi.useFakeTimers();
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: null,
+            appReads: null,
+            mates: null,
+            people: null,
+          },
+        ],
+        end: "cut",
+      },
+      { events: [], end: "fail" },
+      { events: [], end: "hang" },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(api.attempts()).toBe(1);
+      expect(h.views.at(-1)).toMatchObject({
+        structure: ACME,
+        current: false,
+        failure: "HQ's stream broke.",
+      });
+      requestHqSnapshot("org-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.attempts()).toBe(2);
+      requestHqSnapshot("org-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.attempts()).toBe(3);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("carries each application's changes from its stream, and starts them over with each snapshot", async () => {
+    const change: HqChange = {
+      appId: "app-1",
+      repo: "app",
+      number: 3,
+      mateProjectId: "p1",
+      title: "Add a /status page",
+      body: "",
+      state: "open",
+      head: "a".repeat(40),
+      mergedSha: null,
+      landedHead: null,
+      openedAt: "2026-10-02T09:00:00.000Z",
+      mergedAt: null,
+      closedAt: null,
+      updatedAt: "2026-10-02T09:00:00.000Z",
+      mergeability: "clean",
+      behind: false,
+    };
+    const merged: HqChange = { ...change, state: "merged", mergedAt: "2026-10-02T10:00:00.000Z" };
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            appReads: null,
+            structure: ACME,
+            changes: new Map([["app-1", [change]]]),
+            mates: null,
+            people: null,
+          },
+          { kind: "changes", appId: "app-1", changes: [merged] },
+        ],
+        end: "close",
+      },
+      {
+        events: [
+          {
+            kind: "snapshot",
+            appReads: null,
+            structure: ACME,
+            changes: new Map(),
+            mates: null,
+            people: null,
+          },
+        ],
+        end: "hang",
+      },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(h.views.at(-1)?.unavailableSince).not.toBeNull());
+    requestHqSnapshot("org-1");
+    await vi.waitFor(() => expect(h.views.at(-1)?.changes).toEqual(new Map()));
+    stop.abort();
+    await driving;
+
+    expect(h.views.map((view) => view.changes)).toContainEqual(new Map([["app-1", [change]]]));
+    expect(h.views.map((view) => view.changes)).toContainEqual(new Map([["app-1", [merged]]]));
+  });
+
+  it("a failed manual snapshot retains the latest app value from the previous stream", async () => {
+    vi.useFakeTimers();
+    const handlers: Array<Parameters<HqApi["streamStructure"]>[0]> = [];
+    const api = {
+      streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0], signal: AbortSignal) => {
+        handlers.push(on);
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("aborted"))),
+        );
+      },
+    };
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({
+      ...h.deps,
+      api,
+      signal: stop.signal,
+    });
+    const value = {
+      releases: [],
+      repos: [],
+      recipes: { stage: { state: "absent" as const }, production: { state: "absent" as const } },
+    };
+    const fresh = {
+      ...value,
+      repos: [{ name: "group", mainHead: "b".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" }],
+    };
+    const snapshot = (read: AppRead): HqStructureEvent => ({
+      kind: "snapshot",
+      structure: ACME,
+      changes: new Map(),
+      appReads: new Map([["app-1", read]]),
+      mates: null,
+      people: null,
+    });
+    try {
+      handlers[0]!.onEvent(snapshot({ revision: "1", value, failure: null }));
+      handlers[0]!.onEvent({
+        kind: "release-revision",
+        appId: "app-1",
+        read: { revision: "2", value: fresh, failure: null },
+      });
+      expect(h.views.at(-1)?.appReads?.get("app-1")?.value).toEqual(fresh);
+      requestHqSnapshot("org-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(handlers).toHaveLength(2);
+      handlers[1]!.onEvent(
+        snapshot({
+          revision: "3",
+          value: null,
+          failure: { code: "repo_unavailable", reason: null },
+        }),
+      );
+      expect(h.views.at(-1)?.appReads?.get("app-1")?.value).toEqual(fresh);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("an explicit recipe retry asks for a fresh snapshot and keeps the current view meanwhile", async () => {
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: new Map(),
+            appReads: new Map(),
+            mates: null,
+            people: null,
+          },
+        ],
+        end: "hang",
+      },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(api.attempts()).toBe(1));
+    requestHqSnapshot("org-1");
+    await vi.waitFor(() => expect(api.attempts()).toBe(2));
+    expect(h.views.at(-1)?.structure).toEqual(ACME);
+    stop.abort();
+    await driving;
+    requestHqSnapshot("org-1");
+    expect(api.attempts()).toBe(2);
+  });
+
+  it("carries each application's load data from its stream and replaces it on manual again", async () => {
+    const read = (revision: string) => ({
+      revision,
+      value: {
+        releases: [],
+        repos: [],
+        recipes: { stage: { state: "absent" as const }, production: { state: "absent" as const } },
+      },
+      failure: null,
+    });
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            appReads: new Map([["app-1", read("41")]]),
+            structure: ACME,
+            changes: null,
+            mates: null,
+            people: null,
+          },
+          { kind: "release-revision", appId: "app-1", read: read("57") },
+        ],
+        end: "close",
+      },
+      {
+        events: [
+          {
+            kind: "snapshot",
+            appReads: new Map(),
+            structure: ACME,
+            changes: null,
+            mates: null,
+            people: null,
+          },
+        ],
+        end: "hang",
+      },
+    ]);
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    await vi.waitFor(() => expect(h.views.at(-1)?.unavailableSince).not.toBeNull());
+    requestHqSnapshot("org-1");
+    await vi.waitFor(() => expect(h.views.at(-1)?.appReads).toEqual(new Map()));
+    stop.abort();
+    await driving;
+    expect(h.views.map((view) => view.appReads)).toEqual([
+      null,
+      new Map([["app-1", read("41")]]),
+      new Map([["app-1", read("57")]]),
+      new Map([["app-1", read("57")]]),
+      new Map([["app-1", read("57")]]),
+      new Map(),
+    ]);
+  });
+
   it("draws what is remembered at once, then HQ's snapshot and its changes, each remembered", async () => {
     const api = streamingApi([
       {
@@ -187,6 +468,7 @@ describe("driveHqStructure", () => {
     await driving;
 
     expect(h.views[0]).toEqual({
+      failure: null,
       organizationId: "org-1",
       structure: { ungrouped: [], apps: [] },
       changes: null,

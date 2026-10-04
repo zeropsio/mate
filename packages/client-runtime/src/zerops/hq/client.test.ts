@@ -95,7 +95,7 @@ describe("makeHqApi — a connection that drops", () => {
     return { hq, fetch };
   };
 
-  it("tries a call once more when the connection dropped under it", async () => {
+  it("ends a dropped read visibly and reads again only on the next explicit call", async () => {
     const { hq, fetch } = dropping(1);
     const api = makeHqApi({
       address: ADDRESS,
@@ -103,6 +103,8 @@ describe("makeHqApi — a connection that drops", () => {
       throughDoor: doors().throughDoor,
       openSocket: NO_SOCKET,
     });
+    await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable", code: "network" });
+    expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(0);
     await expect(api.structure()).resolves.toEqual({ apps: [] });
     expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(1);
   });
@@ -231,13 +233,16 @@ describe("makeHqApi", () => {
       const hq = fakeHq();
       const kept = keptStore("revoked");
       const door = doors();
-      await makeHqApi({
+      const api = makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
         throughDoor: door.throughDoor,
         openSocket: NO_SOCKET,
         kept: kept.port,
-      }).structure();
+      });
+      await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
+      expect(kept.told).toEqual(["forget revoked"]);
+      await api.structure();
       expect(door.minted).toEqual(["door-1"]);
       expect(kept.told).toEqual([
         "forget revoked",
@@ -268,6 +273,7 @@ describe("makeHqApi", () => {
       kept.replace("session-2");
       hq.revoke("session-1");
 
+      await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
       await api.structure();
       expect(door.minted).toEqual(["door-1"]);
       expect(hq.seen.at(-1)?.authorization).toBe("Bearer session-2");
@@ -309,7 +315,7 @@ describe("makeHqApi", () => {
     expect([await api.mateKey("P_ADA"), await api.mateKey("P_BEA")]).toEqual(["tok-ada", null]);
   });
 
-  it("comes through the door again once HQ no longer takes the session, and only once", async () => {
+  it("ends a refused session visibly and enters again on the next explicit call", async () => {
     const hq = fakeHq();
     const door = doors();
     const api = makeHqApi({
@@ -321,6 +327,8 @@ describe("makeHqApi", () => {
     await api.structure();
     hq.expire();
 
+    await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
+    expect(door.minted).toEqual(["door-1"]);
     await expect(api.structure()).resolves.toEqual({ apps: [] });
     expect(door.minted).toEqual(["door-1", "door-2"]);
 
@@ -1507,34 +1515,29 @@ describe("makeHqApi — a write HQ may have made", () => {
     });
   });
 
-  // HQ answers a write it could not finish for want of Zerops `503` with `Retry-After` (F22).
-  it("asks a write that sets a value again once HQ's Retry-After has passed", async () => {
-    await onTheClock(async () => {
-      let busy = true;
-      const hq = fakeHq((seen) => {
-        if (seen.path !== "/api/apps/app-1" || !busy) return undefined;
-        busy = false;
-        return new Response(JSON.stringify({ code: "zerops_unavailable" }), {
-          status: 503,
-          headers: { "content-type": "application/json", "retry-after": "2" },
-        });
+  it("ends a 503 write visibly despite Retry-After, and writes again only when asked", async () => {
+    let busy = true;
+    const hq = fakeHq((seen) => {
+      if (seen.path !== "/api/apps/app-1" || !busy) return undefined;
+      busy = false;
+      return new Response(JSON.stringify({ code: "zerops_unavailable" }), {
+        status: 503,
+        headers: { "content-type": "application/json", "retry-after": "0" },
       });
-      const api = makeHqApi({
-        address: ADDRESS,
-        fetch: hq.fetch,
-        throughDoor: doors().throughDoor,
-        openSocket: NO_SOCKET,
-      });
-      const renamed = api.renameApp("app-1", "Harbor");
-      const settled = vi.fn();
-      renamed.then(settled, settled);
-      const patches = () => hq.seen.filter((entry) => entry.method === "PATCH").length;
-      await vi.advanceTimersByTimeAsync(1_999);
-      expect(patches()).toBe(1);
-      await vi.advanceTimersByTimeAsync(1);
-      await expect(renamed).resolves.toBeUndefined();
-      expect(patches()).toBe(2);
     });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.renameApp("app-1", "Harbor")).rejects.toMatchObject({
+      kind: "unavailable",
+      code: "zerops_unavailable",
+    });
+    expect(hq.seen.filter((entry) => entry.method === "PATCH")).toHaveLength(1);
+    await api.renameApp("app-1", "Harbor");
+    expect(hq.seen.filter((entry) => entry.method === "PATCH")).toHaveLength(2);
   });
 
   it("reads a release HQ asked to wait for back, never asking for it twice", async () => {

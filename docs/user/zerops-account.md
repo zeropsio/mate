@@ -10,6 +10,10 @@ that project, so another admin's browser can continue it after a tab closes. If 
 Mate shows why and stops. Fix the cause in Zerops, then press **Again**. If Zerops did not confirm
 an operation, **Again** checks its recorded progress rather than sending the operation again.
 
+HQ calls stop with a visible failure when HQ cannot answer. Press **Try again** to ask again.
+If HQ's live connection drops, Mate keeps the last known projects visible and stops until
+you press **Try again** in the menu; Mate chats remain available.
+
 Mate lists projects your account can operate. Changes made elsewhere appear when the inventory
 refreshes. A removed project or lost permission does not reopen from an old local list. If a
 platform read fails, Mate shows a retry state instead of pretending your projects were deleted.
