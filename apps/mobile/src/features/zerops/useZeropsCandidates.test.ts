@@ -24,7 +24,7 @@ const runtime = vi.hoisted(() => ({
     subscribe: vi.fn(),
   },
 }));
-const session = vi.hoisted(() => ({ status: "signed-in" }));
+const session = vi.hoisted(() => ({ status: "signed-in", activeId: "org-a" as string | null }));
 const reads = vi.hoisted(() => ({ services: null as unknown, project: null as unknown }));
 /** The account runtime's Mate environments, as the provider binds them after the first grant. */
 const stage = vi.hoisted(() => ({
@@ -88,7 +88,11 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({ status: session.status, organizations: ORGANIZATIONS }),
+  useZeropsSession: () => ({
+    status: session.status,
+    organizations: ORGANIZATIONS,
+    activeOrganization: session.activeId === null ? null : { id: session.activeId },
+  }),
 }));
 vi.mock("./ZeropsDataProvider", () => ({
   useZeropsData: () => ({
@@ -142,6 +146,16 @@ const listenerOf = (atom: unknown): (() => void) | undefined =>
     | undefined;
 
 describe("candidate inventory demand", () => {
+  it.each([null, "org-b"])("reads only the selected organization %s", async (id) => {
+    session.activeId = id;
+    render();
+    await settle();
+    const organizations = runtime.acquire.mock.calls.flatMap(([request]) =>
+      request.kind === "organization-inventory" ? [request.organization.organizationId] : [],
+    );
+    expect(organizations).toEqual(id === null ? [] : [id]);
+  });
+
   beforeEach(() => {
     hooks.reset();
     runtime.acquire.mockReset();
@@ -150,6 +164,7 @@ describe("candidate inventory demand", () => {
     runtime.registry.subscribe.mockReset();
     scopes.reset();
     session.status = "signed-in";
+    session.activeId = "org-a";
     stage.machines = new Map();
 
     const account = {

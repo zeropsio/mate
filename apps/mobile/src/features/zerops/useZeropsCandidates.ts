@@ -79,22 +79,22 @@ function organizationRefsOf(
 
 export function useZeropsCandidates(): {
   /**
-   * Every organization's candidates as knowledge (DESIGN §3), each with its Mate's reachability:
+   * The active organization's candidates as knowledge (DESIGN §3), each with its Mate's reachability:
    * "no projects" is only ever read off a known, complete listing (`candidatePickerBody`).
    */
   readonly listing: Known<ReadonlyArray<MobileCandidate>>;
   /** When the listing's reads last changed: the moment its notice is worded at. */
   readonly readAtMs: number;
   readonly error: string | null;
-  /** Reads every organization's inventory again; retries the demand a failure refused. */
+  /** Reads the active organization's inventory again; retries the demand a failure refused. */
   readonly refresh: () => void;
 } {
-  const { status, organizations } = useZeropsSession();
+  const { status, activeOrganization } = useZeropsSession();
   const { binding, environments, error: runtimeError } = useZeropsData();
   const [reads, setReads] = useState<InventoryReads | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [demandAttempt, setDemandAttempt] = useState(0);
-  const organizationIdsKey = organizations.map((organization) => organization.id).join(",");
+  const organizationIdsKey = activeOrganization?.id ?? "";
   // What this view saw of each container's address, for as long as it lives: a young container
   // ACTIVE before its address landed is on its way, and its wait never begins again
   // (`AddressMemory`). Read and written only where the rows are derived, in the demand's publish.

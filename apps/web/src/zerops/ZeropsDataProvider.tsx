@@ -29,7 +29,15 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
 import { type AtomRegistry } from "effect/unstable/reactivity";
-import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
@@ -192,6 +200,12 @@ export function ZeropsDataProvider({
     updateVerifiedMemberships(verified),
   );
   const registry = useContext(RegistryContext);
+  const activeId = useRef(activeOrganization?.id ?? null);
+  const accountOwner = useRef<AccountRuntime | null>(null);
+  useEffect(() => {
+    activeId.current = activeOrganization?.id ?? null;
+    accountOwner.current?.selectOrganization(activeId.current);
+  }, [activeOrganization?.id]);
   const accountId = status === "signed-in" ? (user?.id ?? null) : null;
   const [opened, setOpened] = useState<{
     readonly runtime: ManagedZeropsDataRuntime;
@@ -274,6 +288,8 @@ export function ZeropsDataProvider({
             removeLifetimeClose = onAccountLifetimeClose(() => {
               void shutdown(created, "logout");
             });
+            accountOwner.current = built;
+            built.selectOrganization(activeId.current);
             // Surfaces send their intents to this account's bus from the first mount.
             unbindInvalidations = bindAccountInvalidations(built.invalidations);
             setOpened({ runtime: created, signals });
@@ -306,6 +322,7 @@ export function ZeropsDataProvider({
 
     return () => {
       cancelled = true;
+      accountOwner.current = null;
       abort.abort();
       removeLifetimeClose();
       unbindInvalidations();

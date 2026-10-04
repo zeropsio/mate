@@ -261,11 +261,13 @@ export function ZeropsInventoryProvider({
 
   const organizationDescriptors = useMemo(
     () =>
-      organizations.map((organization): OrganizationInventoryDescriptor => ({
-        kind: "organization-inventory",
-        organization: organizationRef(organization.id),
-      })),
-    [organizationRef, organizations],
+      (activeOrganization === null ? [] : [activeOrganization]).map(
+        (organization): OrganizationInventoryDescriptor => ({
+          kind: "organization-inventory",
+          organization: organizationRef(organization.id),
+        }),
+      ),
+    [organizationRef, activeOrganization],
   );
 
   const evidence = heldEvidence(grant.machine);
@@ -283,8 +285,11 @@ export function ZeropsInventoryProvider({
   const accessReadEntries = useMemo(() => [["access", runtime.reads.access] as const], [runtime]);
   const access = useZeropsAtomSelections(accessReadEntries).get("access");
   const knownProjectRefs = useMemo(
-    () => inventoryProjectRefs(evidenceProjectRefs(evidence), access),
-    [access, evidence],
+    () =>
+      inventoryProjectRefs(evidenceProjectRefs(evidence), access).filter(
+        (ref) => ref.organization.organizationId === activeOrganization?.id,
+      ),
+    [access, evidence, activeOrganization?.id],
   );
   const denied = useMemo(() => pendingDenials(evidence), [evidence]);
   /** The account's authority, as the grant last published it (G12). */

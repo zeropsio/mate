@@ -20,6 +20,7 @@ import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
 import { makeZeropsDataRuntime, type ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   AccountEpoch,
+  ZeropsOrganizationId,
   type AccessState,
   type ProjectEffectiveAccess,
   type ProjectRef,
@@ -114,6 +115,42 @@ interface DemandRow {
 }
 
 describe("inventoryDemand", () => {
+  it.each([null, "org-1", "org-2", "org-3"])(
+    "leases inventory only for the visible org %s",
+    (activeOrganizationId) => {
+      const refs = ["org-1", "org-2", "org-3"].map((id) => ({
+        ...organization,
+        organizationId: ZeropsOrganizationId.make(id),
+      }));
+      const grant = drive([
+        { type: "START" },
+        {
+          type: "ROUND_ACCOUNT",
+          round: 1,
+          organizations: refs.map((organization) => ({ organization, mutationsAllowed: true })),
+          projects: [],
+        },
+      ]);
+      expect(
+        inventoryDemand({
+          activeOrganizationId,
+          grant,
+          access: { status: "unverified" },
+          projectStatus: () => undefined,
+          organizationListed: () => false,
+          organizationHasMates: () => false,
+          projectIsMate: () => false,
+        }).map((row) =>
+          "organization" in row
+            ? row.organization.organizationId
+            : row.project.organization.organizationId,
+        ),
+      ).toEqual(activeOrganizationId === null ? [] : [activeOrganizationId]);
+    },
+  );
+});
+
+describe("inventoryProjectRefs", () => {
   it.each<DemandRow>([
     {
       name: "nothing before a round lists the account's organizations",
@@ -204,6 +241,7 @@ describe("inventoryDemand", () => {
     },
   ])("demands $name", ({ grant, access, status, listed, expected }) => {
     const demand = inventoryDemand({
+      activeOrganizationId: organization.organizationId,
       grant,
       access: access ?? { status: "unverified" },
       projectStatus: (ref) => status?.[ref.projectId],
@@ -219,6 +257,7 @@ describe("inventoryDemand", () => {
     { name: "without, neither: nothing reads them", mates: false },
   ])("holds an organization $name", ({ mates }) => {
     const demand = inventoryDemand({
+      activeOrganizationId: organization.organizationId,
       grant: drive(granted),
       access: { status: "unverified" },
       projectStatus: () => undefined,
@@ -233,6 +272,7 @@ describe("inventoryDemand", () => {
 
   it("holds the streams for a Mate this tab just created, before its organization's list names it", () => {
     const demand = inventoryDemand({
+      activeOrganizationId: organization.organizationId,
       grant: drive(granted),
       access: { status: "unverified" },
       projectStatus: () => undefined,
@@ -354,12 +394,22 @@ describe("holdInventoryDemand", () => {
           published += 1;
         });
         yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
-        yield* holdInventoryDemand({ data, atomRegistry: registry });
+        const active = Atom.make<string | null>(organization.organizationId);
+        yield* holdInventoryDemand({
+          activeOrganization: active,
+          data,
+          atomRegistry: registry,
+        });
         yield* settle;
 
         const held = [...(yield* data.state).interests.values()].filter(({ leases }) => leases > 0);
         expect(held).toHaveLength(39);
         expect(published).toBe(1);
+        registry.set(active, null);
+        yield* settle;
+        expect(
+          [...(yield* data.state).interests.values()].filter(({ leases }) => leases > 0),
+        ).toEqual([]);
       }),
     ),
   );
@@ -402,7 +452,11 @@ describe("holdInventoryDemand", () => {
           );
           yield* data.access.start({ verifier: verifying([A]), hidden: false, online: true });
           yield* settle;
-          yield* holdInventoryDemand({ data, atomRegistry: registry });
+          yield* holdInventoryDemand({
+            activeOrganization: Atom.make<string | null>(organization.organizationId),
+            data,
+            atomRegistry: registry,
+          });
           yield* settle;
           const streamed = () =>
             Effect.map(data.state, (state) =>
@@ -462,7 +516,11 @@ describe("holdListedProjects", () => {
           },
           reads: { projectsOf: () => list, access: Atom.make({ status: "unverified" }) },
         } as unknown as ManagedZeropsDataRuntime;
-        yield* holdListedProjects({ data, atomRegistry: registry });
+        yield* holdListedProjects({
+          activeOrganization: Atom.make<string | null>(organization.organizationId),
+          data,
+          atomRegistry: registry,
+        });
         yield* settle;
         // Offered while lapsed, and ignored there: the grant reads no project then.
         expect(sent).toEqual([["project-c"]]);

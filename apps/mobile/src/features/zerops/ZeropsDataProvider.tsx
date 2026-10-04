@@ -150,11 +150,13 @@ const CLOSED: ZeropsDataValue = { binding: null, environments: null, error: null
  */
 export function ZeropsDataProvider({
   account,
+  activeOrganizationId = null,
   children,
   runtimeFactory = createRuntime,
   accountPorts = mobileAccountPorts,
 }: {
   readonly account: MobileZeropsDataAccount | null;
+  readonly activeOrganizationId?: string | null;
   readonly children: ReactNode;
   /** Test seam; product callers use the frozen shared adapter/runtime factory. */
   readonly runtimeFactory?: RuntimeFactory;
@@ -162,6 +164,15 @@ export function ZeropsDataProvider({
   readonly accountPorts?: AccountPortsFactory;
 }) {
   const [value, setValue] = useState<ZeropsDataValue>(CLOSED);
+  const owner = useRef<AccountRuntime | null>(null);
+  const activeOrg = useRef(activeOrganizationId);
+  useEffect(() => {
+    activeOrg.current = activeOrganizationId;
+    owner.current?.selectOrganization(activeOrganizationId);
+  }, [activeOrganizationId]);
+  useEffect(() => {
+    value.environments?.setActiveOrganization(activeOrganizationId);
+  }, [value.environments, activeOrganizationId]);
   const lifecycle = useRef(Promise.resolve());
   const epoch = useRef(0);
   const accountKey = account === null ? null : `${account.client.baseUrl}\u0000${account.userId}`;
@@ -198,6 +209,7 @@ export function ZeropsDataProvider({
       if (disposed) return;
       disposed = true;
       if (opened !== null) {
+        if (owner.current === opened) owner.current = null;
         await closeAccount(opened, registry, reason);
         return;
       }
@@ -232,6 +244,8 @@ export function ZeropsDataProvider({
           makeAccountRuntime({ ...ports, data: runtime, atomRegistry: registry }),
         );
         if (!active) return disposeOnce();
+        owner.current = opened;
+        opened.selectOrganization(activeOrg.current);
         const current: ZeropsDataBinding = { account: scope, runtime, registry };
         binding = current;
         setValue({ binding: current, environments: null, error: null });
@@ -240,6 +254,7 @@ export function ZeropsDataProvider({
         void Effect.runPromise(opened.postGrant).then(
           ({ environments }) => {
             if (!active) return;
+            environments.setActiveOrganization(activeOrg.current);
             setValue((shown) => (shown.binding === current ? { ...shown, environments } : shown));
           },
           // An epoch that closed before its first grant never had a post-grant stage.

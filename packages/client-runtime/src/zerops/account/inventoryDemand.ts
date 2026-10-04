@@ -48,6 +48,7 @@ export const heldEvidence = (grant: GrantMachine): Evidence | null =>
       : null;
 
 export interface InventoryDemandInput {
+  readonly activeOrganizationId: string | null;
   readonly grant: GrantMachine;
   readonly access: AccessState;
   /** The project's status as the data runtime holds it; undefined while it is unread. */
@@ -80,12 +81,19 @@ export function inventoryDemand(
   input: InventoryDemandInput,
 ): ReadonlyArray<RuntimeInterestDescriptor> {
   const evidence = heldEvidence(input.grant);
-  const organizations =
-    evidence?.account.organizations ?? grantRoundInFlight(input.grant)?.organizations ?? [];
+  const organizations = (
+    evidence?.account.organizations ??
+    grantRoundInFlight(input.grant)?.organizations ??
+    []
+  ).filter(({ organization }) => organization.organizationId === input.activeOrganizationId);
   const denied = pendingDenials(evidence);
   const projects = inventoryProjectRefs(evidenceProjectRefs(evidence), input.access).filter(
     (ref) => {
-      if (denied.has(projectKeyOf(ref))) return false;
+      if (
+        ref.organization.organizationId !== input.activeOrganizationId ||
+        denied.has(projectKeyOf(ref))
+      )
+        return false;
       const status = input.projectStatus(ref);
       return status === undefined || status === "ACTIVE";
     },
@@ -131,6 +139,7 @@ export function inventoryDemand(
  * publication.
  */
 export const holdInventoryDemand = (input: {
+  readonly activeOrganization: Atom.Atom<string | null>;
   readonly data: ManagedZeropsDataRuntime;
   readonly atomRegistry: AtomRegistry.AtomRegistry;
 }): Effect.Effect<void, never, Scope.Scope> =>
@@ -138,6 +147,7 @@ export const holdInventoryDemand = (input: {
     const { data, atomRegistry } = input;
     const demand = Atom.make((get) =>
       inventoryDemand({
+        activeOrganizationId: get(input.activeOrganization),
         grant: get(data.access.view).machine,
         access: get(data.reads.access),
         projectStatus: (ref) => {
@@ -232,6 +242,7 @@ export function unheldListedProjects(
  * inventory demand follows its evidence.
  */
 export const holdListedProjects = (input: {
+  readonly activeOrganization: Atom.Atom<string | null>;
   readonly data: ManagedZeropsDataRuntime;
   readonly atomRegistry: AtomRegistry.AtomRegistry;
 }): Effect.Effect<void, never, Scope.Scope> =>
@@ -243,9 +254,11 @@ export const holdListedProjects = (input: {
         evidence,
         projects: unheldListedProjects(
           evidence,
-          (evidence?.account.organizations ?? []).map(({ organization }) =>
-            get(data.reads.projectsOf(organization)),
-          ),
+          (evidence?.account.organizations ?? [])
+            .filter(
+              ({ organization }) => organization.organizationId === get(input.activeOrganization),
+            )
+            .map(({ organization }) => get(data.reads.projectsOf(organization))),
           get(data.reads.access),
         ),
       };

@@ -490,7 +490,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const postGrant = yield* Effect.forkChild(built.postGrant);
@@ -564,7 +568,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           const demanded = () =>
             Effect.map(built.data.state, ({ interests }) =>
@@ -611,7 +619,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const heard: Array<Invalidation> = [];
@@ -668,7 +680,11 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
-          });
+          }).pipe(
+            Effect.tap((runtime) =>
+              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+            ),
+          );
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* Effect.addFinalizer(() => built.close("application-close"));
         const renewNow = built.invalidations
@@ -750,7 +766,11 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
-          });
+          }).pipe(
+            Effect.tap((runtime) =>
+              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+            ),
+          );
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* Effect.addFinalizer(() => built.close("application-close"));
         const data = built.data;
@@ -763,9 +783,9 @@ describe("the account runtime", () => {
         yield* clock.advance(SECOND);
         yield* settle;
         yield* settle;
-        // The account holds both organizations' inventories and their projects'.
-        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
-        expect(opened.toSorted()).toEqual(["org-1", "org-2"]);
+        // Only the selected organization holds inventory.
+        expect(yield* statuses()).toEqual(["observing", "observing"]);
+        expect(opened.toSorted()).toEqual(["org-1"]);
         const roundsBefore = rounds().length;
 
         yield* built.invalidations
@@ -777,8 +797,8 @@ describe("the account runtime", () => {
         yield* clock.advance(250);
         yield* settle;
 
-        expect(opened.slice(2)).toEqual(["org-1"]);
-        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
+        expect(opened.slice(1)).toEqual(["org-1"]);
+        expect(yield* statuses()).toEqual(["observing", "observing"]);
         expect(rounds()).toHaveLength(roundsBefore);
       }),
     ),
@@ -844,7 +864,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           yield* clock.advance(SECOND);
@@ -957,7 +981,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           // The account's variables never answer: the flag cannot be stated from them.
@@ -1033,7 +1061,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const data = built.data;
@@ -1193,7 +1225,13 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
-          }).pipe(Effect.exit);
+          })
+            .pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            )
+            .pipe(Effect.exit);
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* settle;
 
@@ -1252,7 +1290,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const data = built.data;
@@ -1342,7 +1384,11 @@ describe("the post-grant stage's Mate environments", () => {
         signals: page.signals,
         atomRegistry: registry,
         environments: { ...rig.ports, ...extra },
-      });
+      }).pipe(
+        Effect.tap((runtime) =>
+          Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+        ),
+      );
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
     return { clock, page, grant, rig, built, registry };
