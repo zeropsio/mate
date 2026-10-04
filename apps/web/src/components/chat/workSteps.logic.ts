@@ -375,8 +375,16 @@ export function backgroundJobOf(
           : "done",
     startedAt: command.startedAt ?? command.createdAt,
     endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
-    report: task !== undefined && ended ? taskReportWords(task.detail, title) : null,
+    report: task !== undefined && ended ? taskReportWords(taskSaid(task), title) : null,
   };
+}
+
+/**
+ * What a task said as it ended: its detail, else its label where the work
+ * log put Claude Code's own word there (`Background command "…" failed …`).
+ */
+export function taskSaid(task: WorkLogEntry): string | undefined {
+  return task.detail ?? (/^Background command\b/u.test(task.label) ? task.label : undefined);
 }
 
 /**

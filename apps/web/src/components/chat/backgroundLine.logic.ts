@@ -9,7 +9,7 @@
  */
 import { workEntryDisplayIndicatesToolFailure, type WorkLogEntry } from "../../session-logic";
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
-import { taskReportWords, type BackgroundJob } from "./workSteps.logic";
+import { taskReportWords, taskSaid, type BackgroundJob } from "./workSteps.logic";
 
 /** "lost": its session is gone and it never reported. */
 export type BackgroundState = "running" | "done" | "failed" | "lost";
@@ -130,7 +130,7 @@ export function taskItems(entries: ReadonlyArray<WorkLogEntry>): ReadonlyArray<B
       key: entry.id,
       title,
       state: workEntryDisplayIndicatesToolFailure(entry) ? "failed" : "done",
-      report: taskReportWords(entry.detail, title),
+      report: taskReportWords(taskSaid(entry), title),
       mono: entry.agentRole === undefined,
     };
   });

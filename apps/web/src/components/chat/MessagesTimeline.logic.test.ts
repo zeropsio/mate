@@ -1596,17 +1596,9 @@ describe("deriveMessagesTimelineRows", () => {
         command: `./${id}.sh`,
         callInput: { description: title },
         updatedAt: at(minute, 1),
-      });
-    const started = (id: string, title: string, minute: number) =>
-      tool(`${id}-started`, "t1", minute, {
-        label: title,
-        toolTitle: title,
-        taskId: `job-${id}`,
-        taskToolUseId: `call-${id}`,
-        command: undefined as never,
-        sourceActivityKind: "task.started",
-        toolLifecycleStatus: "inProgress",
-        tone: "info",
+        // Its call's own notice, as production reads it: the task's start
+        // never reaches the work log.
+        sentToBackground: `job-${id}`,
       });
     const reported = (id: string, title: string, minute: number, failed = false) =>
       background(`${id}-done`, minute, {
@@ -1621,9 +1613,7 @@ describe("deriveMessagesTimelineRows", () => {
     const turnOne = [
       user("m0", 0),
       launch("soak", "Run the soak test", 1),
-      started("soak", "Run the soak test", 1),
       launch("fails", "Run the failing job", 1),
-      started("fails", "Run the failing job", 1),
       assistant("a1", "t1", 2, "Both are running."),
     ];
 
