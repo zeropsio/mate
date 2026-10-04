@@ -2135,10 +2135,15 @@ describe("MessagesTimeline — placing its rows", () => {
         getScrollableNode: () => reading,
       } as unknown as LegendListRef,
     };
-    const onManualNavigation = vi.fn();
+    // As ChatView does: the person's place being put back turns follow off.
+    let follows = true;
+    const onManualNavigation = vi.fn(() => {
+      follows = false;
+    });
     const streamed = (words: number) => (
       <MessagesTimeline
         {...buildProps()}
+        liveFollowEnabled={follows}
         listRef={readingList}
         onManualNavigation={onManualNavigation}
         routeThreadKey={threadKey}
