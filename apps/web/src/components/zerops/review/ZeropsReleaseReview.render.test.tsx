@@ -28,7 +28,12 @@ vi.mock("@t3tools/client-runtime/zerops/projections", () => ({
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
 vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => vi.fn() }));
-vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => NOW, useSecondsNowMs: () => NOW }));
+/** How far the clock has moved past `NOW`. */
+const clock = vi.hoisted(() => ({ later: 0 }));
+vi.mock("~/zerops/useNowMs", () => ({
+  useNowMs: () => NOW + clock.later,
+  useSecondsNowMs: () => NOW + clock.later,
+}));
 const compared = vi.hoisted(() => ({ asks: [] as Array<unknown> }));
 vi.mock("~/zerops/useZeropsCompares", () => ({
   useZeropsCompares: (asks: unknown) => {
@@ -122,6 +127,7 @@ let root: Root | undefined;
 afterEach(async () => {
   await act(async () => root?.unmount());
   root = undefined;
+  clock.later = 0;
   vi.unstubAllGlobals();
 });
 async function mount(
@@ -256,5 +262,36 @@ describe("the roll back dialog's press", () => {
     expect(compared.asks.at(-1)).toBe(offered);
     await act(async () => answer({ ok: true, tag: "v0.1.5", deploys: { jobs: [], note: null } }));
     expect(compared.asks.at(-1)).toBe(offered);
+  });
+});
+
+// HQ accepted the press, and the release it made never reached this tab (HQ's stream down for
+// half an hour, say): the wait is measured from the press, never "redeploys from…" for ever
+// (restores 323dec563's fallback).
+describe("a press HQ accepted whose release never arrives", () => {
+  const MINUTES_31 = 31 * 60_000;
+
+  it("ends a release's wait 30 minutes after the press", async () => {
+    const { container, render } = await mount(async () => ({ ok: true, tag: "v0.1.5" }));
+    await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
+    expect(container.textContent).toContain("Production redeploys from v0.1.5");
+    clock.later = MINUTES_31;
+    await act(async () => render());
+    expect(container.textContent).toContain("v0.1.5 hasn't landed");
+    expect(container.textContent).not.toContain("redeploys from v0.1.5");
+  });
+
+  it("ends a roll back's wait 30 minutes after the press", async () => {
+    const { container, render } = await mount(
+      async () => ({ ok: false, reason: "unused" }),
+      { kind: "rollback", groupId: "xyz", tag: "v0.1.3" },
+      async () => ({ ok: true, tag: "v0.1.5", deploys: { jobs: [], note: null } }),
+      (base) => ({ ...base, releases: [row("v0.1.4", HEAD), row("v0.1.3", BEFORE, false)] }),
+    );
+    await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
+    expect(container.textContent).not.toContain("hasn't landed");
+    clock.later = MINUTES_31;
+    await act(async () => render());
+    expect(container.textContent).toContain("v0.1.5 hasn't landed");
   });
 });
