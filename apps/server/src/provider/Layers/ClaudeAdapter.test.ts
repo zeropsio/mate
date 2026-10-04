@@ -5036,7 +5036,10 @@ describe("ClaudeAdapterLive", () => {
       const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
       assert.equal(runtimeError?.type, "runtime.error");
       if (runtimeError?.type === "runtime.error") {
-        assert.equal(runtimeError.payload.message, "Claude runtime stream failed.");
+        assert.equal(
+          runtimeError.payload.message,
+          "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+        );
         assert.deepEqual(runtimeError.payload.detail, {
           failureCount: 1,
           failureTags: ["ProviderAdapterProcessError"],
@@ -5047,8 +5050,138 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(completed?.type, "turn.completed");
       if (completed?.type === "turn.completed") {
         assert.equal(completed.payload.state, "failed");
-        assert.equal(completed.payload.errorMessage, "Claude runtime stream failed.");
+        assert.equal(
+          completed.payload.errorMessage,
+          "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+        );
       }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // A stream that dies says why, in plain words, and what happens next; the
+  // CLI's own stderr goes to the log, never the conversation.
+  it.effect("says why a stream died, from the CLI's stderr", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEvents: Array<ProviderRuntimeEvent> = [];
+      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => {
+          runtimeEvents.push(event);
+        }),
+      ).pipe(Effect.forkChild);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+      const stderr = harness.getLastCreateQueryInput()?.options.stderr;
+      assert.equal(typeof stderr, "function");
+      stderr?.(
+        "FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\n",
+      );
+      harness.query.fail(
+        Object.assign(new Error("Claude Code process exited with code 134"), { exitCode: 134 }),
+      );
+      for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+      runtimeEventsFiber.interruptUnsafe();
+
+      const words = "Claude Code ran out of memory. Send a message to pick up where it left off.";
+      const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
+      assert.equal(
+        runtimeError?.type === "runtime.error" ? runtimeError.payload.message : null,
+        words,
+      );
+      // Its stderr is the log's, never the conversation's.
+      assert.deepEqual(
+        runtimeError?.type === "runtime.error" ? runtimeError.payload.detail : null,
+        { failureCount: 1, failureTags: ["ProviderAdapterProcessError"] },
+      );
+      const completed = runtimeEvents.find((event) => event.type === "turn.completed");
+      assert.equal(
+        completed?.type === "turn.completed" ? completed.payload.errorMessage : null,
+        words,
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // The Mate idle, its helpers at work, and the stream dies: the person is
+  // told, and each helper and its open call read as stopped, never working on.
+  it.effect("stops the helpers a dead stream left working, and says so", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEvents: Array<ProviderRuntimeEvent> = [];
+      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => {
+          runtimeEvents.push(event);
+        }),
+      ).pipe(Effect.forkChild);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "delegate", attachments: [] });
+      const session = "sdk-session-dead-stream";
+      for (const message of [
+        {
+          type: "system",
+          subtype: "task_started",
+          task_id: "task-a",
+          tool_use_id: "toolu_agent_a",
+          description: "Check the schema",
+          task_type: "local_agent",
+          uuid: "started-task-a",
+          session_id: session,
+        },
+        {
+          type: "assistant",
+          parent_tool_use_id: "toolu_agent_a",
+          message: {
+            model: SYNTHETIC_SUBAGENT_MODEL,
+            content: [{ type: "tool_use", id: "tool-h1", name: "Bash", input: { command: "ls" } }],
+          },
+          uuid: "snapshot-h1",
+          session_id: session,
+        },
+        {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          errors: [],
+          session_id: session,
+          uuid: "result-dead-stream",
+        },
+      ]) {
+        harness.query.emit(message as unknown as SDKMessage);
+      }
+      for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+      harness.query.fail(new Error("socket hang up"));
+      for (let tick = 0; tick < 8; tick += 1) yield* Effect.yieldNow;
+      runtimeEventsFiber.interruptUnsafe();
+
+      const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
+      assert.equal(
+        runtimeError?.type === "runtime.error" ? runtimeError.payload.message : null,
+        "The Claude API stopped answering. Send a message to pick up where it left off.",
+      );
+      const stopped = runtimeEvents.find(
+        (event) => event.type === "task.completed" && event.payload.taskId === "task-a",
+      );
+      assert.equal(stopped?.type === "task.completed" ? stopped.payload.status : null, "stopped");
+      const closed = runtimeEvents.find(
+        (event) => event.type === "item.completed" && String(event.itemId) === "tool-h1",
+      );
+      assert.equal(closed?.type === "item.completed" ? closed.payload.agentId : null, "task-a");
+      assert.ok(runtimeEvents.some((event) => event.type === "session.exited"));
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

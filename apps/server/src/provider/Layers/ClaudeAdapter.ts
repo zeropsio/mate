@@ -131,6 +131,11 @@ import {
   ProviderAdapterValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
+import {
+  describeClaudeStreamFailure,
+  makeStderrTail,
+  type StderrTail,
+} from "../claudeStreamFailure.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { spawnAndCollect } from "../providerSnapshot.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -405,6 +410,9 @@ interface ClaudeTaskAgentState {
  */
 const PENDING_TASK_MODEL_CAP = 64;
 
+/** The detail a failure of the SDK's own stream is wrapped in (`runSdkStream`). */
+const STREAM_FAILED_DETAIL = "Claude runtime stream failed.";
+
 /**
  * Buffers a subagent snapshot's authoritative model under its
  * parent_tool_use_id, for snapshots that beat their task_started to the
@@ -426,6 +434,8 @@ function rememberPendingTaskModel(
 
 interface ClaudeSessionContext {
   session: ProviderSession;
+  /** The last of what the CLI wrote to stderr: why its stream died, for the log. */
+  readonly stderrTail: StderrTail;
   startInput: Parameters<ClaudeAdapterShape["startSession"]>[0];
   readonly turnStartMessageIds: Array<string | null>;
   readonly promptQueue: Queue.Queue<PromptQueueItem>;
@@ -4499,6 +4509,27 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
   });
 
+  /** Why the stream died, read off its error and the CLI's stderr, logged whole and scrubbed. */
+  const logStreamFailure = Effect.fn("logStreamFailure")(function* (
+    context: ClaudeSessionContext,
+    error: unknown,
+    detail: string | undefined,
+  ) {
+    const failure = describeClaudeStreamFailure({ error, stderr: context.stderrTail.text() });
+    yield* Effect.logError("claude.stream.failed", {
+      threadId: context.session.threadId,
+      detail,
+      reason: failure.reason,
+      error: failure.log.error,
+      exitCode: failure.log.exitCode,
+      signal: failure.log.signal,
+      stderr: failure.log.stderr,
+      liveTasks: context.liveTaskIds.size,
+      turnActive: context.turnState !== undefined,
+    });
+    return failure;
+  });
+
   const runSdkStream = (
     context: ClaudeSessionContext,
   ): Effect.Effect<void, ProviderAdapterProcessError> =>
@@ -4508,7 +4539,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         new ProviderAdapterProcessError({
           provider: PROVIDER,
           threadId: context.session.threadId,
-          detail: "Claude runtime stream failed.",
+          detail: STREAM_FAILED_DETAIL,
           cause,
         }),
     ).pipe(
@@ -4545,15 +4576,29 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         const failures = exit.cause.reasons.flatMap((reason) =>
           Cause.isFailReason(reason) ? [reason.error] : [],
         );
-        const message = failures[0]?.detail ?? "Claude runtime stream failed.";
+        const first = failures[0];
+        // The CLI's stream died: why, in plain words for the person, and the
+        // cause with the CLI's stderr for the log. Our own failure to handle
+        // an event keeps its words.
+        const message =
+          first === undefined || first.detail === STREAM_FAILED_DETAIL
+            ? (yield* logStreamFailure(context, first?.cause, first?.detail)).words
+            : first.detail;
         yield* emitRuntimeError(context, message, {
           failureCount: failures.length,
           failureTags: failures.map((failure) => failure._tag),
         });
         yield* completeTurn(context, "failed", message);
       }
-    } else if (context.turnState) {
-      yield* completeTurn(context, "interrupted", "Claude runtime stream ended.");
+    } else {
+      // The CLI ended its stream by itself: nothing stopped it from here.
+      const failure = yield* logStreamFailure(context, undefined, "Claude runtime stream ended.");
+      if (context.turnState) {
+        yield* completeTurn(context, "interrupted", failure.words);
+      } else if (context.liveTaskIds.size > 0) {
+        // Its helpers stop with it (`stopSessionInternal`): the person is told why.
+        yield* emitRuntimeError(context, failure.words);
+      }
     }
 
     yield* stopSessionInternal(context, {
@@ -5237,8 +5282,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(input.cwd ? [input.cwd] : []),
         serverConfig.attachmentsDir,
       ];
+      const stderrTail = makeStderrTail();
       const baseQueryOptions: ClaudeQueryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
+        // Kept for the log: why the stream died, when it dies.
+        stderr: stderrTail.push,
         ...(apiModelId ? { model: apiModelId } : {}),
         pathToClaudeCodeExecutable: claudeBinaryPath,
         systemPrompt: {
@@ -5354,6 +5402,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
       const context: ClaudeSessionContext = {
         session,
+        stderrTail,
         startInput: input,
         turnStartMessageIds: resumeState?.turnStartMessageIds
           ? [...resumeState.turnStartMessageIds]
