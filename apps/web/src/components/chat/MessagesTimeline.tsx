@@ -170,12 +170,17 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
-import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
+import {
+  LAST_WORDS_GRACE_MS,
+  latestFinishedWordsAt,
+  settlingWithoutWordsUntil,
+} from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { handedOverRecently } from "../../zerops/mateHandOver";
 import type { CarriedRow } from "./stepHeight";
@@ -209,6 +214,32 @@ import {
   parseReviewCommentMessageSegments,
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
+
+/** How long the server must say nothing lives in the background before a job reads as lost. */
+const BACKGROUND_GONE_AFTER_MS = 3000;
+
+/**
+ * Whether nothing lives in the background any more: the thread idle and the
+ * server holding no live background work — its session is gone (a restart,
+ * the session ended). Found so on first sight, at once; turned so while the
+ * page watches, only after it held `BACKGROUND_GONE_AFTER_MS`, so a job's
+ * report arriving a moment after the server's word never shows it lost
+ * first. A turn running says nothing either way: it keeps what was found.
+ */
+function useBackgroundGone(
+  isWorking: boolean,
+  afterTurnWork: "working" | "monitoring" | null,
+): boolean {
+  const idleAndEmpty = !isWorking && afterTurnWork === null;
+  const [gone, setGone] = useState(idleAndEmpty);
+  if (!isWorking && afterTurnWork !== null && gone) setGone(false);
+  useEffect(() => {
+    if (!idleAndEmpty || gone) return;
+    const timer = setTimeout(() => setGone(true), BACKGROUND_GONE_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [idleAndEmpty, gone]);
+  return gone;
+}
 
 /** What hands the page back to the person while earlier turns are being placed. */
 const GESTURES = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
@@ -493,12 +524,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
     return () => clearTimeout(timer);
   }, [finishedWordsAt]);
+  // A turn the server settled before its words landed stays live for the
+  // last words' wait (`settlingWithoutWordsUntil`): derived again once it ran out.
+  const settlingUntil = useMemo(
+    () => settlingWithoutWordsUntil(timelineEntries, latestTurn ?? null, isWorking, nowMs),
+    [timelineEntries, latestTurn, isWorking, nowMs],
+  );
+  useEffect(() => {
+    if (settlingUntil === null) return;
+    const timer = setTimeout(
+      () => setNowMs(Math.max(Date.now(), settlingUntil + 1)),
+      Math.max(0, Math.min(LAST_WORDS_GRACE_MS, settlingUntil - Date.now())) + 20,
+    );
+    return () => clearTimeout(timer);
+  }, [settlingUntil]);
   // Which of the helpers one launch started woke a run: the panel knows when
   // each finished.
   const helperFinishes = useMemo(
     () => helperFinishesOf(agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL),
     [agentPanelModel],
   );
+  // Whether the session that ran the background jobs is gone (`backgroundGone`).
+  const backgroundGone = useBackgroundGone(isWorking, afterTurnWork);
   // Whether something runs alongside the live run: its card is then drawn a
   // slice a row, its panel one of them.
   const alongside = dockDraws(working);
@@ -516,6 +563,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         supportsConversationRollback,
         queuedMessages,
         afterTurnWork,
+        backgroundGone,
         helperFinishes,
         alongside,
         provider,
@@ -532,6 +580,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       supportsConversationRollback,
       queuedMessages,
       afterTurnWork,
+      backgroundGone,
       helperFinishes,
       alongside,
       provider,
@@ -2198,27 +2247,27 @@ function RecordTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "record"
 }
 
 /**
- * Background work that finished after its turn, or that woke the run under
- * it: one quiet line saying what finished — a helper, a task, or how many —
- * and the latest in its own words; what each reported opens under it.
+ * Background work as one quiet line (`backgroundLine.logic`): what a settled
+ * turn sent to the background, on its own card (`jobs:`), work that finished
+ * outside any turn, or what woke the run under it.
  */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
-  const lastLabel = row.title ? row.title.charAt(0).toUpperCase() + row.title.slice(1) : null;
-  const { failed } = row;
-  const finished =
-    row.tasks === 1
-      ? lastLabel !== null
-        ? `${lastLabel} ${failed > 0 ? "failed" : "finished"}`
-        : `${row.helpers ? "A helper" : "A background task"} ${failed > 0 ? "failed" : "finished"}`
-      : `${row.tasks} ${row.helpers ? "helpers" : "background tasks"} finished${failed > 0 ? `, ${failed} failed` : ""}`;
-  return (
-    <BackgroundLine
-      entries={row.entries}
-      failed={failed > 0}
-      where={row.helpers ? "helper" : "in the background"}
-      words={finished}
-    />
-  );
+  const items =
+    row.jobs !== undefined
+      ? jobItems(row.jobs)
+      : row.entries.length > 0
+        ? taskItems(row.entries)
+        : // A helper the panel says finished, with no report of its own here.
+          [
+            {
+              key: row.id,
+              title: row.title ?? (row.helpers ? "A helper" : "A background task"),
+              state: row.failed > 0 ? ("failed" as const) : ("done" as const),
+              report: null,
+              mono: false,
+            },
+          ];
+  return <BackgroundLine line={backgroundLineOf(items, row.helpers)} />;
 }
 
 function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {

@@ -295,6 +295,32 @@ export function foldBackgroundTasks(
     }));
 }
 
+/**
+ * The background bar while something in it runs: everything sent to the
+ * background alongside what runs — by the running turn (`turnId`, or ended
+ * since it began) or by the turn a running task came from — so a task that
+ * finishes fills its segment, and the count of what finished only rises (run
+ * 9: a bar of running tasks only read full beside "0/3", and fell from 5 to
+ * 4). Nothing runs: no bar.
+ */
+function backgroundRunning(
+  tasks: ReadonlyArray<DockBackgroundTask>,
+  turn: { readonly id: string | null; readonly startedMs: number },
+): DockModel["background"] {
+  const running = tasks.filter((task) => task.state === "running");
+  if (running.length === 0) return null;
+  const turns = new Set(running.flatMap((task) => (task.turnId === null ? [] : [task.turnId])));
+  if (turn.id !== null) turns.add(turn.id);
+  return backgroundGroup(
+    tasks.filter(
+      (task) =>
+        task.state === "running" ||
+        (task.turnId !== null && turns.has(task.turnId)) ||
+        (task.endedAt !== null && Date.parse(task.endedAt) >= turn.startedMs),
+    ),
+  );
+}
+
 function backgroundGroup(tasks: ReadonlyArray<DockBackgroundTask>): DockModel["background"] {
   return tasks.length === 0
     ? null
@@ -399,6 +425,7 @@ export function deriveDock(input: {
       operations: [],
       helpers: rows.length === 0 ? null : { rows, working: rows.length, done: 0, failed: 0 },
       tasks: null,
+      // After the turn its card's line is the record of what ended: only what runs.
       background: backgroundGroup(backgroundTasks.filter((task) => task.state === "running")),
       afterTurn,
       pause: null,
@@ -463,16 +490,16 @@ export function deriveDock(input: {
         }
       : null;
 
-  // What runs in the background now, from this turn or before: one that
-  // failed is told once, as its row in the record.
+  const turnStart = input.turnStartedAt == null ? Number.NaN : Date.parse(input.turnStartedAt);
+  // What runs in the background now, from this turn or before, with what
+  // this turn sent along that finished (`backgroundRunning`).
   const background = input.isWorking
-    ? backgroundGroup(backgroundTasks.filter((task) => task.state === "running"))
+    ? backgroundRunning(backgroundTasks, { id: input.runningTurnId, startedMs: turnStart })
     : null;
 
   const pause = input.isWorking ? null : input.pause;
   // What ended this turn: a bar the person watched shows its ending a moment.
   // A batch deploy ends a row per service, as the band drew it.
-  const turnStart = input.turnStartedAt == null ? Number.NaN : Date.parse(input.turnStartedAt);
   const endings =
     input.isWorking && input.runningTurnId !== null
       ? {

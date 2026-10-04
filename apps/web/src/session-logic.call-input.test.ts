@@ -153,3 +153,26 @@ describe("a call's tool reaches its entry, from every driver", () => {
     expect(entry?.toolName).toBe(toolName);
   });
 });
+
+// A probe on Dara: a job sent to the background said so only in its call's
+// own output, and the task that tracks it reaches the log only once it ends.
+describe("a command sent to the background", () => {
+  it.each([
+    {
+      name: "says so: the job's id",
+      content:
+        "Command running in background with ID: b94yypkxx. Output is being written to: /tmp/x",
+      sent: "b94yypkxx",
+    },
+    { name: "an ordinary command: nothing", content: "4 passed", sent: undefined },
+  ])("$name", ({ content, sent }) => {
+    const [entry] = deriveWorkLogEntries([
+      completedCall("command_execution", {
+        toolName: "Bash",
+        command: "sleep 40; exit 2",
+        rawOutput: { content },
+      }),
+    ]);
+    expect(entry?.sentToBackground).toBe(sent);
+  });
+});

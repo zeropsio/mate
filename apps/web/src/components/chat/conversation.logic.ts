@@ -620,7 +620,34 @@ export function latestFinishedWordsAt(
   return parseMs(last.message.updatedAt ?? last.createdAt);
 }
 
-export function deriveConversationStructure(input: {
+/**
+ * Until when the latest turn, settled by the server with no words of its own
+ * yet, stays live: a woken run read "stopped after 1s" for 200 ms, until its
+ * words landed and it read "thought 1s". Null when it has its words, is not
+ * the server's settled turn, or the wait (`LAST_WORDS_GRACE_MS`) has run out
+ * — then it ended on a step after all, and is told so.
+ */
+export function settlingWithoutWordsUntil(
+  entries: ReadonlyArray<TimelineEntry>,
+  latestTurn: TimelineLatestTurnLike | null,
+  isWorking: boolean,
+  nowMs: number | undefined,
+): number | null {
+  if (isWorking || nowMs === undefined || latestTurn?.state !== "completed") return null;
+  const completedMs = parseMs(latestTurn.completedAt);
+  if (completedMs === null || nowMs >= completedMs + LAST_WORDS_GRACE_MS) return null;
+  const last = entries.findLast(
+    (entry) =>
+      !isUserMessageEntry(entry) &&
+      countsAsLastWord(entry) &&
+      timelineEntryTurnId(entry) === latestTurn.turnId,
+  );
+  if (last === undefined) return null;
+  const said = last.kind === "message" && last.message.role === "assistant";
+  return said ? null : completedMs + LAST_WORDS_GRACE_MS;
+}
+
+export function deriveConversationStructure(given: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly latestTurn: TimelineLatestTurnLike | null;
   readonly runningTurnId: TurnId | null;
@@ -629,10 +656,17 @@ export function deriveConversationStructure(input: {
   /** The clock the last words' wait is read against; without it nothing waits. */
   readonly nowMs?: number;
 }): ConversationStructure {
-  const entries = input.timelineEntries;
+  const entries = given.timelineEntries;
+  // The server settled the latest turn a moment before its words landed: it
+  // stays live for the last words' wait, so it settles once, with them.
+  const settling =
+    settlingWithoutWordsUntil(entries, given.latestTurn, given.isWorking, given.nowMs) !== null;
+  const input = settling ? { ...given, isWorking: true } : given;
   const unsettledTurnId =
-    deriveUnsettledTurnId(input.latestTurn, input.runningTurnId) ??
-    (input.isWorking ? unnamedRunningTurnId(entries, input.latestTurn) : null);
+    settling && given.latestTurn !== null
+      ? given.latestTurn.turnId
+      : (deriveUnsettledTurnId(input.latestTurn, input.runningTurnId) ??
+        (input.isWorking ? unnamedRunningTurnId(entries, input.latestTurn) : null));
   const terminalIds = deriveTerminalAssistantMessageIds(entries);
   const spans = deriveTurnSpans({
     timelineEntries: entries,

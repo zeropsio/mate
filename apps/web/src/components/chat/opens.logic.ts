@@ -28,6 +28,12 @@ export interface StepOutput {
  * edit, a search for a pattern alone.
  */
 export function stepOutput(step: WorkStep): ReadonlyArray<StepOutput> {
+  // A command sent to the background returned only that it went there: what
+  // it holds is what the job reported, once it did.
+  if (step.background !== undefined) {
+    const report = step.background.report;
+    return report === null ? [] : [{ key: "job", label: null, text: report }];
+  }
   const blocks: StepOutput[] = [];
   step.entries.forEach((entry, index) => {
     const command = (entry.rawCommand ?? entry.command)?.trim();

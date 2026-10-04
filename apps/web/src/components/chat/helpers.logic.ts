@@ -107,7 +107,13 @@ export function helperRecord(input: {
     timelineEntries: deriveTimelineEntries(answer, [], deriveWorkLogEntries(steps)),
     latestTurn: {
       turnId,
-      state: live ? "running" : helper.status === "failed" ? "error" : "completed",
+      state: live
+        ? "running"
+        : helper.status === "failed"
+          ? "error"
+          : helper.status === "interrupted" || helper.status === "cancelled"
+            ? "interrupted"
+            : "completed",
       startedAt,
       completedAt: helper.completedAt,
     },
