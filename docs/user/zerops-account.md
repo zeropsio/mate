@@ -14,6 +14,9 @@ HQ calls stop with a visible failure when HQ cannot answer. Press **Try again** 
 If HQ's live connection drops, Mate keeps the last known projects visible and stops until
 you press **Try again** in the menu; Mate chats remain available.
 
+Opening a Mate reads its project before connecting. If that read cannot start, Mate shows the
+reason and **Again**. Press **Again** to make one new attempt.
+
 Mate lists projects your account can operate. Changes made elsewhere appear when the inventory
 refreshes. A removed project or lost permission does not reopen from an old local list. If a
 platform read fails, Mate shows a retry state instead of pretending your projects were deleted.

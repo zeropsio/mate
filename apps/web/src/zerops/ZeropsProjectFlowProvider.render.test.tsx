@@ -31,7 +31,7 @@ import {
   type ZeropsSessionView,
 } from "../state/zerops";
 import { bindAccountFlow } from "./accountForge";
-import { HeldInventoryContext } from "./inventoryContext";
+import { type InventoryServiceOutcome, HeldInventoryContext } from "./inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
@@ -72,6 +72,8 @@ vi.mock("./ZeropsSessionProvider", () => ({
  */
 const inventoryRefs = vi.hoisted(() => ({
   refs: new Map<string, ProjectRef>(),
+  services: new Map<string, InventoryServiceOutcome>(),
+  detail: new Set<string>(),
   projects: [] as ReadonlyArray<{ readonly id: string; readonly status: string }>,
   authority: new Map<
     string,
@@ -87,10 +89,12 @@ const registryGroups = vi.hoisted(() => ({
   }>,
 }));
 
+vi.mock("./accountEnvironments", () => ({ useDetailProjects: () => inventoryRefs.detail }));
+
 vi.mock("./ZeropsInventoryProvider", () => ({
   useZeropsInventory: () => ({
     projects: inventoryRefs.projects,
-    services: new Map(),
+    services: inventoryRefs.services,
     projectRefs: inventoryRefs.refs,
     authority: inventoryRefs.authority,
     account: access.account,
@@ -352,6 +356,8 @@ describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
     access.account = { kind: "authorized" };
     inventoryRefs.refs = new Map();
+    inventoryRefs.services = new Map();
+    inventoryRefs.detail = new Set();
     inventoryRefs.projects = [];
     inventoryRefs.authority = new Map();
     registryGroups.groups = [{ groupId: "g1", slug: "harbor" }];
@@ -369,9 +375,9 @@ describe("ZeropsProjectFlowProvider", () => {
     vi.unstubAllGlobals();
   });
 
-  // DESIGN §4.7, D6: what a stop runs needs nothing from HQ, and every project the sidebar draws is
-  // a stop — one HQ places in no group, or in none at all, reads what it runs all the same.
-  it("every project the account holds reads what it runs, with no group registered", async () => {
+  // A stop needs no HQ group, but only active detail holds its activity receiver.
+  // Previously read sidebar projects must release it too.
+  it("loaded services read what runs without demanding unread sidebar projects", async () => {
     installTestDom();
     registryGroups.groups = [];
     const account = {
@@ -387,7 +393,14 @@ describe("ZeropsProjectFlowProvider", () => {
       },
       projectId: ZeropsProjectId.make("loose-1"),
     };
-    inventoryRefs.refs = new Map([[projectKeyOf(loose), loose]]);
+    const unread: ProjectRef = { ...loose, projectId: ZeropsProjectId.make("unread-1") };
+    inventoryRefs.refs = new Map([
+      [projectKeyOf(loose), loose],
+      [projectKeyOf(unread), unread],
+    ]);
+    inventoryRefs.services.set(loose.projectId, { status: "resolved", services: [] });
+    inventoryRefs.services.set(unread.projectId, { status: "resolved", services: [] });
+    inventoryRefs.detail.add(loose.projectId);
     const running: Shown<ReadonlyArray<StopService>> = {
       state: "known",
       value: [
@@ -462,9 +475,15 @@ describe("ZeropsProjectFlowProvider", () => {
       }),
     );
 
+    inventoryRefs.detail = new Set([unread.projectId]);
+    await act(async () => {
+      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+    });
+    expect([...demanded]).toEqual([unread.projectId]);
     await act(async () => {
       root.unmount();
     });
+    expect([...demanded]).toEqual([]);
     unbind();
   });
 
@@ -492,6 +511,7 @@ describe("ZeropsProjectFlowProvider", () => {
         ref(projectId),
       ]),
     );
+    inventoryRefs.detail = new Set(["open-1", "denied-1", "stopped-1"]);
     inventoryRefs.projects = [
       { id: "open-1", status: "ACTIVE" },
       { id: "stopped-1", status: "STOPPED" },

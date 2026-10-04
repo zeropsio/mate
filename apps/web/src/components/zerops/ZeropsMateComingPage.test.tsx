@@ -131,6 +131,7 @@ vi.mock("~/state/entities", () => ({
   useProjects: () => app.projects,
 }));
 vi.mock("~/zerops/accountEnvironments", () => ({
+  useMateDetailRead: () => ({ failure: null, again: () => undefined }),
   useConnectMate: () => app.connect,
   useAccountEnvironments: () => environments,
 }));

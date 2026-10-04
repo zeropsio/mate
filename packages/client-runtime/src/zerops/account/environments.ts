@@ -41,6 +41,7 @@ import {
   type OrganizationRef,
   type ProjectActivityRead,
   type ProjectRef,
+  type LeaseAdmissionError,
 } from "../data/types.ts";
 import type { IdentityExchangeReason } from "../diagnostics.ts";
 import {
@@ -212,6 +213,12 @@ export interface AccountEnvironmentPorts {
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
 
 export interface AccountEnvironments {
+  /** Projects whose detail is currently held by a route, screen, or action. */
+  readonly detailProjects: () => ReadonlySet<string>;
+  /** Why the route or screen's project inventory demand ended before it was admitted. */
+  readonly detailFailure: (projectId: string) => LeaseAdmissionError | null;
+  /** One explicit new attempt at a refused project inventory demand. */
+  readonly retryDetail: (projectId: string) => void;
   /** Every target's environment machine (§4.4); the same map until the next publication. */
   readonly machines: () => ReadonlyMap<TargetKey, EnvironmentMachine>;
   /** Every target's container machine (§4.5); the same map until the next publication. */
@@ -386,6 +393,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   >();
   const listeners = new Set<() => void>();
   const detailLeases = new Map<string, Fiber.Fiber<void>>();
+  const detailFailures = new Map<string, LeaseAdmissionError>();
+  let detailProjects: ReadonlySet<string> = new Set();
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   /** The target's project as a listing names it, whether or not its services are read. */
@@ -710,9 +719,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           id !== null && projectRefOf(id)?.organization.organizationId === activeOrganization,
       ),
     );
+    const detailMoved =
+      wanted.size !== detailProjects.size || [...wanted].some((id) => !detailProjects.has(id));
+    if (detailMoved) detailProjects = wanted;
     for (const [id, fiber] of detailLeases) {
       if (wanted.has(id)) continue;
       detailLeases.delete(id);
+      detailFailures.delete(id);
       run(Fiber.interrupt(fiber));
     }
     for (const id of wanted) {
@@ -725,7 +738,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         run(
           Effect.scoped(
             data.acquire({ kind: "project-inventory", project }).pipe(Effect.andThen(Effect.never)),
-          ).pipe(Effect.ignore),
+          ).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                detailFailures.set(id, error);
+                notify();
+              }),
+            ),
+          ),
         ),
       );
     }
@@ -733,6 +753,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (route === null) {
       routeKey = null;
       holdViewed([], shown);
+      if (detailMoved) notify();
       return;
     }
     const machines = stores.driver.machines();
@@ -746,6 +767,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       undefined;
     routeKey = key ?? null;
     holdViewed(key === undefined ? [] : [key], shown);
+    if (detailMoved) notify();
   };
 
   /**
@@ -941,6 +963,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     updateParking();
 
     const environments: AccountEnvironments = {
+      detailProjects: () => detailProjects,
+      detailFailure: (projectId) => detailFailures.get(projectId) ?? null,
+      retryDetail: (projectId) => {
+        if (closed || !detailFailures.delete(projectId)) return;
+        detailLeases.delete(projectId);
+        updateRoute();
+        notify();
+      },
       machines: driver.machines,
       containers: containers.machines,
       records: records.list,
@@ -1042,6 +1072,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         checks.clear();
         for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
         detailLeases.clear();
+        detailFailures.clear();
+        detailProjects = new Set();
         driver.dispose();
         containers.dispose();
         preferRoute();

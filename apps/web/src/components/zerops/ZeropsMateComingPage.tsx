@@ -128,6 +128,8 @@ import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ConversationStripView } from "../chat/ConversationStrip";
+import { MateDetailFailure } from "./MateDetailFailure";
+import { useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "../chat/ChatHeader";
@@ -462,6 +464,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     void connect({ key: connectKey });
   }, [connect, connectKey]);
   // On screen, it holds the screen's lease while the view stands (A9).
+  const { failure: detailFailure, again: readAgain } = useMateDetailRead(projectId);
   const environments = useAccountEnvironments();
   useEffect(() => {
     if (environments === null) return;
@@ -710,6 +713,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // are read, else HQ's last word of it.
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
+  if (detailFailure !== null)
+    return <MateDetailFailure message={detailFailure.message} again={readAgain} />;
   return (
     <MateComingFrame
       composer={
