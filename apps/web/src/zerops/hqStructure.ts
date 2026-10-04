@@ -24,10 +24,12 @@ import {
   applyPeopleEvent,
   applyAppReadsEvent,
   applyStructureEvent,
+  readHqHealth,
   type HqApi,
   type HqChanges,
   type HqMates,
   type HqAppReads,
+  type HqHealth,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -44,7 +46,13 @@ import {
   type HqStructureView,
 } from "../state/zerops";
 import { formatDayAwareTimestamp } from "../timestampFormat";
-import { accountHqApi, useAccountHq, type AccountHq } from "./accountHq";
+import {
+  accountHqApi,
+  nextHqStanding,
+  useAccountHq,
+  type AccountHq,
+  type HqStanding,
+} from "./accountHq";
 import { menuMemory, rememberedMates, rememberMenu, withMates, withStructure } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -82,6 +90,12 @@ export async function driveHqStructure(input: {
   readonly now: () => number;
   /** Told how each stream ended — the close code a break carried — and how long it lived (F26). */
   readonly log: (line: string) => void;
+  /**
+   * HQ's `/health`, read once after each attempt that failed, while the tab is visible: whether
+   * HQ is down or serves while it cannot check Zerops right now. Never while the stream serves.
+   */
+  readonly readHealth: () => Promise<HqHealth>;
+  readonly visible: () => boolean;
   readonly signal: AbortSignal;
   readonly silenceMs?: number;
 }): Promise<void> {
@@ -109,6 +123,25 @@ export async function driveHqStructure(input: {
   const publishMates = (next: HqMatesView) => {
     matesView = next;
     input.publishMates(matesView);
+  };
+
+  /** Each snapshot served: a health read that began before one is stale. */
+  let served = 0;
+  const standingAfterFailure = (since: number) => {
+    const previous: HqStanding = view.standing ?? { kind: "unknown" };
+    if (!input.visible()) {
+      // Nothing is read while hidden: the stream's own failure stands, an unchecked HQ aside.
+      return previous.kind === "unchecked" ? previous : { kind: "unavailable" as const, since };
+    }
+    const asked = served;
+    void input.readHealth().then((health) => {
+      if (input.signal.aborted || served !== asked) return;
+      publish({
+        ...view,
+        standing: nextHqStanding(view.standing ?? { kind: "unknown" }, health, since),
+      });
+    });
+    return previous;
   };
 
   let backoffMs = HQ_RECONNECT_FIRST_MS;
@@ -206,6 +239,7 @@ export async function driveHqStructure(input: {
               const readAt = input.now();
               backoffMs = HQ_RECONNECT_FIRST_MS;
               firstReconnect = true;
+              served += 1;
               input.remember(streamed, readAt);
               publish({
                 ...view,
@@ -217,6 +251,7 @@ export async function driveHqStructure(input: {
                 unavailableSince: null,
                 failure: null,
                 reconnecting: null,
+                standing: { kind: "healthy" },
               });
             },
           },
@@ -243,12 +278,14 @@ export async function driveHqStructure(input: {
         firstReconnect = false;
         const delayMs = immediate ? 0 : backoffMs;
         const capped = !refused && delayMs === HQ_RECONNECT_CAP_MS;
+        const since = view.unavailableSince ?? input.now();
         publish({
           ...view,
           current: false,
-          unavailableSince: view.unavailableSince ?? input.now(),
+          unavailableSince: since,
           failure: refused || capped ? failure : null,
           reconnecting: refused ? null : { delayMs, capped },
+          standing: standingAfterFailure(since),
         });
         publishMates({ ...matesView, current: false });
         if (!refused && !immediate) backoffMs = Math.min(backoffMs * 2, HQ_RECONNECT_CAP_MS);
@@ -375,6 +412,8 @@ export function ZeropsHqStructure(): null {
         rememberMenu((memory) => withMates(memory, organizationId, mates, people)),
       now: () => Date.now(),
       log: (line) => console.info(line),
+      readHealth: () => readHqHealth((input, init) => fetch(input, init), hqAddress),
+      visible: () => document.visibilityState === "visible",
       signal: stop.signal,
     });
     return () => stop.abort();
