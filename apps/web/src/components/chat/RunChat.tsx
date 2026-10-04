@@ -1319,9 +1319,12 @@ const STEP_GLYPH: Record<StepKind, LucideIcon> = {
   tool: WrenchIcon,
 };
 
-/** Four of a command's 20 px lines: past them, the way to the rest. */
-const CODE_CAP_PX = 80;
-const CODE_CAP_LINES = 4;
+/**
+ * Two of a command's 20 px lines: past them, the way to the rest — its words
+ * say what it does, and four lines of shell read heavy (Bodhi, run 9).
+ */
+const CODE_CAP_PX = 40;
+const CODE_CAP_LINES = 2;
 
 /**
  * Whether what `watch` is given stands taller than `cap` pixels — measured on
@@ -1427,7 +1430,7 @@ function CallRow({
 }
 
 /**
- * A command's code, in mono: four lines of it from its first frame and a fade
+ * A command's code, in mono: two lines of it from its first frame and a fade
  * where it goes on — a script never prints whole into the chat (the owner,
  * 2026-09-28: "I see 100s of LoC printed directly"). It is how, under what the
  * command was for, on the words' own edge: in the muted ink, failed too — its
@@ -1445,7 +1448,7 @@ function CommandCode({
 }) {
   return (
     <div
-      className={cn("min-w-0", folded === true && "max-h-20 overflow-hidden")}
+      className={cn("min-w-0", folded === true && "max-h-10 overflow-hidden")}
       data-chat-folded={folded === null ? undefined : String(folded)}
       style={
         folded === true ? { WebkitMaskImage: FOLD_FADE_MASK, maskImage: FOLD_FADE_MASK } : undefined
@@ -1467,7 +1470,7 @@ function CommandCode({
 /**
  * A call the Mate made, as its row in the card of calls: led by what kind of
  * call it was, its time and a chevron on the card's right edge. A command
- * says what it was for, then four lines of its code. The row opens as one
+ * says what it was for, then two lines of its code. The row opens as one
  * thing: its first line or "Show all N lines" shows the whole code and what it
  * printed, in an inset on the code's own left edge, and "Show less" folds it
  * back. The one it is making now counts its time in the same quiet ink:
